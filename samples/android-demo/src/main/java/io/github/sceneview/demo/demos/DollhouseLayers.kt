@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -34,16 +36,23 @@ import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
+import io.github.sceneview.demo.demos.internal.ArDebugStyle
+import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DollhouseFraming
 import io.github.sceneview.demo.demos.internal.DollhouseOpening
 import io.github.sceneview.demo.demos.internal.DollhouseRoom
-import io.github.sceneview.demo.demos.internal.dollhouseSideBand
 import io.github.sceneview.demo.demos.internal.FramingInsets
 import io.github.sceneview.demo.demos.internal.PlaneLayering
+import io.github.sceneview.demo.demos.internal.RescanZone
+import io.github.sceneview.demo.demos.internal.RescanZoneMesh
+import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
+import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.RoomSurvey
+import io.github.sceneview.demo.demos.internal.dollhouseSideBand
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -55,6 +64,8 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /*
  * The dollhouse of #4075, drawn: the room a Rerun recording kept, through the replay's own
@@ -407,6 +418,13 @@ internal fun DollhousePreview(
     }
     // One opening per room and per camera: another room is veiled until its own framing is drawn.
     val opening = remember(bounds, orbit) { DollhouseOpening() }
+    // The floor every result view stands on (#4735): the room's dimensions and the parts still to
+    // scan, read off the survey the plan draws (measured once, in its queue), off the main thread.
+    val survey = rememberRoomSurvey(build.media, wanted = true).survey
+    val floor by produceState<DollhouseFloor?>(null, build, room, survey) {
+        value = withContext(Dispatchers.Default) { DollhouseFloor.of(build, room, survey) }
+    }
+    val facing = remember(room) { FacingSides() }
     // Before the first frame, not on it: the tone mapping is part of the first picture. Effects
     // run when the composition is applied, ahead of the frame that draws it.
     DisposableEffect(view, colorGrading) {
@@ -477,6 +495,9 @@ internal fun DollhousePreview(
             environment = environment,
             cameraManipulator = orbit,
             onFrame = {
+                // The dimensions face the eye, taken in the room's frame: the room is drawn moved.
+                val eye = CameraRig.eye(orbit.pose)
+                facing.look(floor?.measure, eye.x + fit.centerX, eye.z + fit.centerZ)
                 // The frame just drawn was aimed before it: shown once it was on the framing.
                 val framed = home.value()
                 if (opening.drawn(orbit, framed)) shown.value()
@@ -495,6 +516,43 @@ internal fun DollhousePreview(
                 pickable = false,
                 showPath = showPath,
             )
+            // The grid the room's plinth stands on, the room's dimensions on it past the plinth,
+            // and the parts still to scan (#4735): in the room's frame, moved as the model is.
+            val foot = ResultFloor.dollhouseFoot(fit)
+            Node(position = Position(-fit.centerX, -foot, -fit.centerZ)) {
+                val style = ArDebugStyle.forOrbit(
+                    home.value().distance,
+                    orbit.verticalFovDegrees,
+                    constraints.maxHeight,
+                )
+                ResultGridLayer(ResultFloor.dollhouseGridBounds(fit), style, engine, materialLoader)
+                floor?.measure?.let { measure ->
+                    ResultMeasureLayer(
+                        measure, ResultFloor.dollhouseMeasureY(fit), style, facing.sides, engine, materialLoader,
+                        extraOffset = RoomDollhouse.BASE_MARGIN_M,
+                    )
+                }
+                floor?.takeIf { it.zones.isNotEmpty() }?.let { RescanZoneLayer(it.mesh, it.veil, engine, materialLoader) }
+            }
+        }
+    }
+}
+
+/**
+ * What the dollhouse lays on its floor (#4735): the room's [measure] — squared to the walls read
+ * off the scan, or to its planes without them — and the parts still to scan, framed ([mesh]) over
+ * their [veil].
+ */
+private class DollhouseFloor(val measure: RoomMeasure?, val zones: List<RescanZone>, val mesh: DebugMesh, val veil: DebugMesh) {
+    companion object {
+        /**
+         * [room]'s floor, [survey] the plan's survey of [build]'s scan, `null` while it is measured:
+         * the planes' dimensions until then, and no zone. Off the main thread: it reads the cloud.
+         */
+        fun of(build: DollhouseBuild, room: DollhouseRoom, survey: RoomSurvey?): DollhouseFloor {
+            val measure = survey?.let(ResultFloor::measureOf) ?: RoomMeasure.of(room.frame.planes, room.fit.floorY)
+            val zones = if (survey == null) emptyList() else zonesOf(build.media.dense?.cloud, survey)
+            return DollhouseFloor(measure, zones, RescanZoneMesh.of(zones), RescanZoneMesh.veil(zones))
         }
     }
 }

@@ -590,6 +590,7 @@ private fun ColumnScope.CoachStackContent(
         percent = state.scalePercent,
         isRealWorldSize = state.isRealWorldSize,
         label = state.scaleLabel,
+        heightMeters = state.controller.placedSize?.y,
         onReset = onResetScale,
     )
 
@@ -913,15 +914,18 @@ private fun PlacementScaleReadout(
     percent: Int?,
     isRealWorldSize: Boolean,
     label: ScaleLabelMode,
+    heightMeters: Float?,
     onReset: () -> Unit,
 ) {
     // Latch the last value for the length of the exit fade, or the pill blanks its own
     // content on the frame the fade starts (same reason DemoStatusBanner latches).
     var lastPercent by remember { mutableStateOf(100) }
     var lastWasRealWorldSize by remember { mutableStateOf(true) }
+    var lastHeightMeters by remember { mutableStateOf<Float?>(null) }
     if (percent != null) {
         lastPercent = percent
         lastWasRealWorldSize = isRealWorldSize
+        lastHeightMeters = heightMeters
     }
 
     AnimatedVisibility(
@@ -951,8 +955,11 @@ private fun PlacementScaleReadout(
         ) {
             Text(
                 text = when (label) {
-                    ScaleLabelMode.ACTUAL ->
-                        stringResource(R.string.ar_scale_actual_size_percent, lastPercent)
+                    // Only a real-size model's metres mean anything physical; a preview's
+                    // would just be the preview's own size.
+                    ScaleLabelMode.ACTUAL -> lastHeightMeters?.let { height ->
+                        stringResource(R.string.ar_scale_actual_size_height, lastPercent, height)
+                    } ?: stringResource(R.string.ar_scale_actual_size_percent, lastPercent)
 
                     ScaleLabelMode.PREVIEW ->
                         stringResource(R.string.ar_scale_preview_size, lastPercent)

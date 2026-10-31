@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: far live scan surfels hold still past the budget ([#4814](https://github.com/sceneview/sceneview/pull/4814)).** When even the merged surfels outnumber the live view's budget, the far ones kept are now the cells whose own key draws lowest, instead of every n-th cell in the order the map met them. A far wall keeps the same surfels from one snapshot to the next instead of shimmering, and the live view draws its whole budget.

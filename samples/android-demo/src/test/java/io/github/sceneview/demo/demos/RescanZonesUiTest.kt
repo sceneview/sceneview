@@ -94,9 +94,9 @@ class RescanZonesUiTest {
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    /** Whether [image] holds the amber the 3D view frames the parts with. */
-    private fun holdsAmber(image: Bitmap): Boolean {
-        val amber = SceneViewTokens.ArOverlay.accentGuidance.toArgb()
+    /** Whether [image] holds the amber the 3D view frames the parts with on [chrome]'s stage. */
+    private fun holdsAmber(image: Bitmap, chrome: StageChrome): Boolean {
+        val amber = ZoneInk.frame(chrome).toArgb()
         val pixels = IntArray(image.width * image.height)
         image.getPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
         return pixels.any { close(it, amber) }
@@ -113,12 +113,13 @@ class RescanZonesUiTest {
         show(dark, onRescan = {})
         val pill = composeRule.onNodeWithTag(STAGE_TAG).captureToImage().asAndroidBitmap()
         save(pill, "rescan-pill-$name")
-        assertTrue("no amber swatch on the $name pill", holdsAmber(pill))
+        val chrome = if (dark) StageChrome.Media else StageChrome.Light
+        assertTrue("no amber swatch on the $name pill", holdsAmber(pill, chrome))
         composeRule.onNodeWithTag(RERUN_MODEL_RESCAN_TAG).performClick()
         composeRule.waitForIdle()
         val list = composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap()
         save(list, "rescan-list-$name")
-        assertTrue("no amber swatch on the $name list", holdsAmber(list))
+        assertTrue("no amber swatch on the $name list", holdsAmber(list, chrome))
     }
 
     @Test

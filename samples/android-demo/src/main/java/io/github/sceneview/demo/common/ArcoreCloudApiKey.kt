@@ -1,7 +1,9 @@
 package io.github.sceneview.demo.common
 
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
@@ -49,6 +51,31 @@ const val ARCORE_API_KEY_MISSING_MESSAGE =
 fun arcoreApiKeyRejectedMessage(operation: String): String =
     "$operation failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud API key is rejecting " +
         "this APK. Check SHA-1 + billing + ARCore API restrictions in ARCORE_CLOUD_SETUP.md."
+
+/**
+ * Logs, once per rejection, what the key's Google Cloud restriction has to list for this
+ * very APK: its package name next to the SHA-1 that signed it.
+ *
+ * Detail for whoever fixes the key, so it goes to logcat (`adb logcat -s ArcoreCloudApiKey`)
+ * and not to the banner: a side-by-side QA build (`io.github.sceneview.demo.qa`) is its own
+ * entry in the restriction, and a key that lists only the store package refuses it with the
+ * same `ERROR_NOT_AUTHORIZED` as a wrong SHA-1.
+ */
+@Composable
+fun ArcoreApiKeyRejectedLogEffect(status: CloudServiceStatus) {
+    if (status !is CloudServiceStatus.ApiKeyRejected) return
+    val packageName = LocalContext.current.packageName
+    LaunchedEffect(status, packageName) {
+        Log.w(
+            ARCORE_API_KEY_LOG_TAG,
+            "${status.operation}: ERROR_NOT_AUTHORIZED. The key's Android restriction must list " +
+                "package $packageName together with the SHA-1 of the certificate that signed " +
+                "this APK; billing and the ARCore API are covered in $ARCORE_CLOUD_SETUP_DOC.",
+        )
+    }
+}
+
+private const val ARCORE_API_KEY_LOG_TAG = "ArcoreCloudApiKey"
 
 /**
  * Whether the build wired an ARCore Cloud API key into the manifest.

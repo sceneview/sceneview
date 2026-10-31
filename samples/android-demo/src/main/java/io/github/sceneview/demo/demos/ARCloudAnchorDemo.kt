@@ -59,6 +59,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ArcoreApiKeyRejectedLogEffect
 import io.github.sceneview.demo.common.CloudAnchorFlowCard
 import io.github.sceneview.demo.common.CloudServiceStatus
 import io.github.sceneview.demo.common.CloudServiceStatusBanner
@@ -206,6 +207,8 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         !isNetworkAvailable -> CloudServiceStatus.NoNetwork
         else -> operationCloudStatus ?: CloudServiceStatus.Available
     }
+    // The card says the key was refused; logcat says what its restriction must list.
+    ArcoreApiKeyRejectedLogEffect(cloudStatus)
 
     // ARCore's own reason for not tracking, when it has one — "It's too dark", "Move the
     // device more slowly" — worded once in `common/TrackingFailureMessages.kt` for all 28

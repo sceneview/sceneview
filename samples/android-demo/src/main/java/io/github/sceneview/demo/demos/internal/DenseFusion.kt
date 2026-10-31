@@ -232,10 +232,11 @@ class DenseFusion(
      * [LIVE_MAX_LEVEL] — a far surfel spans about as many pixels as a near one, and a far wall
      * keeps its surface with a quarter, a sixteenth of the surfels, where a stride ([cloud] with
      * `maxPoints`) thins the whole room into holes. While that leaves more than [maxPoints], the
-     * merging starts nearer, down to [LIVE_NEAR_M]; past it still, every n-th merged surfel, the
-     * near ones kept whole while they fit. Merged surfels average their parts weighted by the
-     * surface each stands for, in the order the map found them. Reads the map only: [cloud] and
-     * a saved scan are left as they were.
+     * merging starts nearer, down to [LIVE_NEAR_M]; past it still, the near ones whole while they
+     * fit and, of the others, those whose cell draws lowest from its own key ([drawOf]), so a far
+     * wall keeps the same surfels from one snapshot to the next. Merged surfels average their
+     * parts weighted by the surface each stands for, in the order the map found them. Reads the
+     * map only: [cloud] and a saved scan are left as they were.
      */
     @Suppress("LongMethod", "CyclomaticComplexMethod") // two passes over the map, one merge
     fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud {
@@ -287,7 +288,10 @@ class DenseFusion(
             outOf[i] = o
         }
         if (out == 0) return DenseCloud.Empty
+        val past = out > maxPoints
         // Second pass: each part weighs the surface it stands for, four times as much per level.
+        // Past the budget, a cell's first voxel gives it its draw: the cells come in the order the
+        // first pass numbered them.
         scratch.forSurfels(out)
         val (sx, sy, sz) = scratch.position
         val (snx, sny, snz) = scratch.normal
@@ -295,9 +299,15 @@ class DenseFusion(
         val sw = scratch.weight
         val scw = scratch.colorWeight
         val conf = scratch.conf
+        val draw = scratch.draw
+        var drawn = 0
         for (i in 0 until n) {
             val o = outOf[i]
             if (o < 0) continue
+            if (past && o == drawn) {
+                draw[o] = drawOf(coarser(voxelKeys[i], outLevel[o].toInt()))
+                drawn++
+            }
             val w = (1 shl (2 * levelOf(voxelKeys[i]))).toFloat()
             sx[o] += px[i] * w
             sy[o] += py[i] * w
@@ -317,28 +327,20 @@ class DenseFusion(
             }
             if ((confidence[i].toInt() and 0xFF) > (conf[o].toInt() and 0xFF)) conf[o] = confidence[i]
         }
-        // Past the budget still: every n-th merged surfel, the near ones whole while they fit. The
-        // n-th counts in the order the map met the cells, so a cell confirmed early in the map, or
-        // a level boundary the eye moved across, shifts every count after it: from one snapshot to
-        // the next, a far wall may keep other surfels and shimmer. This happens past the budget
-        // only, in a scan of more than a room. A pick by each cell's own key would hold them still,
-        // at the cost of the even spread a stride gives.
-        val keepNear = out > maxPoints && nearOut < maxPoints
-        val thinned = if (keepNear) out - nearOut else out
-        val room = if (keepNear) maxPoints - nearOut else maxPoints
-        val stride = if (out <= maxPoints) 1 else (thinned - 1) / room + 1
+        // Past the budget still: the near ones whole while they fit and, of the others, the cells
+        // that draw lowest, as many as the budget has room for (#4801). A cell's draw is a hash of
+        // its own key, the same in every snapshot whatever the map met before it, so a far wall
+        // keeps the same surfels instead of shimmering, as an n-th counted in the map's order made
+        // it do; only a cell whose level changes, the eye having crossed a boundary, draws anew.
+        // The draw has no order of its own: it spreads the kept cells at random, not evenly.
+        val keepNear = past && nearOut < maxPoints
         val keep = scratch.keep
-        var kept = 0
-        var seen = 0
-        for (o in 0 until out) {
-            if (keepNear && near[o]) {
-                keep[o] = true
-            } else {
-                keep[o] = seen % stride == 0
-                seen++
-            }
-            if (keep[o]) kept++
+        if (past) {
+            pickLowest(out, room = if (keepNear) maxPoints - nearOut else maxPoints, keepNear = keepNear)
+        } else {
+            keep.fill(true, 0, out)
         }
+        val kept = minOf(out, maxPoints)
         val positions = FloatArray(kept * 3)
         val normals = FloatArray(kept * 3)
         val colors = IntArray(kept)
@@ -368,7 +370,55 @@ class DenseFusion(
             levels[k] = outLevel[o]
             if (outLevel[o].toInt() != 0) coarse = true
         }
+        // The pick must mark exactly the surfels sized for: one short leaves an empty slot, a
+        // surfel at the origin with no normal and no colour.
+        check(k == kept - 1) { "picked ${k + 1} surfels for $kept" }
         return DenseCloud(positions, colors, normals, confidences, if (coarse) levels else null)
+    }
+
+    /**
+     * [liveCloud]'s pick past the budget, into the scratch's `keep`: of its [out] merged surfels
+     * the near ones if [keepNear], and of the others the [room] whose draw is lowest, ties in the
+     * order the map met them. A histogram of the draws' top bits finds the bucket where the room
+     * runs out; only that bucket's draws are sorted, a few dozen.
+     */
+    private fun pickLowest(out: Int, room: Int, keepNear: Boolean) {
+        val keep = scratch.keep
+        val near = scratch.near
+        val draw = scratch.draw
+        val buckets = scratch.buckets.takeIf { it.size == DRAW_BUCKETS } ?: IntArray(DRAW_BUCKETS)
+        scratch.buckets = buckets
+        buckets.fill(0)
+        for (o in 0 until out) if (!(keepNear && near[o])) buckets[draw[o] ushr DRAW_BUCKET_SHIFT]++
+        var edge = 0
+        var left = room
+        while (buckets[edge] < left) {
+            left -= buckets[edge]
+            edge++
+        }
+        val inEdge = IntArray(buckets[edge])
+        var e = 0
+        for (o in 0 until out) {
+            if (keepNear && near[o]) continue
+            if (draw[o] ushr DRAW_BUCKET_SHIFT == edge) inEdge[e++] = draw[o]
+        }
+        inEdge.sort()
+        val cut = inEdge[left - 1]
+        var atCut = 0
+        for (k in 0 until left) if (inEdge[k] == cut) atCut++
+        for (o in 0 until out) {
+            if (keepNear && near[o]) {
+                keep[o] = true
+                continue
+            }
+            val d = draw[o]
+            val bucket = d ushr DRAW_BUCKET_SHIFT
+            keep[o] = bucket < edge || (bucket == edge && d < cut)
+            if (bucket == edge && d == cut && atCut > 0) {
+                keep[o] = true
+                atCut--
+            }
+        }
     }
 
     /** About how many surfels [liveCloud] keeps merging from [first] metres, from every [step]-th voxel. */
@@ -804,6 +854,31 @@ class DenseFusion(
             return lo
         }
 
+        /**
+         * A merged cell's draw past the budget ([liveCloud], #4801): its [key]'s bits mixed by
+         * SplitMix64's finaliser into a non-negative 31-bit number, about uniform, unrelated
+         * between neighbouring cells, and the same in every snapshot.
+         */
+        private fun drawOf(key: Long): Int {
+            var z = key
+            z = (z xor (z ushr DRAW_SHIFT_1)) * DRAW_MIX_1
+            z = (z xor (z ushr DRAW_SHIFT_2)) * DRAW_MIX_2
+            z = z xor (z ushr DRAW_SHIFT_3)
+            return (z ushr (Long.SIZE_BITS - DRAW_BITS)).toInt()
+        }
+
+        private const val DRAW_MIX_1 = -0x40a7b892e31b1a47L // 0xBF58476D1CE4E5B9
+        private const val DRAW_MIX_2 = -0x6b2fb644ecceee15L // 0x94D049BB133111EB
+        private const val DRAW_SHIFT_1 = 30
+        private const val DRAW_SHIFT_2 = 27
+        private const val DRAW_SHIFT_3 = 31
+        private const val DRAW_BITS = 31
+
+        /** [pickLowest]'s histogram: the draws' top 12 bits. */
+        private const val DRAW_BUCKET_BITS = 12
+        private const val DRAW_BUCKETS = 1 shl DRAW_BUCKET_BITS
+        private const val DRAW_BUCKET_SHIFT = DRAW_BITS - DRAW_BUCKET_BITS
+
         private fun mix(key: Long): Int {
             var h = key * -0x61c8864680b583ebL
             h = h xor (h ushr 29)
@@ -836,6 +911,10 @@ private class LiveScratch {
     var conf = ByteArray(0)
     var keep = BooleanArray(0)
 
+    /** Past the budget, per merged surfel: its cell's draw; and how many draws fall in each bucket. */
+    var draw = IntArray(0)
+    var buckets = IntArray(0)
+
     /** Room for [voxels] voxels, and as many merged surfels. */
     fun forVoxels(voxels: Int) {
         if (outOf.size >= voxels) return
@@ -856,6 +935,7 @@ private class LiveScratch {
             colorWeight = FloatArray(size)
             conf = ByteArray(size)
             keep = BooleanArray(size)
+            draw = IntArray(size)
             return
         }
         for (sums in arrayOf(position, normal, color)) for (s in sums) s.fill(0f, 0, surfels)

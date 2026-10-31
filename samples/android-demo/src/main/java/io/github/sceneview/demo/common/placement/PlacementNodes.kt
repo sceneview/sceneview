@@ -13,6 +13,7 @@ import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
 import io.github.sceneview.SceneScope
 import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.PlacementSize
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
@@ -40,7 +41,13 @@ internal fun ARSceneScope.PlacedModelNode(
             placement = placed.placement,
             state = controller,
             modelInstance = it,
-            scaleToUnits = placed.spec.realWorldSizeMeters,
+            // A measured file arrives at its authored size, untouched; a catalogue row is a
+            // preview fitted into its nominal size.
+            size = if (placed.spec.sizeIsMeasured) {
+                PlacementSize.RealWorld
+            } else {
+                PlacementSize.FitInto(placed.spec.realWorldSizeMeters)
+            },
             assetRotation = DemoMath.placementRotationFor(placed.spec.assetLocation),
             onInvalidMove = onDragOffSurface,
             onScaleChanged = onScaleChanged,

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,6 +44,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -76,9 +80,12 @@ import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.MeasureUnitSystem
 import io.github.sceneview.demo.demos.internal.PlanLine
 import io.github.sceneview.demo.demos.internal.PlanMetrics
+import io.github.sceneview.demo.demos.internal.PlanPage
 import io.github.sceneview.demo.demos.internal.PlanStroke
 import io.github.sceneview.demo.demos.internal.PlanTextRole
 import io.github.sceneview.demo.demos.internal.ReplayLens
+import io.github.sceneview.demo.demos.internal.RescanZone
+import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.orPlanes
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
@@ -246,6 +253,13 @@ internal fun surveyOf(media: RerunReplayMedia): RoomSurvey {
 @Composable
 internal fun RerunPlanScreen(media: RerunReplayMedia?, title: String, date: String?, onBack: () -> Unit) {
     val survey = rememberRoomSurvey(media, wanted = true).survey
+    // The parts still to scan, laid on the plan (#4735): read off the same cloud as its walls, off
+    // the main thread, and only for a plan the scan's frame can be laid on.
+    val zones by produceState(emptyList<RescanZone>(), media, survey) {
+        value = emptyList()
+        if (survey == null || PlanPage.of(survey) == null) return@produceState
+        value = withContext(Dispatchers.Default) { zonesOf(media?.dense?.cloud, survey) }
+    }
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_plan_export_title),
         onBack = onBack,
@@ -254,7 +268,7 @@ internal fun RerunPlanScreen(media: RerunReplayMedia?, title: String, date: Stri
         opaqueSheet = true,
         hasScene = false,
     ) {
-        RerunPlanView(survey, title, date)
+        RerunPlanView(survey, title, date, zones = zones)
     }
 }
 
@@ -265,6 +279,8 @@ internal fun RerunPlanScreen(media: RerunReplayMedia?, title: String, date: Stri
  *
  * The page is text, and the header's pills float over the stage without a ground of their own:
  * the page starts under them and is clipped there, so nothing scrolls behind a pill.
+ *
+ * @param zones the parts of the scan still to scan, in the scan's frame, laid on the plan (#4735).
  */
 @Composable
 internal fun RerunPlanView(
@@ -274,6 +290,7 @@ internal fun RerunPlanView(
     modifier: Modifier = Modifier,
     units: MeasureUnitSystem = SurveyFormat.units(LocalLocale.current.platformLocale),
     locale: Locale = LocalLocale.current.platformLocale,
+    zones: List<RescanZone> = emptyList(),
 ) {
     val words = rememberPlanWords(units, locale)
     val context = LocalContext.current
@@ -335,10 +352,10 @@ internal fun RerunPlanView(
             Row(modifier = frame, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                 BoxWithConstraints(Modifier.weight(PLAN_SHARE).fillMaxHeight()) {
                     if (maxHeight - dock >= maxWidth / MAX_PLAN_RATIO) {
-                        PlanCard(survey, words, Modifier.fillMaxHeight().padding(bottom = dock), fill = true)
+                        PlanCard(survey, words, Modifier.fillMaxHeight().padding(bottom = dock), fill = true, zones = zones)
                     } else {
                         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = dock)) {
-                            PlanCard(survey, words, hint = words.scrollHint)
+                            PlanCard(survey, words, hint = words.scrollHint, zones = zones)
                         }
                     }
                 }
@@ -359,7 +376,7 @@ internal fun RerunPlanView(
                     modifier = Modifier.widthIn(max = RerunPageMaxWidth).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(Space.md),
                 ) {
-                    if (survey.hasPlan) PlanCard(survey, words)
+                    if (survey.hasPlan) PlanCard(survey, words, zones = zones)
                     SurveyDetails(survey, words, title, date, PlanShares(sharePdf, shareDxf, shareText))
                 }
             }
@@ -368,11 +385,14 @@ internal fun RerunPlanView(
 }
 
 /**
- * The plan on its card: the outline to scale, its dimensions, and what a dashed wall means.
+ * The plan on its card: the outline to scale on the grid every result view stands on, its
+ * dimensions, the parts still to scan, and what a dashed wall and a dashed amber box mean.
  *
  * @param fill the drawing takes the height the card is given instead of the plan's own shape.
  * @param hint a line above the drawing, for a card that does not show whole.
+ * @param zones the parts still to scan, in the scan's frame: none on a plan it cannot be laid on.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlanCard(
     survey: RoomSurvey,
@@ -380,6 +400,7 @@ internal fun PlanCard(
     modifier: Modifier = Modifier,
     fill: Boolean = false,
     hint: String? = null,
+    zones: List<RescanZone> = emptyList(),
 ) {
     val density = LocalDensity.current
     val unit = density.density * density.fontScale.coerceAtMost(MAX_PLAN_FONT_SCALE)
@@ -389,7 +410,16 @@ internal fun PlanCard(
         text = stage.onGlass.toArgb(),
         fill = stage.onGlass.copy(alpha = FLOOR_ALPHA).toArgb(),
     )
+    val floor = PlanFloorInk(
+        gridMinor = stage.debug.gridMinor.toArgb(),
+        gridMajor = stage.debug.gridMajor.toArgb(),
+        zone = ZoneInk.frame(stage).toArgb(),
+        veil = ZoneInk.veil.toArgb(),
+    )
     val texts = remember(survey, words) { SurveyReport.planTexts(survey, words.survey) }
+    val grid = remember(survey) { ResultFloor.planGrid(survey) }
+    val page = remember(survey) { PlanPage.of(survey) }
+    val quads = remember(page, zones) { page?.let { p -> zones.map { p.quad(it.box) } }.orEmpty() }
     val description = stringResource(R.string.demo_ar_rerun_plan_content_description)
     val ratio = (survey.planLength / survey.planWidth.coerceAtLeast(MIN_PLAN_SIDE_M))
         .coerceIn(MIN_PLAN_RATIO, MAX_PLAN_RATIO)
@@ -421,17 +451,28 @@ internal fun PlanCard(
                         paint.measureText(text)
                     }
                     val drawing = RoomPlanLayout.layout(survey, texts, size.width, size.height, metrics)
-                    onDrawBehind { drawIntoCanvas { drawRoomPlan(it.nativeCanvas, drawing, ink, unit) } }
+                    val origin = ResultFloor.planOrigin(drawing, survey)
+                    val under = origin?.let { o -> { canvas: Canvas -> drawPlanFloor(canvas, drawing, o, grid, quads, floor, unit) } }
+                    onDrawBehind { drawIntoCanvas { drawRoomPlan(it.nativeCanvas, drawing, ink, unit, under) } }
                 },
         )
-        if (survey.walls.any { !it.seen || it.unseen.isNotEmpty() }) {
-            Row(
+        val unseen = survey.walls.any { !it.seen || it.unseen.isNotEmpty() }
+        if (unseen || quads.isNotEmpty()) {
+            FlowRow(
                 modifier = Modifier.padding(horizontal = Space.sm).padding(bottom = Space.xs),
                 horizontalArrangement = Arrangement.spacedBy(Space.md),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
             ) {
-                LegendMark(words.legendSeen, dashed = false, ink = ink, unit = unit)
-                LegendMark(words.legendUnseen, dashed = true, ink = ink, unit = unit)
+                if (unseen) {
+                    LegendMark(words.legendSeen, dashed = false, ink = ink, unit = unit)
+                    LegendMark(words.legendUnseen, dashed = true, ink = ink, unit = unit)
+                }
+                if (quads.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                        ZoneSwatch()
+                        Text(stringResource(R.string.scan_result_not_scanned), style = Type.caption.copy(color = stage.onGlassMuted))
+                    }
+                }
             }
         }
         // The plan never shows without it: it is what a capture of this card carries.
@@ -587,8 +628,76 @@ private fun ShareButton(
 /** The colours a plan is painted with, ARGB. */
 internal class PlanInk(val wall: Int, val muted: Int, val text: Int, val fill: Int)
 
+/** What the screen's plan lays on its floor (#4735): its grid's two inks, a part's frame and veil. */
+private class PlanFloorInk(val gridMinor: Int, val gridMajor: Int, val zone: Int, val veil: Int)
+
+/**
+ * The plan's floor (#4735): the grid every result view stands on, a line every quarter metre and
+ * a bolder one every metre, from the room's corner and clipped to its floor, then each part still
+ * to scan — [quads], page metres — as a dashed amber frame over its veil. [origin] is where the
+ * page's origin falls in [drawing].
+ */
+private fun drawPlanFloor(
+    canvas: Canvas,
+    drawing: RoomPlanDrawing,
+    origin: FloatArray,
+    grid: ResultFloor.PlanGrid,
+    quads: List<FloatArray>,
+    ink: PlanFloorInk,
+    unit: Float,
+) {
+    if (drawing.floor.size < MIN_OUTLINE_FLOATS) return
+    val scale = drawing.pxPerMetre
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val floor = Path()
+    floor.moveTo(drawing.floor[0], drawing.floor[1])
+    for (i in 1 until drawing.floor.size / 2) floor.lineTo(drawing.floor[i * 2], drawing.floor[i * 2 + 1])
+    floor.close()
+    canvas.save()
+    canvas.clipPath(floor)
+    paint.style = Paint.Style.STROKE
+    paint.strokeCap = Paint.Cap.BUTT
+    for ((lines, color, width) in listOf(
+        Triple(grid.minor, ink.gridMinor, GRID_MINOR_STROKE),
+        Triple(grid.major, ink.gridMajor, GRID_MAJOR_STROKE),
+    )) {
+        paint.color = color
+        paint.strokeWidth = width * unit
+        for (k in 0 until lines.size / 4) {
+            canvas.drawLine(
+                origin[0] + lines[k * 4] * scale, origin[1] + lines[k * 4 + 1] * scale,
+                origin[0] + lines[k * 4 + 2] * scale, origin[1] + lines[k * 4 + 3] * scale,
+                paint,
+            )
+        }
+    }
+    canvas.restore()
+    val box = Path()
+    for (quad in quads) {
+        box.rewind()
+        box.moveTo(origin[0] + quad[0] * scale, origin[1] + quad[1] * scale)
+        for (i in 1 until quad.size / 2) box.lineTo(origin[0] + quad[i * 2] * scale, origin[1] + quad[i * 2 + 1] * scale)
+        box.close()
+        paint.pathEffect = null
+        paint.style = Paint.Style.FILL
+        paint.color = ink.veil
+        canvas.drawPath(box, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ZONE_STROKE * unit
+        paint.color = ink.zone
+        paint.pathEffect = DashPathEffect(floatArrayOf(DASH_ON * unit, DASH_OFF * unit), 0f)
+        canvas.drawPath(box, paint)
+    }
+}
+
 /** Paints [drawing] on [canvas]; [unit] is one dp (one point on paper), the measure of every stroke. */
-internal fun drawRoomPlan(canvas: Canvas, drawing: RoomPlanDrawing, ink: PlanInk, unit: Float) {
+internal fun drawRoomPlan(
+    canvas: Canvas,
+    drawing: RoomPlanDrawing,
+    ink: PlanInk,
+    unit: Float,
+    under: ((Canvas) -> Unit)? = null,
+) {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     val path = Path()
     if (drawing.floor.size >= MIN_OUTLINE_FLOATS) {
@@ -599,6 +708,9 @@ internal fun drawRoomPlan(canvas: Canvas, drawing: RoomPlanDrawing, ink: PlanInk
         paint.color = ink.fill
         canvas.drawPath(path, paint)
     }
+    // What lies on the floor, under the walls and their dimensions: the screen's grid and parts
+    // still to scan (#4735). The PDF draws none.
+    under?.invoke(canvas)
     paint.style = Paint.Style.STROKE
     val dash = DashPathEffect(floatArrayOf(DASH_ON * unit, DASH_OFF * unit), 0f)
     for (line in drawing.lines) {
@@ -1024,6 +1136,9 @@ private const val WALL_STROKE = 2.5f
 private const val UNSEEN_STROKE = 1.5f
 private const val TICK_STROKE = 1.25f
 private const val HAIR_STROKE = 0.6f
+private const val GRID_MINOR_STROKE = 1f
+private const val GRID_MAJOR_STROKE = 1.5f
+private const val ZONE_STROKE = 1.5f
 private const val DASH_ON = 5f
 private const val DASH_OFF = 4f
 private const val QUARTER_TURN = -90f

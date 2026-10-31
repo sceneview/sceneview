@@ -299,7 +299,9 @@ fun MyARScreen() {
         depthMode = Config.DepthMode.AUTOMATIC,
         instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP,
         // ENVIRONMENTAL_HDR is the v4.3.0+ default LightEstimationMode — front-camera sessions
-        // are clamped to DISABLED inside ARSession.configure regardless. The sessionConfiguration
+        // are clamped to DISABLED inside ARSession.configure regardless, and a device without
+        // HDR steps down to AMBIENT_INTENSITY, then DISABLED, instead of failing the session.
+        // Opt out: config.lightEstimationMode = DISABLED in sessionConfiguration. The sessionConfiguration
         // callback remains the escape hatch for any Config property without a typed param.
         // sessionConfiguration = { session, config -> /* raw access here if needed */ },
         onSessionCreated = { session -> /* ARCore session ready */ },
@@ -601,6 +603,10 @@ ModelNode class properties (available via `apply` block):
 - `lightNodes: List<LightNode>` — embedded lights
 - `cameraNodes: List<CameraNode>` — embedded cameras
 - `boundingBox: Box` — glTF AABB
+- `worldSize: Size` — width, height, depth in world metres: authored bounds × `worldScale`
+  (parents included, rotation ignored); a 1 m glTF loaded without `scaleToUnits` reports 1 m
+- `worldBoundingBox: Box` — world-space AABB of the authored bounds after `worldTransform`;
+  its lowest Y is the floor contact, its X/Z extent the footprint
 - `animationCount: Int`
 - `isShadowCaster: Boolean`
 - `isShadowReceiver: Boolean`
@@ -624,9 +630,9 @@ clearing their handles, so the node guards each of its members that reaches them
 - Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
   scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
 - Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
-  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
-  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
-  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `center`, `size`, `worldSize`, `worldBoundingBox`, `scaleToUnitCube`, `centerOrigin`,
+  `animationCount`, `playAnimation`, `setAnimationSpeed`, `skinCount`, `skinNames`,
+  `materialVariantNames`, `attachSkin`, `detachSkin`, `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
   `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
   `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
 - Not guarded: `node.model`, `node.animator` and gltfio's own members
@@ -1477,6 +1483,20 @@ trustworthy authored units (**Actual size**). Scale limits are 25–400% of that
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
+
+To name the choice, pass `size = PlacementSize.RealWorld` (authored metres, never rescaled:
+a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest authored axis, before
+`assetRotation`, fitted into that many metres) instead of `scaleToUnits`. Either way the
+bottom-centre rests on the contact point and the model's dimensions are published in metres:
+`AutoPlacementState.baseSize` (width, height, depth at 100 % of the axis-aligned box after
+`assetRotation`, so with `FitInto` its largest side is the target only for multiples of 90°:
+a 1 m cube at `FitInto(1f)` turned 45° about Y is about 1.41 × 1 × 1.41 m; `null` until the
+frame after the model appears, and for an empty asset), `placedSize` (`baseSize * scaleFactor`,
+following the pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick
+a size with `state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall). `scaleTo` clamps to
+`scaleRange` (25–400 % by default) without notice and does nothing while `allowsScaling` is
+`false`: a 0.3 m preview asked for 2 m needs ×6.7 and stops at 1.2 m, so widen `scaleRange`
+(e.g. `0.25f..16f`) first.
 For content that must stay at real size (furniture, a pool, a shed), set
 `placement.allowsScaling = false` — `remember { AutoPlacementState().apply { allowsScaling = false } }`:
 the pinch, the double-tap and `scaleTo` stop resizing it, drag and twist still move and turn
@@ -1560,7 +1580,7 @@ wall shadows, and never substitutes a synthetic pool for renderer shading.
 whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
 with plane rendering, a built-in centre-screen **ring reticle** that brightens when a surface is
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
-the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
+the animated onboarding guide; `groundShadows` (on by default) grounds placed models with a real shadow. You
 only declare *what* rides each placed anchor:
 
 > **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
@@ -1610,7 +1630,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default; false to opt out) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -1969,6 +1989,13 @@ Shadows require a shadow-casting directional light — `ARSceneView`'s default
 `isShadowCaster` before suspecting the catcher. This is NOT a plane visualisation (no grid,
 no fill — that is `PlaneNode`, which carries no shadow receiver); declare `PlaneNode` and
 `ShadowReceiverPlane` on the same plane if you want a visible overlay and grounded shadows.
+
+`AutoPlacementScene` (and, by default, `PlacementScene`) already catch these shadows. On top of
+them, `AutoPlacementModel` draws a procedural `ContactShadowNode` pool under an object standing on
+a floor or a table, sized from its bounds (dark core at 80 % of the footprint, faded out about a
+quarter beyond it), turning and scaling with it — it stays under the object when the estimated
+light puts the real shadow off to one side or nowhere. Never drawn for a wall placement. Opt out
+with `AutoPlacementState.showsContactShadow = false`.
 
 Platform matrix: **iOS** — ships (v4.20+, #894): entities placed synchronously in `onTapOnPlane`
 get `GroundingShadowComponent(castsShadow: true)` automatically (RealityKit renders the contact
@@ -6309,6 +6336,9 @@ public struct ARSceneView: UIViewRepresentable {
 }
 ```
 
+The display stays awake while an `ARSceneView` is on screen (#4392): the view disables the app's
+idle timer when it appears and restores the previous setting when it goes away.
+
 View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
@@ -6410,6 +6440,8 @@ public struct ModelNode: @unchecked Sendable {
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func rotation(angle: Float, axis: SIMD3<Float>) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode   // fits in cube of 'units' meters
+    public var worldSize: SIMD3<Float>          // width, height, depth in world metres (own bounds × world scale; rotation ignored)
+    public var worldBoundingBox: BoundingBox    // world AABB after every transform; min.y = floor contact
     public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point); `.zero` = center on origin
     public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized AABB origin (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity; `SIMD3(0,-1,0)` bottom-aligns
 
@@ -6445,6 +6477,10 @@ Key behaviors:
   `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
+- `worldSize` mirrors Android's `ModelNode.worldSize`: own visual bounds × world scale, so
+  parent scales count and rotation does not; a 1 m USDZ loaded as is reports `(1, 1, 1)`.
+  `worldBoundingBox` is the world AABB after rotation and translation (`min.y` is where the
+  model touches the floor, X/Z the footprint). Both are `@MainActor`.
 - `centerOrigin(normalized:)` — **apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
 
 #### Model formats and units (`ModelFormat`, `ModelUnit`, `MeshAsset`)
@@ -6909,6 +6945,62 @@ from the content's bounds: the floor is 1.1 × the bounding-sphere radius, so a 
 never puts the camera inside the model, and the ceiling is 20 ×. Once the user pinches
 or orbits, the framing pass stops re-fitting the camera unless the content grows by
 more than 25 % (another streamed model); `.recenterCamera(_:)` hands it back (#4009).
+
+#### Camera paths — `CameraPosePath` and `CameraPathPlayer` (v4.64.0+)
+
+The Swift port of Android's keyframed pose paths (#4836): same sampling rules, same presets,
+same player, so a path authored on one platform plays the same on the other. A
+`CameraTimeline` (`durationSeconds`, `loop`, `poseAt(_ seconds:)`) is a pure function of time —
+a scrubbed frame and a played frame at the same time are the same pose.
+
+```swift
+@StateObject private var player = CameraPathPlayer(timeline: placeholderPath)  // play(), pause(), toggle(), restart(), seek(to:), speed, loop
+
+// Once the model is loaded and the view laid out:
+player.timeline = CameraPosePath.orbit(
+    bounds: model.entity.visualBounds(relativeTo: nil),   // one turn, framed from the subject's box
+    aspect: Float(size.width / size.height),              // the 3D view's own aspect
+    durationSeconds: 12)
+player.restart()
+
+SceneView { root in root.addChild(model.entity) }
+    .cameraGesturesEnabled(false)                         // the path owns the camera
+    .autoCenterContent(false)
+    .cameraPose(SceneCameraPose(player.pose, focusDistance: 2))
+    .background {
+        TimelineView(.animation(paused: !player.isPlaying)) { context in
+            Color.clear.onChange(of: context.date) { _, date in
+                player.advanceFrame(at: date.timeIntervalSinceReferenceDate)
+            }
+        }
+    }
+Slider(value: Binding(get: { Double(player.progress) },
+                      set: { player.seek(to: Float($0) * player.durationSeconds) }))
+```
+
+- `CameraPose(position:quaternion:)` looks down its local -Z; `CameraPose.lookingAt(eye:target:)`
+  builds one. `CameraPosePath(keyframes:interpolation: .catmullRom, easing: .linear,
+  pathEasing: nil, lookAt: nil, up: CameraPose.worldUp, loop: false)` — keys are
+  `CameraPoseKeyframe(pose:seconds:easing:)`; positions `.linear` or `.catmullRom` (tangents
+  capped so a pause is not overshot, a turn back of more than 120° stops on its key, two keys at
+  one time are a cut, a closed loop is smooth across its seam); rotations slerp the short way;
+  `lookAt` re-aims the camera at a point every instant. `CameraEasing` is `.linear`, `.inOut`,
+  `.expressive` or `.cubicBezier(x1, y1, x2, y2)`.
+- Presets: `orbit(bounds:verticalFovDegrees: 60, aspect:durationSeconds: 12, turns: 1,
+  elevationDegrees: 20, startAzimuthDegrees: 0, margin: 1.15, loop: true)` (radius from
+  `CameraControls.fitRadius`, the fit SceneView's own auto-framing uses; 32 keys a turn; a
+  fractional turn count keeps turning lap after lap), `travelling(from:distance:durationSeconds:)`
+  (along the camera's right axis, heading held), `dolly(target:from:toDistance:durationSeconds:)`
+  (along the line of sight).
+- `CameraPathPlayer` is a `@MainActor ObservableObject` (`seconds`, `progress`, `isPlaying`,
+  `isFinished`, `durationSeconds`, `loop`, `speed`); `advance(_:)` / `advanceFrame(at:)` move it by
+  wall-clock time, so 60 and 120 Hz reach the same pose at the same time. A new `timeline` keeps
+  the playhead, wrapped or clamped into its duration. For a fixed-rate render call
+  `timeline.poseAt(Float(frame) / fps)` directly.
+- A SceneView camera is an orbit camera: `SceneCameraPose(_:focusDistance:)` (or
+  `CameraControls.follow(_:focusDistance:)`, and `cameraPose()` to read one back) keeps the eye and
+  look direction exact for any focus distance, but has no roll and clamps the pitch to ±85°.
+  Keep `focusDistance` inside `minRadius…maxRadius` (1…50 with `autoCenterContent(false)`).
 
 ---
 

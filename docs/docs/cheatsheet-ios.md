@@ -54,6 +54,7 @@ SceneView { root in
 .cameraPose(pose)                  // v4.27.0+ — drives the camera CONTINUOUSLY (SceneCameraPose, radians). Applied only when the value changes, so it coexists with a live drag
 .onCameraChanged { new in Task { @MainActor in pose = new } }  // v4.27.0+ — fires after EVERY camera change (drag, pinch, auto-rotate, re-frame). The hop is required: it fires inside RealityKit's update pass
 .cameraGesturesEnabled(false)      // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which also disables .cameraPose
+.cameraPose(SceneCameraPose(player.pose, focusDistance: 2))  // v4.64.0+ — play a keyframed CameraPosePath (.orbit(bounds:aspect:) / .travelling / .dolly) through a CameraPathPlayer ticked by TimelineView(.animation); pair with .cameraGesturesEnabled(false)
 .onEntityTapHit { hit in }         // v4.27.0+ — tap + world position (SceneTapHit). Bounds centre, not the surface point
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
@@ -155,7 +156,7 @@ struct AutomaticPlacement: View {
                 let model = try await ModelNode.load("khronos_toy_car")
                 guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
                 _ = model.withGroundingShadow() // explicit for asynchronously loaded content
-                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+                placement.setModel(model.entity, ticket: ticket, size: .fitInto(meters: 0.3))
             } catch {
                 guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
                 // Present a model-load error and retry; never substitute another asset.
@@ -167,9 +168,17 @@ struct AutomaticPlacement: View {
 
 - Use `.vertical` for direct wall placement; no floor prerequisite. `result` exposes
   `surfaceIdentifier`, `anchorIdentifier`, and the oriented `worldTransform`.
-- `previewSize: 0.3` means **Preview size**, a 0.3 m longest dimension. Pass `nil` for
-  **Actual size** when the asset's authored units are trustworthy. Complete nested bounds
-  are grounded; asynchronous models receive collision shapes for selection and gestures.
+- `size: .fitInto(meters: 0.3)` (also `PlacementSize.preview`) means **Preview size**, a
+  0.3 m longest side. `size: .realWorld` means **Actual size**: authored metres, never
+  rescaled — use it when the asset's units are trustworthy. Complete nested bounds are
+  grounded with the bottom centre on the contact point; asynchronous models receive
+  collision shapes for selection and gestures.
+- `baseSize` (W, H, D in metres at 100 %), `placedSize` (`baseSize * scale`) and
+  `isAtRealWorldSize` (`.realWorld` at exactly 100 %) are observable — e.g.
+  `if let s = placement.placedSize { Text(String(format: "%.2f m tall", s.y)) }`. Once
+  placed, `if let b = placement.baseSize { placement.scale(to: 2 / b.y) }` makes it 2 m
+  tall (`scale(to:)` does nothing before `.placed`/`.adjusting`). `ModelNode.worldSize` and
+  `worldBoundingBox` give any model's dimensions in world metres.
 - `phase`: `.initializing`, `.scanning`, `.noSurface`, `.placed`, `.adjusting`,
   `.trackingLost`, `.recovering`, `.recoveryFailed`, `.cameraError`. These correspond
   directly to Kotlin's `PlacementPhase`. Search and recovery deadlines are ten seconds.
@@ -177,7 +186,7 @@ struct AutomaticPlacement: View {
   the owned anchor while retaining the asset and camera; `keepScanning()` starts a new
   search interval. `dismiss()` invalidates outstanding tickets and releases resources.
   Teardown invokes dismissal automatically. A controller owns one placement.
-- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
+- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:size:)`
   rejects stale tickets and invalid bounds, keeps the old entity until a successful
   replacement, and automatically requests placement when empty.
 - Nested meshes are selectable. Drag preserves the grab offset on valid geometry and the
@@ -191,7 +200,7 @@ struct AutomaticPlacement: View {
   limited to 25–400%. Tracking loss cancels gestures and hides content until the existing
   anchor recovers. Empty-space taps deselect only.
 - `recenter()` brings the placed model back in front of the user: it glides (6/s) to where
-  the centre ray meets the floor, between half its reach and its reach ahead, keeping the side
+  the centre ray meets the floor, between 0.6 of its reach and its reach ahead, keeping the side
   the user sees: the twist from facing them is kept, a plane placement's own heading counting
   as twist; the pinch is kept. A wall
   model goes to the wall under the centre. It returns `false`, changing nothing, when nothing
@@ -436,6 +445,8 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()`; extensionless names try mp4/mov/m4v, `VideoNode.load(resource:)` throws instead of failing silently |
 | `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
+| `TubeNode` | `TubeNode(points:radius:radialSegments:closed:caps:material:)` | lit tube with a real width; `.updateGeometry(points:radius:)` in place |
+| `MeshNode` | `MeshNode.fromVertices(positions:normals:uvs:indices:material:)` | `throws`; `MeshNode.wireframe(of:thickness:material:)` draws any mesh's edges as thin prisms (no wireframe mode in RealityKit) |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
 | `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | **deprecated (v4.39.0+)** — not fog: one translucent sphere, no distance attenuation, and it is included in automatic content framing |

@@ -2,6 +2,7 @@ package io.github.sceneview.demo
 
 import android.content.Intent
 import android.net.Uri
+import io.github.sceneview.core.threemf.ThreeMfUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -226,6 +227,58 @@ class OpenedModelIntentTest {
         assertEquals("shared file.stl", opened?.displayName)
         assertEquals("stl", opened?.displayName?.let(OpenedModelIntent::unitLessFormat))
         OpenedModelIntent.sweep(context, keep = null)
+    }
+
+    @Test
+    fun `a file reopened in metres goes to AR as the re-converted file, at its measured size`() {
+        // A 2-unit STL is read in millimetres; the user answers "metres". The re-converted GLB is
+        // the opened file from then on: it, not the staged original, is what AR must place, and
+        // the viewer's 2 m measurement belongs to it alone.
+        val context = RuntimeEnvironment.getApplication()
+        val shared = temporary("bracket.stl")
+        shared.writeText(
+            """
+            solid part
+              facet normal 0 0 1
+                outer loop
+                  vertex 0 0 0
+                  vertex 2 0 0
+                  vertex 0 2 0
+                endloop
+              endfacet
+            endsolid part
+            """.trimIndent()
+        )
+        val opened = OpenedModelIntent.stage(context, Uri.fromFile(shared), "model/stl")!!
+
+        val reopened = OpenedModelIntent.reopenAt(context, opened.displayName, ThreeMfUnit.METER)!!
+
+        assertEquals(opened.displayName, reopened.displayName)
+        assertTrue(reopened.location != opened.location)
+        assertEquals(2f, glbPositionMax(File(Uri.parse(reopened.location).path!!)), 1e-4f)
+        // Measured on the re-converted instance: claimed for it, never for the original.
+        assertEquals(2f, reopened.arMeasuredSizeMeters(reopened.location, 2f))
+        assertNull(opened.arMeasuredSizeMeters(reopened.location, 2f))
+        OpenedModelIntent.sweep(context, keep = null)
+    }
+
+    @Test
+    fun `an AR size is only claimed for a real measurement of the file itself`() {
+        val file = OpenedModel("file:///cache/opened-model", "part.3mf")
+        assertEquals(0.06f, file.arMeasuredSizeMeters("file:///cache/opened-model", 0.06f))
+        assertNull(file.arMeasuredSizeMeters(null, 0.06f))
+        assertNull(file.arMeasuredSizeMeters("file:///cache/opened-model", null))
+        assertNull(file.arMeasuredSizeMeters("file:///cache/opened-model", 0f))
+        assertNull(file.arMeasuredSizeMeters("file:///cache/opened-model", Float.NaN))
+    }
+
+    /** Largest coordinate of a GLB's first accessor `max`, read from its JSON chunk. */
+    private fun glbPositionMax(glb: File): Float {
+        val bytes = glb.readBytes()
+        val jsonLength = ByteBuffer.wrap(bytes, 12, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        val json = String(bytes, 20, jsonLength, Charsets.UTF_8)
+        val max = Regex(""""max"\s*:\s*\[([^\]]*)]""").find(json)!!.groupValues[1]
+        return max.split(',').maxOf { it.trim().toFloat() }
     }
 
     @Test

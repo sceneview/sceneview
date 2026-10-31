@@ -81,6 +81,7 @@ import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.BakePhoto
+import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
@@ -101,6 +102,7 @@ import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
+import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.scanFloorArea
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
@@ -713,11 +715,14 @@ internal fun RerunModelScreen(
     val ground by produceState<GroundBuild?>(null, groundModel) {
         groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
     }
-    // The parts worth scanning again (#4736), once the floor is read: framed on the model, listed on a tap.
+    // The parts worth scanning again (#4736), once the floor is read: framed on the model, listed on
+    // a tap; and the room's dimensions read off the same walls, written on the grid (#4735).
     val rescan by produceState<RescanBuild?>(null, source, ground) {
         value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground) } }
     }
     var rescanOpen by remember(id ?: source) { mutableStateOf(false) }
+    // Which sides of the room its dimensions are written on: the two the camera faces.
+    val facing = remember(id ?: source) { FacingSides() }
     // No drift: the camera holds still once the reveal has landed, until the user moves it. Kept
     // across a source that arrives for a scan already shown, whose finish is run again.
     val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false) }
@@ -788,7 +793,7 @@ internal fun RerunModelScreen(
                         .alpha(if (tourReady) 1f else 0f)
                         .then(if (tourReady) Modifier else Modifier.clearAndSetSemantics { }),
                 )
-                rescan?.takeIf { tourReady }?.let { RescanZonesPill(it.zones.size, onClick = { rescanOpen = true }) }
+                rescan?.takeIf { tourReady && it.zones.isNotEmpty() }?.let { RescanZonesPill(it.zones.size, onClick = { rescanOpen = true }) }
             }
             ModelHint(
                 text = stringResource(R.string.scan_result_hint),
@@ -916,6 +921,7 @@ internal fun RerunModelScreen(
                     // view is let to be seen on its first frame, not the still one before it.
                     if (cinematics.frameDrawn(opening, framed, ready = instance != null)) shown = true
                     if (touring != cinematics.touring) touring = cinematics.touring
+                    CameraRig.eye(orbit.pose).let { eye -> facing.look(rescan?.measure, eye.x, eye.z) }
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
@@ -930,8 +936,13 @@ internal fun RerunModelScreen(
                     )
                     ScanGridLayer(it.ground, style, engine, materialLoader)
                     ScanGroundLayer(it.meshes, engine, materialLoader, ScanGroundColors.current())
+                    // The room's dimensions on that grid, on the two sides facing the camera (#4735).
+                    rescan?.measure?.let { measure ->
+                        val y = it.ground.floorY - ScanGroundMeshes.SLAB_DROP_M + ResultFloor.MEASURE_LIFT_M
+                        ResultMeasureLayer(measure, y, style, facing.sides, engine, materialLoader)
+                    }
                 }
-                rescan?.let { RescanZoneLayer(it.mesh, engine, materialLoader) }
+                rescan?.let { RescanZoneLayer(it.mesh, it.veil, engine, materialLoader) }
             }
             // The ground until the model is drawn on its framing: no pose but that one is seen.
             // Then it fades as the camera reveal flies in (`motion-entrance`), never a cut from the
@@ -966,7 +977,7 @@ internal fun RerunModelScreen(
             },
         )
     }
-    rescan?.takeIf { rescanOpen }?.let { RescanZonesDialog(it.zones, onDismiss = { rescanOpen = false }, onRescan = it.picker(onRescan)) }
+    rescan?.takeIf { rescanOpen && it.zones.isNotEmpty() }?.let { RescanZonesDialog(it.zones, onDismiss = { rescanOpen = false }, onRescan = it.picker(onRescan)) }
     question?.let { asked ->
         ReconstructionSheet(asked.fill, ReconstructionMethod.Fused, onFinish = asked::finish, onDismiss = asked::dismiss)
     }

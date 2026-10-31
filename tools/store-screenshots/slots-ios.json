@@ -103,7 +103,7 @@
       "size": "1320x2868"
     },
     {
-      "caption": "Nearly fifty demos",
+      "caption": "Nearly forty demos",
       "src": "tools/store-screenshots/raw/ios/iphone-home.png",
       "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/02-demos.png",
       "size": "1320x2868"
@@ -146,7 +146,7 @@
       "margin": 110
     },
     {
-      "caption": "Nearly fifty demos",
+      "caption": "Nearly forty demos",
       "src": "tools/store-screenshots/raw/ios/ipad-home.png",
       "out": "samples/ios-demo/appstore-screenshots/ipad-13/02-demos.png",
       "size": "2064x2752",
