@@ -9,8 +9,10 @@ import AppKit
 
 /// A wrapper around RealityKit's `ModelEntity` for loading and displaying 3D models.
 ///
-/// Mirrors SceneView Android's `ModelNode` — supports USDZ natively, with glTF
-/// support planned via GLTFKit2.
+/// Mirrors SceneView Android's `ModelNode`. Opens USDZ/USD/Reality through RealityKit,
+/// glTF 2.0 (`.glb`, `.gltf`) through SceneViewSwift's own importer — hierarchy, PBR
+/// materials and textures, skins and animations, no third-party dependency — and
+/// STL/OBJ/PLY/3MF as meshes. The call is the same for every format.
 ///
 /// ```swift
 /// @State private var model: ModelNode?
@@ -21,9 +23,14 @@ import AppKit
 ///     }
 /// }
 /// .task {
-///     model = try? await ModelNode.load("models/car.usdz")
+///     model = try? await ModelNode.load("models/car.usdz")   // or "models/fox.glb"
 /// }
 /// ```
+///
+/// glTF limitations (4.65.0): morph targets render the base mesh only; Draco and other
+/// unsupported *required* extensions throw
+/// ``ModelLoadingError/unsupportedRequiredExtension(_:)``; `COLOR_0` is averaged into
+/// the material tint; only `TEXCOORD_0` is used.
 public struct ModelNode: @unchecked Sendable {
     /// The underlying RealityKit entity.
     public let entity: ModelEntity
@@ -153,11 +160,17 @@ public struct ModelNode: @unchecked Sendable {
     /// | Formats | Path |
     /// |---|---|
     /// | `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit's `Entity(contentsOf:)` — already metric |
+    /// | `.glb` `.gltf` | SceneViewSwift's glTF importer — parsed off the main thread, metric by spec |
     /// | `.stl` `.obj` `.ply` | ModelIO → ``MeshAsset`` → `MeshResource`, with `unit` applied |
+    /// | `.3mf` | SceneViewSwift's 3MF reader → ``MeshAsset``, in the unit the file declares |
     ///
     /// ```swift
     /// // A slicer STL — millimetres, so this is 21 cm tall in AR, not 210 m.
     /// let print = try await ModelNode.load(contentsOf: stlURL)
+    ///
+    /// // A glTF/GLB — hierarchy, textures, skins; animations via playAllAnimations().
+    /// let fox = try await ModelNode.load(contentsOf: glbURL)
+    /// fox.playAllAnimations()
     ///
     /// // A scan authored in centimetres.
     /// let scan = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
@@ -181,6 +194,14 @@ public struct ModelNode: @unchecked Sendable {
         enableCollision: Bool = true
     ) async throws -> ModelNode {
         let format = try ModelFormat.sniff(contentsOf: url)
+        if format == .gltf || format == .glb {
+            let modelEntity = try await GLTFLoader.loadEntity(contentsOf: url, unit: unit)
+            if enableCollision {
+                modelEntity.generateCollisionShapes(recursive: true)
+                modelEntity.makeInputTargetable()
+            }
+            return ModelNode(modelEntity)
+        }
         guard format.loader == .realityKit else {
             let asset = try MeshAsset.load(contentsOf: url, format: format, unit: unit)
             return try await ModelNode(asset, enableCollision: enableCollision)
@@ -205,7 +226,8 @@ public struct ModelNode: @unchecked Sendable {
     ///
     /// Downloads the file to a temporary directory, then hands it to
     /// ``load(contentsOf:unit:enableCollision:)`` — so it opens every supported format,
-    /// not just USDZ. The temporary file is cleaned up after loading.
+    /// not just USDZ. The temporary file is cleaned up after loading. A remote `.gltf`
+    /// must be self-contained (`data:` URIs); a `.glb` always is.
     ///
     /// ```swift
     /// let model = try await ModelNode.load(

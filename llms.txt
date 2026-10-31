@@ -8272,7 +8272,7 @@ let data = SceneSnapshot.pngData(image) // or jpegData(image, quality: 0.9)
 | Reflection probe | `ReflectionProbeNode(scene, env)` | `ReflectionProbeNode.box(size:)` |
 | Renderer | Filament | RealityKit |
 | AR framework | ARCore | ARKit |
-| Model format | glTF/GLB | USDZ / Reality |
+| Model format | glTF/GLB | USDZ / Reality, glTF/GLB (4.65.0+) |
 
 ---
 
@@ -9583,7 +9583,7 @@ ARSceneView(
 
 ### Node types
 
-#### ModelNode — 3D model (USDZ / Reality / STL / OBJ / PLY / 3MF)
+#### ModelNode — 3D model (USDZ / Reality / glTF / GLB / STL / OBJ / PLY / 3MF)
 
 ```swift
 public struct ModelNode: @unchecked Sendable {
@@ -9634,10 +9634,18 @@ public struct ModelNode: @unchecked Sendable {
 
 Key behaviors:
 - Supports `.usdz` / `.usda` / `.usdc` / `.usd` / `.reality` through RealityKit,
-  `.stl` / `.obj` (+ `.mtl`) / `.ply` through ModelIO, and `.3mf` through SceneViewSwift's
-  own parser. glTF is **not** supported.
-- `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.stl` / `.obj` / `.ply` /
-  `.3mf` is resolved to a URL and parsed instead.
+  `.glb` / `.gltf` (glTF 2.0, since 4.65.0) and `.3mf` through SceneViewSwift's own
+  parsers, and `.stl` / `.obj` (+ `.mtl`) / `.ply` through ModelIO. Same call for all:
+  `try await ModelNode.load("models/fox.glb")`.
+- glTF: node hierarchy, metallic-roughness PBR with textures (base colour, metal-rough,
+  normal, occlusion, emissive), alpha modes, double-sided, `KHR_materials_unlit`,
+  `KHR_texture_transform`, `KHR_materials_emissive_strength`, skins and node animations
+  (exposed through `animationCount` / `playAnimation(at:)` / `playAllAnimations()`).
+  Parsing and image decoding run off the main thread. Not supported: morph targets
+  (base shape shown), Draco and meshopt compression — a file that *requires* an
+  unsupported extension throws `ModelLoadingError.unsupportedRequiredExtension(name)`.
+- `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.glb` / `.gltf` / `.stl` /
+  `.obj` / `.ply` / `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
 - `worldSize` mirrors Android's `ModelNode.worldSize`: own visual bounds × world scale, so
@@ -9657,6 +9665,7 @@ extension only when the content is not decisive.
 | Format | Reader | Default unit | Notes |
 |---|---|---|---|
 | `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit | metres | Already metric; `unit:` is ignored |
+| `.glb` `.gltf` | SceneViewSwift's own glTF 2.0 importer | metres | Metric by spec; external `.bin`/images resolved next to a `.gltf` |
 | `.stl` | ModelIO | **millimetres** | ASCII and binary; no unit, no materials |
 | `.obj` | ModelIO | metres | `.mtl` sidecar picked up when next to the file; quad faces triangulated |
 | `.ply` | ModelIO | metres | ASCII and binary; per-vertex colours preserved |
@@ -9706,6 +9715,7 @@ let node = try await ModelNode(asset)                // then display it
 public enum ModelFormat: String, Sendable, CaseIterable {
     case usdz, reality, usda, usdc, usd, stl, obj, ply
     case threeMF = "3mf"
+    case gltf, glb                                   // since 4.65.0
     public var fileExtension: String                 // == rawValue
     public var loader: Loader                        // .realityKit | .modelIO | .sceneView
     public var defaultUnit: ModelUnit

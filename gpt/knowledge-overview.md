@@ -868,7 +868,7 @@ let data = SceneSnapshot.pngData(image) // or jpegData(image, quality: 0.9)
 | Reflection probe | `ReflectionProbeNode(scene, env)` | `ReflectionProbeNode.box(size:)` |
 | Renderer | Filament | RealityKit |
 | AR framework | ARCore | ARKit |
-| Model format | glTF/GLB | USDZ / Reality |
+| Model format | glTF/GLB | USDZ / Reality, glTF/GLB (4.65.0+) |
 
 ---
 
