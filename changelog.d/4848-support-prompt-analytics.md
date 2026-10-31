@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **The demo apps measure the support ask.** Android and iOS log `support_prompt_shown` (`source`: `auto` or `settings`) when the sheet opens and one `support_prompt_result` when it closes (`tier_small`, `tier_medium`, `tier_large`, `purchase_cancelled`, `purchase_failed`, `not_now`, `never` or `dismissed`), with no price and no identifier, under the same consent as the other demo analytics.

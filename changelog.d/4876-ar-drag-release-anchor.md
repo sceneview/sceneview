@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **A dragged AR model stays where it was released ([#4876](https://github.com/sceneview/sceneview/pull/4876)).** An editable `AnchorNode` now re-anchors a released drag on the tracked plane under it, or on a frozen world pose when there is none, and never on an approximate Instant Placement point. A release while the camera is not tracking keeps the model visible in place and anchors it on the next tracking frame, instead of leaving it on the detached anchor, where it disappeared.

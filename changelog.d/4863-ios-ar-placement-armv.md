@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **iOS automatic placement now feels like the SceneView Android AR model viewer app ([#4863](https://github.com/sceneview/sceneview/pull/4863)).** `AutoPlacementScene` / `ARPlacementController` gain smoothed drags with a glide on throw, twist spin, a double tap between 100 % and the user's size (`toggleScale()`), a grow-in on first placement and `recenter()`; a single tap now waits for the double tap to fail (about 300 ms before it selects), and an unresolved instant-placement landing is abandoned instead of retried on a 3 s timer.
