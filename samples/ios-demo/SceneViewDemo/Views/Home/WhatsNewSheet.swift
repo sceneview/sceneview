@@ -1,4 +1,5 @@
 import SwiftUI
+import SceneViewSwift
 
 /// The "What's new" sheet — Android's `WhatsNewSheet` (WhatsNewUi.kt): the
 /// latest releases' highlights from the bundled `CHANGELOG.md`, newest first,
@@ -11,44 +12,83 @@ struct WhatsNewSheet: View {
     let releases: [WhatsNewRelease]
     let tryDemos: [DemoItem]
     let onDemo: (DemoItem) -> Void
+    @State private var tryDemosExpanded = false
+
+    /// A long "try them" list opens on its first rows, so the release notes
+    /// under it are a short scroll away; "Show N more" unfolds the rest.
+    static let tryDemosCollapsedCount = 4
+    /// The list is folded only from this many demos on: unfolding one row
+    /// saves nothing.
+    static let tryDemosCollapseThreshold = 6
+
+    private var tryDemosFoldable: Bool { tryDemos.count >= Self.tryDemosCollapseThreshold }
+
+    private var shownTryDemos: [DemoItem] {
+        guard tryDemosFoldable, !tryDemosExpanded else { return tryDemos }
+        return Array(tryDemos.prefix(Self.tryDemosCollapsedCount))
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
-                Text("What's new")
-                    .font(SceneViewTokens.TypeScale.title)
-                    .tracking(SceneViewTokens.TypeScale.titleTracking)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("whats-new-title")
-                    .padding(.bottom, -SceneViewTokens.Space.sm)
-                Text("Recently shipped and fixed, straight from the release notes")
-                    .font(SceneViewTokens.TypeScale.captionRegular)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+        SheetNavigation(title: "What's new") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+                    Text("Recently shipped and fixed, straight from the release notes")
+                        .font(SceneViewTokens.TypeScale.captionRegular)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
 
-                if !tryDemos.isEmpty {
-                    Text("New in this build — try them")
-                        .font(SceneViewTokens.TypeScale.bodySemibold)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                        .accessibilityAddTraits(.isHeader)
-                    ForEach(tryDemos, id: \.sceneId) { demo in
-                        TryDemoRow(demo: demo) { onDemo(demo) }
-                            .accessibilityIdentifier("whats-new-demo-\(demo.sceneId)")
+                    if !tryDemos.isEmpty {
+                        Text("New in this build — try them")
+                            .font(SceneViewTokens.TypeScale.bodySemibold)
+                            .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                            .accessibilityAddTraits(.isHeader)
+                        ForEach(shownTryDemos, id: \.sceneId) { demo in
+                            TryDemoRow(demo: demo) { onDemo(demo) }
+                                .accessibilityIdentifier("whats-new-demo-\(demo.sceneId)")
+                                .transition(.opacity)
+                        }
+                        if tryDemosFoldable {
+                            ShowMoreToggle(
+                                expanded: $tryDemosExpanded,
+                                hiddenCount: tryDemos.count - Self.tryDemosCollapsedCount,
+                                moreLabel: "Show \(tryDemos.count - Self.tryDemosCollapsedCount) more new demos",
+                                lessLabel: "Show fewer new demos"
+                            )
+                            .accessibilityIdentifier("whats-new-try-more")
+                        }
+                    }
+
+                    ForEach(releases) { release in
+                        ReleaseSection(release: release)
                     }
                 }
-
-                ForEach(releases) { release in
-                    ReleaseSection(release: release)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, SceneViewTokens.Space.lg - SceneViewTokens.Space.xs)
+                .padding(.top, SceneViewTokens.Space.xs)
+                // Clear of the home indicator at the bottom of the last release.
+                .padding(.bottom, SceneViewTokens.Space.xl)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, SceneViewTokens.Space.lg - SceneViewTokens.Space.xs)
-            .padding(.top, SceneViewTokens.Space.lg)
-            // Clear of the home indicator at the bottom of the last release.
-            .padding(.bottom, SceneViewTokens.Space.xl)
+            .scrollIndicators(.hidden)
+            .accessibilityIdentifier("whats-new-sheet")
         }
-        .scrollIndicators(.hidden)
-        .accessibilityIdentifier("whats-new-sheet")
+    }
+}
+
+/// The navigation chrome of the What's new sheets: a large title that folds
+/// into the inline bar as the list scrolls, over the system's scroll-edge
+/// backdrop — the title used to be a plain `Text` that scrolled away with
+/// the list. The stack's own ground is cleared so the sheet keeps its
+/// material (or its Liquid Glass on iOS 26) behind the bar and the list.
+private struct SheetNavigation<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        NavigationStack {
+            content()
+                .navigationTitle(title)
+                .navigationBarTitleLarge()
+                .containerBackground(.clear, for: .navigation)
+        }
     }
 }
 
@@ -121,8 +161,33 @@ private struct TryDemoRow: View {
 
 /// One release — Android's `ReleaseSection`: "v4.51.0" and its date, the
 /// title when there is one, then a group per category in Added → Removed order.
+///
+/// A long release opens on its first `collapsedCount` entries, in that same
+/// category order, with "Show N more" under them; the rest unfold in place
+/// (height and opacity, `Spring`, or the plain `Spring.fade` under Reduce
+/// Motion) and "Show less" folds them back. Short ones show everything: a tap
+/// to reveal a single line saves nothing.
 private struct ReleaseSection: View {
     let release: WhatsNewRelease
+    @State private var expanded = false
+
+    static let collapsedCount = 3
+    /// A release is folded only from this many entries on.
+    static let collapseThreshold = 5
+
+    /// Every entry, in the order the groups list them.
+    private var ordered: [WhatsNewHighlight] {
+        WhatsNewCategory.allCases.flatMap { category in
+            release.highlights.filter { $0.category == category }
+        }
+    }
+
+    private var collapsible: Bool { release.highlights.count >= Self.collapseThreshold }
+
+    private var shown: [WhatsNewHighlight] {
+        guard collapsible, !expanded else { return ordered }
+        return Array(ordered.prefix(Self.collapsedCount))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
@@ -144,13 +209,67 @@ private struct ReleaseSection: View {
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
             }
             ForEach(WhatsNewCategory.allCases, id: \.self) { category in
-                let group = release.highlights.filter { $0.category == category }
+                let group = shown.filter { $0.category == category }
                 if !group.isEmpty {
                     CategoryGroup(category: category, highlights: group)
+                        .transition(.opacity)
                 }
+            }
+            if collapsible {
+                showMoreButton
             }
         }
         .accessibilityIdentifier("whats-new-release-\(release.version)")
+    }
+
+    private var showMoreButton: some View {
+        let hidden = release.highlights.count - Self.collapsedCount
+        return ShowMoreToggle(
+            expanded: $expanded,
+            hiddenCount: hidden,
+            moreLabel: "Show \(hidden) more changes in version \(release.version)",
+            lessLabel: "Show fewer changes in version \(release.version)",
+            leadingInset: SceneViewTokens.Home.indicatorDot + SceneViewTokens.Space.sm
+        )
+        .accessibilityIdentifier("whats-new-release-more-\(release.version)")
+    }
+}
+
+/// "Show N more" / "Show less" under a folded list: the rows below unfold in
+/// place (height and opacity on `Spring`, or the plain `Spring.fade` under
+/// Reduce Motion), with a selection haptic and a spoken label that says what
+/// unfolds.
+private struct ShowMoreToggle: View {
+    @Binding var expanded: Bool
+    let hiddenCount: Int
+    let moreLabel: String
+    let lessLabel: String
+    var leadingInset: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            #if os(iOS)
+            SceneViewHaptic.shared.selection()
+            #endif
+            withAnimation(reduceMotion ? SceneViewTokens.Spring.fade : SceneViewTokens.Spring.animation) {
+                expanded.toggle()
+            }
+        } label: {
+            HStack(spacing: SceneViewTokens.Space.xs) {
+                Text(expanded ? "Show less" : "Show \(hiddenCount) more")
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(SceneViewTokens.TypeScale.caption)
+                    .accessibilityHidden(true)
+            }
+            .font(SceneViewTokens.TypeScale.captionSemibold)
+            .foregroundStyle(SceneViewTokens.HomeColor.primary)
+            .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+            .padding(.leading, leadingInset)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(expanded ? lessLabel : moreLabel)
     }
 }
 
@@ -235,48 +354,46 @@ struct WhatsNewSinceSheet: View {
     private var count: Int { sections.reduce(0) { $0 + $1.entries.count } }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
-                Text("What's new")
-                    .font(SceneViewTokens.TypeScale.title)
-                    .tracking(SceneViewTokens.TypeScale.titleTracking)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("whats-new-since-title")
-                    .padding(.bottom, -SceneViewTokens.Space.sm)
-                Text(subtitle)
-                    .font(SceneViewTokens.TypeScale.captionRegular)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+        SheetNavigation(title: "What's new") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+                    Text(subtitle)
+                        .font(SceneViewTokens.TypeScale.captionRegular)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        // The title is the bar's now; the sheet's first line keeps
+                        // the identifier the UI tests wait on.
+                        .accessibilityIdentifier("whats-new-since-title")
 
-                ForEach(sections, id: \.self) { section in
-                    sinceSection(section)
-                }
+                    ForEach(sections, id: \.self) { section in
+                        sinceSection(section)
+                    }
 
-                Divider()
-                    .overlay(SceneViewTokens.HomeColor.outlineSubtle)
-                Button(action: onGotIt) {
-                    Text("Got it")
-                        .font(SceneViewTokens.TypeScale.bodySemibold)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
-                        .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
-                        .background(SceneViewTokens.HomeColor.primary, in: Capsule())
-                        .contentShape(Capsule())
+                    Divider()
+                        .overlay(SceneViewTokens.HomeColor.outlineSubtle)
+                    Button(action: onGotIt) {
+                        Text("Got it")
+                            .font(SceneViewTokens.TypeScale.bodySemibold)
+                            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                            .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
+                            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(PressScaleButtonStyle())
+                    .accessibilityIdentifier("whats-new-since-got-it")
+                    Text("You can revisit these updates from the home screen.")
+                        .font(SceneViewTokens.TypeScale.captionRegular)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
                 }
-                .buttonStyle(PressScaleButtonStyle())
-                .accessibilityIdentifier("whats-new-since-got-it")
-                Text("You can revisit these updates from the home screen.")
-                    .font(SceneViewTokens.TypeScale.captionRegular)
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                    .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, SceneViewTokens.Space.lg - SceneViewTokens.Space.xs)
+                .padding(.top, SceneViewTokens.Space.xs)
+                .padding(.bottom, SceneViewTokens.Space.xl)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, SceneViewTokens.Space.lg - SceneViewTokens.Space.xs)
-            .padding(.top, SceneViewTokens.Space.lg)
-            .padding(.bottom, SceneViewTokens.Space.xl)
+            .scrollIndicators(.hidden)
+            .accessibilityIdentifier("whats-new-since-sheet")
         }
-        .scrollIndicators(.hidden)
-        .accessibilityIdentifier("whats-new-since-sheet")
     }
 
     private var subtitle: String {

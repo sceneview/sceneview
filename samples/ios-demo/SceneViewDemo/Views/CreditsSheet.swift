@@ -38,7 +38,9 @@ struct CreditsSheet: View {
             }
             .background(SceneViewTheme.surfaceGrouped)
             .navigationTitle("Credits")
-            .navigationBarTitleInline()
+            // Large, folding into the inline bar as the list scrolls — the
+            // list and text screens all share that title.
+            .navigationBarTitleLarge()
             .toolbar {
                 #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {

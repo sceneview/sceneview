@@ -414,6 +414,35 @@ final class SceneViewDemoUITests: XCTestCase {
         }
     }
 
+    /// A long "New in this build — try them" list opens folded, so the release
+    /// notes under it stay a short scroll away: "Show N more" unfolds the rest
+    /// in place and "Show less" folds it back.
+    func testWhatsNewLongTryListFoldsAndUnfolds() throws {
+        let app = Self.makeApp()
+        app.launchArguments += Self.freshnessBuild
+        app.launchArguments += ["-qa_mode", "1"]
+        app.launch()
+        let row = app.descendants(matching: .any)["home-whats-new-row"]
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the What's new row never appeared")
+        row.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["whats-new-sheet"].waitForExistence(timeout: 10),
+                      "the What's new sheet never opened")
+        let toggle = app.buttons["whats-new-try-more"]
+        guard toggle.waitForExistence(timeout: 3) else {
+            throw XCTSkip("the try list is short in this build: nothing to fold")
+        }
+        let demoRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'whats-new-demo-'"))
+        let folded = demoRows.count
+        XCTAssertTrue(toggle.label.hasPrefix("Show "), "unexpected label: \(toggle.label)")
+        toggle.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertGreaterThan(demoRows.count, folded, "Show more did not unfold the list")
+        XCTAssertEqual(toggle.label, "Show fewer new demos")
+        toggle.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(demoRows.count, folded, "Show less did not fold the list back")
+    }
+
     /// "I still struggle to see where the new things are" (02/10), then "the
     /// app only has these samples" (#4304, #4312): the What's new row under the
     /// hero opens the What's new sheet over a catalogue left whole — it never

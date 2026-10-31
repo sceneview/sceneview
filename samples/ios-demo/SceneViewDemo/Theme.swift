@@ -1068,6 +1068,47 @@ extension View {
         #endif
     }
 
+    /// Applies `.navigationBarTitleDisplayMode(.large)` on iOS; a no-op on
+    /// macOS. The large title of a list or text screen folds into the inline
+    /// bar as the page scrolls, over the system's scroll-edge backdrop: clear
+    /// at the top of the page, the bar's material once content is under it.
+    @ViewBuilder
+    func navigationBarTitleLarge() -> some View {
+        #if os(iOS)
+        self.navigationBarTitleDisplayMode(.large)
+        #else
+        self
+        #endif
+    }
+
+    /// Marks this card as the source of an iOS 18 zoom transition
+    /// (`.matchedTransitionSource(id:in:)`) when a namespace is given; the
+    /// view is returned untouched without one, and on macOS.
+    @ViewBuilder
+    func zoomTransitionSource(id: String, in namespace: Namespace.ID?) -> some View {
+        #if os(iOS)
+        if let namespace {
+            self.matchedTransitionSource(id: id, in: namespace)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+
+    /// The destination half of the zoom: the screen grows out of the card
+    /// marked with the same id, and shrinks back into it on close. macOS has
+    /// no zoom transition, so the view keeps its default presentation there.
+    @ViewBuilder
+    func zoomTransition(from sourceID: String, in namespace: Namespace.ID) -> some View {
+        #if os(iOS)
+        self.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        #else
+        self
+        #endif
+    }
+
     /// Hides the navigation bar on iOS (`.toolbar(.hidden, for: .navigationBar)`);
     /// a no-op on macOS, where `ToolbarPlacement.navigationBar` does not exist
     /// and the call fails to compile (the v4.33.0 macOS archive, #3556).
