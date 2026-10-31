@@ -20,11 +20,11 @@ import simd
 /// root.addChild(tube.entity)
 ///
 /// // Later — same entity, new geometry (a growing trail, a live slider…):
-/// tube.update(points: newPoints, radius: 0.015)
+/// tube.updateGeometry(points: newPoints, radius: 0.015)
 /// ```
 ///
 /// Fewer than two distinct points produce no geometry: the entity stays in the scene
-/// but is disabled until an ``update(points:radius:)`` gives it a drawable path.
+/// but is disabled until an ``updateGeometry(points:radius:)`` gives it a drawable path.
 public struct TubeNode: Sendable {
     /// The underlying RealityKit entity.
     public let entity: ModelEntity
@@ -60,7 +60,7 @@ public struct TubeNode: Sendable {
         self.caps = caps
         self.material = material
         self.entity = ModelEntity()
-        update(points: points, radius: radius)
+        updateGeometry(points: points, radius: radius)
     }
 
     /// Rebuilds the tube's mesh in place for new `points` and `radius`.
@@ -68,7 +68,7 @@ public struct TubeNode: Sendable {
     /// The entity, its transform, its children and its material are kept. With fewer
     /// than two distinct points the entity is disabled; the next drawable update
     /// enables it again.
-    public func update(points: [SIMD3<Float>], radius: Float) {
+    public func updateGeometry(points: [SIMD3<Float>], radius: Float) {
         guard let geometry = TubeGeometry(points: points, radius: radius,
                                           radialSegments: radialSegments,
                                           closed: closed, caps: caps),

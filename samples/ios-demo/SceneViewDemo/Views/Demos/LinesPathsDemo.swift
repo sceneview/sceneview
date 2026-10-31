@@ -140,7 +140,7 @@ final class LinesPathsStage {
         if let strokeMillimetres { strokeRadius = LinesPathsGeometry.strokeRadius(strokeMillimetres) }
         if let showPoints { points.isEnabled = showPoints }
         if curve != nil || strokeMillimetres != nil {
-            route.update(points: routePoints, radius: strokeRadius)
+            route.updateGeometry(points: routePoints, radius: strokeRadius)
             applyProgress()
         }
     }
@@ -166,15 +166,15 @@ final class LinesPathsStage {
         let distance = progress * length
         marker.position = LinesPathsGeometry.sample(routePoints, closed: true, at: distance)
         let trailLength = length * LinesPathsGeometry.trailFraction
-        trail.update(points: LinesPathsGeometry.span(routePoints, closed: true, from: distance - trailLength,
-                                                  length: trailLength, samples: LinesPathsGeometry.trailSamples),
-                     radius: strokeRadius * 1.35)
+        trail.updateGeometry(points: LinesPathsGeometry.span(routePoints, closed: true, from: distance - trailLength,
+                                                          length: trailLength, samples: LinesPathsGeometry.trailSamples),
+                             radius: strokeRadius * 1.35)
         let ground = LinesPathsGeometry.dashes(LinesPathsGeometry.groundTrack, closed: true,
                                             count: LinesPathsGeometry.dashCount,
                                             dutyCycle: LinesPathsGeometry.dashDutyCycle,
                                             phase: progress, samples: LinesPathsGeometry.dashSamples)
         for (dash, points) in zip(dashes, ground) {
-            dash.update(points: points, radius: strokeRadius * LinesPathsGeometry.groundStrokeRatio)
+            dash.updateGeometry(points: points, radius: strokeRadius * LinesPathsGeometry.groundStrokeRatio)
         }
     }
 }

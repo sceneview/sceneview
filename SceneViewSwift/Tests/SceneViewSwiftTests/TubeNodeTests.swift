@@ -167,7 +167,7 @@ final class TubeNodeTests: XCTestCase {
     func testUpdateKeepsTheEntityAndMaterial() throws {
         let node = TubeNode(points: Self.straight, radius: 0.1, material: .unlit(color: .red))
         let entity = node.entity
-        node.update(points: Self.ring(20), radius: 0.02)
+        node.updateGeometry(points: Self.ring(20), radius: 0.02)
         XCTAssertTrue(node.entity === entity)
         XCTAssertTrue(node.entity.model?.materials.first is UnlitMaterial)
         let bounds = try XCTUnwrap(node.entity.model?.mesh.bounds)
@@ -178,10 +178,10 @@ final class TubeNodeTests: XCTestCase {
         let node = TubeNode(points: [[0, 0, 0]], radius: 0.1)
         XCTAssertFalse(node.entity.isEnabled)
         XCTAssertNil(node.entity.model)
-        node.update(points: Self.straight, radius: 0.1)
+        node.updateGeometry(points: Self.straight, radius: 0.1)
         XCTAssertTrue(node.entity.isEnabled)
         XCTAssertNotNil(node.entity.model)
-        node.update(points: [], radius: 0.1)
+        node.updateGeometry(points: [], radius: 0.1)
         XCTAssertFalse(node.entity.isEnabled)
     }
 }
