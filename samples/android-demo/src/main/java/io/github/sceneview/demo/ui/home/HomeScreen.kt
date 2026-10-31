@@ -129,6 +129,9 @@ import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
 import io.github.sceneview.demo.whatsnew.rememberReturningSheetState
 import io.github.sceneview.demo.whatsnew.loadWhatsNew
+import io.github.sceneview.demo.ui.ContainerRole
+import io.github.sceneview.demo.ui.DemoContainerTransform
+import io.github.sceneview.demo.ui.demoContainerTransform
 import io.github.sceneview.demo.ui.cascadeIn
 import io.github.sceneview.demo.ui.pressScale
 import io.github.sceneview.demo.ui.rememberCascade
@@ -272,6 +275,13 @@ fun HomeScreen(
     val openDemo: (String) -> Unit = { id ->
         if (searching) currentOnSearchSettled(query, visible.size)
         onDemoClick(id)
+    }
+    // A catalogue card grows into its demo (container transform, `motion-container`): the
+    // tap arms the morph for that one id before navigating, and the card carries the
+    // shared bounds the demo screen is matched against.
+    val openDemoFromCard: (String) -> Unit = { id ->
+        DemoContainerTransform.armedId = id
+        openDemo(id)
     }
     // A header earns its row only when it separates something: a search whose results
     // all sit in one category does not get a lone header above them.
@@ -550,12 +560,13 @@ fun HomeScreen(
                         item(key = "featured-${demo.id}") {
                             DemoListRow(
                                 demo = demo,
-                                onClick = { openDemo(demo.id) },
+                                onClick = { openDemoFromCard(demo.id) },
                                 style = HomeRowStyle.Banner,
                                 freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                                 modifier = Modifier
                                     .animateItem()
-                                    .cascadeIn(rowDelay),
+                                    .cascadeIn(rowDelay)
+                                    .demoContainerTransform(demo.id, ContainerRole.Card),
                             )
                         }
                     }
@@ -627,7 +638,7 @@ fun HomeScreen(
                     item(key = "demo-${demo.id}") {
                         DemoListRow(
                             demo = demo,
-                            onClick = { openDemo(demo.id) },
+                            onClick = { openDemoFromCard(demo.id) },
                             style = HomeRowStyle.Fused,
                             freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                             modifier = Modifier
@@ -638,7 +649,8 @@ fun HomeScreen(
                                         stiffness = SceneViewTokens.Spring.stiffness,
                                     ),
                                 )
-                                .cascadeIn(cardDelay),
+                                .cascadeIn(cardDelay)
+                                .demoContainerTransform(demo.id, ContainerRole.Card),
                         )
                     }
                 }

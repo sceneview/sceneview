@@ -6,6 +6,14 @@
 
 package io.github.sceneview.demo.whatsnew
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.motionFade
+import io.github.sceneview.demo.theme.motionSpring
+import io.github.sceneview.demo.ui.ShowMoreToggle
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -117,6 +125,7 @@ fun WhatsNewSinceSheet(
             // #3716: the sheet container now reaches the true bottom edge, so the list's
             // own bottom inset must fold in the navigation bar rather than a fixed 16.dp.
             val navigationBars = WindowInsets.navigationBars.asPaddingValues()
+            var expandedGroups by rememberSaveable { mutableStateOf(listOf<String>()) }
             LazyColumn(
                 // `fill = false` so a one-entry list keeps the sheet short
                 // instead of stretching it to full height.
@@ -136,8 +145,16 @@ fun WhatsNewSinceSheet(
                         // upstream, but a list key that CAN collide is a crash,
                         // and a rendering path must not be the thing that
                         // enforces an invariant it does not own.
+                        // Folded past a few entries: a "since 4.30" list can carry thirty
+                        // fixes, and the button at the bottom of the sheet should not
+                        // be thirty rows away. Unfolded rows arrive through the lazy
+                        // list's own item animation, the rows below sliding down to
+                        // make room on `motion-spring`.
+                        val foldKey = "$sectionKey-$category"
+                        val unfolded = foldKey in expandedGroups
+                        val shown = if (unfolded) entries else entries.take(SINCE_COLLAPSED_ENTRIES)
                         itemsIndexed(
-                            entries,
+                            shown,
                             key = { index, entry -> "entry-$sectionKey-$category-$index-${entry.id}" },
                         ) { _, entry ->
                             EntryRow(
@@ -145,7 +162,30 @@ fun WhatsNewSinceSheet(
                                 category = category,
                                 onDemoClick = onDemoClick,
                                 demoTitles = demoTitles,
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = motionFade(),
+                                    placementSpec = motionSpring(),
+                                    fadeOutSpec = motionFade(),
+                                ),
                             )
+                        }
+                        if (entries.size > SINCE_COLLAPSED_ENTRIES) {
+                            item(key = "more-$foldKey") {
+                                ShowMoreToggle(
+                                    expanded = unfolded,
+                                    hiddenCount = entries.size - SINCE_COLLAPSED_ENTRIES,
+                                    onToggle = {
+                                        expandedGroups = if (unfolded) {
+                                            expandedGroups - foldKey
+                                        } else {
+                                            expandedGroups + foldKey
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .padding(start = SceneViewTokens.Space.sm)
+                                        .animateItem(placementSpec = motionSpring()),
+                                )
+                            }
                         }
                     }
                 }
@@ -172,6 +212,9 @@ fun WhatsNewSinceSheet(
         }
     }
 }
+
+/** Entries a category shows before its "Show more". */
+private const val SINCE_COLLAPSED_ENTRIES = 3
 
 /** Sticky per-version heading. Opaque — it scrolls over list content. */
 @Composable
@@ -222,10 +265,11 @@ private fun EntryRow(
     category: WhatsNewCategory,
     onDemoClick: (String) -> Unit,
     demoTitles: List<Pair<DemoEntry, String>> = emptyList(),
+    modifier: Modifier = Modifier,
 ) {
     val accent = categoryAccentColor(category)
     val demos = remember(entry.id, demoTitles) { mentionedDemos(entry, demoTitles) }
-    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 5.dp)) {
+    Column(modifier = modifier.padding(horizontal = 20.dp, vertical = 5.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
                 modifier = Modifier

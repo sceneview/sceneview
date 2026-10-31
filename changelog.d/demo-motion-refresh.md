@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo app motion refresh (Android):** tapping a demo card on Home now grows the card into the demo screen (container transform) and shrinks it back on Back; the predictive back gesture previews the way back (demo into its card, the online gallery thinning out over Home); the About tab gets a top bar that is transparent at rest and raised to a surface once content scrolls under it, drawn edge to edge under the status bar; and the release notes and "What's new since" sheets fold long lists behind an animated "Show N more" / "Show less".

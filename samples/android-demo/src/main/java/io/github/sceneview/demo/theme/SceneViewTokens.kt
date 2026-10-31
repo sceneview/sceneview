@@ -917,6 +917,25 @@ object SceneViewTokens {
             durationMillis = focusMillis,
             easing = Ease.expressive,
         )
+
+        /**
+         * `motion-container`: a Home card growing into its demo's screen (container
+         * transform), and shrinking back into it on Back — the predictive-back gesture
+         * seeks this same tween under the finger.
+         */
+        const val containerMillis = 450
+
+        /**
+         * `motion-fade-through`: how long the outgoing content of a fade-through owns the
+         * frame (a tab, a card's face during [containerMillis]). Material's split: the old
+         * content is gone before the new one arrives, so no frame shows both at full opacity.
+         */
+        const val fadeThroughOutMillis = 90
+
+        fun <T> container(): TweenSpec<T> = tween(
+            durationMillis = containerMillis,
+            easing = Ease.expressive,
+        )
     }
 
     /** `DESIGN.md` — Easing curves (`ease-*`). */
