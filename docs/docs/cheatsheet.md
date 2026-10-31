@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.63.0")     // 3D
-implementation("io.github.sceneview:arsceneview:4.63.0")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.64.0")     // 3D
+implementation("io.github.sceneview:arsceneview:4.64.0")    // AR + 3D
 ```
 
 ---
