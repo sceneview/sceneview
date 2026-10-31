@@ -29,7 +29,7 @@ import AppKit
 ///
 /// glTF limitations (4.65.0): morph targets render the base mesh only; Draco and other
 /// unsupported *required* extensions throw
-/// ``ModelLoadingError/unsupportedRequiredExtension(_:)``; `COLOR_0` is averaged into
+/// ``UnsupportedModelExtensionError``; `COLOR_0` is averaged into
 /// the material tint; only `TEXCOORD_0` is used.
 public struct ModelNode: @unchecked Sendable {
     /// The underlying RealityKit entity.

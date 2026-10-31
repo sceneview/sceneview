@@ -6480,7 +6480,7 @@ Key behaviors:
   (exposed through `animationCount` / `playAnimation(at:)` / `playAllAnimations()`).
   Parsing and image decoding run off the main thread. Not supported: morph targets
   (base shape shown), Draco and meshopt compression — a file that *requires* an
-  unsupported extension throws `ModelLoadingError.unsupportedRequiredExtension(name)`.
+  unsupported extension throws `UnsupportedModelExtensionError` (its `extensionName` names it).
 - `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.glb` / `.gltf` / `.stl` /
   `.obj` / `.ply` / `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.

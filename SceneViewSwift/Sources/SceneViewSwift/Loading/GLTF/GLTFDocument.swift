@@ -17,7 +17,7 @@ struct GLTFDocument {
     let baseURL: URL?
 
     /// Required extensions the importer implements. A file that requires anything
-    /// else is refused with ``ModelLoadingError/unsupportedRequiredExtension(_:)``
+    /// else is refused with ``UnsupportedModelExtensionError``
     /// rather than rendered wrong or empty — `KHR_draco_mesh_compression` being the one
     /// people will actually meet.
     static let supportedRequiredExtensions: Set<String> = [
@@ -67,7 +67,7 @@ struct GLTFDocument {
             )
         }
         for name in root.extensionsRequired ?? [] where !supportedRequiredExtensions.contains(name) {
-            throw ModelLoadingError.unsupportedRequiredExtension(name)
+            throw UnsupportedModelExtensionError(extensionName: name)
         }
 
         var buffers: [Data] = []

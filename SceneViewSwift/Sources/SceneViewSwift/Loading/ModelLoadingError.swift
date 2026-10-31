@@ -31,13 +31,37 @@ public enum ModelLoadingError: Error, Equatable, Sendable {
     /// A geometry buffer could not be read in the layout it announced — a ModelIO
     /// attribute missing after conversion, an index buffer shorter than its own count.
     case unreadableGeometry(reason: String)
+}
 
-    /// The file requires an extension SceneViewSwift does not implement — most often
-    /// `KHR_draco_mesh_compression` in a glTF. The associated value is the extension's
-    /// name, so a viewer can tell the user to re-export without it.
-    ///
-    /// @addedIn 4.65.0
-    case unsupportedRequiredExtension(String)
+/// The file requires an extension SceneViewSwift does not implement — most often
+/// `KHR_draco_mesh_compression` or `EXT_meshopt_compression` in a glTF.
+///
+/// A separate type rather than a new ``ModelLoadingError`` case, so that host apps
+/// switching exhaustively over ``ModelLoadingError`` keep compiling within major 4.
+///
+/// ```swift
+/// do {
+///     let fox = try await ModelNode.load("models/fox.glb")
+/// } catch let error as UnsupportedModelExtensionError {
+///     print("Re-export without \(error.extensionName)")
+/// }
+/// ```
+///
+/// @addedIn 4.65.0
+public struct UnsupportedModelExtensionError: Error, Equatable, Sendable {
+    /// The extension's name as written in the file, e.g. `KHR_draco_mesh_compression`.
+    public let extensionName: String
+
+    public init(extensionName: String) {
+        self.extensionName = extensionName
+    }
+}
+
+extension UnsupportedModelExtensionError: LocalizedError {
+    public var errorDescription: String? {
+        "This file requires \(extensionName), which SceneView does not support yet. "
+            + "Re-export it without that extension."
+    }
 }
 
 extension ModelLoadingError: LocalizedError {
@@ -56,9 +80,6 @@ extension ModelLoadingError: LocalizedError {
             return "The file contains no triangles to display."
         case .unreadableGeometry(let reason):
             return "The geometry could not be read: \(reason)"
-        case .unsupportedRequiredExtension(let name):
-            return "This file requires \(name), which SceneView does not support yet. "
-                + "Re-export it without that extension."
         }
     }
 }

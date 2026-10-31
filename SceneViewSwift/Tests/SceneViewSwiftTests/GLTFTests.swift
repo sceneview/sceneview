@@ -138,9 +138,9 @@ final class GLTFTests: XCTestCase {
         b.json["extensionsRequired"] = ["KHR_draco_mesh_compression"]
         let url = try write(b.glb(), as: "draco.glb")
         XCTAssertThrowsError(try MeshAsset.load(contentsOf: url)) { error in
-            XCTAssertEqual(error as? ModelLoadingError, .unsupportedRequiredExtension("KHR_draco_mesh_compression"))
+            XCTAssertEqual(error as? UnsupportedModelExtensionError, UnsupportedModelExtensionError(extensionName: "KHR_draco_mesh_compression"))
             XCTAssertTrue(
-                (error as? ModelLoadingError)?.errorDescription?.contains("KHR_draco_mesh_compression") == true
+                (error as? UnsupportedModelExtensionError)?.errorDescription?.contains("KHR_draco_mesh_compression") == true
             )
         }
     }
@@ -295,7 +295,7 @@ final class GLTFTests: XCTestCase {
             _ = try await ModelNode.load(contentsOf: url)
             XCTFail("a Draco-required file must not load")
         } catch {
-            XCTAssertEqual(error as? ModelLoadingError, .unsupportedRequiredExtension("KHR_draco_mesh_compression"))
+            XCTAssertEqual(error as? UnsupportedModelExtensionError, UnsupportedModelExtensionError(extensionName: "KHR_draco_mesh_compression"))
         }
     }
     #endif
