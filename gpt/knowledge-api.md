@@ -6336,6 +6336,9 @@ public struct ARSceneView: UIViewRepresentable {
 }
 ```
 
+The display stays awake while an `ARSceneView` is on screen (#4392): the view disables the app's
+idle timer when it appears and restores the previous setting when it goes away.
+
 View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
@@ -6437,8 +6440,8 @@ public struct ModelNode: @unchecked Sendable {
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func rotation(angle: Float, axis: SIMD3<Float>) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode   // fits in cube of 'units' meters
-    public var worldSize: SIMD3<Float>          // width, height, depth in world metres — Android `worldSize`
-    public var worldBoundingBox: BoundingBox    // world-space AABB — Android `worldBoundingBox`
+    public var worldSize: SIMD3<Float>          // width, height, depth in world metres (own bounds × world scale; rotation ignored)
+    public var worldBoundingBox: BoundingBox    // world AABB after every transform; min.y = floor contact
     public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point); `.zero` = center on origin
     public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized AABB origin (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity; `SIMD3(0,-1,0)` bottom-aligns
 
