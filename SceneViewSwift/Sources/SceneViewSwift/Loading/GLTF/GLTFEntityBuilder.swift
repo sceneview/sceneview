@@ -165,8 +165,17 @@ final class GLTFEntityBuilder {
     private func meshResource(
         mesh: GLTFMesh, key: String, skeleton: MeshResource.Skeleton?, remap: [Int]?
     ) async throws -> (MeshResource, [any RealityKit.Material]) {
-        var parts: [MeshResource.Part] = []
         var materials: [any RealityKit.Material] = []
+        if let cached = meshCache[key] {
+            // A mesh instanced by several nodes: share the MeshResource, rebuild only
+            // the (cheap) material list.
+            for p in mesh.primitives {
+                let material = scene.materials[safe: p.material ?? -1] ?? .default
+                materials.append(await makeMaterial(material, vertexColors: p.colors))
+            }
+            return (cached, materials)
+        }
+        var parts: [MeshResource.Part] = []
 
         for (i, p) in mesh.primitives.enumerated() {
             let material = scene.materials[safe: p.material ?? -1] ?? .default
@@ -200,7 +209,6 @@ final class GLTFEntityBuilder {
             materials.append(await makeMaterial(material, vertexColors: p.colors))
         }
 
-        if let cached = meshCache[key] { return (cached, materials) }
         var contents = MeshResource.Contents()
         contents.models = MeshModelCollection([MeshResource.Model(id: key, parts: parts)])
         if let skeleton { contents.skeletons = MeshSkeletonCollection([skeleton]) }
