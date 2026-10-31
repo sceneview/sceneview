@@ -75,13 +75,28 @@ final class ARInstantPlacementTests: XCTestCase {
     // MARK: Estimated floor — never mid-air
 
     func testReachGrowsWithTheModelSoALargeOneNeverSurroundsTheCamera() {
-        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0.3), 1.2)
-        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 2), 2.9, accuracy: 0.0001)
-        // A 2 m sofa centred 2.9 m ahead keeps its near edge well away from the phone.
-        XCTAssertGreaterThan(ARInstantPlacement.reach(forLargestSide: 2) - 1, 1.5)
-        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 30), 4)
-        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: .nan), 1.2)
-        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0), 1.2)
+        // Same curve as ARMV `placementDistanceFor`: 0.9 m plus 0.8 of the side, within 1–3 m.
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0.3), 1.14, accuracy: 0.0001)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0.05), 1)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 2), 2.5, accuracy: 0.0001)
+        // A 2 m sofa centred 2.5 m ahead keeps its near edge well away from the phone.
+        XCTAssertGreaterThan(ARInstantPlacement.reach(forLargestSide: 2) - 1, 1.4)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 30), 3)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: .nan), 1)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0), 1)
+    }
+
+    func testAutoPlaceTakesADetectedFloorOnlyWithinTheReachWindow() {
+        let reach: Float = 2
+        XCTAssertEqual(ARInstantPlacement.farShare, 1.5)
+        // Horizontal distance only: the camera height does not count.
+        XCTAssertTrue(ARInstantPlacement.withinAutoPlaceWindow(point: [0, 0, -2], eye: eye, reach: reach))
+        XCTAssertTrue(ARInstantPlacement.withinAutoPlaceWindow(point: [1.3, 0, 0], eye: eye, reach: reach))
+        XCTAssertTrue(ARInstantPlacement.withinAutoPlaceWindow(point: [0, 0, -3], eye: eye, reach: reach))
+        // At the feet, the model would surround the camera; too far, it would show small.
+        XCTAssertFalse(ARInstantPlacement.withinAutoPlaceWindow(point: [0, 0, -0.5], eye: eye, reach: reach))
+        XCTAssertFalse(ARInstantPlacement.withinAutoPlaceWindow(point: [0, 0, -3.5], eye: eye, reach: reach))
+        XCTAssertFalse(ARInstantPlacement.withinAutoPlaceWindow(point: [.nan, 0, -2], eye: eye, reach: reach))
     }
 
     func testFloorIsTheLowestSurfaceWellBelowThePhoneElseThePhoneHeightGuess() {

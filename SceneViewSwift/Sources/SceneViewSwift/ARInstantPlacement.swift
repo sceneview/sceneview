@@ -57,6 +57,9 @@ enum ARInstantPlacement {
     /// The closest the estimated placement comes, as a share of ``reach(forLargestSide:)``
     /// (ARMV `NearShare`).
     static let nearShare: Float = 0.6
+    /// The farthest a detected floor under the screen centre may be for the model to place
+    /// itself there, as a share of ``reach(forLargestSide:)`` (ARMV `autoPlace`, `reach * 1.5f`).
+    static let farShare: Float = 1.5
 
     // MARK: SceneView iOS values
 
@@ -70,12 +73,21 @@ enum ARInstantPlacement {
 
     /// How far ahead the estimated placement stands, horizontally, from the model's largest
     /// side in metres as shown (its preview size times ``ARPlacementController/scale``): far
-    /// enough that a large model never surrounds the camera, never closer than 1.2 m, never
-    /// farther than 4 m. A model at the default 0.3 m preview stands 1.2 m away; a 2 m sofa
-    /// stands 2.9 m away only at real-world size (`previewSize: nil`) or a 2 m preview.
+    /// enough that a large model never surrounds the camera, never closer than 1 m, never
+    /// farther than 3 m (ARMV `placementDistanceFor`: 0.9 m plus 0.8 of the side). A model at
+    /// the default 0.3 m preview stands 1.14 m away; a 2 m sofa stands 2.5 m away only at
+    /// real-world size (`previewSize: nil`) or a 2 m preview.
     static func reach(forLargestSide side: Float) -> Float {
-        guard side.isFinite, side > 0 else { return 1.2 }
-        return min(4, max(1.2, side + 0.9))
+        guard side.isFinite, side > 0 else { return 1 }
+        return min(3, max(1, 0.9 + 0.8 * side))
+    }
+
+    /// Whether a detected floor at `point` is a fair spot for the model to place itself: between
+    /// ``nearShare`` and ``farShare`` of `reach` from the camera, horizontally (ARMV `autoPlace`).
+    /// Nearer, a large model would surround the camera; farther, it would show small and far.
+    static func withinAutoPlaceWindow(point: SIMD3<Float>, eye: SIMD3<Float>, reach: Float) -> Bool {
+        let distance = simd_length(SIMD2<Float>(point.x - eye.x, point.z - eye.z))
+        return distance.isFinite && distance >= reach * nearShare && distance <= reach * farShare
     }
 
     /// The floor height as ARKit knows it: the lowest horizontal surface well below the phone

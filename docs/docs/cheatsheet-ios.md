@@ -250,8 +250,8 @@ var body: some View {
 - A detected plane places the model at once, as without instant placement. When none shows
   up, the model stands on the estimated floor after 0.6 s of tracking: the lowest horizontal
   surface ARKit knows at least 0.4 m below the phone, even out of view, else 1.3 m below it. It
-  sits in the centre ray's heading, 1.2–4 m ahead depending on its size as shown (1.2 m at the default 0.3 m
-  preview; a 2 m sofa at real-world size, `previewSize: nil`, sits 2.9 m away), and is never
+  sits in the centre ray's heading, 1–3 m ahead depending on its size as shown (1.14 m at the default 0.3 m
+  preview; a 2 m sofa at real-world size, `previewSize: nil`, sits 2.5 m away), and is never
   in mid-air. A wall model waits for ARKit's estimate of the wall in view.
 - Ten times a second, the model's own screen position is cast again. An estimated surface there becomes the
   target of a continuous ease (6/s, changes under 1 cm ignored, a snap under Reduce Motion)
