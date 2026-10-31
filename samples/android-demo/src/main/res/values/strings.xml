@@ -248,6 +248,7 @@
     <string name="about_license_title">License: Apache-2.0</string>
     <string name="about_credits_attribution">Credits &amp; model attribution</string>
     <string name="about_footer">Made with ♥ by Thomas Gorisse and the SceneView contributors</string>
+    <string name="about_author_positioning">Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D &amp; AR</string>
     <string name="about_built_with">Built with Google Filament and ARCore</string>
     <string name="about_no_browser">No browser installed to open %1$s</string>
     <string name="about_sceneview">SceneView</string>

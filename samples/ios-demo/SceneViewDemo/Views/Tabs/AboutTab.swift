@@ -200,6 +200,7 @@ struct AboutTab: View {
                 + Text(Image(systemName: "heart.fill")).foregroundStyle(SceneViewTokens.HomeColor.error)
                 + Text(" by Thomas Gorisse and the SceneView contributors"))
                 .accessibilityLabel("Made with love by Thomas Gorisse and the SceneView contributors")
+            Text("Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR")
             Text("Built with RealityKit and ARKit")
         }
         .font(SceneViewTokens.TypeScale.captionRegular)

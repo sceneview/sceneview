@@ -634,6 +634,12 @@ private fun AboutTabContent() {
                 textAlign = TextAlign.Center,
             )
             Text(
+                text = stringResource(R.string.about_author_positioning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(
                 text = stringResource(R.string.about_built_with),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
