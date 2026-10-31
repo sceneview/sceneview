@@ -403,9 +403,14 @@ final class GLTFEntityBuilder {
             let animated = scene.animatedNodes(animation).filter { entities[$0] != nil }
             guard !animated.isEmpty else { continue }
 
-            let duration = max(animation.endTime, 0)
-            var frameCount = Int((duration * Self.sampleRate).rounded(.up)) + 1
-            frameCount = min(max(frameCount, 2), Self.maxFramesPerAnimation)
+            // Keyframe times are checked finite at decode; still never convert an
+            // unbounded Float to Int (1e30 traps), cap before the conversion.
+            let endTime = animation.endTime
+            let duration = endTime.isFinite ? max(endTime, 0) : 0
+            let wanted = (duration * Self.sampleRate).rounded(.up)
+            let frameCount = wanted.isFinite
+                ? min(max(Int(min(wanted, Float(Self.maxFramesPerAnimation))) + 1, 2), Self.maxFramesPerAnimation)
+                : Self.maxFramesPerAnimation
             let interval = duration > 0 ? duration / Float(frameCount - 1) : 1 / Self.sampleRate
 
             let sortedAnimated = animated.sorted()

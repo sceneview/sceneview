@@ -12,6 +12,12 @@ struct GLTFAccessorReader {
 
     let document: GLTFDocument
 
+    /// Upper bound on `count × components` for one accessor (64 Mi values, 256 MB of
+    /// floats). A view-less or sparse accessor is legal and filled with zeros, so its
+    /// `count` is not bounded by any buffer: without this cap a two-line file could ask
+    /// for terabytes.
+    static let maxValues = 1 << 26
+
     enum ComponentType: Int {
         case byte = 5120, unsignedByte = 5121, short = 5122, unsignedShort = 5123
         case unsignedInt = 5125, float = 5126
@@ -49,27 +55,38 @@ struct GLTFAccessorReader {
             throw ModelLoadingError.malformed(reason: "accessor \(index) has an unknown type")
         }
         let normalized = accessor.normalized ?? false
-        var values = [Float](repeating: 0, count: accessor.count * components)
+        let total = try Self.valueCount(accessor.count, components: components, accessorIndex: index)
 
-        if let view = accessor.bufferView {
-            try forEachComponent(
-                view: view, byteOffset: accessor.byteOffset ?? 0, count: accessor.count,
-                components: components, type: type, accessorIndex: index
-            ) { element, component, raw in
+        // Every span is validated before anything is allocated.
+        let dense = try accessor.bufferView.map {
+            try span(view: $0, byteOffset: accessor.byteOffset ?? 0, count: accessor.count,
+                     components: components, type: type, accessorIndex: index)
+        }
+        var sparseSpans: (indices: Span, values: Span)?
+        if let sparse = accessor.sparse, sparse.count != 0 {
+            guard sparse.count > 0, sparse.count <= accessor.count else {
+                throw ModelLoadingError.malformed(reason: "accessor \(index) has an invalid sparse count \(sparse.count)")
+            }
+            let indexType = try Self.indexType(sparse.indices.componentType, accessorIndex: index)
+            sparseSpans = (
+                try span(view: sparse.indices.bufferView, byteOffset: sparse.indices.byteOffset ?? 0,
+                         count: sparse.count, components: 1, type: indexType, accessorIndex: index),
+                try span(view: sparse.values.bufferView, byteOffset: sparse.values.byteOffset ?? 0,
+                         count: sparse.count, components: components, type: type, accessorIndex: index,
+                         packed: true)
+            )
+        }
+
+        var values = [Float](repeating: 0, count: total)
+        if let dense {
+            forEachComponent(dense) { element, component, raw in
                 values[element * components + component] = Self.decode(raw, type: type, normalized: normalized)
             }
         }
-
-        if let sparse = accessor.sparse, sparse.count > 0 {
-            let targets = try integers(
-                view: sparse.indices.bufferView, byteOffset: sparse.indices.byteOffset ?? 0,
-                count: sparse.count, componentTypeRaw: sparse.indices.componentType, accessorIndex: index
-            )
-            try forEachComponent(
-                view: sparse.values.bufferView, byteOffset: sparse.values.byteOffset ?? 0,
-                count: sparse.count, components: components, type: type, accessorIndex: index,
-                packed: true
-            ) { element, component, raw in
+        if let sparseSpans {
+            var targets = [UInt32](repeating: 0, count: sparseSpans.indices.count)
+            forEachComponent(sparseSpans.indices) { element, _, raw in targets[element] = raw.integer }
+            forEachComponent(sparseSpans.values) { element, component, raw in
                 let target = Int(targets[element])
                 guard target < accessor.count else { return }
                 values[target * components + component] = Self.decode(raw, type: type, normalized: normalized)
@@ -128,7 +145,12 @@ struct GLTFAccessorReader {
         }
         // Sparse or view-less index buffers are legal and vanishingly rare: go through
         // the general float path (exact for every index below 2^24).
-        return try floats(index).values.map { UInt32(max($0, 0)) }
+        return try floats(index).values.map { value in
+            guard value.isFinite, value >= 0, value <= Float(UInt32.max) else {
+                throw ModelLoadingError.malformed(reason: "accessor \(index) holds an invalid index")
+            }
+            return UInt32(value)
+        }
     }
 
     /// Element count of an accessor, without reading it.
@@ -147,20 +169,33 @@ struct GLTFAccessorReader {
         .malformed(reason: "accessor \(index) is not \(expected)")
     }
 
-    private func integers(
-        view: Int, byteOffset: Int, count: Int, componentTypeRaw: Int, accessorIndex: Int
-    ) throws -> [UInt32] {
-        guard let type = ComponentType(rawValue: componentTypeRaw),
+    /// `count × components`, refusing a negative count, an overflow and anything over
+    /// ``maxValues``.
+    static func valueCount(_ count: Int, components: Int, accessorIndex: Int) throws -> Int {
+        let (total, overflow) = count.multipliedReportingOverflow(by: components)
+        guard count >= 0, !overflow, total <= maxValues else {
+            throw ModelLoadingError.malformed(reason: "accessor \(accessorIndex) has an invalid count \(count)")
+        }
+        return total
+    }
+
+    private static func indexType(_ raw: Int, accessorIndex: Int) throws -> ComponentType {
+        guard let type = ComponentType(rawValue: raw),
               type == .unsignedByte || type == .unsignedShort || type == .unsignedInt else {
             throw ModelLoadingError.malformed(reason: "accessor \(accessorIndex): indices must be unsigned integers")
         }
-        var out = [UInt32](repeating: 0, count: count)
-        try forEachComponent(
-            view: view, byteOffset: byteOffset, count: count, components: 1, type: type,
-            accessorIndex: accessorIndex
-        ) { element, _, raw in
-            out[element] = raw.integer
-        }
+        return type
+    }
+
+    private func integers(
+        view: Int, byteOffset: Int, count: Int, componentTypeRaw: Int, accessorIndex: Int
+    ) throws -> [UInt32] {
+        let type = try Self.indexType(componentTypeRaw, accessorIndex: accessorIndex)
+        let total = try Self.valueCount(count, components: 1, accessorIndex: accessorIndex)
+        let span = try span(view: view, byteOffset: byteOffset, count: count, components: 1,
+                            type: type, accessorIndex: accessorIndex)
+        var out = [UInt32](repeating: 0, count: total)
+        forEachComponent(span) { element, _, raw in out[element] = raw.integer }
         return out
     }
 
@@ -198,16 +233,34 @@ struct GLTFAccessorReader {
         }
     }
 
-    /// Walks `count` elements of `components` components in a buffer view.
+    /// A validated run of `count` elements inside one buffer: every offset the walk will
+    /// read is known to lie inside both the buffer view and the buffer.
+    private struct Span {
+        let buffer: Data
+        let first: Int
+        let stride: Int
+        let count: Int
+        let components: Int
+        let type: ComponentType
+        let isMatrix: Bool
+        let rows: Int
+        let columnStride: Int
+    }
+
+    /// Validates `count` elements of `components` components in a buffer view.
     ///
     /// `packed` ignores the view's `byteStride` — sparse value arrays are always tightly
     /// packed. Matrix columns of 1- and 2-byte types are padded to 4 bytes per the spec;
     /// that padding is honoured for `MAT3` (`MAT2` of bytes is not used by any attribute).
-    private func forEachComponent(
+    /// All arithmetic on file-supplied sizes is overflow-checked.
+    private func span(
         view viewIndex: Int, byteOffset: Int, count: Int, components: Int, type: ComponentType,
-        accessorIndex: Int, packed: Bool = false, _ body: (Int, Int, Raw) -> Void
-    ) throws {
-        guard count > 0 else { return }
+        accessorIndex: Int, packed: Bool = false
+    ) throws -> Span {
+        func overrun() -> ModelLoadingError {
+            .malformed(reason: "accessor \(accessorIndex) overruns its bufferView")
+        }
+        _ = try Self.valueCount(count, components: components, accessorIndex: accessorIndex)
         guard let view = document.root.bufferViews?[safe: viewIndex],
               let buffer = document.buffers[safe: view.buffer] else {
             throw ModelLoadingError.malformed(reason: "accessor \(accessorIndex) points at a missing bufferView")
@@ -221,11 +274,29 @@ struct GLTFAccessorReader {
         let stride = packed ? elementSize : (view.byteStride ?? elementSize)
 
         let viewStart = view.byteOffset ?? 0
-        let first = viewStart + byteOffset
-        let last = first + stride * (count - 1) + elementSize
-        guard byteOffset >= 0, stride > 0, last <= viewStart + view.byteLength, last <= buffer.count else {
-            throw ModelLoadingError.malformed(reason: "accessor \(accessorIndex) overruns its bufferView")
+        let viewLength = view.byteLength
+        guard viewStart >= 0, viewLength >= 0, byteOffset >= 0, stride > 0 else { throw overrun() }
+        let (viewEnd, o1) = viewStart.addingReportingOverflow(viewLength)
+        let (first, o2) = viewStart.addingReportingOverflow(byteOffset)
+        guard !o1, !o2, viewEnd <= buffer.count else { throw overrun() }
+        if count > 0 {
+            let (body, o3) = stride.multipliedReportingOverflow(by: count - 1)
+            let (lastStart, o4) = first.addingReportingOverflow(body)
+            let (last, o5) = lastStart.addingReportingOverflow(elementSize)
+            guard !o3, !o4, !o5, last <= viewEnd else { throw overrun() }
         }
+        return Span(
+            buffer: buffer, first: first, stride: stride, count: count, components: components,
+            type: type, isMatrix: isMatrix, rows: rows, columnStride: columnStride
+        )
+    }
+
+    /// Reads every component of a validated span.
+    private func forEachComponent(_ span: Span, _ body: (Int, Int, Raw) -> Void) {
+        let (buffer, first, stride, count, components, type) =
+            (span.buffer, span.first, span.stride, span.count, span.components, span.type)
+        let (isMatrix, rows, columnStride, size) = (span.isMatrix, span.rows, span.columnStride, type.size)
+        guard count > 0 else { return }
 
         buffer.withUnsafeBytes { raw in
             for element in 0..<count {

@@ -279,10 +279,10 @@ struct OpenedFileViewer: View {
             }
             if sniffed == .glb || sniffed == .gltf {
                 // glTF keeps its hierarchy, textures and animations through
-                // `ModelNode.load`; the flat MeshAsset is only the size readout, read
-                // off the main thread like the scene itself.
+                // `ModelNode.load`, decoded once. Like USD it is metric already, so it
+                // gets no unit picker and no flat MeshAsset readout.
+                asset = nil
                 let node = try await ModelNode.load(contentsOf: local)
-                asset = try? await Task.detached { try MeshAsset.load(contentsOf: local, format: sniffed) }.value
                 install(node)
                 if node.animationCount > 0 { node.playAnimation(at: 0) }
                 return

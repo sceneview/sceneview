@@ -9640,8 +9640,9 @@ Key behaviors:
 - glTF: node hierarchy, metallic-roughness PBR with textures (base colour, metal-rough,
   normal, occlusion, emissive), alpha modes, double-sided, `KHR_materials_unlit`,
   `KHR_texture_transform`, `KHR_materials_emissive_strength`, skins and node animations
-  (exposed through `animationCount` / `playAnimation(at:)` / `playAllAnimations()`).
-  Parsing and image decoding run off the main thread. Not supported: morph targets
+  (exposed through `animationCount` / `playAnimation(at:)` / `playAllAnimations()`;
+  with several clips, `playAllAnimations()` plays them one after the other — pick one
+  with `playAnimation(at:)`). Parsing and image decoding run off the main thread. Not supported: morph targets
   (base shape shown), Draco and meshopt compression — a file that *requires* an
   unsupported extension throws `UnsupportedModelExtensionError` (its `extensionName` names it).
 - `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.glb` / `.gltf` / `.stl` /

@@ -28,6 +28,11 @@ struct GLTFBuilder {
         return views.count - 1
     }
 
+    /// Overwrites one field of a buffer view — for files that lie about their layout.
+    mutating func patchView(_ index: Int, _ key: String, _ value: Any) {
+        views[index][key] = value
+    }
+
     mutating func accessor(_ fields: [String: Any]) -> Int {
         accessors.append(fields)
         return accessors.count - 1

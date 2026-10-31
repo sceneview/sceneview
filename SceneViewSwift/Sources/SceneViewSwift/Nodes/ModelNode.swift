@@ -322,16 +322,21 @@ public struct ModelNode: @unchecked Sendable {
             throw URLError(.dataLengthExceedsMaximum)
         }
 
-        // Move to a named temp file with correct extension (RealityKit needs it)
+        // Move to a named temp file with correct extension (RealityKit needs it), alone
+        // in its own directory: a `.gltf` resolves its relative URIs against the folder
+        // it sits in, and that folder must not be the shared temporary directory.
         let ext = remoteURL.pathExtension.isEmpty ? "usdz" : remoteURL.pathExtension
-        let namedTempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(ext)
-        // Also registered before the operation that creates the file, so a `moveItem`
-        // that fails part-way does not leave one behind.
+        let downloadDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        // Also registered before the operations that create it, so a `moveItem` that
+        // fails part-way does not leave anything behind.
         defer {
-            try? FileManager.default.removeItem(at: namedTempURL)
+            try? FileManager.default.removeItem(at: downloadDirectory)
         }
+        try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
+        let namedTempURL = downloadDirectory
+            .appendingPathComponent("model")
+            .appendingPathExtension(ext)
         try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
 
         return try await load(
@@ -466,13 +471,26 @@ public struct ModelNode: @unchecked Sendable {
     ///
     /// Mirrors Android's `ModelNode(autoAnimate = true)`.
     ///
+    /// A model with several clips — the glTF Fox has `Survey`, `Walk` and `Run` — plays
+    /// them **one after the other**, in file order, and `loop` repeats the whole
+    /// sequence. Started together they would drive the same joints and overwrite each
+    /// other. Use ``playAnimation(at:loop:speed:transitionDuration:)`` to pick one clip.
+    ///
     /// - Parameters:
     ///   - loop: Whether animations should repeat. Default `true`.
     ///   - speed: Playback speed multiplier. Default 1.0.
     public func playAllAnimations(loop: Bool = true, speed: Float = 1.0) {
+        let clips = entity.availableAnimations
+        guard !clips.isEmpty else { return }
+        // One clip, or a sequence of every clip; the first clip alone if RealityKit
+        // refuses to build the sequence.
+        let combined = clips.count == 1
+            ? clips[0]
+            : ((try? AnimationResource.sequence(with: clips)) ?? clips[0])
         // Drive playback speed through `AnimationPlaybackController.speed` —
         // the parameter was previously dropped silently. (#883)
-        for animation in entity.availableAnimations {
+        do {
+            let animation = combined
             let resource = if loop { animation.repeat() } else { animation }
             let controller = entity.playAnimation(
                 resource,

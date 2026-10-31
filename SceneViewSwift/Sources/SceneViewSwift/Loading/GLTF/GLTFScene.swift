@@ -194,8 +194,13 @@ struct GLTFScene: @unchecked Sendable {
         worldMatrices(locals: nodes.map { $0.rest.matrix })
     }
 
+    /// Deepest node nesting accepted. ``decode(_:decodeImages:)`` refuses deeper files,
+    /// which bounds every recursive walk of the hierarchy (here, in the entity builder
+    /// and in the geometry flattener).
+    static let maxNodeDepth = 512
+
     /// World matrices from per-node local matrices — parents before children by
-    /// walking down from the roots.
+    /// walking down from the roots (recursion bounded by ``maxNodeDepth``).
     func worldMatrices(locals: [simd_float4x4]) -> [simd_float4x4] {
         var world = locals
         var visited = [Bool](repeating: false, count: nodes.count)
@@ -240,6 +245,7 @@ extension GLTFScene {
                 parents[child] = index
             }
         }
+        try checkHierarchy(parents: parents)
         var usedNames: Set<String> = []
         let nodes: [GLTFNode] = nodeDefs.enumerated().map { index, def in
             let base = sanitized(def.name) ?? "node_\(index)"
@@ -373,6 +379,9 @@ extension GLTFScene {
                     continue
                 }
                 let times = try reader.floats(sampler.input).values
+                guard times.allSatisfy({ $0.isFinite && $0 >= 0 }) else {
+                    throw ModelLoadingError.malformed(reason: "animation \(index) has a non-finite or negative keyframe time")
+                }
                 let values = try reader.floats(sampler.output).values
                 let interpolation = GLTFInterpolation(rawValue: sampler.interpolation ?? "LINEAR") ?? .linear
                 let width = (path == .rotation ? 4 : 3) * (interpolation == .cubicSpline ? 3 : 1)
@@ -469,6 +478,32 @@ extension GLTFScene {
         return rotated + offset
     }
 
+    /// Refuses a node cycle (`0 → 1 → 0` gives every node exactly one parent, so the
+    /// two-parent check alone misses it) and nesting deeper than ``maxNodeDepth``. After
+    /// this, every walk up the parent chain terminates and every recursive walk down is
+    /// shallow. Iterative and linear: each node's depth is computed once.
+    private static func checkHierarchy(parents: [Int?]) throws {
+        var depth = [Int](repeating: -1, count: parents.count)
+        for start in parents.indices where depth[start] < 0 {
+            var chain: [Int] = []
+            var onChain = Set<Int>()
+            var current: Int? = start
+            var base = -1
+            while let c = current {
+                if depth[c] >= 0 { base = depth[c]; break }
+                guard onChain.insert(c).inserted else {
+                    throw ModelLoadingError.malformed(reason: "node \(c) is its own ancestor (cycle in the node hierarchy)")
+                }
+                chain.append(c)
+                current = parents[c]
+            }
+            for (offset, node) in chain.reversed().enumerated() { depth[node] = base + 1 + offset }
+            if let deepest = chain.first, depth[deepest] > maxNodeDepth {
+                throw ModelLoadingError.malformed(reason: "nodes are nested deeper than \(maxNodeDepth) levels")
+            }
+        }
+    }
+
     /// JOINTS_n / WEIGHTS_n into flat arrays, weights normalized per vertex.
     private static func readSkinning(
         _ p: GLTFPrimitiveDef, reader: GLTFAccessorReader, vertexCount: Int, into primitive: inout GLTFPrimitive
@@ -494,8 +529,13 @@ extension GLTFScene {
             for (s, (j, w)) in sets.enumerated() {
                 for k in 0..<4 {
                     let slot = vertex * perVertex + s * 4 + k
-                    joints[slot] = UInt16(clamping: Int(j[vertex * 4 + k]))
-                    let weight = max(w[vertex * 4 + k], 0)
+                    let joint = j[vertex * 4 + k]
+                    guard joint.isFinite, joint >= 0, joint <= Float(UInt16.max) else {
+                        throw ModelLoadingError.malformed(reason: "JOINTS_\(s) holds an invalid joint index")
+                    }
+                    joints[slot] = UInt16(joint)
+                    let raw = w[vertex * 4 + k]
+                    let weight = raw.isFinite ? max(raw, 0) : 0
                     weights[slot] = weight
                     sum += weight
                 }

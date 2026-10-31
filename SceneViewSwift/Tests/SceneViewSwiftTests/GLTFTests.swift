@@ -132,6 +132,116 @@ final class GLTFTests: XCTestCase {
 
     // MARK: - Required extensions
 
+    // MARK: - Hostile files: typed errors, never a crash or an unbounded allocation
+
+    private func assertMalformed(
+        _ builder: GLTFBuilder, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertThrowsError(try scene(builder), file: file, line: line) { error in
+            guard case .malformed? = error as? ModelLoadingError else {
+                return XCTFail("expected ModelLoadingError.malformed, got \(error)", file: file, line: line)
+            }
+        }
+    }
+
+    /// The triangle with its POSITION swapped for a hand-written accessor.
+    private func triangle(positionAccessor fields: [String: Any]) -> GLTFBuilder {
+        var b = GLTFBuilder.triangle()
+        let bad = b.accessor(fields)
+        b.json["meshes"] = [["primitives": [["attributes": ["POSITION": bad]]]]]
+        return b
+    }
+
+    func testNegativeAccessorCountThrows() {
+        assertMalformed(triangle(positionAccessor: [
+            "bufferView": 0, "componentType": 5126, "count": -1, "type": "VEC3",
+        ]))
+    }
+
+    func testHugeAccessorCountThrowsBeforeAllocating() {
+        // View-less: legal, zero-filled, so nothing but the cap bounds the allocation.
+        assertMalformed(triangle(positionAccessor: [
+            "componentType": 5126, "count": 1 << 40, "type": "VEC3",
+        ]))
+        // count × components overflows Int.
+        assertMalformed(triangle(positionAccessor: [
+            "componentType": 5126, "count": Int.max / 2, "type": "MAT4",
+        ]))
+        // Backed by a view, stride × (count - 1) far past it.
+        assertMalformed(triangle(positionAccessor: [
+            "bufferView": 0, "componentType": 5126, "count": 1 << 24, "type": "VEC3",
+        ]))
+    }
+
+    func testHugeSparseCountThrows() {
+        var b = GLTFBuilder.triangle()
+        let indices = b.view(Data([0, 0, 0, 0]))
+        let values = b.view(GLTFBuilder.bytes([0, 0, 0]))
+        let bad = b.accessor([
+            "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+            "sparse": ["count": 1 << 40,
+                       "indices": ["bufferView": indices, "componentType": 5125],
+                       "values": ["bufferView": values]],
+        ])
+        b.json["meshes"] = [["primitives": [["attributes": ["POSITION": bad]]]]]
+        assertMalformed(b)
+    }
+
+    func testNegativeBufferViewOffsetOrLengthThrows() {
+        var b = GLTFBuilder.triangle()
+        b.patchView(0, "byteOffset", -12)
+        assertMalformed(b)
+
+        var c = GLTFBuilder.triangle()
+        c.patchView(0, "byteLength", -1)
+        assertMalformed(c)
+    }
+
+    func testNodeCycleThrows() {
+        var b = GLTFBuilder.triangle()
+        b.json["nodes"] = [
+            ["name": "A", "mesh": 0, "children": [1]],
+            ["name": "B", "children": [0]],
+        ]
+        b.json["scenes"] = [["nodes": [0]]]
+        assertMalformed(b)
+    }
+
+    func testNodeNestingDeeperThanTheCapThrows() {
+        var b = GLTFBuilder.triangle()
+        let depth = GLTFScene.maxNodeDepth + 2
+        b.json["nodes"] = (0..<depth).map { i -> [String: Any] in
+            i + 1 < depth ? ["children": [i + 1]] : ["mesh": 0]
+        }
+        b.json["scenes"] = [["nodes": [0]]]
+        assertMalformed(b)
+    }
+
+    func testInfiniteKeyframeTimeThrows() {
+        var b = GLTFBuilder.triangle()
+        let times = b.floats([0, .infinity], type: "SCALAR")
+        let values = b.floats([0, 0, 0, 2, 0, 0], type: "VEC3")
+        b.json["animations"] = [[
+            "samplers": [["input": times, "output": values]],
+            "channels": [["sampler": 0, "target": ["node": 0, "path": "translation"]]],
+        ]]
+        assertMalformed(b)
+    }
+
+    func testNaNJointIndexThrows() {
+        var b = GLTFBuilder.skinnedStrip()
+        // JOINTS_0 as floats (not allowed by the spec, but representable) with a NaN.
+        let joints = b.floats([.nan, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], type: "VEC4")
+        var meshes = b.json["meshes"] as! [[String: Any]]
+        var primitives = meshes[0]["primitives"] as! [[String: Any]]
+        var attributes = primitives[0]["attributes"] as! [String: Any]
+        attributes["JOINTS_0"] = joints
+        primitives[0]["attributes"] = attributes
+        meshes[0]["primitives"] = primitives
+        b.json["meshes"] = meshes
+        assertMalformed(b)
+    }
+
     func testDracoRequiredThrowsATypedErrorNamingIt() throws {
         var b = GLTFBuilder.triangle()
         b.json["extensionsUsed"] = ["KHR_draco_mesh_compression"]
@@ -284,6 +394,33 @@ final class GLTFTests: XCTestCase {
         let skeleton = try XCTUnwrap(skinned.model?.mesh.contents.skeletons.first)
         XCTAssertEqual(skeleton.joints.map(\.name), ["Root", "Tip"])
         XCTAssertEqual(node.animationCount, 1)
+    }
+
+    @MainActor
+    func testEnormousFiniteDurationIsCappedNotTrapped() async throws {
+        var b = GLTFBuilder.triangle()
+        let times = b.floats([0, 1e30], type: "SCALAR")
+        let values = b.floats([0, 0, 0, 2, 0, 0], type: "VEC3")
+        b.json["animations"] = [[
+            "name": "Forever",
+            "samplers": [["input": times, "output": values]],
+            "channels": [["sampler": 0, "target": ["node": 0, "path": "translation"]]],
+        ]]
+        let node = try await ModelNode.load(contentsOf: write(b.glb(), as: "forever.glb"))
+        XCTAssertEqual(node.animationCount, 1)
+    }
+
+    @MainActor
+    func testPlayAllAnimationsSequencesSeveralClips() async throws {
+        var b = GLTFBuilder.translationAnimation()
+        var animations = b.json["animations"] as! [[String: Any]]
+        var second = animations[0]
+        second["name"] = "SlideAgain"
+        animations.append(second)
+        b.json["animations"] = animations
+        let node = try await ModelNode.load(contentsOf: write(b.glb(), as: "two-clips.glb"))
+        XCTAssertEqual(node.animationCount, 2)
+        node.playAllAnimations()
     }
 
     @MainActor
