@@ -79,9 +79,8 @@ internal data class TextureBudget(
         @Volatile
         var gpuMaxTextureSize: Int = 0
 
-        /** [gpuMaxTextureSize] read from [engine]'s GPU. */
-        fun readGpuLimit(engine: Engine) {
-            gpuMaxTextureSize = Texture.getMaxTextureSize(engine, Texture.Sampler.SAMPLER_2D)
-        }
+        /** [gpuMaxTextureSize] read from [engine]'s GPU, and returned. */
+        fun readGpuLimit(engine: Engine): Int =
+            Texture.getMaxTextureSize(engine, Texture.Sampler.SAMPLER_2D).also { gpuMaxTextureSize = it }
     }
 }
