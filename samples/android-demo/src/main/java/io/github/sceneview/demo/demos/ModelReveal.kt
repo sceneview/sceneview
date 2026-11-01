@@ -117,7 +117,7 @@ internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean
                     val started = System.nanoTime()
                     io.github.sceneview.demo.demos.internal.RerunGlbMesh.read(glb)
                         ?.also { ensureActive() }
-                        ?.let { mesh -> RevealWire.of(mesh.positions, mesh.vertexCount, mesh.indices) }
+                        ?.let { mesh -> RevealWire.of(mesh.positions, mesh.vertexCount, mesh.indices) { ensureActive() } }
                         ?.also { Log.i(REVEAL_TAG, "wire: ${it.edgeCount} edges in ${(System.nanoTime() - started) / 1_000_000} ms") }
                 }.onFailure { if (it is CancellationException) throw it else Log.w(REVEAL_TAG, "wire failed", it) }.getOrNull()
             }

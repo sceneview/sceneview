@@ -107,4 +107,19 @@ class RevealWireTest {
         // Reduced motion: the wire would never be drawn, so it is never built.
         assertFalse(ModelReveal.buildsWire(final = true, opensOn = true, animate = false))
     }
+
+    @Test
+    fun `a build nobody waits for stops at its next check`() {
+        var checks = 0
+        val stopped = runCatching {
+            RevealWire.of(cubePositions, 8, cubeIndices) {
+                checks++
+                throw IllegalStateException("cancelled")
+            }
+        }
+        assertTrue(stopped.isFailure)
+        assertEquals(1, checks)
+        // Never asked to stop: the same wire as without a check.
+        assertEquals(18, RevealWire.of(cubePositions, 8, cubeIndices) { }!!.edgeCount)
+    }
 }
