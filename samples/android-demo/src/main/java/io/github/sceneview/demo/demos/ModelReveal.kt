@@ -9,7 +9,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
@@ -106,13 +106,14 @@ internal sealed interface RevealWireBuild {
  * let go, so its arrays do not stay on the heap for as long as the screen lives.
  */
 @Composable
-internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean): State<RevealWireBuild> =
-    produceState<RevealWireBuild>(RevealWireBuild.Pending, glb, needed) {
-        if (glb == null || !needed) {
-            value = RevealWireBuild.Done(null)
-            return@produceState
-        }
-        value = RevealWireBuild.Pending
+internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean): State<RevealWireBuild> {
+    // Pending in the very composition [needed] turns true, not a frame later: a caller that waits
+    // for the wire never sees the last build's result instead.
+    val build = remember(glb, needed) {
+        mutableStateOf<RevealWireBuild>(if (glb == null || !needed) RevealWireBuild.Done(null) else RevealWireBuild.Pending)
+    }
+    LaunchedEffect(build) {
+        if (glb == null || build.value !is RevealWireBuild.Pending) return@LaunchedEffect
         val built = if (triangles > ModelReveal.MAX_TRIANGLES) {
             null
         } else {
@@ -130,8 +131,10 @@ internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean
                 }.onFailure { if (it is CancellationException) throw it else Log.w(REVEAL_TAG, "wire failed", it) }.getOrNull()
             }
         }
-        value = built ?: RevealWireBuild.Done(null)
+        build.value = built ?: RevealWireBuild.Done(null)
     }
+    return build
+}
 
 /**
  * Milliseconds since [started] turned true, per frame (read it where it is drawn, so only that

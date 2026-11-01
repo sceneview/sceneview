@@ -21,6 +21,12 @@
     <string name="scan_result_tour">Tour</string>
     <string name="scan_result_tour_stop">Stop tour</string>
     <string name="scan_result_tour_label">Fly the camera around the scan</string>
+    <!-- The result's film: the reveal, one turn and the plan, recorded and shared as a video -->
+    <string name="scan_result_film">Film</string>
+    <string name="scan_result_film_preparing">Preparing…</string>
+    <string name="scan_result_filming">Filming…</string>
+    <string name="scan_result_film_interrupted">Film interrupted, try again</string>
+    <string name="scan_result_film_label">Record a short video of the scan and share it</string>
     <!-- Live coverage map (#4631) -->
     <string name="scan_coverage_area">%1$s covered</string>
     <!-- The result's ground legend (#4719, #4734): the live map's and the replay's own figure -->
