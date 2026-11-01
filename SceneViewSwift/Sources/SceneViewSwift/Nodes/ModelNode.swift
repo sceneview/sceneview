@@ -9,8 +9,10 @@ import AppKit
 
 /// A wrapper around RealityKit's `ModelEntity` for loading and displaying 3D models.
 ///
-/// Mirrors SceneView Android's `ModelNode` — supports USDZ natively, with glTF
-/// support planned via GLTFKit2.
+/// Mirrors SceneView Android's `ModelNode`. Opens USDZ/USD/Reality through RealityKit,
+/// glTF 2.0 (`.glb`, `.gltf`) through SceneViewSwift's own importer — hierarchy, PBR
+/// materials and textures, skins and animations, no third-party dependency — and
+/// STL/OBJ/PLY/3MF as meshes. The call is the same for every format.
 ///
 /// ```swift
 /// @State private var model: ModelNode?
@@ -21,9 +23,14 @@ import AppKit
 ///     }
 /// }
 /// .task {
-///     model = try? await ModelNode.load("models/car.usdz")
+///     model = try? await ModelNode.load("models/car.usdz")   // or "models/chair.glb"
 /// }
 /// ```
+///
+/// glTF limitations (4.65.0): morph targets render the base mesh only; Draco and other
+/// unsupported *required* extensions throw
+/// ``UnsupportedModelExtensionError``; `COLOR_0` is averaged into
+/// the material tint; only `TEXCOORD_0` is used.
 public struct ModelNode: @unchecked Sendable {
     /// The underlying RealityKit entity.
     public let entity: ModelEntity
@@ -153,11 +160,17 @@ public struct ModelNode: @unchecked Sendable {
     /// | Formats | Path |
     /// |---|---|
     /// | `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit's `Entity(contentsOf:)` — already metric |
+    /// | `.glb` `.gltf` | SceneViewSwift's glTF importer — parsed off the main thread, metric by spec |
     /// | `.stl` `.obj` `.ply` | ModelIO → ``MeshAsset`` → `MeshResource`, with `unit` applied |
+    /// | `.3mf` | SceneViewSwift's 3MF reader → ``MeshAsset``, in the unit the file declares |
     ///
     /// ```swift
     /// // A slicer STL — millimetres, so this is 21 cm tall in AR, not 210 m.
     /// let print = try await ModelNode.load(contentsOf: stlURL)
+    ///
+    /// // A glTF/GLB — hierarchy, textures, skins; animations via playAllAnimations().
+    /// let fox = try await ModelNode.load(contentsOf: glbURL)
+    /// fox.playAllAnimations()
     ///
     /// // A scan authored in centimetres.
     /// let scan = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
@@ -181,6 +194,14 @@ public struct ModelNode: @unchecked Sendable {
         enableCollision: Bool = true
     ) async throws -> ModelNode {
         let format = try ModelFormat.sniff(contentsOf: url)
+        if format == .gltf || format == .glb {
+            let modelEntity = try await GLTFLoader.loadEntity(contentsOf: url, unit: unit)
+            if enableCollision {
+                modelEntity.generateCollisionShapes(recursive: true)
+                modelEntity.makeInputTargetable()
+            }
+            return ModelNode(modelEntity)
+        }
         guard format.loader == .realityKit else {
             let asset = try MeshAsset.load(contentsOf: url, format: format, unit: unit)
             return try await ModelNode(asset, enableCollision: enableCollision)
@@ -205,7 +226,8 @@ public struct ModelNode: @unchecked Sendable {
     ///
     /// Downloads the file to a temporary directory, then hands it to
     /// ``load(contentsOf:unit:enableCollision:)`` — so it opens every supported format,
-    /// not just USDZ. The temporary file is cleaned up after loading.
+    /// not just USDZ. The temporary file is cleaned up after loading. A remote `.gltf`
+    /// must be self-contained (`data:` URIs); a `.glb` always is.
     ///
     /// ```swift
     /// let model = try await ModelNode.load(
@@ -300,16 +322,21 @@ public struct ModelNode: @unchecked Sendable {
             throw URLError(.dataLengthExceedsMaximum)
         }
 
-        // Move to a named temp file with correct extension (RealityKit needs it)
+        // Move to a named temp file with correct extension (RealityKit needs it), alone
+        // in its own directory: a `.gltf` resolves its relative URIs against the folder
+        // it sits in, and that folder must not be the shared temporary directory.
         let ext = remoteURL.pathExtension.isEmpty ? "usdz" : remoteURL.pathExtension
-        let namedTempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(ext)
-        // Also registered before the operation that creates the file, so a `moveItem`
-        // that fails part-way does not leave one behind.
+        let downloadDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        // Also registered before the operations that create it, so a `moveItem` that
+        // fails part-way does not leave anything behind.
         defer {
-            try? FileManager.default.removeItem(at: namedTempURL)
+            try? FileManager.default.removeItem(at: downloadDirectory)
         }
+        try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
+        let namedTempURL = downloadDirectory
+            .appendingPathComponent("model")
+            .appendingPathExtension(ext)
         try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
 
         return try await load(
@@ -444,13 +471,26 @@ public struct ModelNode: @unchecked Sendable {
     ///
     /// Mirrors Android's `ModelNode(autoAnimate = true)`.
     ///
+    /// A model with several clips — the glTF Fox has `Survey`, `Walk` and `Run` — plays
+    /// them **one after the other**, in file order, and `loop` repeats the whole
+    /// sequence. Started together they would drive the same joints and overwrite each
+    /// other. Use ``playAnimation(at:loop:speed:transitionDuration:)`` to pick one clip.
+    ///
     /// - Parameters:
     ///   - loop: Whether animations should repeat. Default `true`.
     ///   - speed: Playback speed multiplier. Default 1.0.
     public func playAllAnimations(loop: Bool = true, speed: Float = 1.0) {
+        let clips = entity.availableAnimations
+        guard !clips.isEmpty else { return }
+        // One clip, or a sequence of every clip; the first clip alone if RealityKit
+        // refuses to build the sequence.
+        let combined = clips.count == 1
+            ? clips[0]
+            : ((try? AnimationResource.sequence(with: clips)) ?? clips[0])
         // Drive playback speed through `AnimationPlaybackController.speed` —
         // the parameter was previously dropped silently. (#883)
-        for animation in entity.availableAnimations {
+        do {
+            let animation = combined
             let resource = if loop { animation.repeat() } else { animation }
             let controller = entity.playAnimation(
                 resource,

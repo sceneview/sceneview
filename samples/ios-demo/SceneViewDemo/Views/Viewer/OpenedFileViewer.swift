@@ -277,6 +277,16 @@ struct OpenedFileViewer: View {
                 install(try await ModelNode.load(contentsOf: local))
                 return
             }
+            if sniffed == .glb || sniffed == .gltf {
+                // glTF keeps its hierarchy, textures and animations through
+                // `ModelNode.load`, decoded once. Like USD it is metric already, so it
+                // gets no unit picker and no flat MeshAsset readout.
+                asset = nil
+                let node = try await ModelNode.load(contentsOf: local)
+                install(node)
+                if node.animationCount > 0 { node.playAnimation(at: 0) }
+                return
+            }
             let parsed = try MeshAsset.load(contentsOf: local, format: sniffed, unit: chosenUnit)
             asset = parsed
             install(try await ModelNode(parsed))
