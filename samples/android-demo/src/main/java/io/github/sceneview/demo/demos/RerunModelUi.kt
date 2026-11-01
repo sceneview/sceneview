@@ -933,7 +933,10 @@ internal fun RerunModelScreen(
                     // view is let to be seen on its first frame, not the still one before it.
                     if (cinematics.frameDrawn(opening, framed, ready = instance != null)) shown = true
                     if (touring != cinematics.touring) touring = cinematics.touring
-                    CameraRig.eye(orbit.pose).let { eye -> facing.look(rescan?.measure, eye.x, eye.z) }
+                    CameraRig.eye(orbit.pose).let { eye ->
+                        facing.look(rescan?.measure, eye.x, eye.z)
+                        layers.look(eye)
+                    }
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.

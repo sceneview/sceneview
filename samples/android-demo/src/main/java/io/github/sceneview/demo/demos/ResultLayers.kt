@@ -21,6 +21,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +44,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
+import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -50,6 +52,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.demo.ui.overMediaEdge
+import io.github.sceneview.math.Position
 import io.github.sceneview.model.ModelInstance
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +91,21 @@ internal class ResultLayers(val offered: Boolean) {
     var splats by mutableStateOf<SplatCloud?>(null)
         internal set
 
+    /** [splats] by the way they face, so the room opens as the model does ([SplatFaces]). */
+    var faces by mutableStateOf<SplatFaces?>(null)
+        internal set
+
+    /** The [faces] the eye sees, as [SplatFaces.visible] last read them; all until the first frame. */
+    var seen by mutableIntStateOf(SplatFaces.ALL)
+        private set
+
+    /** Reads the faces seen from the eye at [eye], each frame; the scene redraws only when they change. */
+    fun look(eye: Position) {
+        val faces = faces ?: return
+        val mask = faces.visible(eye.x, eye.y, eye.z)
+        if (mask != seen) seen = mask
+    }
+
     /** Whether the building found nothing to draw: Photo then stays on the model. */
     var unavailable by mutableStateOf(false)
         internal set
@@ -120,13 +138,18 @@ internal fun rememberResultLayers(source: RerunModelSource?, key: Any?, settled:
         if (!layers.offered || !settled || layers.splats != null || layers.unavailable) return@LaunchedEffect
         val started = System.nanoTime()
         val built = withContext(Dispatchers.Default) {
-            runCatching { photoCloudOf(source)?.let { SurfelSplats.of(it) } }
+            runCatching { photoCloudOf(source)?.let { SplatFaces.of(SurfelSplats.of(it)) } }
                 .onFailure { if (it is CancellationException) throw it }
                 .onFailure { Log.w(LAYERS_TAG, "photo layer not built", it) }
                 .getOrNull()
         }
-        Log.i(LAYERS_TAG, "photo layer: ${built?.count ?: 0} splats in ${(System.nanoTime() - started) / NS_PER_MS} ms")
-        if (built != null && built.count > 0) layers.splats = built else layers.unavailable = true
+        Log.i(LAYERS_TAG, "photo layer: ${built?.all?.count ?: 0} splats in ${(System.nanoTime() - started) / NS_PER_MS} ms")
+        if (built != null && built.all.count > 0) {
+            layers.faces = built
+            layers.splats = built.all
+        } else {
+            layers.unavailable = true
+        }
     }
     // The swap: the stage colour comes up, the layers trade places under it, it goes again. Two
     // frames under the veil let the splats' first back-to-front sort land before they are seen.
@@ -263,9 +286,13 @@ private val ResultLayer.labelRes: Int
  */
 @Composable
 internal fun SceneScope.ResultPhotoLayer(layers: ResultLayers, instance: ModelInstance?) {
-    val splats = layers.splats?.takeIf { layers.photoShown }
+    val faces = layers.faces?.takeIf { layers.photoShown }
+    val seen = layers.seen
+    // The faces turned away from the eye left out, as the model's single-sided surfaces are; a new
+    // set only when the eye crosses a wall's plane, so the node is rebuilt a few times an orbit.
+    val splats = remember(faces, seen) { faces?.cloud(seen) }
     splats?.let { SplatNode(splatCloud = it) }
-    val photo = splats != null
+    val photo = faces != null
     // Keyed on the instance too: a finished model that takes a raw surface's place is hidden as well.
     DisposableEffect(instance, photo) {
         if (photo) instance?.let { modelShown(engine, it, false) }
