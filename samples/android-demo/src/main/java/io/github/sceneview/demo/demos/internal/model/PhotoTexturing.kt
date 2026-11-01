@@ -80,10 +80,11 @@ internal data class PhotoTextureStats(
  * Texturing a cleaned mesh from the scan's key photos, on the phone, off the main thread:
  *
  * 1. Photos — at most [PhotoTexturing.MAX_PHOTOS], picked greedily for the surface they cover
- *    best, then decoded, brought within [PhotoTexturing.MAX_PHOTO_PIXELS], and graded for sharpness (variance of the Laplacian).
+ *    best, then decoded, brought within the [TextureBudget], and graded for sharpness (variance of
+ *    the Laplacian) and resolution.
  * 2. Views — each photo's depth buffer (the mesh rasterised at a quarter of its pixels) tells what
- *    it really sees; each face keeps its best few views, scored by facing, distance, centring and
- *    sharpness, with its mean colour in each.
+ *    it really sees; each face keeps its best few views, scored by facing, distance, centring,
+ *    sharpness and resolution, with its mean colour in each.
  * 3. Exposure — one gain per photo and channel, solved over the colours faces seen twice disagree
  *    on (least squares in log space, regularised towards no change).
  * 4. Labels — each face takes its best view, then a few passes let it follow its neighbours when
@@ -92,17 +93,28 @@ internal data class PhotoTextureStats(
  *    shelf-packed atlas; a colour offset diffused from the seams levels what remains.
  */
 internal object PhotoTexturing {
-    fun texture(mesh: WorkMesh, photos: ModelPhotos, progress: (Float) -> Unit = {}): PhotoTexture? {
+    fun texture(
+        mesh: WorkMesh,
+        photos: ModelPhotos,
+        budget: TextureBudget = TextureBudget.BASE,
+        progress: (Float) -> Unit = {},
+    ): PhotoTexture? {
         val faces = FaceGeometry(mesh.positions, mesh.indices)
         if (faces.count == 0 || photos.photos.isEmpty()) return null
         val chosen = choose(mesh, faces, photos)
         progress(PROGRESS_CHOSEN)
-        val views = chosen.mapNotNull { i ->
+        var used = 0L
+        val views = chosen.mapIndexedNotNull { n, i ->
             val photo = photos.photos[i]
-            photo.load()?.takeIf { it.width > 1 && it.height > 1 }?.let { View(photo.pose, downscaled(it), photos.lens) }
+            photo.load()?.takeIf { it.width > 1 && it.height > 1 }?.let {
+                val kept = downscaled(it, budget.photoCap(used, chosen.size - n - 1))
+                used += kept.width.toLong() * kept.height
+                View(photo.pose, kept, photos.lens)
+            }
         }
         if (views.isEmpty()) return null
         grade(views)
+        resolve(views)
         val candidates = Candidates(faces.count)
         views.forEachIndexed { i, view ->
             see(mesh, faces, view, i, candidates)
@@ -112,7 +124,7 @@ internal object PhotoTexturing {
         val topology = MeshTopology(mesh.vertexCount, mesh.indices)
         val label = labels(topology, candidates, faces.count)
         if (label.none { it >= 0 }) return null
-        val built = TextureAtlas(mesh, faces, topology, views, gains, label) { progress(PROGRESS_SEEN) }.build()
+        val built = TextureAtlas(mesh, faces, topology, views, gains, label, budget.atlasSize) { progress(PROGRESS_SEEN) }.build()
         progress(1f)
         val (gainMin, gainMax) = gains.fold(Float.MAX_VALUE to 0f) { (lo, hi), g -> min(lo, g) to max(hi, g) }
         return PhotoTexture(
@@ -189,14 +201,15 @@ internal object PhotoTexturing {
     }
 
     /**
-     * [photo] within [MAX_PHOTO_PIXELS], by an integer box filter: the texture keeps up to
-     * [MAX_PHOTOS] at once, so their bytes, not only their number, stay bounded whatever size the
-     * recorder keeps them at (at most ~24 MB). A photo already that small is returned as is.
+     * [photo] within [maxPixels] ([MAX_PHOTO_PIXELS] by default), by an integer box filter: the
+     * texture keeps up to [MAX_PHOTOS] at once, so their bytes, not only their number, stay
+     * bounded whatever size the recorder keeps them at ([TextureBudget]). A photo already that
+     * small is returned as is.
      */
-    fun downscaled(photo: BakePhoto): BakePhoto {
+    fun downscaled(photo: BakePhoto, maxPixels: Long = MAX_PHOTO_PIXELS): BakePhoto {
         val pixels = photo.width.toLong() * photo.height
-        if (pixels <= MAX_PHOTO_PIXELS) return photo
-        val k = ceil(sqrt(pixels.toDouble() / MAX_PHOTO_PIXELS)).toInt()
+        if (pixels <= maxPixels) return photo
+        val k = ceil(sqrt(pixels.toDouble() / maxPixels)).toInt()
         val w = max(1, photo.width / k)
         val h = max(1, photo.height / k)
         val argb = IntArray(w * h)
@@ -257,13 +270,30 @@ internal object PhotoTexturing {
         }
     }
 
-    /** Sharpness: each photo's Laplacian variance against the median's, a weight in [MIN_SHARPNESS], 1. */
+    /**
+     * Sharpness: each photo's Laplacian variance against the median's, a weight in [MIN_SHARPNESS], 1.
+     * Read on the photo brought within [MAX_PHOTO_PIXELS]: the same detail, finer sampled, has a
+     * smaller Laplacian, and a sharp photo kept whole must not grade as a blurred one.
+     */
     private fun grade(views: List<View>) {
-        val variance = views.map { laplacianVariance(it.photo, it.sensor) }
+        val variance = views.map {
+            val graded = downscaled(it.photo)
+            laplacianVariance(graded, if (graded === it.photo) it.sensor else SensorArea.of(graded))
+        }
         val median = variance.sorted()[variance.size / 2].coerceAtLeast(MIN_AREA)
         views.forEachIndexed { i, view ->
             view.sharpness = sqrt(variance[i] / median).coerceIn(MIN_SHARPNESS, 1f)
         }
+    }
+
+    /**
+     * Resolution: each photo's pixels against the median photo's, a weight on its views' scores —
+     * a face seen at the same distance in a photo twice as wide gets twice the texels a side, four
+     * times the texels, as the score's `1 / distance²` counts them. `1` when all are alike.
+     */
+    private fun resolve(views: List<View>) {
+        val median = views.map { it.photo.width.toLong() * it.photo.height }.sorted()[views.size / 2].coerceAtLeast(1L)
+        views.forEach { it.resolution = (it.photo.width.toLong() * it.photo.height).toFloat() / median }
     }
 
     private fun laplacianVariance(photo: BakePhoto, sensor: SensorArea): Float {
@@ -325,9 +355,10 @@ internal object PhotoTexturing {
             if (score <= 0f) continue
             val color = view.faceColor(faces, t, mesh) ?: continue
             // A white wall a bright exposure burnt out has lost its colour: any unclipped view
-            // of it is better, and no exposure gain brings the lost part back.
+            // of it is better, and no exposure gain brings the lost part back — nor do more
+            // pixels, so only an unclipped view gains from its photo's resolution.
             val clipped = max(color shr 16 and 0xFF, max(color shr 8 and 0xFF, color and 0xFF)) > UNCLIPPED.last
-            candidates.offer(t, viewIndex, if (clipped) score * CLIPPED_PENALTY else score, color)
+            candidates.offer(t, viewIndex, if (clipped) score * CLIPPED_PENALTY else score * view.resolution, color)
         }
     }
 
@@ -594,6 +625,9 @@ internal object PhotoTexturing {
         val sensor = SensorArea.of(photo)
         var sharpness = 1f
 
+        /** Its pixels against the median photo's ([resolve]). */
+        var resolution = 1f
+
         /** Two pixels of margin, normalised: bilinear sampling never leaves the picture. */
         val marginX = EDGE_PIXELS * 2f / photo.width
         var depth = FloatArray(0)
@@ -681,7 +715,7 @@ internal object PhotoTexturing {
     /** Photos decoded at most: ~60 photos of 240 × 320 are 18 MB of pixels. */
     const val MAX_PHOTOS = 60
 
-    /** A kept photo's pixels at most: 240 × 320 passes as is; 720 × 960 comes down to it. */
+    /** A kept photo's pixels at most under [TextureBudget.BASE]: 240 × 320 passes as is; 720 × 960 comes down to it. */
     const val MAX_PHOTO_PIXELS = 100_000L
     private const val OFF_SENSOR_SHARE = 0.98f
     private const val MAX_STRIP_SHARE = 0.05f

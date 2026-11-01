@@ -21,6 +21,8 @@ internal class TextureAtlas(
     private val views: List<PhotoTexturing.View>,
     private val gains: FloatArray,
     private val label: IntArray,
+    /** The atlas's longest side at most: [MAX_SIZE], or a [TextureBudget]'s. */
+    private val maxSize: Int = MAX_SIZE,
     /** Called between the levelling's sweeps: where a cancelled build stops. */
     private val tick: () -> Unit = {},
 ) {
@@ -162,7 +164,7 @@ internal class TextureAtlas(
             boxY0[c] = floor(boxY0[c])
             footprint += (ceil(boxX1[c]) - boxX0[c] + 2 * PAD) * (ceil(boxY1[c]) - boxY0[c] + 2 * PAD).toDouble()
         }
-        scale = min(1.0, sqrt(FILL * MAX_SIZE * MAX_SIZE / footprint.coerceAtLeast(1.0))).toFloat()
+        scale = min(1.0, sqrt(FILL * maxSize * maxSize / footprint.coerceAtLeast(1.0))).toFloat()
         rectW = IntArray(charts)
         rectH = IntArray(charts)
         spans = FloatArray(charts * 2) { i ->
@@ -185,8 +187,9 @@ internal class TextureAtlas(
             val order = (0 until charts).sortedByDescending { rectH[it] }
             var bestArea = Long.MAX_VALUE
             for (w in WIDTHS) {
+                if (w > maxSize) continue
                 val h = shelves(order, w, place = false)
-                if (h in 1..MAX_SIZE && w.toLong() * h < bestArea) {
+                if (h in 1..maxSize && w.toLong() * h < bestArea) {
                     bestArea = w.toLong() * h
                     width = w
                     height = h
@@ -534,28 +537,29 @@ internal class TextureAtlas(
         return out
     }
 
-    private companion object {
+    internal companion object {
         /** Texels of margin around each chart: bilinear filtering stays inside down to the 4th mip level. */
-        const val PAD = 4
+        private const val PAD = 4
+        /** The atlas's longest side at most under [TextureBudget.BASE]. */
         const val MAX_SIZE = 2048
-        val WIDTHS = intArrayOf(256, 512, 1024, 2048)
-        const val ROW_ALIGN = 16
+        private val WIDTHS = intArrayOf(256, 512, 1024, 2048, 4096)
+        private const val ROW_ALIGN = 16
 
         /** The share of a full-size atlas the charts may fill before their texels shrink. */
-        const val FILL = 0.7
-        const val SHRINK = 0.9f
-        const val BACKGROUND = 0xFF808080.toInt()
-        const val DIFFUSE_ITERATIONS = 300
-        const val DIFFUSE_SETTLED = 0.05f
-        const val TICK_EVERY = 25
-        val SEAM_POINTS = floatArrayOf(0.25f, 0.5f, 0.75f)
-        const val GROW_PASSES = PAD + 2
-        const val EDGE_SLACK = 0.02f
-        const val MIN_TEXEL_AREA = 1e-6f
-        const val MIN_AREA = 1e-9f
-        const val BOX_SAMPLES = 9f
-        const val HALF = 0.5f
-        val NEIGHBOURS = listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1)
-        val ORIGIN = DebugPose(0f, 0f, 0f)
+        private const val FILL = 0.7
+        private const val SHRINK = 0.9f
+        private const val BACKGROUND = 0xFF808080.toInt()
+        private const val DIFFUSE_ITERATIONS = 300
+        private const val DIFFUSE_SETTLED = 0.05f
+        private const val TICK_EVERY = 25
+        private val SEAM_POINTS = floatArrayOf(0.25f, 0.5f, 0.75f)
+        private const val GROW_PASSES = PAD + 2
+        private const val EDGE_SLACK = 0.02f
+        private const val MIN_TEXEL_AREA = 1e-6f
+        private const val MIN_AREA = 1e-9f
+        private const val BOX_SAMPLES = 9f
+        private const val HALF = 0.5f
+        private val NEIGHBOURS = listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1)
+        private val ORIGIN = DebugPose(0f, 0f, 0f)
     }
 }

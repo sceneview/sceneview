@@ -728,7 +728,8 @@ private class PaddedAtlasEncoder(private val padding: Int) : AtlasEncoder {
 
 /**
  * The finish of a raw surface in a JVM of its own, its heap capped at a mid-range phone's
- * ([HEAP_MB], a Pixel 4a's `dalvik.vm.heapgrowthlimit`): [CleanModelRealScanTest]'s furnished
+ * ([HEAP_MB], a `dalvik.vm.heapgrowthlimit` of 192m — the smaller heap, [TextureBudget.BASE]'s; a
+ * Pixel 4a reports 256m): [CleanModelRealScanTest]'s furnished
  * room, or that room tiled along x up to the triangles given, each copy with its photos — a scan
  * as large as a recording meshes to. What the result screen holds meanwhile stays live too:
  * [APP_BYTES] for the rest of the app, the recording's dense cloud ([CLOUD_POINTS_PER_TRIANGLE]
