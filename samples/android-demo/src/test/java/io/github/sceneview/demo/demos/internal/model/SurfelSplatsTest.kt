@@ -136,6 +136,21 @@ class SurfelSplatsTest {
     }
 
     @Test
+    fun `the cap is exact, the last splat is a kept surfel, never an empty slot`() {
+        // Sizes where a floating-point share loses the last one (22 for 15, 262 672 for 250 000).
+        for ((coloured, cap) in listOf(22 to 15, 23 to 13, 39 to 31, 262_672 to SurfelSplats.MAX_SPLATS)) {
+            val positions = FloatArray(coloured * 3) { if (it % 3 == 0) (it / 3 + 1).toFloat() else 0f }
+            val cloud = DenseCloud(positions, IntArray(coloured) { 0xFF808080.toInt() })
+            val splats = SurfelSplats.of(cloud, maxSplats = cap)
+            val last = cap - 1
+            assertEquals("$coloured for $cap", cap, splats.count)
+            assertTrue("$coloured for $cap: last splat at ${splats.positions[last * 3]}", splats.positions[last * 3] > 0f)
+            val q = (0 until 4).sumOf { (splats.rotations[last * 4 + it] * splats.rotations[last * 4 + it]).toDouble() }
+            assertEquals("$coloured for $cap: unit rotation", 1.0, q, 1e-5)
+        }
+    }
+
+    @Test
     fun `under a linear tone mapper, the splat's colour is the surfel's once the material undoes PBR Neutral`() {
         val out = FloatArray(3)
         SurfelSplats.colour(0xFF8040C0.toInt(), linearView = false, out)

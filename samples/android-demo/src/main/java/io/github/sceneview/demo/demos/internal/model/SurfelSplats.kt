@@ -82,8 +82,8 @@ internal object SurfelSplats {
         val colors = FloatArray(n * 3)
         val opacities = FloatArray(n)
         if (n == 0) return SplatCloud(0, positions, scales, rotations, colors, opacities)
-        // Kept evenly: the k-th coloured surfel is kept when it crosses the next multiple of the share.
-        val share = n.toDouble() / coloured
+        // Kept evenly: the k-th coloured surfel is kept when it crosses the next multiple of the share,
+        // in whole numbers so that exactly n cross (a share in floating point can lose the last one).
         val widen = sqrt(coloured.toFloat() / n)
         val normals = cloud.normals
         val confidences = cloud.confidences
@@ -93,7 +93,7 @@ internal object SurfelSplats {
         for (i in 0 until cloud.count) {
             val argb = cloud.colors[i]
             if (argb == 0) continue
-            val keep = ((seen + 1) * share).toLong() > (seen * share).toLong()
+            val keep = (seen + 1).toLong() * n / coloured > seen.toLong() * n / coloured
             seen++
             if (!keep || o >= n) continue
             for (a in 0 until 3) positions[o * 3 + a] = cloud.positions[i * 3 + a]
