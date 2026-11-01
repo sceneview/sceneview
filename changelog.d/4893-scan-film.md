@@ -1,2 +1,2 @@
 <!-- category: Added -->
-- **Demo: 3D Scan result film.** A Film pill on the scan result records a 9.8 s clip and offers it to the share sheet: the reveal, one turn round the scan, then the dimensioned floor plan.
+- **3D Scan result film ([#4893](https://github.com/sceneview/sceneview/pull/4893)).** In SceneView Demo, a Film pill on the scan result plays one 9.8 s camera move while `SceneRecorder` records the scene: the reveal, one turn round the scan, then the dimensioned floor plan, held. The clip takes the view's shape (vertical on a phone held upright) and goes to the share sheet. `ResultFilm` is pure and pinned frame by frame.
