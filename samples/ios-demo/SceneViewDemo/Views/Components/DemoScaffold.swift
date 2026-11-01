@@ -216,13 +216,15 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             }
             .glassEffectGroup()
             .environment(\.chromeGlassNamespace, glassSpace)
+            #if os(iOS)
             // A capture result floats `space-md` above the whole bottom stack, which
-            // does not move for it (DESIGN.md, #4483).
+            // does not move for it (DESIGN.md, #4483). Scene capture is iOS-only.
             .overlay(alignment: .top) {
                 DemoCaptureToast()
                     .padding(.horizontal, Metrics.margin)
                     .alignmentGuide(.top) { $0[.bottom] + SceneViewTokens.Space.md }
             }
+            #endif
             .offset(y: travels ? Metrics.enterBottom : 0)
             .accessibilitySortPriority(1)
         }
