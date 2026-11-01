@@ -17,7 +17,10 @@ class RevealWire private constructor(
     val vertexCount: Int,
     /** Two indices per edge, ordered by the edge's lower end, lowest first. */
     val indices: IntArray,
-    /** The lower end's height of each edge, in the same order: what [indicesBelow] searches. */
+    /**
+     * The lower end's height above [minY] of each edge, in the same order: the very key the edges
+     * were sorted by, so what [indicesBelow] searches is exactly what the order is.
+     */
     private val edgeLow: FloatArray,
     /** Lowest and highest vertex height, metres. */
     val minY: Float,
@@ -31,7 +34,7 @@ class RevealWire private constructor(
      */
     fun indicesBelow(fraction: Float): Int {
         if (edgeLow.isEmpty()) return 0
-        val y = minY + (maxY - minY) * fraction.coerceIn(0f, 1f)
+        val y = (maxY - minY) * fraction.coerceIn(0f, 1f)
         // Upper bound: the first edge strictly above y.
         var lo = 0
         var hi = edgeLow.size
@@ -55,10 +58,10 @@ class RevealWire private constructor(
     companion object {
         /**
          * Above this many edges a model keeps one in every few, picked evenly through the sorted
-         * list so the sweep stays whole: past it, a phone-width view is solid lines anyway, and
-         * the upload would cost more than the reveal is long.
+         * list so the sweep stays whole. Past it, a phone-width view of a room is no longer lines
+         * but a solid sheet of the accent colour: 295k edges read as a block on a Pixel 7a.
          */
-        const val MAX_EDGES = 400_000
+        const val MAX_EDGES = 60_000
 
         /** How many triangles or edges go by between two [of] cancellation checks. */
         const val CHECK_EVERY = 65_536
@@ -127,7 +130,7 @@ class RevealWire private constructor(
                 val b = (keys[slot] and 0xFFFF_FFFFL).toInt()
                 out[j * 2] = a
                 out[j * 2 + 1] = b
-                lows[j] = min(positions[a * 3 + 1], positions[b * 3 + 1])
+                lows[j] = max(min(positions[a * 3 + 1], positions[b * 3 + 1]) - minY, 0f)
             }
             return RevealWire(positions, vertexCount, out, lows, minY, maxY)
         }

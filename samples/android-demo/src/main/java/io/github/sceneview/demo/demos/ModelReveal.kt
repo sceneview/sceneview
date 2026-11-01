@@ -18,6 +18,7 @@ import com.google.android.filament.Engine
 import com.google.android.filament.Material
 import com.google.android.filament.RenderableManager.PrimitiveType
 import io.github.sceneview.SceneScope
+import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.RevealWire
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setColor
@@ -88,11 +89,14 @@ internal object ModelReveal {
     }
 }
 
-/** A [RevealWire] being built: [Pending] until it is, then [Done], its wire `null` when there is none. */
+/**
+ * A [RevealWire] being built: [Pending] until it is, then [Done], its wire `null` when there is
+ * none, with its line [mesh] built alongside off the main thread: only the upload is left there.
+ */
 internal sealed interface RevealWireBuild {
     data object Pending : RevealWireBuild
 
-    class Done(val wire: RevealWire?) : RevealWireBuild
+    class Done(val wire: RevealWire?, val mesh: DebugMesh? = null) : RevealWireBuild
 }
 
 /**
@@ -110,20 +114,24 @@ internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean
     }
     LaunchedEffect(build) {
         if (glb == null || build.value !is RevealWireBuild.Pending) return@LaunchedEffect
-        val wire = if (triangles > ModelReveal.MAX_TRIANGLES) {
+        val built = if (triangles > ModelReveal.MAX_TRIANGLES) {
             null
         } else {
             withContext(Dispatchers.Default) {
+                // runCatching takes any Throwable: an OutOfMemoryError leaves the model wireless, never crashed.
                 runCatching {
                     val started = System.nanoTime()
                     io.github.sceneview.demo.demos.internal.RerunGlbMesh.read(glb)
                         ?.also { ensureActive() }
                         ?.let { mesh -> RevealWire.of(mesh.positions, mesh.vertexCount, mesh.indices) { ensureActive() } }
-                        ?.also { Log.i(REVEAL_TAG, "wire: ${it.edgeCount} edges in ${(System.nanoTime() - started) / 1_000_000} ms") }
+                        ?.also { ensureActive() }
+                        // The line mesh too, here: only its upload is left to the main thread.
+                        ?.let { wire -> RevealWireBuild.Done(wire, wire.toMesh()) }
+                        ?.also { Log.i(REVEAL_TAG, "wire: ${it.wire?.edgeCount} edges in ${(System.nanoTime() - started) / 1_000_000} ms") }
                 }.onFailure { if (it is CancellationException) throw it else Log.w(REVEAL_TAG, "wire failed", it) }.getOrNull()
             }
         }
-        build.value = RevealWireBuild.Done(wire)
+        build.value = built ?: RevealWireBuild.Done(null)
     }
     return build
 }
@@ -160,13 +168,15 @@ internal fun rememberRevealClock(key: Any?, started: Boolean, animate: Boolean):
 @Composable
 internal fun SceneScope.RevealedModel(
     instance: ModelInstance,
-    wire: RevealWire?,
+    build: RevealWireBuild.Done?,
     elapsedMs: Float,
     color: Color,
     engine: Engine,
     materialLoader: MaterialLoader,
 ) {
-    val rise = if (wire == null) 1f else ModelReveal.solidRise(elapsedMs)
+    val wire = build?.wire
+    val mesh = build?.mesh
+    val rise = if (wire == null || mesh == null) 1f else ModelReveal.solidRise(elapsedMs)
     // Scaled about the floor, never to a singular zero: a height of a few microns reads as nothing.
     val floor = wire?.minY ?: 0f
     val height = rise.coerceAtLeast(MIN_RISE)
@@ -177,17 +187,17 @@ internal fun SceneScope.RevealedModel(
         scale = Scale(1f, height, 1f),
         isVisible = rise > 0f,
     )
-    if (wire == null) return
+    if (wire == null || mesh == null) return
     val alpha = ModelReveal.wireAlpha(elapsedMs)
     val sweep = ModelReveal.wireSweep(elapsedMs)
     if (alpha <= 0f) return
     // Remembered before the node, so Compose releases the material after the node destroyed its layer.
-    val layer = remember(engine, materialLoader, wire) {
+    val layer = remember(engine, materialLoader, mesh) {
         // Created translucent (alpha under 1 picks the blended unlit material) so it can fade.
         val material = materialLoader.createUnlitColorInstance(color.copy(alpha = ModelReveal.WIRE_ALPHA))
             .also { it.setCullingMode(Material.CullingMode.NONE) }
         material to DebugLayerNode(engine, material, WIRE_PRIORITY, primitive = PrimitiveType.LINES)
-            .also { it.upload(wire.toMesh()) }
+            .also { it.upload(mesh) }
     }
     DisposableEffect(layer) { onDispose { materialLoader.destroyMaterialInstance(layer.first) } }
     SideEffect {
