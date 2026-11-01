@@ -60,18 +60,30 @@ class RevealWire private constructor(
          */
         const val MAX_EDGES = 400_000
 
+        /** How many triangles or edges go by between two [of] cancellation checks. */
+        const val CHECK_EVERY = 65_536
+
         /**
          * The unique edges of [indices]' triangles over [positions] (xyz per vertex,
          * [vertexCount] of them), each once whichever triangle and winding it came from,
-         * sorted by lower end. `null` when there is no triangle.
+         * sorted by lower end. `null` when there is no triangle. [checkCancelled] is called every
+         * [CHECK_EVERY] triangles or edges and before each sort, so a build nobody waits for any
+         * more (the screen was left) stops by throwing from it.
          */
-        fun of(positions: FloatArray, vertexCount: Int, indices: IntArray, maxEdges: Int = MAX_EDGES): RevealWire? {
+        fun of(
+            positions: FloatArray,
+            vertexCount: Int,
+            indices: IntArray,
+            maxEdges: Int = MAX_EDGES,
+            checkCancelled: () -> Unit = {},
+        ): RevealWire? {
             val triangles = indices.size / 3
             if (triangles == 0 || vertexCount == 0) return null
             // Each edge as one long, lower index high: sorted, the duplicates sit side by side.
             val keys = LongArray(triangles * 3)
             var k = 0
             for (t in 0 until triangles) {
+                if (t % CHECK_EVERY == 0) checkCancelled()
                 for (e in 0 until 3) {
                     val a = indices[t * 3 + e]
                     val b = indices[t * 3 + (e + 1) % 3]
@@ -79,7 +91,9 @@ class RevealWire private constructor(
                     keys[k++] = (min(a, b).toLong() shl 32) or max(a, b).toLong()
                 }
             }
+            checkCancelled()
             keys.sort(0, k)
+            checkCancelled()
             var unique = 0
             for (i in 0 until k) if (i == 0 || keys[i] != keys[i - 1]) keys[unique++] = keys[i]
 
@@ -94,12 +108,15 @@ class RevealWire private constructor(
             // as the float does) high, the edge's slot low.
             val order = LongArray(unique)
             for (i in 0 until unique) {
+                if (i % CHECK_EVERY == 0) checkCancelled()
                 val a = (keys[i] ushr 32).toInt()
                 val b = (keys[i] and 0xFFFF_FFFFL).toInt()
                 val low = min(positions[a * 3 + 1], positions[b * 3 + 1]) - minY
                 order[i] = (java.lang.Float.floatToIntBits(max(low, 0f)).toLong() shl 32) or i.toLong()
             }
+            checkCancelled()
             order.sort()
+            checkCancelled()
             val step = if (unique > maxEdges) (unique + maxEdges - 1) / maxEdges else 1
             val kept = (unique + step - 1) / step
             val out = IntArray(kept * 2)
