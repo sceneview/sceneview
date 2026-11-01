@@ -68,7 +68,8 @@ class ModelRevealRealScanTest {
     @Test
     fun `a synthetic recording runs through to a report and a storyboard`() {
         val scan = folder.newFile("walkthrough.svscan").apply { writeBytes(syntheticScan()) }
-        val out = folder.newFolder("out")
+        // Kept under SCENEVIEW_SCAN_OUT/synthetic when it is set: the storyboard to look at.
+        val out = System.getenv(OUT)?.takeIf { it.isNotBlank() }?.let { File(it, "synthetic") } ?: folder.newFolder("out")
         val result = run(listOf(scan), out).single()
         assertTrue("${result.triangles} triangles", result.triangles > 0)
         assertTrue("${result.edges} edges", result.edges > 0)
