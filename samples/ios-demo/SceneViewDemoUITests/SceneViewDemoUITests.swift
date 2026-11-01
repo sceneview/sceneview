@@ -325,6 +325,71 @@ final class SceneViewDemoUITests: XCTestCase {
         XCTAssertTrue(close.exists && close.isHittable, "a pinch on the stage dismissed the demo")
     }
 
+    /// A screen pushed with a zoom transition takes the system's swipe-down
+    /// and pinch dismissal, and SwiftUI has no `interactiveDismissDisabled()`
+    /// for a push: a pull-to-refresh at the top of Explore and a zoom-out
+    /// pinch on the model viewer's stage both closed the screen. Explore and
+    /// the viewers now push plainly; this keeps it that way. The viewer half
+    /// needs a live gallery card, and is skipped when no feed loads.
+    func testPullAndPinchDoNotCloseExploreOrTheModelViewer() throws {
+        let app = Self.makeApp()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
+                      "app never reached the foreground")
+        let browse = app.buttons["Browse online models"]
+        for _ in 0..<12 where !(browse.exists && browse.isHittable) {
+            app.swipeUp()
+        }
+        XCTAssertTrue(browse.waitForExistence(timeout: 10), "Browse online models card not found")
+        // Same settle-and-retry as the #4015 test below.
+        Thread.sleep(forTimeInterval: 1.5)
+        let search = app.textFields["explore-search-field"]
+        for _ in 0..<2 where !search.exists {
+            browse.tap()
+            _ = search.waitForExistence(timeout: 8)
+        }
+        XCTAssertTrue(search.waitForExistence(timeout: 7), "Explore never opened")
+        Thread.sleep(forTimeInterval: 2)
+
+        let window = app.windows.firstMatch
+        func pullDown() {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+                .press(forDuration: 0.05,
+                       thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
+            Thread.sleep(forTimeInterval: 2)
+        }
+        pullDown()
+        window.pinch(withScale: 0.4, velocity: -1.5)
+        Thread.sleep(forTimeInterval: 2)
+        snapshot(app, "zoom-dismiss-01-explore-after-pull-and-pinch")
+        XCTAssertTrue(search.exists, "a pull-down or a pinch closed Explore")
+
+        // The first card of a horizontal rail: a live gallery card.
+        Thread.sleep(forTimeInterval: 6)
+        var card: XCUIElement?
+        for i in 0..<app.scrollViews.count where card == nil {
+            let rail = app.scrollViews.element(boundBy: i)
+            guard rail.frame.width > rail.frame.height * 1.5 else { continue }
+            let first = rail.buttons.firstMatch
+            if first.exists && first.isHittable { card = first }
+        }
+        guard let card else {
+            throw XCTSkip("no live gallery card loaded, so the viewer half cannot run")
+        }
+        card.tap()
+        Thread.sleep(forTimeInterval: 6)
+        XCTAssertFalse(search.isHittable, "the model viewer never opened")
+        let title = app.navigationBars.firstMatch.identifier
+        for _ in 0..<3 {
+            window.pinch(withScale: 0.4, velocity: -1.5)
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+        pullDown()
+        snapshot(app, "zoom-dismiss-02-viewer-after-pinch-and-pull")
+        XCTAssertTrue(app.navigationBars[title].exists && !search.isHittable,
+                      "a pinch or a swipe down on the stage closed the model viewer")
+    }
+
     /// #4015: on iPad, Explore's scrolled content was drawn over the top bar,
     /// between the floating tab bar and the navigation bar. Opens Explore from
     /// the Showcase card, scrolls, and keeps a frame of the top edge.
@@ -412,6 +477,43 @@ final class SceneViewDemoUITests: XCTestCase {
             XCTAssertEqual(card.frame.minY, before.minY, accuracy: 4,
                            "the home scrolled away while \(id) was open")
         }
+    }
+
+    /// Android's `motion-expand` (#4883): a category with more than three
+    /// entries opens on its first three, "Show N more" unfolds the rest in
+    /// place and "Show less" folds it back. The since sheet from 4.40.0 spans
+    /// enough releases for one to fold.
+    func testWhatsNewSinceSheetFoldsLongCategories() throws {
+        let app = Self.makeApp()
+        app.launchArguments += ["-whats_new_seen_version", "4.40.0"]
+        app.launchArguments += Self.freshnessBuild
+        app.launch()
+        let sparkle = app.buttons["home-whats-new"]
+        XCTAssertTrue(sparkle.waitForExistence(timeout: 30), "the header's What's new button never appeared")
+        sparkle.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["whats-new-since-sheet"].waitForExistence(timeout: 10),
+                      "the since sheet never opened")
+        let toggle = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'whats-new-more-'"))
+            .firstMatch
+        guard toggle.waitForExistence(timeout: 3) else {
+            throw XCTSkip("no category has more than three entries since 4.40.0: nothing to fold")
+        }
+        let folded = toggle.label
+        XCTAssertTrue(folded.hasPrefix("Show ") && folded.hasSuffix(" entries") && !folded.hasPrefix("Show fewer"),
+                      "unexpected label: \(folded)")
+        // Bring the toggle on screen first: a tap scrolls to it, which would
+        // move it on its own.
+        let sheet = app.descendants(matching: .any)["whats-new-since-sheet"]
+        for _ in 0..<8 where !(toggle.isHittable && toggle.frame.maxY < app.frame.maxY * 0.8) {
+            sheet.swipeUp(velocity: .slow)
+        }
+        let below = toggle.frame.minY
+        toggle.tap()
+        XCTAssertTrue(wait(for: toggle, "label BEGINSWITH 'Show fewer '"), "Show more did not unfold: \(toggle.label)")
+        XCTAssertGreaterThan(toggle.frame.minY, below + 10, "the hidden entries did not appear above the toggle")
+        toggle.tap()
+        XCTAssertTrue(wait(for: toggle, "label == %@", folded), "Show less did not fold the category back: \(toggle.label)")
     }
 
     /// "I still struggle to see where the new things are" (02/10), then "the
@@ -524,6 +626,12 @@ final class SceneViewDemoUITests: XCTestCase {
         }
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(element.isHittable, "\(element) never came on screen")
+    }
+
+    /// Waits until `element` matches `format`, instead of a fixed sleep.
+    private func wait(for element: XCUIElement, _ format: String, _ args: CVarArg..., timeout: TimeInterval = 5) -> Bool {
+        let met = XCTNSPredicateExpectation(predicate: NSPredicate(format: format, argumentArray: args), object: element)
+        return XCTWaiter().wait(for: [met], timeout: timeout) == .completed
     }
 
     private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {
