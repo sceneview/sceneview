@@ -169,6 +169,8 @@ internal fun ResultLayerPicker(
     if (!layers.offered) return
     // The dock's Plan leaves Photo too: the plan is read on the model.
     LaunchedEffect(plan) { if (plan) layers.photoPicked = false }
+    // A scan with nothing to splat goes back to the model rather than stay on a Photo it lacks.
+    LaunchedEffect(layers.unavailable) { if (layers.unavailable) layers.photoPicked = false }
     val alpha by animateFloatAsState(if (ready) 1f else 0f, tween(SceneViewTokens.Duration.fadeMillis), label = "layers")
     val chrome = LocalStageChrome.current
     val pill = SceneViewTokens.ModePill
