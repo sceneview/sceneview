@@ -75,6 +75,12 @@ object DemoSettings {
     var qaMode: Boolean by mutableStateOf(false)
 
     /**
+     * QA-only: plays the 3D Scan result's reveal (`ModelReveal`) although [qaMode] holds every
+     * other motion still, so a capture can record it (`--ez qa_motion true`). Debug builds only.
+     */
+    var qaMotion: Boolean by mutableStateOf(false)
+
+    /**
      * QA-only synthetic camera backdrop for the AR demos (#3308). `null` (default) follows
      * [qaMode]; `--ez qa_backdrop true|false` forces it. See
      * [io.github.sceneview.demo.common.QaCameraBackdrop].

@@ -111,6 +111,8 @@
 				<string>public.geometry-definition-format</string>
 				<string>public.polygon-file-format</string>
 				<string>io.3mf.3mf</string>
+				<string>org.khronos.gltf</string>
+				<string>org.khronos.glb</string>
 			</array>
 		</dict>
 		<dict>
@@ -229,6 +231,52 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>application/x-ply</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<!-- glTF 2.0 (Khronos), JSON form. Opened by SceneViewSwift's own importer. -->
+			<key>UTTypeIdentifier</key>
+			<string>org.khronos.gltf</string>
+			<key>UTTypeDescription</key>
+			<string>glTF 3D Model</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>gltf</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>model/gltf+json</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<!-- Binary glTF 2.0 (Khronos). -->
+			<key>UTTypeIdentifier</key>
+			<string>org.khronos.glb</string>
+			<key>UTTypeDescription</key>
+			<string>glTF Binary 3D Model</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>glb</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>model/gltf-binary</string>
 				</array>
 			</dict>
 		</dict>

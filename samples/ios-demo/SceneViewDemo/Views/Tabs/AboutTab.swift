@@ -53,6 +53,7 @@ struct AboutTab: View {
             // black (#000) while Showcase and Explore sit on `surface` (#0D1117).
             .background(SceneViewTokens.HomeColor.surface)
             .navigationTitle("About")
+            .navigationBarTitleLarge()
             .sheet(isPresented: $showCreditsSheet) {
                 CreditsSheet()
             }

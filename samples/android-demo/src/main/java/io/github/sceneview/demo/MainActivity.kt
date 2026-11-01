@@ -217,6 +217,7 @@ class MainActivity : ComponentActivity() {
         // app on the device could flip it on once via `--ez qa_mode true` and leave the
         // showcase frozen until process death.
         DemoSettings.qaMode = intent?.getBooleanExtra("qa_mode", false) ?: false
+        DemoSettings.qaMotion = BuildConfig.DEBUG && intent?.getBooleanExtra("qa_motion", false) == true
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         // Optional id of a visual state a demo should pin itself to (#3421, #3455). One extra
         // for every demo's vocabulary (Cloud Anchors, Point & Ask). Only honoured by a debug
@@ -264,6 +265,7 @@ class MainActivity : ComponentActivity() {
         handleEntry(intent)
         stageOpenedModel(intent)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
+        DemoSettings.qaMotion = BuildConfig.DEBUG && intent.getBooleanExtra("qa_motion", false)
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         DemoSettings.qaDemoState = resolveQaDemoState(intent)
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")

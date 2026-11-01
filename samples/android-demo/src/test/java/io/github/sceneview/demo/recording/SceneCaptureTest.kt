@@ -3,6 +3,7 @@ package io.github.sceneview.demo.recording
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.RectF
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,31 @@ class SceneCaptureTest {
         assertTrue("the label is in the bottom-left corner", bitmap.hasInk(0, h * 9 / 10, w * 2 / 3, h))
         assertFalse("nothing above the bottom band", bitmap.hasInk(0, 0, w, h * 9 / 10))
         assertFalse("nothing in the right third", bitmap.hasInk(w * 2 / 3, 0, w, h))
+    }
+
+    @Test
+    fun watermarkPill_padsTheLabelAndStaysInTheFrame() {
+        val pill = watermarkPill(textWidth = 400f, textSize = 40f, margin = 40f, height = 1920f, out = RectF())
+
+        assertTrue("it starts left of the text, inside the frame", pill.left >= 0f && pill.left < 40f)
+        assertTrue("it ends right of the text", pill.right > 440f)
+        assertTrue("it rises above the cap height", pill.top < 1880f - 30f)
+        assertTrue("it covers the descenders, inside the frame", pill.bottom > 1880f && pill.bottom < 1920f)
+    }
+
+    @Test
+    fun watermark_readsOnAWhiteFrame() {
+        // The light theme's grid is near-white: white text alone disappears there (QA 2026-11-01).
+        val bitmap = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        watermark("Made with SceneView").draw(Canvas(bitmap), bitmap.width, bitmap.height)
+
+        val textSize = 1080 * 0.04f
+        val pill = watermarkPill(0f, textSize, textSize, 1920f, RectF())
+        // In the pill's left padding, at its middle: the ground the white label reads on.
+        val ground = bitmap.getPixel((pill.left + textSize * 0.25f).toInt(), pill.centerY().toInt())
+        val grey = Color.red(ground)
+        assertTrue("the label's ground is dark enough for white text (was $grey)", grey <= 110)
     }
 
     @Test

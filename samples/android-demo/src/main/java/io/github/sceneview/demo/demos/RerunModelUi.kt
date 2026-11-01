@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos
 
 import android.graphics.Bitmap
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded._360
@@ -43,15 +45,20 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
@@ -68,12 +75,15 @@ import com.google.android.filament.Engine
 import com.google.android.filament.Skybox
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.utils.KTX1Loader
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sceneview.DEFAULT_IBL_INTENSITY
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
@@ -102,6 +112,7 @@ import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
+import io.github.sceneview.demo.demos.internal.ResultFilm
 import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.scanFloorArea
 import io.github.sceneview.demo.demos.internal.ScanGround
@@ -116,7 +127,12 @@ import io.github.sceneview.demo.demos.internal.model.ModelPhoto
 import io.github.sceneview.demo.demos.internal.model.ModelPhotos
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
+import io.github.sceneview.demo.demos.internal.toShot
 import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.recording.VIDEO_MIME
+import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
+import io.github.sceneview.demo.recording.shareCapture
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -140,10 +156,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /*
@@ -737,6 +755,27 @@ internal fun RerunModelScreen(
     var shown by remember(framedBy) { mutableStateOf(false) }
     // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
     val layers = rememberResultLayers(source, framedBy, settled)
+    val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
+    // The film (ResultFilm): each take plays the reveal again, one turn and the plan, recorded
+    // off the scene's own surface — the chrome is not in it — then offered to the share sheet.
+    val recorder = rememberDemoSceneRecorder()
+    var filmTake by remember(framedBy) { mutableIntStateOf(0) }
+    var filming by remember(framedBy) { mutableStateOf(false) }
+    // A new take of the film replays the reveal from its first frame.
+    val revealKey = framedBy to filmTake
+    var revealOver by remember(revealKey, animateReveal) { mutableStateOf(!animateReveal) }
+    // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
+    // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
+    // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
+    val revealOf = model?.takeIf { ModelReveal.buildsWire(settled, opensOn = it === framedBy, animate = animateReveal) }
+    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = !revealOver)
+    val wirePending = wireBuild is RevealWireBuild.Pending
+    // The reveal starts once its wire is read, so a take never opens on the whole model, then cuts.
+    val revealClock = rememberRevealClock(key = revealKey, started = shown && !wirePending, animate = animateReveal)
+    LaunchedEffect(revealClock) {
+        snapshotFlow { revealClock.value >= ModelReveal.TOTAL_MS }.first { it }
+        revealOver = true
+    }
     var hintVisible by remember(framedBy) { mutableStateOf(true) }
     LaunchedEffect(shown, hintStays) {
         if (shown && !hintStays) {
@@ -789,8 +828,29 @@ internal fun RerunModelScreen(
                 if (floor != null && covered != null) FloorLegend(covered)
                 ScanTourPill(
                     touring = touring,
-                    enabled = tourReady,
+                    enabled = tourReady && !filming,
                     onClick = { cinematics.request(ScanResultCinematics.Request.ToggleTour) },
+                    modifier = Modifier
+                        .alpha(if (tourReady) 1f else 0f)
+                        .then(if (tourReady) Modifier else Modifier.clearAndSetSemantics { }),
+                )
+                val filmReady = tourReady && !touring && !filming
+                ResultPill(
+                    icon = Icons.Rounded.Movie,
+                    text = stringResource(
+                        when {
+                            filming && wirePending -> R.string.scan_result_film_preparing
+                            filming -> R.string.scan_result_filming
+                            else -> R.string.scan_result_film
+                        },
+                    ),
+                    label = stringResource(R.string.scan_result_film_label),
+                    enabled = filmReady,
+                    onClick = {
+                        filming = true
+                        filmTake++
+                    },
+                    tag = RERUN_MODEL_FILM_TAG,
                     modifier = Modifier
                         .alpha(if (tourReady) 1f else 0f)
                         .then(if (tourReady) Modifier else Modifier.clearAndSetSemantics { }),
@@ -826,7 +886,8 @@ internal fun RerunModelScreen(
                     plan = false
                     cinematics.request(ScanResultCinematics.Request.Recenter)
                 },
-                enabled = instance != null,
+                // Not while filming: a camera move would replace the film in the clip.
+                enabled = instance != null && !filming,
                 selected = !plan,
             ),
             DockItem(
@@ -837,7 +898,7 @@ internal fun RerunModelScreen(
                     plan = true
                     cinematics.request(ScanResultCinematics.Request.Recenter)
                 },
-                enabled = instance != null,
+                enabled = instance != null && !filming,
                 selected = plan,
             ),
             onReplay?.let {
@@ -914,6 +975,61 @@ internal fun RerunModelScreen(
                 (if (plan) planFraming else framing)?.home(RerunResultView.AZIMUTH, aspect, area)
             }
             SideEffect { home.value()?.let { opening.aim(orbit, it) } }
+            val context = LocalContext.current
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
+            LaunchedEffect(filmTake) {
+                if (filmTake == 0) return@LaunchedEffect
+                // The reveal's wire is read again first: the take opens on the reveal, not on the
+                // whole model that the wire's arrival would then cut away.
+                snapshotFlow { wireBuild }.first { ResultFilm.canStart(wirePending = it is RevealWireBuild.Pending) }
+                // No frame while the app is stopped, so the take starts on screen; the check covers a racing stop.
+                withFrameNanos { }
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    filming = false
+                    return@LaunchedEffect
+                }
+                val from = framing?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
+                val to = planFraming?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
+                val film = if (from != null && to != null) ResultFilm.of(from.toShot(), to.toShot()) else null
+                // Its own file, rewritten each take, in the share sheet's cache folder: only this
+                // take, complete, is ever shared, and nothing piles up in the captures.
+                val file = File(context.cacheDir, "$RERUN_SHARE_DIR/film/scan_film.mp4")
+                file.parentFile?.mkdirs()
+                file.delete()
+                if (to == null || film == null || !recorder.startRecording(file = file, settings = film.video)) {
+                    filming = false
+                    Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
+                    return@LaunchedEffect
+                }
+                var shared = false
+                try {
+                    // It lands on the plan: the orbit camera waits there, so when the film ends
+                    // the camera the user takes over is the plan, with no jump.
+                    plan = true
+                    cinematics.orbit.recenter()
+                    cinematics.orbit.snapTo(to)
+                    // The camera moves in frame time (each step capped), not on the wall clock:
+                    // follow it frame by frame to the plan, then hold, however slowly frames come.
+                    // A touch that takes the camera over, or a recording stopped (the app left
+                    // the foreground, the encoder failed or hit its hard stop), drops the take.
+                    var landed = false
+                    film.play(cinematics.animator, onLanded = { landed = true })
+                    while (!landed) {
+                        withFrameNanos { }
+                        if (ResultFilm.aborts(landed, cinematics.animator.isPlaying, recorder.isRecording)) break
+                    }
+                    if (landed) delay((ResultFilm.HOLD_SECONDS * MILLIS_PER_SECOND).toLong())
+                    val take = if (landed && recorder.isRecording) recorder.stopRecording() else null
+                    if (take != null && take.file == file && !take.reachedMaxDuration) {
+                        shared = shareCapture(context, file, VIDEO_MIME)
+                    }
+                    if (!shared) Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
+                } finally {
+                    if (recorder.isRecording) recorder.stopRecording()
+                    if (!shared) file.delete()
+                    filming = false
+                }
+            }
             SceneView(
                 modifier = Modifier.matchParentSize(),
                 engine = engine,
@@ -927,11 +1043,14 @@ internal fun RerunModelScreen(
                 autoCenterContent = false,
                 environment = environment,
                 cameraManipulator = cinematics.manipulator,
+                surfaceMirrorer = recorder.surfaceMirrorer,
                 onFrame = {
                     val framed = home.value() ?: return@SceneView
                     // The reveal starts on the frame the model is drawn on its framing, and the
                     // view is let to be seen on its first frame, not the still one before it.
-                    if (cinematics.frameDrawn(opening, framed, ready = instance != null)) shown = true
+                    // The wire is read first, so the reveal starts with it, not a frame after.
+                    val ready = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
+                    if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
                     if (touring != cinematics.touring) touring = cinematics.touring
                     CameraRig.eye(orbit.pose).let { eye ->
                         facing.look(rescan?.measure, eye.x, eye.z)
@@ -940,7 +1059,18 @@ internal fun RerunModelScreen(
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
-                instance?.let { ModelNode(modelInstance = it, autoAnimate = false) }
+                // Revealed (ModelReveal): its wire sweeps up, then it rises into it as the camera flies in.
+                instance?.let {
+                    RevealedModel(
+                        instance = it,
+                        build = (wireBuild as? RevealWireBuild.Done)?.takeIf { model === revealOf },
+                        // Read here, in the scene, so only the scene recomposes as the reveal plays.
+                        elapsedMs = revealClock.value,
+                        color = chrome.accent,
+                        engine = engine,
+                        materialLoader = materialLoader,
+                    )
+                }
                 ground?.let {
                     // The replay's grid round the slab (QA 2026-10-22), its lines sized for the
                     // camera the result opens on, bucketed so a reframe rarely rebuilds them.
@@ -1238,9 +1368,30 @@ private fun ModelHint(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun ScanTourPill(touring: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    ResultPill(
+        icon = if (touring) Icons.Rounded.Stop else Icons.Rounded._360,
+        text = stringResource(if (touring) R.string.scan_result_tour_stop else R.string.scan_result_tour),
+        label = stringResource(R.string.scan_result_tour_label),
+        enabled = enabled,
+        onClick = onClick,
+        tag = RERUN_MODEL_TOUR_TAG,
+        modifier = modifier,
+    )
+}
+
+/** A pill in the stage's chrome over the model: the tour's, the film's. */
+@Composable
+private fun ResultPill(
+    icon: ImageVector,
+    text: String,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    tag: String,
+    modifier: Modifier = Modifier,
+) {
     val chrome = LocalStageChrome.current
     val shape = RoundedCornerShape(SceneViewTokens.Radius.full)
-    val label = stringResource(R.string.scan_result_tour_label)
     Row(
         modifier = modifier
             .heightIn(min = SceneViewTokens.Layout.touchTarget)
@@ -1249,21 +1400,17 @@ private fun ScanTourPill(touring: Boolean, enabled: Boolean, onClick: () -> Unit
             .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
             .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick)
             .padding(horizontal = Space.md, vertical = Space.sm)
-            .testTag(RERUN_MODEL_TOUR_TAG),
+            .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         Icon(
-            imageVector = if (touring) Icons.Rounded.Stop else Icons.Rounded._360,
+            imageVector = icon,
             contentDescription = null,
             tint = chrome.onCard,
             modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
         )
-        Text(
-            text = stringResource(if (touring) R.string.scan_result_tour_stop else R.string.scan_result_tour),
-            style = SceneViewTokens.Type.caption,
-            color = chrome.onCard,
-        )
+        Text(text = text, style = SceneViewTokens.Type.caption, color = chrome.onCard)
     }
 }
 
@@ -1314,6 +1461,8 @@ internal const val RERUN_MODEL_CARD_TAG = "rerun_model_card"
 internal const val RERUN_MODEL_NAME_TAG = "rerun_model_name"
 internal const val RERUN_MODEL_HINT_TAG = "rerun_model_hint"
 internal const val RERUN_MODEL_TOUR_TAG = "rerun_model_tour"
+internal const val RERUN_MODEL_FILM_TAG = "rerun_model_film"
+private const val MILLIS_PER_SECOND = 1000f
 internal const val RERUN_MODEL_VEIL_TAG = "rerun_model_veil"
 internal const val RERUN_MODEL_FLOOR_TAG = "rerun_model_floor"
 
