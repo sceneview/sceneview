@@ -43,7 +43,7 @@ class RevealWire private constructor(
     }
 
     /** The edges as a line mesh for `DebugLayerNode` in `LINES` mode. */
-    fun toMesh(): DebugMesh = DebugMesh(0).also { mesh ->
+    fun toMesh(): DebugMesh = DebugMesh(vertexCount).also { mesh ->
         for (v in 0 until vertexCount) mesh.vertex(positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2])
         var i = 0
         while (i < indices.size) {
