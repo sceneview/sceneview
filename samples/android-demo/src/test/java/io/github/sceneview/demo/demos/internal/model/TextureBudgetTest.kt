@@ -5,6 +5,7 @@ import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
 import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
@@ -54,8 +55,8 @@ class TextureBudgetTest {
         // All the photos kept: a recording of at most MAX_PHOTOS of them.
         val photos = mixedPhotos(PHOTO_EVERY_KEPT)
         assertTrue(photos.photos.size <= PhotoTexturing.MAX_PHOTOS)
-        val base = measure(raw, photos, TextureBudget.BASE)
-        val large = measure(raw, photos, TextureBudget.LARGE)
+        val base = measure(raw, photos, TextureBudget.BASE, shot = "base")
+        val large = measure(raw, photos, TextureBudget.LARGE, shot = "large")
         println("texture budget, synthetic room (${photos.photos.size} photos, $sharpCount at ${SHARP_W}x$SHARP_H):")
         println("  base:  $base")
         println("  large: $large")
@@ -179,7 +180,7 @@ class TextureBudgetTest {
                 .format(texelsPerMetre, print, planks, seamRaw, seamFinal, atlas, glbBytes / KB, halvings, textureMs, totalMs, photosUsed)
     }
 
-    private fun measure(raw: RerunMesh, photos: ModelPhotos, budget: TextureBudget): Measure {
+    private fun measure(raw: RerunMesh, photos: ModelPhotos, budget: TextureBudget, shot: String? = null): Measure {
         val result = CleanModel.build(raw, photos, JvmAtlasEncoder, budget = budget)
         val stats = result.stats
         val texture = checkNotNull(stats.texture) { "the room's photos should texture it" }
@@ -219,11 +220,47 @@ class TextureBudgetTest {
                 (if (onPrint) print else planks).add(luma(shown), luma(truth))
             }
         }
+        if (shot != null) System.getenv(OUT)?.let { dir -> writePrint(File(dir, "print-$shot.png"), model.positions, uv, indices, image) }
         return Measure(
             texture.texelsPerMetre, print.r(), planks.r(), texture.seamRaw, texture.seamFinal,
             "${stats.atlasWidth}x${stats.atlasHeight}", stats.glbBytes, stats.atlasHalvings,
             stats.textureMs, stats.totalMs, texture.photosUsed,
         )
+    }
+
+    /**
+     * The print's wall as the model shows it, front on at [SHOT_M] a pixel: each textured face on
+     * the print sampled finely and splatted where it lies. Uncovered pixels stay grey.
+     */
+    private fun writePrint(file: File, p: FloatArray, uv: FloatArray, indices: IntArray, image: BakePhoto) {
+        val w = ((PRINT_X1 - PRINT_X0) / SHOT_M).toInt()
+        val h = ((PRINT_Y1 - PRINT_Y0) / SHOT_M).toInt()
+        val argb = IntArray(w * h) { SHOT_BACKGROUND }
+        val faces = FaceGeometry(p, indices)
+        for (f in 0 until faces.count) {
+            if (faces.centroids[f * 3 + 2] >= RerunSyntheticRoom.MIN.z + SHELL_M) continue
+            if (!TexturedSyntheticRoom.onPoster(faces.centroids[f * 3], faces.centroids[f * 3 + 1])) continue
+            for (i in 0..SHOT_GRID) for (j in 0..SHOT_GRID - i) {
+                val wt = floatArrayOf(i.toFloat() / SHOT_GRID, j.toFloat() / SHOT_GRID, (SHOT_GRID - i - j).toFloat() / SHOT_GRID)
+                var x = 0f
+                var y = 0f
+                var u = 0f
+                var v = 0f
+                for (k in 0 until 3) {
+                    val vi = indices[f * 3 + k]
+                    x += p[vi * 3] * wt[k]
+                    y += p[vi * 3 + 1] * wt[k]
+                    u += uv[vi * 2] * wt[k]
+                    v += uv[vi * 2 + 1] * wt[k]
+                }
+                val px = ((x - PRINT_X0) / SHOT_M).toInt()
+                val py = ((PRINT_Y1 - y) / SHOT_M).toInt()
+                if (px !in 0 until w || py !in 0 until h) continue
+                argb[py * w + px] = PhotoTexturing.sample(image, u * image.width - HALF, v * image.height - HALF)
+            }
+        }
+        file.parentFile?.mkdirs()
+        file.writeBytes(JvmImages.png(argb, w, h))
     }
 
     private class Correlation {
@@ -324,6 +361,18 @@ class TextureBudgetTest {
         const val SHARP_SCALE = 3
         const val PHOTO_EVERY = 3
         const val PHOTO_EVERY_KEPT = 5
+
+        /** The directory the print's before/after PNGs go to, when set. */
+        const val OUT = "SCENEVIEW_SCAN_OUT"
+        const val SHOT_M = 0.002f
+        const val SHOT_GRID = 40
+        const val SHOT_BACKGROUND = 0xFF404040.toInt()
+
+        // The print's frame on its wall (TexturedSyntheticRoom), a little margin around it.
+        const val PRINT_X0 = 0.15f
+        const val PRINT_X1 = 1.45f
+        const val PRINT_Y0 = 1.05f
+        const val PRINT_Y1 = 1.95f
         const val SHARP_W = TexturedSyntheticRoom.PHOTO_WIDTH * SHARP_SCALE
         const val SHARP_H = TexturedSyntheticRoom.PHOTO_HEIGHT * SHARP_SCALE
         const val SHARP_PHOTOS_RECORDED = 15
