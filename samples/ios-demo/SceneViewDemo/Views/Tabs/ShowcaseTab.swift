@@ -451,7 +451,7 @@ struct ShowcaseTab: View {
                     // opened from it, which is why both carry a
                     // `matchedTransitionSource` (`transitionSourceId`: the
                     // scene id, or `featured-<id>` for a Featured row).
-                    .navigationTransition(.zoom(sourceID: transitionSourceId, in: cardNamespace))
+                    .zoomTransition(from: transitionSourceId, in: cardNamespace)
                     // The zoom transition brings the system's interactive
                     // dismissal with it: a pinch-in or a downward drag anywhere
                     // on the cover shrinks it back toward its card. On a 3D
