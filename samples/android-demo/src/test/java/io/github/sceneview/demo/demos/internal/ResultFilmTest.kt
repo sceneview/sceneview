@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.camera.CameraAnimator
 import io.github.sceneview.camera.CameraShot
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
@@ -31,7 +32,8 @@ class ResultFilmTest {
         assertEquals(720, video.maxShortEdge)
         assertEquals(ResultFilm.FPS, video.frameRate)
         assertTrue(video.maxDurationMillis > film.durationSeconds * 1000f)
-        assertTrue(video.maxDurationMillis < film.durationSeconds * 1000f + 2000f)
+        // A safety net only: the film plays in frame time, so it may run long on a slow device.
+        assertTrue(video.maxDurationMillis >= film.durationSeconds * 2000f)
     }
 
     @Test
@@ -76,6 +78,26 @@ class ResultFilmTest {
         }
     }
 
+    @Test
+    fun `at 15 fps the camera still lands on the plan, later than a wall-clock stop would allow`() {
+        val animator = CameraAnimator(film.shotAt(0f))
+        var landed = false
+        film.play(animator) { landed = true }
+        val frame = 1f / SLOW_FPS
+        var wall = 0f
+        var shot = animator.shot
+        while (!landed && wall < film.durationSeconds * 3f) {
+            shot = animator.advance(frame)
+            wall += frame
+        }
+        assertTrue("never landed", landed)
+        // Each step is capped at 50 ms, so at 15 fps the film runs late: a stop on the wall clock
+        // (the film's length after the start) would cut the crane before the plan.
+        assertTrue("landed at $wall s", wall + ResultFilm.HOLD_SECONDS > film.durationSeconds)
+        assertEquals(plan.elevationDegrees, shot.elevationDegrees, 1e-2f)
+        assertEquals(plan.distance, shot.distance, 1e-2f)
+    }
+
     private fun assertSame(expected: CameraShot, actual: CameraShot) {
         assertEquals(expected.target.x, actual.target.x, 1e-3f)
         assertEquals(expected.target.y, actual.target.y, 1e-3f)
@@ -88,5 +110,6 @@ class ResultFilmTest {
 
     private companion object {
         const val MAX_STEP_SHARE = 0.2f
+        const val SLOW_FPS = 15f
     }
 }

@@ -37,8 +37,8 @@ internal class ResultFilm private constructor(
 
     /**
      * What the clip is encoded at: 720p on its short edge (the view's own shape, so a phone held
-     * upright films upright), [FPS], and a hard stop a little after the film in case the caller's
-     * clock never gets to stop it.
+     * upright films upright), [FPS], and a hard stop at twice the film's length: only a safety
+     * net, since the camera moves in frame time, so a slow device stretches the film.
      */
     val video: VideoSettings
         get() = VideoSettings(
@@ -46,7 +46,7 @@ internal class ResultFilm private constructor(
             maxShortEdge = VIDEO_SHORT_EDGE,
             frameRate = FPS,
             bitRate = VIDEO_BIT_RATE,
-            maxDurationMillis = ceil(durationSeconds * MILLIS).toLong() + STOP_MARGIN_MILLIS,
+            maxDurationMillis = ceil(durationSeconds * MILLIS * STOP_FACTOR).toLong(),
         )
 
     /** The camera [seconds] into the film; past its end, the plan. */
@@ -58,8 +58,9 @@ internal class ResultFilm private constructor(
 
     /**
      * Plays the film on [animator] from its first frame; [onLanded] once the crane is on the plan.
-     * The hold that follows is the animator at rest on the plan: the caller stops the recording
-     * [durationSeconds] after it started, so the clip ends on a still frame of the plan.
+     * The animator moves in frame time (each step capped), not on the wall clock, so the caller
+     * waits for [onLanded], then holds [HOLD_SECONDS] on the plan before it stops the recording:
+     * the clip ends on a still frame of the plan however slowly the frames came.
      */
     fun play(animator: CameraAnimator, onLanded: () -> Unit = {}) {
         animator.play(reveal, onFinished = {
@@ -124,7 +125,7 @@ internal class ResultFilm private constructor(
         private const val VIDEO_SHORT_EDGE = 720
         private const val VIDEO_BIT_RATE = 8_000_000
         private const val MILLIS = 1000f
-        private const val STOP_MARGIN_MILLIS = 1_000L
+        private const val STOP_FACTOR = 2f
         private const val HALF_TURN = 180f
         private const val FULL_TURN = 360f
     }

@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -153,9 +154,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 
 /*
  * The 3D Scan's result: at the end of a scan, the space as one meshed, coloured 3D model — its raw
@@ -719,10 +724,6 @@ internal fun RerunModelScreen(
         model?.glbBuffer()?.let { buffer -> runCatching { modelLoader.createModelInstance(buffer) }.getOrNull() }
     }
     DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
-    // The reveal's wire (ModelReveal): of the model the result opens on only. A finished model
-    // that takes a raw surface's place later is not revealed again, so needs none.
-    val revealOf = model?.takeIf { it === framedBy }
-    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0)
     // The ground it stands on and the floor it missed (#4719), read off the model's own vertices
     // once the model is settled, never beside a big scan's finish ([groundSource]). Until the next
     // settles, the last one stays.
@@ -750,12 +751,21 @@ internal fun RerunModelScreen(
     var plan by remember(framedBy) { mutableStateOf(false) }
     var touring by remember(framedBy) { mutableStateOf(false) }
     var shown by remember(framedBy) { mutableStateOf(false) }
-    var hintVisible by remember(framedBy) { mutableStateOf(true) }
+    val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
     // The film (ResultFilm): each take plays the reveal again, one turn and the plan, recorded
     // off the scene's own surface — the chrome is not in it — then offered to the share sheet.
     val recorder = rememberDemoSceneRecorder()
     var filmTake by remember(framedBy) { mutableIntStateOf(0) }
     var filming by remember(framedBy) { mutableStateOf(false) }
+    // A new take of the film replays the reveal from its first frame.
+    val revealClock = rememberRevealClock(key = framedBy to filmTake, started = shown, animate = animateReveal)
+    val revealing by remember(revealClock) { derivedStateOf { revealClock.value < ModelReveal.TOTAL_MS } }
+    // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
+    // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
+    // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
+    val revealOf = model?.takeIf { ModelReveal.buildsWire(settled, opensOn = it === framedBy, animate = animateReveal) }
+    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = revealing)
+    var hintVisible by remember(framedBy) { mutableStateOf(true) }
     LaunchedEffect(shown, hintStays) {
         if (shown && !hintStays) {
             delay(HINT_MS)
@@ -807,7 +817,7 @@ internal fun RerunModelScreen(
                 if (floor != null && covered != null) FloorLegend(covered)
                 ScanTourPill(
                     touring = touring,
-                    enabled = tourReady,
+                    enabled = tourReady && !filming,
                     onClick = { cinematics.request(ScanResultCinematics.Request.ToggleTour) },
                     modifier = Modifier
                         .alpha(if (tourReady) 1f else 0f)
@@ -849,7 +859,8 @@ internal fun RerunModelScreen(
                     plan = false
                     cinematics.request(ScanResultCinematics.Request.Recenter)
                 },
-                enabled = instance != null,
+                // Not while filming: a camera move would replace the film in the clip.
+                enabled = instance != null && !filming,
                 selected = !plan,
             ),
             DockItem(
@@ -860,7 +871,7 @@ internal fun RerunModelScreen(
                     plan = true
                     cinematics.request(ScanResultCinematics.Request.Recenter)
                 },
-                enabled = instance != null,
+                enabled = instance != null && !filming,
                 selected = plan,
             ),
             onReplay?.let {
@@ -937,33 +948,44 @@ internal fun RerunModelScreen(
                 (if (plan) planFraming else framing)?.home(RerunResultView.AZIMUTH, aspect, area)
             }
             SideEffect { home.value()?.let { opening.aim(orbit, it) } }
-            val revealClock = rememberRevealClock(
-                // A new take of the film replays the reveal from its first frame.
-                key = framedBy to filmTake,
-                started = shown,
-                animate = LocalMotionEnabled.current || DemoSettings.qaMotion,
-            )
             val context = LocalContext.current
             LaunchedEffect(filmTake) {
                 if (filmTake == 0) return@LaunchedEffect
                 val from = framing?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
                 val to = planFraming?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
                 val film = if (from != null && to != null) ResultFilm.of(from.toShot(), to.toShot()) else null
-                if (to == null || film == null || !recorder.startRecording(settings = film.video)) {
+                // Its own file, rewritten each take, in the share sheet's cache folder: only this
+                // take, complete, is ever shared, and nothing piles up in the captures.
+                val file = File(context.cacheDir, "$RERUN_SHARE_DIR/film/scan_film.mp4")
+                file.parentFile?.mkdirs()
+                file.delete()
+                if (to == null || film == null || !recorder.startRecording(file = file, settings = film.video)) {
                     filming = false
                     return@LaunchedEffect
                 }
+                var shared = false
                 try {
                     // It lands on the plan: the orbit camera waits there, so when the film ends
                     // the camera the user takes over is the plan, with no jump.
                     plan = true
                     cinematics.orbit.recenter()
                     cinematics.orbit.snapTo(to)
-                    film.play(cinematics.animator)
-                    delay((film.durationSeconds * MILLIS_PER_SECOND).toLong())
-                    (recorder.stopRecording() ?: recorder.lastRecording)?.let { shareCapture(context, it.file, VIDEO_MIME) }
+                    // The camera moves in frame time (each step capped), not on the wall clock:
+                    // wait for it to land on the plan, then hold, however slowly frames come.
+                    val landed = withTimeoutOrNull(film.video.maxDurationMillis) {
+                        suspendCancellableCoroutine { landing ->
+                            film.play(cinematics.animator, onLanded = { if (landing.isActive) landing.resume(Unit) })
+                        }
+                    } != null
+                    if (landed) delay((ResultFilm.HOLD_SECONDS * MILLIS_PER_SECOND).toLong())
+                    // Stopped already (the app left the foreground) or cut short: not shared.
+                    val take = if (landed && recorder.isRecording) recorder.stopRecording() else null
+                    if (take != null && take.file == file && !take.reachedMaxDuration) {
+                        shared = shareCapture(context, file, VIDEO_MIME)
+                    }
                 } finally {
                     if (recorder.isRecording) recorder.stopRecording()
+                    if (!shared) file.delete()
                     filming = false
                 }
             }
