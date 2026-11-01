@@ -1,3 +1,7 @@
+## 4.65.0
+
+- Version alignment with SceneView v4.65.0; see the [v4.65.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.65.0). No breaking Flutter API change.
+
 ## 4.64.0
 
 - Version alignment with SceneView v4.64.0; see the [v4.64.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.64.0). No breaking Flutter API change.

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## v4.65.0 — 2026-11-01
+
+### Added
+
+- **glTF and GLB on iOS, macOS and visionOS ([#4889](https://github.com/sceneview/sceneview/pull/4889)).** `ModelNode.load("models/fox.glb")` now opens glTF 2.0 with SceneViewSwift's own importer, with no third-party dependency. It works through the same call as USDZ, with the URL and remote variants too. The importer reads GLB, `.gltf` with its `.bin` and images next to it, and `data:` URIs. It brings in the node hierarchy, metallic-roughness materials with their textures, alpha modes, unlit, texture transforms, skins and animations; the animations play through the existing `playAnimation(at:)` and `playAllAnimations()`. Parsing and image decoding run off the main thread. Morph targets show the base shape. A file that requires Draco, meshopt or any other extension SceneView does not implement throws `UnsupportedModelExtensionError`, which names the extension. The iOS demo opens `.glb` and `.gltf` files shared to it. **Source break:** `ModelFormat` gains `.gltf` and `.glb`, so a `switch` over `ModelFormat` without a `default:` must add them, as with `.stl`, `.obj`, `.ply` and `.3mf` earlier in 4.x. `playAllAnimations()` now plays a model's clips one after the other instead of starting them all at once, where they overwrote each other.
+- **3D Scan result opens with a reconstruction reveal ([#4890](https://github.com/sceneview/sceneview/pull/4890)).** In SceneView Demo, the finished model's own wireframe sweeps up from the floor in the accent colour, the model rises into it, then the wire fades, while the camera's opening shot plays. The reveal is real line geometry plus a scale about the floor, so no material changes. It is skipped under reduced motion and above 1.2 M triangles. `ModelReveal`/`RevealWire` are self-contained so another viewer can reuse them.
+- **Scan result Photo preview from surfel splats ([#4892](https://github.com/sceneview/sceneview/pull/4892)).** In QA mode, the scan result offers Photo / Model / Plan: Photo draws the scan's fused surfels as flat gaussian splats through `SplatNode` (sized from the surfel, thin along its normal, opacity from depth confidence, capped at one 65,535-splat draw batch, ceiling and near walls hidden from the orbit like the model's), while measures stay on the mesh.
+- **3D Scan result film ([#4893](https://github.com/sceneview/sceneview/pull/4893)).** In SceneView Demo, a Film pill on the scan result plays one 9.8 s camera move while `SceneRecorder` records the scene: the reveal, one turn round the scan, then the dimensioned floor plan, held. The clip takes the view's shape (vertical on a phone held upright) and goes to the share sheet. `ResultFilm` is pure and pinned frame by frame.
+- **Capture watermark legible on light scenes.** The "Made with SceneView" label on demo photos and videos now sits on a small `chrome-scrim` pill; white alone disappeared on the light theme's near-white grid.
+
+### Changed
+
+- **iOS demo: zoom transitions, collapsing titles and Show more ([#4887](https://github.com/sceneview/sceneview/pull/4887)).** Demo cards zoom into the demo they open, and zoom back, except under Reduce Motion. Explore and the model viewers now push plainly: as zoom destinations, a pull-to-refresh or a pinch on the stage closed them. Explore, AR, About, Credits and What's new get large titles that collapse into the bar. Long What's new categories open on their first three entries, with an animated "Show N more" like Android (#4883).
+- iOS demo: the App Store iPhone screenshots are re-captured from the current Home and demos, and the catalogue slot reads "Nearly forty demos".
+- Android demo: a finished 3D scan keeps its sharp photos whole and packs a 4096 atlas on phones with 256 MB of heap or more, so walls, frames and floors read sharper up close; smaller phones keep the previous budget, and running out of memory falls back to it.
+
+### Fixed
+
+- **The macOS build of the iOS demo compiles again ([#4895](https://github.com/sceneview/sceneview/pull/4895)).** Scene capture (Take photo / Record video) is iOS-only in SceneViewSwift, so the demo now gates it behind `#if os(iOS)`; on macOS the settings sheet keeps the screen-record rows. Fixes the failed Mac App Store upload of v4.64.0.
+
 ## v4.64.0 — 2026-10-31
 
 ### Added
