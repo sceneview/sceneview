@@ -68,6 +68,44 @@ class RevealWireTest {
     }
 
     @Test
+    fun `a model under the origin sweeps the same, the search keyed as the sort is`() {
+        // The cube lowered to y -2..-1: heights above the floor, not absolute ones, are searched.
+        val low = FloatArray(cubePositions.size) { i -> if (i % 3 == 1) cubePositions[i] - 2f else cubePositions[i] }
+        val wire = RevealWire.of(low, 8, cubeIndices)!!
+        assertEquals(-2f, wire.minY, 0f)
+        assertEquals(13 * 2, wire.indicesBelow(0f))
+        assertEquals(13 * 2, wire.indicesBelow(0.5f))
+        assertEquals(18 * 2, wire.indicesBelow(1f))
+    }
+
+    @Test
+    fun `a dense model is capped to a wire that reads as lines, spread over its height`() {
+        // A 300 x 300 grid of quads standing up (x, y): 180k triangles, ~270k unique edges.
+        val n = 300
+        val positions = FloatArray((n + 1) * (n + 1) * 3)
+        for (r in 0..n) for (c in 0..n) {
+            val v = r * (n + 1) + c
+            positions[v * 3] = c.toFloat() / n
+            positions[v * 3 + 1] = r.toFloat() / n
+        }
+        val indices = IntArray(n * n * 6)
+        var k = 0
+        for (r in 0 until n) for (c in 0 until n) {
+            val a = r * (n + 1) + c
+            val b = a + 1
+            val d = a + n + 1
+            intArrayOf(a, b, d, b, d + 1, d).forEach { indices[k++] = it }
+        }
+        val wire = RevealWire.of(positions, (n + 1) * (n + 1), indices)!!
+        assertTrue("capped: ${wire.edgeCount}", wire.edgeCount <= RevealWire.MAX_EDGES)
+        assertTrue("not starved: ${wire.edgeCount}", wire.edgeCount > RevealWire.MAX_EDGES / 2)
+        // Half the height sweeps about half the kept edges: the cap thins evenly, not from the top.
+        val half = wire.indicesBelow(0.5f) / 2
+        assertTrue("half way: $half of ${wire.edgeCount}", half in (wire.edgeCount * 4 / 10)..(wire.edgeCount * 6 / 10))
+        assertEquals(wire.edgeCount * 2, wire.indicesBelow(1f))
+    }
+
+    @Test
     fun `the line mesh holds the model's vertices and two indices an edge`() {
         val wire = RevealWire.of(cubePositions, 8, cubeIndices)!!
         val mesh = wire.toMesh()

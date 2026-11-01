@@ -942,7 +942,7 @@ internal fun RerunModelScreen(
                 instance?.let {
                     RevealedModel(
                         instance = it,
-                        wire = (wireBuild as? RevealWireBuild.Done)?.wire?.takeIf { model === revealOf },
+                        build = (wireBuild as? RevealWireBuild.Done)?.takeIf { model === revealOf },
                         // Read here, in the scene, so only the scene recomposes as the reveal plays.
                         elapsedMs = revealClock.value,
                         color = chrome.accent,
