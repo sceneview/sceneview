@@ -37,9 +37,12 @@ import kotlin.math.sqrt
 internal object SurfelSplats {
     /**
      * The most splats the preview draws. A phone fills every pixel of a splat several times over;
-     * a whole home at [DenseFusion.MAX_POINTS] would draw twice this for little more detail.
+     * a whole home at [DenseFusion.MAX_POINTS] would draw several times this for little more detail.
+     * It is also one `SplatNode` draw batch ([io.github.sceneview.splat.SplatBuffers.MAX_INSTANCES_PER_BATCH]):
+     * past it the node splits the cloud into batches, and on emulator-5554 a 250k cloud drawn in four
+     * batches showed straight-edged gaps along view-depth slices that a single batch does not.
      */
-    const val MAX_SPLATS = 250_000
+    const val MAX_SPLATS = 65_535
 
     /** A level-0 splat's standard deviation on its two tangent axes, in voxels. */
     const val SIGMA_VOXELS = 0.6f
