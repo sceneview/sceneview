@@ -1,3 +1,0 @@
-<!-- category: Added -->
-- **3D Scan result film ([#4893](https://github.com/sceneview/sceneview/pull/4893)).** In SceneView Demo, a Film pill on the scan result plays one 9.8 s camera move while `SceneRecorder` records the scene: the reveal, one turn round the scan, then the dimensioned floor plan, held. The clip takes the view's shape (vertical on a phone held upright) and goes to the share sheet. `ResultFilm` is pure and pinned frame by frame.
-- **Capture watermark legible on light scenes.** The "Made with SceneView" label on demo photos and videos now sits on a small `chrome-scrim` pill; white alone disappeared on the light theme's near-white grid.

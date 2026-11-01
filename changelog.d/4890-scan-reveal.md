@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **3D Scan result opens with a reconstruction reveal ([#4890](https://github.com/sceneview/sceneview/pull/4890)).** In SceneView Demo, the finished model's own wireframe sweeps up from the floor in the accent colour, the model rises into it, then the wire fades, while the camera's opening shot plays. The reveal is real line geometry plus a scale about the floor, so no material changes. It is skipped under reduced motion and above 1.2 M triangles. `ModelReveal`/`RevealWire` are self-contained so another viewer can reuse them.
