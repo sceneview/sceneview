@@ -4,6 +4,7 @@ import simd
 
 #if os(iOS) || os(macOS) || os(visionOS)
 import RealityKit
+import ImageIO
 #endif
 
 /// The in-house glTF 2.0 importer: containers, accessors, hierarchy, materials,
@@ -365,6 +366,38 @@ final class GLTFTests: XCTestCase {
         let material = try XCTUnwrap(model.model?.materials.first as? PhysicallyBasedMaterial)
         XCTAssertNotNil(material.baseColor.texture, "the embedded PNG becomes the base colour texture")
         XCTAssertEqual(material.faceCulling, .none, "doubleSided")
+    }
+
+    /// RealityKit lights the surface with `emissiveColor.color` instead of multiplying it
+    /// into the emissive texture, so DamagedHelmet's factor [1, 1, 1] used to wash the whole
+    /// helmet out to white. The factor must leave the colour black and scale the map.
+    @MainActor
+    func testEmissiveFactorScalesTheMapInsteadOfLightingTheWholeSurface() async throws {
+        let url = try write(GLTFBuilder.emissiveQuad().glb(), as: "glow.glb")
+        let node = try await ModelNode.load(contentsOf: url, enableCollision: false)
+        let model = try XCTUnwrap(node.entity.findEntity(named: "Quad") as? ModelEntity)
+        let material = try XCTUnwrap(model.model?.materials.first as? PhysicallyBasedMaterial)
+        XCTAssertNotNil(material.emissiveColor.texture, "the emissive map is kept")
+        let linear = try XCTUnwrap(CGColorSpace(name: CGColorSpace.linearSRGB))
+        let color = try XCTUnwrap(material.emissiveColor.color.cgColor.converted(to: linear, intent: .defaultIntent, options: nil))
+        for c in try XCTUnwrap(color.components).prefix(3) {
+            XCTAssertEqual(Double(c), 0, accuracy: 1e-3, "a non-black colour would glow over the black texels")
+        }
+        XCTAssertEqual(material.emissiveIntensity, 1, accuracy: 1e-6)
+
+        // Factor × strength, and a coloured factor baked into the texels in linear light.
+        let plan = try XCTUnwrap(GLTFEntityBuilder.emissive(factor: [0.5, 0.25, 0], strength: 2, hasTexture: true))
+        XCTAssertEqual(plan.color, .zero)
+        XCTAssertEqual(plan.intensity, 1, accuracy: 1e-6)
+        XCTAssertEqual(plan.textureTint, [1, 0.5, 0])
+        XCTAssertEqual(GLTFEntityBuilder.emissive(factor: [0.2, 0.2, 0.2], strength: 1, hasTexture: false),
+                       .init(color: [0.2, 0.2, 0.2], intensity: 1, textureTint: nil), "no map: the factor is the colour")
+        XCTAssertNil(GLTFEntityBuilder.emissive(factor: .zero, strength: 1, hasTexture: true))
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(GLTFBuilder.checkerPNG() as CFData, nil))
+        let checker = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let tinted = try XCTUnwrap(GLTFEntityBuilder.tinted(checker, by: [0.5, 1, 0]))
+        let bytes = try XCTUnwrap(tinted.dataProvider?.data as Data?)
+        XCTAssertEqual(Array(bytes[12..<15]), [188, 255, 0], "white × (0.5, 1, 0) in linear light")
     }
 
     @MainActor

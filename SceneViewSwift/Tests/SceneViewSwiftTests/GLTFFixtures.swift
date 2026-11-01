@@ -143,6 +143,19 @@ struct GLTFBuilder {
         return b
     }
 
+    /// The textured quad with its PNG also bound as the emissive map, scaled by `factor` —
+    /// DamagedHelmet's layout: factor [1, 1, 1] and an emissive texture.
+    static func emissiveQuad(factor: [Float] = [1, 1, 1]) -> GLTFBuilder {
+        var b = texturedQuad()
+        b.json["materials"] = [[
+            "name": "Glow",
+            "pbrMetallicRoughness": ["baseColorTexture": ["index": 0], "metallicFactor": 0, "roughnessFactor": 0.5],
+            "emissiveTexture": ["index": 0],
+            "emissiveFactor": factor,
+        ]]
+        return b
+    }
+
     /// A parent translated by (0, 1, 0) and scaled 2×, with a triangle child translated
     /// by (1, 0, 0) — so the child's world origin is (2, 1, 0).
     static func twoNodeHierarchy() -> GLTFBuilder {

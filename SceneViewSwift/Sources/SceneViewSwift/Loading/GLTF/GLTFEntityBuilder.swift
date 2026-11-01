@@ -306,13 +306,20 @@ final class GLTFEntityBuilder {
         if let occlusion = await texture(m.occlusionTexture, .red) {
             pbr.ambientOcclusion = .init(texture: occlusion)
         }
-        // glTF emission is factor × texture, so a zero factor switches it off.
-        if simd_reduce_max(m.emissiveFactor) > 0 {
-            pbr.emissiveColor = .init(
-                color: Self.color(SIMD4(m.emissiveFactor, 1)),
-                texture: await texture(m.emissiveTexture, .color)
-            )
-            pbr.emissiveIntensity = m.emissiveStrength
+        // glTF emission is emissiveFactor × emissiveTexture × emissive strength. RealityKit
+        // does not multiply EmissiveColor's colour into its texture — a white colour lights
+        // the whole surface whatever the map says, which washed DamagedHelmet out to white —
+        // so `emissive(factor:strength:hasTexture:)` moves the factor out of the colour.
+        let emissiveRef = m.emissiveTexture.flatMap {
+            scene.images[GLTFImageKey(image: $0.image, variant: .color)] == nil ? nil : $0
+        }
+        if let plan = Self.emissive(
+            factor: m.emissiveFactor, strength: m.emissiveStrength, hasTexture: emissiveRef != nil
+        ) {
+            var map: PhysicallyBasedMaterial.Texture?
+            if let emissiveRef { map = await emissiveTexture(emissiveRef, tint: plan.textureTint) }
+            pbr.emissiveColor = .init(color: Self.color(SIMD4(plan.color, 1)), texture: map)
+            pbr.emissiveIntensity = plan.intensity
         }
         switch m.alphaMode {
         case .opaque:
@@ -348,6 +355,74 @@ final class GLTFEntityBuilder {
             resource = created
         }
         return PhysicallyBasedMaterial.Texture(resource, sampler: Self.sampler(scene.samplers[safe: ref.sampler ?? -1]))
+    }
+
+    /// How a glTF emission maps onto RealityKit's `emissiveColor` + `emissiveIntensity`.
+    struct Emissive: Equatable {
+        /// Linear colour. Black whenever a texture carries the emission: RealityKit does
+        /// not use this colour as a multiplier of the texture, it lights the surface with it.
+        var color: SIMD3<Float>
+        /// Scales colour and texture alike.
+        var intensity: Float
+        /// Per-channel multiplier baked into the texels for a non-grey factor; `nil` when
+        /// the factor's magnitude alone, carried by `intensity`, is enough.
+        var textureTint: SIMD3<Float>?
+    }
+
+    /// glTF emission `emissiveFactor × emissiveTexture × strength` in the terms RealityKit
+    /// renders: with a texture the colour is black and the factor's peak goes into the
+    /// intensity; without one the factor is the colour. `nil` when the emission is off.
+    static func emissive(factor: SIMD3<Float>, strength: Float, hasTexture: Bool) -> Emissive? {
+        let peak = simd_reduce_max(factor)
+        guard peak.isFinite, strength.isFinite, peak > 0, strength > 0 else { return nil }
+        guard hasTexture else { return Emissive(color: factor, intensity: strength, textureTint: nil) }
+        let ratio = simd_clamp(factor / peak, SIMD3<Float>(repeating: 0), SIMD3<Float>(repeating: 1))
+        return Emissive(
+            color: .zero, intensity: strength * peak,
+            textureTint: simd_reduce_min(ratio) < 1 ? ratio : nil
+        )
+    }
+
+    private func emissiveTexture(_ ref: GLTFTextureRef, tint: SIMD3<Float>?) async -> PhysicallyBasedMaterial.Texture? {
+        guard let tint,
+              let image = scene.images[GLTFImageKey(image: ref.image, variant: .color)],
+              let tinted = Self.tinted(image, by: tint),
+              let resource = try? await TextureResource(image: tinted, options: .init(semantic: .color))
+        else { return await texture(ref, .color) }
+        return PhysicallyBasedMaterial.Texture(resource, sampler: Self.sampler(scene.samplers[safe: ref.sampler ?? -1]))
+    }
+
+    /// An sRGB image multiplied per channel by a linear `tint` (each in 0...1), in linear
+    /// light as glTF's factor × texture is.
+    static func tinted(_ image: CGImage, by tint: SIMD3<Float>) -> CGImage? {
+        let width = image.width, height = image.height
+        guard width > 0, height > 0, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let info = CGImageAlphaInfo.noneSkipLast.rawValue
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn: Bool = rgba.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: space, bitmapInfo: info
+            ) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return nil }
+        func toLinear(_ v: Float) -> Float { v <= 0.04045 ? v / 12.92 : powf((v + 0.055) / 1.055, 2.4) }
+        func toSRGB(_ v: Float) -> Float { v <= 0.0031308 ? v * 12.92 : 1.055 * powf(v, 1 / 2.4) - 0.055 }
+        let luts: [[UInt8]] = (0..<3).map { c in
+            let t = min(max(tint[c], 0), 1)
+            return (0..<256).map { UInt8((toSRGB(toLinear(Float($0) / 255) * t) * 255).rounded()) }
+        }
+        for i in 0..<(width * height) {
+            for c in 0..<3 { rgba[i * 4 + c] = luts[c][Int(rgba[i * 4 + c])] }
+        }
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData) else { return nil }
+        return CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+            space: space, bitmapInfo: CGBitmapInfo(rawValue: info),
+            provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
+        )
     }
 
     /// A Metal sampler from a glTF sampler — repeat and trilinear by default, as the
