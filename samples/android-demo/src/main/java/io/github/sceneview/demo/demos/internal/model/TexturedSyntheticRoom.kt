@@ -38,14 +38,24 @@ internal object TexturedSyntheticRoom {
     /**
      * The walk's key photos: every [every]th of its poses, ray-cast upright through [PHOTO_LENS],
      * each with its own exposure — up to [exposureSpread] brighter or darker, as a phone's auto
-     * exposure drifts across a room — so a texture has seams to level.
+     * exposure drifts across a room — so a texture has seams to level. With [sharpEvery], every
+     * [sharpEvery]th photo is [sharpScale] times as wide and tall, through the same lens: the
+     * recorder's few sharp photos among its small ones (`ScanPhotoPolicy`).
      */
-    fun photos(every: Int = PHOTO_EVERY, exposureSpread: Float = EXPOSURE_SPREAD): List<BakePhoto> =
+    fun photos(
+        every: Int = PHOTO_EVERY,
+        exposureSpread: Float = EXPOSURE_SPREAD,
+        sharpEvery: Int = 0,
+        sharpScale: Int = 1,
+    ): List<BakePhoto> =
         RerunSyntheticRoom.poses().filterIndexed { i, _ -> i % every == 0 }.mapIndexed { i, pose ->
+            val s = if (sharpEvery > 0 && i % sharpEvery == 0) sharpScale else 1
+            val width = PHOTO_WIDTH * s
+            val height = PHOTO_HEIGHT * s
             // Pixel centres at half-pixels: the mapping a photo is projected with (PlaneBake).
             val frame = scene.render(
-                pose, PHOTO_WIDTH, PHOTO_HEIGHT, PHOTO_FOCAL, PHOTO_FOCAL,
-                PHOTO_WIDTH / 2f - HALF_PIXEL, PHOTO_HEIGHT / 2f - HALF_PIXEL,
+                pose, width, height, PHOTO_FOCAL * s, PHOTO_FOCAL * s,
+                width / 2f - HALF_PIXEL, height / 2f - HALF_PIXEL,
             )
             val gain = 1f + exposureSpread * sin(i * EXPOSURE_STEP)
             val argb = IntArray(frame.colors.size) { p ->
@@ -55,7 +65,7 @@ internal object TexturedSyntheticRoom {
                 val b = ((c and 0xFF) * gain).toInt().coerceIn(0, 255)
                 (0xFF shl 24) or (r shl 16) or (g shl 8) or b
             }
-            BakePhoto(pose, PHOTO_WIDTH, PHOTO_HEIGHT, argb)
+            BakePhoto(pose, width, height, argb)
         }
 
     /** Whether ([x], [y]) on the sage wall lies on the print, its frame included. */

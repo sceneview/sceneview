@@ -79,10 +79,16 @@ internal object CleanModelCorpus {
 
         // As the result screen finishes it: a big scan handed over and let go, its .glb written first.
         val photos = ModelPhotos.of(capture.trace, capture.manifest.lens) { path -> decode(capture, path) }
+        // The heap's own texture budget, or the one SCENEVIEW_TEXTURE_BUDGET (base, large) names: one corpus run each compares them.
+        val budget = when (System.getenv(TEXTURE_BUDGET)?.lowercase()) {
+            "base" -> TextureBudget.BASE
+            "large" -> TextureBudget.LARGE
+            else -> CleanModel.heapBudget()
+        }
         val result = if (rawTriangles >= RAW_FIRST_TRIANGLES) {
-            CleanModel.build(raw, before, photos, JvmAtlasEncoder, progress = progress)
+            CleanModel.build(raw, before, photos, JvmAtlasEncoder, budget = budget, progress = progress)
         } else {
-            CleanModel.build(raw.mesh, photos, JvmAtlasEncoder, rawGlb = before, progress = progress)
+            CleanModel.build(raw.mesh, photos, JvmAtlasEncoder, rawGlb = before, budget = budget, progress = progress)
         }
         val s = result.stats
         File(out, "after.glb").writeBytes(result.glb)
@@ -127,6 +133,10 @@ internal object CleanModelCorpus {
                     put("glb_guarded", s.glbGuarded)
                     put("atlas_halvings", s.atlasHalvings)
                     put("raw_kept", s.rawKept)
+                    put("heap_max_bytes", Runtime.getRuntime().maxMemory())
+                    put("texture_budget_photo_pixels", s.textureBudget.photoPixels)
+                    put("texture_budget_atlas", s.textureBudget.atlasSize)
+                    put("texture_budget_fell_back", s.textureBudgetFellBack)
                     put("out_of_memory_in", s.outOfMemoryIn?.name?.lowercase())
                     put("components", s.geometry.piecesOut)
                     put("atlas", if (s.atlasWidth > 0) "${s.atlasWidth}x${s.atlasHeight}" else "none")
@@ -245,6 +255,9 @@ internal object CleanModelCorpus {
 
     private val ORIGIN = DebugPose(0f, 0f, 0f)
     private const val THUMBNAIL_PX = 512
+
+    /** Environment: `base` or `large` to finish every scan within that [TextureBudget], not the heap's. */
+    const val TEXTURE_BUDGET = "SCENEVIEW_TEXTURE_BUDGET"
     private const val THUMBNAIL_FOV_DEGREES = 45.0
     private const val NANOS_PER_MS = 1_000_000L
 }

@@ -39,6 +39,10 @@ internal data class CleanModelStats(
     val simplifyMs: Long,
     val textureMs: Long,
     val writeMs: Long,
+    /** The [TextureBudget] the texture was made within: the heap's, or [TextureBudget.BASE] after a fallback. */
+    val textureBudget: TextureBudget = TextureBudget.BASE,
+    /** Whether texturing within the heap's larger budget ran out of memory and fell back to [TextureBudget.BASE]. */
+    val textureBudgetFellBack: Boolean = false,
 ) {
     val totalMs: Long get() = prepareMs + cleanMs + simplifyMs + textureMs + writeMs
 
@@ -85,6 +89,11 @@ internal class RawSurface(mesh: RerunMesh) {
  * for a caller that already wrote its `.glb`, passed as `rawGlb`, and is done with them. Handed
  * over as a [RawSurface], they are also let go once prepared.
  *
+ * The texture is made within the heap's [TextureBudget] ([heapBudget]): sharp photos kept whole
+ * and a 4096 atlas on a phone with the memory for it, the small budget elsewhere. Texturing
+ * within the larger budget that runs out of memory is done again within [TextureBudget.BASE]
+ * ([CleanModelStats.textureBudgetFellBack]) before the finish gives the raw surface back.
+ *
  * A scan meshed to more than [maxRawTriangles] for the heap would not finish in it: the caller
  * caps the extraction there.
  */
@@ -100,10 +109,13 @@ internal object CleanModel {
         targetTriangles: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
         consume: Boolean = false,
         rawGlb: ByteArray? = null,
+        budget: TextureBudget = heapBudget(),
         progress: (Float) -> Unit = {},
     ): CleanModelResult {
         require(!consume || rawGlb != null) { "a consumed raw surface needs its .glb written first" }
-        return finishOrRaw(RawSurface(raw), photos, encoder, targetTriangles, consume, progress) { rawGlb ?: RerunMeshGlb.write(raw) }
+        return finishOrRaw(RawSurface(raw), photos, encoder, targetTriangles, consume, budget, progress) {
+            rawGlb ?: RerunMeshGlb.write(raw)
+        }
     }
 
     /**
@@ -116,8 +128,12 @@ internal object CleanModel {
         photos: ModelPhotos?,
         encoder: AtlasEncoder?,
         targetTriangles: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
+        budget: TextureBudget = heapBudget(),
         progress: (Float) -> Unit = {},
-    ): CleanModelResult = finishOrRaw(raw, photos, encoder, targetTriangles, consume = true, progress) { rawGlb }
+    ): CleanModelResult = finishOrRaw(raw, photos, encoder, targetTriangles, consume = true, budget, progress) { rawGlb }
+
+    /** The [TextureBudget] this process's heap affords ([TextureBudget.forHeap]). */
+    fun heapBudget(): TextureBudget = TextureBudget.forHeap(Runtime.getRuntime().maxMemory())
 
     /**
      * The most raw triangles a scan may mesh to for its finish to fit in a heap of [heapBytes]
@@ -137,13 +153,14 @@ internal object CleanModel {
         encoder: AtlasEncoder?,
         targetTriangles: Int,
         consume: Boolean,
+        budget: TextureBudget,
         progress: (Float) -> Unit,
         rawGlb: () -> ByteArray,
     ): CleanModelResult {
         require(raw.triangleCount > 0) { "a model needs triangles" }
         val rawTriangles = raw.triangleCount
         val rawVertices = raw.vertexCount
-        val reached = Reached()
+        val reached = Reached(budget)
         // Out of memory, what the finish held goes with its frame: the raw surface's .glb fits again.
         val finished = runCatching { finish(raw, photos, encoder, targetTriangles, consume, reached, progress) }
         val failure = finished.exceptionOrNull()
@@ -180,7 +197,7 @@ internal object CleanModel {
         // reach: the photos texture what they saw, the vertex colours the rest. Photos that
         // failed to decode, wrong poses, a corner of the room seen — under [MIN_TEXTURED_SHARE],
         // the colours are simplified again, edges kept, as without photos.
-        val textures = if (textured) textures(shape, photos!!) { progress(BEFORE_TEXTURE + it * TEXTURE_SHARE) } else null
+        var textures = if (textured) textures(shape, photos!!, reached) { progress(BEFORE_TEXTURE + it * TEXTURE_SHARE) } else null
         val covered = textures?.covering != null
         var texture = textures?.covering
         var simplified = if (textured && !covered) {
@@ -190,9 +207,27 @@ internal object CleanModel {
         } else {
             shape
         }
-        var model: ModelMesh? = ModelAssembly.assemble(simplified, texture)
-        reached.lap(Stage.Write)
-        var glb = ModelGlb.write(checkNotNull(model), encoder)
+        var model: ModelMesh? = null
+        var glb = NO_BYTES
+        try {
+            model = ModelAssembly.assemble(simplified, texture)
+            reached.lap(Stage.Write)
+            glb = ModelGlb.write(model, encoder)
+        } catch (outOfMemory: OutOfMemoryError) {
+            // A texture within the heap's larger budget is the finish's largest allocation: out of
+            // memory with one, the model is textured again within the small budget, not given up.
+            if (texture == null || reached.budget == TextureBudget.BASE) throw outOfMemory
+            model = null
+            texture = null
+            textures = null
+            reached.fallBack()
+            reached.lap(Stage.Texture)
+            textures = textures(simplified, photos!!, reached) { progress(BEFORE_WRITE) }
+            texture = textures.covering
+            model = ModelAssembly.assemble(simplified, texture)
+            reached.lap(Stage.Write)
+            glb = ModelGlb.write(model, encoder)
+        }
         val guarded = glb.size > MAX_GLB_BYTES
         // Within the cap, the model gives up first what shows least. A textured one sheds faces
         // past its budget, down to [MIN_GUARD_TEXTURED_TRIANGLES]: its shape simplified again,
@@ -210,7 +245,7 @@ internal object CleanModel {
             glb = NO_BYTES
             simplified = simplify(clean, textured = true, target, ceiling = Float.POSITIVE_INFINITY) { progress(BEFORE_WRITE) }
             cut = simplified.triangleCount < before
-            texture = textures(simplified, photos!!) { progress(BEFORE_WRITE) }.covering
+            texture = textures(simplified, photos!!, reached) { progress(BEFORE_WRITE) }.covering
             model = ModelAssembly.assemble(simplified, texture)
             glb = ModelGlb.write(model, encoder)
         }
@@ -259,6 +294,8 @@ internal object CleanModel {
                 simplifyMs = reached.ms(Stage.Simplify),
                 textureMs = reached.ms(Stage.Texture),
                 writeMs = reached.ms(Stage.Write),
+                textureBudget = reached.budget,
+                textureBudgetFellBack = reached.fellBack,
             ),
         )
     }
@@ -278,8 +315,15 @@ internal object CleanModel {
      */
     private class Textures(val covering: PhotoTexture?, val share: Float?)
 
-    private fun textures(shape: WorkMesh, photos: ModelPhotos, progress: (Float) -> Unit): Textures {
-        val tried = PhotoTexturing.texture(shape, photos, progress)
+    private fun textures(shape: WorkMesh, photos: ModelPhotos, reached: Reached, progress: (Float) -> Unit): Textures {
+        val tried = try {
+            PhotoTexturing.texture(shape, photos, reached.budget, progress)
+        } catch (outOfMemory: OutOfMemoryError) {
+            // What the larger budget held went with the frame that ran out: the small one fits again.
+            if (reached.budget == TextureBudget.BASE) throw outOfMemory
+            reached.fallBack()
+            PhotoTexturing.texture(shape, photos, reached.budget, progress)
+        }
         val share = tried?.stats?.texturedShare
         return Textures(tried.takeIf { share != null && share >= MIN_TEXTURED_SHARE }, share)
     }
@@ -313,14 +357,28 @@ internal object CleanModel {
                 simplifyMs = reached.ms(Stage.Simplify),
                 textureMs = reached.ms(Stage.Texture),
                 writeMs = reached.ms(Stage.Write),
+                textureBudget = reached.budget,
+                textureBudgetFellBack = reached.fellBack,
             ),
         )
     }
 
     /** How far a finish got — its stage, what it measured so far, each stage's time — for when it runs out of memory. */
-    private class Reached {
+    private class Reached(budget: TextureBudget) {
         var stage = Stage.Prepare
             private set
+
+        /** The [TextureBudget] texturing works within: the heap's, until it runs out of memory. */
+        var budget = budget
+            private set
+        var fellBack = false
+            private set
+
+        /** Texturing ran out of memory within [budget]: [TextureBudget.BASE] from now on. */
+        fun fallBack() {
+            budget = TextureBudget.BASE
+            fellBack = true
+        }
         var cleanInputTriangles = 0
         var geometry: CleanGeometryStats? = null
         private val times = LongArray(Stage.entries.size)
