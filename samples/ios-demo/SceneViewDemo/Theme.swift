@@ -1081,6 +1081,18 @@ extension View {
         #endif
     }
 
+    /// Clears the navigation stack's own ground (`.containerBackground(.clear,
+    /// for: .navigation)`), so a sheet keeps its material behind the bar and
+    /// the list; a no-op on macOS, where the placement is unavailable.
+    @ViewBuilder
+    func navigationContainerBackgroundClear() -> some View {
+        #if os(macOS)
+        self
+        #else
+        self.containerBackground(.clear, for: .navigation)
+        #endif
+    }
+
     /// Marks this card as the source of an iOS 18 zoom transition
     /// (`.matchedTransitionSource(id:in:)`) when a namespace is given; the
     /// view is returned untouched without one, and on macOS.
