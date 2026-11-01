@@ -1,8 +1,10 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -83,6 +85,37 @@ class ResultLayerPickerTest {
         layers.unavailable = true
         rule.waitForIdle()
         assertFalse(layers.photoPicked)
+        // Picked again, it stays on the model: the pill never says Photo over the mesh.
+        rule.onNodeWithTag("result_layer_photo").performClick()
+        rule.waitForIdle()
+        assertFalse(layers.photoPicked)
+        rule.onNodeWithTag("result_layer_model").assertIsOn()
+    }
+
+    @Test
+    fun `a pick reversed while the veil comes up leaves no veil over the scene`() {
+        val layers = ResultLayers(offered = true)
+        layers.splats = SplatCloud(0, FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0))
+        rule.mainClock.autoAdvance = false
+        rule.setContent { LaunchedEffect(layers) { layers.swapUnderVeil() } }
+        rule.mainClock.advanceTimeByFrame()
+
+        // A full swap: up, the layers trade places, down again.
+        pick(layers, true)
+        rule.mainClock.advanceTimeBy(SETTLE_MS)
+        assertTrue(layers.photoShown)
+        assertEquals(0f, layers.veil.value, 0f)
+
+        // Model picked, then Photo again while the veil is part way up (150 ms rise): the swap is
+        // cancelled with nothing to trade, and the veil still goes.
+        pick(layers, false)
+        rule.mainClock.advanceTimeBy(MID_RISE_MS)
+        val midway = layers.veil.value
+        assertTrue("veil part way up, was $midway", midway > 0f && midway < VEIL_PEAK)
+        pick(layers, true)
+        rule.mainClock.advanceTimeBy(SETTLE_MS)
+        assertTrue(layers.photoShown)
+        assertEquals(0f, layers.veil.value, 0f)
     }
 
     @Test
@@ -93,5 +126,15 @@ class ResultLayerPickerTest {
             }
         }
         rule.onNodeWithTag(RESULT_LAYERS_TAG).assertDoesNotExist()
+    }
+
+    /** A pick as a tap makes it: applied at once, so the swap sees it on the next frame. */
+    private fun pick(layers: ResultLayers, photo: Boolean) {
+        rule.runOnUiThread { Snapshot.withMutableSnapshot { layers.photoPicked = photo } }
+    }
+
+    private companion object {
+        const val SETTLE_MS = 2_000L
+        const val MID_RISE_MS = 80L
     }
 }

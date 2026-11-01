@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.google.android.filament.Engine
 import io.github.sceneview.SceneScope
 import io.github.sceneview.core.splat.SplatCloud
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DenseCloud
@@ -112,7 +113,8 @@ internal class ResultLayers(val offered: Boolean) {
  */
 @Composable
 internal fun rememberResultLayers(source: RerunModelSource?, key: Any?, settled: Boolean): ResultLayers {
-    val offered = DemoSettings.qaMode && source != null
+    // Debug builds only until it is measured on a device: QA mode can be switched on in the store app.
+    val offered = BuildConfig.DEBUG && DemoSettings.qaMode && source != null
     val layers = remember(source, key, offered) { ResultLayers(offered) }
     LaunchedEffect(layers, settled) {
         if (!layers.offered || !settled || layers.splats != null || layers.unavailable) return@LaunchedEffect
@@ -129,16 +131,26 @@ internal fun rememberResultLayers(source: RerunModelSource?, key: Any?, settled:
     // The swap: the stage colour comes up, the layers trade places under it, it goes again. Two
     // frames under the veil let the splats' first back-to-front sort land before they are seen.
     // Opacity only, so it stays under reduced motion.
-    LaunchedEffect(layers) {
-        snapshotFlow { layers.photoPicked && layers.splats != null }.collectLatest { photo ->
-            if (photo == layers.photoShown) return@collectLatest
-            layers.veil.animateTo(VEIL_PEAK, tween(SceneViewTokens.Duration.handoverMillis, easing = FastOutSlowInEasing))
-            layers.photoShown = photo
+    LaunchedEffect(layers) { layers.swapUnderVeil() }
+    return layers
+}
+
+/**
+ * Runs the swaps of [ResultLayers]: on each change of layer the veil comes up, the layers trade
+ * places under it, and it goes again. A change that reverses one mid-rise cancels it with the veil
+ * part way up; the veil then goes again from there, whether or not the layers traded places.
+ */
+internal suspend fun ResultLayers.swapUnderVeil() {
+    snapshotFlow { photoPicked && splats != null }.collectLatest { photo ->
+        if (photo != photoShown) {
+            veil.animateTo(VEIL_PEAK, tween(SceneViewTokens.Duration.handoverMillis, easing = FastOutSlowInEasing))
+            photoShown = photo
             repeat(SORT_FRAMES) { withFrameNanos { } }
-            layers.veil.animateTo(0f, tween(SceneViewTokens.Duration.mediumMillis, easing = SceneViewTokens.Ease.expressive))
+        }
+        if (veil.value > 0f) {
+            veil.animateTo(0f, tween(SceneViewTokens.Duration.mediumMillis, easing = SceneViewTokens.Ease.expressive))
         }
     }
-    return layers
 }
 
 /** The surfels the Photo layer is drawn from: the scan's, or the QA room's, textured as its model is. */
@@ -217,7 +229,8 @@ internal fun ResultLayerPicker(
                 selected = layers.selected(plan),
                 onSelect = { picked ->
                     if (!ready) return@ConnectedChoiceRow
-                    layers.photoPicked = picked == ResultLayer.Photo
+                    // A scan with nothing to splat stays on the model.
+                    layers.photoPicked = picked == ResultLayer.Photo && !layers.unavailable
                     val toPlan = picked == ResultLayer.Plan
                     if (toPlan != plan) onPlan(toPlan)
                 },
@@ -281,7 +294,7 @@ internal fun ResultLayerVeil(layers: ResultLayers, ground: Color, modifier: Modi
 internal const val RESULT_LAYERS_TAG = "result-layers"
 
 /** How far the stage colour comes up at the swap: the room stays faintly seen through it. */
-private const val VEIL_PEAK = 0.9f
+internal const val VEIL_PEAK = 0.9f
 
 /** Frames (~0.1 s) the swap waits under the veil for the splats' first sort. */
 private const val SORT_FRAMES = 6
