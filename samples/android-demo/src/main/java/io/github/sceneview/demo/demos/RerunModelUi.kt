@@ -75,6 +75,8 @@ import com.google.android.filament.Engine
 import com.google.android.filament.Skybox
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.utils.KTX1Loader
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sceneview.DEFAULT_IBL_INTENSITY
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
@@ -962,11 +964,18 @@ internal fun RerunModelScreen(
             }
             SideEffect { home.value()?.let { opening.aim(orbit, it) } }
             val context = LocalContext.current
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
             LaunchedEffect(filmTake) {
                 if (filmTake == 0) return@LaunchedEffect
                 // The reveal's wire is read again first: the take opens on the reveal, not on the
                 // whole model that the wire's arrival would then cut away.
                 snapshotFlow { wireBuild }.first { ResultFilm.canStart(wirePending = it is RevealWireBuild.Pending) }
+                // No frame while the app is stopped, so the take starts on screen; the check covers a racing stop.
+                withFrameNanos { }
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    filming = false
+                    return@LaunchedEffect
+                }
                 val from = framing?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
                 val to = planFraming?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
                 val film = if (from != null && to != null) ResultFilm.of(from.toShot(), to.toShot()) else null
