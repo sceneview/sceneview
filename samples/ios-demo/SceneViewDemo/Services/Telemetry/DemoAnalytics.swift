@@ -494,6 +494,8 @@ final class DemoAnalytics: @unchecked Sendable {
             case .emptyMesh: return "no_bounds"
             case .unsupportedFormat, .malformed, .unreadableGeometry: return "decode_failed"
             }
+        case is UnsupportedModelExtensionError:
+            return "decode_failed"
         case is SketchfabAssetResolver.Error, is SketchfabError, is GallerySourceError, is URLError:
             return "asset_missing"
         default:
