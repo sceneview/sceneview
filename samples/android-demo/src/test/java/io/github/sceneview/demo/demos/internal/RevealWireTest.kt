@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.demo.demos.ModelReveal
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -93,5 +94,17 @@ class RevealWireTest {
             assertTrue(rise >= last)
             last = rise
         }
+    }
+
+    @Test
+    fun `only a finished model the result opens on, revealed in motion, gets a wire`() {
+        // The normal case: the finished model, the one the result opens on, in motion.
+        assertTrue(ModelReveal.buildsWire(final = true, opensOn = true, animate = true))
+        // A big scan's raw surface, or a retry after running out of memory: its finish needs the heap.
+        assertFalse(ModelReveal.buildsWire(final = false, opensOn = true, animate = true))
+        // The finished model that later takes a raw surface's place is not revealed again.
+        assertFalse(ModelReveal.buildsWire(final = true, opensOn = false, animate = true))
+        // Reduced motion: the wire would never be drawn, so it is never built.
+        assertFalse(ModelReveal.buildsWire(final = true, opensOn = true, animate = false))
     }
 }

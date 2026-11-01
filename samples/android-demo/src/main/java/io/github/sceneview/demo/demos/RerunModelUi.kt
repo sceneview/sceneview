@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -710,10 +711,6 @@ internal fun RerunModelScreen(
         model?.glbBuffer()?.let { buffer -> runCatching { modelLoader.createModelInstance(buffer) }.getOrNull() }
     }
     DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
-    // The reveal's wire (ModelReveal): of the model the result opens on only. A finished model
-    // that takes a raw surface's place later is not revealed again, so needs none.
-    val revealOf = model?.takeIf { it === framedBy }
-    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0)
     // The ground it stands on and the floor it missed (#4719), read off the model's own vertices
     // once the model is settled, never beside a big scan's finish ([groundSource]). Until the next
     // settles, the last one stays.
@@ -741,6 +738,14 @@ internal fun RerunModelScreen(
     var plan by remember(framedBy) { mutableStateOf(false) }
     var touring by remember(framedBy) { mutableStateOf(false) }
     var shown by remember(framedBy) { mutableStateOf(false) }
+    val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
+    val revealClock = rememberRevealClock(key = framedBy, started = shown, animate = animateReveal)
+    val revealing by remember(revealClock) { derivedStateOf { revealClock.value < ModelReveal.TOTAL_MS } }
+    // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
+    // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
+    // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
+    val revealOf = model?.takeIf { ModelReveal.buildsWire(settled, opensOn = it === framedBy, animate = animateReveal) }
+    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = revealing)
     var hintVisible by remember(framedBy) { mutableStateOf(true) }
     LaunchedEffect(shown, hintStays) {
         if (shown && !hintStays) {
@@ -908,11 +913,6 @@ internal fun RerunModelScreen(
                 (if (plan) planFraming else framing)?.home(RerunResultView.AZIMUTH, aspect, area)
             }
             SideEffect { home.value()?.let { opening.aim(orbit, it) } }
-            val revealClock = rememberRevealClock(
-                key = framedBy,
-                started = shown,
-                animate = LocalMotionEnabled.current || DemoSettings.qaMotion,
-            )
             SceneView(
                 modifier = Modifier.matchParentSize(),
                 engine = engine,

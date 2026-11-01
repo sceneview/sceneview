@@ -24,7 +24,9 @@ import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.model.ModelInstance
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.math.pow
 
@@ -55,10 +57,18 @@ internal object ModelReveal {
     const val WIRE_ALPHA = 0.85f
 
     /**
-     * Above this many triangles no wire is built: a raw surface that big is shown while a finish
-     * fights for heap, and its edges would cost tens of megabytes more.
+     * Above this many triangles no wire is built: its edges would cost tens of megabytes more.
+     * Raw surfaces never get one ([buildsWire]), so this only bounds a finished model.
      */
     const val MAX_TRIANGLES = 1_200_000
+
+    /**
+     * Whether a model gets a wire: only a [final] model the result [opensOn], revealed in motion
+     * ([animate]). Never a big scan's raw surface or a retry: their finish runs on the same heap
+     * with a few megabytes to spare, and the wire's build would take them. Never under reduced
+     * motion either: the wire is never drawn there, so building it only delays the first frame.
+     */
+    fun buildsWire(final: Boolean, opensOn: Boolean, animate: Boolean): Boolean = final && opensOn && animate
 
     /** Share of the height the wire stands at [elapsedMs] after the start, 0 to 1. */
     fun wireSweep(elapsedMs: Float): Float = easeOutCubic(elapsedMs / WIRE_SWEEP_MS)
@@ -87,16 +97,18 @@ internal sealed interface RevealWireBuild {
 
 /**
  * The wire of the `.glb` [glb] ([triangles] of them, `null`: nothing to reveal), built off the
- * main thread. A model too big ([ModelReveal.MAX_TRIANGLES]) or unreadable gets no wire: it shows
- * at once, as before.
+ * main thread while [needed]. A model too big ([ModelReveal.MAX_TRIANGLES]) or unreadable gets no
+ * wire: it shows at once, as before. Once [needed] turns false (the reveal is over) the wire is
+ * let go, so its arrays do not stay on the heap for as long as the screen lives.
  */
 @Composable
-internal fun rememberRevealWire(glb: ByteArray?, triangles: Int): State<RevealWireBuild> =
-    produceState<RevealWireBuild>(RevealWireBuild.Pending, glb) {
-        if (glb == null) {
+internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean): State<RevealWireBuild> =
+    produceState<RevealWireBuild>(RevealWireBuild.Pending, glb, needed) {
+        if (glb == null || !needed) {
             value = RevealWireBuild.Done(null)
             return@produceState
         }
+        value = RevealWireBuild.Pending
         val wire = if (triangles > ModelReveal.MAX_TRIANGLES) {
             null
         } else {
@@ -104,9 +116,10 @@ internal fun rememberRevealWire(glb: ByteArray?, triangles: Int): State<RevealWi
                 runCatching {
                     val started = System.nanoTime()
                     io.github.sceneview.demo.demos.internal.RerunGlbMesh.read(glb)
+                        ?.also { ensureActive() }
                         ?.let { mesh -> RevealWire.of(mesh.positions, mesh.vertexCount, mesh.indices) }
                         ?.also { Log.i(REVEAL_TAG, "wire: ${it.edgeCount} edges in ${(System.nanoTime() - started) / 1_000_000} ms") }
-                }.onFailure { Log.w(REVEAL_TAG, "wire failed", it) }.getOrNull()
+                }.onFailure { if (it is CancellationException) throw it else Log.w(REVEAL_TAG, "wire failed", it) }.getOrNull()
             }
         }
         value = RevealWireBuild.Done(wire)
