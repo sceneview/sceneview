@@ -23,9 +23,9 @@ class ScanResultCinematicsTest {
     )
     private val plan = home.copy(elevationDegrees = ArDebugFraming.MAP_ELEVATION, distance = 6.2f)
 
-    private inner class Screen {
+    private inner class Screen(reveals: Boolean = true) {
         val orbit = ArDebugOrbitCamera(drift = false)
-        val cinematics = ScanResultCinematics(orbit)
+        val cinematics = ScanResultCinematics(orbit, reveals = reveals)
         val opening = DollhouseOpening()
         var framing = home
         var shownOn = 0
@@ -87,6 +87,22 @@ class ScanResultCinematicsTest {
         val first = screen.cinematics.animator.shot
         assertTrue(first.elevationDegrees > home.elevationDegrees + 15f)
         assertTrue(first.distance > home.distance * 1.5f)
+    }
+
+    @Test
+    fun `without the reveal the view opens on its framing and does not move`() {
+        val screen = Screen(reveals = false)
+        screen.opening.aim(screen.orbit, home)
+        while (!screen.cinematics.revealed) screen.frame()
+        // No move is played: the picture is the framing from its first frame on.
+        assertFalse(screen.cinematics.animator.isPlaying)
+        assertEquals(ArDebugFraming.clamp(home), screen.orbit.pose)
+        screen.frame()
+        assertTrue(screen.shownOn > 0)
+        screen.run(2f)
+        assertFalse(screen.cinematics.animator.isPlaying)
+        assertEquals(ArDebugFraming.clamp(home), screen.orbit.pose)
+        assertEquals(screen.orbit.getTransform(), screen.cinematics.manipulator.getTransform())
     }
 
     @Test

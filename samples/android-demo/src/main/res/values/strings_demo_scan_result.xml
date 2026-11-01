@@ -14,29 +14,24 @@
     <string name="scan_result_partial">Only part of the surface could be built</string>
     <string name="scan_result_failed">Couldn\'t build a model from this scan. Scan slowly, 1–3 m from the surfaces.</string>
     <string name="scan_result_hint">Drag to turn · Pinch to zoom.</string>
-    <string name="scan_result_3d">3D</string>
-    <string name="scan_result_3d_label">Show the model in 3D</string>
+    <!-- The result's one bar (Scan redesign, PR 1): Share, View in AR, More (Plan, Measure, Watch capture) -->
+    <string name="scan_result_share">Share</string>
+    <string name="scan_result_share_label">Share the scan</string>
+    <string name="scan_result_view_ar">View in AR</string>
+    <string name="scan_result_view_ar_label">View the scan in AR</string>
+    <string name="scan_result_more">More</string>
+    <string name="scan_result_more_label">More for this scan</string>
     <string name="scan_result_plan">Plan</string>
-    <string name="scan_result_plan_label">Show the floor plan</string>
+    <string name="scan_result_measure">Measure</string>
+    <string name="scan_result_watch">Watch capture</string>
     <!-- The result's layer switch, QA preview: the surfels drawn as splats, the model, the plan -->
     <string name="scan_result_layer_photo">Photo</string>
     <string name="scan_result_layer_model">Model</string>
     <string name="scan_result_layer_plan">Plan</string>
     <string name="scan_result_photo_preview">Photo preview · measures stay on the model</string>
     <string name="scan_result_photo_preparing">Preparing the photo preview…</string>
-    <string name="scan_result_tour">Tour</string>
-    <string name="scan_result_tour_stop">Stop tour</string>
-    <string name="scan_result_tour_label">Fly the camera around the scan</string>
-    <!-- The result's film: the reveal, one turn and the plan, recorded and shared as a video -->
-    <string name="scan_result_film">Film</string>
-    <string name="scan_result_film_preparing">Preparing…</string>
-    <string name="scan_result_filming">Filming…</string>
-    <string name="scan_result_film_interrupted">Film interrupted, try again</string>
-    <string name="scan_result_film_label">Record a short video of the scan and share it</string>
     <!-- Live coverage map (#4631) -->
     <string name="scan_coverage_area">%1$s covered</string>
-    <!-- The result's ground legend (#4719, #4734): the live map's and the replay's own figure -->
-    <string name="scan_coverage_floor">%1$s of floor covered</string>
     <string name="scan_coverage_label">Scan map: %1$s of floor covered. The hatched part is still to scan.</string>
     <!-- Map to complete, the live map opened (#4718) -->
     <string name="scan_coverage_title">Map to complete</string>
@@ -50,11 +45,6 @@
     <string name="scan_live_map_area">%1$s covered · hatched: still to scan</string>
     <string name="scan_live_map_swap_camera">Make the camera bigger</string>
     <string name="scan_live_map_swap_map">Make the map bigger</string>
-    <string name="scan_result_replay">Replay</string>
-    <string name="scan_result_replay_label">Replay the recording</string>
-    <string name="scan_result_export">Export</string>
-    <string name="scan_result_export_label">Export the scan</string>
-    <string name="scan_result_about">Your scan as one 3D model, kept on this phone with the recording. Export it as a GLB for Blender, three.js or any 3D viewer.</string>
 
     <!-- Export sheet -->
     <string name="scan_export_title">Export scan</string>
@@ -94,6 +84,4 @@
     <string name="scan_rescan_fill">Fill the amber frame: %1$d%%</string>
     <string name="scan_rescan_covered">This part is covered. Save to add it to your scan.</string>
     <string name="scan_rescan_refused">Couldn\'t line up this part with your scan.</string>
-    <string name="scan_rescan_merged_title">%1$s, completed</string>
-    <string name="scan_rescan_part_title">%1$s · part</string>
 </resources>
