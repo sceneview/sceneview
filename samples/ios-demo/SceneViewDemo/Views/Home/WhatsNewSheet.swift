@@ -62,7 +62,7 @@ private struct SheetNavigation<Content: View>: View {
             content()
                 .navigationTitle(title)
                 .navigationBarTitleLarge()
-                .containerBackground(.clear, for: .navigation)
+                .navigationContainerBackgroundClear()
         }
     }
 }
