@@ -211,7 +211,7 @@ internal object CleanModelCorpus {
         )
     }
 
-    private fun read(file: File): RerunCapturePack {
+    internal fun read(file: File): RerunCapturePack {
         if (file.isDirectory) {
             // A session folder as the app keeps it (`files/rerun/sessions/<id>/`), read as the app reads it.
             return checkNotNull(RerunSessionStore(file.parentFile).capture(file.name)) { "incomplete session folder" }
@@ -223,7 +223,7 @@ internal object CleanModelCorpus {
         }
     }
 
-    private fun denseCloud(capture: OpenedCapture): DenseCloud? {
+    internal fun denseCloud(capture: OpenedCapture): DenseCloud? {
         val dense = capture.manifest.dense ?: return null
         val blob = capture.bytesOf(dense.path) ?: return null
         return SvpcCodec.decode(blob)?.takeIf { it.count > 0 }

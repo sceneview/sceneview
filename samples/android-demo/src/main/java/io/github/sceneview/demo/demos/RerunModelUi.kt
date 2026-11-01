@@ -753,6 +753,8 @@ internal fun RerunModelScreen(
     var plan by remember(framedBy) { mutableStateOf(false) }
     var touring by remember(framedBy) { mutableStateOf(false) }
     var shown by remember(framedBy) { mutableStateOf(false) }
+    // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
+    val layers = rememberResultLayers(source, framedBy, settled)
     val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
     // The film (ResultFilm): each take plays the reveal again, one turn and the plan, recorded
     // off the scene's own surface — the chrome is not in it — then offered to the share sheet.
@@ -861,6 +863,16 @@ internal fun RerunModelScreen(
                     .align(Alignment.CenterHorizontally)
                     .alpha(hintAlpha)
                     .then(if (hintShown) Modifier else Modifier.clearAndSetSemantics { }),
+            )
+            ResultLayerPicker(
+                layers = layers,
+                plan = plan,
+                ready = tourReady,
+                onPlan = {
+                    plan = it
+                    cinematics.request(ScanResultCinematics.Request.Recenter)
+                },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         },
         dock = listOfNotNull(
@@ -1040,7 +1052,10 @@ internal fun RerunModelScreen(
                     val ready = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
                     if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
                     if (touring != cinematics.touring) touring = cinematics.touring
-                    CameraRig.eye(orbit.pose).let { eye -> facing.look(rescan?.measure, eye.x, eye.z) }
+                    CameraRig.eye(orbit.pose).let { eye ->
+                        facing.look(rescan?.measure, eye.x, eye.z)
+                        layers.look(eye)
+                    }
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
@@ -1073,6 +1088,7 @@ internal fun RerunModelScreen(
                     }
                 }
                 rescan?.let { RescanZoneLayer(it.mesh, it.veil, engine, materialLoader) }
+                ResultPhotoLayer(layers, instance)
             }
             // The ground until the model is drawn on its framing: no pose but that one is seen.
             // Then it fades as the camera reveal flies in (`motion-entrance`), never a cut from the
@@ -1095,6 +1111,7 @@ internal fun RerunModelScreen(
                         .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
                 )
             }
+            ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
         }
     }
     if (renaming && onRename != null) {

@@ -18,6 +18,12 @@
     <string name="scan_result_3d_label">Show the model in 3D</string>
     <string name="scan_result_plan">Plan</string>
     <string name="scan_result_plan_label">Show the floor plan</string>
+    <!-- The result's layer switch, QA preview: the surfels drawn as splats, the model, the plan -->
+    <string name="scan_result_layer_photo">Photo</string>
+    <string name="scan_result_layer_model">Model</string>
+    <string name="scan_result_layer_plan">Plan</string>
+    <string name="scan_result_photo_preview">Photo preview · measures stay on the model</string>
+    <string name="scan_result_photo_preparing">Preparing the photo preview…</string>
     <string name="scan_result_tour">Tour</string>
     <string name="scan_result_tour_stop">Stop tour</string>
     <string name="scan_result_tour_label">Fly the camera around the scan</string>
