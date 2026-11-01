@@ -23,7 +23,7 @@ import AppKit
 ///     }
 /// }
 /// .task {
-///     model = try? await ModelNode.load("models/car.usdz")   // or "models/fox.glb"
+///     model = try? await ModelNode.load("models/car.usdz")   // or "models/chair.glb"
 /// }
 /// ```
 ///

@@ -184,10 +184,11 @@ struct GLTFDocument {
             throw ModelLoadingError.malformed(reason: "bufferView \(index) points at missing buffer \(view.buffer)")
         }
         let start = view.byteOffset ?? 0
-        guard start >= 0, view.byteLength >= 0, start + view.byteLength <= buffer.count else {
+        let (end, overflow) = start.addingReportingOverflow(view.byteLength)
+        guard start >= 0, view.byteLength >= 0, !overflow, end <= buffer.count else {
             throw ModelLoadingError.malformed(reason: "bufferView \(index) overruns its buffer")
         }
-        return buffer.subdata(in: (buffer.startIndex + start)..<(buffer.startIndex + start + view.byteLength))
+        return buffer.subdata(in: (buffer.startIndex + start)..<(buffer.startIndex + end))
     }
 
     /// The encoded bytes (PNG, JPEG, WebP…) of an image.

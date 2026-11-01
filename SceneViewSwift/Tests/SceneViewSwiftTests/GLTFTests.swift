@@ -198,6 +198,19 @@ final class GLTFTests: XCTestCase {
         assertMalformed(c)
     }
 
+    func testBufferViewWhoseEndOverflowsThrowsInsteadOfTrapping() throws {
+        // An image's bytes are read straight from its bufferView, outside the accessor
+        // reader's checks, so offset + length must not be allowed to wrap.
+        var b = GLTFBuilder.triangle()
+        b.patchView(0, "byteOffset", Int.max - 4)
+        let document = try GLTFDocument.read(data: b.glb(), baseURL: nil)
+        XCTAssertThrowsError(try document.bufferViewData(0)) { error in
+            guard case .malformed? = error as? ModelLoadingError else {
+                return XCTFail("expected ModelLoadingError.malformed, got \(error)")
+            }
+        }
+    }
+
     func testNodeCycleThrows() {
         var b = GLTFBuilder.triangle()
         b.json["nodes"] = [

@@ -6473,7 +6473,8 @@ Key behaviors:
 - Supports `.usdz` / `.usda` / `.usdc` / `.usd` / `.reality` through RealityKit,
   `.glb` / `.gltf` (glTF 2.0, since 4.65.0) and `.3mf` through SceneViewSwift's own
   parsers, and `.stl` / `.obj` (+ `.mtl`) / `.ply` through ModelIO. Same call for all:
-  `try await ModelNode.load("models/fox.glb")`.
+  `try await ModelNode.load("models/chair.glb")` (Draco- or meshopt-compressed files throw
+  `UnsupportedModelExtensionError`).
 - glTF: node hierarchy, metallic-roughness PBR with textures (base colour, metal-rough,
   normal, occlusion, emissive), alpha modes, double-sided, `KHR_materials_unlit`,
   `KHR_texture_transform`, `KHR_materials_emissive_strength`, skins and node animations

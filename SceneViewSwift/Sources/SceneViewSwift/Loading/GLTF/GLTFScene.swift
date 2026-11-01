@@ -578,7 +578,7 @@ extension GLTFScene {
         // five 2K textures and decoding dominates the load.
         let decoded = UnsafeMutableBufferPointer<CGImage?>.allocate(capacity: imageIndices.count)
         decoded.initialize(repeating: nil)
-        defer { decoded.deallocate() }
+        defer { decoded.deinitialize(); decoded.deallocate() }
         DispatchQueue.concurrentPerform(iterations: imageIndices.count) { i in
             guard let data = try? document.imageData(imageIndices[i]),
                   let source = CGImageSourceCreateWithData(data as CFData, nil),

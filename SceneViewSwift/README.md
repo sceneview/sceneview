@@ -179,6 +179,7 @@ that arrived through a share sheet or a download often has the wrong one.
 | `.obj` (+ `.mtl` sidecar) | ModelIO | metres |
 | `.ply` (ASCII + binary, vertex colours) | ModelIO | metres |
 | `.3mf` | SceneViewSwift's own parser | declared by the file |
+| `.glb` `.gltf` (glTF 2.0) | SceneViewSwift's own parser | metres (glTF is metric) |
 
 3MF is parsed here rather than by Apple: `MDLAsset` reads OBJ, STL, PLY and USD, Quick
 Look reads USDZ and Reality, and nothing on the platform opens the format 3D printing
@@ -187,8 +188,11 @@ row-vector transforms, build items, `<basematerials>` and `<colorgroup>` resolve
 triangle — plus the Production extension's `p:path` references, which is how Bambu Studio
 and Orca write project files. External XML entities are refused.
 
-glTF (`.glb` / `.gltf`) is not supported on Apple platforms — neither RealityKit nor
-ModelIO reads it. Convert to USDZ first.
+glTF is parsed here too, since neither RealityKit nor ModelIO reads it:
+`try await ModelNode.load("models/chair.glb")` is the same call as for a USDZ. It covers
+metallic-roughness PBR with textures, skins and node animations. Draco- or
+meshopt-compressed files throw `UnsupportedModelExtensionError`; re-export them
+uncompressed first.
 
 ### Units matter
 
