@@ -351,13 +351,14 @@ internal object PhotoTexturing {
             val b = idx[t * 3 + 1]
             val c = idx[t * 3 + 2]
             if (iz[a] == 0f || iz[b] == 0f || iz[c] == 0f) continue
-            val score = camera.score(faces, t, mesh, insideMargin = view.marginX) * view.sharpness * view.resolution
+            val score = camera.score(faces, t, mesh, insideMargin = view.marginX) * view.sharpness
             if (score <= 0f) continue
             val color = view.faceColor(faces, t, mesh) ?: continue
             // A white wall a bright exposure burnt out has lost its colour: any unclipped view
-            // of it is better, and no exposure gain brings the lost part back.
+            // of it is better, and no exposure gain brings the lost part back — nor do more
+            // pixels, so only an unclipped view gains from its photo's resolution.
             val clipped = max(color shr 16 and 0xFF, max(color shr 8 and 0xFF, color and 0xFF)) > UNCLIPPED.last
-            candidates.offer(t, viewIndex, if (clipped) score * CLIPPED_PENALTY else score, color)
+            candidates.offer(t, viewIndex, if (clipped) score * CLIPPED_PENALTY else score * view.resolution, color)
         }
     }
 

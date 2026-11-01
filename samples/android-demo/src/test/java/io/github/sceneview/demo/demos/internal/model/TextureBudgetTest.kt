@@ -25,11 +25,79 @@ import org.junit.Test
 class TextureBudgetTest {
     @Test
     fun `the heap picks the budget, a Pixel 4a keeping the small one`() {
-        assertEquals(TextureBudget.BASE, TextureBudget.forHeap(192L * MB))
-        assertEquals(TextureBudget.BASE, TextureBudget.forHeap(255L * MB))
-        assertEquals(TextureBudget.LARGE, TextureBudget.forHeap(256L * MB))
-        assertEquals(TextureBudget.LARGE, TextureBudget.forHeap(512L * MB))
+        assertEquals(TextureBudget.BASE, TextureBudget.forHeap(192L * MB, GPU_4096))
+        assertEquals(TextureBudget.BASE, TextureBudget.forHeap(255L * MB, GPU_4096))
+        assertEquals(TextureBudget.LARGE, TextureBudget.forHeap(256L * MB, GPU_4096))
+        assertEquals(TextureBudget.LARGE, TextureBudget.forHeap(512L * MB, GPU_4096))
         assertEquals(PhotoTexturing.MAX_PHOTO_PIXELS, TextureBudget.BASE.photoPixels)
+    }
+
+    @Test
+    fun `the atlas stays within the GPU's largest texture, unknown counting as the least`() {
+        val gpu2048 = TextureBudget.forHeap(512L * MB, maxTextureSize = TextureBudget.BASE.atlasSize)
+        assertEquals(TextureBudget.BASE.atlasSize, gpu2048.atlasSize)
+        assertEquals("the photos still kept whole", TextureBudget.LARGE.photoPixels, gpu2048.photoPixels)
+        assertEquals(gpu2048, TextureBudget.forHeap(512L * MB, maxTextureSize = 0))
+        assertEquals(TextureBudget.LARGE, TextureBudget.forHeap(512L * MB, maxTextureSize = 16384))
+    }
+
+    /**
+     * The sharp photos burnt out (each channel ×[BURN], clipped): a large photo's resolution must
+     * not outweigh the penalty of its clipped views, or the large budget paints the walls white
+     * where the small one keeps the small photos' colours.
+     */
+    @Test
+    fun `a large burnt-out photo does not beat a small exposed one`() {
+        val raw = room()
+        val count = (RerunSyntheticRoom.poses().size + PHOTO_EVERY_KEPT - 1) / PHOTO_EVERY_KEPT
+        val every = maxOf(1, count / SHARP_PHOTOS_RECORDED)
+        val shots = TexturedSyntheticRoom.photos(every = PHOTO_EVERY_KEPT, sharpEvery = every, sharpScale = SHARP_SCALE)
+        val photos = ModelPhotos(
+            TexturedSyntheticRoom.PHOTO_LENS,
+            shots.map { shot ->
+                val burnt = if (shot.width > TexturedSyntheticRoom.PHOTO_WIDTH) burn(shot) else shot
+                ModelPhoto(shot.pose) { burnt }
+            },
+        )
+        val base = measure(raw, photos, TextureBudget.BASE)
+        val large = measure(raw, photos, TextureBudget.LARGE)
+        println("texture budget, sharp photos burnt out:")
+        println("  base:  $base")
+        println("  large: $large")
+        assertTrue("print ${base.print} -> ${large.print}", large.print >= base.print - CORRELATION_SLACK)
+        assertTrue("planks ${base.planks} -> ${large.planks}", large.planks >= base.planks - CORRELATION_SLACK)
+    }
+
+    @Test
+    fun `writing out of memory within the large budget falls back to the small one`() {
+        val raw = room()
+        var thrown = false
+        val encoder = AtlasEncoder { argb, width, height ->
+            if (!thrown) {
+                thrown = true
+                throw OutOfMemoryError("synthetic")
+            }
+            JvmAtlasEncoder.jpeg(argb, width, height)
+        }
+        val result = CleanModel.build(raw, mixedPhotos(PHOTO_EVERY_KEPT), encoder, budget = TextureBudget.LARGE)
+        assertTrue(thrown)
+        assertFalse(result.stats.rawKept)
+        assertTrue(result.stats.textureBudgetFellBack)
+        assertEquals(TextureBudget.BASE, result.stats.textureBudget)
+        assertNotNull("still textured", result.stats.texture)
+        assertTrue(result.stats.atlasWidth <= TextureBudget.BASE.atlasSize)
+        assertTrue(ModelGlb.isTextured(result.glb))
+    }
+
+    private fun burn(shot: BakePhoto): BakePhoto {
+        val argb = IntArray(shot.argb.size) { i ->
+            val c = shot.argb[i]
+            val r = minOf(BYTE, (c shr 16 and BYTE) * BURN)
+            val g = minOf(BYTE, (c shr 8 and BYTE) * BURN)
+            val b = minOf(BYTE, (c and BYTE) * BURN)
+            (c and OPAQUE) or (r shl 16) or (g shl 8) or b
+        }
+        return BakePhoto(shot.pose, shot.width, shot.height, argb)
     }
 
     @Test
@@ -143,9 +211,12 @@ class TextureBudgetTest {
      * `-Xmx512m` runs of this test compare (see the PR). Under Gradle's 2 GB, the large budget.
      */
     @Test
+    @Suppress("ExplicitGarbageCollectionCall")
     fun `the heap's own budget, its peak reported`() {
         val raw = room()
         val photos = mixedPhotos()
+        // The GPU of a recent phone: the heap alone picks the budget.
+        TextureBudget.gpuMaxTextureSize = GPU_4096
         System.gc()
         resetPeaks()
         val start = System.nanoTime()
@@ -356,6 +427,10 @@ class TextureBudgetTest {
     private companion object {
         val ORIGIN = io.github.sceneview.demo.demos.internal.DebugPose(0f, 0f, 0f)
         const val MB = 1024L * 1024
+        const val GPU_4096 = 4096
+        const val BURN = 4
+        const val BYTE = 0xFF
+        const val OPAQUE = 0xFF000000.toInt()
         const val KB = 1024
         const val NANOS_PER_MS = 1_000_000L
         const val SHARP_SCALE = 3

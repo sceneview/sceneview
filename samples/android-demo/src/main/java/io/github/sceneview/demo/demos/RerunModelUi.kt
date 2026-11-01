@@ -640,6 +640,7 @@ internal fun RerunModelScreen(
     onRescan: ((RescanPick) -> Unit)? = null,
     asks: Boolean = !hintStays,
 ) {
+    remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The question of how to finish the model, while it waits for an answer.
     var question by remember(source, id) { mutableStateOf<FinishQuestion?>(null) }
     val state by produceState<ModelState>(ModelState.Loading, source, id) {

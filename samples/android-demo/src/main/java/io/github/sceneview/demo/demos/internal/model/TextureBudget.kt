@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos.internal.model
 
+import com.google.android.filament.Engine
+import com.google.android.filament.Texture
+
 /**
  * How much of its key photos a model's texture keeps, and how large its atlas may grow: what
  * makes a wall, a frame or a parquet readable up close, bounded by what the phone's heap holds.
@@ -58,7 +61,27 @@ internal data class TextureBudget(
          */
         const val LARGE_HEAP_BYTES = 256L * 1024 * 1024
 
-        /** The budget for a heap of [heapBytes]. */
-        fun forHeap(heapBytes: Long): TextureBudget = if (heapBytes >= LARGE_HEAP_BYTES) LARGE else BASE
+        /**
+         * The budget for a heap of [heapBytes], its atlas within the GPU's [maxTextureSize]: a
+         * model's texture past it is one SceneView's model loader refuses. OpenGL ES 3.0
+         * guarantees [BASE]'s; `0`, the GPU's limit not known yet, keeps to it.
+         */
+        fun forHeap(heapBytes: Long, maxTextureSize: Int = gpuMaxTextureSize): TextureBudget = when {
+            heapBytes < LARGE_HEAP_BYTES -> BASE
+            maxTextureSize >= LARGE.atlasSize -> LARGE
+            else -> LARGE.copy(atlasSize = BASE.atlasSize)
+        }
+
+        /**
+         * The GPU's largest texture side, `Texture.getMaxTextureSize`, once read ([readGpuLimit]);
+         * `0` until then.
+         */
+        @Volatile
+        var gpuMaxTextureSize: Int = 0
+
+        /** [gpuMaxTextureSize] read from [engine]'s GPU. */
+        fun readGpuLimit(engine: Engine) {
+            gpuMaxTextureSize = Texture.getMaxTextureSize(engine, Texture.Sampler.SAMPLER_2D)
+        }
     }
 }

@@ -54,6 +54,33 @@ class CleanModelWorstCaseTest {
     }
 
     /**
+     * The same surface at the cap, textured within the heap's own budget from a recording's mix
+     * of photos (one in three sharp and three times as wide): what a `-Xmx256m` run of this test
+     * measures, the least heap given [TextureBudget.LARGE] meshing about as many triangles
+     * ([CleanModel.maxRawTriangles]).
+     */
+    @Test
+    @Suppress("ExplicitGarbageCollectionCall")
+    fun `a surface at the cap within the heap's own budget`() {
+        val raw = noisyRoom()
+        val shots = TexturedSyntheticRoom.photos(every = MIXED_EVERY, sharpEvery = SHARP_EVERY, sharpScale = SHARP_SCALE)
+        val photos = ModelPhotos(TexturedSyntheticRoom.PHOTO_LENS, shots.map { shot -> ModelPhoto(shot.pose) { shot } })
+        TextureBudget.gpuMaxTextureSize = GPU_4096
+        val heap = Runtime.getRuntime().maxMemory()
+        System.gc()
+        val start = System.nanoTime()
+        val result = CleanModel.build(raw, photos, JvmAtlasEncoder)
+        val ms = (System.nanoTime() - start) / NANOS_PER_MS
+        val stats = result.stats
+        println(
+            "worst case, heap ${heap / MB} MB (cap ${CleanModel.maxRawTriangles(heap)} raw triangles), ${raw.triangleCount} in: " +
+                "budget atlas ${stats.textureBudget.atlasSize}, fell back ${stats.textureBudgetFellBack}, raw kept ${stats.rawKept}, " +
+                "out of memory in ${stats.outOfMemoryIn}, atlas ${stats.atlasWidth}x${stats.atlasHeight}, glb ${stats.glbBytes / KB} KB, $ms ms",
+        )
+        assertTrue(stats.glbBytes <= CleanModel.MAX_GLB_BYTES)
+    }
+
+    /**
      * The ray-cast room's shell (4 × 2.6 × 3.6 m) as a closed lattice of ~1.2 cm squares, each
      * split in two, wound to face inwards as a scan's surface faces the camera: every vertex
      * moved by up to [NOISE_M] on each axis, planks on the floor, paint on the walls, a little
@@ -177,6 +204,11 @@ class CleanModelWorstCaseTest {
 
     private companion object {
         const val RUNS = 2
+        const val MIXED_EVERY = 5
+        const val SHARP_EVERY = 3
+        const val SHARP_SCALE = 3
+        const val GPU_4096 = 4096
+        const val KB = 1024
         const val NEAR_CAP = 0.99
         const val NANOS_PER_MS = 1_000_000L
         const val MB = 1024 * 1024

@@ -197,75 +197,43 @@ internal object CleanModel {
         // reach: the photos texture what they saw, the vertex colours the rest. Photos that
         // failed to decode, wrong poses, a corner of the room seen — under [MIN_TEXTURED_SHARE],
         // the colours are simplified again, edges kept, as without photos.
-        var textures = if (textured) textures(shape, photos!!, reached) { progress(BEFORE_TEXTURE + it * TEXTURE_SHARE) } else null
-        val covered = textures?.covering != null
-        var texture = textures?.covering
-        var simplified = if (textured && !covered) {
+        val out = Output(shape, null, if (textured) textures(shape, photos!!, reached) { progress(BEFORE_TEXTURE + it * TEXTURE_SHARE) } else null)
+        out.texture = out.textures?.covering
+        val covered = out.texture != null
+        if (textured && !covered) {
             reached.lap(Stage.Simplify)
-            simplify(clean, textured = false, targetTriangles, ceiling) { progress(BEFORE_TEXTURE + it * TEXTURE_SHARE) }
-                .also { reached.lap(Stage.Texture) }
-        } else {
-            shape
+            out.simplified = simplify(clean, textured = false, targetTriangles, ceiling) { progress(BEFORE_TEXTURE + it * TEXTURE_SHARE) }
+            reached.lap(Stage.Texture)
         }
-        var model: ModelMesh? = null
-        var glb = NO_BYTES
         try {
-            model = ModelAssembly.assemble(simplified, texture)
-            reached.lap(Stage.Write)
-            glb = ModelGlb.write(model, encoder)
+            write(out, clean, ceiling, targetTriangles, photos, encoder, reached, progress)
         } catch (outOfMemory: OutOfMemoryError) {
             // A texture within the heap's larger budget is the finish's largest allocation: out of
-            // memory with one, the model is textured again within the small budget, not given up.
-            if (texture == null || reached.budget == TextureBudget.BASE) throw outOfMemory
-            model = null
-            texture = null
-            textures = null
+            // memory with one — written, its shape cut, its atlas halved — the model is textured
+            // again within the small budget, not given up.
+            if (!covered || reached.budget == TextureBudget.BASE) throw outOfMemory
+            out.drop()
             reached.fallBack()
             reached.lap(Stage.Texture)
-            textures = textures(simplified, photos!!, reached) { progress(BEFORE_WRITE) }
-            texture = textures.covering
-            model = ModelAssembly.assemble(simplified, texture)
-            reached.lap(Stage.Write)
-            glb = ModelGlb.write(model, encoder)
+            val again = textures(shape, photos!!, reached) { progress(BEFORE_WRITE) }
+            out.textures = again
+            out.texture = again.covering
+            // Within the small budget the photos may cover too little: the colours are simplified
+            // again, edges kept, as without photos.
+            out.simplified = if (again.covering != null) {
+                shape
+            } else {
+                simplify(clean, textured = false, targetTriangles, ceiling) { progress(BEFORE_WRITE) }
+            }
+            write(out, clean, ceiling, targetTriangles, photos, encoder, reached, progress)
         }
-        val guarded = glb.size > MAX_GLB_BYTES
-        // Within the cap, the model gives up first what shows least. A textured one sheds faces
-        // past its budget, down to [MIN_GUARD_TEXTURED_TRIANGLES]: its shape simplified again,
-        // the error no longer capped, and textured again. Then its atlas's resolution. Only then
-        // its photo texture, for the vertex colours, its faces halved as they must. Each step
-        // reports, so a finish left meanwhile stops there.
-        var cut = true
-        while (glb.size > MAX_GLB_BYTES && texture != null && cut && simplified.triangleCount > MIN_GUARD_TEXTURED_TRIANGLES) {
-            progress(BEFORE_WRITE)
-            val before = simplified.triangleCount
-            val target = maxOf(MIN_GUARD_TEXTURED_TRIANGLES, (before * GUARD_FILL * MAX_GLB_BYTES / glb.size).toInt())
-            // The model, its atlas and its file go before the coarser shape and its texture are made.
-            model = null
-            texture = null
-            glb = NO_BYTES
-            simplified = simplify(clean, textured = true, target, ceiling = Float.POSITIVE_INFINITY) { progress(BEFORE_WRITE) }
-            cut = simplified.triangleCount < before
-            texture = textures(simplified, photos!!, reached) { progress(BEFORE_WRITE) }.covering
-            model = ModelAssembly.assemble(simplified, texture)
-            glb = ModelGlb.write(model, encoder)
-        }
-        var halvings = 0
-        while (glb.size > MAX_GLB_BYTES && texture != null && halvings < MAX_ATLAS_HALVINGS) {
-            progress(BEFORE_WRITE)
-            texture = texture.halved()
-            model = checkNotNull(model).withTexture(texture)
-            glb = ModelGlb.write(model, encoder)
-            halvings++
-        }
-        var guardTarget = minOf(targetTriangles, simplified.triangleCount)
-        while (glb.size > MAX_GLB_BYTES && (texture != null || guardTarget >= MIN_GUARD_TRIANGLES)) {
-            progress(BEFORE_WRITE)
-            if (texture == null) guardTarget /= 2
-            texture = null
-            simplified = simplify(clean, textured = false, guardTarget, ceiling) { progress(BEFORE_WRITE) }
-            model = ModelAssembly.assemble(simplified, null)
-            glb = ModelGlb.write(model, encoder)
-        }
+        val model = out.model
+        val glb = out.glb
+        val simplified = out.simplified
+        val texture = out.texture
+        val textures = out.textures
+        val halvings = out.halvings
+        val guarded = out.guarded
         reached.lap(Stage.Write)
         progress(1f)
         val finished = checkNotNull(model)
@@ -306,6 +274,86 @@ internal object CleanModel {
         reached.cleanInputTriangles = input.triangleCount
         reached.lap(Stage.Clean)
         return input
+    }
+
+    /** What [write] works on and leaves: the shape, its texture and the `.glb` written from them. */
+    private class Output(var simplified: WorkMesh, var texture: PhotoTexture?, var textures: Textures?) {
+        var model: ModelMesh? = null
+        var glb = NO_BYTES
+        var halvings = 0
+        var guarded = false
+
+        /** All of it let go, the shape aside: a finish out of memory starts its texture again. */
+        fun drop() {
+            model = null
+            texture = null
+            textures = null
+            glb = NO_BYTES
+            halvings = 0
+            guarded = false
+        }
+    }
+
+    /**
+     * [out]'s model assembled and written, then kept within [MAX_GLB_BYTES]. Within the cap, the
+     * model gives up first what shows least. A textured one sheds faces past its budget, down to
+     * [MIN_GUARD_TEXTURED_TRIANGLES]: its shape simplified again, the error no longer capped, and
+     * textured again. Then its atlas's resolution. Only then its photo texture, for the vertex
+     * colours, its faces halved as they must. Each step reports, so a finish left meanwhile stops
+     * there, and lets go of the model and file it replaces before making the next.
+     */
+    @Suppress("LongParameterList")
+    private fun write(
+        out: Output,
+        clean: WorkMesh,
+        ceiling: Float,
+        targetTriangles: Int,
+        photos: ModelPhotos?,
+        encoder: AtlasEncoder?,
+        reached: Reached,
+        progress: (Float) -> Unit,
+    ) {
+        out.model = ModelAssembly.assemble(out.simplified, out.texture)
+        reached.lap(Stage.Write)
+        out.glb = ModelGlb.write(checkNotNull(out.model), encoder)
+        out.guarded = out.glb.size > MAX_GLB_BYTES
+        var cut = true
+        while (out.glb.size > MAX_GLB_BYTES && out.texture != null && cut && out.simplified.triangleCount > MIN_GUARD_TEXTURED_TRIANGLES) {
+            progress(BEFORE_WRITE)
+            val before = out.simplified.triangleCount
+            val target = maxOf(MIN_GUARD_TEXTURED_TRIANGLES, (before * GUARD_FILL * MAX_GLB_BYTES / out.glb.size).toInt())
+            // The model, its atlas and its file go before the coarser shape and its texture are made.
+            out.model = null
+            out.texture = null
+            out.glb = NO_BYTES
+            out.simplified = simplify(clean, textured = true, target, ceiling = Float.POSITIVE_INFINITY) { progress(BEFORE_WRITE) }
+            cut = out.simplified.triangleCount < before
+            out.texture = textures(out.simplified, photos!!, reached) { progress(BEFORE_WRITE) }.covering
+            out.model = ModelAssembly.assemble(out.simplified, out.texture)
+            out.glb = ModelGlb.write(checkNotNull(out.model), encoder)
+        }
+        while (out.glb.size > MAX_GLB_BYTES && out.texture != null && out.halvings < MAX_ATLAS_HALVINGS) {
+            progress(BEFORE_WRITE)
+            out.glb = NO_BYTES
+            val halved = checkNotNull(out.texture).halved()
+            val shown = checkNotNull(out.model)
+            out.model = null
+            out.texture = halved
+            out.model = shown.withTexture(halved)
+            out.glb = ModelGlb.write(checkNotNull(out.model), encoder)
+            out.halvings++
+        }
+        var guardTarget = minOf(targetTriangles, out.simplified.triangleCount)
+        while (out.glb.size > MAX_GLB_BYTES && (out.texture != null || guardTarget >= MIN_GUARD_TRIANGLES)) {
+            progress(BEFORE_WRITE)
+            if (out.texture == null) guardTarget /= 2
+            out.model = null
+            out.texture = null
+            out.glb = NO_BYTES
+            out.simplified = simplify(clean, textured = false, guardTarget, ceiling) { progress(BEFORE_WRITE) }
+            out.model = ModelAssembly.assemble(out.simplified, null)
+            out.glb = ModelGlb.write(checkNotNull(out.model), encoder)
+        }
     }
 
     /**
