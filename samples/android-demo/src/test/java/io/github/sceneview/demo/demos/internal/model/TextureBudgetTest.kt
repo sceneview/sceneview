@@ -17,14 +17,14 @@ import org.junit.Test
 /**
  * The texture's budget on the ray-cast room, its walk's photos mixed as a recording keeps them —
  * a few sharp ones three times as wide among the small ones: within [TextureBudget.BASE] (a
- * Pixel 4a's heap) and [TextureBudget.LARGE] (256 MB and more). Readability is read where the
+ * 192 MB heap) and [TextureBudget.LARGE] (256 MB and more, a Pixel 4a's). Readability is read where the
  * room has detail finer than its voxels — the print's 5 cm checks, the floor's 8 mm plank seams —
  * as the correlation between the luma the model shows and the room's true paint, densely sampled
  * across each face: blur lowers it, exposure does not.
  */
 class TextureBudgetTest {
     @Test
-    fun `the heap picks the budget, a Pixel 4a keeping the small one`() {
+    fun `the heap picks the budget, a 192 MB heap keeping the small one`() {
         assertEquals(TextureBudget.BASE, TextureBudget.forHeap(192L * MB, GPU_4096))
         assertEquals(TextureBudget.BASE, TextureBudget.forHeap(255L * MB, GPU_4096))
         assertEquals(TextureBudget.LARGE, TextureBudget.forHeap(256L * MB, GPU_4096))

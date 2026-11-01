@@ -36,7 +36,7 @@ internal data class TextureBudget(
     companion object {
         /**
          * The budget a phone with a small heap gets, and the one a finish that ran out of memory
-         * falls back to: ~60 photos of 240 × 320, a 2048 atlas. A Pixel 4a's 192 MB.
+         * falls back to: ~60 photos of 240 × 320, a 2048 atlas. A phone whose heap grows to 192 MB.
          */
         val BASE = TextureBudget(
             photoPixels = PhotoTexturing.MAX_PHOTO_PIXELS,
@@ -57,7 +57,8 @@ internal data class TextureBudget(
 
         /**
          * The heap ([Runtime.maxMemory], on a phone its growth limit) from which a finish gets
-         * [LARGE]: 256 MB, what most recent phones report. A Pixel 4a reports 192 MB.
+         * [LARGE]: 256 MB, what most recent phones report — a Pixel 4a among them
+         * (`dalvik.vm.heapgrowthlimit` 256m, Android 13, read on the device).
          */
         const val LARGE_HEAP_BYTES = 256L * 1024 * 1024
 

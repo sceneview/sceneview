@@ -138,9 +138,9 @@ internal object CleanModel {
     /**
      * The most raw triangles a scan may mesh to for its finish to fit in a heap of [heapBytes]
      * (`Runtime.maxMemory()`, on a phone its growth limit), within [RerunMarchingCubes.MAX_TRIANGLES]:
-     * [HELD_BYTES], then [BYTES_PER_RAW_TRIANGLE] for each raw triangle. A Pixel 4a's 192 MB
-     * meshes about 645k triangles, the longest recordings and then some; 263 MB and more, the
-     * extraction's million.
+     * [HELD_BYTES], then [BYTES_PER_RAW_TRIANGLE] for each raw triangle. A 192 MB heap
+     * meshes about 645k triangles, the longest recordings and then some; a Pixel 4a's 256 MB about
+     * 968k; 263 MB and more, the extraction's million.
      */
     fun maxRawTriangles(heapBytes: Long): Int =
         ((heapBytes - HELD_BYTES) / BYTES_PER_RAW_TRIANGLE)
