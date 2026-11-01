@@ -1,0 +1,92 @@
+package io.github.sceneview.demo.demos.internal
+
+import io.github.sceneview.camera.CameraShot
+import io.github.sceneview.math.Position
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import kotlin.math.sqrt
+
+class ResultFilmTest {
+    private val home = CameraShot(
+        target = Position(0.4f, 0.9f, -1.2f),
+        azimuthDegrees = 35f,
+        elevationDegrees = 30f,
+        distance = 5f,
+    )
+    private val plan = home.copy(elevationDegrees = 80f, distance = 6.5f)
+    private val film = ResultFilm.of(home, plan)
+
+    @Test
+    fun `the film is a short clip, 8 to 10 seconds`() {
+        assertTrue("${film.durationSeconds} s", film.durationSeconds in 8f..10f)
+        // Whole frames at the clip's rate: the recording stops on a frame, not between two.
+        val frames = film.frameCount
+        assertEquals(frames.toFloat() / ResultFilm.FPS, film.durationSeconds, 1f / ResultFilm.FPS)
+    }
+
+    @Test
+    fun `the clip is 720p, at the film's rate, and stops on its own just after the film`() {
+        val video = film.video
+        assertEquals(720, video.maxShortEdge)
+        assertEquals(ResultFilm.FPS, video.frameRate)
+        assertTrue(video.maxDurationMillis > film.durationSeconds * 1000f)
+        assertTrue(video.maxDurationMillis < film.durationSeconds * 1000f + 2000f)
+    }
+
+    @Test
+    fun `it opens on the reveal, lands on the framing, and ends on the plan`() {
+        assertEquals(film.reveal.start, film.shotAt(0f))
+        assertSame(home, film.shotAt(film.turnStart))
+        val end = film.shotAt(film.durationSeconds)
+        assertEquals(plan.elevationDegrees, end.elevationDegrees, 1e-3f)
+        assertEquals(plan.distance, end.distance, 1e-3f)
+        // Held: the last second of the clip is the plan, still.
+        assertSame(end, film.shotAt(film.durationSeconds - ResultFilm.HOLD_SECONDS + 0.01f))
+    }
+
+    @Test
+    fun `frame n is the same camera every time`() {
+        val again = ResultFilm.of(home, plan)
+        for (n in 0..film.frameCount) {
+            val t = n.toFloat() / ResultFilm.FPS
+            assertEquals(film.shotAt(t), again.shotAt(t))
+        }
+    }
+
+    @Test
+    fun `the camera never jumps from one frame to the next, seams included`() {
+        var last = film.shotAt(0f).eye
+        var worst = 0f
+        for (n in 1..film.frameCount) {
+            val eye = film.shotAt(n.toFloat() / ResultFilm.FPS).eye
+            val step = sqrt(
+                (eye.x - last.x) * (eye.x - last.x) + (eye.y - last.y) * (eye.y - last.y) + (eye.z - last.z) * (eye.z - last.z),
+            )
+            worst = maxOf(worst, step)
+            last = eye
+        }
+        // A fifth of the framing's distance a frame at most: fast at the turn's middle, never a cut.
+        assertTrue("worst step $worst m", worst < home.distance * MAX_STEP_SHARE)
+        for (seam in listOf(film.turnStart, film.planStart)) {
+            val before = film.shotAt(seam - 1e-4f).eye
+            val after = film.shotAt(seam + 1e-4f).eye
+            val gap = sqrt((after.x - before.x) * (after.x - before.x) + (after.y - before.y) * (after.y - before.y) + (after.z - before.z) * (after.z - before.z))
+            assertTrue("gap $gap m at $seam s", gap < home.distance * 0.01f)
+        }
+    }
+
+    private fun assertSame(expected: CameraShot, actual: CameraShot) {
+        assertEquals(expected.target.x, actual.target.x, 1e-3f)
+        assertEquals(expected.target.y, actual.target.y, 1e-3f)
+        assertEquals(expected.target.z, actual.target.z, 1e-3f)
+        val turn = ((expected.azimuthDegrees - actual.azimuthDegrees) % 360f + 360f) % 360f
+        assertEquals(0f, minOf(turn, 360f - turn), 1e-2f)
+        assertEquals(expected.elevationDegrees, actual.elevationDegrees, 1e-3f)
+        assertEquals(expected.distance, actual.distance, 1e-3f)
+    }
+
+    private companion object {
+        const val MAX_STEP_SHARE = 0.2f
+    }
+}
