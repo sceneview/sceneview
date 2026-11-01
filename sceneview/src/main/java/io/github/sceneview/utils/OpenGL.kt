@@ -3,6 +3,8 @@ package io.github.sceneview.utils
 import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.EGLContext
+import android.opengl.EGLDisplay
+import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
 
@@ -18,7 +20,14 @@ object OpenGL {
             ?: error("EGL context creation failed")
     }
 
-    fun createEglContext(shareContext: EGLContext?): EGLContext? {
+    fun createEglContext(shareContext: EGLContext?): EGLContext? =
+        createPbufferContext(shareContext).context
+
+    /**
+     * [createEglContext], keeping the display and the 1×1 pbuffer the context was made current on,
+     * so that the context can be released on this thread and made current on another one.
+     */
+    internal fun createPbufferContext(shareContext: EGLContext?): PbufferContext {
         val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         EGL14.eglInitialize(display, null, 0, null, 0)
         val configs = arrayOfNulls<EGLConfig>(1)
@@ -47,7 +56,34 @@ object OpenGL {
                 context
             )
         ) { "Error making GL context." }
-        return context
+        return PbufferContext(display, context, surface)
+    }
+
+    /** An EGL context and the 1×1 pbuffer it is made current on, see [createPbufferContext]. */
+    internal class PbufferContext(
+        val display: EGLDisplay,
+        val context: EGLContext,
+        val surface: EGLSurface,
+    ) {
+        /** Makes the context current on the calling thread. `false` when EGL refuses. */
+        fun makeCurrent(): Boolean = EGL14.eglMakeCurrent(display, surface, surface, context)
+
+        /**
+         * Leaves the calling thread with no current context, so that another thread can make this
+         * one current: EGL refuses a context that is still current on a different thread.
+         */
+        fun releaseFromThisThread() {
+            EGL14.eglMakeCurrent(
+                display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT
+            )
+            EGL14.eglReleaseThread()
+        }
+
+        /** Destroys the pbuffer and the context. Must not be current on any thread. */
+        fun destroy() {
+            EGL14.eglDestroySurface(display, surface)
+            EGL14.eglDestroyContext(display, context)
+        }
     }
 
     /**

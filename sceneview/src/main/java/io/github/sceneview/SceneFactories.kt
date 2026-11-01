@@ -5,7 +5,6 @@ import android.opengl.EGLContext
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Colors
 import com.google.android.filament.Engine
-import com.google.android.filament.Filament
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
@@ -14,9 +13,7 @@ import com.google.android.filament.Skybox
 import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
-import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.KTX1Loader
-import com.google.android.filament.utils.Utils
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
@@ -34,12 +31,9 @@ import io.github.sceneview.node.ViewNode
 import io.github.sceneview.utils.OpenGL
 import io.github.sceneview.utils.readBuffer
 
-// Initialize Filament once (triggered when this file's class is first loaded)
-private val filamentInit: Unit = run {
-    Gltfio.init()
-    Filament.init()
-    Utils.init()
-}
+// Initialize Filament once (triggered when this file's class is first loaded). When
+// [EngineWarmUp] already loaded the libraries on its own thread, this returns at once.
+private val filamentInit: Unit = loadFilamentLibraries()
 
 const val DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE = 6_500.0f
 
@@ -98,9 +92,16 @@ val DEFAULT_OBJECT_POSITION = Position(0.0f, 0.0f, -4.0f)
  */
 const val DEFAULT_IBL_INTENSITY = 10_000.0f
 
+/**
+ * Creates the EGL context a Filament [Engine][com.google.android.filament.Engine] shares, current on
+ * the calling thread on a 1×1 pbuffer.
+ *
+ * When [EngineWarmUp] prepared one — it does at app startup unless the app opted out — this hands
+ * that one over instead, waiting for a warm-up still under way, and only makes it current here.
+ */
 fun createEglContext(): EGLContext {
     filamentInit  // ensure init
-    return OpenGL.createEglContext()
+    return EngineWarmUp.takeEglContext() ?: OpenGL.createEglContext()
 }
 
 /**

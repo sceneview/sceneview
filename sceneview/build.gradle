@@ -122,6 +122,9 @@ dependencies {
     // Android KTX
     implementation libs.androidx.fragment.ktx
 
+    // App Startup — runs EngineWarmUpInitializer, merged from this module's manifest
+    implementation libs.androidx.startup.runtime
+
     // Compose
     implementation libs.androidx.compose.ui
     implementation libs.androidx.compose.foundation

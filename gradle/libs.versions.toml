@@ -9,6 +9,7 @@ coreKtx = "1.19.1"
 coreSplashscreen = "1.2.0"
 appcompat = "1.8.0"
 fragmentKtx = "1.9.1"
+startupRuntime = "1.2.0"
 
 # Compose
 composeBom = "2026.09.00"
@@ -186,6 +187,7 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
+androidx-startup-runtime = { group = "androidx.startup", name = "startup-runtime", version.ref = "startupRuntime" }
 
 # Compose BOM (manages all Compose versions)
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }

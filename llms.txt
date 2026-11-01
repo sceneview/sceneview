@@ -4937,6 +4937,7 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 - `environmentLoader.createHDREnvironment(...)` — **main thread only**.
 - Use `modelLoader.loadModelInstanceAsync(...)` or `suspend fun loadModelInstance(...)` for imperative async code.
 - Inside `SceneView { }` composable scope, you are on the main thread — safe for all Filament calls.
+- `EngineWarmUp.start()` — any thread. The `Engine` itself is still created on the main thread: Filament's job system adopts the creating thread, and `Engine.destroy()` must run on it.
 
 ---
 
@@ -4953,6 +4954,7 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.
 - **Compose**: use `remember` for Position/Rotation/Scale — no allocations in composition body.
 - **Engine**: create one `rememberEngine()` at app level, share across all scenes.
+- **Startup**: the first `rememberEngine()` no longer loads Filament's native libraries or creates the shared EGL context inside its composition — `EngineWarmUp` does both on a background thread at app startup, through an `androidx.startup` initializer SceneView merges into your manifest; `rememberEngine()` only builds the `Engine`, which Filament ties to the main thread. To skip that warm-up, remove the `io.github.sceneview.EngineWarmUpInitializer` meta-data with `tools:node="remove"` (call `EngineWarmUp.start()` yourself, from any thread, before the first 3D screen if you still want it). `rememberModelLoader(engine)` is cheap too: gltfio's material provider is built by the loader's first model. Keep model creation out of a screen's first frame with `rememberModelInstance` or the `suspend` `loadModelInstance` / `loadInstancedModel` instead of `createModel*` / `createInstancedModel` in `remember { }`.
 - **AR**: disable `planeRenderer` after object placement to reduce overdraw.
 - **Rerun bridge**: adds ~0.5ms when active. Gate with `BuildConfig.DEBUG`.
 - **Hot paths**: never call a decomposing/allocating getter inside `onFrame`/`onSessionUpdated`. Set whole `node.transform = …` once (don't write `position`/`quaternion`/`scale` one at a time → recompose + drift); use `mat4.copyColumnsInto(scratch)` not `toColumnsFloatArray()`; use the TRS-tuple `slerp(...)` overload; `worldPosition`/`worldQuaternion` are cached so per-frame reads are fine. AR: don't read `pose.transform` per frame (allocates) — use `pose.toTransform(scratch)` or a node setter. See docs/docs/performance.md § Hot Paths & Allocation-Free APIs (audit #2263).
@@ -8126,6 +8128,7 @@ These symbols do not exist on iOS (no `@available(*, deprecated)` factory — th
 | `ARSceneView(renderQuality:)` | The one-line `renderQuality` preset is on the AR composable on Android only; the iOS `.renderQuality(_:)` modifier is 3D-`SceneView`-only (#2524) | Tune AR on iOS via `ARSceneView(cameraExposure:)` + IBL; use `.renderQuality(_:)` on the 3D `SceneView` path |
 | `SceneView(frameRatePolicy:)` / `FrameRatePolicy` / `RenderInvalidator` | Render-on-demand is Filament-loop-specific: RealityKit owns its own render loop and exposes nothing to park or to vote a cadence with. **Android's `ARSceneView` does NOT take this parameter either** — a live camera feed is never idle, so its loop never parks; it only skips the GPU submit on a duplicate ARCore `Frame.timestamp` with no scene change | N/A — on the web, `sceneview.js` exposes the same capability as imperative `startRendering()` / `stopRendering()` |
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
+| `EngineWarmUp` / `EngineWarmUpInitializer` | Prepares Filament's native libraries and the shared EGL context off the main thread; RealityKit has no EGL context and builds its renderer itself | N/A — nothing to warm up on iOS or the web |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |
 | `SplatNode` / `SplatCloud` / `rememberSplatCloud` — 3D Gaussian Splatting (`splat-preview` demo, #2646) | No first-party RealityKit Gaussian-splat primitive; would need a custom Metal render path or a mesh-impostor approximation | iOS-skip — Android-only today, absent from every SceneViewSwift surface. Needs-decision on a future custom-Metal or impostor-mesh port (#2768). |

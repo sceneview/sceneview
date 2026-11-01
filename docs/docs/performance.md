@@ -336,6 +336,37 @@ SceneView(engine = engine, modelLoader = modelLoader, /* ... */) { }
     Creating multiple `Engine` instances wastes GPU memory and can cause crashes
     on devices with limited resources. Create one at the top level and pass it down.
 
+### The first 3D frame
+
+Most of what the first `rememberEngine()` used to do inside its composition — loading
+Filament's native libraries, initialising the GPU driver, creating the shared EGL
+context — now runs on a background thread at app startup. `EngineWarmUp` does it,
+through an `androidx.startup` initializer that SceneView merges into your manifest,
+and `rememberEngine()` takes the prepared context. The `Engine` itself is still built
+on the main thread: Filament ties an engine to the thread that creates it.
+
+To skip that warm-up — it holds one small EGL context until the first engine takes
+it — remove the initializer, and call `EngineWarmUp.start()` yourself, from any
+thread, when the user heads for a 3D screen:
+
+```xml
+<provider
+    android:name="androidx.startup.InitializationProvider"
+    android:authorities="${applicationId}.androidx-startup"
+    tools:node="merge">
+    <meta-data
+        android:name="io.github.sceneview.EngineWarmUpInitializer"
+        tools:node="remove" />
+</provider>
+```
+
+`rememberModelLoader(engine)` costs nothing until its first model: gltfio's material
+provider is built then. Creating a model synchronously in the screen's first
+composition (`createModel*` or `createInstancedModel` inside `remember { }`) brings
+both that build and the glTF parse back into the first frame; load it with
+`rememberModelInstance`, or the `suspend` `loadModelInstance` / `loadInstancedModel`,
+and the first frame shows the scene while the model follows.
+
 ### Lazy loading
 
 Load models on-demand rather than all at startup:
