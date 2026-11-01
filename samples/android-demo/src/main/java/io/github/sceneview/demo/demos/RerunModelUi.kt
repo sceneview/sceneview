@@ -74,6 +74,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
@@ -117,6 +118,7 @@ import io.github.sceneview.demo.demos.internal.model.ModelPhotos
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -708,6 +710,10 @@ internal fun RerunModelScreen(
         model?.glbBuffer()?.let { buffer -> runCatching { modelLoader.createModelInstance(buffer) }.getOrNull() }
     }
     DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
+    // The reveal's wire (ModelReveal): of the model the result opens on only. A finished model
+    // that takes a raw surface's place later is not revealed again, so needs none.
+    val revealOf = model?.takeIf { it === framedBy }
+    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0)
     // The ground it stands on and the floor it missed (#4719), read off the model's own vertices
     // once the model is settled, never beside a big scan's finish ([groundSource]). Until the next
     // settles, the last one stays.
@@ -902,6 +908,11 @@ internal fun RerunModelScreen(
                 (if (plan) planFraming else framing)?.home(RerunResultView.AZIMUTH, aspect, area)
             }
             SideEffect { home.value()?.let { opening.aim(orbit, it) } }
+            val revealClock = rememberRevealClock(
+                key = framedBy,
+                started = shown,
+                animate = LocalMotionEnabled.current || DemoSettings.qaMotion,
+            )
             SceneView(
                 modifier = Modifier.matchParentSize(),
                 engine = engine,
@@ -919,13 +930,26 @@ internal fun RerunModelScreen(
                     val framed = home.value() ?: return@SceneView
                     // The reveal starts on the frame the model is drawn on its framing, and the
                     // view is let to be seen on its first frame, not the still one before it.
-                    if (cinematics.frameDrawn(opening, framed, ready = instance != null)) shown = true
+                    // The wire is read first, so the reveal starts with it, not a frame after.
+                    val ready = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
+                    if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
                     if (touring != cinematics.touring) touring = cinematics.touring
                     CameraRig.eye(orbit.pose).let { eye -> facing.look(rescan?.measure, eye.x, eye.z) }
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
-                instance?.let { ModelNode(modelInstance = it, autoAnimate = false) }
+                // Revealed (ModelReveal): its wire sweeps up, then it rises into it as the camera flies in.
+                instance?.let {
+                    RevealedModel(
+                        instance = it,
+                        wire = (wireBuild as? RevealWireBuild.Done)?.wire?.takeIf { model === revealOf },
+                        // Read here, in the scene, so only the scene recomposes as the reveal plays.
+                        elapsedMs = revealClock.value,
+                        color = chrome.accent,
+                        engine = engine,
+                        materialLoader = materialLoader,
+                    )
+                }
                 ground?.let {
                     // The replay's grid round the slab (QA 2026-10-22), its lines sized for the
                     // camera the result opens on, bucketed so a reframe rarely rebuilds them.

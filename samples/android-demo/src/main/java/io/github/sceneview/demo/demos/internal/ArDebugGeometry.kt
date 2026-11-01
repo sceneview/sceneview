@@ -96,6 +96,13 @@ class DebugMesh(initialVertices: Int = 64) {
         indices[indexCount++] = c
     }
 
+    /** A line from [a] to [b]: two indices, for a layer drawn as `LINES` (`RevealWire`). */
+    fun segment(a: Int, b: Int) {
+        if (indexCount + 2 > indices.size) indices = indices.copyOf(max(indices.size * 2, 48))
+        indices[indexCount++] = a
+        indices[indexCount++] = b
+    }
+
     fun quad(a: Int, b: Int, c: Int, d: Int) {
         triangle(a, b, c)
         triangle(a, c, d)

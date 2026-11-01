@@ -324,9 +324,14 @@ internal class DebugLayerNode(
      * layer drawn through `scan_surfel.mat`, which clamps a surfel's size on screen (#4742).
      */
     private val surfels: Boolean = false,
+    /**
+     * `TRIANGLES`, or `LINES` for a line list (`DebugMesh.segment`): the reveal's wireframe, whose
+     * hairlines are the look, not a stand-in for widths ([ModelReveal]).
+     */
+    private val primitive: PrimitiveType = PrimitiveType.TRIANGLES,
 ) : MeshNode(
     engine = engine,
-    primitiveType = PrimitiveType.TRIANGLES,
+    primitiveType = primitive,
     vertexBuffer = createVertexBuffer(engine, INITIAL_CAPACITY, textured, surfels),
     indexBuffer = createIndexBuffer(engine, INITIAL_CAPACITY),
     // The session is room-sized but unbounded; a generous fixed box keeps culling cheap and
@@ -342,6 +347,9 @@ internal class DebugLayerNode(
         receiveShadows(false)
     },
 ) {
+    /** Indices per primitive: 2 for a line, 3 for a triangle. */
+    private val stride get() = if (primitive == PrimitiveType.LINES) 2 else 3
+
     private var ownedVertexBuffer: VertexBuffer = vertexBuffer
     private var ownedIndexBuffer: IndexBuffer = indexBuffer
     private var vertexCapacity = INITIAL_CAPACITY
@@ -474,11 +482,12 @@ internal class DebugLayerNode(
             else indexBytes.asIntBuffer().put(mesh!!.indices, 0, indexCount)
             indexTarget.setBuffer(engine, indexBytes, 0, indexCount * Int.SIZE_BYTES, handler, released)
 
+            val drawn = indexCount - indexCount % stride
             renderableManager.setGeometryAt(
-                renderableInstance, 0, PrimitiveType.TRIANGLES, vertexTarget, indexTarget, 0, indexCount,
+                renderableInstance, 0, primitive, vertexTarget, indexTarget, 0, drawn,
             )
-            uploadedIndices = indexCount
-            shownIndices = indexCount
+            uploadedIndices = drawn
+            shownIndices = drawn
         } catch (t: Throwable) {
             if (tracked) {
                 flight.abort()
@@ -512,11 +521,11 @@ internal class DebugLayerNode(
     }
 
     private fun applyShownIndices() {
-        val shown = (wantedIndices - wantedIndices % 3).coerceIn(3, uploadedIndices)
+        val shown = (wantedIndices - wantedIndices % stride).coerceIn(minOf(stride, uploadedIndices), uploadedIndices)
         if (shown == shownIndices) return
         shownIndices = shown
         renderableManager.setGeometryAt(
-            renderableInstance, 0, PrimitiveType.TRIANGLES, ownedVertexBuffer, ownedIndexBuffer, 0, shown,
+            renderableInstance, 0, primitive, ownedVertexBuffer, ownedIndexBuffer, 0, shown,
         )
     }
 
