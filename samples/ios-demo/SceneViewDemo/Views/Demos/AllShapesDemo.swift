@@ -57,7 +57,11 @@ struct GeometryDemo: View {
             onReset: reset,
             accessory: {
                 GeometryShapeChips(visible: $visible) { shape in
+                    #if os(macOS)
+                    Color(nsColor: shape.swatch(finish))
+                    #else
                     Color(uiColor: shape.swatch(finish))
+                    #endif
                 }
             }
         ) {
