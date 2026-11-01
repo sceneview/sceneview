@@ -1,3 +1,6 @@
+// SceneRecorder, CaptureOverlay and VideoSettings are iOS-only in SceneViewSwift:
+// on macOS the settings sheet has no Take photo / Record video rows.
+#if os(iOS)
 import AVKit
 import SwiftUI
 import SceneViewSwift
@@ -305,3 +308,4 @@ private struct PlayedVideo: Identifiable {
     let url: URL
     var id: URL { url }
 }
+#endif

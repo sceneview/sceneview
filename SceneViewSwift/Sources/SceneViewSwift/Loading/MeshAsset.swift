@@ -242,7 +242,7 @@ public struct MeshAsset: Sendable {
     /// Reads a mesh file into parts, choosing the reader from the file's own content.
     ///
     /// Handles the formats whose ``ModelFormat/loader`` is ``ModelFormat/Loader/modelIO``
-    /// (STL, OBJ, PLY) or ``ModelFormat/Loader/sceneView`` (3MF). USD and Reality files
+    /// (STL, OBJ, PLY) or ``ModelFormat/Loader/sceneView`` (3MF, glTF). USD and Reality files
     /// are RealityKit's own business — they are rejected here with
     /// ``ModelLoadingError/unsupportedFormat(fileExtension:)`` and handled by
     /// `ModelNode.load(contentsOf:)`, which is the entry point that covers every format.
@@ -268,8 +268,16 @@ public struct MeshAsset: Sendable {
             let parts = try ModelIOMeshReader.read(contentsOf: url)
             guard !parts.isEmpty else { throw ModelLoadingError.emptyMesh }
             return MeshAsset(format: format, unit: unit ?? format.defaultUnit, parts: parts)
+        case .sceneView where format == .gltf || format == .glb:
+            // Flattened to world space at the rest pose, factors only — enough for the
+            // size readout and collision. `ModelNode.load(contentsOf:)` is the path that
+            // keeps the hierarchy, textures, skins and animations.
+            let scene = try GLTFScene.decode(GLTFDocument.read(contentsOf: url), decodeImages: false)
+            let parts = scene.flattenedGeometry()
+            guard !parts.isEmpty else { throw ModelLoadingError.emptyMesh }
+            return MeshAsset(format: format, unit: unit ?? format.defaultUnit, parts: parts)
         case .sceneView:
-            // 3MF is the only `.sceneView` format, and it declares its own unit — an
+            // 3MF is the other `.sceneView` format, and it declares its own unit — an
             // explicit `unit:` overrides what the file says, which is what a "this was
             // authored wrong" correction needs.
             let document = try ThreeMFDocument.read(contentsOf: url)

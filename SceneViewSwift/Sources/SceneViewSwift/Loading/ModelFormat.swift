@@ -47,6 +47,16 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// The only mesh format in this list that carries its own unit, and the only one
     /// neither RealityKit nor ModelIO reads. See ``ThreeMFDocument``.
     case threeMF = "3mf"
+    /// glTF 2.0 as JSON (`.gltf`), with its buffers and images either inline (`data:`
+    /// URIs) or in files next to it. Metres by spec. Opened by SceneViewSwift's own
+    /// importer — no third-party dependency.
+    ///
+    /// @addedIn 4.65.0
+    case gltf
+    /// Binary glTF 2.0 (`.glb`) — the same scene in a single file. Metres by spec.
+    ///
+    /// @addedIn 4.65.0
+    case glb
 
     /// The canonical lowercase file extension, without a dot.
     public var fileExtension: String { rawValue }
@@ -66,7 +76,7 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
         switch self {
         case .usdz, .reality, .usda, .usdc, .usd: return .realityKit
         case .stl, .obj, .ply: return .modelIO
-        case .threeMF: return .sceneView
+        case .threeMF, .gltf, .glb: return .sceneView
         }
     }
 
@@ -80,12 +90,13 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     ///   explicitly when you know better — that is what the parameter is for.
     /// - `.threeMF` → ``ModelUnit/millimeters``: the 3MF core spec's own default for a
     ///   missing `unit` attribute. A 3MF that *declares* a unit overrides this.
+    /// - `.gltf`, `.glb` → ``ModelUnit/meters``: the glTF spec fixes the unit to metres.
     /// - USD / Reality → ``ModelUnit/meters``: RealityKit has already applied the
     ///   asset's `metersPerUnit`.
     public var defaultUnit: ModelUnit {
         switch self {
         case .stl, .threeMF: return .millimeters
-        case .obj, .ply, .usdz, .reality, .usda, .usdc, .usd: return .meters
+        case .obj, .ply, .usdz, .reality, .usda, .usdc, .usd, .gltf, .glb: return .meters
         }
     }
 
@@ -93,10 +104,10 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// ``ModelUnit`` a correction rather than a guess.
     ///
     /// Drives the "what unit is this?" prompt a viewer should show: ask for `.stl`,
-    /// `.obj` and `.ply`; stay quiet for `.3mf` and USD.
+    /// `.obj` and `.ply`; stay quiet for `.3mf`, glTF and USD.
     public var carriesUnit: Bool {
         switch self {
-        case .threeMF, .usdz, .reality, .usda, .usdc, .usd: return true
+        case .threeMF, .usdz, .reality, .usda, .usdc, .usd, .gltf, .glb: return true
         case .stl, .obj, .ply: return false
         }
     }
@@ -106,8 +117,6 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     public init?(fileExtension: String) {
         var ext = fileExtension.lowercased()
         if ext.hasPrefix(".") { ext.removeFirst() }
-        // `.gltf`/`.glb` deliberately absent: neither RealityKit nor ModelIO reads
-        // them, so claiming the extension would produce a load that always fails.
         guard let format = ModelFormat(rawValue: ext) else { return nil }
         self = format
     }
@@ -131,6 +140,8 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// | `.ply` | starts with `ply` + newline |
     /// | `.usda` | starts with `#usda` |
     /// | `.usdc` | starts with `PXR-USDC` |
+    /// | `.glb` | `glTF` + little-endian container version `2` |
+    /// | `.gltf` | a JSON object (`{`) whose probe window mentions `"asset"` |
     ///
     /// OBJ has no signature and is therefore only ever identified by its extension.
     ///
@@ -186,6 +197,12 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
             } ?? .threeMF
         }
 
+        // --- GLB: "glTF" magic + container version 2 ------------------------------
+        if bytes.starts(with: Array("glTF".utf8)), bytes.count >= 8,
+           bytes[4] == 2, bytes[5] == 0, bytes[6] == 0, bytes[7] == 0 {
+            return .glb
+        }
+
         // --- Binary STL: arithmetic, not a magic number ------------------------
         //
         // 80-byte header + UInt32 triangle count + 50 bytes per triangle. This must be
@@ -212,7 +229,25 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
         if bytes.starts(with: Array("solid".utf8)), isPrintableText(bytes) {
             return .stl
         }
+        if looksLikeGLTFJSON(bytes) { return .gltf }
         return nil
+    }
+
+    /// A JSON object that names glTF's mandatory `asset` property. Exporters write
+    /// `asset` first or near the top; a file that buries it past the probe window still
+    /// opens through its `.gltf` extension.
+    private static func looksLikeGLTFJSON(_ bytes: [UInt8]) -> Bool {
+        var body = bytes[...]
+        if body.starts(with: [0xEF, 0xBB, 0xBF]) { body = body.dropFirst(3) }  // UTF-8 BOM
+        let isSpace: (UInt8) -> Bool = { $0 == 0x20 || $0 == 0x09 || $0 == 0x0A || $0 == 0x0D }
+        guard body.drop(while: isSpace).first == UInt8(ascii: "{") else { return false }
+        let needle = Array("\"asset\"".utf8)
+        guard body.count >= needle.count else { return false }
+        let window = Array(body)
+        for start in 0...(window.count - needle.count) where window[start..<(start + needle.count)].elementsEqual(needle) {
+            return true
+        }
+        return false
     }
 
     /// Reads the file name of a zip archive's first local file header.

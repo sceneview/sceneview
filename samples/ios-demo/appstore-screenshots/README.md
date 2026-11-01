@@ -21,6 +21,12 @@ English caption.
 > | 5 | `04-materials.png` | Materials that catch the light | `-demo materials -qa_mode 1` — the keyless offline stand-in, i.e. what a store visitor actually gets |
 > | 6 | `05-swiftui.png` | A few lines of SwiftUI | a SwiftUI snippet over the `reflection-probes` frame |
 >
+> **iPhone refresh, 2026-10-31.** Every `iphone-6.9/` frame except `01-ar.png` was
+> re-captured from `main` at 70045b6bf (the aligned Home shell of #4856) on the
+> iPhone 17 Pro Max simulator, iOS 27.0, dark, status bar frozen at 9:41, and
+> composed with the same manifest. `02-demos.png` now shows the current Home under
+> "Nearly forty demos". The `ipad-13/` frames are unchanged.
+>
 > Composited by `tools/store-screenshots/compose.py` from
 > `tools/store-screenshots/slots-ios.json`: the captions, the card and the code
 > panel are drawn there, from DESIGN.md tokens only. Re-capture, `cp` into

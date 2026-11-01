@@ -136,8 +136,8 @@ struct ExploreTab: View {
     /// Focus for the inline field used in `embedded` mode (see `inlineSearchField`).
     @FocusState private var inlineSearchFocused: Bool
 
-    /// Shared namespace for the iOS 18 zoom transition: the carousel card's
-    /// thumbnail morphs into the GalleryModelViewerScreen hero on push.
+    /// Shared namespace for the iOS 18 zoom transition: the "Try a demo"
+    /// card grows into its demo cover. The model viewers push plainly.
     @Namespace private var heroNamespace
     private let favoritesManager = FavoritesManager.shared
 
@@ -256,26 +256,25 @@ struct ExploreTab: View {
             // the native bar field; embedded gets this twin, floating over the
             // page as Android's `FloatingSearchPill`: the feeds scroll under it,
             // and it stays in reach however far down the page is.
-            .safeAreaInset(edge: .top, spacing: 0) {
+            // On iOS 26 the pill is a `safeAreaBar`, so the bar's scroll edge
+            // effect runs on under it instead of stopping at the title.
+            .modifier(TopPinnedBar {
                 if embedded {
                     inlineSearchField
                         .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                         .padding(.vertical, SceneViewTokens.Space.sm)
                 }
-            }
+            })
             // Explore never set a page ground, so dark mode fell back to the
             // system black (#000) while every other screen sits on the DESIGN.md
             // `surface` (#0D1117) — the flat, inky feel of #3582. Light is
             // unchanged: `surface` is #FFFFFF there, which is what the system
             // background already was.
             .background(SceneViewTokens.HomeColor.surface)
-            // Embedded on iPad, the floating tab bar takes a row of its own
-            // above the navigation bar, and the bar was left transparent:
-            // scrolled content showed through beside the tab bar and over the
-            // status bar (#4015). Give the bar an opaque page-surface ground,
-            // which reaches the screen's top edge. It matches the page, so it
-            // is invisible until content scrolls under it.
-            .modifier(OpaqueNavigationBar(visible: embedded))
+            // A large title that folds into the inline bar as the feeds scroll,
+            // over the system's scroll-edge backdrop (see `ExploreNavigationBar`
+            // for the iPad exception of #4015).
+            .modifier(ExploreNavigationBar(embedded: embedded))
             .navigationTitle("Browse online models")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Poly Haven), #2645.
@@ -324,11 +323,18 @@ struct ExploreTab: View {
             // (Poly Haven needs no key), so it's always wired.
             .refreshable { await loadFeeds(force: true) }
             .navigationDestination(item: $selectedModel) { model in
+                // A plain push, not a zoom, like the gallery viewer below.
                 ModelViewerScreen(model: model)
             }
             #if os(iOS)
             .fullScreenCover(item: $trialDemo) { demo in
                 DemoCover(scene: demo, source: .other) { trialDemo = nil }
+                    // The "Try a demo" card expands into the demo, as a Home
+                    // row does (#3599), and the system's pinch / drag-down
+                    // dismissal stays off so it never steals the 3D stage's
+                    // pinch (#4008).
+                    .zoomTransition(from: Self.trySourceId(demo), in: heroNamespace)
+                    .interactiveDismissDisabled()
             }
             #else
             .sheet(item: $trialDemo) { demo in
@@ -336,18 +342,10 @@ struct ExploreTab: View {
             }
             #endif
             .navigationDestination(item: $viewingModel) { model in
+                // A plain push, not a zoom: a pushed zoom destination takes
+                // the system's pinch and swipe-down dismissal, which closed
+                // the viewer when the stage was pinched to zoom out.
                 GalleryModelViewerScreen(model: model, source: source(for: model))
-                    // iOS 18 zoom navigation transition — the source thumbnail
-                    // matchedTransitionSource lives on the FeaturedGalleryCard
-                    // identified by `model.cardKey` (unique across sources + feeds).
-                    // `.zoom(sourceID:in:)` is unavailable on macOS, where the
-                    // destination simply pushes with the default transition.
-                    #if os(iOS)
-                    .navigationTransition(.zoom(
-                        sourceID: "gallery-hero-\(model.cardKey)",
-                        in: heroNamespace
-                    ))
-                    #endif
             }
             // `.alert(...)` is the SwiftUI counterpart of the Android `AlertDialog`
             // in ExploreTabScreen.kt — surfaced when the Sketchfab key is rejected.
@@ -408,8 +406,7 @@ struct ExploreTab: View {
     private var exploreStage: some View {
         if let hero = heroModel {
             SpatialHeroCard(model: hero,
-                            isTrending: feedsByKind[.trending]?.first?.cardKey == hero.cardKey,
-                            transitionNamespace: heroNamespace) {
+                            isTrending: feedsByKind[.trending]?.first?.cardKey == hero.cardKey) {
                 viewingModel = hero
                 #if os(iOS)
                 SceneViewHaptic.shared.light()
@@ -663,6 +660,7 @@ struct ExploreTab: View {
                             trialDemo = demo
                         }
                         .frame(width: SceneViewTokens.Home.sampleCardWidth)
+                        .zoomTransitionSource(id: Self.trySourceId(demo), in: heroNamespace)
                         .accessibilityIdentifier("explore-try-\(demo.sceneId)")
                     }
                 }
@@ -674,6 +672,9 @@ struct ExploreTab: View {
             .scrollClipDisabled()
         }
     }
+
+    /// Zoom source id of a "Try a demo" card.
+    private static func trySourceId(_ demo: DemoItem) -> String { "try-\(demo.sceneId)" }
 
     /// The demos of the "Try a demo" row, in Android's order — built once, on
     /// first use.
@@ -772,7 +773,7 @@ struct ExploreTab: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         ForEach(models, id: \.cardKey) { model in
-                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                            FeaturedGalleryCard(model: model) {
                                 viewingModel = model
                                 #if os(iOS)
                                 SceneViewHaptic.shared.light()
@@ -835,7 +836,7 @@ struct ExploreTab: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         ForEach(models, id: \.cardKey) { model in
-                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                            FeaturedGalleryCard(model: model) {
                                 logModelSearch()
                                 viewingModel = model
                                 #if os(iOS)
@@ -987,10 +988,6 @@ private struct FeaturedCard: View {
 /// touches the UI (#2645 / #2700).
 private struct FeaturedGalleryCard: View {
     let model: GalleryModel
-    /// Namespace used by iOS 18's `.navigationTransition(.zoom(sourceID:in:))`
-    /// to animate the card thumbnail into the GalleryModelViewerScreen's hero.
-    /// Optional so the card stays usable in contexts without the zoom transition.
-    var transitionNamespace: Namespace.ID? = nil
     let onTap: () -> Void
 
     var body: some View {
@@ -1023,10 +1020,6 @@ private struct FeaturedGalleryCard: View {
                     .frame(width: 200, height: 160)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .modifier(MatchedSourceModifier(
-                        id: "gallery-hero-\(model.cardKey)",
-                        namespace: transitionNamespace
-                    ))
 
                     // Top-left "Animated" pill (when applicable)
                     if model.isAnimated {
@@ -1063,23 +1056,6 @@ private struct FeaturedGalleryCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(model.name), \(model.sourceId.displayName) model")
-    }
-}
-
-/// Conditionally applies `.matchedTransitionSource(id:in:)` when a namespace is
-/// provided. iOS 18+ wires this into `.navigationTransition(.zoom(...))` so
-/// the card thumbnail morphs into the GalleryModelViewerScreen's hero on push.
-/// Returns the unmodified view when no namespace is passed.
-private struct MatchedSourceModifier: ViewModifier {
-    let id: String
-    let namespace: Namespace.ID?
-
-    func body(content: Content) -> some View {
-        if let namespace {
-            content.matchedTransitionSource(id: id, in: namespace)
-        } else {
-            content
-        }
     }
 }
 
@@ -1132,7 +1108,6 @@ private struct SpatialHeroCard: View {
     /// False when the hero comes from a fallback feed, so VoiceOver does not
     /// call it trending.
     let isTrending: Bool
-    var transitionNamespace: Namespace.ID? = nil
     let onViewIn3D: () -> Void
 
     var body: some View {
@@ -1189,7 +1164,6 @@ private struct SpatialHeroCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: SceneViewTokens.Layout.heroStageHeight)
         .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous))
-        .modifier(MatchedSourceModifier(id: "gallery-hero-\(model.cardKey)", namespace: transitionNamespace))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(isTrending
             ? "\(model.name), trending on \(model.sourceId.displayName)"
@@ -1200,23 +1174,54 @@ private struct SpatialHeroCard: View {
 
 // MARK: - Native search field (standalone only)
 
-/// The opaque page-surface navigation bar of #4015. `.navigationBar` exists
-/// only on iOS, so the Mac build keeps its own window chrome.
-private struct OpaqueNavigationBar: ViewModifier {
-    let visible: Bool
+/// Explore's navigation bar: a large title over the system's scroll-edge
+/// behaviour — clear while the page is at its top, the bar's material (the
+/// soft scroll edge effect on iOS 26) once the feeds scroll under it.
+///
+/// One exception: embedded on iPad, the floating tab bar takes a row of its
+/// own above the navigation bar, and scrolled content showed through beside
+/// the tab bar and over the status bar (#4015). There the bar keeps an
+/// opaque page-surface ground, which reaches the screen's top edge and
+/// matches the page, so it is invisible until content scrolls under it.
+/// `.navigationBar` exists only on iOS, so the Mac build keeps its own
+/// window chrome.
+private struct ExploreNavigationBar: ViewModifier {
+    let embedded: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         #if os(iOS)
         // The bar keeps the app's appearance: left alone, it takes the style of the
         // dark picture scrolled under it and paints a black bar in light mode.
-        content
-            .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
-            .toolbarBackground(visible ? .visible : .automatic, for: .navigationBar)
-            .toolbarColorScheme(colorScheme, for: .navigationBar)
+        Group {
+            if embedded && UIDevice.current.userInterfaceIdiom == .pad {
+                content
+                    .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+            } else {
+                content
+            }
+        }
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
+        .navigationBarTitleLarge()
         #else
         content
         #endif
+    }
+}
+
+/// Pins `bar` to the top of a scroll view: `safeAreaBar` on iOS / macOS 26,
+/// where the bar's scroll edge effect extends under it, `safeAreaInset`
+/// before. Either way the content scrolls under the bar and stays reachable.
+private struct TopPinnedBar<Bar: View>: ViewModifier {
+    @ViewBuilder let bar: () -> Bar
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            content.safeAreaBar(edge: .top, spacing: 0, content: bar)
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0, content: bar)
+        }
     }
 }
 
