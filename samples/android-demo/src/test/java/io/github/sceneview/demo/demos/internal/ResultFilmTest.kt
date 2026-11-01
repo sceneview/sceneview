@@ -4,6 +4,7 @@ import io.github.sceneview.camera.CameraAnimator
 import io.github.sceneview.camera.CameraShot
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.sqrt
@@ -96,6 +97,41 @@ class ResultFilmTest {
         assertTrue("landed at $wall s", wall + ResultFilm.HOLD_SECONDS > film.durationSeconds)
         assertEquals(plan.elevationDegrees, shot.elevationDegrees, 1e-2f)
         assertEquals(plan.distance, shot.distance, 1e-2f)
+    }
+
+    @Test
+    fun `a take starts only once the reveal's wire is read`() {
+        assertFalse(ResultFilm.canStart(wirePending = true))
+        assertTrue(ResultFilm.canStart(wirePending = false))
+    }
+
+    @Test
+    fun `a take runs through the film's seams, and drops on a touch or a stopped recording`() {
+        val animator = CameraAnimator(film.shotAt(0f))
+        var landed = false
+        film.play(animator) { landed = true }
+        var frames = 0
+        while (!landed) {
+            animator.advance(1f / ResultFilm.FPS)
+            frames++
+            // The camera keeps playing from one segment to the next: never a false abort.
+            assertFalse("aborted at frame $frames", ResultFilm.aborts(landed, animator.isPlaying, recording = true))
+            assertTrue("never landed", frames < film.frameCount * 2)
+        }
+        // Landed: held, not dropped, while it records; dropped once the recording stops.
+        assertFalse(ResultFilm.aborts(landed = true, cameraPlaying = false, recording = true))
+        assertTrue(ResultFilm.aborts(landed = true, cameraPlaying = false, recording = false))
+
+        // A touch takes the camera over mid-film: interrupt() ends the move without landing.
+        val touched = CameraAnimator(film.shotAt(0f))
+        var touchedLanded = false
+        film.play(touched) { touchedLanded = true }
+        repeat(ResultFilm.FPS * 4) { touched.advance(1f / ResultFilm.FPS) }
+        touched.interrupt()
+        assertFalse(touchedLanded)
+        assertTrue(ResultFilm.aborts(touchedLanded, touched.isPlaying, recording = true))
+        // The app left the foreground: the recording stopped while the camera still plays.
+        assertTrue(ResultFilm.aborts(landed = false, cameraPlaying = true, recording = false))
     }
 
     private fun assertSame(expected: CameraShot, actual: CameraShot) {

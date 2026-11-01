@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos
 
 import android.graphics.Bitmap
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -43,7 +44,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +51,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -152,15 +154,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.resume
 
 /*
  * The 3D Scan's result: at the end of a scan, the space as one meshed, coloured 3D model — its raw
@@ -758,13 +758,20 @@ internal fun RerunModelScreen(
     var filmTake by remember(framedBy) { mutableIntStateOf(0) }
     var filming by remember(framedBy) { mutableStateOf(false) }
     // A new take of the film replays the reveal from its first frame.
-    val revealClock = rememberRevealClock(key = framedBy to filmTake, started = shown, animate = animateReveal)
-    val revealing by remember(revealClock) { derivedStateOf { revealClock.value < ModelReveal.TOTAL_MS } }
+    val revealKey = framedBy to filmTake
+    var revealOver by remember(revealKey, animateReveal) { mutableStateOf(!animateReveal) }
     // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
     // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
     // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
     val revealOf = model?.takeIf { ModelReveal.buildsWire(settled, opensOn = it === framedBy, animate = animateReveal) }
-    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = revealing)
+    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = !revealOver)
+    val wirePending = wireBuild is RevealWireBuild.Pending
+    // The reveal starts once its wire is read, so a take never opens on the whole model, then cuts.
+    val revealClock = rememberRevealClock(key = revealKey, started = shown && !wirePending, animate = animateReveal)
+    LaunchedEffect(revealClock) {
+        snapshotFlow { revealClock.value >= ModelReveal.TOTAL_MS }.first { it }
+        revealOver = true
+    }
     var hintVisible by remember(framedBy) { mutableStateOf(true) }
     LaunchedEffect(shown, hintStays) {
         if (shown && !hintStays) {
@@ -826,7 +833,13 @@ internal fun RerunModelScreen(
                 val filmReady = tourReady && !touring && !filming
                 ResultPill(
                     icon = Icons.Rounded.Movie,
-                    text = stringResource(if (filming) R.string.scan_result_filming else R.string.scan_result_film),
+                    text = stringResource(
+                        when {
+                            filming && wirePending -> R.string.scan_result_film_preparing
+                            filming -> R.string.scan_result_filming
+                            else -> R.string.scan_result_film
+                        },
+                    ),
                     label = stringResource(R.string.scan_result_film_label),
                     enabled = filmReady,
                     onClick = {
@@ -951,6 +964,9 @@ internal fun RerunModelScreen(
             val context = LocalContext.current
             LaunchedEffect(filmTake) {
                 if (filmTake == 0) return@LaunchedEffect
+                // The reveal's wire is read again first: the take opens on the reveal, not on the
+                // whole model that the wire's arrival would then cut away.
+                snapshotFlow { wireBuild }.first { ResultFilm.canStart(wirePending = it is RevealWireBuild.Pending) }
                 val from = framing?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
                 val to = planFraming?.home(RerunResultView.AZIMUTH, aspect, area)?.let { ArDebugFraming.clamp(it) }
                 val film = if (from != null && to != null) ResultFilm.of(from.toShot(), to.toShot()) else null
@@ -961,6 +977,7 @@ internal fun RerunModelScreen(
                 file.delete()
                 if (to == null || film == null || !recorder.startRecording(file = file, settings = film.video)) {
                     filming = false
+                    Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
                     return@LaunchedEffect
                 }
                 var shared = false
@@ -971,18 +988,21 @@ internal fun RerunModelScreen(
                     cinematics.orbit.recenter()
                     cinematics.orbit.snapTo(to)
                     // The camera moves in frame time (each step capped), not on the wall clock:
-                    // wait for it to land on the plan, then hold, however slowly frames come.
-                    val landed = withTimeoutOrNull(film.video.maxDurationMillis) {
-                        suspendCancellableCoroutine { landing ->
-                            film.play(cinematics.animator, onLanded = { if (landing.isActive) landing.resume(Unit) })
-                        }
-                    } != null
+                    // follow it frame by frame to the plan, then hold, however slowly frames come.
+                    // A touch that takes the camera over, or a recording stopped (the app left
+                    // the foreground, the encoder failed or hit its hard stop), drops the take.
+                    var landed = false
+                    film.play(cinematics.animator, onLanded = { landed = true })
+                    while (!landed) {
+                        withFrameNanos { }
+                        if (ResultFilm.aborts(landed, cinematics.animator.isPlaying, recorder.isRecording)) break
+                    }
                     if (landed) delay((ResultFilm.HOLD_SECONDS * MILLIS_PER_SECOND).toLong())
-                    // Stopped already (the app left the foreground) or cut short: not shared.
                     val take = if (landed && recorder.isRecording) recorder.stopRecording() else null
                     if (take != null && take.file == file && !take.reachedMaxDuration) {
                         shared = shareCapture(context, file, VIDEO_MIME)
                     }
+                    if (!shared) Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
                 } finally {
                     if (recorder.isRecording) recorder.stopRecording()
                     if (!shared) file.delete()

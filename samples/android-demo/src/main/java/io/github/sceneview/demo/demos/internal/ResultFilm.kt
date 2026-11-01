@@ -71,6 +71,20 @@ internal class ResultFilm private constructor(
     }
 
     companion object {
+        /**
+         * Whether a take may start: once the reveal's wire is read ([wirePending] false), so the
+         * clip opens on the reveal, not on the whole model the wire's arrival would cut away.
+         */
+        fun canStart(wirePending: Boolean): Boolean = !wirePending
+
+        /**
+         * Whether a running take is dropped: its recording stopped (the app left the foreground,
+         * the encoder failed or hit its hard stop), or the camera stopped before it [landed] (a
+         * touch took it over; it stays playing across the film's seams).
+         */
+        fun aborts(landed: Boolean, cameraPlaying: Boolean, recording: Boolean): Boolean =
+            !recording || (!landed && !cameraPlaying)
+
         /** The turn: one lap, about the pace of a person walking round a table. */
         const val TURN_SECONDS = 4.2f
 
