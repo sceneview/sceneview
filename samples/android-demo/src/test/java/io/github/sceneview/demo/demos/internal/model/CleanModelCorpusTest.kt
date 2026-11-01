@@ -122,7 +122,7 @@ class CleanModelCorpusTest {
      * The ray-cast room as the recorder saves a depth scan: a camera pose and a JPEG for each of
      * its key photos, and its dense surfels fused from the walk's depth.
      */
-    private fun syntheticRecording() = runBlocking {
+    internal fun syntheticRecording() = runBlocking {
         val shots = TexturedSyntheticRoom.photos()
         val events = ArrayList<ArDebugEvent>()
         val photos = shots.mapIndexed { i, shot ->

@@ -735,6 +735,8 @@ internal fun RerunModelScreen(
     var plan by remember(framedBy) { mutableStateOf(false) }
     var touring by remember(framedBy) { mutableStateOf(false) }
     var shown by remember(framedBy) { mutableStateOf(false) }
+    // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
+    val layers = rememberResultLayers(source, framedBy, settled)
     var hintVisible by remember(framedBy) { mutableStateOf(true) }
     LaunchedEffect(shown, hintStays) {
         if (shown && !hintStays) {
@@ -801,6 +803,16 @@ internal fun RerunModelScreen(
                     .align(Alignment.CenterHorizontally)
                     .alpha(hintAlpha)
                     .then(if (hintShown) Modifier else Modifier.clearAndSetSemantics { }),
+            )
+            ResultLayerPicker(
+                layers = layers,
+                plan = plan,
+                ready = tourReady,
+                onPlan = {
+                    plan = it
+                    cinematics.request(ScanResultCinematics.Request.Recenter)
+                },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         },
         dock = listOfNotNull(
@@ -943,6 +955,7 @@ internal fun RerunModelScreen(
                     }
                 }
                 rescan?.let { RescanZoneLayer(it.mesh, it.veil, engine, materialLoader) }
+                ResultPhotoLayer(layers, instance)
             }
             // The ground until the model is drawn on its framing: no pose but that one is seen.
             // Then it fades as the camera reveal flies in (`motion-entrance`), never a cut from the
@@ -965,6 +978,7 @@ internal fun RerunModelScreen(
                         .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
                 )
             }
+            ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
         }
     }
     if (renaming && onRename != null) {
