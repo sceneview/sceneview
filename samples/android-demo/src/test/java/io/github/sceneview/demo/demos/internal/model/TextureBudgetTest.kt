@@ -89,6 +89,33 @@ class TextureBudgetTest {
         assertTrue(ModelGlb.isTextured(result.glb))
     }
 
+    /**
+     * Out of memory in the size guard, not the first write: the first atlas is padded over the
+     * `.glb`'s cap, so the guard writes again, and that second encoding runs out. Before the
+     * guard's loops were in the fallback, that out of memory left the finish with the raw surface.
+     */
+    @Test
+    fun `out of memory in the size guard within the large budget falls back to the small one`() {
+        val raw = room()
+        var calls = 0
+        val encoder = AtlasEncoder { argb, width, height ->
+            calls++
+            when (calls) {
+                1 -> JvmAtlasEncoder.jpeg(argb, width, height)?.plus(ByteArray(CleanModel.MAX_GLB_BYTES))
+                2 -> throw OutOfMemoryError("synthetic")
+                else -> JvmAtlasEncoder.jpeg(argb, width, height)
+            }
+        }
+        val result = CleanModel.build(raw, mixedPhotos(PHOTO_EVERY_KEPT), encoder, budget = TextureBudget.LARGE)
+        assertTrue("the guard wrote again: $calls encodings", calls >= 3)
+        assertFalse(result.stats.rawKept)
+        assertTrue(result.stats.textureBudgetFellBack)
+        assertEquals(TextureBudget.BASE, result.stats.textureBudget)
+        assertNotNull("still textured", result.stats.texture)
+        assertTrue(result.glb.size <= CleanModel.MAX_GLB_BYTES)
+        assertTrue(ModelGlb.isTextured(result.glb))
+    }
+
     private fun burn(shot: BakePhoto): BakePhoto {
         val argb = IntArray(shot.argb.size) { i ->
             val c = shot.argb[i]
@@ -215,12 +242,11 @@ class TextureBudgetTest {
     fun `the heap's own budget, its peak reported`() {
         val raw = room()
         val photos = mixedPhotos()
-        // The GPU of a recent phone: the heap alone picks the budget.
-        TextureBudget.gpuMaxTextureSize = GPU_4096
         System.gc()
         resetPeaks()
         val start = System.nanoTime()
-        val result = CleanModel.build(raw, photos, JvmAtlasEncoder)
+        // The heap's budget on a GPU that takes 4096, passed rather than set: no other test sees it.
+        val result = CleanModel.build(raw, photos, JvmAtlasEncoder, budget = TextureBudget.forHeap(Runtime.getRuntime().maxMemory(), GPU_4096))
         val ms = (System.nanoTime() - start) / NANOS_PER_MS
         val stats = result.stats
         println(

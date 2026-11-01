@@ -65,11 +65,11 @@ class CleanModelWorstCaseTest {
         val raw = noisyRoom()
         val shots = TexturedSyntheticRoom.photos(every = MIXED_EVERY, sharpEvery = SHARP_EVERY, sharpScale = SHARP_SCALE)
         val photos = ModelPhotos(TexturedSyntheticRoom.PHOTO_LENS, shots.map { shot -> ModelPhoto(shot.pose) { shot } })
-        TextureBudget.gpuMaxTextureSize = GPU_4096
         val heap = Runtime.getRuntime().maxMemory()
         System.gc()
         val start = System.nanoTime()
-        val result = CleanModel.build(raw, photos, JvmAtlasEncoder)
+        // The heap's budget on a GPU that takes 4096, passed rather than set: no other test sees it.
+        val result = CleanModel.build(raw, photos, JvmAtlasEncoder, budget = TextureBudget.forHeap(heap, GPU_4096))
         val ms = (System.nanoTime() - start) / NANOS_PER_MS
         val stats = result.stats
         println(

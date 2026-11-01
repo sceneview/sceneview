@@ -336,10 +336,8 @@ internal object CleanModel {
             progress(BEFORE_WRITE)
             out.glb = NO_BYTES
             val halved = checkNotNull(out.texture).halved()
-            val shown = checkNotNull(out.model)
-            out.model = null
             out.texture = halved
-            out.model = shown.withTexture(halved)
+            out.model = checkNotNull(out.model).withTexture(halved)
             out.glb = ModelGlb.write(checkNotNull(out.model), encoder)
             out.halvings++
         }
