@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -74,6 +75,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
@@ -117,6 +119,7 @@ import io.github.sceneview.demo.demos.internal.model.ModelPhotos
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -735,6 +738,14 @@ internal fun RerunModelScreen(
     var plan by remember(framedBy) { mutableStateOf(false) }
     var touring by remember(framedBy) { mutableStateOf(false) }
     var shown by remember(framedBy) { mutableStateOf(false) }
+    val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
+    val revealClock = rememberRevealClock(key = framedBy, started = shown, animate = animateReveal)
+    val revealing by remember(revealClock) { derivedStateOf { revealClock.value < ModelReveal.TOTAL_MS } }
+    // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
+    // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
+    // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
+    val revealOf = model?.takeIf { ModelReveal.buildsWire(settled, opensOn = it === framedBy, animate = animateReveal) }
+    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = revealing)
     var hintVisible by remember(framedBy) { mutableStateOf(true) }
     LaunchedEffect(shown, hintStays) {
         if (shown && !hintStays) {
@@ -919,13 +930,26 @@ internal fun RerunModelScreen(
                     val framed = home.value() ?: return@SceneView
                     // The reveal starts on the frame the model is drawn on its framing, and the
                     // view is let to be seen on its first frame, not the still one before it.
-                    if (cinematics.frameDrawn(opening, framed, ready = instance != null)) shown = true
+                    // The wire is read first, so the reveal starts with it, not a frame after.
+                    val ready = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
+                    if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
                     if (touring != cinematics.touring) touring = cinematics.touring
                     CameraRig.eye(orbit.pose).let { eye -> facing.look(rescan?.measure, eye.x, eye.z) }
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
-                instance?.let { ModelNode(modelInstance = it, autoAnimate = false) }
+                // Revealed (ModelReveal): its wire sweeps up, then it rises into it as the camera flies in.
+                instance?.let {
+                    RevealedModel(
+                        instance = it,
+                        build = (wireBuild as? RevealWireBuild.Done)?.takeIf { model === revealOf },
+                        // Read here, in the scene, so only the scene recomposes as the reveal plays.
+                        elapsedMs = revealClock.value,
+                        color = chrome.accent,
+                        engine = engine,
+                        materialLoader = materialLoader,
+                    )
+                }
                 ground?.let {
                     // The replay's grid round the slab (QA 2026-10-22), its lines sized for the
                     // camera the result opens on, bucketed so a reframe rarely rebuilds them.
