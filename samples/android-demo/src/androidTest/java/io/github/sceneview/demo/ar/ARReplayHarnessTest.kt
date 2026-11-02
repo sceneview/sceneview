@@ -19,6 +19,8 @@ import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.demoPackage
 import io.github.sceneview.demo.isArDemo
+import io.github.sceneview.demo.labs.Labs
+import io.github.sceneview.demo.labs.LabsStore
 import io.github.sceneview.demo.mainActivityComponent
 import org.json.JSONArray
 import org.json.JSONObject
@@ -108,6 +110,17 @@ class ARReplayHarnessTest {
         device.executeShellCommand("pm grant $demoPackage android.permission.CAMERA")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
+        // Labs demos (ar-pool, ar-image-stabilization…) otherwise open on the Labs explainer
+        // and never start a session. Open Labs for this process only: an in-memory store,
+        // nothing written to the app's preferences.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            Labs.attach(
+                object : LabsStore {
+                    override var joined: Boolean = true
+                    override var enabled: Boolean = true
+                },
+            )
+        }
     }
 
     @Test
