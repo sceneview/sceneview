@@ -348,7 +348,7 @@ tables, the warm-up creates a short-lived engine of its own on its thread (no-op
 backend) and destroys it there. On a Pixel 7a this took a 3D board's first frame from
 238 to 184 ms.
 
-It is **opt-in**, because every launch that runs it pays for it — about 80 ms of
+It is **opt-in**, because every launch that runs it pays for it — about 60–80 ms of
 background CPU, the GPU driver loaded, one small EGL context held — even a launch that
 never shows 3D. Start it where a 3D screen is likely to follow, from any thread:
 
@@ -369,6 +369,13 @@ or at app startup without code, by listing its initializer in your manifest:
         android:value="androidx.startup" />
 </provider>
 ```
+
+Started at app startup, the warm-up competes with your app's own startup. With a 3D
+first screen, measured over 14 cold starts each on a Pixel 10 Pro XL, the 3D frame fell
+from 194 to 151 ms but time to first frame rose from 134 to 149 ms. On a Pixel 7a,
+the 3D frame went from 238 to 184 ms and time to first frame from 140 to 145 ms, within
+noise. If the 3D screen is not the first one, start the warm-up once the first frame is
+drawn rather than in `Application.onCreate()`.
 
 A prepared context that no engine takes within 5 seconds is released; the libraries
 and tables stay loaded.

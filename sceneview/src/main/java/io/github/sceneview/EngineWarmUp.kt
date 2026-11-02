@@ -24,10 +24,11 @@ import io.github.sceneview.utils.OpenGL
  * of [rememberEngine]) takes the prepared context and only has to make it current, and the first
  * [io.github.sceneview.loaders.ModelLoader] finds the tables built.
  *
- * **Opt-in.** Nothing starts it unless the app asks, because it costs every launch that does it:
- * about 80 ms of CPU on its own thread, Filament's libraries and the GPU driver loaded, and one EGL
- * context held until an engine takes it — even a launch that never shows 3D, such as a background
- * start for a push message or a WorkManager job. Start it where a 3D screen is likely to follow:
+ * **Opt-in.** Nothing starts it unless the app asks, because it costs every launch that does
+ * it: about 60–80 ms of CPU on its own thread, Filament's libraries and the GPU driver loaded, and
+ * one EGL context held until an engine takes it — even a launch that never shows 3D, such as a
+ * background start for a push message or a WorkManager job. Start it where a 3D screen is likely
+ * to follow:
  *
  * - from code, on any thread, a little before the 3D screen — when the user heads for it, or in
  *   `Application.onCreate()` for an app whose first screen is 3D:
@@ -47,6 +48,11 @@ import io.github.sceneview.utils.OpenGL
  *           android:value="androidx.startup" />
  *   </provider>
  *   ```
+ *
+ * **Started at app startup, it competes with the app's own startup.** Measured on a 3D first
+ * screen: on a Pixel 10 Pro XL the 3D frame fell from 194 to 151 ms and time to first frame rose
+ * from 134 to 149 ms; on a Pixel 7a, 238 to 184 ms and 140 to 145 ms (within noise). When the 3D
+ * screen is not the first one, start it after the first frame is drawn instead.
  *
  * A prepared context nobody takes within 5 seconds is released; the libraries and the tables stay,
  * so a later 3D screen still saves most of the work. A [rememberEngine] given its own
