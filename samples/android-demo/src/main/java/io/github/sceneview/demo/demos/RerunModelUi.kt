@@ -856,7 +856,8 @@ internal fun RerunModelScreen(
                 label = stringResource(R.string.scan_result_more_label),
                 caption = stringResource(R.string.scan_result_more),
                 onClick = { more = true },
-                enabled = instance != null,
+                // An object has no plan to show: with no capture to watch either, More is empty.
+                enabled = instance != null && (scope.hasFloorPlan || onReplay != null),
                 selected = more,
             ),
         ),
