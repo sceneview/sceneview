@@ -121,6 +121,20 @@ class ScanResultFramingTest {
     }
 
     @Test
+    fun `a long object scanned along both its long sides opens on the end it was scanned from`() {
+        // A bench 60 cm along a, 20 cm across b: both long sides scanned in full, the +a end too,
+        // the -a end never. The long sides hold the most surface, but each faces away as much as
+        // the other faces in: only the +a end says where the scan was taken.
+        val cloud = Cloud(yawDegrees = 0f).apply {
+            wall(onA = false, at = 0.1f, from = -0.3f, to = 0.3f, height = 0.3f, inward = 1f)
+            wall(onA = false, at = -0.1f, from = -0.3f, to = 0.3f, height = 0.3f, inward = -1f)
+            wall(onA = true, at = 0.3f, from = -0.1f, to = 0.1f, height = 0.3f, inward = 1f)
+        }
+        val frame = req(cloud.frame())
+        assertEquals(90f, frame.frontDegrees, 0f)
+    }
+
+    @Test
     fun `an object is framed on its own box, not widened to a room`() {
         val box = ScanResultFrame(0f, floatArrayOf(-0.15f, 0f, -0.15f, 0.15f, 0.3f, 0.15f), 0f, 1f)
         val pose = box.pose(ScanResultFraming.OBJECT_ELEVATION, ScanResultFraming.THREE_QUARTER, FOV, ASPECT, FramingInsets.None)

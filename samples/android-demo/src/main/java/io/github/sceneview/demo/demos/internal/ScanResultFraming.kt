@@ -94,6 +94,18 @@ class ScanResultFrame(
         floorY = local[1],
     )
 
+    /**
+     * The same frame with its box no higher than [heightM] over its floor: a room cut for the
+     * dollhouse ([ScanResultCut]) is framed, and its gestures kept, on what is drawn of it.
+     */
+    fun cappedAt(heightM: Float): ScanResultFrame {
+        if (local[4] - local[1] <= heightM) return this
+        return ScanResultFrame(yawDegrees, local.copyOf().also { it[4] = local[1] + heightM }, frontDegrees, turn)
+    }
+
+    /** The box's middle on the floor plan, in the world: `x` to `z`. */
+    val worldCentre: Pair<Float, Float> get() = world((local[0] + local[3]) / 2f, (local[2] + local[5]) / 2f)
+
     private fun world(a: Float, b: Float): Pair<Float, Float> {
         val yaw = Math.toRadians(yawDegrees.toDouble())
         val c = cos(yaw).toFloat()
@@ -204,7 +216,8 @@ object ScanResultFraming {
 
     /**
      * The side the view opens on in the frame turned [yawDegrees] (0, 90, 180 or 270), and the
-     * way its three-quarter turns: towards the eye the most surface faces — a room's walls face in,
+     * way its three-quarter turns: towards the eye the most surface faces, less what faces the eye
+     * across from it (`faced[s] - faced[(s + 2) % 4]`) — a room's walls face in,
      * so its fullest wall stands at the back, the near one turned away; an object's faces out, so
      * the side it was scanned from is in front — then towards the better of the two beside it.
      */
@@ -225,7 +238,9 @@ object ScanResultFraming {
             faced[2] += max(0f, -nb)
             faced[3] += max(0f, -na)
         }
-        val side = faced.indices.maxByOrNull { faced[it] } ?: 0
+        // The side that faces the eye more than the one across faces away: a long side seen from
+        // both of its faces says nothing of where the scan was taken, however large it is.
+        val side = faced.indices.maxByOrNull { faced[it] - faced[(it + 2) % SIDES] } ?: 0
         val turn = if (faced[(side + 1) % SIDES] >= faced[(side + SIDES - 1) % SIDES]) 1f else -1f
         return side * QUARTER to turn
     }

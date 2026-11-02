@@ -59,6 +59,28 @@ internal object ModelGlb {
         return RerunMeshGlb.glb(RerunJson.write(root).toByteArray(Charsets.UTF_8), binBytes) { put(bin, 0, binBytes) }
     }
 
+    /**
+     * [glb] with every material [lit] by the scene's light, or drawn [UNLIT] in its own colours:
+     * the result's A/B, QA only (`ResultShading`). Only the JSON chunk changes; `null` for a file
+     * this does not read.
+     */
+    fun withShading(glb: ByteArray, lit: Boolean): ByteArray? {
+        val (root, binAt) = json(glb) ?: return null
+        for (material in root.objects("materials")) {
+            @Suppress("UNCHECKED_CAST")
+            val extensions = (material["extensions"] as? JsonMap) ?: jsonOf()
+            if (lit) extensions.remove(UNLIT) else extensions[UNLIT] = jsonOf()
+            if (extensions.isEmpty()) material.remove("extensions") else material["extensions"] = extensions
+        }
+        val used = (root["extensionsUsed"] as? List<*>).orEmpty().filter { it != UNLIT }
+        val withUnlit = if (lit) used else used + UNLIT
+        if (withUnlit.isEmpty()) root.remove("extensionsUsed") else root["extensionsUsed"] = withUnlit
+        val bin = glb.copyOfRange(binAt + CHUNK_HEADER, glb.size)
+        val binBytes = ByteBuffer.wrap(glb, binAt, CHUNK_HEADER).order(ByteOrder.LITTLE_ENDIAN).int
+        if (binBytes > bin.size) return null
+        return RerunMeshGlb.glb(RerunJson.write(root).toByteArray(Charsets.UTF_8), binBytes) { put(bin, 0, binBytes) }
+    }
+
     /** [glb]'s JSON chunk and where its binary chunk's header starts; `null` for anything else. */
     @Suppress("UNCHECKED_CAST")
     private fun json(glb: ByteArray): Pair<JsonMap, Int>? = runCatching {

@@ -84,4 +84,8 @@
     <string name="scan_rescan_fill">Fill the amber frame: %1$d%%</string>
     <string name="scan_rescan_covered">This part is covered. Save to add it to your scan.</string>
     <string name="scan_rescan_refused">Couldn\'t line up this part with your scan.</string>
+    <!-- QA only (debug build, QA mode): the result's lit / unlit A/B in More. -->
+    <string name="scan_result_qa_shading_as_built" translatable="false">Shading: as built</string>
+    <string name="scan_result_qa_shading_lit" translatable="false">Shading: lit</string>
+    <string name="scan_result_qa_shading_unlit" translatable="false">Shading: unlit</string>
 </resources>

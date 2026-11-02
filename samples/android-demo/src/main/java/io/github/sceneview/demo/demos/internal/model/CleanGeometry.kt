@@ -16,6 +16,10 @@ internal data class CleanGeometryStats(
     val planeList: List<Plane> = emptyList(),
     /** RMS distance (m) of the flat faces' vertices to their planes before the snap: the depth noise measured. */
     val noiseM: Float = 0f,
+    /** Triangles cut outside the scan's box ([ScanTidy.crop]). */
+    val croppedTriangles: Int = 0,
+    /** Floor cells closed on its plane ([ScanTidy.closeFloor]). */
+    val floorCellsFilled: Int = 0,
 )
 
 /*
@@ -42,7 +46,9 @@ internal object CleanGeometry {
         require(raw.triangleCount <= MAX_TRIANGLES) { "${raw.triangleCount} triangles: clean takes $MAX_TRIANGLES" }
         val trianglesIn = raw.triangleCount
         val piecesIn = MeshCleanup.pieces(raw)
-        val (pieces, dropped) = MeshCleanup.removeSmallPieces(raw)
+        // Cut to the scan's own box first: what depth saw through a window is not the room.
+        val (cropped, croppedTriangles) = ScanTidy.crop(raw)
+        val (pieces, dropped) = MeshCleanup.removeSmallPieces(cropped)
         progress(PROGRESS_PIECES)
         // Where the sheet in front has a hole, the hidden sheet stays: it is the only surface there.
         var (mesh, doubled) = MeshCleanup.removeDoubledSurfaces(pieces)
@@ -59,7 +65,9 @@ internal object CleanGeometry {
         )
         // What the hidden sheet showed through a hole just closed is behind the patch now.
         val (uncovered, covered) = MeshCleanup.removeCovered(filled, firstNew = mesh.triangleCount)
-        mesh = uncovered
+        // The floor's holes closed on its plane, in its colour, last: nothing after moves it.
+        val (floored, floorCells) = ScanTidy.closeFloor(uncovered)
+        mesh = floored
         progress(1f)
         val stats = CleanGeometryStats(
             trianglesIn = trianglesIn,
@@ -73,6 +81,8 @@ internal object CleanGeometry {
             holesFilled = holes,
             planeList = flattening.planes,
             noiseM = flattening.noiseM,
+            croppedTriangles = croppedTriangles,
+            floorCellsFilled = floorCells,
         )
         return mesh to stats
     }
