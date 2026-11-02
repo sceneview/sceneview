@@ -509,9 +509,12 @@ class ARReplayHarnessTest {
          */
         val CHECKS: Map<String, Set<ARReplayCheck>> = buildMap {
             listOf(
-                "ar-pool", "ar-cloud-anchor", "ar-depth-occlusion",
+                "ar-cloud-anchor", "ar-depth-occlusion",
                 "ar-people-occlusion", "ar-image-stabilization",
             ).forEach { put(it, PLACEMENT) }
+            // The pool is procedural geometry anchored on the plane, not a ModelNode: model
+            // coverage cannot see it, so it is graded on the anchor it places.
+            put("ar-pool", PLANES + ARReplayCheck.ANCHOR)
             listOf("ar-plane-node", "ar-surfaces", "ar-measure").forEach { put(it, PLANES) }
         }
 

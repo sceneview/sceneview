@@ -59,8 +59,10 @@ The probe measures, per frame. The harness then takes a screenshot and grades.
 Each demo gets the checks it can pass (`ARReplayHarnessTest.CHECKS`):
 
 - **placement demos**: every check. They place the model on the first good plane with no
-  tap (`FeaturePlacementScene`): `ar-pool`, `ar-cloud-anchor`, `ar-depth-occlusion`,
-  `ar-people-occlusion`, `ar-image-stabilization`.
+  tap (`FeaturePlacementScene`): `ar-cloud-anchor`, `ar-depth-occlusion`,
+  `ar-people-occlusion`, `ar-image-stabilization`. `ar-pool` gets every check but the
+  model ones: its pool is procedural geometry, not a `ModelNode`.
+- Labs demos are opened for the sweep (in-memory Labs store, nothing persisted).
 - **plane demos**: frames, brightness and plane. These are `ar-plane-node`,
   `ar-surfaces` and `ar-measure`.
 - **every other demo**: frames and brightness.
