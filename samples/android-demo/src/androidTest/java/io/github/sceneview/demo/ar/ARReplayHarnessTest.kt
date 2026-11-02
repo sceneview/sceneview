@@ -234,12 +234,18 @@ class ARReplayHarnessTest {
         return true
     }
 
-    /** The probe the new launch installed, or `null` if none arrived (release build, bad path). */
+    /**
+     * The probe the new launch installed — the app's own marker that it took the intent — or
+     * `null` if none arrived within [PROBE_WAIT_MILLIS] (release build, rejected path, process
+     * gone). A cold start of the debug demo on a slow device can take well over 5 s, so the
+     * wait returns as soon as the marker appears rather than after a fixed delay.
+     */
     private fun awaitNewProbe(previous: ARReplayProbe?): ARReplayProbe? {
         val deadline = SystemClock.uptimeMillis() + PROBE_WAIT_MILLIS
         while (SystemClock.uptimeMillis() < deadline) {
             val current = DemoSettings.arReplayProbe
             if (current != null && current !== previous) return current
+            if (!isDemoProcessAlive()) return null
             SystemClock.sleep(POLL_MILLIS)
         }
         return null
@@ -453,7 +459,8 @@ class ARReplayHarnessTest {
         /** A demo still waiting for a plane, an anchor or a model is graded at this point. */
         const val MAX_WINDOW_MILLIS = 25_000L
         const val POLL_MILLIS = 250L
-        const val PROBE_WAIT_MILLIS = 5_000L
+        /** Cap on waiting for the app to take the launch intent (see [awaitNewProbe]). */
+        const val PROBE_WAIT_MILLIS = 120_000L
         const val SHOT_WIDTH = 360
         const val MIN_REPLAYED_FRAMES = 5
 
