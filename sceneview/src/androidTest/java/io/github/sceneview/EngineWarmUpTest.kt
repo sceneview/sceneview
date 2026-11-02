@@ -45,15 +45,22 @@ class EngineWarmUpTest {
     }
 
     @Test
-    fun the_manifest_runs_the_warm_up_at_app_startup() {
-        val provider = context.packageManager.getProviderInfo(
-            ComponentName(context, InitializationProvider::class.java),
-            PackageManager.GET_META_DATA,
-        )
-        assertEquals(
-            "androidx.startup",
-            provider.metaData?.getString(EngineWarmUpInitializer::class.java.name),
-        )
+    fun the_library_never_starts_the_warm_up_on_its_own() {
+        // Opt-in: SceneView's manifest must not register the initializer for every app.
+        val metaData = runCatching {
+            context.packageManager.getProviderInfo(
+                ComponentName(context, InitializationProvider::class.java),
+                PackageManager.GET_META_DATA,
+            ).metaData
+        }.getOrNull()
+        assertFalse(metaData?.containsKey(EngineWarmUpInitializer::class.java.name) ?: false)
+    }
+
+    @Test
+    fun the_initializer_starts_the_warm_up() {
+        EngineWarmUpInitializer().create(context)
+        awaitReady()
+        runOnMain { createEglContext().destroy() }
     }
 
     @Test

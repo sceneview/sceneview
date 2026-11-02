@@ -1531,9 +1531,9 @@ private suspend fun ModelLoader.loadModelInstanceOrNull(
  * Only one engine per process is typically needed. Pass it explicitly to all `remember*` helpers
  * if you want to share Filament resources across multiple `SceneView` composables.
  *
- * The default [eglContextCreator] takes the EGL context [EngineWarmUp] prepared on a background
- * thread at app startup, so the composition only builds the [Engine] itself, which Filament ties to
- * the main thread. See [EngineWarmUp] to start that warm-up yourself instead.
+ * To keep most of that work out of the composition, start [EngineWarmUp] before the 3D screen: it
+ * prepares the EGL context on a background thread, the default [eglContextCreator] takes it, and the
+ * composition only builds the [Engine] itself, which Filament ties to the main thread.
  *
  * @param eglContextCreator Factory for the EGL context. Override for custom EGL configurations.
  * @param engineCreator     Factory for the [Engine]. Override to customise engine flags. A custom
@@ -1710,8 +1710,8 @@ fun rememberRenderer(
  *
  * Cheap to create: gltfio's material provider, whose archive takes tens of milliseconds to
  * decompress, is built by the first model the loader creates, not here. The Basis Universal
- * tables its texture loader needs are built once per process; [EngineWarmUp] builds them off the
- * main thread at app startup.
+ * tables its texture loader needs are built here once per process, unless [EngineWarmUp] already
+ * built them off the main thread.
  *
  * @param engine  The Filament [Engine] that owns the loaded assets.
  * @param context Android context used to open asset files. Defaults to [LocalContext].

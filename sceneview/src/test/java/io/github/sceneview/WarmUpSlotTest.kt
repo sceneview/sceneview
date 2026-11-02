@@ -138,6 +138,35 @@ class WarmUpSlotTest {
     }
 
     @Test
+    fun a_value_nobody_takes_is_discarded_once_it_expires() {
+        val expiring = WarmUpSlot<Any>(discard = { discarded += it }, expireAfterMillis = 50)
+        val value = Any()
+        expiring.start("test") { value }
+
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (discarded.isEmpty()) {
+            check(System.nanoTime() < deadline) { "the unclaimed value was never discarded" }
+            Thread.sleep(1)
+        }
+        assertEquals(listOf(value), discarded.toList())
+        assertFalse(expiring.isReady)
+        assertNull(expiring.take(timeoutMillis = 0))
+        // Expired, the slot prepares again on demand.
+        assertTrue(expiring.start("test") { Any() })
+    }
+
+    @Test
+    fun a_value_taken_before_it_expires_is_never_discarded() {
+        val expiring = WarmUpSlot<Any>(discard = { discarded += it }, expireAfterMillis = 100)
+        val value = Any()
+        expiring.start("test") { value }
+
+        assertSame(value, expiring.take(timeoutMillis = 5_000))
+        Thread.sleep(300)
+        assertTrue("a handed-over value belongs to its taker", discarded.isEmpty())
+    }
+
+    @Test
     fun a_preparation_that_yields_nothing_leaves_the_slot_empty() {
         slot.start("test") { null }
         assertNull(slot.take(timeoutMillis = 5_000))

@@ -96,8 +96,8 @@ const val DEFAULT_IBL_INTENSITY = 10_000.0f
  * Creates the EGL context a Filament [Engine][com.google.android.filament.Engine] shares, current on
  * the calling thread on a 1×1 pbuffer.
  *
- * When [EngineWarmUp] prepared one — it does at app startup unless the app opted out — this hands
- * that one over instead, waiting for a warm-up still under way, and only makes it current here.
+ * When the app started [EngineWarmUp] and it prepared one, this hands that one over instead,
+ * waiting at most 300 ms for a warm-up still under way, and only makes it current here.
  */
 fun createEglContext(): EGLContext {
     filamentInit  // ensure init

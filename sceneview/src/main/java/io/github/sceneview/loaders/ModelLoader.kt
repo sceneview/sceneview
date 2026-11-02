@@ -110,6 +110,12 @@ class ModelLoader(
     // one by default — never needs it. Out of `rememberModelLoader`, it no longer lands in the
     // composition a 3D screen opens with.
     private val gltfLoaders = lazy {
+        // A JNI call into the engine, like every model: a first read on another thread would race
+        // the main thread's Filament calls.
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "ModelLoader creates gltfio's material provider on first use, on the main thread: read " +
+                "materialProvider or assetLoader there first, or create a model first"
+        }
         lifecycle.checkCanCreate("create gltfio's material provider")
         val provider = UbershaderProvider(engine)
         provider to AssetLoader(engine, provider, EntityManager.get())
@@ -117,7 +123,8 @@ class ModelLoader(
 
     /**
      * gltfio's ubershader material provider, shared by every model of this loader. Created on first
-     * use — by the first model, or by reading this — on the main thread.
+     * use — by the first model, or by reading this — which must happen on the main thread: a first
+     * read anywhere else throws an [IllegalStateException].
      */
     val materialProvider: UbershaderProvider get() = gltfLoaders.value.first
 

@@ -76,6 +76,26 @@ class ModelLoaderLazyMaterialProviderTest {
     }
 
     @Test
+    fun a_first_read_off_the_main_thread_is_refused_not_raced() {
+        lateinit var modelLoader: ModelLoader
+        harness.runOnMain { modelLoader = ModelLoader(harness.engine, context) }
+
+        var refused: Throwable? = null
+        Thread { refused = runCatching { modelLoader.materialProvider }.exceptionOrNull() }
+            .apply { start() }
+            .join()
+        assertTrue("got $refused", refused is IllegalStateException)
+
+        harness.runOnMain {
+            assertFalse(modelLoader.hasGltfLoaders)
+            // On the main thread, the same read builds it.
+            assertNotNull(modelLoader.materialProvider)
+            assertTrue(modelLoader.hasGltfLoaders)
+            modelLoader.destroy()
+        }
+    }
+
+    @Test
     fun a_suspend_load_called_off_the_main_thread_still_builds_it_on_the_main_thread() {
         val glb = texturedGlb(textures = 1, size = 4)
         val location = Uri.fromFile(File(context.cacheDir, "lazy_provider.glb").apply { writeBytes(glb) })

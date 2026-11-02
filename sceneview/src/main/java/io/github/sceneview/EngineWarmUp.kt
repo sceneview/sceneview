@@ -20,36 +20,47 @@ import io.github.sceneview.utils.OpenGL
  *
  * Without it that work runs inside the composition that first calls [rememberEngine] and
  * [rememberModelLoader], on the main thread: on a Pixel 7a, about 55 ms of the long frame a 3D
- * screen opens with. The next [createEglContext] (the default `eglContextCreator` of
- * [rememberEngine]) takes the prepared context and only has to make it current, instead of
- * creating one; the first [io.github.sceneview.loaders.ModelLoader] finds the tables built.
+ * screen opens with. After a warm-up, the next [createEglContext] (the default `eglContextCreator`
+ * of [rememberEngine]) takes the prepared context and only has to make it current, and the first
+ * [io.github.sceneview.loaders.ModelLoader] finds the tables built.
  *
- * **It starts on its own at app startup**, through the `androidx.startup` initializer
- * [EngineWarmUpInitializer] that SceneView's manifest merges into your app; you need no code. It
- * costs about 80 ms of CPU on its own thread (done about 135 ms after the process starts, on a
- * Pixel 7a) and one EGL context held until an engine takes it. An app that would rather not spend
- * that at every launch removes the initializer:
+ * **Opt-in.** Nothing starts it unless the app asks, because it costs every launch that does it:
+ * about 80 ms of CPU on its own thread, Filament's libraries and the GPU driver loaded, and one EGL
+ * context held until an engine takes it — even a launch that never shows 3D, such as a background
+ * start for a push message or a WorkManager job. Start it where a 3D screen is likely to follow:
  *
- * ```xml
- * <provider
- *     android:name="androidx.startup.InitializationProvider"
- *     android:authorities="${applicationId}.androidx-startup"
- *     tools:node="merge">
- *     <meta-data
- *         android:name="io.github.sceneview.EngineWarmUpInitializer"
- *         tools:node="remove" />
- * </provider>
- * ```
+ * - from code, on any thread, a little before the 3D screen — when the user heads for it, or in
+ *   `Application.onCreate()` for an app whose first screen is 3D:
+ *   ```kotlin
+ *   EngineWarmUp.start()
+ *   ```
+ * - or at app startup without code, by adding [EngineWarmUpInitializer] to the `androidx.startup`
+ *   provider in the app's manifest:
+ *   ```xml
+ *   <provider
+ *       android:name="androidx.startup.InitializationProvider"
+ *       android:authorities="${applicationId}.androidx-startup"
+ *       android:exported="false"
+ *       tools:node="merge">
+ *       <meta-data
+ *           android:name="io.github.sceneview.EngineWarmUpInitializer"
+ *           android:value="androidx.startup" />
+ *   </provider>
+ *   ```
  *
- * and calls [start] itself, from any thread, a little before its first 3D screen — when the user
- * heads for it, say. [start] is cheap and returns at once.
+ * A prepared context nobody takes within 5 seconds is released; the libraries and the tables stay,
+ * so a later 3D screen still saves most of the work. A [rememberEngine] given its own
+ * `eglContextCreator` never takes the prepared context, so for such an app a warm-up only builds
+ * the tables.
  *
  * What stays on the main thread, because Filament ties an `Engine` to the thread that creates it
  * (its job system adopts that thread, and `Engine.destroy()` must run there too): building the
  * [com.google.android.filament.Engine] itself. Only the work above moves.
  *
- * A prepared context is handed over once. Until a [createEglContext] takes it, the process holds
- * one EGL context on a 1×1 pbuffer.
+ * An app that creates its own gltfio `ResourceLoader`, rather than through a `ModelLoader`, should
+ * not do it while a warm-up may still be building the tables (on a Pixel 7a, the first ~150 ms
+ * after [start]): Basis builds them without locking, and only SceneView's own loaders wait for that
+ * build.
  */
 object EngineWarmUp {
 
@@ -57,13 +68,18 @@ object EngineWarmUp {
 
     /**
      * How long [createEglContext] waits for a warm-up still under way before creating its own
-     * context. A safety net only: the warm-up does the same work the caller would, already begun.
+     * context. Short on purpose: past it, the caller redoes the work, so this caps what a slow
+     * device can lose to the wait.
      */
-    private const val HANDOFF_TIMEOUT_MILLIS = 2_000L
+    private const val HANDOFF_TIMEOUT_MILLIS = 300L
+
+    /** How long a prepared context waits for an engine before it is released. */
+    private const val UNCLAIMED_RELEASE_MILLIS = 5_000L
 
     private val slot = WarmUpSlot<OpenGL.PbufferContext>(
         discard = { it.destroy() },
         onFailure = { Log.w(TAG, "Engine warm-up failed; rememberEngine() will do the work", it) },
+        expireAfterMillis = UNCLAIMED_RELEASE_MILLIS,
     )
 
     /**
@@ -109,7 +125,8 @@ object EngineWarmUp {
  * The tables are process-wide; an engine is only the way gltfio's API reaches the code that builds
  * them. So [EngineWarmUp] builds them on its own thread with a throwaway [Engine], created, used and
  * destroyed on that thread as Filament requires. Basis builds them without any locking, so every
- * [ResourceLoader] SceneView creates goes through [creating], which never overlaps that build.
+ * [ResourceLoader] SceneView creates goes through [creating], which never overlaps that build. A
+ * `ResourceLoader` an app creates itself does not: [EngineWarmUp] says so.
  */
 internal object GltfioTextureTables {
 
@@ -155,8 +172,8 @@ internal object GltfioTextureTables {
 }
 
 /**
- * Starts [EngineWarmUp] at app startup. Merged into your app's manifest by SceneView; see
- * [EngineWarmUp] to remove it.
+ * Starts [EngineWarmUp] at app startup, for an app that lists it under `androidx.startup`'s
+ * `InitializationProvider` in its own manifest. SceneView does not register it: see [EngineWarmUp].
  */
 class EngineWarmUpInitializer : Initializer<Unit> {
     override fun create(context: Context) = EngineWarmUp.start()
