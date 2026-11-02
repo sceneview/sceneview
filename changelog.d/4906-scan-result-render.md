@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo · Scan result**: the result now opens on a slow turntable, gravity up, that stops at the first touch; a double tap goes back to the opening view. A room is shown as a dollhouse, seen from outside and above, with its walls cut at 1.2 m. The scan fills four fifths of the space between the name and the action bar. An object stands on a soft contact shadow. The finish cuts the mesh to the scan's box. Models kept by an earlier finish are rebuilt with the new one. A long object now opens on the end it was scanned from.
