@@ -87,7 +87,7 @@ filamentWebsite = "1.72.1"
 # built-in materials (0.8.0 ships Filament 1.78.0, MATERIAL_VERSION 78; 0.7.3 was 1.77.3 / 77).
 # Used only by sceneview-compose desktopMain, which loads no SceneView .filamat: a bump
 # that changes MATERIAL_VERSION needs no blob here, only a desktop-demo run.
-filamentKmp = "0.8.0"
+filamentKmp = "0.9.0"
 arCore = "1.57.0"
 
 # Networking
