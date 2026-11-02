@@ -7,10 +7,19 @@
 #   1. Builds + installs the android-demo *debug* APK (the debug sourceSet
 #      ships the bundled ARCore recording the harness replays).
 #   2. Runs the `ARReplayHarnessTest` instrumentation test, which deep-links
-#      every Augmented Reality demo, drives each through a recorded ARCore
-#      session, and asserts no crash. The one demo that consumes
-#      `playbackDataset` (`ar-record-playback`) additionally proves the
-#      recorded dataset advanced frames.
+#      every Augmented Reality demo with a recorded ARCore session. A debug
+#      build hands the recording to every `ARSceneView` through one probe
+#      (`LocalARSessionProbe`), so every demo replays it, and each demo is
+#      graded on real checks: frames replayed, scene brightness, plane within
+#      N frames, anchor tracking, model coverage on screen, model brightness
+#      (per-demo set in ARReplayHarnessTest.CHECKS). A failed check is verdict
+#      `failed` with the measured value; a screenshot per demo is pulled into
+#      `<out>/ar-replay/`.
+#
+#      Recordings: every .mp4 in the corpus dir (`--corpus`, default
+#      `samples/android-demo/ar-corpus/`, gitignored — real clips never go in
+#      git) is pushed to the device and replayed through every demo; with no
+#      corpus, the bundled debug clip is used.
 #
 #      Sharded (#2643): the sweep is split into `AR_SHARD_COUNT` (default 6)
 #      separate `am instrument` runs — `-e ar_shard_index <i> -e ar_shard_count
@@ -45,6 +54,7 @@
 #
 # Usage:
 #   bash .claude/scripts/ar-replay-qa.sh [--no-install] [--out <dir>]
+#        [--demos id1,id2] [--hide-models] [--corpus <dir>]
 #
 # Options:
 #   --no-install   Skip the build+install step (APK already on device).
@@ -53,6 +63,13 @@
 #                  ar-instrumentation.txt (teed `am instrument` output) so a
 #                  crash is diagnosable from the artifact bundle (#2620).
 #                  Default: a temp dir; the resolved path is printed last.
+#   --demos <ids>  Replay only these demo launch ids (comma-separated).
+#   --hide-models  Hide every model during the replay: the deliberate failure
+#                  that must make MODEL_COVERAGE fail (exit 1) on the
+#                  placement demos — proof the coverage check bites.
+#   --corpus <dir> Host dir of real ARCore .mp4 clips to replay (pushed to
+#                  /sdcard/Download/SceneView/ar-corpus/). Default:
+#                  samples/android-demo/ar-corpus/ when it exists.
 #   -h | --help    Show this help.
 #
 # Exit status (computed by merging every shard's verdict):
@@ -60,7 +77,9 @@
 #      dataset genuinely replayed frames (verdict `replayed`); OR every shard
 #      assumeTrue-skipped because the bundled recording is absent (sparse
 #      checkout / release build) — a no-op that stays green (#1565)
-#   1  one or more demos crashed (verdict `crashed` — a real product regression),
+#   1  one or more demos crashed (verdict `crashed` — a real product regression)
+#      or failed a check (verdict `failed` — dark render, model invisible or
+#      giant, no plane, no anchor),
 #      OR the harness died before writing ANY verdict for ANY shard (a setUp /
 #      asset-deploy crash). The merged summary names the crashed demo(s) and the
 #      captured logcat holds the crash signature (#2620)
@@ -92,13 +111,19 @@ source "$SCRIPT_DIR/lib/emulator-select.sh"
 
 INSTALL=1
 OUT_DIR=""
+DEMOS=""
+HIDE_MODELS=0
+CORPUS_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-install) INSTALL=0; shift ;;
     --out) OUT_DIR="${2:?--out needs a directory}"; shift 2 ;;
+    --demos) DEMOS="${2:?--demos needs a comma-separated id list}"; shift 2 ;;
+    --hide-models) HIDE_MODELS=1; shift ;;
+    --corpus) CORPUS_DIR="${2:?--corpus needs a directory}"; shift 2 ;;
     -h|--help)
-      sed -n '2,57p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,92p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "[ar-replay-qa] unknown option: $1" >&2; exit 1 ;;
@@ -277,6 +302,29 @@ ANY_SHARD_NONZERO=0
 SHARDS_PULLED=0
 MISSING_SHARDS=""
 
+# ── Real recordings (optional) ─────────────────────────────────────────────
+# Clips filmed on a phone live outside git; push them where the harness looks.
+DEVICE_CORPUS="/sdcard/Download/SceneView/ar-corpus"
+DEVICE_SHOTS="/sdcard/Download/SceneView/ar-replay"
+if [[ -z "$CORPUS_DIR" && -d "$REPO_ROOT/samples/android-demo/ar-corpus" ]]; then
+  CORPUS_DIR="$REPO_ROOT/samples/android-demo/ar-corpus"
+fi
+"$ADB" -s "$SERIAL" shell rm -rf "$DEVICE_CORPUS" "$DEVICE_SHOTS" >/dev/null 2>&1 || true
+if [[ -n "$CORPUS_DIR" ]]; then
+  "$ADB" -s "$SERIAL" shell mkdir -p "$DEVICE_CORPUS" >/dev/null 2>&1 || true
+  pushed=0
+  for clip in "$CORPUS_DIR"/*.mp4; do
+    [[ -f "$clip" ]] || continue
+    "$ADB" -s "$SERIAL" push "$clip" "$DEVICE_CORPUS/" >/dev/null && pushed=$((pushed + 1))
+  done
+  echo "[ar-replay-qa] corpus: $pushed clip(s) from $CORPUS_DIR"
+else
+  echo "[ar-replay-qa] corpus: none — replaying the bundled recording"
+fi
+EXTRA_ARGS=()
+[[ -n "$DEMOS" ]] && EXTRA_ARGS+=(-e ar_demos "$DEMOS")
+[[ "$HIDE_MODELS" -eq 1 ]] && EXTRA_ARGS+=(-e ar_hide_models true)
+
 echo "[ar-replay-qa] running ARReplayHarnessTest in $SHARD_COUNT shard(s)…"
 shard=0
 while [[ "$shard" -lt "$SHARD_COUNT" ]]; do
@@ -297,6 +345,7 @@ while [[ "$shard" -lt "$SHARD_COUNT" ]]; do
     -e class io.github.sceneview.demo.ar.ARReplayHarnessTest \
     -e ar_shard_index "$shard" \
     -e ar_shard_count "$SHARD_COUNT" \
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
     "$PKG.test/androidx.test.runner.AndroidJUnitRunner" \
     2>&1 | tee -a "$INSTR_FILE"
   shard_status=${PIPESTATUS[0]}
@@ -327,6 +376,8 @@ done
 
 # Stop the logcat stream now every shard is done so the file is complete.
 stop_logcat
+# One screenshot per graded demo, taken when it was graded.
+"$ADB" -s "$SERIAL" pull "$DEVICE_SHOTS" "$OUT_DIR/" >/dev/null 2>&1 || true
 # Logcat is stopped; keep only the lease-release on the exit paths below (#2862).
 trap 'emu_lease_release_all || true' EXIT
 
@@ -396,7 +447,7 @@ for path in sorted(glob.glob(os.path.join(out_dir, "ar-shard-*.json"))):
     for pid in data.get("plannedDemos", []):
         planned.add(pid)
     for d in data.get("demos", []):
-        did = d.get("id")
+        did = d.get("key") or d.get("id")
         if did:
             by_id[did] = d
     # A pulled summary whose `inProgress` is non-null is a severed shard's last
@@ -416,7 +467,8 @@ for pid in planned:
 demos = [by_id[k] for k in sorted(by_id)]
 passed = sum(1 for d in demos if d.get("verdict") in ("replayed", "alive"))
 skipped = sum(1 for d in demos if d.get("verdict") == "skipped")
-failed = sum(1 for d in demos if d.get("verdict") == "crashed")
+failed = sum(1 for d in demos if d.get("verdict") in ("crashed", "failed"))
+replayed = sum(1 for d in demos if d.get("verdict") == "replayed")
 env_skips = sum(1 for d in demos
                 if d.get("verdict") == "skipped"
                 and d.get("reason") in (ENV_REASON, IN_FLIGHT_REASON))
@@ -425,6 +477,7 @@ merged = {
     "harness": "ar-replay",
     "recording": recording,
     "passed": passed,
+    "replayed": replayed,
     "skipped": skipped,
     "failed": failed,
     "total": len(demos),
@@ -463,13 +516,12 @@ fi
 # ── Final verdict ──────────────────────────────────────────────────────────
 case "$MERGE_VERDICT" in
   pass)
-    echo "[ar-replay-qa] PASS — every AR demo survived recorded-session replay" \
-      "and the recorded ARCore dataset replayed frames."
+    echo "[ar-replay-qa] PASS — every AR demo replayed the recording and passed its checks."
     exit 0
     ;;
   skip)
     echo "[ar-replay-qa] SKIPPED — no AR demo crashed, but one or more demos were" >&2
-    echo "[ar-replay-qa] not validated: ar-record-playback replayed 0 frames (ARCore" >&2
+    echo "[ar-replay-qa] not validated: a demo replayed 0 frames (ARCore" >&2
     echo "[ar-replay-qa] dataset playback unsupported on this emulator, #1645) and/or a" >&2
     echo "[ar-replay-qa] shard was severed under emulator pressure (#2643). Per-demo" >&2
     echo "[ar-replay-qa] reasons: $LOCAL_SUMMARY" >&2
@@ -493,16 +545,21 @@ case "$MERGE_VERDICT" in
     exit 1
     ;;
   *)
-    echo "[ar-replay-qa] FAIL — one or more AR demos crashed during recorded-session replay." >&2
+    echo "[ar-replay-qa] FAIL — one or more AR demos crashed or failed a check during replay." >&2
     python3 -c '
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
 except Exception:
     sys.exit(0)
-c = [x["id"] for x in d.get("demos", []) if x.get("verdict") == "crashed"]
-if c:
-    print("[ar-replay-qa] crashed demo(s): " + ", ".join(c))
+for x in d.get("demos", []):
+    k = x.get("key") or x.get("id")
+    if x.get("verdict") == "crashed":
+        print("[ar-replay-qa] crashed: " + k)
+    elif x.get("verdict") == "failed":
+        bad = [c["check"] + " " + c["measured"] + " (want " + c["expected"] + ")"
+               for c in x.get("checks", []) if not c.get("passed")]
+        print("[ar-replay-qa] failed:  " + k + " — " + "; ".join(bad))
 ' "$LOCAL_SUMMARY" >&2 2>/dev/null || true
     echo "[ar-replay-qa] captured logcat:        $LOGCAT_FILE" >&2
     echo "[ar-replay-qa] instrumentation output: $INSTR_FILE" >&2
