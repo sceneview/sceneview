@@ -12,12 +12,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.github.sceneview.core.splat.SplatCloud
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -129,6 +131,10 @@ class ResultLayerPickerTest {
             colors = IntArray(3) { 0xFF808080.toInt() },
             normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f),
         )
+        assertFalse("nothing to splat: no Photo", photoOffered(null, null))
+        assertTrue(photoOffered(null, surfels))
+        // Photo is offered in debug builds only: testReleaseUnitTest would wait for splats never built.
+        assumeTrue(BuildConfig.DEBUG)
         val qa = DemoSettings.qaMode
         DemoSettings.qaMode = true
         try {
@@ -140,8 +146,6 @@ class ResultLayerPickerTest {
         } finally {
             DemoSettings.qaMode = qa
         }
-        assertFalse("nothing to splat: no Photo", photoOffered(null, null))
-        assertTrue(photoOffered(null, surfels))
     }
 
     @Test
