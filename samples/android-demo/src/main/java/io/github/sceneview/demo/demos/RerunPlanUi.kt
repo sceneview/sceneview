@@ -44,8 +44,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -253,13 +251,6 @@ internal fun surveyOf(media: RerunReplayMedia): RoomSurvey {
 @Composable
 internal fun RerunPlanScreen(media: RerunReplayMedia?, title: String, date: String?, onBack: () -> Unit) {
     val survey = rememberRoomSurvey(media, wanted = true).survey
-    // The parts still to scan, laid on the plan (#4735): read off the same cloud as its walls, off
-    // the main thread, and only for a plan the scan's frame can be laid on.
-    val zones by produceState(emptyList<RescanZone>(), media, survey) {
-        value = emptyList()
-        if (survey == null || PlanPage.of(survey) == null) return@produceState
-        value = withContext(Dispatchers.Default) { zonesOf(media?.dense?.cloud, survey) }
-    }
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_plan_export_title),
         onBack = onBack,
@@ -268,7 +259,8 @@ internal fun RerunPlanScreen(media: RerunReplayMedia?, title: String, date: Stri
         opaqueSheet = true,
         hasScene = false,
     ) {
-        RerunPlanView(survey, title, date, zones = zones)
+        // The parts still to scan are the capture's to show now, not the plan's (Scan redesign, PR 1).
+        RerunPlanView(survey, title, date)
     }
 }
 

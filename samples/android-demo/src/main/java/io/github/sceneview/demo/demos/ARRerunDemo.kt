@@ -307,11 +307,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     LaunchedEffect(screen) { if (screen != RerunScreen.Live) rescanTarget = null }
     // What the scan shows (#4683), kept with it: an object's has no floor plan and no room figures.
     var scanKind by remember { mutableStateOf(ScanScope.Room) }
-    // The floor it covered, the figure its replay ends on, said on its result too (#4734).
-    val scanFloorCovered by produceState<Float?>(null, scanMedia, showingScan, scanKind) {
-        val scan = scanMedia?.takeIf { showingScan && scanKind.mapsGround }
-        value = scan?.let { withContext(Dispatchers.Default) { it.floorCoveredSquareMetres() } }
-    }
     // The kept session the replay shows, when it was opened from the list: Place stands that one.
     var scanId by remember { mutableStateOf<String?>(null) }
     var exporting by remember {
@@ -812,18 +807,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             materialLoader = materialLoader,
             hintStays = qaState != null,
             opened = resultModel,
-            floorCovered = scanFloorCovered,
-            // One room or area of yours: a part scanned again is kept as a completed copy (#4736).
-            onRescan = scanPack?.takeIf { showingScan && !scanKind.roomByRoom }?.let { pack ->
-                val completed = stringResource(R.string.scan_rescan_merged_title, scanTitle)
-                val part = stringResource(R.string.scan_rescan_part_title, scanTitle)
-                val start: (RescanPick) -> Unit = { pick ->
-                    rescanTarget = RescanTarget(pick, pack, completed, part)
-                    scanScope = scanKind
-                    screen = RerunScreen.Live
-                }
-                start
-            },
+            // Framed as what it is (Scan redesign, PR 1): an object on its own box, a room square to its walls.
+            scope = if (showingScan) scanKind else ScanScope.Room,
         )
     }
     val exportable = when (screen) {
