@@ -90,6 +90,7 @@ import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.node.TrackableNode
+import io.github.sceneview.ar.replay.LocalARSessionProbe
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.ar.scene.SceneUnderstanding
@@ -1007,6 +1008,10 @@ fun ARSceneView(
         "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
             "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
+    // QA replay hook (null for every normal launch): see [ARSessionProbe].
+    val sessionProbe = LocalARSessionProbe.current
+    val sessionProbeRef = remember { AtomicReference(sessionProbe) }
+    sessionProbeRef.set(sessionProbe)
 
     // Camera permission denial (#3308): `null` while granted or not yet answered, otherwise
     // whether the system has stopped asking. Cleared when a session finally comes up.
@@ -1020,7 +1025,10 @@ fun ARSceneView(
         // built and ignore later recompositions that mutate it — toggling between live/playback
         // at runtime requires the caller to recreate the ARSceneView (typically via
         // `key(playbackDataset) { ARSceneView(...) }`).
+        // A QA probe above this view (LocalARSessionProbe) supplies the dataset when the call
+        // site passes none — one injection point for a whole app's replay run.
         val initialPlaybackDataset = playbackDataset
+            ?: sessionProbe?.playbackDataset?.takeIf { playbackDatasetUri == null }
         val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
@@ -1724,6 +1732,13 @@ fun ARSceneView(
                                     frame = frame,
                                     trackingFailureReason = trackingFailureReason
                                 )
+                                sessionProbeRef.get()?.let { probe ->
+                                    try {
+                                        probe.onSessionFrame(session, frame, childNodes)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("SceneView", "ARSessionProbe threw", e)
+                                    }
+                                }
                             }
                         } catch (e: Exception) {
                             android.util.Log.e(

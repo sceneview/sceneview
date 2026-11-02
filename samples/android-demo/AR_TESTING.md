@@ -15,10 +15,11 @@ Three layers of real-rendering tests in `samples/android-demo/src/androidTest/`:
    `ARSceneView(playbackDataset = file)`, screenshots once after a fixed wait,
    compares to a golden in `androidTest/assets/ar-render-goldens/`. A crash smoke
    test with a single visual check.
-3. **`ARReplayHarnessTest`** (autonomous AR replay harness, #1565): drives **every**
-   AR demo through the bundled recorded session and asserts no crash, emitting a
-   machine-readable `ar-qa-summary.json`. The breadth counterpart to the
-   golden tests. See [Autonomous AR replay harness](#autonomous-ar-replay-harness-1565)
+3. **`ARReplayHarnessTest`** (autonomous AR replay harness, #1565): replays a recorded
+   ARCore session through **every** AR demo and grades each on real checks (frames
+   replayed, brightness, plane, anchor, model coverage on screen), emitting a
+   machine-readable `ar-qa-summary.json` and one screenshot per demo. The breadth
+   counterpart to the golden tests. See [Autonomous AR replay harness](#autonomous-ar-replay-harness-1565)
    below.
 
 All run on `connectedDebugAndroidTest` (real device / hardware-accelerated emulator —
@@ -27,74 +28,145 @@ SwiftShader CI crashes on Filament pixel readback). Diff images on failure dump 
 
 ## Autonomous AR replay harness (#1565)
 
-`ARReplayHarnessTest` gives **breadth**: it drives *every* AR demo in
-`DemoCategory.AUGMENTED_REALITY` (13 demos) through the bundled recorded session
-and asserts the process survives.
+`ARReplayHarnessTest` gives **breadth**: it replays a recorded ARCore session through
+*every* AR demo (24 cards, plus the Session MP4 mode of `ar-rerun`) and checks what each
+one shows.
 
-It is the headless, no-physical-device entrypoint the device-QA orchestrator
-runner (umbrella [#1560](https://github.com/sceneview/sceneview/issues/1560),
-slice [#1566](https://github.com/sceneview/sceneview/issues/1566)) calls for the
-Android-AR leg, via the wrapper script:
+### One injection point
+
+`arsceneview` exposes `LocalARSessionProbe` (`io.github.sceneview.ar.replay`). Every
+`ARSceneView` reads it: when its call site passes no `playbackDataset`, it replays the
+probe's dataset, and it hands the probe every frame (`Session`, `Frame`, its nodes).
+
+The demo app provides one `ARReplayProbe` at the root of the composition when a debug
+build is launched with `--es ar_playback_file <path>` (`DemoSettings.arReplayProbe`). So
+every demo replays the recording with no per-demo wiring, and a release build never
+creates the probe.
+
+### What is checked
+
+The probe measures, per frame. The harness then takes a screenshot and grades.
+
+| Check | Measure | Default threshold | Catches |
+|---|---|---|---|
+| `REPLAYED` | frames the recording advanced | ≥ 5 | playback not consumed |
+| `SCENE_BRIGHTNESS` | mean Rec.709 luma of the screen centre | ≥ 0.08 | dark render |
+| `PLANE` | frame of the first tracked plane | ≤ 300 | plane detection broken |
+| `ANCHOR` | anchors in `TRACKING` | ≥ 1 | placement broken |
+| `MODEL_COVERAGE` | screen share of the visible models' projected bounds | 0.2 % – 85 % | model hidden, culled or off screen; model giant (camera inside it) |
+| `MODEL_BRIGHTNESS` | mean luma of the area the models cover | ≥ 0.05 | black model |
+
+Each demo gets the checks it can pass (`ARReplayHarnessTest.CHECKS`):
+
+- **placement demos**: every check. They place the model on the first good plane with no
+  tap (`FeaturePlacementScene`): `ar-pool`, `ar-cloud-anchor`, `ar-depth-occlusion`,
+  `ar-people-occlusion`, `ar-image-stabilization`.
+- **plane demos**: frames, brightness and plane. These are `ar-plane-node`,
+  `ar-surfaces` and `ar-measure`.
+- **every other demo**: frames and brightness.
+
+Every metric is recorded for every demo either way, so a demo can be promoted once its
+numbers are known.
+
+The arithmetic (projection, coverage, luminance, verdict) is in `ARReplayMetrics` /
+`evaluateReplay`. It is pure Kotlin, unit-tested on the JVM (`ARReplayMetricsTest`), and
+reusable by any app that provides its own probe.
+
+Coverage is the projected **bounding box**, an upper bound and not a pixel mask. A model
+inside its box but transparent still counts as covering.
+
+### Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| `replayed` | frames advanced and every check of the demo passed |
+| `failed` | a check failed. The entry lists the measured value and the threshold. Fails the run |
+| `alive` | the first screen opens no AR session (`ar-placement` chooser, `ar-splat-room`, `ar-xr`). The demo survived |
+| `skipped` | 0 frames replayed. ARCore dataset playback does not run on every emulator (#1645, #2620). This is an environment limit, never a pass (exit 3) |
+| `crashed` | the process died. Fails the run |
+
+### Recordings: a real corpus, never in the repository
+
+The harness replays every `.mp4` it finds in `/sdcard/Download/SceneView/ar-corpus/`
+(instrumentation argument `ar_corpus_dir` overrides the path). With none, it falls back to
+the bundled `bundled-pixel9-sample.mp4` (debug sourceSet).
+
+Real clips live on the host in `samples/android-demo/ar-corpus/`. That path is ignored by
+version control: phone recordings carry the full camera feed (see the PII checklist). The
+script pushes them to the device on every run.
+
+### Running it
 
 ```bash
-bash .claude/scripts/ar-replay-qa.sh          # build + install + run + pull verdict
-bash .claude/scripts/ar-replay-qa.sh --no-install   # APK already on device
+# Build both APKs, install them on the emulator, then run (never installDebug):
+./gradlew :samples:android-demo:assembleDebug :samples:android-demo:assembleDebugAndroidTest
+adb -s emulator-5554 install -r -d samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
+adb -s emulator-5554 install -r -d samples/android-demo/build/outputs/apk/androidTest/debug/android-demo-debug-androidTest.apk
+ANDROID_SERIAL=emulator-5554 bash .claude/scripts/ar-replay-qa.sh --no-install --out /tmp/ar-qa
+
+# Only some demos:
+ANDROID_SERIAL=emulator-5554 bash .claude/scripts/ar-replay-qa.sh --no-install --demos ar-pool,ar-measure
+
+# Deliberate failure: every model hidden, MODEL_COVERAGE must fail (exit 1):
+ANDROID_SERIAL=emulator-5554 bash .claude/scripts/ar-replay-qa.sh --no-install \
+  --hide-models --demos ar-pool,ar-depth-occlusion --out /tmp/ar-qa-hidden
 ```
 
-The harness writes a machine-readable verdict to
-`/sdcard/Download/SceneView/ar-qa-summary.json`, which the script pulls:
+Outputs in `--out`:
+
+- `ar-qa-summary.json`, merged across the shards;
+- `ar-replay/<demo>.png`, one downscaled screenshot per graded demo, taken when it was
+  graded;
+- `ar-logcat.txt` and `ar-instrumentation.txt`.
+
+A corpus clip's entry is keyed `<demo>@<clip>`:
 
 ```json
 {
   "harness": "ar-replay",
-  "recording": "bundled-pixel9-sample.mp4",
-  "passed": 13,
-  "total": 13,
+  "passed": 20, "replayed": 17, "skipped": 0, "failed": 1, "total": 25,
   "demos": [
-    { "id": "ar-record-playback", "verdict": "replayed", "replayedFrames": 47 },
-    { "id": "ar-placement",       "verdict": "alive",    "replayedFrames": 0 }
+    { "id": "ar-pool", "key": "ar-pool", "recording": "bundled-pixel9-sample.mp4",
+      "verdict": "failed", "replayedFrames": 212,
+      "metrics": { "firstPlaneFrame": 41, "trackedAnchors": 1, "visibleModels": 0,
+                   "coverage": null, "cameraInsideModel": false,
+                   "sceneLuminance": 0.41, "modelLuminance": null },
+      "checks": [
+        { "check": "MODEL_COVERAGE", "passed": false,
+          "measured": "no visible model", "expected": "0.0020..0.8500 of the screen" }
+      ] }
   ]
 }
 ```
 
-Per-demo verdict:
+## Recording a real clip
 
-- **`replayed`** — the demo consumed recorded ARCore frames (the frame counter
-  advanced). Today only `ar-record-playback` does, because it is the one demo
-  that reads `DemoSettings.arPendingPlaybackFile` and mounts
-  `ARSceneView(playbackDataset = file)`.
-- **`alive`** — the demo's process survived the recorded-session replay window
-  but did not advance the frame counter. The other 12 AR demos build a *live*
-  `ARSceneView`; surviving a recorded session still exercises ARCore session
-  creation, demo composition, the Filament engine and the AR overlay — the
-  layer that breaks silently between releases. As a demo opts into
-  `playbackDataset`, its verdict graduates from `alive` to `replayed`
-  automatically — no harness change needed.
-- **`crashed`** — the demo's process died during replay. **Any** `crashed`
-  verdict fails the harness.
+1. On a phone (Pixel 9, daylight), open the demo's `ar-record-playback` mode:
+   `adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo ar-record-playback`.
+2. **Record** tab: tap **● Record** and move slowly through the scenario.
+   `EXCESSIVE_MOTION` aborts tracking. 20–30 s is enough. Then tap **■ Stop**.
+3. **Playback** tab: tap **Export**. The clip lands in
+   `Downloads/SceneView/ar-session-<timestamp>.mp4` (`ARRecorder.exportToDownloads`).
+4. Pull it under a scenario name, into the ignored corpus:
+   `adb pull /sdcard/Download/SceneView/ar-session-<timestamp>.mp4 samples/android-demo/ar-corpus/table.mp4`.
 
-## The AR record-once playback-many workflow
+Scenarios worth one clip each:
 
-1. **Record one baseline session per AR scenario** on a real device (Pixel 7a / 9 / Galaxy
-   S-something — any ARCore device with depth, planes, light estimation).
-2. **Export it** to `Downloads/SceneView/<scenario>.mp4` via the in-app **Export** button
-   in `ARRecordPlaybackDemo` → Playback tab → tap **Export**.
-3. **Pull it** with `adb pull /sdcard/Download/SceneView/<scenario>.mp4
-   samples/android-demo/src/androidTest/assets/ar-recordings/`.
-4. **Audit the MP4 for PII before committing** — see the checklist below. ARCore datasets
-   are full camera-feed videos; they capture **everything the camera saw** during the
-   recording session. This is a public repo.
-5. **Commit the MP4** as a fixture. From then on, every `connectedDebugAndroidTest` run
-   loads each AR demo against the recorded baseline, captures the rendered frame, and
-   compares to its golden — anchors land in the same place, planes are detected at the
-   same frame, lighting estimation returns the same colour temperature.
+- a table;
+- a floor;
+- a wall;
+- low light;
+- outdoors;
+- an object to scan.
 
-No phone, no hands required for the regression run. Recording is a one-time human action.
+> ⚠️ **Do not use `android run`** to install the demo. It has a measured install no-op:
+> it prints success-shaped output and exits 0 having installed nothing (#2796, #2854,
+> #2990). Use `adb install` above.
 
-### PII audit checklist (mandatory before every fixture commit)
+### PII audit checklist (before a clip is shared anywhere)
 
 ARCore recordings are MP4 videos that bundle the **full camera feed**, IMU, depth maps,
-and (on Geospatial) GPS coordinates. Treat each fixture like a public-facing video upload:
+and (on Geospatial) GPS coordinates. Treat each clip like a public-facing video upload:
 
 - [ ] **Faces** — front-camera or back-camera framing of any human face, including bystanders
 - [ ] **Voices** — back-channel mic audio captured by ARCore, even if you didn't speak
@@ -106,10 +178,8 @@ and (on Geospatial) GPS coordinates. Treat each fixture like a public-facing vid
 - [ ] **Reflective surfaces** — mirrors / TVs / glass that incidentally captured anything
       from the above categories
 
-If any check fails, **don't commit** — re-record at a public location (a SceneView
-contributor used a co-working space lounge) or against a printed paper texture taped to
-a wall. When in doubt, record at the same controlled setup the existing fixtures use
-(see `ar-recordings/baseline.mp4` for the established pattern).
+The corpus stays out of the repository for exactly this reason. The only committed clip is
+the vetted `bundled-pixel9-sample.mp4`.
 
 Repo memory: the test suite already had to retract leaked goldens once
 ([55f183c3](https://github.com/sceneview/sceneview/commit/55f183c3)). MP4 fixtures are
@@ -130,83 +200,9 @@ responses — deterministic, fast, and reproducible across machines.
 
 ---
 
-## Step-by-step: capture a baseline
-
-### 1. Pick the scenario
-
-The repo ships **`baseline.mp4`** today (room pan with floor + table; exercises
-plane detection + orientation classification) — it's the only fixture currently
-under `src/androidTest/assets/ar-recordings/`. The fixtures listed below are
-**aspirational** — record them as you encounter the corresponding regression
-needs. Each baseline should exercise a different AR-feature surface.
-
-| Filename | Status | Scenario | What it exercises |
-|---|---|---|---|
-| `baseline.mp4` | ✅ shipped | Slow pan around an indoor room with a flat floor + table | Plane detection, plane orientation classification |
-| `outdoor-streetscape.mp4` | aspirational | Stationary capture outside facing buildings | Geospatial / Streetscape Geometry |
-| `face-front-camera.mp4` | aspirational | Face mesh capture (front camera) | AugmentedFaceNode |
-| `image-detection.mp4` | aspirational | Pan over the printed `qrcode.png` | Augmented Images |
-| `cloud-anchor.mp4` | aspirational | Drop an anchor + survey + look back at it | Cloud Anchors |
-| `depth-occlusion.mp4` | aspirational | Person walking in front of the camera | Depth Occlusion |
-| `instant-placement.mp4` | aspirational | Tap-to-drop before plane convergence | Instant Placement |
-
-Aim for **30 s recordings** — long enough to exercise the feature, short enough to keep
-fixtures under 50 MB each.
-
-### 2. Record on device
-
-```
-adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es demo ar-record-playback
-```
-
-> ⚠️ **Do not use `android run` for this.** It has a measured install no-op —
-> it prints success-shaped output, rejects an activity the platform resolves,
-> and exits 0 having installed nothing, leaving the previous build on the
-> device (#2796, #2854, #2990). Stay on `adb` above, and confirm the install
-> landed with `adb shell dumpsys package io.github.sceneview.demo.qa | grep lastUpdateTime`.
-
-(An older note here said `android run` merely lacked `--es` intent extras
-"until v0.8+". That framing is obsolete: the problem is not a missing feature
-that a later version resolves, it is the silent non-install above.)
-
-In the demo:
-
-- Switch to the **Record** tab.
-- Tap the red **● Record** button.
-- Move the phone through the scenario (don't be too fast — `EXCESSIVE_MOTION` aborts
-  tracking and ruins the fixture).
-- Tap **■ Stop**.
-
-### 3. Export to public Downloads
-
-Switch to the **Playback** tab. The new recording appears at the top of the list. Tap
-**Export**. A toast confirms the destination:
-
-```
-Exported to Downloads/SceneView/ar-session-20260507-143012.mp4
-```
-
-Under the hood this calls
-`ARRecorder.exportToDownloads(context, file, subdirectory = "SceneView")` which uses
-`MediaStore.Downloads` (Android 10+) or the legacy public Downloads directory (P-).
-
-### 4. Pull + rename + commit
-
-```bash
-adb pull /sdcard/Download/SceneView/ar-session-20260507-143012.mp4
-mv ar-session-20260507-143012.mp4 samples/android-demo/src/androidTest/assets/ar-recordings/room-planes.mp4
-git add samples/android-demo/src/androidTest/assets/ar-recordings/room-planes.mp4
-git commit -m "test(android-demo): add baseline AR recording for room-planes scenario"
-```
-
-Use a descriptive name (the scenario, not the timestamp). This becomes part of the
-contract — the test will look it up by name.
-
----
-
 ## Writing a regression test
 
-Once the fixture is committed, scaffold a test (or extend an existing one):
+With a vetted fixture in the assets, scaffold a test (or extend an existing one):
 
 ```kotlin
 @RunWith(AndroidJUnit4::class)
@@ -214,14 +210,14 @@ class ARDemoPlaybackSmokeTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun arPlacementDemo_replays_baseline_without_crash() {
+    fun arPlacementDemo_replays_recording_without_crash() {
         // Recipe today: stage the fixture to a private file, then deep-link the
         // demo with the path through `--es ar_playback_file`. The MainActivity
         // intent path validates the path is inside the app's external-files dir
         // (security guard, see #958) and forwards it through rememberArPlaybackDataset to participating AR demos, including ARRecordPlaybackDemo, via
         // DemoSettings.arPendingPlaybackFile. No `playbackOverride` parameter
         // is exposed on the demo composables.
-        val fixture = copyAssetToAppFiles("ar-recordings/baseline.mp4")
+        val fixture = copyAssetToAppFiles("ar-recordings/bundled-pixel9-sample.mp4")
         DemoSettings.arPendingPlaybackFile = fixture.absolutePath
         composeRule.setContent {
             ARRecordPlaybackDemo(onBack = {})

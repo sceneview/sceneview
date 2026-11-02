@@ -13,6 +13,9 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.navigation.NavBackStackEntry
+import io.github.sceneview.ar.replay.ARReplayProbe
+import java.io.File
+import io.github.sceneview.ar.replay.LocalARSessionProbe
 import io.github.sceneview.demo.ui.ContainerRole
 import io.github.sceneview.demo.ui.DemoContainerTransform
 import io.github.sceneview.demo.ui.LocalNavAnimatedScope
@@ -229,6 +232,7 @@ class MainActivity : ComponentActivity() {
         // `ARRecordPlaybackDemo` then nulled.
         DemoSettings.arPendingPlaybackFile = intent?.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
+        DemoSettings.arReplayProbe = resolveArReplayProbe(intent)
         // Optional camera-to-model distance (zoom level). Maestro has no pinch gesture, so
         // the device-QA flows drive 3D zoom by deep link instead (#1571). Same dual-ingress
         // policy: the `camera_distance` QA extra (any Bundle type — Float from `adb --ef`,
@@ -246,7 +250,11 @@ class MainActivity : ComponentActivity() {
                 // The only writer of the status-bar icon appearance: screens request light
                 // icons, this applies the result (#3984).
                 ProvideStatusBarIcons {
-                    SceneViewDemoApp(activity = this)
+                    // Replay QA (debug, `--es ar_playback_file`): one probe for every ARSceneView
+                    // of every demo. Null, so no effect at all, for a normal launch.
+                    CompositionLocalProvider(LocalARSessionProbe provides DemoSettings.arReplayProbe) {
+                        SceneViewDemoApp(activity = this)
+                    }
                 }
             }
         }
@@ -270,6 +278,7 @@ class MainActivity : ComponentActivity() {
         DemoSettings.qaDemoState = resolveQaDemoState(intent)
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
+        DemoSettings.arReplayProbe = resolveArReplayProbe(intent)
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
         if (BuildConfig.DEBUG) Telemetry.applyDebugConsent(this, intent.getStringExtra("telemetry_consent"))
         applyLaunch(intent)
@@ -486,6 +495,22 @@ class MainActivity : ComponentActivity() {
      * leaking it). MP4 parsing itself is safe (ARCore rejects non-datasets), but
      * defence-in-depth.
      */
+    /**
+     * The replay probe for this launch: debug builds only, and only for a valid
+     * `--es ar_playback_file` (same app-files confinement as [isWithinAppFilesDir]).
+     * `--ez ar_qa_hide_models true` hides every model: the deliberate failure that proves the
+     * harness's coverage check fails when nothing is drawn.
+     */
+    private fun resolveArReplayProbe(intent: Intent?): ARReplayProbe? {
+        if (!BuildConfig.DEBUG) return null
+        val file = intent?.getStringExtra("ar_playback_file")
+            ?.takeIf { isWithinAppFilesDir(it) }
+            ?.let(::File)
+            ?.takeIf { it.isFile }
+            ?: return null
+        return ARReplayProbe(file, hideModels = intent.getBooleanExtra("ar_qa_hide_models", false))
+    }
+
     private fun isWithinAppFilesDir(path: String): Boolean {
         val base = getExternalFilesDir(null)?.absolutePath ?: return false
         val canonical = runCatching { java.io.File(path).canonicalPath }.getOrNull() ?: return false
