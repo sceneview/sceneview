@@ -13,7 +13,7 @@ import java.nio.ByteOrder
 
 /**
  * The scan result's picture: the turntable it opens on, the dollhouse cut of a room, the QA
- * shading A/B, the finish's tidy-ups and the `.glb` cache's pipeline key.
+ * shading A/B, the finish's crop and the `.glb` cache's pipeline key.
  */
 class ScanResultRenderTest {
     private val fov = 46.4
@@ -122,28 +122,6 @@ class ScanResultRenderTest {
         assertEquals(mesh.triangleCount, cropped.triangleCount)
     }
 
-    @Test
-    fun `holes in a room's floor are closed under its plane in its colour, an object's base is not`() {
-        val floor = grid(0f, 0f, 3f, 3f, step = 0.05f, colour = 0xFF806040.toInt()) { x, z ->
-            // A 40 cm hole the scan missed in the middle.
-            x in 1.3f..1.7f && z in 1.3f..1.7f
-        }
-        val (closed, cells) = ScanTidy.closeFloor(floor)
-        assertTrue("$cells cells closed", cells in 36..100)
-        val added = closed.vertexCount - floor.vertexCount
-        assertEquals(cells * 4, added)
-        for (v in floor.vertexCount until closed.vertexCount) {
-            assertEquals(-ScanTidy.FILL_DROP_M, closed.positions[v * 3 + 1], 1e-4f)
-            assertEquals(0xFF806040.toInt(), closed.colors[v])
-        }
-        // Nothing closed outside the floor.
-        for (v in floor.vertexCount until closed.vertexCount) {
-            assertTrue(closed.positions[v * 3] in 1.1f..1.9f && closed.positions[v * 3 + 2] in 1.1f..1.9f)
-        }
-        val base = grid(0f, 0f, 0.5f, 0.5f, step = 0.05f) { x, z -> x in 0.2f..0.3f && z in 0.2f..0.3f }
-        assertEquals(0, ScanTidy.closeFloor(base).second)
-    }
-
     // ── The cache's key ───────────────────────────────────────────────────────
 
     @Test
@@ -169,15 +147,13 @@ class ScanResultRenderTest {
         return value!!
     }
 
-    /** A flat, up-facing grid on y = 0 over [x0]..[x1] × [z0]..[z1], less the cells [hole] marks. */
+    /** A flat, up-facing grid on y = 0 over [x0]..[x1] × [z0]..[z1]. */
     private fun grid(
         x0: Float,
         z0: Float,
         x1: Float,
         z1: Float,
         step: Float,
-        colour: Int = -1,
-        hole: (Float, Float) -> Boolean = { _, _ -> false },
     ): WorkMesh {
         val cols = Math.round((x1 - x0) / step)
         val rows = Math.round((z1 - z0) / step)
@@ -186,12 +162,11 @@ class ScanResultRenderTest {
         val indices = ArrayList<Int>()
         for (r in 0 until rows) {
             for (c in 0 until cols) {
-                if (hole(x0 + (c + 0.5f) * step, z0 + (r + 0.5f) * step)) continue
                 val v = r * (cols + 1) + c
                 indices += listOf(v, v + cols + 1, v + 1, v + 1, v + cols + 1, v + cols + 2)
             }
         }
-        return WorkMesh(positions.toFloatArray(), IntArray(positions.size / 3) { colour }, indices.toIntArray())
+        return WorkMesh(positions.toFloatArray(), IntArray(positions.size / 3) { -1 }, indices.toIntArray())
     }
 
     private fun WorkMesh.plus(other: WorkMesh): WorkMesh = WorkMesh(

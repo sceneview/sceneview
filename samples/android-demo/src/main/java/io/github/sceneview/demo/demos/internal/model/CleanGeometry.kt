@@ -18,8 +18,6 @@ internal data class CleanGeometryStats(
     val noiseM: Float = 0f,
     /** Triangles cut outside the scan's box ([ScanTidy.crop]). */
     val croppedTriangles: Int = 0,
-    /** Floor cells closed on its plane ([ScanTidy.closeFloor]). */
-    val floorCellsFilled: Int = 0,
 )
 
 /*
@@ -65,9 +63,7 @@ internal object CleanGeometry {
         )
         // What the hidden sheet showed through a hole just closed is behind the patch now.
         val (uncovered, covered) = MeshCleanup.removeCovered(filled, firstNew = mesh.triangleCount)
-        // The floor's holes closed on its plane, in its colour, last: nothing after moves it.
-        val (floored, floorCells) = ScanTidy.closeFloor(uncovered)
-        mesh = floored
+        mesh = uncovered
         progress(1f)
         val stats = CleanGeometryStats(
             trianglesIn = trianglesIn,
@@ -82,7 +78,6 @@ internal object CleanGeometry {
             planeList = flattening.planes,
             noiseM = flattening.noiseM,
             croppedTriangles = croppedTriangles,
-            floorCellsFilled = floorCells,
         )
         return mesh to stats
     }
