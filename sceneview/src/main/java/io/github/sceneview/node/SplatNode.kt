@@ -66,8 +66,8 @@ import kotlin.math.max
  *   delta, so slow orbits stay visually correct. The camera is the one of the scene the node is
  *   in (`SceneView` or `ARSceneView`), read every frame; pass a [cameraPositionProvider] only
  *   to sort for a different viewpoint.
- * - **Draw batching** — Filament caps hardware instancing at 65535 instances per renderable
- *   ([SplatBuffers.MAX_INSTANCES_PER_BATCH]). Larger clouds are split into multiple renderable
+ * - **Draw batching** — Filament clamps hardware instancing to 32767 instances per renderable
+ *   ([SplatBuffers.MAX_INSTANCES_PER_BATCH]), silently. Larger clouds are split into multiple renderable
  *   batches under this single node, all sharing the same textures via each batch's
  *   `instanceOffset` material parameter. With multiple batches, per-batch `blendOrder` keys
  *   (global blend order) keep the batches compositing in texel order — which the sort keeps
@@ -115,7 +115,7 @@ open class SplatNode(
     /** Side of the four square per-splat textures. */
     val textureSize = SplatBuffers.textureSize(splatCloud.count)
 
-    /** Contiguous instance ranges, one renderable batch each (cap 65535 instances per draw). */
+    /** Contiguous instance ranges, one renderable batch each (Filament draws at most 32767 instances). */
     val batches = SplatBuffers.batchRanges(splatCloud.count)
 
     /** Per-splat `xyz = centre, w = 3σ of the largest axis` (static) — see [SplatBuffers]. */
@@ -165,6 +165,10 @@ open class SplatNode(
     private var sortJob: Job? = null
     private var lastSortCameraPosition: Position? = null
     private val cameraPositionScratch = FloatArray(3)
+
+    /** The sort's two arrays, reused: at most one sort is in flight ([sortJob]). */
+    private val sortKeys = LongArray(splatCloud.count)
+    private val sortOrder = IntArray(splatCloud.count)
     private var isSplatDestroyed = false
 
     /**
@@ -372,7 +376,8 @@ open class SplatNode(
         sortJob = coroutineScope.launch {
             val order = SplatBuffers.sortBackToFront(
                 splatCloud.positions, splatCloud.count,
-                cameraLocal.x, cameraLocal.y, cameraLocal.z
+                cameraLocal.x, cameraLocal.y, cameraLocal.z,
+                sortKeys, sortOrder
             )
             // A fresh buffer per sort: Filament owns an upload buffer asynchronously until the
             // GPU copy completes, so re-using one would race. 4 bytes per splat.

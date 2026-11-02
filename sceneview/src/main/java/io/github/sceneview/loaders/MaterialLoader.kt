@@ -500,7 +500,7 @@ class MaterialLoader(
      * @param rotationScaleTexture `RGBA32UI`, per splat: rotation quaternion + per-axis scale as half floats.
      * @param orderTexture         `R32UI`, per draw slot: the splat index drawn there (back-to-front).
      * @param textureSize          side of the four square textures (the shader's `texWidth`).
-     * @param instanceOffset       draw slot of this batch's instance 0 — batches above the 65535
+     * @param instanceOffset       draw slot of this batch's instance 0 — batches above the 32767
      *                             instances/draw cap share the textures and shift their
      *                             indexing by this offset.
      */

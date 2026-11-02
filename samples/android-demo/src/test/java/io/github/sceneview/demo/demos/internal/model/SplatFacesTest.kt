@@ -46,6 +46,24 @@ class SplatFacesTest {
     }
 
     @Test
+    fun `a face comes or goes only once the eye is clearly past its plane`() {
+        val room = room(0f)
+        val faces = SplatFaces.of(SurfelSplats.of(room.cloud))
+        val nearU = 1 shl 0 // +U: the wall at u = -2, facing into the room
+        val inside = faces.visible(-1.9f, 1.3f, 0f)
+        assertEquals(nearU, inside and nearU)
+        // Just outside the wall's plane: too close to call, the wall stays as it was drawn.
+        val hovering = faces.visible(-2.05f, 1.3f, 0f, was = inside)
+        assertEquals(nearU, hovering and nearU)
+        assertEquals("hovering back and forth on the plane changes nothing", hovering, faces.visible(-1.97f, 1.3f, 0f, was = hovering))
+        // Well past it: the wall goes, and it takes as much to bring it back.
+        val outside = faces.visible(-2.3f, 1.3f, 0f, was = hovering)
+        assertEquals(0, outside and nearU)
+        assertEquals(0, faces.visible(-1.95f, 1.3f, 0f, was = outside) and nearU)
+        assertEquals(nearU, faces.visible(-1.7f, 1.3f, 0f, was = outside) and nearU)
+    }
+
+    @Test
     fun `a splat's normal is its rotation applied to +Z`() {
         val q = FloatArray(4)
         val n = FloatArray(3)
