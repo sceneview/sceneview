@@ -31,11 +31,12 @@ internal class WarmUpSlot<T : Any>(
     val isReady: Boolean get() = synchronized(lock) { ready != null }
 
     /**
-     * Runs [prepare] on a new thread named [threadName], unless a value is ready or being prepared.
+     * Runs [prepare] on a new thread named [threadName], unless a value is ready or being prepared,
+     * then [afterwards] on the same thread, once the value can be taken: a taker never waits for it.
      *
      * @return `true` when a preparation started.
      */
-    fun start(threadName: String, prepare: () -> T?): Boolean {
+    fun start(threadName: String, afterwards: () -> Unit = {}, prepare: () -> T?): Boolean {
         val latch = synchronized(lock) {
             if (ready != null || preparing != null) return false
             abandoned = false
@@ -54,6 +55,11 @@ internal class WarmUpSlot<T : Any>(
             }
             if (!handedOver && value != null) discard(value)
             latch.countDown()
+            try {
+                afterwards()
+            } catch (failure: Throwable) {
+                onFailure(failure)
+            }
         }, threadName)
         thread.isDaemon = true
         thread.start()

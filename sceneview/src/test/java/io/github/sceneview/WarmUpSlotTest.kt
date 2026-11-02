@@ -110,6 +110,34 @@ class WarmUpSlotTest {
     }
 
     @Test
+    fun the_work_after_a_preparation_never_delays_its_taker() {
+        val value = Any()
+        val release = CountDownLatch(1)
+        val ran = CountDownLatch(1)
+        slot.start("test", afterwards = { release.await(); ran.countDown() }) { value }
+
+        assertSame(value, slot.take(timeoutMillis = 5_000))
+        assertEquals("still running", 1L, ran.count)
+        release.countDown()
+        assertTrue(ran.await(5, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun a_failure_after_the_preparation_is_reported_and_keeps_the_value() {
+        val value = Any()
+        val failure = IllegalStateException("no engine")
+        slot.start("test", afterwards = { throw failure }) { value }
+
+        assertSame(value, slot.take(timeoutMillis = 5_000))
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (failures.isEmpty()) {
+            check(System.nanoTime() < deadline) { "the failure was never reported" }
+            Thread.sleep(1)
+        }
+        assertEquals(listOf<Throwable>(failure), failures.toList())
+    }
+
+    @Test
     fun a_preparation_that_yields_nothing_leaves_the_slot_empty() {
         slot.start("test") { null }
         assertNull(slot.take(timeoutMillis = 5_000))

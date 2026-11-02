@@ -338,16 +338,20 @@ SceneView(engine = engine, modelLoader = modelLoader, /* ... */) { }
 
 ### The first 3D frame
 
-Most of what the first `rememberEngine()` used to do inside its composition — loading
+Part of what the first `rememberEngine()` and `rememberModelLoader()` used to do
+inside their composition now runs on a background thread at app startup: loading
 Filament's native libraries, initialising the GPU driver, creating the shared EGL
-context — now runs on a background thread at app startup. `EngineWarmUp` does it,
-through an `androidx.startup` initializer that SceneView merges into your manifest,
-and `rememberEngine()` takes the prepared context. The `Engine` itself is still built
-on the main thread: Filament ties an engine to the thread that creates it.
+context, and building the Basis Universal tables gltfio's texture loader needs.
+`EngineWarmUp` does it, through an `androidx.startup` initializer that SceneView
+merges into your manifest, and `rememberEngine()` takes the prepared context. The
+`Engine` itself is still built on the main thread: Filament ties an engine to the
+thread that creates it. To build the tables, the warm-up creates a short-lived
+engine of its own on its thread and destroys it there.
 
-To skip that warm-up — it holds one small EGL context until the first engine takes
-it — remove the initializer, and call `EngineWarmUp.start()` yourself, from any
-thread, when the user heads for a 3D screen:
+To skip that warm-up — about 80 ms of background CPU at startup, and one small EGL
+context held until the first engine takes it — remove the initializer, and call
+`EngineWarmUp.start()` yourself, from any thread, when the user heads for a 3D
+screen:
 
 ```xml
 <provider

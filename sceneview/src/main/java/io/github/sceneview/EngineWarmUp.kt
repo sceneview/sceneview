@@ -5,24 +5,30 @@ import android.opengl.EGL14
 import android.opengl.EGLContext
 import android.util.Log
 import androidx.startup.Initializer
+import com.google.android.filament.Engine
 import com.google.android.filament.Filament
 import com.google.android.filament.gltfio.Gltfio
+import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.utils.Utils
 import io.github.sceneview.utils.OpenGL
 
 /**
- * Does the part of [rememberEngine] that does not need the main thread, ahead of time, on a
- * background thread: loading Filament's native libraries, initialising the GPU driver and creating
- * the shared EGL context the engine is built on.
+ * Does the part of opening a 3D screen that does not need the main thread, ahead of time, on a
+ * background thread: loading Filament's native libraries, initialising the GPU driver, creating the
+ * shared EGL context the engine is built on, and building the Basis Universal tables gltfio's
+ * texture loader needs (see [GltfioTextureTables]).
  *
- * Without it that work runs inside the composition that first calls [rememberEngine], on the main
- * thread — on a Pixel 7a it is most of the long frame a 3D screen opens with. The next
- * [createEglContext] (the default `eglContextCreator` of [rememberEngine]) takes the prepared
- * context and only has to make it current, instead of creating one.
+ * Without it that work runs inside the composition that first calls [rememberEngine] and
+ * [rememberModelLoader], on the main thread: on a Pixel 7a, about 55 ms of the long frame a 3D
+ * screen opens with. The next [createEglContext] (the default `eglContextCreator` of
+ * [rememberEngine]) takes the prepared context and only has to make it current, instead of
+ * creating one; the first [io.github.sceneview.loaders.ModelLoader] finds the tables built.
  *
  * **It starts on its own at app startup**, through the `androidx.startup` initializer
- * [EngineWarmUpInitializer] that SceneView's manifest merges into your app; you need no code.
- * An app that would rather not prepare a GPU context at every launch removes the initializer:
+ * [EngineWarmUpInitializer] that SceneView's manifest merges into your app; you need no code. It
+ * costs about 80 ms of CPU on its own thread (done about 135 ms after the process starts, on a
+ * Pixel 7a) and one EGL context held until an engine takes it. An app that would rather not spend
+ * that at every launch removes the initializer:
  *
  * ```xml
  * <provider
@@ -43,7 +49,7 @@ import io.github.sceneview.utils.OpenGL
  * [com.google.android.filament.Engine] itself. Only the work above moves.
  *
  * A prepared context is handed over once. Until a [createEglContext] takes it, the process holds
- * one EGL context on a 1×1 pbuffer, about the cost of the first `rememberEngine()` it saves.
+ * one EGL context on a 1×1 pbuffer.
  */
 object EngineWarmUp {
 
@@ -67,7 +73,10 @@ object EngineWarmUp {
      */
     @JvmStatic
     fun start() {
-        slot.start(threadName = "SceneView-EngineWarmUp") {
+        slot.start(
+            threadName = "SceneView-EngineWarmUp",
+            afterwards = GltfioTextureTables::buildOnThisThread,
+        ) {
             loadFilamentLibraries()
             OpenGL.createPbufferContext(EGL14.EGL_NO_CONTEXT).also { it.releaseFromThisThread() }
         }
@@ -89,6 +98,60 @@ object EngineWarmUp {
 
     /** Whether a prepared context is waiting to be taken. */
     internal val isReady: Boolean get() = slot.isReady
+}
+
+/**
+ * Basis Universal's transcoder tables, which gltfio builds the first time anything in the process
+ * creates a [ResourceLoader] (its KTX2 texture provider calls `basisu_transcoder_init()`): about
+ * 45 ms on a Pixel 7a, otherwise paid by the first [io.github.sceneview.loaders.ModelLoader], on the
+ * main thread, in the composition that creates it.
+ *
+ * The tables are process-wide; an engine is only the way gltfio's API reaches the code that builds
+ * them. So [EngineWarmUp] builds them on its own thread with a throwaway [Engine], created, used and
+ * destroyed on that thread as Filament requires. Basis builds them without any locking, so every
+ * [ResourceLoader] SceneView creates goes through [creating], which never overlaps that build.
+ */
+internal object GltfioTextureTables {
+
+    private val lock = Any()
+
+    @Volatile
+    private var built = false
+
+    /** Creates a gltfio [ResourceLoader], never while [buildOnThisThread] is building the tables. */
+    fun <T> creating(create: () -> T): T = synchronized(lock) { create().also { built = true } }
+
+    /** Builds the tables with a throwaway engine, unless a [ResourceLoader] was created already. */
+    fun buildOnThisThread() {
+        if (built) return
+        withThrowawayEngine { engine ->
+            synchronized(lock) {
+                if (!built) {
+                    ResourceLoader(engine, true).destroy()
+                    built = true
+                }
+            }
+        }
+    }
+
+    /**
+     * Runs [block] with an [Engine] created before it and destroyed after it, on the calling thread:
+     * Filament's job system adopts the thread that creates an engine, and only that thread may
+     * destroy it.
+     */
+    fun withThrowawayEngine(block: (Engine) -> Unit) {
+        // The no-op backend: no GPU driver and no EGL context to set up and tear down. One job
+        // thread: creating a ResourceLoader schedules nothing on the job system.
+        val engine = Engine.Builder()
+            .backend(Engine.Backend.NOOP)
+            .config(Engine.Config().apply { jobSystemThreadCount = 1 })
+            .build()
+        try {
+            block(engine)
+        } finally {
+            engine.destroy()
+        }
+    }
 }
 
 /**

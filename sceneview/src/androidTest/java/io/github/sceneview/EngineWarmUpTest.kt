@@ -8,6 +8,9 @@ import android.os.SystemClock
 import androidx.startup.InitializationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.filament.gltfio.ResourceLoader
+import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.render.RenderTestHarness
 import io.github.sceneview.utils.destroy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -79,6 +82,33 @@ class EngineWarmUpTest {
             engine.destroyRenderer(renderer)
             engine.destroy()
             eglContext.destroy()
+        }
+    }
+
+    @Test
+    fun a_throwaway_engine_on_another_thread_leaves_the_main_engine_rendering() {
+        val harness = RenderTestHarness(width = 16, height = 16)
+        try {
+            val worker = Thread {
+                repeat(3) {
+                    GltfioTextureTables.withThrowawayEngine { engine ->
+                        GltfioTextureTables.creating { ResourceLoader(engine, true) }.destroy()
+                    }
+                }
+            }
+            worker.start()
+            // The main thread keeps using its own engine meanwhile, ModelLoaders included: their
+            // ResourceLoaders go through the same lock as the warm-up's.
+            while (worker.isAlive) {
+                harness.runOnMain {
+                    ModelLoader(harness.engine, context).destroy()
+                    harness.renderFrames(1)
+                }
+            }
+            worker.join()
+            harness.runOnMain { harness.renderFrames(3) }
+        } finally {
+            harness.destroy()
         }
     }
 

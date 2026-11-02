@@ -1709,7 +1709,9 @@ fun rememberRenderer(
  * Use [rememberModelInstance] to load a specific model file.
  *
  * Cheap to create: gltfio's material provider, whose archive takes tens of milliseconds to
- * decompress, is built by the first model the loader creates, not here.
+ * decompress, is built by the first model the loader creates, not here. The Basis Universal
+ * tables its texture loader needs are built once per process; [EngineWarmUp] builds them off the
+ * main thread at app startup.
  *
  * @param engine  The Filament [Engine] that owns the loaded assets.
  * @param context Android context used to open asset files. Defaults to [LocalContext].
