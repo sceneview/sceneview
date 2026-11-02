@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraCharacteristics
@@ -230,6 +231,8 @@ internal fun shareRecording(context: Context, file: File): Boolean {
             "An AR recording made with SceneView. It plays in any video app, and replays " +
                 "in AR with ARSceneView(playbackDataset = file).",
         )
+        // The share sheet's preview reads the clip's URI: without it, the grant misses the sheet.
+        clipData = ClipData.newRawUri(file.name, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(intent, "Share AR recording"))

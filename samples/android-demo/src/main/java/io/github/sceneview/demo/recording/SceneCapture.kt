@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.recording
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Paint
@@ -102,12 +103,18 @@ fun openCapture(context: Context, file: File, mimeType: String): Boolean = runCa
     )
 }.isSuccess
 
-/** Offers [file] to the share sheet. Returns whether the sheet opened. */
+/**
+ * Offers [file] to the share sheet. Returns whether the sheet opened. The URI rides in the clip
+ * too: the read grant only reaches the share sheet's own preview through it, and without it the
+ * sheet's thumbnail read throws a SecurityException.
+ */
 fun shareCapture(context: Context, file: File, mimeType: String): Boolean = runCatching {
+    val uri = captureUri(context, file)
     val send = Intent(Intent.ACTION_SEND)
         .setType(mimeType)
-        .putExtra(Intent.EXTRA_STREAM, captureUri(context, file))
+        .putExtra(Intent.EXTRA_STREAM, uri)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    send.clipData = ClipData.newRawUri(file.name, uri)
     context.startActivity(
         Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
