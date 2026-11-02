@@ -2793,6 +2793,182 @@ public final class io/github/sceneview/ar/recording/PlaneSample {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/ar/replay/ARReplayCheck : java/lang/Enum {
+	public static final field ANCHOR Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static final field MODEL_BRIGHTNESS Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static final field MODEL_COVERAGE Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static final field PLANE Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static final field REPLAYED Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static final field SCENE_BRIGHTNESS Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public static fun values ()[Lio/github/sceneview/ar/replay/ARReplayCheck;
+}
+
+public final class io/github/sceneview/ar/replay/ARReplayCheckResult {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/replay/ARReplayCheck;ZLjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Lio/github/sceneview/ar/replay/ARReplayCheck;ZLjava/lang/String;Ljava/lang/String;)Lio/github/sceneview/ar/replay/ARReplayCheckResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/replay/ARReplayCheckResult;Lio/github/sceneview/ar/replay/ARReplayCheck;ZLjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/replay/ARReplayCheckResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCheck ()Lio/github/sceneview/ar/replay/ARReplayCheck;
+	public final fun getExpected ()Ljava/lang/String;
+	public final fun getMeasured ()Ljava/lang/String;
+	public final fun getPassed ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/replay/ARReplayMetrics {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/replay/ARReplayMetrics;
+	public final fun boxCorners ([F[F)[F
+	public final fun isInside ([F[F[F)Z
+	public final fun luma (I)F
+	public final fun meanLuminance ([IIILio/github/sceneview/ar/replay/ScreenRect;I)F
+	public static synthetic fun meanLuminance$default (Lio/github/sceneview/ar/replay/ARReplayMetrics;[IIILio/github/sceneview/ar/replay/ScreenRect;IILjava/lang/Object;)F
+	public final fun multiply ([F[F)[F
+	public final fun projectCoverage ([F[F)Lio/github/sceneview/ar/replay/ProjectedCoverage;
+}
+
+public final class io/github/sceneview/ar/replay/ARReplayMetricsKt {
+	public static final fun evaluateReplay (Lio/github/sceneview/ar/replay/ARReplayObservation;Ljava/util/Set;Lio/github/sceneview/ar/replay/ARReplayThresholds;)Ljava/util/List;
+	public static synthetic fun evaluateReplay$default (Lio/github/sceneview/ar/replay/ARReplayObservation;Ljava/util/Set;Lio/github/sceneview/ar/replay/ARReplayThresholds;ILjava/lang/Object;)Ljava/util/List;
+}
+
+public final class io/github/sceneview/ar/replay/ARReplayObservation {
+	public static final field $stable I
+	public fun <init> (ILjava/lang/Integer;IILio/github/sceneview/ar/replay/ProjectedCoverage;Ljava/lang/Float;Ljava/lang/Float;)V
+	public synthetic fun <init> (ILjava/lang/Integer;IILio/github/sceneview/ar/replay/ProjectedCoverage;Ljava/lang/Float;Ljava/lang/Float;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Lio/github/sceneview/ar/replay/ProjectedCoverage;
+	public final fun component6 ()Ljava/lang/Float;
+	public final fun component7 ()Ljava/lang/Float;
+	public final fun copy (ILjava/lang/Integer;IILio/github/sceneview/ar/replay/ProjectedCoverage;Ljava/lang/Float;Ljava/lang/Float;)Lio/github/sceneview/ar/replay/ARReplayObservation;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/replay/ARReplayObservation;ILjava/lang/Integer;IILio/github/sceneview/ar/replay/ProjectedCoverage;Ljava/lang/Float;Ljava/lang/Float;ILjava/lang/Object;)Lio/github/sceneview/ar/replay/ARReplayObservation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoverage ()Lio/github/sceneview/ar/replay/ProjectedCoverage;
+	public final fun getFirstPlaneFrame ()Ljava/lang/Integer;
+	public final fun getFrames ()I
+	public final fun getModelLuminance ()Ljava/lang/Float;
+	public final fun getSceneLuminance ()Ljava/lang/Float;
+	public final fun getTrackedAnchors ()I
+	public final fun getVisibleModels ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/replay/ARReplayProbe : io/github/sceneview/ar/replay/ARSessionProbe {
+	public static final field $stable I
+	public static final field FAR F
+	public static final field NEAR F
+	public fun <init> (Ljava/io/File;Z)V
+	public synthetic fun <init> (Ljava/io/File;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHideModels ()Z
+	public fun getPlaybackDataset ()Ljava/io/File;
+	public final fun observe ()Lio/github/sceneview/ar/replay/ARReplayObservation;
+	public fun onSessionFrame (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;Ljava/util/List;)V
+	public final fun reset ()V
+	public final fun setHideModels (Z)V
+}
+
+public final class io/github/sceneview/ar/replay/ARReplayThresholds {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (IIFFFF)V
+	public synthetic fun <init> (IIFFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun component6 ()F
+	public final fun copy (IIFFFF)Lio/github/sceneview/ar/replay/ARReplayThresholds;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/replay/ARReplayThresholds;IIFFFFILjava/lang/Object;)Lio/github/sceneview/ar/replay/ARReplayThresholds;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxCoverage ()F
+	public final fun getMinCoverage ()F
+	public final fun getMinFrames ()I
+	public final fun getMinModelLuminance ()F
+	public final fun getMinSceneLuminance ()F
+	public final fun getPlaneWithinFrames ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class io/github/sceneview/ar/replay/ARSessionProbe {
+	public fun getPlaybackDataset ()Ljava/io/File;
+	public fun onSessionFrame (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;Ljava/util/List;)V
+}
+
+public final class io/github/sceneview/ar/replay/ARSessionProbe$DefaultImpls {
+	public static fun getPlaybackDataset (Lio/github/sceneview/ar/replay/ARSessionProbe;)Ljava/io/File;
+	public static fun onSessionFrame (Lio/github/sceneview/ar/replay/ARSessionProbe;Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;Ljava/util/List;)V
+}
+
+public final class io/github/sceneview/ar/replay/ARSessionProbeKt {
+	public static final fun getLocalARSessionProbe ()Landroidx/compose/runtime/ProvidableCompositionLocal;
+}
+
+public final class io/github/sceneview/ar/replay/ProjectedCoverage {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/replay/ProjectedCoverage$Companion;
+	public fun <init> (FLio/github/sceneview/ar/replay/ScreenRect;Z)V
+	public synthetic fun <init> (FLio/github/sceneview/ar/replay/ScreenRect;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()Lio/github/sceneview/ar/replay/ScreenRect;
+	public final fun component3 ()Z
+	public final fun copy (FLio/github/sceneview/ar/replay/ScreenRect;Z)Lio/github/sceneview/ar/replay/ProjectedCoverage;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/replay/ProjectedCoverage;FLio/github/sceneview/ar/replay/ScreenRect;ZILjava/lang/Object;)Lio/github/sceneview/ar/replay/ProjectedCoverage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCameraInside ()Z
+	public final fun getFraction ()F
+	public final fun getRect ()Lio/github/sceneview/ar/replay/ScreenRect;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+	public final fun union (Lio/github/sceneview/ar/replay/ProjectedCoverage;)Lio/github/sceneview/ar/replay/ProjectedCoverage;
+}
+
+public final class io/github/sceneview/ar/replay/ProjectedCoverage$Companion {
+	public final fun getNONE ()Lio/github/sceneview/ar/replay/ProjectedCoverage;
+}
+
+public final class io/github/sceneview/ar/replay/ScreenRect {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/replay/ScreenRect$Companion;
+	public fun <init> (FFFF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/ar/replay/ScreenRect;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/replay/ScreenRect;FFFFILjava/lang/Object;)Lio/github/sceneview/ar/replay/ScreenRect;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArea ()F
+	public final fun getBottom ()F
+	public final fun getHeight ()F
+	public final fun getLeft ()F
+	public final fun getRight ()F
+	public final fun getTop ()F
+	public final fun getWidth ()F
+	public fun hashCode ()I
+	public final fun isEmpty ()Z
+	public fun toString ()Ljava/lang/String;
+	public final fun union (Lio/github/sceneview/ar/replay/ScreenRect;)Lio/github/sceneview/ar/replay/ScreenRect;
+}
+
+public final class io/github/sceneview/ar/replay/ScreenRect$Companion {
+	public final fun getCENTRE ()Lio/github/sceneview/ar/replay/ScreenRect;
+	public final fun getFULL ()Lio/github/sceneview/ar/replay/ScreenRect;
+}
+
 public final class io/github/sceneview/ar/rerun/RememberRerunBridgeKt {
 	public static final fun rememberRerunBridge (Ljava/lang/String;IIZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/rerun/RerunBridge;
 }
