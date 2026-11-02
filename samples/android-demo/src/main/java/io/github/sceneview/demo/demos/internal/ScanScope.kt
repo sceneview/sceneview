@@ -48,22 +48,26 @@ enum class ScanScope(val key: String) {
      */
     val mapsGround: Boolean get() = this != Object
 
+    /**
+     * The card that stands for this scope in the choice (Scan redesign, PR 1): only [Object] and
+     * [Room] are offered; [Home] and [Area] stay for the sessions taken with them, and a choice
+     * remembered as one of them comes back as a room.
+     */
+    val offered: ScanScope
+        get() = when (this) {
+            Object -> Object
+            Room, Home, Area -> Room
+        }
+
     companion object {
-        /** The scope asked first when nothing was chosen before: what 3D Scan always did. */
-        val DEFAULT = Room
+        /** The scope asked first when nothing was chosen before: one object, the quickest to a model. */
+        val DEFAULT = Object
+
+        /** The scopes the choice offers, in its order: [Object] first. */
+        val OFFERED: List<ScanScope> = listOf(Object, Room)
 
         /** The scope remembered under [key]; [DEFAULT] for none, or for a key this build does not know. */
         fun fromKey(key: String?): ScanScope = entries.firstOrNull { it.key == key } ?: DEFAULT
-
-        /**
-         * What the chooser offers: an object or a room. Home and Area are variants of a room's
-         * scan, longer and more fragile; they stay in this enum so the scans kept under them still
-         * open, and a QA state can still record them, but no card offers them any more.
-         */
-        val CHOICES: List<ScanScope> = listOf(Object, Room)
-
-        /** [scope] as the chooser can show it ticked: a room for a Home or an Area remembered before. */
-        fun choosable(scope: ScanScope): ScanScope = if (scope in CHOICES) scope else Room
     }
 }
 

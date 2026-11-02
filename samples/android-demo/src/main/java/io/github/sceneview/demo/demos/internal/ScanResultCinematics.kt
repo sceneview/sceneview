@@ -28,17 +28,21 @@ internal fun CameraShot.toOrbitPose(): OrbitPose = OrbitPose(
  * the orbit camera the shot and the speed the move had.
  *
  * Driven from `onFrame`, after each drawn frame, by [frameDrawn]; the buttons only [request].
+ *
+ * Without [reveals] the camera opens where the framing is and stays there: no crane down onto it
+ * (Scan redesign, PR 1: « pas de mouvement de caméra imposé »).
  */
 internal class ScanResultCinematics(
     val orbit: ArDebugOrbitCamera,
     val animator: CameraAnimator = CameraAnimator(CameraShot()),
+    private val reveals: Boolean = true,
 ) {
     /** The `cameraManipulator` for the `SceneView`: the animator while it plays, [orbit] otherwise. */
     val manipulator = CinematicCameraManipulator(animator, orbit)
 
     enum class Request { Recenter, ToggleTour }
 
-    /** `true` once the reveal has started: the model is on its framing, the move is on screen. */
+    /** `true` once the model is drawn on its framing: the reveal has started, if there is one. */
     var revealed = false
         private set
 
@@ -69,7 +73,7 @@ internal class ScanResultCinematics(
             opening.aim(orbit, home)
             if (framed) {
                 revealed = true
-                animator.play(CameraPath.reveal(ArDebugFraming.clamp(home).toShot()))
+                if (reveals) animator.play(CameraPath.reveal(ArDebugFraming.clamp(home).toShot()))
             }
             return false
         }

@@ -16,20 +16,24 @@ import kotlin.math.abs
 class ScanScopeTest {
 
     @Test
-    fun `a scope is remembered by its key, and an unknown key falls back to a room`() {
+    fun `a scope is remembered by its key, and an unknown key falls back to an object`() {
         ScanScope.entries.forEach { assertEquals(it, ScanScope.fromKey(it.key)) }
-        assertEquals(ScanScope.Room, ScanScope.fromKey(null))
-        assertEquals(ScanScope.Room, ScanScope.fromKey("garden"))
-        assertEquals(ScanScope.Room, ScanScope.DEFAULT)
+        assertEquals(ScanScope.Object, ScanScope.fromKey(null))
+        assertEquals(ScanScope.Object, ScanScope.fromKey("garden"))
+        assertEquals(ScanScope.Object, ScanScope.DEFAULT)
     }
 
     @Test
-    fun `the chooser offers an object and a room only, and a home or an area remembered comes back as a room`() {
-        assertEquals(listOf(ScanScope.Object, ScanScope.Room), ScanScope.CHOICES)
-        assertEquals(ScanScope.Object, ScanScope.choosable(ScanScope.Object))
-        assertEquals(ScanScope.Room, ScanScope.choosable(ScanScope.Room))
-        assertEquals(ScanScope.Room, ScanScope.choosable(ScanScope.Home))
-        assertEquals(ScanScope.Room, ScanScope.choosable(ScanScope.Area))
+    fun `the choice offers an object first, then a room, and a home or an area come back as a room`() {
+        assertEquals(listOf(ScanScope.Object, ScanScope.Room), ScanScope.OFFERED)
+        assertEquals(ScanScope.DEFAULT, ScanScope.OFFERED.first())
+        assertEquals(ScanScope.Object, ScanScope.Object.offered)
+        assertEquals(ScanScope.Room, ScanScope.Room.offered)
+        assertEquals(ScanScope.Room, ScanScope.Home.offered)
+        assertEquals(ScanScope.Room, ScanScope.Area.offered)
+        ScanScope.entries.forEach { assertTrue(it.offered in ScanScope.OFFERED) }
+        // A session kept before scopes were is still a room's.
+        assertEquals(ScanScope.Room, RerunStoredSession.scopeOf(null))
     }
 
     @Test
