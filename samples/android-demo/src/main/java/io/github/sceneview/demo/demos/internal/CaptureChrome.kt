@@ -22,19 +22,20 @@ enum class ScanStep(val label: String) {
  * What stops the scan from adding anything, and the one thing that gets out of it. Said as a
  * banner, never as a "Next" line: a blocker is not a step.
  */
-enum class ScanBlocker(val cause: String, val wayOut: String) {
-    TrackingLost("Tracking lost", "Point at an area you already scanned"),
-    TooDark("Too dark to track", "Turn on a light or move somewhere brighter"),
-    TooFast("Moving too fast", "Slow down until this goes away"),
-    LowTexture("Too little detail here", "Move closer to the surface"),
-    NoDepth("No depth yet", "Keep the lens clear and move slowly"),
-    DepthLost("Depth lost", "Keep the lens clear and move slowly"),
-    Full("This scan is full", "Tap Stop and review to keep what you have"),
+enum class ScanBlocker(val cause: String, val wayOut: String, val short: String) {
+    TrackingLost("Tracking lost", "Point at an area you already scanned", "Tracking lost"),
+    TooDark("Too dark to track", "Turn on a light or move somewhere brighter", "Too dark"),
+    TooFast("Moving too fast", "Slow down until this goes away", "Slow down"),
+    LowTexture("Too little detail here", "Move closer to the surface", "Move closer"),
+    NoDepth("No depth yet", "Keep the lens clear and move slowly", "No depth yet"),
+    DepthLost("Depth lost", "Keep the lens clear and move slowly", "Depth lost"),
+    Full("This scan is full", "Tap Stop and review to keep what you have", "Scan full"),
 }
 
 /** The capture's one message at the bottom: what blocks it, or else where to go next. */
 sealed interface CaptureCue {
-    data class Blocked(val blocker: ScanBlocker) : CaptureCue
+    /** [brief]: the [blocker]'s [ScanBlocker.short] word alone, as a room's live capture says it ([LiveRoomGuide]). */
+    data class Blocked(val blocker: ScanBlocker, val brief: Boolean = false) : CaptureCue
     data class Next(val text: String) : CaptureCue
 }
 

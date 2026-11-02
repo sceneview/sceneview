@@ -54,6 +54,16 @@ enum class ScanScope(val key: String) {
 
         /** The scope remembered under [key]; [DEFAULT] for none, or for a key this build does not know. */
         fun fromKey(key: String?): ScanScope = entries.firstOrNull { it.key == key } ?: DEFAULT
+
+        /**
+         * What the chooser offers: an object or a room. Home and Area are variants of a room's
+         * scan, longer and more fragile; they stay in this enum so the scans kept under them still
+         * open, and a QA state can still record them, but no card offers them any more.
+         */
+        val CHOICES: List<ScanScope> = listOf(Object, Room)
+
+        /** [scope] as the chooser can show it ticked: a room for a Home or an Area remembered before. */
+        fun choosable(scope: ScanScope): ScanScope = if (scope in CHOICES) scope else Room
     }
 }
 

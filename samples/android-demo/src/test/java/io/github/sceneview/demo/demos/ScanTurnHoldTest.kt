@@ -1,16 +1,11 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
-import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanTurn
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -111,16 +106,6 @@ class ScanTurnHoldTest {
         }
         assertTrue("the hint still says $shown, left ten seconds ago", shown != ScanTurn.Left)
         assertEquals(1, changes)
-    }
-
-    @Test
-    fun `the arrow points where it is told at once, the screen holding the turn for it`() {
-        composeRule.mainClock.autoAdvance = false
-        composeRule.setContent { Box(Modifier.fillMaxSize()) { ScanTurnArrow(turn) } }
-        advance(SHOWN_MS)
-        turnTo(ScanTurn.Right)
-        advance(SHOWN_MS)
-        composeRule.onNodeWithContentDescription(ScanCopy.turnHint(ScanTurn.Right)).assertExists()
     }
 
     private companion object {

@@ -7,9 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.UTurnLeft
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.sceneview.demo.demos.internal.CaptureChrome
@@ -17,7 +14,6 @@ import io.github.sceneview.demo.demos.internal.CaptureCue
 import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
-import io.github.sceneview.demo.demos.internal.ScanTurn
 import io.github.sceneview.math.Position
 import io.github.sceneview.demo.demos.internal.OrbitPose
 import androidx.compose.runtime.remember
@@ -66,11 +62,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAbsoluteAlignment
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.material.icons.rounded.ChevronRight
+import io.github.sceneview.demo.demos.internal.GapChevron
+import io.github.sceneview.demo.demos.internal.GapChevronPlace
+import io.github.sceneview.demo.demos.internal.ScanLens
+import kotlin.math.roundToInt
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -198,52 +202,72 @@ internal fun ScanRoomGauge(share: Float, complete: Boolean) {
 }
 
 /**
- * The turn to the next gap of a room's scan (#4540, "arrows to say turn this way"): a glass disc at
- * the screen's edge on that side, an arrow in `accent-guidance`, the colour of the dashed gap in
- * the room. Behind the phone, it sits in the middle with a turning arrow; ahead, the gap is in
- * view and the dashes speak for it. [turn] is held by the caller ([rememberHeld]), once for the
- * arrow and the coaching line.
+ * The chevron towards the largest gap of a room's scan ([GapChevron]): at the screen's edge the gap
+ * lies past, pointing at it, in `accent-guidance` — the colour of the dashed gap on the camera — on
+ * the capture's dark fill. Gone while the gap is in the picture, where its dashes speak for it, and
+ * once the room is done. Read off [walls]' cue and [lens] each frame; recomposed only when it moves.
  */
 @Composable
-internal fun BoxScope.ScanTurnArrow(turn: ScanTurn?) {
-    val shown = turn?.takeIf { it != ScanTurn.Ahead }
-    // Kept through the fade-out, so the arrow leaves from where it was.
-    var last by remember { mutableStateOf(ScanTurn.Left) }
-    if (shown != null) last = shown
-    // Left and right are the room's, not the reading direction's: the same side in RTL.
-    val alignment = when (last) {
-        ScanTurn.Left -> AbsoluteAlignment.CenterLeft
-        ScanTurn.Right -> AbsoluteAlignment.CenterRight
-        else -> Alignment.Center
+internal fun BoxScope.ScanGapChevron(walls: ScanWallsState, lens: ScanLens) {
+    var place by remember(walls, lens) { mutableStateOf<GapChevronPlace?>(null) }
+    LaunchedEffect(walls, lens) {
+        var shown: GapChevronPlace? = null
+        while (true) {
+            withFrameNanos { }
+            val edge = walls.cueEdge
+            val next = if (edge == null || walls.done || !lens.ready) {
+                null
+            } else {
+                val (x, y, z) = GapChevron.target(edge, height = lens.cameraToWorld[EYE_HEIGHT_TERM])
+                GapChevron.place(lens.cameraToWorld, lens.projection, x, y, z, shown = shown != null)?.rounded()
+            }
+            if (next != shown) {
+                shown = next
+                place = next
+            }
+        }
     }
+    // Kept through the fade-out, so the chevron leaves from where it was.
+    var last by remember { mutableStateOf(GapChevronPlace(1f, 0f, 0f)) }
+    place?.let { last = it }
     AnimatedVisibility(
-        visible = shown != null,
+        visible = place != null,
         enter = fadeIn(tween(SceneViewTokens.Duration.mediumMillis)),
         exit = fadeOut(tween(SceneViewTokens.Duration.mediumMillis)),
-        modifier = Modifier.align(alignment).padding(Space.md).testTag(SCAN_TURN_TAG),
+        // The room's left and right, not the reading direction's: the same side in RTL.
+        modifier = Modifier
+            .align(BiasAbsoluteAlignment(last.x, last.y))
+            .padding(Space.sm)
+            .testTag(SCAN_GAP_CHEVRON_TAG),
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(SceneViewTokens.Layout.touchTarget + Space.md)
-                .background(LocalStageChrome.current.card, CircleShape),
+                .size(SceneViewTokens.Layout.touchTarget)
+                .background(ScanControlFill, CircleShape)
+                .semantics { contentDescription = ScanCopy.GAP_CHEVRON },
         ) {
-            // Drawn left to right whatever the locale: a mirrored arrow would point at the wrong wall.
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Icon(
-                    imageVector = when (last) {
-                        ScanTurn.Left -> Icons.AutoMirrored.Rounded.ArrowBack
-                        ScanTurn.Right -> Icons.AutoMirrored.Rounded.ArrowForward
-                        else -> Icons.Rounded.UTurnLeft
-                    },
-                    contentDescription = ScanCopy.turnHint(last),
-                    tint = ArOverlay.accentGuidance,
-                    modifier = Modifier.size(SceneViewTokens.Layout.touchTarget - Space.sm),
-                )
-            }
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = ArOverlay.accentGuidance,
+                modifier = Modifier.size(SceneViewTokens.Layout.touchTarget - Space.sm).rotate(last.degrees),
+            )
         }
     }
 }
+
+/** [GapChevronPlace] to a hundredth of the screen and a degree: it recomposes when it moves, not on every sway. */
+private fun GapChevronPlace.rounded(): GapChevronPlace = GapChevronPlace(
+    x = (x * PLACE_STEPS).roundToInt() / PLACE_STEPS,
+    y = (y * PLACE_STEPS).roundToInt() / PLACE_STEPS,
+    degrees = degrees.roundToInt().toFloat(),
+)
+
+private const val PLACE_STEPS = 100f
+
+/** The eye's height in [ScanLens.cameraToWorld], column-major: the translation's y. */
+private const val EYE_HEIGHT_TERM = 13
 
 private const val GAUGE_SEGMENTS = 10
 
@@ -588,11 +612,16 @@ internal fun ScanDiscardDialog(onCancel: () -> Unit, onDiscard: () -> Unit) {
  * stop tap is the camera's view of the frame before, eased from there onto the orbit.
  *
  * [walls] (#4540), a room's scan only: the walls recognised so far rise in the room, on the
- * camera, and the floor edges still open are dashed where the next wall should be; an arrow points
- * to the next one's [turn], as held by the caller.
+ * camera, and the floor edges still open are dashed where the next wall should be; a chevron at
+ * the screen's edge points to the largest gap while it is off screen ([ScanGapChevron]).
+ *
+ * [phoneOnly], a room's capture (the Live Room): one camera, the phone's, from the first frame to
+ * the last. No drag nor pinch takes the view over, no saving orbit leaves the phone, the camera is
+ * never veiled; with tracking lost, the capture keeps the last eye and fades out ([trackingLost])
+ * rather than drawing over a picture it no longer lines up with.
  */
 @Composable
-@Suppress("LongParameterList") // the demo's shared engine, handed down once
+@Suppress("LongParameterList", "LongMethod") // the demo's shared engine, handed down once
 internal fun ScanLiveView(
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
@@ -605,24 +634,33 @@ internal fun ScanLiveView(
     livePose: (traced: DebugPose?) -> DebugPose? = { it },
     saving: Boolean = false,
     walls: ScanWallsState? = null,
-    turn: ScanTurn? = walls?.turn,
     reviewing: Boolean = false,
+    phoneOnly: Boolean = false,
+    trackingLost: Boolean = false,
 ) {
     // Saving, the view is handed back to the automatic framing, which the orbit then drives.
-    LaunchedEffect(saving) { if (saving) orbit.recenter() }
+    LaunchedEffect(saving, phoneOnly) { if (saving && !phoneOnly) orbit.recenter() }
+    val orbiting = saving && !phoneOnly
     val veil by animateColorAsState(
-        targetValue = if (saving) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
+        targetValue = if (orbiting) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
         animationSpec = tween(SceneViewTokens.Duration.longMillis, easing = SceneViewTokens.Ease.expressive),
         label = "scanVeil",
     )
-    val savingOrbit = remember(saving) { if (saving) ScanSavingOrbit() else null }
+    // Tracking lost over the phone's eye: the capture fades rather than float off its walls.
+    val shown by animateFloatAsState(
+        targetValue = if (phoneOnly && trackingLost) 0f else 1f,
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+        label = "scanLiveShown",
+    )
+    val savingOrbit = remember(orbiting) { if (orbiting) ScanSavingOrbit() else null }
     // Saving, the room loses its lid (#4742): the orbit rises out through its top, past no ceiling.
     // Cut while the scan is reviewed, so it is ready by the save; the orbit holds on the phone's
-    // eye until it is drawn.
-    val cutting = reviewing || saving
+    // eye until it is drawn. The phone's own eye needs no cut.
+    val cutting = !phoneOnly && (reviewing || saving)
     var openTop by remember { mutableStateOf<ReplayDenseLayer?>(null) }
     var lidOff by remember { mutableStateOf(false) }
-    val savingNow by rememberUpdatedState(saving)
+    // The saving orbit's, not the save's: the Live Room saves through the phone's eye still.
+    val savingNow by rememberUpdatedState(orbiting)
     LaunchedEffect(cutting) {
         openTop = null
         lidOff = false
@@ -648,7 +686,7 @@ internal fun ScanLiveView(
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = shown },
             replay = drawn,
             transparent = true,
             visible = { it in SCAN_LIVE_GROUPS },
@@ -671,14 +709,30 @@ internal fun ScanLiveView(
             },
             // The walls stand in the room while it is scanned; saving, the orbit shows the cloud.
             walls = walls,
-            drawWalls = !saving,
+            drawWalls = !orbiting,
             // The cloud moves with the phone's eye, which ARCore updates at the camera's 30 Hz: a
             // second view drawn at the display's 60 Hz redrew the same picture every other vsync,
             // one GPU pass and one swap too many on a mid-range phone (#4743). Saving, the orbit is
             // the view's own motion and gets the display's full rate back.
-            maxFps = if (saving) null else SCAN_LIVE_FPS,
+            maxFps = if (orbiting) null else SCAN_LIVE_FPS,
         )
-        if (walls != null && !saving) ScanTurnArrow(turn)
+        if (phoneOnly) {
+            // One camera, the phone's: a finger on the screen moves nothing (no orbit to take over).
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            do {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    },
+            )
+            val lens = orbit.firstPerson
+            if (walls != null && lens != null && !saving && !reviewing) ScanGapChevron(walls, lens)
+        }
     }
 }
 
@@ -714,7 +768,7 @@ private val ScanDotSize = Space.md - Space.xs / 2
 
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
 internal const val SCAN_ROOM_GAUGE_TAG = "ar_rerun_scan_room_gauge"
-internal const val SCAN_TURN_TAG = "ar_rerun_scan_turn"
+internal const val SCAN_GAP_CHEVRON_TAG = "ar_rerun_scan_gap_chevron"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"
 internal const val SCAN_RECENTER_TAG = "ar_rerun_scan_recenter"
 internal const val SCAN_POINTS_TAG = "ar_rerun_scan_points"
