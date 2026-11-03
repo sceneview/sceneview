@@ -68,7 +68,9 @@ fun Engine.createCamera() = createCamera(entityManager.create())
  */
 fun Engine.drainFramePipeline() {
     createFence().apply {
-        wait(Fence.Mode.FLUSH, Fence.WAIT_FOR_EVER)
+        // The one-argument overload waits forever: Filament 1.77 annotates the explicit
+        // timeout `@IntRange(from = 0)`, so passing its own WAIT_FOR_EVER (-1) fails lint.
+        wait(Fence.Mode.FLUSH)
         destroyFence(this)
     }
 }
