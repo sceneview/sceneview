@@ -684,6 +684,8 @@ SceneView(...) {
 }
 ```
 
+**Shadow options on Filament 1.77.x (Android):** do not pass `shadowOptions(LightManager.ShadowOptions().apply { … })` to the builder. In the Java bindings of Filament 1.77, `ShadowOptions()` starts with every field at 0 (`mapSize` and the `transform` quaternion included) and the setter reorders the quaternion (google/filament#10565, fixed in 1.79), so the directional shadow disappears. Build the light with `castShadows(true)` only, then read the native options back, change the fields you need and write them: `lightManager.setShadowOptions(i, lightManager.getShadowOptions(i).apply { mapSize = 2048 })`. `Renderer.FrameRateOptions()` and `Renderer.DisplayInfo()` also start at 0 in 1.77: read the current value from the renderer before changing it. `Engine.isValid` is a SceneView extension that replaces the `Engine.isValid()` method removed in 1.77.
+
 ### CubeNode — box geometry
 ```kotlin
 @Composable fun CubeNode(
