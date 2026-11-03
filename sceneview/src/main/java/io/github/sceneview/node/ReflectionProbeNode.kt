@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import com.google.android.filament.IndirectLight
 import com.google.android.filament.Scene
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.environment.Environment
@@ -90,10 +91,20 @@ fun ReflectionProbeNode(
 
     DisposableEffect(filamentScene, environment) {
         onDispose {
-            // Restore the indirect light that was active before this probe was composed.
+            // Restore the indirect light that was active before this probe was composed, and only
+            // while the scene still holds this probe's: the scene's environment, or another probe,
+            // may have replaced it since. The captured light may also be dead by now — a
+            // dark/light toggle destroys the environment it belonged to — and Filament throws
+            // "Calling method on destroyed IndirectLight" when it is handed back.
             // If a different probe is still active, its own LaunchedEffect will re-apply
             // after this disposal.
-            filamentScene.indirectLight = previousIndirectLight
+            if (filamentScene.indirectLight === environment.indirectLight) {
+                filamentScene.indirectLight = previousIndirectLight?.takeIf { it.isAlive }
+            }
         }
     }
 }
+
+/** `false` once the engine destroyed this light: its handle getter throws from then on. */
+private val IndirectLight.isAlive: Boolean
+    get() = runCatching { nativeObject }.isSuccess
