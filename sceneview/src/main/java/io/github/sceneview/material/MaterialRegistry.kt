@@ -22,7 +22,8 @@ import java.util.concurrent.ConcurrentHashMap
  *     .forEach { it.setParameter("emissiveStrength", 4f) }
  * ```
  *
- * `null` means an instance created outside SceneView, or one already destroyed.
+ * May be `null`, typically for an instance created outside SceneView. Do not read it on an
+ * instance you have already destroyed: what it returns then is not specified.
  */
 val MaterialInstance.materialOrNull: Material?
     get() = runCatching { material }.getOrNull() ?: materialRegistry.materialOf(this)
@@ -38,8 +39,12 @@ internal val materialRegistry = NativeHandleRegistry<MaterialInstance, Material>
  *
  * Keyed on the native handle, not on the wrapper: Filament builds a new Java wrapper each time an
  * instance is read back, and those wrappers do not override `equals`. A handle whose wrapper is
- * already destroyed reads as no handle (Filament's getters throw then), and a recorded material
- * that has been destroyed since is never handed out.
+ * already destroyed reads as no handle (Filament's getters throw then). Entries are only as fresh
+ * as the loaders keep them: [io.github.sceneview.loaders.MaterialLoader],
+ * [io.github.sceneview.loaders.ModelLoader] and `safeDestroyMaterialInstance` forget an instance
+ * or a material before destroying it. On top of that, [materialOf] skips a material whose wrapper
+ * Filament has already nulled, a best-effort check only: wrappers Filament does not null on
+ * destroy (the ubershader's, for one) still read as live.
  *
  * Filament-free so a JVM test can pin it: Filament wrappers cannot be built without the native
  * library.

@@ -123,6 +123,8 @@ class MaterialLoader(
             .build(engine)
             .also {
                 materials += it
+                // Its default instance reads back without its Material on Filament 1.77+ too.
+                materialRegistry.register(it.defaultInstance, it)
             }
 
     @MainThread

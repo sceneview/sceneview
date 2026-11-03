@@ -110,9 +110,23 @@ class ModelLoader(
     // 1.77 no longer keeps (see `materialOrNull`).
     private val recordingProvider = RecordingMaterialProvider(materialProvider)
 
-    // Created on first use: gltfio calls the recorder back with the JNIEnv of the thread that
-    // created the loader, so that has to be the thread that creates the models, the main one.
-    private val assetLoaderHolder = lazy { AssetLoader(engine, recordingProvider, EntityManager.get()) }
+    private val assetLoaderHolder = lazy {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "ModelLoader.assetLoader is created on first read, and that read must be on the main " +
+                "thread: gltfio keeps the creating thread's JNIEnv for its material callbacks."
+        }
+        AssetLoader(engine, recordingProvider, EntityManager.get())
+    }
+
+    /**
+     * The gltfio loader behind every `createModel*` / `createInstance` call.
+     *
+     * Created on its first read, which must happen on the main thread (it throws
+     * [IllegalStateException] otherwise). gltfio calls SceneView's material recorder back with the
+     * JNIEnv of the thread that created this loader, so a first read from a background thread
+     * would leave it holding the wrong JNIEnv and abort the process on the next model load.
+     * Every SceneView entry point that creates models already runs on the main thread.
+     */
     val assetLoader: AssetLoader by assetLoaderHolder
 
     /**
@@ -1044,12 +1058,12 @@ class ModelLoader(
      * registry.
      */
     fun destroyModel(model: Model) {
-        // Its material instances go with it; forget them now, even if the destroy waits below.
-        recordingProvider.ownership.release(model)
+        // Its material instances are forgotten only where the model is actually claimed: a model
+        // this loader does not own (or already destroyed) keeps its owner's records intact.
         // The engine went first, or this loader is released: the model's natives went with them,
         // and every gltfio call below would reach into freed memory. Forget the model, nothing else.
         if (!lifecycle.canTouchNatives) {
-            claimAndDestroy(models, model) {}
+            claimAndDestroy(models, model) { recordingProvider.ownership.release(it) }
             return
         }
         destroyAfterCancellingLoad(
@@ -1064,10 +1078,15 @@ class ModelLoader(
                     isInFlight = { asyncLoad.inFlight === inFlight },
                     pumpedProgress = ::pumpedProgress,
                     // The engine may be gone by the time the load settles: then so is the model.
-                    destroy = { if (lifecycle.canTouchNatives) cancelThenDestroy() },
+                    destroy = {
+                        if (lifecycle.canTouchNatives) cancelThenDestroy()
+                        else recordingProvider.ownership.release(model)
+                    },
                 )
             },
         ) {
+            // Its material instances go with it, whether or not there are natives left to free.
+            recordingProvider.ownership.release(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing

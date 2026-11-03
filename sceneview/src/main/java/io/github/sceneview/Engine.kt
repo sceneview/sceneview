@@ -27,6 +27,7 @@ import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.materialRegistry
 import io.github.sceneview.model.Model
 import java.util.WeakHashMap
 
@@ -482,8 +483,12 @@ fun Engine.safeDestroyIndirectLight(indirectLight: IndirectLight) =
 fun Engine.safeDestroySkybox(skybox: Skybox) = runCatching { destroySkybox(skybox) }
 
 fun Engine.safeDestroyMaterial(material: Material) = runCatching { destroyMaterial(material) }
-fun Engine.safeDestroyMaterialInstance(materialInstance: MaterialInstance) =
-    runCatching { destroyMaterialInstance(materialInstance) }
+fun Engine.safeDestroyMaterialInstance(materialInstance: MaterialInstance) = runCatching {
+    // Forgotten first: Filament may reuse the freed address for an instance SceneView never
+    // recorded, which `materialOrNull` would then map to this instance's Material.
+    materialRegistry.forget(materialInstance)
+    destroyMaterialInstance(materialInstance)
+}
 
 fun Engine.safeDestroyTexture(texture: Texture) = runCatching { destroyTexture(texture) }
 
