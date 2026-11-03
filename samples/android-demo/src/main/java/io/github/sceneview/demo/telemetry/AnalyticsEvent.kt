@@ -247,4 +247,7 @@ enum class CrashKey(val key: String) {
 
     /** `live` | `still` — whether the home hero renders or shows its picture. */
     HeroSurface("hero_surface"),
+
+    /** The home hero's rung, lowercase (`cinematic` … `light`), updated on every step down. */
+    HeroTier("hero_tier"),
 }

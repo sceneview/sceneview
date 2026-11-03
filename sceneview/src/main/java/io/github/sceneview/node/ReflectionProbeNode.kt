@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import com.google.android.filament.IndirectLight
 import com.google.android.filament.Scene
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.environment.Environment
@@ -70,8 +71,11 @@ fun ReflectionProbeNode(
     priority: Int = 0,
     cameraPosition: Position = Position(x = 0f, y = 0f, z = 0f)
 ) {
-    // Capture the previous indirect light so we can restore it when the probe is removed.
-    val previousIndirectLight = remember(filamentScene) { filamentScene.indirectLight }
+    // The indirect light this probe replaced, restored when the probe is removed. Taken again each
+    // time the probe takes over: a dark/light toggle swaps the scene's light while it is inactive.
+    val previousIndirectLight = remember(filamentScene) {
+        arrayOf<IndirectLight?>(filamentScene.indirectLight)
+    }
 
     // Determine whether this probe's zone contains the camera.
     val isActive = radius <= 0f || length(cameraPosition - position) <= radius
@@ -83,17 +87,28 @@ fun ReflectionProbeNode(
     // JNI cost in cinematic demos. Per-frame Filament JNI is fine; 60×/s redundant
     // assignment of the SAME indirectLight pointer is wasteful.
     LaunchedEffect(filamentScene, environment, isActive) {
-        if (isActive) {
+        if (isActive && filamentScene.indirectLight !== environment.indirectLight) {
+            previousIndirectLight[0] = filamentScene.indirectLight
             filamentScene.indirectLight = environment.indirectLight
         }
     }
 
     DisposableEffect(filamentScene, environment) {
         onDispose {
-            // Restore the indirect light that was active before this probe was composed.
+            // Restore the indirect light that was active before this probe was composed, and only
+            // while the scene still holds this probe's: the scene's environment, or another probe,
+            // may have replaced it since. The captured light may also be dead by now — a
+            // dark/light toggle destroys the environment it belonged to — and Filament throws
+            // "Calling method on destroyed IndirectLight" when it is handed back.
             // If a different probe is still active, its own LaunchedEffect will re-apply
             // after this disposal.
-            filamentScene.indirectLight = previousIndirectLight
+            if (filamentScene.indirectLight === environment.indirectLight) {
+                filamentScene.indirectLight = previousIndirectLight[0]?.takeIf { it.isAlive }
+            }
         }
     }
 }
+
+/** `false` once the engine destroyed this light: its handle getter throws from then on. */
+private val IndirectLight.isAlive: Boolean
+    get() = runCatching { nativeObject }.isSuccess

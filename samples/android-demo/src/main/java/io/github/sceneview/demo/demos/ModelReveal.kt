@@ -20,6 +20,7 @@ import com.google.android.filament.RenderableManager.PrimitiveType
 import io.github.sceneview.SceneScope
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.RevealWire
+import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
@@ -106,10 +107,15 @@ internal sealed interface RevealWireBuild {
  * let go, so its arrays do not stay on the heap for as long as the screen lives.
  */
 @Composable
-internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean): State<RevealWireBuild> {
+internal fun rememberRevealWire(
+    glb: ByteArray?,
+    triangles: Int,
+    needed: Boolean,
+    cutY: Float? = null,
+): State<RevealWireBuild> {
     // Pending in the very composition [needed] turns true, not a frame later: a caller that waits
     // for the wire never sees the last build's result instead.
-    val build = remember(glb, needed) {
+    val build = remember(glb, needed, cutY) {
         mutableStateOf<RevealWireBuild>(if (glb == null || !needed) RevealWireBuild.Done(null) else RevealWireBuild.Pending)
     }
     LaunchedEffect(build) {
@@ -123,7 +129,12 @@ internal fun rememberRevealWire(glb: ByteArray?, triangles: Int, needed: Boolean
                     val started = System.nanoTime()
                     io.github.sceneview.demo.demos.internal.RerunGlbMesh.read(glb)
                         ?.also { ensureActive() }
-                        ?.let { mesh -> RevealWire.of(mesh.positions, mesh.vertexCount, mesh.indices) { ensureActive() } }
+                        ?.let { mesh ->
+                            // A room's wire is cut where its walls are (ScanResultCut): none sweeps above them.
+                            val indices = cutY?.let { ScanResultCut.kept(mesh.positions, mesh.indices, it) }
+                                ?: mesh.indices
+                            RevealWire.of(mesh.positions, mesh.vertexCount, indices) { ensureActive() }
+                        }
                         ?.also { ensureActive() }
                         // The line mesh too, here: only its upload is left to the main thread.
                         ?.let { wire -> RevealWireBuild.Done(wire, wire.toMesh()) }

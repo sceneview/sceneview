@@ -68,6 +68,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.utils.OpenGL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -115,6 +116,9 @@ private const val HERO_IBL = "environments/circuit_ibl.ktx"
  * the venue's point lights and bloom, two at a time under 10 fps — and never climbs back. A drop is remembered, so the
  * next launch starts where this one settled. Reduced motion (animator scale 0, QA mode) holds the opening shot,
  * every lamp lit, under [FrameRatePolicy.OnDemand].
+ * A rung whose shaders the driver cannot compile aborts the app inside Filament instead (the
+ * reflections' blur on some Motorola, Honor, Xreal and Vivo GPUs): a rung is marked on trial
+ * until it has drawn, and one that killed the app is never started again ([startHeroTierTrial]).
  *
  * **Where it cannot run.** On the legacy SwiftShader GLES library a GPU-less virtual device
  * renders with, the app aborted inside Filament about a second after launch (#4411). So the
@@ -306,9 +310,50 @@ private fun HomeHeroStage(
     val context = LocalContext.current
     var tier by remember(context) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        mutableStateOf(
-            HeroTier.forDevice(am.isLowRamDevice, settled = settledHeroTier(context)),
-        )
+        mutableStateOf(startHeroTierTrial(context, am.isLowRamDevice))
+    }
+    // When the current rung first drew its model textured (`System.nanoTime`), 0 before that.
+    // [HERO_TIER_PROOF_NANOS] later the rung's shaders have all compiled and its trial mark comes
+    // off — counted in time, not frames, since reduced motion and QA mode draw on demand only.
+    val trialFrom = remember { LongArray(1) }
+    var trialOver by remember { mutableStateOf(false) }
+    LaunchedEffect(tier, trialOver) {
+        Telemetry.analytics.setCrashKey(CrashKey.HeroTier, tier.name.lowercase())
+        while (!trialOver) {
+            delay(HERO_TIER_PROOF_POLL_MILLIS)
+            val from = trialFrom[0]
+            if (from != 0L && System.nanoTime() - from >= HERO_TIER_PROOF_NANOS) {
+                clearHeroTierOnTrial(context)
+                trialOver = true
+            }
+        }
+    }
+    // Leaving the home or the app is no crash: without this, a quick tap away would read as one at
+    // the next launch. Coming back mid-trial puts the mark back.
+    val hostLifecycle = LocalLifecycleOwner.current.lifecycle
+    val stoppedMidTrial = remember { BooleanArray(1) }
+    DisposableEffect(hostLifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (!trialOver) {
+                    clearHeroTierOnTrial(context)
+                    // Time away proves nothing: the trial starts over at the next textured frame.
+                    trialFrom[0] = 0L
+                    stoppedMidTrial[0] = true
+                }
+                // Not the ON_START replayed when the observer is added: the mark is already down.
+                Lifecycle.Event.ON_START -> if (stoppedMidTrial[0] && !trialOver) {
+                    stoppedMidTrial[0] = false
+                    markHeroTierOnTrial(context, tier)
+                }
+                else -> Unit
+            }
+        }
+        hostLifecycle.addObserver(observer)
+        onDispose {
+            hostLifecycle.removeObserver(observer)
+            clearHeroTierOnTrial(context)
+        }
     }
     val motionEnabled = LocalMotionEnabled.current
     val moving = active && motionEnabled
@@ -475,11 +520,16 @@ private fun HomeHeroStage(
                     nightEnvironment.indirectLight?.intensity = ibl
                 }
 
+                if (textured && trialFrom[0] == 0L) trialFrom[0] = System.nanoTime()
+
                 // Too slow for this rung: one down, judged afresh after its own compiles.
                 if (textured && moving && budget.frame(nanos)) {
                     val step = if (budget.farBelow) tier.lower?.lower ?: tier.lower else tier.lower
                     step?.let { lower ->
                         if (BuildConfig.DEBUG) Log.d(HERO_TAG, "hero tier $tier -> $lower")
+                        markHeroTierOnTrial(context, lower)
+                        trialFrom[0] = 0L
+                        trialOver = false
                         tier = lower
                         rememberSettledHeroTier(context, lower)
                     }
@@ -601,6 +651,49 @@ private fun settledHeroTier(context: Context): HeroTier? {
 private fun rememberSettledHeroTier(context: Context, tier: HeroTier) {
     heroPrefs(context).edit().putString(settledTierKey(), tier.name).apply()
 }
+
+/**
+ * Picks the launch rung and puts it on trial, in one synchronous write.
+ *
+ * A rung is written down as on trial before its first frame and cleared once it has drawn for
+ * [HERO_TIER_PROOF_NANOS]; a mark still there at the next launch means the process died on that
+ * rung, which is then never started again. A driver that cannot compile a rung's shader aborts
+ * inside Filament, on the render thread, where nothing catches it. The crashed rung is keyed to
+ * the Filament version: the shader that failed is Filament's, and a new Filament may fix it.
+ */
+private fun startHeroTierTrial(context: Context, lowRam: Boolean): HeroTier {
+    val prefs = heroPrefs(context)
+    val onTrial = prefs.getString(TIER_ON_TRIAL_KEY, null)?.let(::heroTierNamed)
+    val crashedBefore = prefs.getString(crashedTierKey(), null)?.let(::heroTierNamed)
+    val crashed = listOfNotNull(onTrial, crashedBefore).minOrNull()
+    val pick = HeroTier.forDevice(lowRam, settled = settledHeroTier(context), crashed = crashed)
+    prefs.edit()
+        .apply { if (crashed != null) putString(crashedTierKey(), crashed.name) }
+        .putString(TIER_ON_TRIAL_KEY, pick.name)
+        .commit()
+    return pick
+}
+
+private fun heroTierNamed(name: String) = HeroTier.entries.firstOrNull { it.name == name }
+
+/** Written with `commit`: the abort it guards against comes within the next frames. */
+private fun markHeroTierOnTrial(context: Context, tier: HeroTier) {
+    heroPrefs(context).edit().putString(TIER_ON_TRIAL_KEY, tier.name).commit()
+}
+
+private fun clearHeroTierOnTrial(context: Context) {
+    heroPrefs(context).edit().remove(TIER_ON_TRIAL_KEY).apply()
+}
+
+// Keyed to the Filament version too: a crash under one version, relaunched after an update to the
+// next, must not be put down to the new one.
+private val TIER_ON_TRIAL_KEY = "tier_on_trial@filament-${BuildConfig.FILAMENT_VERSION}"
+
+private fun crashedTierKey() = "tier_crashed@filament-${BuildConfig.FILAMENT_VERSION}"
+
+/** A rung's shaders compile on the frames that first use them, in parallel on some drivers. */
+private const val HERO_TIER_PROOF_NANOS = 3_000_000_000L
+private const val HERO_TIER_PROOF_POLL_MILLIS = 500L
 
 private fun heroPrefs(context: Context) =
     context.getSharedPreferences("home_hero", Context.MODE_PRIVATE)

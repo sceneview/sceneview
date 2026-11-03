@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.ViewInAr
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,6 +45,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -54,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -76,6 +80,7 @@ import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.createEnvironment
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
@@ -94,6 +99,7 @@ import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.DollhouseOpening
 import io.github.sceneview.demo.demos.internal.FramingInsets
+import io.github.sceneview.demo.demos.internal.LightingStage
 import io.github.sceneview.demo.demos.internal.ReconstructionMethod
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunGlbMesh
@@ -112,6 +118,10 @@ import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanResultCinematics
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
 import io.github.sceneview.demo.demos.internal.ScanResultFraming
+import io.github.sceneview.demo.demos.internal.ScanResultCut
+import io.github.sceneview.demo.demos.internal.ScanResultTurntable
+import io.github.sceneview.demo.demos.internal.ResultShading
+import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.groundSource
 import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
@@ -133,7 +143,11 @@ import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
 import io.github.sceneview.math.colorOf
+import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.model.model
 import io.github.sceneview.rememberEnvironment
@@ -655,9 +669,12 @@ internal fun RerunModelScreen(
         // A raw surface kept for running out of memory, with attempts left, is finished again from
         // [source], shown meanwhile as a big scan's raw surface is shown while it finishes.
         val retry = stored?.takeIf { it.retriesFinish && source != null }
-        val kept = stored?.takeIf { retry == null }
-        var shownFirst: RerunScanModel? = retry
-        if (retry != null) value = ModelState.Ready(retry, final = false)
+        // A model an earlier finish built is shown at once and built again from [source] with
+        // this one's (RerunScanModel.stalePipeline); it stays when there is nothing to build from.
+        val stale = stored?.takeIf { it.stalePipeline && source != null }
+        val kept = stored?.takeIf { retry == null && stale == null }
+        var shownFirst: RerunScanModel? = retry ?: stale
+        shownFirst?.let { value = ModelState.Ready(it, final = false) }
         val built = kept ?: source?.let { from ->
             withContext(Dispatchers.Default) {
                 val job = coroutineContext.job
@@ -680,7 +697,10 @@ internal fun RerunModelScreen(
                     .getOrNull()
             }
         }
-        val model = retry?.finishedAgain(built) ?: built
+        // A model built again over a stale one replaces it only finished: a raw surface the
+        // rebuild ran out of memory on would otherwise be kept in place of a finished model.
+        val rebuilt = if (stale != null) built?.takeIf { it.finished } else built
+        val model = retry?.finishedAgain(built) ?: rebuilt ?: stale
         // A model finished now is kept with its scan, so the next open reads it instead of meshing
         // again; so is the raw surface a finish ran out of memory on, shown at once on the next
         // opens and finished again behind it while attempts are left, their count kept with it
@@ -688,7 +708,7 @@ internal fun RerunModelScreen(
         // from the TSDF while its slot holds it, from the scan's surfels once a big one was let go
         // at meshing to give the finish its heap (mesh()). Only a model kept here lets go a TSDF
         // still held.
-        val keepAs = id?.takeIf { kept == null && store != null && model?.keptWithScan == true }
+        val keepAs = id?.takeIf { kept == null && model !== stale && store != null && model?.keptWithScan == true }
         if (keepAs != null && model != null) {
             val saved = withContext(Dispatchers.IO) {
                 runCatching { checkNotNull(store).saveModel(keepAs, model) }
@@ -703,13 +723,6 @@ internal fun RerunModelScreen(
     val settled = state.settled
     LaunchedEffect(state) { if (state.settled) onModel(model) }
     val framedBy = (state as? ModelState.Ready)?.framedBy
-    // Created before the SceneView, so released after its node (Compose forgets in reverse).
-    // On the main thread, as every Filament call (CLAUDE.md).
-    // Left unshown, not thrown, when the heap has no room for the renderer's copy.
-    val instance = remember(model) {
-        model?.glbBuffer()?.let { buffer -> runCatching { modelLoader.createModelInstance(buffer) }.getOrNull() }
-    }
-    DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
     // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
     // never beside a big scan's finish ([groundSource]). Until the next settles, the last one stays.
     val groundModel = groundSource(model, settled)
@@ -728,6 +741,32 @@ internal fun RerunModelScreen(
         val by = framedBy ?: return@produceState
         value = withContext(Dispatchers.Default) { ScanResultFraming.read(by.glb) } ?: ScanResultFrame.unturned(by.bounds)
     }
+    // A room is a dollhouse: seen into from outside and above, its walls cut at a fixed height
+    // over its floor (ScanResultCut) — none comes and goes as the camera turns. It waits for its
+    // frame, which knows the floor; an object is drawn whole at once.
+    val cuts = scope.hasFloorPlan
+    val cutY = frame?.takeIf { cuts }?.let { it.local[1] + ScanResultCut.HEIGHT_M }
+    val drawn = model?.takeIf { !cuts || frame != null }
+    // More's QA A/B: every material lit, or unlit, against the model as built (the default).
+    val offersShading = BuildConfig.DEBUG && DemoSettings.qaMode
+    var shading by remember {
+        mutableStateOf(ResultShading.of(DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() }))
+    }
+    // Created before the SceneView, so released after its node (Compose forgets in reverse).
+    // On the main thread, as every Filament call (CLAUDE.md); the cut writes the renderer's copy
+    // only, the model kept and shared as it is.
+    // Left unshown, not thrown, when the heap has no room for the renderer's copy.
+    val instance = remember(drawn, cutY, shading) {
+        drawn?.let { shading.buffer(it) }?.let { buffer ->
+            cutY?.let { ScanResultCut.cut(buffer, it) }
+            runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+        }
+    }
+    DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
+    // The slow turn the result opens on (ScanResultTurntable), until the first touch; never
+    // under reduced motion, nor in QA mode's still pictures unless their motion is asked for.
+    val spins = (LocalMotionEnabled.current && !DemoSettings.qaMode) || DemoSettings.qaMotion
+    val turntable = remember(framedBy, spins) { ScanResultTurntable().also { if (!spins) it.stop() } }
     // Which sides of the room its dimensions are written on: the two the camera faces.
     val facing = remember(id ?: source) { FacingSides() }
     // No drift and no reveal: the camera opens on the frame and holds still there until the user
@@ -750,7 +789,12 @@ internal fun RerunModelScreen(
     // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
     // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
     val revealOf = model?.takeIf { ModelReveal.buildsWire(settled, opensOn = it === framedBy, animate = animateReveal) }
-    val wireBuild by rememberRevealWire(revealOf?.glb, revealOf?.triangles ?: 0, needed = !revealOver)
+    val wireBuild by rememberRevealWire(
+        glb = revealOf?.takeIf { drawn != null }?.glb,
+        triangles = revealOf?.triangles ?: 0,
+        needed = !revealOver,
+        cutY = cutY,
+    )
     val wirePending = wireBuild is RevealWireBuild.Pending
     // The reveal starts once its wire is read, so it never opens on the whole model, then cuts.
     val revealClock = rememberRevealClock(key = framedBy, started = shown && !wirePending, animate = animateReveal)
@@ -832,6 +876,8 @@ internal fun RerunModelScreen(
                             watch()
                         }
                     },
+                    shading = shading.takeIf { offersShading },
+                    onShading = { shading = shading.next },
                 )
             }
         },
@@ -857,13 +903,15 @@ internal fun RerunModelScreen(
                 caption = stringResource(R.string.scan_result_more),
                 onClick = { more = true },
                 // An object has no plan to show: with no capture to watch either, More is empty.
-                enabled = instance != null && (scope.hasFloorPlan || onReplay != null),
+                enabled = instance != null && (scope.hasFloorPlan || onReplay != null || offersShading),
                 selected = more,
             ),
         ),
     ) {
         val chrome = LocalStageChrome.current
         val environment = rememberModelEnvironment(engine, chrome.ground)
+        val darkStage = chrome.ground.luminance() < HALF_LUMINANCE
+        val shadowPool = remember { radialPool(LightingStage.FLOOR_COLOR) }
         val view = rememberView(engine)
         val colorGrading = remember(engine) { ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine) }
         DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
@@ -899,23 +947,43 @@ internal fun RerunModelScreen(
             )
             // The view's shape from its constraints: the surface reports its size after composing.
             val aspect = constraints.maxWidth.toFloat() / constraints.maxHeight.coerceAtLeast(1)
-            // Most of the narrower side, between the chrome when the model fits there at that size.
-            val area = RerunResultView.area(aspect, insets)
+            // Four fifths of the zone between the name and the bar, on its fuller axis.
+            val area = RerunResultView.area(insets)
             // Three quarters on its front, from outside and above; the plan straight down on the
             // same walls, its front at the bottom of the screen.
             val fov = orbit.verticalFovDegrees
-            val view3d = remember(frame, scope, aspect, area, fov) {
-                frame?.pose(ScanResultFraming.elevation(scope), ScanResultFraming.THREE_QUARTER, fov, aspect, area)
+            // A room framed on what is drawn of it — its box cut where its walls are — square on
+            // the side it shows largest from; an object at a three-quarter on its own front.
+            val elevation = ScanResultFraming.elevation(scope)
+            val offset = ScanResultFraming.offset(scope)
+            val squareOn = scope != ScanScope.Object
+            val shownFrame = remember(frame, cuts, squareOn, elevation, aspect, area, fov) {
+                val drawnFrame = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+                if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
             }
-            val viewPlan = remember(frame, aspect, area, fov) {
-                frame?.pose(ArDebugFraming.MAP_ELEVATION, 0f, fov, aspect, area)
+            val view3d = remember(shownFrame, elevation, offset, aspect, area, fov) {
+                shownFrame?.pose(elevation, offset, fov, aspect, area)
             }
-            val home = rememberUpdatedState { if (plan) viewPlan else view3d }
+            val viewPlan = remember(shownFrame, aspect, area, fov) {
+                shownFrame?.pose(ArDebugFraming.MAP_ELEVATION, 0f, fov, aspect, area)
+            }
+            // The turntable's pose about the opening, at its distance, whole in the zone the chrome frees.
+            val zone = remember(insets) { insets.bounded() }
+            val home = rememberUpdatedState {
+                val f = shownFrame
+                when {
+                    plan -> viewPlan
+                    f == null || view3d == null -> view3d
+                    else -> turntable.pose(f, view3d, elevation, offset, fov, aspect, zone)
+                }
+            }
             SideEffect {
                 // The gestures keep the eye outside the box and above its floor, never past a
                 // pinch beyond the framing: the scan cannot be lost, nor entered.
-                val f = frame
+                val f = shownFrame
                 if (f != null && view3d != null) orbit.limits = f.limits(*listOfNotNull(view3d, viewPlan).toTypedArray())
+                // A double tap comes back to the opening, not to where the turntable had got to.
+                (if (plan) viewPlan else view3d)?.let { orbit.frontAzimuth = it.azimuthDegrees }
                 home.value()?.let { opening.aim(orbit, it) }
             }
             SceneView(
@@ -931,12 +999,19 @@ internal fun RerunModelScreen(
                 autoCenterContent = false,
                 environment = environment,
                 cameraManipulator = cinematics.manipulator,
-                onFrame = {
+                onFrame = { frameTimeNanos ->
                     val framed = home.value() ?: return@SceneView
                     // The view is let to be seen once the model is drawn on its framing, not before.
                     // The wire is read first, so the model's reveal starts with it, not a frame after.
                     val ready = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
                     if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
+                    // The turntable, once the model is revealed: the first touch, or the plan, stops it for good.
+                    if (!orbit.following || plan) {
+                        turntable.stop()
+                    } else if (turntable.running && shown && revealOver && !cinematics.animator.isPlaying) {
+                        turntable.advanceTo(frameTimeNanos)
+                        home.value()?.let { orbit.followTo(ArDebugFraming.clamp(it)) }
+                    }
                     CameraRig.eye(orbit.pose).let { eye ->
                         facing.look(measure, eye.x, eye.z)
                         layers.look(eye)
@@ -954,6 +1029,35 @@ internal fun RerunModelScreen(
                         color = chrome.accent,
                         engine = engine,
                         materialLoader = materialLoader,
+                    )
+                }
+                // The model stands on a soft contact shadow, once it is revealed: an object's just
+                // over its floor, a room's just under its scanned floor, which hides its core —
+                // its rim shows round the room. On the dark stage a black pool reads as nothing,
+                // so it lies on a pool of the lit floor's tone fading into the stage.
+                shownFrame?.takeIf { instance != null && revealOver }?.let { f ->
+                    val (x, z) = f.worldCentre
+                    val width = f.local[3] - f.local[0]
+                    val depth = f.local[5] - f.local[2]
+                    val isObject = scope == ScanScope.Object
+                    val shadowY = f.local[1] + if (isObject) SHADOW_LIFT_M else -SHADOW_DROP_M
+                    val spread = if (isObject) SHADOW_SPREAD else ROOM_SHADOW_SPREAD
+                    // The image plane's size is baked when it is made: a new box, a new plane.
+                    if (darkStage) key(width, depth) {
+                        ImageNode(
+                            bitmap = shadowPool,
+                            size = Size(x = width * POOL_SPREAD, y = 0f, z = depth * POOL_SPREAD),
+                            position = Position(x = x, y = shadowY - POOL_BELOW_M, z = z),
+                            rotation = Rotation(y = -f.yawDegrees),
+                            apply = { isTouchable = false },
+                        )
+                    }
+                    ContactShadow(
+                        size = Size(x = width * spread, y = 0f, z = depth * spread),
+                        context = ContactShadowContext.Floor,
+                        intensity = if (isObject) SHADOW_INTENSITY else ROOM_SHADOW_INTENSITY,
+                        position = Position(x = x, y = shadowY, z = z),
+                        rotation = Rotation(y = -f.yawDegrees),
                     )
                 }
                 ground?.takeIf { measuring }?.let {
@@ -1027,6 +1131,8 @@ private fun ResultMoreMenu(
     canMeasure: Boolean,
     onMeasure: () -> Unit,
     onWatch: (() -> Unit)?,
+    shading: ResultShading? = null,
+    onShading: () -> Unit = {},
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.testTag(RERUN_MODEL_MORE_TAG)) {
         if (plan != null) {
@@ -1043,6 +1149,15 @@ private fun ResultMoreMenu(
         }
         if (onWatch != null) {
             ResultMoreItem(Icons.Rounded.PlayCircle, stringResource(R.string.scan_result_watch), on = false, onClick = onWatch)
+        }
+        if (shading != null) {
+            // QA only: a tap goes as built → lit → unlit, the menu left open on the result.
+            val label = when (shading) {
+                ResultShading.AsBuilt -> R.string.scan_result_qa_shading_as_built
+                ResultShading.Lit -> R.string.scan_result_qa_shading_lit
+                ResultShading.Unlit -> R.string.scan_result_qa_shading_unlit
+            }
+            ResultMoreItem(Icons.Rounded.WbSunny, stringResource(label), on = false, onClick = onShading)
         }
     }
 }
@@ -1321,6 +1436,56 @@ internal const val RERUN_MODEL_VEIL_TAG = "rerun_model_veil"
 private const val CM_PER_M = 100f
 
 private const val TAG = "RerunModel"
+
+/**
+ * How much wider than the footprint the contact shadow's quad is: its fully dark core is 0.6 of
+ * the quad ([ContactShadowContext.Floor]), so at 1.6 the core is the footprint and the soft rim
+ * runs a quarter of it beyond each side.
+ */
+private const val SHADOW_SPREAD = 1.6f
+
+/** The shadow's peak opacity: [ContactShadowContext.Floor]'s 0.55 all but vanished round a scan. */
+private const val SHADOW_INTENSITY = 0.75f
+
+/**
+ * A room's shadow, tighter and lighter: a scan's floor is ragged, so a dark core under it shows
+ * through every gap and a wide rim reads as a slab on the light stage — just a rim round it.
+ */
+private const val ROOM_SHADOW_SPREAD = 1.15f
+private const val ROOM_SHADOW_INTENSITY = 0.4f
+
+/** The contact shadow's height over the object's floor, against z-fighting with a scanned table. */
+private const val SHADOW_LIFT_M = 0.003f
+
+/** How far under a room's scanned floor its shadow lies: hidden under it, its rim round it. */
+private const val SHADOW_DROP_M = 0.02f
+
+/** The dark stage's floor pool round the shadow, a share of the footprint, and how far under it. */
+private const val POOL_SPREAD = 1.9f
+private const val POOL_BELOW_M = 0.005f
+private const val POOL_PIXELS = 128
+private const val POOL_SOLID = 0.35f
+private const val HALF_LUMINANCE = 0.5f
+
+/**
+ * A disc of [colour] fading from solid at [POOL_SOLID] of its radius to nothing at its rim,
+ * smoothly, so the floor it lays under the shadow has no edge on the stage.
+ */
+private fun radialPool(colour: androidx.compose.ui.graphics.Color): Bitmap {
+    val bitmap = Bitmap.createBitmap(POOL_PIXELS, POOL_PIXELS, Bitmap.Config.ARGB_8888)
+    val half = POOL_PIXELS / 2f
+    val rgb = colour.toArgb() and 0x00FFFFFF
+    val pixels = IntArray(POOL_PIXELS * POOL_PIXELS) { i ->
+        val dx = (i % POOL_PIXELS + 0.5f - half) / half
+        val dy = (i / POOL_PIXELS + 0.5f - half) / half
+        val r = kotlin.math.sqrt(dx * dx + dy * dy)
+        val t = ((r - POOL_SOLID) / (1f - POOL_SOLID)).coerceIn(0f, 1f)
+        val alpha = 1f - t * t * (3f - 2f * t)
+        ((alpha * 255f).toInt() shl 24) or rgb
+    }
+    bitmap.setPixels(pixels, 0, POOL_PIXELS, 0, 0, POOL_PIXELS, POOL_PIXELS)
+    return bitmap
+}
 private const val LOG_EVERY_FRAMES = 30
 private const val MB = 1024L * 1024L
 private const val KB = 1024
