@@ -430,6 +430,7 @@ class TextNodeTextureUpdateTest {
             /** Replaces the suite-wide `ShadowFilamentEntityManager`: one shadow per class. */
             @JvmStatic
             @Implementation
+            @Suppress("FunctionOnlyReturningConstant") // Robolectric shadow: must stay a function.
             fun nGet(): Long = 1L
         }
     }
