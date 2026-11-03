@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.opengl.EGL14
 import android.opengl.EGLContext
@@ -181,6 +182,7 @@ internal object GltfioTextureTables {
  * Starts [EngineWarmUp] at app startup, for an app that lists it under `androidx.startup`'s
  * `InitializationProvider` in its own manifest. SceneView does not register it: see [EngineWarmUp].
  */
+@SuppressLint("EnsureInitializerMetadata") // Opt-in: the <meta-data> is the app's, not SceneView's.
 class EngineWarmUpInitializer : Initializer<Unit> {
     override fun create(context: Context) = EngineWarmUp.start()
 
