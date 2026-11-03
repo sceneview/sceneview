@@ -71,8 +71,11 @@ fun ReflectionProbeNode(
     priority: Int = 0,
     cameraPosition: Position = Position(x = 0f, y = 0f, z = 0f)
 ) {
-    // Capture the previous indirect light so we can restore it when the probe is removed.
-    val previousIndirectLight = remember(filamentScene) { filamentScene.indirectLight }
+    // The indirect light this probe replaced, restored when the probe is removed. Taken again each
+    // time the probe takes over: a dark/light toggle swaps the scene's light while it is inactive.
+    val previousIndirectLight = remember(filamentScene) {
+        arrayOf<IndirectLight?>(filamentScene.indirectLight)
+    }
 
     // Determine whether this probe's zone contains the camera.
     val isActive = radius <= 0f || length(cameraPosition - position) <= radius
@@ -84,7 +87,8 @@ fun ReflectionProbeNode(
     // JNI cost in cinematic demos. Per-frame Filament JNI is fine; 60×/s redundant
     // assignment of the SAME indirectLight pointer is wasteful.
     LaunchedEffect(filamentScene, environment, isActive) {
-        if (isActive) {
+        if (isActive && filamentScene.indirectLight !== environment.indirectLight) {
+            previousIndirectLight[0] = filamentScene.indirectLight
             filamentScene.indirectLight = environment.indirectLight
         }
     }
@@ -99,7 +103,7 @@ fun ReflectionProbeNode(
             // If a different probe is still active, its own LaunchedEffect will re-apply
             // after this disposal.
             if (filamentScene.indirectLight === environment.indirectLight) {
-                filamentScene.indirectLight = previousIndirectLight?.takeIf { it.isAlive }
+                filamentScene.indirectLight = previousIndirectLight[0]?.takeIf { it.isAlive }
             }
         }
     }
