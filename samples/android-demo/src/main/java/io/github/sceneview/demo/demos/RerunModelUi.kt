@@ -697,7 +697,10 @@ internal fun RerunModelScreen(
                     .getOrNull()
             }
         }
-        val model = retry?.finishedAgain(built) ?: built ?: stale
+        // A model built again over a stale one replaces it only finished: a raw surface the
+        // rebuild ran out of memory on would otherwise be kept in place of a finished model.
+        val rebuilt = if (stale != null) built?.takeIf { it.finished } else built
+        val model = retry?.finishedAgain(built) ?: rebuilt ?: stale
         // A model finished now is kept with its scan, so the next open reads it instead of meshing
         // again; so is the raw surface a finish ran out of memory on, shown at once on the next
         // opens and finished again behind it while attempts are left, their count kept with it
