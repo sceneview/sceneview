@@ -331,15 +331,21 @@ private fun HomeHeroStage(
     // Leaving the home or the app is no crash: without this, a quick tap away would read as one at
     // the next launch. Coming back mid-trial puts the mark back.
     val hostLifecycle = LocalLifecycleOwner.current.lifecycle
+    val stoppedMidTrial = remember { BooleanArray(1) }
     DisposableEffect(hostLifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> {
+                Lifecycle.Event.ON_STOP -> if (!trialOver) {
                     clearHeroTierOnTrial(context)
                     // Time away proves nothing: the trial starts over at the next textured frame.
-                    if (!trialOver) trialFrom[0] = 0L
+                    trialFrom[0] = 0L
+                    stoppedMidTrial[0] = true
                 }
-                Lifecycle.Event.ON_START -> if (!trialOver) markHeroTierOnTrial(context, tier)
+                // Not the ON_START replayed when the observer is added: the mark is already down.
+                Lifecycle.Event.ON_START -> if (stoppedMidTrial[0] && !trialOver) {
+                    stoppedMidTrial[0] = false
+                    markHeroTierOnTrial(context, tier)
+                }
                 else -> Unit
             }
         }
@@ -679,7 +685,9 @@ private fun clearHeroTierOnTrial(context: Context) {
     heroPrefs(context).edit().remove(TIER_ON_TRIAL_KEY).apply()
 }
 
-private const val TIER_ON_TRIAL_KEY = "tier_on_trial"
+// Keyed to the Filament version too: a crash under one version, relaunched after an update to the
+// next, must not be put down to the new one.
+private val TIER_ON_TRIAL_KEY = "tier_on_trial@filament-${BuildConfig.FILAMENT_VERSION}"
 
 private fun crashedTierKey() = "tier_crashed@filament-${BuildConfig.FILAMENT_VERSION}"
 
