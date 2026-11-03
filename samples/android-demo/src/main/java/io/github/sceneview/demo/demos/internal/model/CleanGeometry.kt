@@ -16,6 +16,8 @@ internal data class CleanGeometryStats(
     val planeList: List<Plane> = emptyList(),
     /** RMS distance (m) of the flat faces' vertices to their planes before the snap: the depth noise measured. */
     val noiseM: Float = 0f,
+    /** Triangles cut outside the scan's box ([ScanTidy.crop]). */
+    val croppedTriangles: Int = 0,
 )
 
 /*
@@ -42,7 +44,11 @@ internal object CleanGeometry {
         require(raw.triangleCount <= MAX_TRIANGLES) { "${raw.triangleCount} triangles: clean takes $MAX_TRIANGLES" }
         val trianglesIn = raw.triangleCount
         val piecesIn = MeshCleanup.pieces(raw)
-        val (pieces, dropped) = MeshCleanup.removeSmallPieces(raw)
+        // Cut to the scan's own box first: what depth saw through a window is not the room.
+        val (cropped, croppedTriangles) = ScanTidy.crop(raw)
+        val (whole, small) = MeshCleanup.removeSmallPieces(cropped)
+        val (pieces, apart) = ScanTidy.dropIsolated(whole)
+        val dropped = small + apart
         progress(PROGRESS_PIECES)
         // Where the sheet in front has a hole, the hidden sheet stays: it is the only surface there.
         var (mesh, doubled) = MeshCleanup.removeDoubledSurfaces(pieces)
@@ -73,6 +79,7 @@ internal object CleanGeometry {
             holesFilled = holes,
             planeList = flattening.planes,
             noiseM = flattening.noiseM,
+            croppedTriangles = croppedTriangles,
         )
         return mesh to stats
     }

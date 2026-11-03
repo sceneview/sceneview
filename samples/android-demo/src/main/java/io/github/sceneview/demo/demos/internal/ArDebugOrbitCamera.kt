@@ -1154,7 +1154,11 @@ object ArDebugFraming {
      * inside the free area, on both axes; the target then slides in the picture plane so the
      * projected box is centred there, since perspective draws the near half of a box larger than
      * the far one and chrome is rarely the same height top and bottom.
+     *
+     * [atDistance], when given and further than the least that fits, is the distance the eye stands
+     * at instead — a turntable's, the same all the way round — the box still centred in the area.
      */
+    @Suppress("LongParameterList")
     fun fit(
         bounds: FloatArray,
         azimuthDegrees: Float,
@@ -1162,6 +1166,7 @@ object ArDebugFraming {
         verticalFovDegrees: Double,
         aspect: Float,
         insets: FramingInsets = FramingInsets.None,
+        atDistance: Float? = null,
     ): OrbitPose {
         val centre = Position(
             (bounds[0] + bounds[3]) / 2f,
@@ -1177,7 +1182,7 @@ object ArDebugFraming {
         }
         val from = OrbitPose(centre, azimuthDegrees, elevationDegrees.coerceIn(MIN_ELEVATION, MAX_ELEVATION))
         val view = Framed(corners, from, verticalFovDegrees, aspect, insets)
-        val framed = clamp(from.copy(distance = view.distance()))
+        val framed = clamp(from.copy(distance = max(view.distance(), atDistance ?: 0f)))
         return framed.copy(
             target = centre + view.right * view.horizontal.slide(framed.distance) +
                 view.up * view.vertical.slide(framed.distance),
