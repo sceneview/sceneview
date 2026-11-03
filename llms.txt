@@ -4264,6 +4264,21 @@ class MaterialLoader(engine: Engine, context: Context) {
 }
 ```
 
+**Read an instance's `Material` with `materialOrNull`, never `.material`.** Since Filament 1.77,
+`MaterialInstance.getMaterial()` returns `null` for every instance read back from a native pointer
+(a model's `getMaterialInstances()`, `getMaterialInstanceAt`, the glTF ubershader instances), so
+`materialInstance.material.hasParameter(...)` throws a `NullPointerException`.
+`io.github.sceneview.material.materialOrNull` answers for every instance `ModelLoader` and
+`MaterialLoader` create, and returns `null` for one made elsewhere or already destroyed:
+
+```kotlin
+import io.github.sceneview.material.materialOrNull
+
+modelInstance.getMaterialInstances()
+    .filter { it.materialOrNull?.hasParameter("emissiveStrength") == true }
+    .forEach { it.setParameter("emissiveStrength", 4f) }
+```
+
 ### EnvironmentLoader
 ```kotlin
 class EnvironmentLoader(engine: Engine, context: Context) {

@@ -2889,6 +2889,10 @@ public final class io/github/sceneview/material/MaterialInstanceKt {
 	public static synthetic fun setTexture$default (Lcom/google/android/filament/MaterialInstance;Ljava/lang/String;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;ILjava/lang/Object;)V
 }
 
+public final class io/github/sceneview/material/MaterialRegistryKt {
+	public static final fun getMaterialOrNull (Lcom/google/android/filament/MaterialInstance;)Lcom/google/android/filament/Material;
+}
+
 public final class io/github/sceneview/material/UbershaderInstanceKt {
 	public static final fun setAoIndex (Lcom/google/android/filament/MaterialInstance;I)V
 	public static final fun setAoStrength (Lcom/google/android/filament/MaterialInstance;F)V

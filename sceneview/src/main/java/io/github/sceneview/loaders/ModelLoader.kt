@@ -105,7 +105,15 @@ class ModelLoader(
     )
 
     val materialProvider = UbershaderProvider(engine)
-    val assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
+
+    // gltfio gets the ubershader through a recorder of each instance's Material, which Filament
+    // 1.77 no longer keeps (see `materialOrNull`).
+    private val recordingProvider = RecordingMaterialProvider(materialProvider)
+
+    // Created on first use: gltfio calls the recorder back with the JNIEnv of the thread that
+    // created the loader, so that has to be the thread that creates the models, the main one.
+    private val assetLoaderHolder = lazy { AssetLoader(engine, recordingProvider, EntityManager.get()) }
+    val assetLoader: AssetLoader by assetLoaderHolder
 
     /**
      * The gltfio loader that finalises every model's textures, pumped by [updateLoad].
@@ -269,6 +277,7 @@ class ModelLoader(
         val source = buffer.toFilamentModelSource()
         val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
         val model = assetLoader.createAsset(source.buffer)
+            .also { recordingProvider.ownership.claim(it) }
             ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
         loadResources(model, source, gltf, resourceResolver)
@@ -336,7 +345,7 @@ class ModelLoader(
     suspend fun loadModel(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): Model? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { it }
+    ): Model? = loadModelThen(fileLocation, resourceResolver, create = { assetLoader.createAsset(it) }) { it }
 
     /**
      * Shared body of every suspend load: reads and converts the file off the main thread, creates
@@ -406,7 +415,7 @@ class ModelLoader(
         val model = createOrDestroyOnCancel(::destroyModel) {
             // A plain `loadModel` runs in its caller's scope, which `destroy()` does not cancel.
             if (!lifecycle.canCreate) return@createOrDestroyOnCancel null
-            create(source.buffer)?.also { models += it }
+            create(source.buffer).also { recordingProvider.ownership.claim(it) }?.also { models += it }
         } ?: run {
             if (lifecycle.canCreate) {
                 Log.w(TAG, "Could not parse $fileLocation")
@@ -622,7 +631,7 @@ class ModelLoader(
     suspend fun loadModelInstance(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { model ->
+    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, create = { assetLoader.createAsset(it) }) { model ->
         releasedInstance(model)
     }
 
@@ -707,7 +716,7 @@ class ModelLoader(
                     loadModelThen(
                         fileLocation,
                         resourceResolver,
-                        assetLoader::createAsset,
+                        { assetLoader.createAsset(it) },
                         onProgress = { steps.value = it },
                         onDestroyedMeanwhile = { throw IllegalStateException("$fileLocation was destroyed while it loaded") },
                         // The only load that throws it: the others keep their `null`-and-log contract.
@@ -822,6 +831,7 @@ class ModelLoader(
             val source = buffer.toFilamentModelSource()
             val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
             (assetLoader.createInstancedAsset(source.buffer, this)
+                .also { recordingProvider.ownership.claim(it) }
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, source, gltf, resourceResolver)
@@ -1006,6 +1016,7 @@ class ModelLoader(
         val beingDestroyed = asyncLoad.inFlight === model && model !in models
         check(!model.isReleased && !beingDestroyed) { "Cannot create an instance of a destroyed model" }
         return assetLoader.createInstance(model)
+            .also { recordingProvider.ownership.claim(if (it != null) model else null) }
     }
 
     /**
@@ -1033,6 +1044,8 @@ class ModelLoader(
      * registry.
      */
     fun destroyModel(model: Model) {
+        // Its material instances go with it; forget them now, even if the destroy waits below.
+        recordingProvider.ownership.release(model)
         // The engine went first, or this loader is released: the model's natives went with them,
         // and every gltfio call below would reach into freed memory. Forget the model, nothing else.
         if (!lifecycle.canTouchNatives) {
@@ -1114,7 +1127,8 @@ class ModelLoader(
             // loaders: freeing the material provider's materials would call into the dead engine,
             // so they are all left to leak (a few small objects) rather than freed.
             if (!lifecycle.release()) return@afterAll
-            assetLoader.destroy()
+            if (assetLoaderHolder.isInitialized()) assetLoader.destroy()
+            recordingProvider.detach()
             materialProvider.destroyMaterials()
             materialProvider.destroy()
             resourceLoader.destroy()

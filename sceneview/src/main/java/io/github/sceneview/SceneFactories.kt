@@ -28,6 +28,7 @@ import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toColor
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.VideoNode
 import io.github.sceneview.node.ViewNode
@@ -232,7 +233,7 @@ internal fun Node.matchToneMapInverse(view: View?) {
 }
 
 internal fun MaterialInstance.matchToneMapInverse(view: View?) {
-    if (view == null || !material.hasParameter("inverseFilmic")) return
+    if (view == null || materialOrNull?.hasParameter("inverseFilmic") != true) return
     setParameter("inverseFilmic", view in filmicViews)
 }
 

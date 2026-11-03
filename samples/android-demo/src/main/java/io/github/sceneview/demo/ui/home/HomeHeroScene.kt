@@ -51,6 +51,7 @@ import io.github.sceneview.demo.telemetry.CrashKey
 import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.environment.rememberKTXEnvironment
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
@@ -824,7 +825,7 @@ private class NightLamps(private val instance: ModelInstance) {
         .groupBy { it.name.orEmpty() }
 
     private fun lamp(name: String, base: Float): Lamp = Lamp(
-        byName[name].orEmpty().filter { it.material.hasParameter(EMISSIVE_STRENGTH) },
+        byName[name].orEmpty().filter { it.materialOrNull?.hasParameter(EMISSIVE_STRENGTH) == true },
         base,
     )
 
@@ -843,7 +844,7 @@ private class NightLamps(private val instance: ModelInstance) {
     private val city = lamp("Light city", 6f)
     private val cityCool = lamp("Light cityCool", 6f)
     private val startReds = List(NightCues.COLUMNS) { lamp("Light startRed$it", 22f) }
-    private val beams = byName["Beam"].orEmpty().filter { it.material.hasParameter(BASE_COLOR) }
+    private val beams = byName["Beam"].orEmpty().filter { it.materialOrNull?.hasParameter(BASE_COLOR) == true }
     private var lastBeam = -1f
 
     private val rainDuration: Float = instance.animator
@@ -955,7 +956,7 @@ private fun configureNightSet(instance: ModelInstance) {
         renderables.setChannel(renderable, if (renderable in set) SET_CHANNEL else CAR_CHANNEL)
     }
     primitives.map { it.second }.distinct()
-        .filter { it.name == TRIM_PAINT && it.material.hasParameter(BASE_COLOR) }
+        .filter { it.name == TRIM_PAINT && it.materialOrNull?.hasParameter(BASE_COLOR) == true }
         .forEach { it.setParameter(BASE_COLOR, TRIM_F0, TRIM_F0, TRIM_F0, 1f) }
 }
 
