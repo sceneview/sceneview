@@ -125,6 +125,8 @@ android {
         // The key MUST NEVER be committed — see the resolution block above.
         manifestPlaceholders["arcoreApiKey"] = arcoreApiKey
         buildConfigField "String", "SKETCHFAB_API_KEY", "\"${sketchfabApiKey}\""
+        // The home hero keys a rung that crashed in a driver to the Filament that failed there.
+        buildConfigField "String", "FILAMENT_VERSION", "\"${libs.versions.filament.get()}\""
     }
 
     signingConfigs {
