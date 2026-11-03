@@ -122,6 +122,17 @@ class ScanResultRenderTest {
         assertEquals(mesh.triangleCount, cropped.triangleCount)
     }
 
+    @Test
+    fun `a stray piece apart from the scan goes, a small one standing in it stays`() {
+        val floor = grid(0f, 0f, 4f, 3f, step = 0.1f)
+        val lamp = grid(2f, 1f, 2.2f, 1.2f, step = 0.1f).lifted(1.5f)
+        val tuft = grid(4.5f, 0f, 4.7f, 0.2f, step = 0.1f)
+        val (tidy, dropped) = ScanTidy.dropIsolated(floor.plus(lamp).plus(tuft))
+        assertEquals("the tuft past the floor's edge", 1, dropped)
+        assertEquals(floor.triangleCount + lamp.triangleCount, tidy.triangleCount)
+        assertEquals(0, ScanTidy.dropIsolated(floor).second)
+    }
+
     // ── The cache's key ───────────────────────────────────────────────────────
 
     @Test
@@ -168,6 +179,9 @@ class ScanResultRenderTest {
         }
         return WorkMesh(positions.toFloatArray(), IntArray(positions.size / 3) { -1 }, indices.toIntArray())
     }
+
+    private fun WorkMesh.lifted(by: Float): WorkMesh =
+        WorkMesh(FloatArray(positions.size) { if (it % 3 == 1) positions[it] + by else positions[it] }, colors, indices)
 
     private fun WorkMesh.plus(other: WorkMesh): WorkMesh = WorkMesh(
         positions + other.positions,

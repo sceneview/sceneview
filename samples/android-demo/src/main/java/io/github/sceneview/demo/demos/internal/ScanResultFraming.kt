@@ -14,6 +14,7 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Where the scan result looks from (Scan redesign, PR 1): the model's own box, turned square to
@@ -103,6 +104,27 @@ class ScanResultFrame(
         return ScanResultFrame(yawDegrees, local.copyOf().also { it[4] = local[1] + heightM }, frontDegrees, turn)
     }
 
+    /**
+     * This frame opened on the side a room shows largest from, square on, at [elevationDegrees]
+     * in the [insets] of a view of [aspect]: its own [frontDegrees], unless a side beside it
+     * stands the camera under [SIDE_GAIN] of the distance — a long room seen down its length is
+     * a sliver across a tall screen, the same room seen along it fills the screen's width.
+     */
+    fun widestSide(
+        elevationDegrees: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        insets: FramingInsets,
+    ): ScanResultFrame {
+        fun distance(side: Float) =
+            ArDebugFraming.fit(local, side, elevationDegrees, verticalFovDegrees, aspect, insets).distance
+        val own = distance(frontDegrees)
+        val (side, best) = listOf(frontDegrees + QUARTER, frontDegrees + 3 * QUARTER)
+            .map { normalized(it) to distance(it) }
+            .minBy { it.second }
+        return if (best < own * SIDE_GAIN) ScanResultFrame(yawDegrees, local, side, turn) else this
+    }
+
     /** The box's middle on the floor plan, in the world: `x` to `z`. */
     val worldCentre: Pair<Float, Float> get() = world((local[0] + local[3]) / 2f, (local[2] + local[5]) / 2f)
 
@@ -119,9 +141,13 @@ class ScanResultFrame(
 
         private fun normalized(degrees: Float): Float = ((degrees % FULL_TURN) + FULL_TURN) % FULL_TURN
 
+        /** How much closer a side beside the front must bring the camera to open on instead. */
+        const val SIDE_GAIN = 0.85f
+
         private const val BOX = 6
         private const val CORNERS = 4
         private const val FULL_TURN = 360f
+        private const val QUARTER = 90f
     }
 }
 
@@ -130,8 +156,8 @@ object ScanResultFraming {
     /** An object's three-quarter: low, as a product is shot, its top still seen. */
     const val OBJECT_ELEVATION = 28f
 
-    /** A room's: from above its near walls, into it. */
-    const val ROOM_ELEVATION = RerunResultView.ELEVATION
+    /** A room's: from outside and above its near walls, cut low, down onto its floor and its depth. */
+    const val ROOM_ELEVATION = 38f
 
     /** How far off the front the view opens: [ArDebugFraming.FRONT_OFFSET_DEGREES], a three-quarter. */
     const val THREE_QUARTER = ArDebugFraming.FRONT_OFFSET_DEGREES
@@ -154,6 +180,19 @@ object ScanResultFraming {
     /** The elevation the result opens at for [scope]. */
     fun elevation(scope: ScanScope?): Float = if (scope == ScanScope.Object) OBJECT_ELEVATION else ROOM_ELEVATION
 
+    /**
+     * How far off the front the result opens for [scope]: an object at a three-quarter, as a
+     * product is shot; a room square on its walls, standing straight on the screen.
+     */
+    fun offset(scope: ScanScope?): Float = if (scope == ScanScope.Object) THREE_QUARTER else 0f
+
+    /**
+     * The weakest agreement of the walls' normals on one way — the folded mean's length over
+     * their weight, 0 to 1 — that [of] turns the box by; under it, the walls say nothing (a
+     * garden, a hedge, a round object) and the footprint's long axis does ([footprintYawDegrees]).
+     */
+    const val MIN_WALL_COHERENCE = 0.3f
+
     /** The frame of the `.glb` the result shows; `null` for one this does not read, or an empty one. */
     fun read(glb: ByteArray, maxSamples: Int = MAX_SAMPLES): ScanResultFrame? =
         sample(glb, maxSamples)?.let { (positions, normals) -> of(positions, normals) }
@@ -167,7 +206,7 @@ object ScanResultFraming {
     fun of(positions: FloatArray, normals: FloatArray, tail: Float = RerunResultView.FRAMING_TAIL): ScanResultFrame? {
         val n = min(positions.size, normals.size) / 3
         if (n == 0) return null
-        val yaw = yawDegrees(normals)
+        val yaw = if (wallCoherence(normals) >= MIN_WALL_COHERENCE) yawDegrees(normals) else footprintYawDegrees(positions)
         val radians = Math.toRadians(yaw.toDouble())
         val c = cos(radians).toFloat()
         val s = sin(radians).toFloat()
@@ -212,6 +251,58 @@ object ScanResultFraming {
         }
         if (sin4 * sin4 + cos4 * cos4 < MIN_WEIGHT) return 0f
         return Math.toDegrees(atan2(sin4, cos4) / FOLD).toFloat()
+    }
+
+    /** How much the walls' normals agree on one way ([MIN_WALL_COHERENCE]): 0 with nothing standing. */
+    fun wallCoherence(normals: FloatArray): Float {
+        var sin4 = 0.0
+        var cos4 = 0.0
+        var total = 0.0
+        for (v in 0 until normals.size / 3) {
+            val nx = normals[v * 3]
+            val nz = normals[v * 3 + 2]
+            if (abs(normals[v * 3 + 1]) > WALL_NORMAL_Y) continue
+            val weight = (nx * nx + nz * nz).toDouble()
+            if (weight < MIN_WEIGHT) continue
+            val angle = FOLD * atan2(nz.toDouble(), nx.toDouble())
+            sin4 += weight * sin(angle)
+            cos4 += weight * cos(angle)
+            total += weight
+        }
+        return if (total < MIN_WEIGHT) 0f else (sqrt(sin4 * sin4 + cos4 * cos4) / total).toFloat()
+    }
+
+    /**
+     * The way the footprint of [positions] runs, degrees in (-45, 45]: its long axis on the floor
+     * plan (the principal axis of x and z), folded a quarter turn as [yawDegrees] is. 0 for a
+     * footprint no longer one way than the other ([MIN_ELONGATION]).
+     */
+    fun footprintYawDegrees(positions: FloatArray): Float {
+        val n = positions.size / 3
+        if (n == 0) return 0f
+        var mx = 0.0
+        var mz = 0.0
+        for (v in 0 until n) {
+            mx += positions[v * 3]
+            mz += positions[v * 3 + 2]
+        }
+        mx /= n
+        mz /= n
+        var xx = 0.0
+        var zz = 0.0
+        var xz = 0.0
+        for (v in 0 until n) {
+            val dx = positions[v * 3] - mx
+            val dz = positions[v * 3 + 2] - mz
+            xx += dx * dx
+            zz += dz * dz
+            xz += dx * dz
+        }
+        val spread = xx + zz
+        val skew = sqrt((xx - zz) * (xx - zz) + 4 * xz * xz)
+        if (spread < MIN_WEIGHT || skew / spread < MIN_ELONGATION) return 0f
+        val axis = Math.toDegrees(0.5 * atan2(2 * xz, xx - zz)).toFloat()
+        return ((axis + QUARTER / 2) % QUARTER + QUARTER) % QUARTER - QUARTER / 2
     }
 
     /**
@@ -287,6 +378,7 @@ object ScanResultFraming {
     private const val SIDES = 4
     private const val QUARTER = 90f
     private const val MIN_WEIGHT = 1e-9
+    private const val MIN_ELONGATION = 0.1
     private const val HEADER = 12
     private const val CHUNK_HEADER = 8
     private const val GLB_MAGIC = 0x46546C67

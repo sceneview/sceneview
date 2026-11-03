@@ -47,6 +47,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -55,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -130,6 +133,7 @@ import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
+import io.github.sceneview.demo.demos.internal.LightingStage
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.motionFade
@@ -903,6 +907,8 @@ internal fun RerunModelScreen(
     ) {
         val chrome = LocalStageChrome.current
         val environment = rememberModelEnvironment(engine, chrome.ground)
+        val darkStage = chrome.ground.luminance() < HALF_LUMINANCE
+        val shadowPool = remember { radialPool(LightingStage.FLOOR_COLOR) }
         val view = rememberView(engine)
         val colorGrading = remember(engine) { ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine) }
         DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
@@ -943,11 +949,17 @@ internal fun RerunModelScreen(
             // Three quarters on its front, from outside and above; the plan straight down on the
             // same walls, its front at the bottom of the screen.
             val fov = orbit.verticalFovDegrees
-            // A room framed on what is drawn of it: its box cut where its walls are.
-            val shownFrame = remember(frame, cuts) { if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame }
+            // A room framed on what is drawn of it — its box cut where its walls are — square on
+            // the side it shows largest from; an object at a three-quarter on its own front.
             val elevation = ScanResultFraming.elevation(scope)
-            val view3d = remember(shownFrame, elevation, aspect, area, fov) {
-                shownFrame?.pose(elevation, ScanResultFraming.THREE_QUARTER, fov, aspect, area)
+            val offset = ScanResultFraming.offset(scope)
+            val squareOn = scope != ScanScope.Object
+            val shownFrame = remember(frame, cuts, squareOn, elevation, aspect, area, fov) {
+                val drawnFrame = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+                if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
+            }
+            val view3d = remember(shownFrame, elevation, offset, aspect, area, fov) {
+                shownFrame?.pose(elevation, offset, fov, aspect, area)
             }
             val viewPlan = remember(shownFrame, aspect, area, fov) {
                 shownFrame?.pose(ArDebugFraming.MAP_ELEVATION, 0f, fov, aspect, area)
@@ -959,7 +971,7 @@ internal fun RerunModelScreen(
                 when {
                     plan -> viewPlan
                     f == null || view3d == null -> view3d
-                    else -> turntable.pose(f, view3d, elevation, ScanResultFraming.THREE_QUARTER, fov, aspect, zone)
+                    else -> turntable.pose(f, view3d, elevation, offset, fov, aspect, zone)
                 }
             }
             SideEffect {
@@ -1016,17 +1028,32 @@ internal fun RerunModelScreen(
                         materialLoader = materialLoader,
                     )
                 }
-                // An object stands on a soft contact shadow under its footprint, once it is revealed.
-                shownFrame?.takeIf { scope == ScanScope.Object && instance != null && revealOver }?.let { f ->
+                // The model stands on a soft contact shadow, once it is revealed: an object's just
+                // over its floor, a room's just under its scanned floor, which hides its core —
+                // its rim shows round the room. On the dark stage a black pool reads as nothing,
+                // so it lies on a pool of the lit floor's tone fading into the stage.
+                shownFrame?.takeIf { instance != null && revealOver }?.let { f ->
                     val (x, z) = f.worldCentre
+                    val width = f.local[3] - f.local[0]
+                    val depth = f.local[5] - f.local[2]
+                    val isObject = scope == ScanScope.Object
+                    val shadowY = f.local[1] + if (isObject) SHADOW_LIFT_M else -SHADOW_DROP_M
+                    val spread = if (isObject) SHADOW_SPREAD else ROOM_SHADOW_SPREAD
+                    // The image plane's size is baked when it is made: a new box, a new plane.
+                    if (darkStage) key(width, depth) {
+                        ImageNode(
+                            bitmap = shadowPool,
+                            size = Size(x = width * POOL_SPREAD, y = 0f, z = depth * POOL_SPREAD),
+                            position = Position(x = x, y = shadowY - POOL_BELOW_M, z = z),
+                            rotation = Rotation(y = -f.yawDegrees),
+                            apply = { isTouchable = false },
+                        )
+                    }
                     ContactShadow(
-                        size = Size(
-                            x = (f.local[3] - f.local[0]) * SHADOW_SPREAD,
-                            y = 0f,
-                            z = (f.local[5] - f.local[2]) * SHADOW_SPREAD,
-                        ),
+                        size = Size(x = width * spread, y = 0f, z = depth * spread),
                         context = ContactShadowContext.Floor,
-                        position = Position(x = x, y = f.local[1] + SHADOW_LIFT_M, z = z),
+                        intensity = if (isObject) SHADOW_INTENSITY else ROOM_SHADOW_INTENSITY,
+                        position = Position(x = x, y = shadowY, z = z),
                         rotation = Rotation(y = -f.yawDegrees),
                     )
                 }
@@ -1407,11 +1434,55 @@ private const val CM_PER_M = 100f
 
 private const val TAG = "RerunModel"
 
-/** How much wider than an object's footprint its contact shadow spreads. */
-private const val SHADOW_SPREAD = 1.3f
+/**
+ * How much wider than the footprint the contact shadow's quad is: its fully dark core is 0.6 of
+ * the quad ([ContactShadowContext.Floor]), so at 1.6 the core is the footprint and the soft rim
+ * runs a quarter of it beyond each side.
+ */
+private const val SHADOW_SPREAD = 1.6f
+
+/** The shadow's peak opacity: [ContactShadowContext.Floor]'s 0.55 all but vanished round a scan. */
+private const val SHADOW_INTENSITY = 0.75f
+
+/**
+ * A room's shadow, tighter and lighter: a scan's floor is ragged, so a dark core under it shows
+ * through every gap and a wide rim reads as a slab on the light stage — just a rim round it.
+ */
+private const val ROOM_SHADOW_SPREAD = 1.15f
+private const val ROOM_SHADOW_INTENSITY = 0.4f
 
 /** The contact shadow's height over the object's floor, against z-fighting with a scanned table. */
 private const val SHADOW_LIFT_M = 0.003f
+
+/** How far under a room's scanned floor its shadow lies: hidden under it, its rim round it. */
+private const val SHADOW_DROP_M = 0.02f
+
+/** The dark stage's floor pool round the shadow, a share of the footprint, and how far under it. */
+private const val POOL_SPREAD = 1.9f
+private const val POOL_BELOW_M = 0.005f
+private const val POOL_PIXELS = 128
+private const val POOL_SOLID = 0.35f
+private const val HALF_LUMINANCE = 0.5f
+
+/**
+ * A disc of [colour] fading from solid at [POOL_SOLID] of its radius to nothing at its rim,
+ * smoothly, so the floor it lays under the shadow has no edge on the stage.
+ */
+private fun radialPool(colour: androidx.compose.ui.graphics.Color): Bitmap {
+    val bitmap = Bitmap.createBitmap(POOL_PIXELS, POOL_PIXELS, Bitmap.Config.ARGB_8888)
+    val half = POOL_PIXELS / 2f
+    val rgb = colour.toArgb() and 0x00FFFFFF
+    val pixels = IntArray(POOL_PIXELS * POOL_PIXELS) { i ->
+        val dx = (i % POOL_PIXELS + 0.5f - half) / half
+        val dy = (i / POOL_PIXELS + 0.5f - half) / half
+        val r = kotlin.math.sqrt(dx * dx + dy * dy)
+        val t = ((r - POOL_SOLID) / (1f - POOL_SOLID)).coerceIn(0f, 1f)
+        val alpha = 1f - t * t * (3f - 2f * t)
+        ((alpha * 255f).toInt() shl 24) or rgb
+    }
+    bitmap.setPixels(pixels, 0, POOL_PIXELS, 0, 0, POOL_PIXELS, POOL_PIXELS)
+    return bitmap
+}
 private const val LOG_EVERY_FRAMES = 30
 private const val MB = 1024L * 1024L
 private const val KB = 1024

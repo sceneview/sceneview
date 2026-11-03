@@ -172,10 +172,10 @@ class RerunScanModel(
         /**
          * The finish pipeline's version, kept in `model.json` as the `.glb` cache's key: bumped
          * whenever the finish makes a different model of the same scan, so the models kept by an
-         * earlier one are built again ([stalePipeline]). 2: cut to the scan's box, its stray
-         * pieces dropped and its floor closed (CleanGeometry). A `model.json` without one is 1.
+         * earlier one are built again ([stalePipeline]). 2: cut to the scan's box. 3: the pieces
+         * standing apart from it dropped (ScanTidy). A `model.json` without one is 1.
          */
-        const val PIPELINE = 2
+        const val PIPELINE = 3
 
         private const val EARLIER_PIPELINE = 1
 

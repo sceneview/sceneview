@@ -218,11 +218,47 @@ class ScanResultFramingTest {
     }
 
     @Test
-    fun `an object opens lower than a room`() {
+    fun `an object opens lower than a room, at a three-quarter, a room from above, square on`() {
         assertEquals(ScanResultFraming.OBJECT_ELEVATION, ScanResultFraming.elevation(ScanScope.Object), 0f)
-        assertEquals(RerunResultView.ELEVATION, ScanResultFraming.elevation(ScanScope.Room), 0f)
-        assertEquals(RerunResultView.ELEVATION, ScanResultFraming.elevation(null), 0f)
-        assertTrue(ScanResultFraming.OBJECT_ELEVATION < RerunResultView.ELEVATION)
+        assertEquals(ScanResultFraming.ROOM_ELEVATION, ScanResultFraming.elevation(ScanScope.Room), 0f)
+        assertEquals(ScanResultFraming.ROOM_ELEVATION, ScanResultFraming.elevation(null), 0f)
+        assertTrue(ScanResultFraming.ROOM_ELEVATION in 35f..40f)
+        assertTrue(ScanResultFraming.OBJECT_ELEVATION < ScanResultFraming.ROOM_ELEVATION)
+        assertEquals(ScanResultFraming.THREE_QUARTER, ScanResultFraming.offset(ScanScope.Object), 0f)
+        assertEquals(0f, ScanResultFraming.offset(ScanScope.Room), 0f)
+    }
+
+    @Test
+    fun `a scan with no walls to read is turned along its footprint's long side`() {
+        // A garden path, 6 m by 1 m, turned 20° in the world: nothing stands up to say its way.
+        val path = Cloud(20f).apply { floor(3f, 0.5f) }
+        assertTrue(ScanResultFraming.wallCoherence(path.normals.toFloatArray()) < ScanResultFraming.MIN_WALL_COHERENCE)
+        val frame = req(path.frame())
+        assertEquals(20f, frame.yawDegrees, 0.5f)
+        assertEquals(6f, frame.local[3] - frame.local[0], 0.3f)
+        assertEquals(1f, frame.local[5] - frame.local[2], 0.1f)
+        // A room's walls still say it, whatever its footprint.
+        assertTrue(ScanResultFraming.wallCoherence(room(15f).normals.toFloatArray()) > 0.9f)
+    }
+
+    @Test
+    fun `a long room opens on the side it fills a tall screen most from, square on`() {
+        // 2 m wide, 8 m long, cut at 1.2 m, its walls saying the long side: on a tall screen
+        // the long side across is a sliver, seen down its length it fills the width.
+        val long = ScanResultFrame(0f, floatArrayOf(-1f, 0f, -4f, 1f, 1.2f, 4f), 90f, 1f)
+        val zone = FramingInsets(left = 0.04f, top = 0.14f, right = 0.04f, bottom = 0.22f)
+        val area = RerunResultView.area(zone)
+        val elevation = ScanResultFraming.ROOM_ELEVATION
+        val turned = long.widestSide(elevation, FOV, ASPECT, area)
+        assertTrue("down its length: ${turned.frontDegrees}", turned.frontDegrees == 0f || turned.frontDegrees == 180f)
+        val across = long.pose(elevation, 0f, FOV, ASPECT, area)
+        val down = turned.pose(elevation, 0f, FOV, ASPECT, area)
+        assertTrue("closer: ${down.distance} vs ${across.distance}", down.distance < across.distance * ScanResultFrame.SIDE_GAIN)
+        // Square on: the eye straight on the side, so the box stands straight on the screen.
+        assertEquals(0f, down.azimuthDegrees % 90f, 1e-3f)
+        // A room near square keeps the front its walls give.
+        val square = ScanResultFrame(0f, floatArrayOf(-2f, 0f, -1.8f, 2f, 1.2f, 1.8f), 0f, 1f)
+        assertTrue(square.widestSide(elevation, FOV, ASPECT, area) === square)
     }
 
     private fun <T : Any> req(value: T?): T {

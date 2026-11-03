@@ -46,7 +46,9 @@ internal object CleanGeometry {
         val piecesIn = MeshCleanup.pieces(raw)
         // Cut to the scan's own box first: what depth saw through a window is not the room.
         val (cropped, croppedTriangles) = ScanTidy.crop(raw)
-        val (pieces, dropped) = MeshCleanup.removeSmallPieces(cropped)
+        val (whole, small) = MeshCleanup.removeSmallPieces(cropped)
+        val (pieces, apart) = ScanTidy.dropIsolated(whole)
+        val dropped = small + apart
         progress(PROGRESS_PIECES)
         // Where the sheet in front has a hole, the hidden sheet stays: it is the only surface there.
         var (mesh, doubled) = MeshCleanup.removeDoubledSurfaces(pieces)
