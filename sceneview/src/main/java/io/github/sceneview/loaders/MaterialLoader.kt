@@ -612,6 +612,21 @@ class MaterialLoader(
     }
 
     /**
+     * Whether this loader still holds the native instance behind [materialInstance], matched on
+     * the native handle so a read-back wrapper answers for the one this loader handed out.
+     *
+     * The instrumented tests' probe for "destroyed": Filament 1.77 dropped
+     * `Engine.isValidMaterialInstance`, and [destroyMaterialInstance] is the only path that
+     * removes an instance from this list, right before it is destroyed.
+     */
+    internal fun tracks(materialInstance: MaterialInstance): Boolean {
+        val handle = runCatching { materialInstance.nativeObject }.getOrNull() ?: return false
+        return synchronized(materialInstances) {
+            materialInstances.any { runCatching { it.nativeObject }.getOrNull() == handle }
+        }
+    }
+
+    /**
      * Destroys this loader and cancels its coroutine scope.
      *
      * Cancelling the scope stops any in-flight [loadMaterialAsync] job so it cannot touch a

@@ -112,8 +112,8 @@ class LightingRenderTest {
             bitmapWithLight = harness.capturePixels()
 
             // Cleanup
-            harness.scene.removeEntity(cube.entity)
-            harness.scene.removeEntity(light.entity)
+            harness.scene.remove(cube.entity)
+            harness.scene.remove(light.entity)
             cube.destroy()
             light.destroy()
         }
@@ -171,8 +171,8 @@ class LightingRenderTest {
             harness.renderFrames(5)
             bitmap = harness.capturePixels()
 
-            harness.scene.removeEntity(cube.entity)
-            harness.scene.removeEntity(light.entity)
+            harness.scene.remove(cube.entity)
+            harness.scene.remove(light.entity)
             cube.destroy()
             light.destroy()
         }

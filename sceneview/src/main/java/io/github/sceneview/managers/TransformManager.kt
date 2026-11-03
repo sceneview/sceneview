@@ -118,7 +118,8 @@ fun TransformManager.setParent(
  */
 @FilamentEntity
 fun TransformManager.getChildren(@FilamentEntityInstance transformInstance: Int): List<Int> =
-    getChildren(transformInstance, null).toList()
+    IntArray(getChildCount(transformInstance)).also { getChildren(transformInstance, it, it.size) }
+        .toList()
 
 /**
  * Gets a flat list of all children within the hierarchy for a transform component.

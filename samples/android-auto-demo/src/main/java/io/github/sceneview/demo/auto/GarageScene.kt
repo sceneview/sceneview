@@ -246,7 +246,7 @@ internal fun NodeScope.GarageCar(
 /** Two spots at the car's nose, dipped onto the road. Children of the mount: they turn with it. */
 @Composable
 private fun NodeScope.Headlights(bodyLength: Float) {
-    val color = remember { Colors.cct(GarageStage.HEADLIGHT_KELVIN).toColor() }
+    val color = remember { Colors.cct(GarageStage.HEADLIGHT_KELVIN, null).toColor() }
     listOf(-1f, 1f).forEach { side ->
         LightNode(
             type = LightManager.Type.FOCUSED_SPOT,

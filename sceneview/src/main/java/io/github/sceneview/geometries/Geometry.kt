@@ -13,6 +13,7 @@ import dev.romainguy.kotlin.math.max
 import dev.romainguy.kotlin.math.min
 import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.EntityInstance
+import io.github.sceneview.isValid
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.math.Box
@@ -500,9 +501,11 @@ private class GeometryUpload(val engine: Engine, val streams: GeometryStreams) {
      * time after the update was requested: the engine or the geometry may be gone by then.
      */
     fun targets(vertexBuffer: VertexBuffer, indexBuffer: IndexBuffer): Boolean = runCatching {
+        // Filament 1.77 dropped Engine.isValidVertexBuffer/isValidIndexBuffer: a buffer destroyed
+        // through the engine has its native handle cleared, and reading it throws (caught below).
         engine.isValid &&
-            (vertices == null || engine.isValidVertexBuffer(vertexBuffer)) &&
-            (primitivesIndices == null || engine.isValidIndexBuffer(indexBuffer))
+            (vertices == null || vertexBuffer.nativeObject != 0L) &&
+            (primitivesIndices == null || indexBuffer.nativeObject != 0L)
     }.getOrDefault(false)
 
     /**

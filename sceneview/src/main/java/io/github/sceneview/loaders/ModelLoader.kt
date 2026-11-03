@@ -24,6 +24,7 @@ import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.freshFenceProbe
 import io.github.sceneview.isAsyncLoadPending
+import io.github.sceneview.isValid
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model

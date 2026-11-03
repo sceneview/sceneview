@@ -18,9 +18,7 @@ import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.utils.readBuffer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,18 +35,15 @@ import java.nio.ByteBuffer
  *
  * ## The probe
  *
- * `IndirectLight.getReflectionsTexture()` and `Skybox.getTexture()` hand back a fresh Java wrapper
- * on the native texture, and `Engine.isValidTexture` says whether that texture is still in the
- * engine's resource list. Read before the environment is destroyed, asked after: `true` is a
- * leaked cubemap. The question is always asked before anything else is created, so a recycled
- * address cannot answer for a dead texture.
- *
- * It has to be a second wrapper: `Engine.destroyTexture` clears the wrapper it is given, and
- * asking anything of a cleared wrapper throws instead of answering `false`.
+ * `Engine.getTextureCount()` is the size of the engine's texture list. Read before the
+ * environment is built, read again after it is destroyed: any difference is a leaked cubemap.
+ * Filament 1.77 dropped `Engine.isValidTexture`, the per-texture probe these tests used before,
+ * and a Java wrapper cannot stand in for it: `Engine.destroyTexture` clears only the wrapper it is
+ * given, so a second wrapper on the same texture keeps answering as if it were alive.
  *
  * [canary_aDroppedCubemapIsSeenByTheProbe] builds an environment the way the factories did before
- * the fix and asserts the probe reports the leak — if a Filament upgrade ever turned
- * `isValidTexture` into a constant, that test fails instead of every other one passing on a dead
+ * the fix and asserts the probe reports the leak — if a Filament upgrade ever turned the texture
+ * count into a constant, that test fails instead of every other one passing on a dead
  * instrument.
  *
  * Headless, like `LeakChurnTest`: no `SwapChain`, no `readPixels`, so it runs on the SwiftShader
@@ -104,7 +99,8 @@ class EnvironmentTextureReleaseTest {
         environment.skybox?.texture,
     )
 
-    private fun aliveAmong(textures: List<Texture>) = textures.count { engine.isValidTexture(it) }
+    /** Textures in the engine now, against a [baseline] read before the environment existed. */
+    private fun texturesSince(baseline: Int) = engine.textureCount - baseline
 
     /** A 4×2 flat Radiance file, mid grey: the smallest input the HDR path prefilters. */
     private fun tinyHdr(): ByteBuffer {
@@ -117,68 +113,79 @@ class EnvironmentTextureReleaseTest {
         }
     }
 
+
     @Test
     fun defaultEnvironment_cubemapIsReleasedByTheEngineDestroy() {
         onMain {
+            val baseline = engine.textureCount
             val environment = createEnvironment(environmentLoader)
-            val cubemaps = cubemapsOf(environment)
-            assertEquals("the neutral IBL samples one cubemap", 1, cubemaps.size)
-            assertEquals(1, aliveAmong(cubemaps))
+            assertEquals("the neutral IBL samples one cubemap", 1, cubemapsOf(environment).size)
+            assertEquals(1, texturesSince(baseline))
 
             engine.safeDestroyEnvironment(environment)
 
-            assertEquals("cubemaps still in the engine", 0, aliveAmong(cubemaps))
+            assertEquals("cubemaps still in the engine", 0, texturesSince(baseline))
         }
     }
 
     @Test
     fun defaultEnvironment_cubemapIsReleasedByTheLoaderDestroy() {
         onMain {
+            val baseline = engine.textureCount
             val environment = createEnvironment(environmentLoader)
-            val cubemaps = cubemapsOf(environment)
-            assertEquals(1, aliveAmong(cubemaps))
+            assertEquals(1, texturesSince(baseline))
 
             environmentLoader.destroyEnvironment(environment)
 
-            assertEquals("cubemaps still in the engine", 0, aliveAmong(cubemaps))
+            assertEquals("cubemaps still in the engine", 0, texturesSince(baseline))
         }
     }
 
     @Test
     fun ktxEnvironment_iblAndSkyboxCubemapsAreBothReleased() {
         onMain {
+            val baseline = engine.textureCount
             val environment = environmentLoader.createKTX1Environment(
                 iblBuffer = assets.readBuffer(NEUTRAL_IBL),
                 skyboxBuffer = assets.readBuffer(NEUTRAL_SKYBOX),
             )
-            val cubemaps = cubemapsOf(environment)
-            assertEquals("one cubemap for the light, one for the skybox", 2, cubemaps.size)
-            assertEquals(2, aliveAmong(cubemaps))
+            assertEquals(
+                "one cubemap for the light, one for the skybox", 2, cubemapsOf(environment).size
+            )
+            assertEquals(2, texturesSince(baseline))
 
             environmentLoader.destroyEnvironment(environment)
 
-            assertEquals("cubemaps still in the engine", 0, aliveAmong(cubemaps))
+            assertEquals("cubemaps still in the engine", 0, texturesSince(baseline))
         }
     }
 
     @Test
     fun hdrEnvironment_cubemapsAreReleasedByEitherDestroy() {
         onMain {
+            // The loader may keep prefilter state from its first HDR build; build
+            // and drop one before the baseline so only the environment's own cubemaps are counted.
+            environmentLoader.createHDREnvironment(tinyHdr())
+                ?.let { environmentLoader.destroyEnvironment(it) }
             // The HDR path owned its cubemaps before #4358, through the loader only: they now
             // travel with the environment, so the engine-side destroy releases them too.
             listOf<(Environment) -> Unit>(
                 { environmentLoader.destroyEnvironment(it) },
                 { engine.safeDestroyEnvironment(it) },
             ).forEachIndexed { index, destroy ->
+                val baseline = engine.textureCount
                 val environment = environmentLoader.createHDREnvironment(tinyHdr())
                 assertNotNull("HDRLoader refused the test image", environment)
-                val cubemaps = cubemapsOf(checkNotNull(environment))
-                assertEquals("reflections and sky are two cubemaps", 2, cubemaps.size)
-                assertEquals(2, aliveAmong(cubemaps))
+                assertEquals(
+                    "reflections and sky are two cubemaps",
+                    2,
+                    cubemapsOf(checkNotNull(environment)).size,
+                )
+                assertEquals(2, texturesSince(baseline))
 
                 destroy(environment)
 
-                assertEquals("destroy path #$index left cubemaps", 0, aliveAmong(cubemaps))
+                assertEquals("destroy path #$index left cubemaps", 0, texturesSince(baseline))
             }
         }
     }
@@ -186,11 +193,11 @@ class EnvironmentTextureReleaseTest {
     @Test
     fun destroyingTwiceThroughEveryPath_destroysEachTextureOnce() {
         onMain {
+            val baseline = engine.textureCount
             val environment = environmentLoader.createKTX1Environment(
                 iblBuffer = assets.readBuffer(NEUTRAL_IBL),
                 skyboxBuffer = assets.readBuffer(NEUTRAL_SKYBOX),
             )
-            val cubemaps = cubemapsOf(environment)
 
             // A remembered environment is destroyed by its own `onDispose`, and again by the
             // loader's `clear()` when the two leave together. Filament aborts on a texture
@@ -200,70 +207,64 @@ class EnvironmentTextureReleaseTest {
             engine.safeDestroyEnvironment(environment)
             environmentLoader.clear()
 
-            assertEquals(0, aliveAmong(cubemaps))
+            assertEquals(0, texturesSince(baseline))
         }
     }
 
     @Test
     fun copy_sharesTheHandlesWithoutOwningTheCubemap() {
         onMain {
+            val baseline = engine.textureCount
             val original = createEnvironment(environmentLoader)
-            val cubemaps = cubemapsOf(original)
             // What the demos do to hide a sky: same light, another skybox.
             val copy = original.copy(skybox = null)
 
             engine.safeDestroyEnvironment(copy)
-            assertEquals("a copy took the original's cubemap", 1, aliveAmong(cubemaps))
+            assertEquals("a copy took the original's cubemap", 1, texturesSince(baseline))
 
             engine.safeDestroyEnvironment(original)
-            assertEquals(0, aliveAmong(cubemaps))
+            assertEquals(0, texturesSince(baseline))
         }
     }
 
     @Test
     fun churn_noCubemapSurvivesTwentySwaps() {
         onMain {
-            var leaked = 0
+            val baseline = engine.textureCount
             repeat(SWAPS) {
                 val environment = createEnvironment(environmentLoader)
-                val cubemaps = cubemapsOf(environment)
-                assertEquals(1, aliveAmong(cubemaps))
+                assertEquals(1, texturesSince(baseline))
                 environmentLoader.destroyEnvironment(environment)
-                leaked += aliveAmong(cubemaps)
             }
-            assertEquals("cubemaps left in the engine after $SWAPS swaps", 0, leaked)
+            assertEquals("cubemaps left in the engine after $SWAPS swaps", 0, texturesSince(baseline))
         }
     }
 
     @Test
     fun canary_aDroppedCubemapIsSeenByTheProbe() {
         onMain {
+            val baseline = engine.textureCount
             val dropped = mutableListOf<Texture>()
-            val probes = mutableListOf<Texture>()
-            var leaked = 0
             repeat(SWAPS) {
                 // The factories before #4358: the light is kept, the bundle's cubemap is not.
                 val bundle = KTX1Loader.createIndirectLight(engine, assets.readBuffer(NEUTRAL_IBL))
                 val environment = Environment(indirectLight = bundle.indirectLight)
-                val cubemaps = cubemapsOf(environment)
                 engine.safeDestroyEnvironment(environment)
-                leaked += aliveAmong(cubemaps)
-                probes += cubemaps
                 bundle.cubemap?.let { dropped += it }
             }
             try {
-                assertEquals("the probe no longer sees a dropped cubemap", SWAPS, leaked)
-                assertEquals("dropped cubemaps all still in the engine", SWAPS, aliveAmong(probes))
+                assertEquals("the probe no longer sees a dropped cubemap", SWAPS, texturesSince(baseline))
             } finally {
                 dropped.forEach { engine.safeDestroyTexture(it) }
             }
-            assertEquals(0, aliveAmong(probes))
+            assertEquals(0, texturesSince(baseline))
         }
     }
 
     @Test
     fun callerOwnedCubemap_survivesAnEnvironmentThatWasNotHandedIt() {
         onMain {
+            val baseline = engine.textureCount
             // `createEnvironment(engine, indirectLight = …)` without `textures` keeps its meaning:
             // the caller built the cubemap and still owns it.
             val bundle = KTX1Loader.createIndirectLight(engine, assets.readBuffer(NEUTRAL_IBL))
@@ -273,13 +274,12 @@ class EnvironmentTextureReleaseTest {
                 indirectLight = bundle.indirectLight,
                 skybox = null,
             )
-            val probe = cubemapsOf(environment).single()
 
             engine.safeDestroyEnvironment(environment)
-            assertTrue("a texture the caller owns was destroyed", engine.isValidTexture(probe))
+            assertEquals("a texture the caller owns was destroyed", 1, texturesSince(baseline))
 
             engine.safeDestroyTexture(cubemap)
-            assertFalse(engine.isValidTexture(probe))
+            assertEquals(0, texturesSince(baseline))
         }
     }
 }

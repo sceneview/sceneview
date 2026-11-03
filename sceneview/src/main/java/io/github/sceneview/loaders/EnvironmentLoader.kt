@@ -12,6 +12,7 @@ import com.google.android.filament.utils.HDRLoader
 import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.IBLPrefilter
+import io.github.sceneview.isValid
 import io.github.sceneview.logDeferredTeardown
 import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyTexture

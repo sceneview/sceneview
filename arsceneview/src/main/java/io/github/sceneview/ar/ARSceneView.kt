@@ -1458,7 +1458,7 @@ fun ARSceneView(
         val prev = prevCameraStreamRef.get()
         if (prev != cameraStream) {
             prev?.let {
-                scene.removeEntity(it.entity)
+                scene.remove(it.entity)
                 // Registration is now tracked on the stream so its `destroy()` can recycle the
                 // entity id safely (#2877).
                 it.attachedScene = null

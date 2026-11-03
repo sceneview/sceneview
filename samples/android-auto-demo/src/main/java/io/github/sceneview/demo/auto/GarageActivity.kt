@@ -142,7 +142,7 @@ private fun GarageScreen(store: GarageStore) {
     val keyIntensity = lighting.keyIntensity * if (headlights) GarageStage.HEADLIGHT_KEY_SHARE else 1f
     val mainLight = rememberMainLightNode(engine) {
         intensity = keyIntensity
-        color = Colors.cct(lighting.keyKelvin).toColor()
+        color = Colors.cct(lighting.keyKelvin, null).toColor()
         lightDirection = KEY_LIGHT_DIRECTION
     }
 

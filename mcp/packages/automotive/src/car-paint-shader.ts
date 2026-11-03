@@ -183,7 +183,7 @@ fun PaintedCarScene(modelAsset: String = "models/cars/sports_car.glb") {
 
   const dependencies = [
     "io.github.sceneview:sceneview:4.53.0",
-    "Filament 1.72.x (matc compiler — must match the Filament version SceneView ships) to build the .mat into .filamat",
+    "Filament 1.77.x (matc compiler — must match the Filament version SceneView ships) to build the .mat into .filamat",
   ];
 
   return {

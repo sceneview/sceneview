@@ -46,6 +46,15 @@ typealias FilamentEntityInstance = com.google.android.filament.EntityInstance
  */
 const val NULL_ENTITY: Entity = 0
 
+/**
+ * Whether this engine has not been destroyed yet.
+ *
+ * Filament 1.77's generated Java bindings dropped `Engine.isValid()`; a destroyed engine now
+ * throws from `getNativeObject()` instead, which this reads without letting it escape.
+ */
+val Engine.isValid: Boolean
+    get() = runCatching { nativeObject }.isSuccess
+
 fun Engine.createModelLoader(context: Context) = ModelLoader(this, context)
 fun Engine.createMaterialLoader(context: Context) = MaterialLoader(this, context)
 fun Engine.createEnvironmentLoader(context: Context) = EnvironmentLoader(this, context)

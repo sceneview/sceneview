@@ -239,13 +239,6 @@ class LightEstimator(
     private val colorCorrections = FloatArray(4)
 
     /**
-     * Reusable per-face byte-offset array for the `ENVIRONMENTAL_HDR` cubemap
-     * upload (#1105). ARCore's HDR cubemap is always exactly [CUBEMAP_FACE_COUNT]
-     * faces, so this is a fixed-size field instead of a per-frame `IntArray`.
-     */
-    private val faceOffsets = IntArray(CUBEMAP_FACE_COUNT)
-
-    /**
      * Reusable RGB-triplet scratch for copying cubemap pixels (#1105) — the inner
      * copy loop reads 3 RGB bytes per pixel and skips the 2-byte alpha; hoisted
      * out of [update] to drop a `ByteArray(6)` allocation per cubemap upload.
@@ -572,9 +565,8 @@ class LightEstimator(
                         // suspenders for forward compatibility with future loop edits.
                         try {
                             val (width, height) = arImages[0].width to arImages[0].height
-                            // #1105: `faceOffsets` is the reused [CUBEMAP_FACE_COUNT]-sized
-                            // field. ARCore's HDR cubemap is always exactly 6 faces;
-                            // guard against a future ARCore that changes that so we never
+                            // ARCore's HDR cubemap is always exactly 6 faces, uploaded
+                            // below as the 6 layers of one contiguous buffer; guard against a future ARCore that changes that so we never
                             // index out of bounds.
                             check(arImages.size == CUBEMAP_FACE_COUNT) {
                                 "Expected an $CUBEMAP_FACE_COUNT-face ARCore HDR cubemap, " +
@@ -594,8 +586,7 @@ class LightEstimator(
                             }
                             // `rgbBytes` (#1105) is the reused 6-byte RGB-triplet
                             // scratch field — see its field doc.
-                            arImages.forEachIndexed { index, image ->
-                                faceOffsets[index] = buffer.position()
+                            arImages.forEach { image ->
                                 val imageBuffer = image.planes[0].buffer
                                 while (imageBuffer.hasRemaining()) {
                                     // Only take the RGB channels
@@ -640,10 +631,14 @@ class LightEstimator(
                             // so an extra-fast Filament backend cannot fire the
                             // callback before we've observed the latched `true`.
                             uploadInFlight = true
-                            @Suppress("DEPRECATION")
+                            // Filament 1.77 removed the per-face-offsets overload: a
+                            // cubemap is now uploaded as a 2D array of six layers, the
+                            // faces packed back to back in `buffer` (as filled above).
                             cubeMapTexture.setImage(
                                 engine,
                                 0,
+                                0, 0, 0,
+                                width, height, CUBEMAP_FACE_COUNT,
                                 // The callback IS load-bearing — DO NOT no-op it.
                                 //
                                 // Filament `setImage()` uploads the buffer
@@ -695,8 +690,7 @@ class LightEstimator(
                                     // (#1102) — same closure semantics, one allocation per
                                     // LightEstimator instead of one per cubemap upload.
                                     uploadCompletedCallback
-                                ),
-                                faceOffsets
+                                )
                             )
                             reflections = if (environmentalHdrSpecularFilter) {
                                 iblPrefilter.specularFilter(cubeMapTexture).also {
@@ -810,7 +804,7 @@ class LightEstimator(
 
         /**
          * Number of cubemap faces in ARCore's `ENVIRONMENTAL_HDR` reflection
-         * cubemap — always 6. Sizes the reused [faceOffsets] field (#1105).
+         * cubemap — always 6, uploaded as the six layers of one buffer.
          */
         private const val CUBEMAP_FACE_COUNT = 6
 

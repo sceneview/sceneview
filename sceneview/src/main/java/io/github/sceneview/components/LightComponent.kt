@@ -274,8 +274,8 @@ interface LightComponent : Component {
         }
 
     /** The outer cone angle of this spot light in radians. */
-    val outerConeAngle: Float get() = lightManager.getOuterConeAngle(lightInstance)
+    val outerConeAngle: Float get() = lightManager.getSpotLightOuterCone(lightInstance)
 
     /** The inner cone angle of this spot light in radians (full-intensity region). */
-    val innerConeAngle: Float get() = lightManager.getInnerConeAngle(lightInstance)
+    val innerConeAngle: Float get() = lightManager.getSpotLightInnerCone(lightInstance)
 }

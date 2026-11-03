@@ -22,7 +22,6 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
-import java.nio.Buffer
 import kotlin.math.floor
 import kotlin.math.ln
 
@@ -158,7 +157,8 @@ class TextNodeTextureUpdateTest {
             val levelSource = arrayOfNulls<Bitmap>(levels)
         }
 
-        class TextureBinding(val texture: Long, val sampler: Long)
+        /** [sampler] is Filament's packed sampler value, an `Int` since 1.77. */
+        class TextureBinding(val texture: Long, val sampler: Int)
 
         class RenderableState(val primitiveCount: Int) {
             /** Per primitive, the material instance it is drawn with. */
@@ -166,20 +166,23 @@ class TextNodeTextureUpdateTest {
         }
 
         private var nextHandle = 1L
+        private var nextSampler = 1
         private var nextEntity = 1
 
         val textureBuilders = HashMap<Long, TextureBuilderState>()
         val textures = HashMap<Long, TextureState>()
-        val samplerMinFilters = HashMap<Long, TextureSampler.MinFilter>()
+        val samplerMinFilters = HashMap<Int, TextureSampler.MinFilter>()
         val textureBindings = HashMap<Pair<Long, String>, TextureBinding>()
         val renderableBuilders = HashMap<Long, RenderableState>()
         val renderables = HashMap<Int, RenderableState>()
 
         fun handle() = nextHandle++
+        fun sampler() = nextSampler++
         fun entity() = nextEntity++
 
         fun reset() {
             nextHandle = 1L
+            nextSampler = 1
             nextEntity = 1
             textureBuilders.clear()
             textures.clear()
@@ -282,18 +285,15 @@ class TextNodeTextureUpdateTest {
         companion object {
             @JvmStatic
             @Implementation
-            fun nBuilderBuild(
-                engine: Long,
-                buffer: Buffer,
-                size: Int,
-                shBandCount: Int,
-                shadowQuality: Int,
-                uboBatchingMode: Int
-            ): Long = Gpu.handle()
+            fun nCreateBuilder(): Long = Gpu.handle()
 
             @JvmStatic
             @Implementation
-            fun nCreateInstance(material: Long): Long = Gpu.handle()
+            fun nBuilderBuild(builder: Long, engine: Long): Long = Gpu.handle()
+
+            @JvmStatic
+            @Implementation
+            fun nCreateInstance(material: Long, name: String?): Long = Gpu.handle()
         }
     }
 
@@ -302,11 +302,11 @@ class TextNodeTextureUpdateTest {
         companion object {
             @JvmStatic
             @Implementation
-            fun nSetParameterTexture(
+            fun nSetParameter(
                 materialInstance: Long,
                 name: String,
                 texture: Long,
-                sampler: Long
+                sampler: Int
             ) {
                 Gpu.textureBindings[materialInstance to name] = Gpu.TextureBinding(texture, sampler)
             }
@@ -319,14 +319,26 @@ class TextNodeTextureUpdateTest {
         companion object {
             @JvmStatic
             @Implementation
-            fun nCreateSampler(min: Int, mag: Int, s: Int, t: Int, r: Int): Long =
-                Gpu.handle().also {
+            fun nCreateTextureSamplerMinFilterMagFilterWrapMode(min: Int, mag: Int, wrap: Int): Int =
+                Gpu.sampler().also {
                     Gpu.samplerMinFilters[it] = TextureSampler.MinFilter.entries[min]
                 }
 
             @JvmStatic
             @Implementation
-            fun nGetMinFilter(sampler: Long): Int = Gpu.samplerMinFilters.getValue(sampler).ordinal
+            fun nCreateTextureSamplerMinFilterMagFilterWrapModeWrapModeWrapMode(
+                min: Int,
+                mag: Int,
+                s: Int,
+                t: Int,
+                r: Int
+            ): Int = Gpu.sampler().also {
+                Gpu.samplerMinFilters[it] = TextureSampler.MinFilter.entries[min]
+            }
+
+            @JvmStatic
+            @Implementation
+            fun nGetMinFilter(sampler: Int): Int = Gpu.samplerMinFilters.getValue(sampler).ordinal
         }
     }
 
@@ -414,6 +426,11 @@ class TextNodeTextureUpdateTest {
             @JvmStatic
             @Implementation
             fun nCreate(entityManager: Long): Int = Gpu.entity()
+
+            /** Replaces the suite-wide `ShadowFilamentEntityManager`: one shadow per class. */
+            @JvmStatic
+            @Implementation
+            fun nGet(): Long = 1L
         }
     }
 
