@@ -305,8 +305,10 @@ SceneViewSwift provides ${IOS_NODE_TYPE_COUNT} node types:
 | \`BillboardNode\` | Camera-facing nodes (labels, health bars, icons) |
 | \`VideoNode\` | Video playback on a 3D plane |
 | \`ImageNode\` | Image display on a 3D plane |
+| \`ContactShadowNode\` | Soft contact shadow decal that grounds an object on a floor, table or wall |
 | \`LineNode\` | Line segments between 3D points |
 | \`PathNode\` | Connected line paths through multiple points |
+| \`TubeNode\` | Solid tube swept along a polyline (one continuous mesh) |
 | \`MeshNode\` | Custom mesh geometry with vertex data |
 | \`ShapeNode\` | 2D polygon shapes, flat or extruded |
 | \`ViewNode\` | Placeholder plane for embedding a SwiftUI view (content not rendered yet) |
