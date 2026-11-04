@@ -12,6 +12,7 @@ import com.google.android.filament.gltfio.UbershaderProvider
 import io.github.sceneview.material.kMaterialDefaultMetallic
 import io.github.sceneview.material.kMaterialDefaultReflectance
 import io.github.sceneview.material.kMaterialDefaultRoughness
+import io.github.sceneview.material.materialRegistry
 import io.github.sceneview.material.setColor
 import io.github.sceneview.material.setExternalTexture
 import io.github.sceneview.material.setInvertFrontFaceWinding
@@ -122,6 +123,8 @@ class MaterialLoader(
             .build(engine)
             .also {
                 materials += it
+                // Its default instance reads back without its Material on Filament 1.77+ too.
+                materialRegistry.register(it.defaultInstance, it)
             }
 
     @MainThread
@@ -161,13 +164,15 @@ class MaterialLoader(
         ),
         label: String? = null,
         extras: String? = null
-    ): MaterialInstance? = ubershaderProvider.createMaterialInstance(
-        config,
-        uvMap.flatMap { listOf(it.x, it.y) }.toIntArray(),
-        label,
-        extras
-    )?.also {
-        materialInstances += it
+    ): MaterialInstance? {
+        val uvs = uvMap.flatMap { listOf(it.x, it.y) }.toIntArray()
+        return ubershaderProvider.createMaterialInstance(config, uvs, label, extras)?.also {
+            materialInstances += it
+            // Filament 1.77 wraps the instance without its Material: record it for
+            // `materialOrNull`. The key and UV map now hold the values the ubershader picked.
+            ubershaderProvider.getMaterial(config, uvs.copyOf(), label)
+                ?.let { material -> materialRegistry.register(it, material) }
+        }
     }
 
     /**
@@ -226,6 +231,8 @@ class MaterialLoader(
 
     fun createInstance(material: Material) = material.createInstance().also {
         materialInstances += it
+        // Its own wrapper keeps the Material; a read-back one (`getMaterialInstanceAt`) does not.
+        materialRegistry.register(it, material)
     }
 
     /**
@@ -577,6 +584,7 @@ class MaterialLoader(
             // and `Engine.destroyMaterial` throws `IllegalStateException: Calling method on
             // destroyed Material`. Swallow — we already lost native ownership, so there is
             // nothing left for us to reclaim.
+            materialRegistry.forgetMaterial(material)
             runCatching { engine.safeDestroyMaterial(material) }
             materials -= material
         }
@@ -603,12 +611,28 @@ class MaterialLoader(
         // `Engine.destroyMaterialInstance` twice → native abort.
         val tracked = materialInstances.removeTracked(materialInstance) { it.nativeObject }
             ?: return
+        materialRegistry.forget(tracked)
         // Destroy the tracked wrapper, not the caller's: Filament clears the native pointer of
         // the wrapper it is given, and the tracked one is the wrapper this loader hands out.
         // Same tolerance as destroyMaterial — a MaterialInstance can be orphaned by a prior
         // Material.destroy (which cascades to its defaultInstance and, during Engine teardown,
         // effectively to all instances tied to destroyed materials).
         runCatching { engine.safeDestroyMaterialInstance(tracked) }
+    }
+
+    /**
+     * Whether this loader still holds the native instance behind [materialInstance], matched on
+     * the native handle so a read-back wrapper answers for the one this loader handed out.
+     *
+     * The instrumented tests' probe for "destroyed": Filament 1.77 dropped
+     * `Engine.isValidMaterialInstance`, and [destroyMaterialInstance] is the only path that
+     * removes an instance from this list, right before it is destroyed.
+     */
+    internal fun tracks(materialInstance: MaterialInstance): Boolean {
+        val handle = runCatching { materialInstance.nativeObject }.getOrNull() ?: return false
+        return synchronized(materialInstances) {
+            materialInstances.any { runCatching { it.nativeObject }.getOrNull() == handle }
+        }
     }
 
     /**

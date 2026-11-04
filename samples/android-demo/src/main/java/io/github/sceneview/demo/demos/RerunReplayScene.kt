@@ -324,7 +324,7 @@ internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
     engine.destroyView(view)
     engine.destroyCameraComponent(cameraEntity)
     EntityManager.get().destroy(cameraEntity)
-    nodes.forEach { scene.removeEntity(it.entity) }
+    nodes.forEach { scene.remove(it.entity) }
     engine.destroyScene(scene)
     nodes.forEach { it.destroy() }
     engine.destroySkybox(skybox)

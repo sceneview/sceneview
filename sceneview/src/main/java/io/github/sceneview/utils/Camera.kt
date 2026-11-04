@@ -251,7 +251,7 @@ val Camera.scaling: Float4 get() = DoubleArray(4).apply { getScaling(this) }.toF
  * The camera position and orientation provided as a **rigid transform** matrix.
  */
 var Camera.modelTransform: Transform
-    get() = FloatArray(16).apply { getModelMatrix(this) }.toTransform()
+    get() = DoubleArray(16).apply { getModelMatrix(this) }.toTransform()
     set(value) {
         setModelMatrix(value.copyColumnsInto(modelMatrixScratch))
     }
@@ -262,7 +262,7 @@ var Camera.modelTransform: Transform
  * Transform containing the camera's column-major view matrix.
  */
 val Camera.viewTransform: Transform
-    get() = FloatArray(16).apply { getViewMatrix(this) }.toTransform()
+    get() = DoubleArray(16).apply { getViewMatrix(this) }.toTransform()
 
 /**
  * Retrieves the camera left unit vector in world space, that is a unit vector that points to

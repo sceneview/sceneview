@@ -858,7 +858,7 @@ open class ARCameraStream(
         // Un-register before the id is recycled (#2877): a Scene holding a reissued id would
         // render whatever renderable is built on it next. No-op when `ARSceneView` already
         // removed the entity on a camera-stream swap.
-        attachedScene?.let { runCatching { it.removeEntity(entity) } }
+        attachedScene?.let { runCatching { it.remove(entity) } }
         attachedScene = null
         renderableManager.safeDestroy(entity)
         engine.safeDestroyVertexBuffer(vertexBuffer)

@@ -603,7 +603,7 @@ internal fun rememberShowroomStage(engine: Engine, view: View, materialLoader: M
 @Composable
 internal fun ShowroomToneMapping(engine: Engine, view: View, neutral: Boolean, requestRender: () -> Unit) {
     val neutralGrading = remember(engine) {
-        ColorGrading.Builder().toneMapper(ToneMapper.PBRNeutralToneMapper()).build(engine)
+        ColorGrading.Builder().toneMapper(ToneMapper.PBRNeutral()).build(engine)
     }
     DisposableEffect(engine, neutralGrading) {
         onDispose { runCatching { engine.destroyColorGrading(neutralGrading) } }

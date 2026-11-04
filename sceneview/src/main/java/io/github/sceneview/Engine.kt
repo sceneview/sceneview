@@ -27,6 +27,7 @@ import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.materialRegistry
 import io.github.sceneview.model.Model
 import java.util.WeakHashMap
 
@@ -46,6 +47,15 @@ typealias FilamentEntityInstance = com.google.android.filament.EntityInstance
  */
 const val NULL_ENTITY: Entity = 0
 
+/**
+ * Whether this engine has not been destroyed yet.
+ *
+ * Filament 1.77's generated Java bindings dropped `Engine.isValid()`; a destroyed engine now
+ * throws from `getNativeObject()` instead, which this reads without letting it escape.
+ */
+val Engine.isValid: Boolean
+    get() = runCatching { nativeObject }.isSuccess
+
 fun Engine.createModelLoader(context: Context) = ModelLoader(this, context)
 fun Engine.createMaterialLoader(context: Context) = MaterialLoader(this, context)
 fun Engine.createEnvironmentLoader(context: Context) = EnvironmentLoader(this, context)
@@ -58,7 +68,9 @@ fun Engine.createCamera() = createCamera(entityManager.create())
  */
 fun Engine.drainFramePipeline() {
     createFence().apply {
-        wait(Fence.Mode.FLUSH, Fence.WAIT_FOR_EVER)
+        // The one-argument overload waits forever: Filament 1.77 annotates the explicit
+        // timeout `@IntRange(from = 0)`, so passing its own WAIT_FOR_EVER (-1) fails lint.
+        wait(Fence.Mode.FLUSH)
         destroyFence(this)
     }
 }
@@ -473,8 +485,12 @@ fun Engine.safeDestroyIndirectLight(indirectLight: IndirectLight) =
 fun Engine.safeDestroySkybox(skybox: Skybox) = runCatching { destroySkybox(skybox) }
 
 fun Engine.safeDestroyMaterial(material: Material) = runCatching { destroyMaterial(material) }
-fun Engine.safeDestroyMaterialInstance(materialInstance: MaterialInstance) =
-    runCatching { destroyMaterialInstance(materialInstance) }
+fun Engine.safeDestroyMaterialInstance(materialInstance: MaterialInstance) = runCatching {
+    // Forgotten first: Filament may reuse the freed address for an instance SceneView never
+    // recorded, which `materialOrNull` would then map to this instance's Material.
+    materialRegistry.forget(materialInstance)
+    destroyMaterialInstance(materialInstance)
+}
 
 fun Engine.safeDestroyTexture(texture: Texture) = runCatching { destroyTexture(texture) }
 

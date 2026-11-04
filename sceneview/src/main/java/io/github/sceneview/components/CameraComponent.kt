@@ -156,8 +156,8 @@ interface CameraComponent : Component {
      */
     fun setCustomProjection(
         inProjection: Transform,
-        near: Double = camera.near.toDouble(),
-        far: Double = camera.cullingFar.toDouble(),
+        near: Double = camera.near,
+        far: Double = camera.cullingFar,
         inProjectionForCulling: Transform = inProjection
     ) {
         camera.setCustomProjection(inProjection, near, far, inProjectionForCulling)
@@ -228,14 +228,14 @@ interface CameraComponent : Component {
     /**
      * Gets the distance to the near plane
      */
-    val near: Float get() = camera.near
+    val near: Float get() = camera.near.toFloat()
 
     val far get() = cullingFar
 
     /**
      * Gets the distance to the far plane
      */
-    val cullingFar get() = camera.cullingFar
+    val cullingFar: Float get() = camera.cullingFar.toFloat()
 
     /**
      * Retrieves the camera's projection matrix. The projection matrix used for rendering always has

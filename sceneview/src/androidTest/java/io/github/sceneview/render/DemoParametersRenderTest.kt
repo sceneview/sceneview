@@ -160,7 +160,7 @@ h1{border-bottom:1px solid #30363d;padding-bottom:12px}
         harness.runOnMain {
             createdNodes.forEach { node ->
                 try {
-                    harness.scene.removeEntity(node.entity)
+                    harness.scene.remove(node.entity)
                     node.destroy()
                 } catch (_: Exception) { /* already destroyed */ }
             }

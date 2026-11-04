@@ -6,6 +6,7 @@ import android.view.Surface
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Stream
+import com.google.android.filament.android.StreamHelper
 import io.github.sceneview.drainFramePipeline
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.safeDestroyStream
@@ -33,8 +34,7 @@ class VideoMaterial(
     /**
      * The Filament Stream.
      */
-    val stream = Stream.Builder()
-        .stream(surfaceTexture)
+    val stream = StreamHelper.setStreamSource(Stream.Builder(), surfaceTexture)
         .build(engine)
 
     /**

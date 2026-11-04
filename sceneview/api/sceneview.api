@@ -183,6 +183,7 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun destroyRenderable (Lcom/google/android/filament/Engine;I)V
 	public static final fun destroyTransformable (Lcom/google/android/filament/Engine;I)V
 	public static final fun drainFramePipeline (Lcom/google/android/filament/Engine;)V
+	public static final fun isValid (Lcom/google/android/filament/Engine;)Z
 	public static final fun renderableGeneration (Lcom/google/android/filament/Engine;)I
 	public static final fun safeDestroy (Lcom/google/android/filament/Engine;)Ljava/lang/Object;
 	public static final fun safeDestroyCamera (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Camera;)Ljava/lang/Object;
@@ -2917,6 +2918,10 @@ public final class io/github/sceneview/material/MaterialInstanceKt {
 	public static final fun setTexture (Lcom/google/android/filament/MaterialInstance;Ljava/lang/String;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;)V
 	public static synthetic fun setTexture$default (Lcom/google/android/filament/MaterialInstance;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;ILjava/lang/Object;)V
 	public static synthetic fun setTexture$default (Lcom/google/android/filament/MaterialInstance;Ljava/lang/String;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;ILjava/lang/Object;)V
+}
+
+public final class io/github/sceneview/material/MaterialRegistryKt {
+	public static final fun getMaterialOrNull (Lcom/google/android/filament/MaterialInstance;)Lcom/google/android/filament/Material;
 }
 
 public final class io/github/sceneview/material/UbershaderInstanceKt {

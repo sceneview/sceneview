@@ -91,6 +91,7 @@ The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and 
 | Model too big/small | Model units mismatch | Use `scaleToUnits` parameter |
 | Oversaturated AR camera | Wrong tone mapper | Use `rememberARView(engine)` (Filmic tone mapper — round-trips the camera background, #1434) |
 | Crash on empty bounding box | Filament 1.70+ enforcement | SceneView auto-sanitizes; update to latest version |
+| Directional shadow gone after updating SceneView | `LightManager.ShadowOptions()` starts at 0 in Filament 1.77 (#10565) | Use `castShadows(true)` and edit `lightManager.getShadowOptions(instance)` instead of a new `ShadowOptions()` |
 | Material crash on dispose | Entity still in scene | SceneView handles cleanup order automatically |
 
 ### `ARSessionFailure` — typed AR error taxonomy (#1759)

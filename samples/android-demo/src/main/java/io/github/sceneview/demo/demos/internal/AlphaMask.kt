@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import com.google.android.filament.Material
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.model.ModelInstance
 
 /**
@@ -26,7 +27,7 @@ internal fun drawableMaskThreshold(threshold: Float): Float =
  */
 internal fun ModelInstance.drawFullyOpaqueMaskedMaterials() {
     getMaterialInstances().forEach { materialInstance ->
-        if (materialInstance.material.blendingMode != Material.BlendingMode.MASKED) return@forEach
+        if (materialInstance.materialOrNull?.blendingMode != Material.BlendingMode.MASKED) return@forEach
         val threshold = materialInstance.maskThreshold
         val drawable = drawableMaskThreshold(threshold)
         if (drawable != threshold) materialInstance.setMaskThreshold(drawable)

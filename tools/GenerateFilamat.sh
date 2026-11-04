@@ -20,9 +20,9 @@
 # Three toolchains because there are three runtimes, each with its own
 # MATERIAL_VERSION, and Filament refuses any package whose version is not an
 # exact match:
-#   `filament`        — Android (Filament AAR)            → v72
+#   `filament`        — Android (Filament AAR)            → v77
 #   `filamentWebsite` — the Filament.js vendored at
-#                       website-static/js/filament/       → v70   (#2783)
+#                       website-static/js/filament/       → v72   (#2783)
 #   `filamentWeb`     — the npm `filament` the Kotlin/JS
 #                       bundle loads                      → v52   (#2646 P2)
 #
