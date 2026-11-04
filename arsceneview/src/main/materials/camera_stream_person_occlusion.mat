@@ -80,7 +80,7 @@ fragment {
     const float kNoDepthDistanceMeters = 1000.0;
 
     // ── Occlusion shaping (2026-11-04 device QA, ARMV #71) ────────────────────────────────
-    // ARCore's depth is a 160x120 motion-stereo estimate. Writing it into the z-buffer as is
+    // ARCore's depth is a 160x90 motion-stereo estimate. Writing it into the z-buffer as is
     // made a binary, noisy test: a model on the floor was cut in saw-teeth by the floor's own
     // noise, a model far away was chopped by depth that far being a guess, and the camera
     // could see the real world through holes in its own floor. All in metres along the view
@@ -114,7 +114,7 @@ fragment {
     }
 
     // Packed depth (mm in .xy) decoded to metres.
-    float decodeDepthMeters(const vec2 packed_depth) {
+    highp float decodeDepthMeters(const highp vec2 packed_depth) {
         return dot(packed_depth, vec2(255.f, 256.f * 255.f)) / 1000.f;
     }
 
@@ -123,23 +123,25 @@ fragment {
     // contour against the tolerance kinks on every texel boundary, so the edge where the
     // floor's depth crosses the tolerance came out as 160x90 steps (Pixel 4a, 2026-11-04).
     // The B-spline is C2 and low-pass, so that edge is a smooth curve. The packed .xy blend
-    // linearly, so blending before decoding is exact.
-    float occlusionDepthMeters(const vec2 uv) {
-        vec2 size = vec2(textureSize(materialParams_depthTexture, 0));
-        vec2 st = uv * size - 0.5;
-        vec2 i = floor(st);
-        vec2 f = st - i;
-        vec2 f2 = f * f;
-        vec2 f3 = f2 * f;
-        vec2 w0 = (1.f / 6.f) * (1.f - 3.f * f + 3.f * f2 - f3);
-        vec2 w1 = (1.f / 6.f) * (4.f - 6.f * f2 + 3.f * f3);
-        vec2 w2 = (1.f / 6.f) * (1.f + 3.f * f + 3.f * f2 - 3.f * f3);
-        vec2 w3 = (1.f / 6.f) * f3;
-        vec2 g0 = w0 + w1;
-        vec2 g1 = w2 + w3;
-        vec2 uv0 = (i - 0.5f + w1 / g0) / size;
-        vec2 uv1 = (i + 1.5f + w3 / g1) / size;
-        vec2 packed_depth =
+    // linearly, so blending before decoding is exact. Everything is highp: in mediump (fp16
+    // on the Pixel 4a's Adreno) uv * size near 160 moves in 1/8-texel steps, which brings back
+    // finer steps.
+    highp float occlusionDepthMeters(const highp vec2 uv) {
+        highp vec2 size = vec2(textureSize(materialParams_depthTexture, 0));
+        highp vec2 st = uv * size - 0.5;
+        highp vec2 i = floor(st);
+        highp vec2 f = st - i;
+        highp vec2 f2 = f * f;
+        highp vec2 f3 = f2 * f;
+        highp vec2 w0 = (1.f / 6.f) * (1.f - 3.f * f + 3.f * f2 - f3);
+        highp vec2 w1 = (1.f / 6.f) * (4.f - 6.f * f2 + 3.f * f3);
+        highp vec2 w2 = (1.f / 6.f) * (1.f + 3.f * f + 3.f * f2 - 3.f * f3);
+        highp vec2 w3 = (1.f / 6.f) * f3;
+        highp vec2 g0 = w0 + w1;
+        highp vec2 g1 = w2 + w3;
+        highp vec2 uv0 = (i - 0.5f + w1 / g0) / size;
+        highp vec2 uv1 = (i + 1.5f + w3 / g1) / size;
+        highp vec2 packed_depth =
                 g0.y * (g0.x * texture(materialParams_depthTexture, vec2(uv0.x, uv0.y)).xy +
                         g1.x * texture(materialParams_depthTexture, vec2(uv1.x, uv0.y)).xy) +
                 g1.y * (g0.x * texture(materialParams_depthTexture, vec2(uv0.x, uv1.y)).xy +
