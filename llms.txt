@@ -4621,7 +4621,7 @@ Usage:
 
 ```kotlin
 // Helpers: Filament Box → Aabb, focal length → vertical FOV.
-val bounds = modelInstance.model.boundingBox.toAabb()
+val bounds = modelInstance.model.restPoseBoundingBox.toAabb()  // skinning included
 val vfov = verticalFovDegreesForFocalLength(28.0)   // ≈ 46.4°
 
 // Reposition the camera in one call (main thread — reads/writes Filament state):

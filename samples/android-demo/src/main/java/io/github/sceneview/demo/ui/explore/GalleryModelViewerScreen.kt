@@ -132,6 +132,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import io.github.sceneview.model.restPoseBoundingBox
 
 /** Downloads the selected model and opens an interactive, full-height viewer. */
 @Composable
@@ -647,7 +648,7 @@ private fun RenderContent(
                     // around (#2348). After recentring, the model's bottom sits at
                     // −halfExtent.y in true world units, and the shadow plane is sized to
                     // the model's footprint so the shadow reads at any model scale.
-                    val he = remember(instance) { instance.model.boundingBox.halfExtent }
+                    val he = remember(instance) { instance.model.restPoseBoundingBox.halfExtent }
                     val groundY = remember(he) { -he[1] }
                     // Plane spanning ~3× the model's horizontal footprint, clamped so a
                     // near-degenerate bbox still gets a sane catcher.
@@ -900,7 +901,7 @@ private data class ModelFraming(
  *   `ModelViewerDemo`; the camera re-frames once the real aspect is measured.
  */
 private fun computeAutoFitFraming(instance: ModelInstance, aspect: Float): ModelFraming? {
-    val bounds = runCatching { instance.model.boundingBox.toAabb() }.getOrNull()
+    val bounds = runCatching { instance.model.restPoseBoundingBox.toAabb() }.getOrNull()
     if (bounds == null || bounds.isEmpty) return null
     val safeAspect = if (aspect.isFinite() && aspect > 0f) aspect.toDouble() else 0.5
     val radius = fitDistanceForBounds(
@@ -918,7 +919,7 @@ private fun computeAutoFitFraming(instance: ModelInstance, aspect: Float): Model
     // viewport — so aiming the orbit at origin floats the model in the upper half. Raising
     // the look-point to ~55 % of the model's half-height drops the model to the visual centre
     // of the surface (measured on Scifi Girl + Porsche).
-    val he = instance.model.boundingBox.halfExtent
+    val he = instance.model.restPoseBoundingBox.halfExtent
     val lookAtY = he[1] * 0.55f
 
     // Adaptive camera elevation. A flat model — half-height small vs its larger

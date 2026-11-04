@@ -3034,6 +3034,7 @@ public final class io/github/sceneview/model/ModelKt {
 	public static final fun getCollisionShape (Lcom/google/android/filament/gltfio/FilamentAsset;)Lio/github/sceneview/collision/Box;
 	public static final fun getRenderableByName (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;)Ljava/lang/Integer;
 	public static final fun getRenderableNames (Lcom/google/android/filament/gltfio/FilamentAsset;)Ljava/util/List;
+	public static final fun getRestPoseBoundingBox (Lcom/google/android/filament/gltfio/FilamentAsset;)Lcom/google/android/filament/Box;
 	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentAsset;)Z
 }
 
