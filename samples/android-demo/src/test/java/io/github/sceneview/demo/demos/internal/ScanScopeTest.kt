@@ -37,6 +37,14 @@ class ScanScopeTest {
     }
 
     @Test
+    fun `a kept scan with no scope, or with a home or an area one, still opens`() {
+        // Kept before scopes were: a room. Kept as a home's room or an area: what it was.
+        assertEquals(ScanScope.Room, RerunStoredSession.scopeOf(null))
+        assertEquals(ScanScope.Home, RerunStoredSession.scopeOf("home"))
+        assertEquals(ScanScope.Area, RerunStoredSession.scopeOf("area"))
+    }
+
+    @Test
     fun `a room and a home keep the capture 3D Scan always took`() {
         val room = ScanPreset.ROOM
         assertEquals(room, ScanScope.Room.preset)
