@@ -7,6 +7,7 @@ import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import io.github.sceneview.demo.demos.internal.RescanGuidance
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.OrbitPose
 import io.github.sceneview.demo.demos.internal.RescanZone
+import io.github.sceneview.demo.demos.internal.ScanFixWatch
 import io.github.sceneview.demo.demos.internal.ScanReview
 import io.github.sceneview.demo.demos.internal.ScanReviewResult
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -67,8 +69,20 @@ internal class ScanReviewSession(
     var fix by mutableStateOf<SessionFix?>(null)
         private set
 
-    /** The parts a fix was started on, this capture: found again, they are set aside ([ScanReview.untried]). */
-    private val tried = ArrayList<RescanZone>()
+    /** A fix started on [zone], and how long it has scanned. */
+    private class Attempt(val zone: RescanZone) {
+        var scannedMs = 0L
+    }
+
+    /**
+     * The fixes of this capture. One that scanned [ScanFixWatch.MIN_SECONDS] or more is tried:
+     * a sparse patch found again there is set aside ([ScanReview.untried]). A tap on Fix now and a
+     * Stop straight after tries nothing.
+     */
+    private val attempts = ArrayList<Attempt>()
+
+    private val tried: List<RescanZone>
+        get() = attempts.filter { it.scannedMs >= ScanFixWatch.MIN_SECONDS * MS_PER_S }.map { it.zone }
 
     /** The part the review's 3D view flies to, `null` while there is none to show. */
     val shown: RescanZone? get() = if (checking) null else result?.zones?.getOrNull(focus)
@@ -137,7 +151,7 @@ internal class ScanReviewSession(
      * fill measured on [live], the capture as it stands, as the review measured the part.
      */
     fun startFix(zone: RescanZone, live: DenseCloud?) {
-        tried += zone
+        attempts += Attempt(zone)
         fix = SessionFix.start(zone, live, nanoTime(), found, nanoTime)
     }
 
@@ -148,8 +162,10 @@ internal class ScanReviewSession(
      */
     suspend fun watchFix(scanning: () -> Boolean, onDone: () -> Unit) {
         val current = fix ?: return
+        val attempt = attempts.lastOrNull()?.takeIf { it.zone === current.zone }
         while (fix === current) {
             delay(FIX_TICK_MS)
+            if (scanning()) attempt?.let { it.scannedMs += FIX_TICK_MS }
             val fill = (current.status as? RescanStatus.Lined)?.fill ?: continue
             if (!scanning() || !current.done(fill)) continue
             delay(COVERED_HOLD_MS)
@@ -183,8 +199,13 @@ internal class ScanReviewSession(
 internal fun rememberReviewCycles(): Boolean {
     val motion = LocalMotionEnabled.current
     val context = LocalContext.current
-    val reader = remember(context) {
-        (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)?.isTouchExplorationEnabled == true
+    val manager = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager }
+    var reader by remember(manager) { mutableStateOf(manager?.isTouchExplorationEnabled == true) }
+    // TalkBack turned on or off while the review is up: followed, not read once.
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { reader = it }
+        manager?.addTouchExplorationStateChangeListener(listener)
+        onDispose { manager?.removeTouchExplorationStateChangeListener(listener) }
     }
     return motion && !reader
 }

@@ -255,6 +255,19 @@ object RescanZones {
     /** How far inside the outline a cell's corners are tested, metres: a cell flush with a wall is inside. */
     const val EDGE_TOLERANCE_M = 0.02f
 
+    /**
+     * The density the floor is judged against: the median of the covered cells inside the room's
+     * outline (the covered area's own when the walls do not close), `0` without coverage. A sparse
+     * patch is a patch under [LOW_SHARE] of it.
+     */
+    fun median(input: RescanInput): Float {
+        val coverage = input.coverage ?: return 0f
+        val inside = insideMask(coverage, outlineOf(input.walls))
+        val covered = (0 until coverage.columns * coverage.rows).filter { inside[it] && coverage.density[it] > 0f }
+            .map { coverage.density[it] }
+        return if (covered.isEmpty()) 0f else covered.sorted()[covered.size / 2]
+    }
+
     /** The zones of [input]. */
     fun find(input: RescanInput): List<RescanZone> {
         val walls = wallZones(input)
@@ -308,10 +321,8 @@ object RescanZones {
         val columns = coverage.columns
         val rows = coverage.rows
         val inside = insideMask(coverage, outlineOf(input.walls))
-        val covered = (0 until columns * rows).filter { inside[it] && coverage.density[it] > 0f }
-            .map { coverage.density[it] }
-        if (covered.isEmpty()) return holes.filter { it.area >= MIN_HOLE_M2 }.map { holeZone(input, listOf(it)) }
-        val median = covered.sorted()[covered.size / 2]
+        val median = median(input)
+        if (median <= 0f) return holes.filter { it.area >= MIN_HOLE_M2 }.map { holeZone(input, listOf(it)) }
         val low = LOW_SHARE * median
         val empty = EMPTY_SHARE * median
 

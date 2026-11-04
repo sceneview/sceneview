@@ -78,7 +78,7 @@ class ScanReviewSessionTest {
     }
 
     @Test
-    fun `a part fixed, then found again where it was, is set aside`() = runTest {
+    fun `a wall tapped Fix now on and stopped straight away is still offered, a sparse patch scanned on is set aside`() = runTest {
         val session = ScanReviewSession(millis = { testScheduler.currentTime }, nanoTime = { testScheduler.currentTime * NS_PER_MS })
         suspend fun reviewOf(cloud: DenseCloud): ScanReviewResult {
             val job = launch { session.review { cloud } }
@@ -92,10 +92,24 @@ class ScanReviewSessionTest {
         val wall = first.zones.single { it.kind == RescanKind.MissingWall }
         session.startFix(wall, ScanReviewTest.damaged)
         session.leave()
-        // The same capture, nothing added there: the wall is not offered again, and it is said.
+        // Fix now, then Stop at once: nothing was tried, the wall is still missing and offered.
         val again = reviewOf(ScanReviewTest.damaged)
-        assertTrue(again.zones.joinToString("\n"), again.zones.none { it.kind == RescanKind.MissingWall })
-        assertEquals(1, again.setAside)
+        assertTrue(again.zones.joinToString("\n"), again.zones.any { it.kind == RescanKind.MissingWall })
+        assertEquals(0, again.setAside)
+        session.leave()
+
+        // A sparse patch scanned on for a while without filling in: found again, it is set aside.
+        val sparse = reviewOf(ScanReviewTest.sparse)
+        val patch = sparse.zones.single { it.kind == RescanKind.LowDensity }
+        session.startFix(patch, ScanReviewTest.sparse)
+        val watch = launch { session.watchFix(scanning = { true }) {} }
+        advanceTimeBy((ScanFixWatch.MIN_SECONDS * MS_PER_S).toLong() + 2 * ScanReviewSession.FIX_TICK_MS)
+        runCurrent()
+        watch.cancel()
+        session.leave()
+        val after = reviewOf(ScanReviewTest.sparse)
+        assertTrue(after.zones.joinToString("\n"), after.zones.none { it.kind == RescanKind.LowDensity })
+        assertEquals(1, after.setAside)
     }
 
     @Test
@@ -152,6 +166,11 @@ class ScanReviewSessionTest {
         composeRule.onNodeWithTag(SCAN_NEXT_PART_TAG).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Fix part 1 of 2, Missing wall").performClick()
         assertSame(WALL, fixed)
+
+        // A part set aside is not fixed: still "1 part", and why none is offered.
+        review = ScanReviewResult(emptyList(), 0f, 0f, 0L, setAside = 1)
+        composeRule.onNodeWithText(ScanReviewCopy.title(1)).assertIsDisplayed()
+        composeRule.onNodeWithText(ScanReviewCopy.setAside(1)).assertIsDisplayed()
 
         review = ScanReviewResult(emptyList(), 0f, 0f, 0L)
         composeRule.onNodeWithText(ScanReviewCopy.CLEAR_TITLE).assertIsDisplayed()

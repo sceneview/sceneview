@@ -91,6 +91,17 @@ class ScanReviewTest {
     }
 
     @Test
+    fun `a sparse patch tried by a wall never hides the wall, nor another kind of part`() {
+        val wall = RescanZone(RescanKind.MissingWall, floatArrayOf(1.85f, 0f, -1.3f, 2.15f, 2.6f, -0.4f), 0.9f, "wall")
+        val hole = RescanZone(RescanKind.FloorHole, floatArrayOf(1.4f, 0f, -1.3f, 2.0f, 0.05f, -0.7f), 0.36f, "hole")
+        val near = RescanZone(RescanKind.LowDensity, floatArrayOf(1.2f, 0f, -1.4f, 2.0f, 0.05f, -0.3f), 0.88f, "sparse")
+        val tried = RescanZone(RescanKind.LowDensity, floatArrayOf(1.3f, 0f, -1.4f, 2.0f, 0.05f, -0.4f), 0.7f, "tried")
+        assertEquals(listOf(wall, hole), ScanReview.untried(listOf(wall, hole, near), listOf(tried)))
+        // A wall or a hole tried is not a reason to drop anything either.
+        assertEquals(listOf(wall, hole, near), ScanReview.untried(listOf(wall, hole, near), listOf(wall, hole)))
+    }
+
+    @Test
     fun `a part that cannot gain is never done, whatever it started at`() {
         val zone = RescanZone(RescanKind.FloorHole, floatArrayOf(0f, 0f, 0f, 1f, 0.05f, 1f), 1f, "hole")
         val full = ScanFixWatch(zone, baseline = 0.99f, startedNanos = 0L)
@@ -109,10 +120,11 @@ class ScanReviewTest {
             normals = room.normals?.let { r -> FloatArray(n * 6) { r[it % (n * 3)] } },
             levels = room.levels?.let { l -> ByteArray(n * 2) { l[it % n] } },
         )
+        assertTrue("${twice.count} surfels", twice.count in BUDGET_LOW..BUDGET_HIGH)
         ScanReview.of(twice) // warm up
         val review = ScanReview.of(twice)
         println("review at ${twice.count} surfels: ${review.zones.size} parts in ${review.millis} ms")
-        assertTrue(review.millis < SLOW_MS)
+        assertTrue("${review.millis} ms", review.millis < SLOW_MS)
     }
 
     @Test
@@ -198,7 +210,10 @@ class ScanReviewTest {
         private const val HOLE_TOLERANCE_M2 = 0.15f
         private const val NS = 1_000_000_000L
         private val LATER_NS = (ScanFixWatch.MIN_SECONDS * NS).toLong() + NS
-        private const val SLOW_MS = 10_000L
+        /** The read at Stop on a full map, JVM: a phone's budget is under a second. */
+        private const val SLOW_MS = 1_500L
+        private val BUDGET_LOW = (0.9f * DenseFusion.MAX_BUDGET).toInt()
+        private val BUDGET_HIGH = (1.2f * DenseFusion.MAX_BUDGET).toInt()
 
         /** The near-right corner kept one point in ten, at every height: a sparse patch. */
         private const val SPARSE_X0 = 1.0f

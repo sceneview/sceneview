@@ -104,29 +104,20 @@ object ScanReview {
         if (cloud == null || cloud.count == 0) return ScanReviewResult.Empty
         val started = nanoTime()
         val ground = ScanGround.of(cloud.positions, cloud.normals, cloud.count)
-        val survey = RescanSources.surveyOf(cloud)
-        val zones = RescanSources.zones(cloud, ground, survey)
+        // One read: the finder's own input, whose median its sparse patches are judged against —
+        // and a fix of one with them.
+        val input = RescanSources.input(cloud, ground, RescanSources.surveyOf(cloud))
+        val zones = input?.let(RescanZones::find).orEmpty()
         val b = cloud.bounds()
-        // The room the finder read, as RescanSources.zones reads it: its sparse patches are
-        // judged against this median, and so is a fix of one.
-        val walled = survey?.takeIf { it.walls.isNotEmpty() }
-        val floorY = walled?.floorY ?: ground?.floorY ?: b[1]
-        val height = walled?.ceilingHeight?.value ?: RescanZones.DEFAULT_HEIGHT_M
-        val median = medianOf(RescanSources.coverage(cloud, floorY, height))
         return ScanReviewResult(
             zones = zones.take(MAX_ZONES),
             centreX = (b[0] + b[3]) / 2f,
             centreZ = (b[2] + b[5]) / 2f,
             millis = (nanoTime() - started) / NS_PER_MS,
-            floorY = floorY,
-            height = height,
-            median = median,
+            floorY = input?.floorY ?: b[1],
+            height = input?.height ?: RescanZones.DEFAULT_HEIGHT_M,
+            median = input?.let(RescanZones::median) ?: 0f,
         )
-    }
-
-    private fun medianOf(coverage: RescanCoverage?): Float {
-        val covered = coverage?.density?.filter { it > 0f }?.sorted() ?: return 0f
-        return if (covered.isEmpty()) 0f else covered[covered.size / 2]
     }
 
     /**
@@ -167,14 +158,16 @@ object ScanReview {
     }
 
     /**
-     * [zones] without those found again where a fix was already [tried]: a part that overlaps a
-     * tried one by [TRIED_OVERLAP] of the smaller footprint is as good as this capture gets there.
-     * The review says so, and never offers it again as it was.
+     * [zones] without the sparse patches found again where a fix of a sparse patch was [tried]
+     * (scanned for a while, the caller's to judge): overlapping one by [TRIED_OVERLAP] of the
+     * smaller footprint, it is as dense as this capture gets there. The review says so, and never
+     * offers it again as it was. A missing wall or a hole is never set aside: it is still missing,
+     * whatever was tried — and a sparse patch tried by a wall never hides the wall.
      */
     fun untried(zones: List<RescanZone>, tried: List<RescanZone>): List<RescanZone> = zones.filter { zone ->
-        tried.none { done ->
+        zone.kind != RescanKind.LowDensity || tried.none { done ->
             val smaller = min(zone.footprintM2, done.footprintM2)
-            smaller > 0f && zone.overlapM2(done.box) >= TRIED_OVERLAP * smaller
+            done.kind == RescanKind.LowDensity && smaller > 0f && zone.overlapM2(done.box) >= TRIED_OVERLAP * smaller
         }
     }
 

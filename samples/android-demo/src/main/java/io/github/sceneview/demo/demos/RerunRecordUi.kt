@@ -383,6 +383,8 @@ internal fun ScanReviewCard(
         val title = when {
             empty -> ScanCopy.EMPTY_TITLE
             zones.isNotEmpty() -> ScanReviewCopy.title(zones.size)
+            // Set aside is not fixed: the card still says there are parts, and why none is offered.
+            review?.clear == true && !checking && review.setAside > 0 -> ScanReviewCopy.title(review.setAside)
             review?.clear == true && !checking -> ScanReviewCopy.CLEAR_TITLE
             else -> ScanCopy.REVIEW_TITLE
         }
