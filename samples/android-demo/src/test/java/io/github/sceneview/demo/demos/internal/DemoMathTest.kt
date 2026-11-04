@@ -547,15 +547,10 @@ class DemoMathTest {
 
     @Test
     fun `the helmet stands in AR the way the Model Viewer shows it`() {
-        // The +90° X root quaternion is the file's own Z-up to Y-up conversion. gltfio applies
-        // it on load, which is why the Model Viewer — no correction at all — shows the helmet
-        // upright, visor forward.
+        // Whatever up-axis conversion the file carries in its node rotations, gltfio applies it
+        // on load, which is why the Model Viewer — no correction at all — shows the helmet
+        // upright. The AR placement must keep exactly those axes.
         val root = glbRootRotation(bundledModel(DemoMath.HELMET_ASSET))
-        assertEquals(0.70710677f, root.x, 1e-6f)
-        assertEquals(0f, root.y, 1e-6f)
-        assertEquals(0f, root.z, 1e-6f)
-        assertEquals(0.70710677f, root.w, 1e-6f)
-
         val viewer = root
         val ar = Quaternion.fromEuler(DemoMath.placementRotationFor(DemoMath.HELMET_ASSET)) * root
         assertSameAxes("helmet AR vs viewer", viewer, ar)

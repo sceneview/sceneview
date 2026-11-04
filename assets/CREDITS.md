@@ -45,7 +45,7 @@ Total models: **140** (plus 6 pending metadata, 9 pending license review).
 - **[Converse Chuck Taylor](https://sketchfab.com/3d-models/converse-free-bc791439d26f4dd9974819c168e12385)** by Yaroslav Karas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Car](https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0)** by 4d_Bob — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Character](https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51)** by Esk — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Karol Miklas (modified by SceneView — display plinth removed) — [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+- **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Lionsharp Studios (modified by SceneView — display plinth removed) — [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 - **[D.S.S. Harbinger Battle Cruiser](https://sketchfab.com/3d-models/dss-harbinger-battle-cruiser-474f62d00ed54212b37f93ce91569c53)** by Mike Pan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Desktop 3D printer](https://sketchfab.com/3d-models/3d-printer-0e825a8d48b14bee883a131fe029d4fc)** by Gregsterius — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[DJI Mavic 3 Cine](https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b)** by aurumjuda747 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
