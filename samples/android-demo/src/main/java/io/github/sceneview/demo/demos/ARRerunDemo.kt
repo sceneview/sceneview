@@ -2182,7 +2182,8 @@ private fun RerunLiveScreen(
                                     dark = trackingLost &&
                                         (ForcedTrackingFailure.override ?: trackingFailureReason) ==
                                         TrackingFailureReason.INSUFFICIENT_LIGHT,
-                                )?.takeIf { rescan == null || it is CaptureCue.Blocked },
+                                )?.takeIf { rescan == null || it is CaptureCue.Blocked }
+                                    ?.let { CaptureChrome.spoken(it, scanWalls?.hint, scanWalls?.spokenHint) },
                                 complete = scanComplete,
                                 onTogglePause = {
                                     betweenRooms = false

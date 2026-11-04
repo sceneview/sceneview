@@ -69,25 +69,23 @@ object ScanGuide {
 
     /**
      * The heading from [pose] to the floor point ([x], [z]): pitch and roll do not count. The
-     * phone faces where its forward points on the floor, held pitched down or not; pointed
-     * straight down, where its top edge points.
+     * phone faces where its forward points on the floor, blended into where its top edge points
+     * as it tilts towards the vertical — `forward − forward.y · top`, on the floor — so a phone
+     * pointed straight down still faces where its top edge points, and the heading moves
+     * smoothly through the vertical, rolled or not, instead of jumping from one to the other.
      */
     fun heading(pose: DebugPose, x: Float, z: Float): ScanHeading {
         val forward = pose.rotate(0f, 0f, -1f)
         val top = pose.rotate(0f, 1f, 0f)
-        var fx = forward.x
-        var fz = forward.z
-        if (hypot(fx, fz) < FLAT_EPSILON) {
-            fx = top.x
-            fz = top.z
-        }
+        val fx = forward.x - forward.y * top.x
+        val fz = forward.z - forward.y * top.z
         val dx = x - pose.x
         val dz = z - pose.z
         val distance = hypot(dx, dz)
         // On the floor, the phone's right is its forward turned a quarter clockwise seen from above.
         val ahead = dx * fx + dz * fz
         val side = dx * -fz + dz * fx
-        if (abs(ahead) < EPSILON && abs(side) < EPSILON) return ScanHeading(0f, distance)
+        if (hypot(fx, fz) < FLAT_EPSILON || abs(ahead) < EPSILON && abs(side) < EPSILON) return ScanHeading(0f, distance)
         val degrees = Math.toDegrees(atan2(side, ahead).toDouble()).toFloat()
         return ScanHeading(if (degrees <= -HALF_TURN) HALF_TURN else degrees, distance)
     }
@@ -203,7 +201,7 @@ object ScanGuide {
 
     private const val HALF_TURN = 180f
 
-    /** Under this, the phone's forward has no direction on the floor: it points straight down or up. */
+    /** Under this, the phone faces no direction on the floor (lying on its side, pointed down). */
     private const val FLAT_EPSILON = 0.05f
 
     /** How much a metre's distance shortens a gap in [cue]'s choice. */
@@ -244,9 +242,16 @@ class ScanGuidance(private val tick: AlignTick = AlignTick()) {
     var said = Float.NaN
         private set
 
-    /** The floor ribbon, `fx, fz, tx, tz`: from the phone's feet to the target; `null` without one or once there. */
+    /**
+     * The floor ribbon, `fx, fz, tx, tz`: from the phone's feet to the target; `null` without one
+     * or once there. The same array frame after frame: copy it to keep it.
+     */
     var ribbon: FloatArray? = null
         private set
+    private val ribbonEnds = FloatArray(RIBBON_FLOATS)
+
+    /** Whether the arrow shows: a target not reached that the phone is not lined up with. */
+    val arrow: Boolean get() = target != null && !aligned && !reached
 
     /** What the coaching line says of the guide, `null` without a target. */
     val hint: ScanGuideHint?
@@ -259,7 +264,9 @@ class ScanGuidance(private val tick: AlignTick = AlignTick()) {
     /**
      * The phone at [pose], leading to [next] at [nowMs]: the tick's event when the phone has just
      * lined up with it ([AlignTick.update]), else `null`. A new target — another gap, or a part to
-     * fix — starts the words and the line-up over.
+     * fix — starts the words and the line-up over. Once [reached], the heading is that of a point
+     * at the phone's feet, which swings with the least step: the words stay on "ahead", no arrow
+     * shows and nothing ticks until the phone leaves it.
      */
     fun update(pose: DebugPose?, next: ScanTarget?, nowMs: Long): MeasureHapticEvent? {
         if (pose == null || next == null) {
@@ -278,11 +285,20 @@ class ScanGuidance(private val tick: AlignTick = AlignTick()) {
         val h = ScanGuide.heading(pose, next.x, next.z)
         heading = h
         aligned = ScanGuide.aligned(h.degrees, aligned)
-        turn = ScanGuide.turnOf(smoothed(h.degrees, nowMs), turn)
         reached = ScanGuide.reached(h.distance, reached)
+        val words = ScanGuide.turnOf(smoothed(h.degrees, nowMs), turn)
+        turn = if (reached) ScanTurn.Ahead else words
         said = ScanGuide.stepped(h.distance, said)
-        ribbon = if (reached) null else floatArrayOf(pose.x, pose.z, next.x, next.z)
-        return tick.update(aligned, nowMs)
+        ribbon = if (reached) {
+            null
+        } else {
+            ribbonEnds[0] = pose.x
+            ribbonEnds[1] = pose.z
+            ribbonEnds[2] = next.x
+            ribbonEnds[3] = next.z
+            ribbonEnds
+        }
+        return tick.update(aligned && !reached, nowMs)
     }
 
     /** [degrees] eased into the words' heading over [ScanGuide.WORDS_SMOOTHING_S], as a direction so it wraps behind. */
@@ -317,6 +333,7 @@ class ScanGuidance(private val tick: AlignTick = AlignTick()) {
 
     private companion object {
         const val MS_PER_S = 1000f
+        const val RIBBON_FLOATS = 4
     }
 }
 
@@ -349,7 +366,8 @@ object ScanRibbon {
             val tipX = ax + ux * CHEVRON_M
             val tipZ = az + uz * CHEVRON_M
             // A chevron: two arms, each a band of [STROKE_M], meeting at the tip.
-            for (s in listOf(-1f, 1f)) {
+            for (arm in 0..1) {
+                val s = if (arm == 0) -1f else 1f
                 val ex = ax + s * sx
                 val ez = az + s * sz
                 val a = mesh.vertex(ex, y, ez)
@@ -379,4 +397,37 @@ object ScanRibbon {
 
     /** How fast the chevrons flow towards the target, metres a second: a slow walk. */
     const val FLOW_M_PER_S = 0.5f
+}
+
+/**
+ * What a screen reader says of the guide ([ScanGuidance.hint]), read out as the coaching line
+ * changes: a new side, a part to fix, or the target reached at once; a new distance only once
+ * [gapMs] has passed since the last one said, then the latest — not at every stride of a walk.
+ */
+class GuideSpeech(private val gapMs: Long = GAP_MS) {
+    /** The hint said, `null` while there is none. */
+    var said: ScanGuideHint? = null
+        private set
+    private var saidAt = Long.MIN_VALUE
+
+    /** [hint], the guide's at [nowMs]: the one to say now. */
+    fun update(hint: ScanGuideHint?, nowMs: Long): ScanGuideHint? {
+        val last = said
+        val at = when {
+            hint == last -> false
+            hint == null || last == null -> true
+            hint.turn != last.turn || hint.fix != last.fix || (hint.metres == null) != (last.metres == null) -> true
+            else -> nowMs - saidAt >= gapMs
+        }
+        if (at) {
+            said = hint
+            saidAt = nowMs
+        }
+        return said
+    }
+
+    companion object {
+        /** A distance is said at most this often, ms. */
+        const val GAP_MS = 3_000L
+    }
 }

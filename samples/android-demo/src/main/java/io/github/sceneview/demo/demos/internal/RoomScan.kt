@@ -567,8 +567,9 @@ object ScanCopy {
     /**
      * The guide's line ([ScanGuidance.hint]): the turn to the target and how far it is, in the
      * floor plan's units under [locale] ([scanPathLength]) — the gap no wall stands on yet
-     * ([turnHint] once there), or the part Fix now is filling in. Said aloud as it changes: the
-     * coaching line is a live region, and the distance moves in strides ([ScanGuide.STEP_M]).
+     * ([turnHint] once there), or the part Fix now is filling in ([FIX_AHEAD] once there). The
+     * line shows each stride ([ScanGuide.STEP_M]); a screen reader hears it through the coaching
+     * line's live region at [GuideSpeech]'s pace — a new side at once, a new distance every 3 s at most.
      */
     fun guideHint(hint: ScanGuideHint, locale: Locale = Locale.getDefault()): String {
         val away = hint.metres?.let { scanPathLength(it, locale) }

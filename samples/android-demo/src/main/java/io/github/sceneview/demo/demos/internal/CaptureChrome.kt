@@ -35,7 +35,8 @@ enum class ScanBlocker(val cause: String, val wayOut: String) {
 /** The capture's one message at the bottom: what blocks it, or else where to go next. */
 sealed interface CaptureCue {
     data class Blocked(val blocker: ScanBlocker) : CaptureCue
-    data class Next(val text: String) : CaptureCue
+    /** [text] where to go next; [spoken], when set, what a screen reader says of it as it changes (a live region). */
+    data class Next(val text: String, val spoken: String? = null) : CaptureCue
 }
 
 /** What the capture's haptics follow: a blocker showing, and the room completing. */
@@ -160,6 +161,16 @@ object CaptureChrome {
         ScanCopy.SCAN_FULL -> CaptureCue.Blocked(ScanBlocker.Full)
         ScanCopy.COACH_PAUSED -> CaptureCue.Next(PAUSED_NEXT)
         else -> CaptureCue.Next(line)
+    }
+
+    /**
+     * [cue], said aloud through [spoken] when it is the guide's line ([ScanCopy.guideHint] of
+     * [shown]): a screen reader then hears the turn and the distance as [GuideSpeech] paces them,
+     * not every stride the line shows.
+     */
+    fun spoken(cue: CaptureCue, shown: ScanGuideHint?, spoken: ScanGuideHint?): CaptureCue {
+        if (cue !is CaptureCue.Next || shown == null || spoken == null || cue.text != ScanCopy.guideHint(shown)) return cue
+        return cue.copy(spoken = ScanCopy.guideHint(spoken))
     }
 
     /**

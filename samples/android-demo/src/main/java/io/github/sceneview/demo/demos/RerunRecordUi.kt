@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.R
@@ -256,7 +257,8 @@ internal fun BoxScope.ScanGuideArrow(walls: ScanWallsState) {
                 .widthIn(min = SceneViewTokens.Layout.touchTarget + Space.md)
                 .background(LocalStageChrome.current.card, RoundedCornerShape(SceneViewTokens.Radius.lg))
                 .padding(Space.sm)
-                .semantics(mergeDescendants = true) {
+                // One description, not the arrow's line then the distance again.
+                .clearAndSetSemantics {
                     contentDescription = said?.let { ScanCopy.guideHint(it, locale) }.orEmpty()
                 },
         ) {

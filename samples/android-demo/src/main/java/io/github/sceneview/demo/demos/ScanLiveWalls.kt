@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.GuideSpeech
 import io.github.sceneview.demo.demos.internal.LiveWallMotion
 import io.github.sceneview.demo.demos.internal.LiveWallSnapshot
 import io.github.sceneview.demo.demos.internal.LiveWallSource
@@ -100,7 +101,15 @@ internal class ScanWallsState(
     var headingDegrees by mutableFloatStateOf(0f)
         private set
 
-    /** The arrow shows while there is a target the phone is not lined up with. */
+    /**
+     * What a screen reader says of the guide ([GuideSpeech]): [hint], its distance said at most
+     * every 3 s. The coaching line is a polite live region on it.
+     */
+    var spokenHint by mutableStateOf<ScanGuideHint?>(null)
+        private set
+    private val speech = GuideSpeech()
+
+    /** The arrow shows while there is a target not reached that the phone is not lined up with. */
     var arrowShown by mutableStateOf(false)
         private set
 
@@ -186,7 +195,9 @@ internal class ScanWallsState(
         if (guidance.update(pose, target, clock()) != null) alignedTicks++
         val nextHint = guidance.hint
         if (nextHint != hint) hint = nextHint
-        val arrow = guidance.target != null && !guidance.aligned
+        val spoken = speech.update(nextHint, clock())
+        if (spoken != spokenHint) spokenHint = spoken
+        val arrow = guidance.arrow
         if (arrow != arrowShown) arrowShown = arrow
         guidance.heading?.let { if (it.degrees != headingDegrees) headingDegrees = it.degrees }
     }
@@ -211,6 +222,7 @@ internal class ScanWallsState(
         done = false
         guidance.clear()
         hint = null
+        spokenHint = speech.update(null, clock())
         arrowShown = false
     }
 
@@ -263,7 +275,9 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
     private var cueFor: FloatArray? = null
     private var openFloorY = Float.NaN
     private val ribbonMesh = DebugMesh()
-    private var ribbonFor: FloatArray? = null
+    /** The ribbon drawn, copied: the guide hands the same array frame after frame. */
+    private val ribbonFor = FloatArray(RIBBON_FLOATS)
+    private var ribbonDrawn = false
     private var ribbonFloorY = Float.NaN
     private var ribbonPhase = 0f
 
@@ -309,8 +323,8 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
     private fun syncRibbon(state: ScanWallsState, floorY: Float, dt: Float) {
         val line = state.guidance.ribbon?.takeIf { !floorY.isNaN() }
         if (line == null) {
-            if (ribbonFor != null) {
-                ribbonFor = null
+            if (ribbonDrawn) {
+                ribbonDrawn = false
                 ribbonMesh.clear()
                 ribbon.upload(ribbonMesh)
             }
@@ -318,11 +332,11 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
         }
         val flows = state.ribbonFlows
         ribbonPhase = if (flows) (ribbonPhase + dt * ScanRibbon.FLOW_M_PER_S) % ScanRibbon.PERIOD_M else 0f
-        val last = ribbonFor
-        val moved = last == null || floorY != ribbonFloorY ||
-            (0 until RIBBON_FLOATS).any { abs(line[it] - last[it]) > RIBBON_MOVE_M }
+        var moved = !ribbonDrawn || floorY != ribbonFloorY
+        for (k in 0 until RIBBON_FLOATS) if (abs(line[k] - ribbonFor[k]) > RIBBON_MOVE_M) moved = true
         if (!flows && !moved) return
-        ribbonFor = line
+        line.copyInto(ribbonFor)
+        ribbonDrawn = true
         ribbonFloorY = floorY
         ribbonMesh.clear()
         ScanRibbon.chevrons(ribbonMesh, line, floorY + RIBBON_LIFT_M, ribbonPhase)

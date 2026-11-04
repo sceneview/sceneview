@@ -7,6 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * The guide of a room's scan (#4540, QA-24): the heading and distance to its target, the words for
@@ -213,5 +214,82 @@ class ScanGuideTest {
             ScanCopy.guideHint(ScanGuideHint(ScanTurn.Left, 2f, fix = true)),
             ScanScopeCopy.coaching(room, ScanCopy.COACH_SCANNING, walls = 4, done = true, guide = ScanGuideHint(ScanTurn.Left, 2f, fix = true)),
         )
+    }
+
+    /** A pose at ([x], [z]) turned [yawDeg] left, then pitched [pitchDeg] up and rolled [rollDeg] clockwise, about its own axes. */
+    private fun tilted(x: Float, z: Float, yawDeg: Float, pitchDeg: Float, rollDeg: Float): DebugPose {
+        fun q(ax: Float, ay: Float, az: Float, deg: Float): FloatArray {
+            val h = Math.toRadians(deg.toDouble() / 2)
+            val s = kotlin.math.sin(h).toFloat()
+            return floatArrayOf(ax * s, ay * s, az * s, kotlin.math.cos(h).toFloat())
+        }
+        fun mul(a: FloatArray, b: FloatArray) = floatArrayOf(
+            a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+            a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+            a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+            a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+        )
+        val r = mul(mul(q(0f, 1f, 0f, yawDeg), q(1f, 0f, 0f, pitchDeg)), q(0f, 0f, 1f, -rollDeg))
+        return DebugPose(x, 1.4f, z, qx = r[0], qy = r[1], qz = r[2], qw = r[3])
+    }
+
+    @Test
+    fun `the heading moves smoothly through the vertical, rolled or not`() {
+        // Pointed straight down, the phone faces where its top edge points.
+        val down = tilted(0f, 0f, 0f, -90f, 0f)
+        assertEquals(45f, ScanGuide.heading(down, 1f, -1f).degrees, 1e-3f)
+        // Rolled 30°, pitching from 80° to 90° down never jumps: a degree of pitch moves it a few degrees at most.
+        var last = Float.NaN
+        var pitch = -80f
+        while (pitch >= -90f) {
+            val h = ScanGuide.heading(tilted(0f, 0f, 0f, pitch, 30f), 1f, -1f).degrees
+            if (!last.isNaN()) assertTrue("at $pitch°: $last -> $h", abs(h - last) < MAX_STEP_DEG)
+            last = h
+            pitch -= 0.5f
+        }
+        // Rolled but level, the roll does not count.
+        assertEquals(45f, ScanGuide.heading(tilted(0f, 0f, 0f, 0f, 30f), 1f, -1f).degrees, 1e-3f)
+    }
+
+    @Test
+    fun `standing on the target, no arrow, no tick, and the line holds`() {
+        val guide = ScanGuidance()
+        val part = ScanTarget(0.1f, -0.2f, fix = true) // 0.22 m from the feet
+        val hints = HashSet<ScanGuideHint?>()
+        var ticks = 0
+        for (i in 0 until 100) {
+            // Turning round on the spot, a little sway of the feet.
+            val pose = at(0.02f * kotlin.math.sin(i.toFloat()), 0.02f * kotlin.math.cos(i.toFloat()), i * 7.3f)
+            if (guide.update(pose, part, i * 300L) != null) ticks++
+            assertFalse("no arrow at frame $i", guide.arrow)
+            assertNull(guide.ribbon)
+            hints += guide.hint
+        }
+        assertEquals(0, ticks)
+        assertEquals(setOf<ScanGuideHint?>(ScanGuideHint(ScanTurn.Ahead, null, fix = true)), hints)
+        assertEquals(ScanCopy.FIX_AHEAD, ScanCopy.guideHint(hints.single()!!))
+        // A gap reached says "Sweep ahead", whatever the phone faces.
+        val gap = ScanGuidance()
+        gap.update(at(0f, 0f, 120f), ScanTarget(0.5f, 0.5f), 0L)
+        assertEquals(ScanCopy.turnHint(ScanTurn.Ahead), ScanCopy.guideHint(gap.hint!!))
+    }
+
+    @Test
+    fun `a screen reader hears a new side at once, a new distance every three seconds at most`() {
+        val speech = GuideSpeech()
+        fun hint(turn: ScanTurn, m: Float?) = ScanGuideHint(turn, m, fix = false)
+        assertEquals(hint(ScanTurn.Left, 3f), speech.update(hint(ScanTurn.Left, 3f), 0L))
+        // A stride every 700 ms: the distance said moves once every 3 s.
+        assertEquals(hint(ScanTurn.Left, 3f), speech.update(hint(ScanTurn.Left, 2.5f), 700L))
+        assertEquals(hint(ScanTurn.Left, 3f), speech.update(hint(ScanTurn.Left, 2f), 1_400L))
+        assertEquals(hint(ScanTurn.Left, 1.5f), speech.update(hint(ScanTurn.Left, 1.5f), 3_100L))
+        // A new side is said at once, and so is the target reached.
+        assertEquals(hint(ScanTurn.Ahead, 1.5f), speech.update(hint(ScanTurn.Ahead, 1.5f), 3_200L))
+        assertEquals(hint(ScanTurn.Ahead, null), speech.update(hint(ScanTurn.Ahead, null), 3_300L))
+        assertNull(speech.update(null, 3_400L))
+    }
+
+    private companion object {
+        const val MAX_STEP_DEG = 6f
     }
 }

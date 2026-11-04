@@ -1239,13 +1239,15 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   camera and "Fill the amber frame: 40%", says "Covered. Checking your scan again…" only when
   the review is about to come back, and the review ends on "Nothing left to fix". A part fixed
   and found again is set aside and said, never offered again. While a room is scanned, a ribbon of
-  `accent-guidance` chevrons on the floor leads from the phone's feet to the next gap no wall
-  stands on yet (during Fix now, to the part being fixed), flowing towards it (standing still
-  under reduced motion), and gone within 1.5 m of it; a glass card on that side of the screen turns its
-  arrow with the heading and says the distance in strides of 0.5 m ("Turn left — no wall yet at
-  the dashed line, 2.5 m away", read out through the coaching line, a live region). Once the phone
-  is within 12° of the target the arrow goes with one selection tick (back past 25°, one tick a
-  second at most). A failed write stays as a card ("Couldn't save your
+  `warning` (#f59e0b, Android `ArOverlay.accentGuidance`) chevrons on the floor leads from the
+  phone's feet to the next gap no wall stands on yet (during Fix now, to the part being fixed),
+  flowing towards it (standing still under reduced motion), and gone within 1.5 m of it; a glass
+  card on that side of the screen turns its arrow with the heading and shows the distance in
+  strides of 0.5 m. The coaching line says the same ("Turn left — no wall yet at the dashed line,
+  2.5 m away") and is a polite live region for it: a new side is read at once, a new distance
+  every 3 s at most. Once the phone is within 12° of the target the arrow goes with one selection
+  tick (back past 25°, one tick a second at most); within 1.5 m of it the arrow stays away, nothing
+  ticks and the line holds ("Sweep ahead…", or "The part to fix is ahead — fill the amber frame"). A failed write stays as a card ("Couldn't save your
   scan", Discard, Try again), never a toast; its Discard asks "Discard this scan?" first.
   Back during a capture pauses it and asks Keep scanning, Save scan or Discard (`error`) —
   only Keep scanning and Discard when nothing was captured; Keep scanning scans again. A lost

@@ -55,10 +55,11 @@ class ScanGuideReplayTest {
     }
 
     @Test
-    fun `the arrow goes once the phone lines up, and the ribbon once the target is reached`() {
+    fun `the arrow goes once the phone lines up or the target is reached, and the ribbon once reached`() {
         for (s in samples) {
             if (s.target == null) continue
-            assertEquals("arrow at ${s.time} s", !s.aligned, s.arrow)
+            assertEquals("arrow at ${s.time} s", !s.aligned && !s.reached, s.arrow)
+            if (s.reached) assertTrue("no tick once there, at ${s.time} s", !s.tick)
             assertEquals("ribbon at ${s.time} s", !s.reached, s.ribbon != null)
             s.ribbon?.let { r ->
                 assertEquals(s.pose.x, r[0], 1e-5f)
