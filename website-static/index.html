@@ -21,8 +21,8 @@
   <meta name="keywords" content="SceneView, 3D SDK, AR SDK, augmented reality, Jetpack Compose, SwiftUI, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, GLB, USDZ, Sceneform, visionOS, Compose Multiplatform, Flutter, React Native, MCP server, llms.txt">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#07090D" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#E9ECF1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#11131A" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F9F9FF" media="(prefers-color-scheme: light)">
 
   <link rel="canonical" href="https://sceneview.github.io/">
   <link rel="alternate" hreflang="en" href="https://sceneview.github.io/">
@@ -55,11 +55,7 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <!-- Geist and JetBrains Mono are self-hosted (OFL). Only the latin Geist file is needed for the first paint. -->
-  <link rel="preload" href="/assets/fonts/geist/geist-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" as="image" media="(min-width: 600px)" href="assets/home/hero-circuit-1920.webp" imagesrcset="assets/home/hero-circuit-1280.webp 1280w, assets/home/hero-circuit-1920.webp 1920w, assets/home/hero-circuit-2560.webp 2560w" imagesizes="100vw" fetchpriority="high">
-  <link rel="preload" as="image" media="(max-width: 599px)" href="assets/home/hero-circuit-sq-960.webp" imagesrcset="assets/home/hero-circuit-sq-640.webp 640w, assets/home/hero-circuit-sq-960.webp 960w" imagesizes="100vw" fetchpriority="high">
-  <link rel="stylesheet" href="assets/fonts/site-fonts.css">
+  <link rel="preload" as="image" href="assets/home/hero-circuit-sq-960.webp" imagesrcset="assets/home/hero-circuit-sq-640.webp 640w, assets/home/hero-circuit-sq-960.webp 960w" imagesizes="(min-width: 960px) 44vw, 100vw" fetchpriority="high">
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/fit.js" defer></script>
@@ -133,7 +129,7 @@
   <symbol id="i-discord" viewBox="0 0 24 24"><path fill="currentColor" d="M19.6 5.3A16.6 16.6 0 0 0 15.5 4l-.5 1a15.3 15.3 0 0 0-6 0l-.5-1a16.6 16.6 0 0 0-4.1 1.3C1.8 9.2 1.1 13 1.4 16.7a16.7 16.7 0 0 0 5 2.5l1.1-1.7a10.8 10.8 0 0 1-1.7-.8l.4-.3a11.9 11.9 0 0 0 11.6 0l.4.3c-.5.3-1.1.6-1.7.8l1.1 1.7a16.7 16.7 0 0 0 5-2.5c.4-4.3-.7-8-2.9-11.4ZM8.5 14.5c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm7 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z"/></symbol>
 </svg>
 
-<header class="nav is-over-stage night">
+<header class="nav">
   <div class="container nav__inner">
     <a class="brand" href="/" aria-label="SceneView home"><svg class="brand__mark"><use href="#i-logo"/></svg>SceneView</a>
     <nav class="nav__links" aria-label="Primary">
@@ -145,7 +141,7 @@
     <div class="nav__end">
       <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars data-metric="stars">1.3K</span></a>
       <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg></button>
-      <a class="btn btn--primary btn--sm" href="/docs/quickstart/" data-start>Get started</a>
+      <a class="btn btn--filled" href="/docs/quickstart/" data-start>Get started</a>
       <button class="icon-btn nav__menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open menu"><svg><use href="#i-menu"/></svg></button>
     </div>
   </div>
@@ -167,8 +163,8 @@
       <li><a href="https://discord.gg/UbNDDBTNqb">Discord <span>community</span></a></li>
     </ul>
     <div class="sheet__row">
-      <a class="btn btn--primary" href="/docs/quickstart/" data-start>Get started</a>
-      <button class="btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg>Theme</button>
+      <a class="btn btn--filled" href="/docs/quickstart/" data-start>Get started</a>
+      <button class="btn btn--outlined theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg>Theme</button>
     </div>
   </div>
 </div>
@@ -176,11 +172,11 @@
 <main id="main">
 
   <!-- 1 · HERO — a showpiece scene rendered live by SceneView Web: a car on the wet start grid
-       of a circuit at night. A night picture in both themes (.night). Poster first; a desktop
-       goes live when idle, a phone on tap. Desktop ≥ 960 (no reduced motion): the hero is pinned
+       of a circuit at night, shown as a square media card on the page's own surface. Poster
+       first; a desktop goes live when idle, a phone on tap. Desktop ≥ 960 (no reduced motion): the hero is pinned
        for one extra screen; scrolling turns the camera and walks through what the scene shows.
        The scene itself (lights, lens, camera move) is assets/scenes/circuit.js. -->
-  <section class="hero hero--scene night" aria-labelledby="hero-title">
+  <section class="hero hero--scene" aria-labelledby="hero-title">
     <div class="hero__pin">
       <div class="stage hero__stage" id="hero-stage" data-stage data-scene="circuit" data-autoload="idle" data-mobile="tap">
         <div class="stage__controls">
@@ -193,9 +189,8 @@
         <div class="stage__box">
           <div class="stage__frame">
             <picture>
-              <source media="(max-width: 599px)" srcset="assets/home/hero-circuit-sq-640.webp 640w, assets/home/hero-circuit-sq-960.webp 960w" sizes="100vw" width="960" height="960">
-              <img class="stage__poster" src="assets/home/hero-circuit-1920.webp" srcset="assets/home/hero-circuit-1280.webp 1280w, assets/home/hero-circuit-1920.webp 1920w, assets/home/hero-circuit-2560.webp 2560w"
-                   sizes="100vw" width="1920" height="1200" fetchpriority="high"
+              <img class="stage__poster" src="assets/home/hero-circuit-sq-960.webp" srcset="assets/home/hero-circuit-sq-640.webp 640w, assets/home/hero-circuit-sq-960.webp 960w"
+                   sizes="(min-width: 960px) 44vw, 100vw" width="960" height="960" fetchpriority="high"
                    alt="A red sports car on the wet start grid of a circuit at night, in the rain under floodlights, rendered by SceneView Web.">
             </picture>
             <canvas class="stage__canvas" role="img" aria-label="Interactive 3D scene: a sports car on the wet start grid of a circuit at night, in the rain. Drag to move the camera."></canvas>
@@ -206,13 +201,13 @@
 
       <div class="container hero__inner">
         <div class="hero__copy">
-          <p class="eyebrow">Open source · Apache 2.0 · <a href="https://github.com/sceneview/sceneview/releases/latest" data-release>latest release</a></p>
           <h1 class="display" id="hero-title">3D and AR, <em>written like UI.</em></h1>
           <p class="lead">Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. A scene is a view; a model is a node.</p>
           <div class="hero__ctas">
-            <a class="btn btn--primary" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
-            <a class="btn btn--ghost" href="/playground.html">Try it in the browser</a>
+            <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
+            <a class="btn btn--outlined btn--lg" href="/playground.html">Try it in the browser</a>
           </div>
+          <p class="hero__meta">Open source · Apache 2.0 · <a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>latest release</a></p>
           <div class="install">
             <div class="seg" role="tablist" aria-label="Install for" data-install>
               <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
@@ -249,7 +244,6 @@
   <section class="section" id="fund" aria-labelledby="fund-title">
     <div class="container">
       <div class="card fund reveal">
-        <p class="eyebrow">For companies shipping SceneView</p>
         <h2 class="h2" id="fund-title">SceneView runs in commercial products. Sponsor it or buy support.</h2>
         <p class="lead">Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, sponsor it or buy support, now.</p>
         <div class="fund__offers">
@@ -257,7 +251,7 @@
             <h3 class="h3">Sponsor</h3>
             <p>Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.</p>
             <div class="sponsor__ctas">
-              <a class="btn btn--primary" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Sponsor on Open Collective</a>
+              <a class="btn btn--filled" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Sponsor on Open Collective</a>
               <a class="link" href="https://github.com/sponsors/sceneview">or through GitHub Sponsors</a>
             </div>
           </div>
@@ -269,7 +263,7 @@
             </ul>
             <p class="fund__note">Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective&rsquo;s budget. Payment comes before any work. Every version stays under Apache&nbsp;2.0.</p>
             <div class="sponsor__ctas">
-              <a class="btn btn--ghost" href="mailto:hello@sceneview.dev">Buy support: hello@sceneview.dev</a>
+              <a class="btn btn--outlined" href="mailto:hello@sceneview.dev">Buy support: hello@sceneview.dev</a>
             </div>
           </div>
         </div>
@@ -281,7 +275,6 @@
   <section class="section" id="code" aria-labelledby="code-title">
     <div class="container">
       <div class="section__head">
-        <p class="eyebrow reveal">Declarative</p>
         <h2 class="h2 reveal" id="code-title">The code is the scene.</h2>
         <p class="lead reveal">Pick a model: the string in the code and the scene beside it change together. In the Compose tab, drag the value of <code>scaleToUnits</code> and watch the model follow.</p>
       </div>
@@ -362,7 +355,6 @@
           <div class="stage stage--fit" id="code-stage" data-stage data-src="/models/platforms/SheenChair.glb" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935"
                data-autoload="visible" data-mobile="tap" data-elev="0.26" data-angle="0.6" data-fill="0.7" data-top="0.42">
             <div class="stage__box" style="--sx:.5;--sy:.8103;--sw:.3553;--sh:.1911">
-              <div class="studio" aria-hidden="true"><div class="studio__back"></div><div class="studio__floor"></div><div class="studio__grid"></div><div class="studio__pool"></div></div>
               <div class="stage__shadow" aria-hidden="true"></div>
               <div class="stage__frame">
                 <img class="stage__poster" src="assets/home/vp-chair.webp" width="1200" height="960" loading="lazy"
@@ -390,18 +382,15 @@
     <span id="features"></span>
     <div class="container">
       <div class="section__head">
-        <p class="eyebrow reveal">What you can build</p>
         <h2 class="h2 reveal" id="build-title">From a product viewer to a galaxy.</h2>
       </div>
       <div class="bento">
         <article class="card tile tile--a tile--media reveal">
           <div class="tile__media ar-scene" aria-hidden="true">
-            <div class="ar-scene__plane"></div>
             <div class="ar-scene__ring"></div>
             <img class="ar-scene__obj" src="assets/home/vp-chair.webp" alt="" loading="lazy">
             <div class="ar-scene__measure"><span>plane · horizontal</span><span>scale 1 : 1</span></div>
           </div>
-          <span class="tile__tag">AR</span>
           <div class="tile__body">
             <h3 class="h3"><a class="tile__link" href="/open?demo=ar-placement">Place it in the room, at real size.</a></h3>
             <p>Plane detection, anchors, depth occlusion and real-world scale: ARCore on Android, ARKit on iOS, written as composables and views.</p>
@@ -409,18 +398,15 @@
           </div>
         </article>
         <article class="card tile tile--b reveal" style="--i:1">
-          <svg class="wire" viewBox="0 0 200 200" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1"><path d="M100 20 170 60v80l-70 40-70-40V60z"/><path d="m30 60 70 40 70-40M100 100v80"/><path d="m65 40 70 40M135 40 65 80M30 100l70 40 70-40" opacity=".5"/></g></svg>
-          <span class="tile__tag">Formats</span>
+          <div class="tile__media tile__media--wire" aria-hidden="true"><svg class="wire" viewBox="0 0 200 200" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1"><path d="M100 20 170 60v80l-70 40-70-40V60z"/><path d="m30 60 70 40 70-40M100 100v80"/><path d="m65 40 70 40M135 40 65 80M30 100l70 40 70-40" opacity=".5"/></g></svg></div>
           <div class="tile__body">
             <h3 class="h3"><a class="tile__link" href="/docs/formats/">Bring the files you already have.</a></h3>
             <p>glTF and GLB on Filament, USDZ on RealityKit. STL, OBJ, PLY and 3MF are converted on load.</p>
-            <div class="formats"><span>glTF</span><span>GLB</span><span>USDZ</span><span>STL</span><span>OBJ</span><span>PLY</span><span>3MF</span></div>
             <span class="tile__go">Formats guide <svg><use href="#i-arrow"/></svg></span>
           </div>
         </article>
         <article class="card tile tile--c tile--media reveal">
           <div class="tile__media cosmos" role="img" aria-label="A spiral galaxy of 60,000 stars, from the SceneView iOS demo."></div>
-          <span class="tile__tag">Procedural</span>
           <div class="tile__body">
             <h3 class="h3"><a class="tile__link" href="/docs/samples-ios/">60,000 stars, built in code.</a></h3>
             <p>The Cosmos demo generates a spiral galaxy in real time. No mesh file to ship.</p>
@@ -437,7 +423,6 @@
               <div class="uiscene__btn">View in AR</div>
             </div>
           </div>
-          <span class="tile__tag">Compose in 3D</span>
           <div class="tile__body">
             <h3 class="h3"><a class="tile__link" href="/open?demo=view-node">Your UI, inside the scene.</a></h3>
             <p>ViewNode renders real Compose content on a node: labels, cards and controls placed in 3D space.</p>
@@ -456,7 +441,6 @@
   <section class="section" id="platforms" aria-labelledby="platforms-title">
     <div class="container">
       <div class="section__head">
-        <p class="eyebrow reveal">Platforms</p>
         <h2 class="h2 reveal" id="platforms-title">Stable on Android. Alpha everywhere else, and labelled that way.</h2>
         <p class="lead reveal">Native renderers underneath: Filament on Android, desktop and the web, RealityKit on Apple.</p>
       </div>
@@ -480,7 +464,6 @@
     <span id="ai-setup"></span>
     <div class="container ai">
       <div>
-        <p class="eyebrow reveal">AI-ready</p>
         <h2 class="h2 reveal" id="ai-title">Works with the assistant you already use.</h2>
         <p class="lead reveal">SceneView ships an MCP server and an <code>llms.txt</code>, so any assistant that speaks MCP reads the real API instead of guessing it.</p>
         <div class="ai__links reveal">
@@ -525,7 +508,6 @@
     <span id="metrics"></span>
     <div class="container">
       <div class="section__head">
-        <p class="eyebrow reveal">In the open</p>
         <h2 class="h2 reveal" id="proof-title">Public numbers anyone can re-check.</h2>
       </div>
       <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
@@ -544,7 +526,6 @@
   <section class="section" id="faq" aria-labelledby="faq-title">
     <div class="container">
       <div class="section__head">
-        <p class="eyebrow reveal">Questions</p>
         <h2 class="h2 reveal" id="faq-title">Where SceneView fits.</h2>
       </div>
       <div class="vs reveal">
@@ -589,8 +570,8 @@
         <h2 class="h2" id="start-title">Your first scene is ten lines away.</h2>
         <p class="lead">Follow the quickstart for your platform, or open the playground and edit a live scene in the browser.</p>
         <div class="finale__ctas">
-          <a class="btn btn--primary" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
-          <a class="btn btn--ghost" href="/playground.html">Open the playground</a>
+          <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
+          <a class="btn btn--outlined btn--lg" href="/playground.html">Open the playground</a>
         </div>
       </div>
       <div class="card sponsor reveal">
@@ -599,7 +580,7 @@
           <p>SceneView is built in the open by its contributors. If it saves you time, a donation helps keep it moving.</p>
         </div>
         <div class="sponsor__ctas">
-          <a class="btn" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
+          <a class="btn btn--tonal" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
           <a class="link" href="https://github.com/sponsors/sceneview">or sponsor on GitHub</a>
         </div>
       </div>

@@ -333,8 +333,9 @@
     else on(window, 'load', function () { doc.classList.add('is-loaded'); });
 
     /* Theme */
-    var mqLight = matchMedia('(prefers-color-scheme: light)');
-    function effectiveTheme() { return doc.dataset.theme || (mqLight.matches ? 'light' : 'dark'); }
+    // Light is the default set (tokens.css): dark only when picked or asked for by the system.
+    var mqDark = matchMedia('(prefers-color-scheme: dark)');
+    function effectiveTheme() { return doc.dataset.theme || (mqDark.matches ? 'dark' : 'light'); }
     function labelTheme() { $$('.theme-toggle').forEach(function (b) { b.setAttribute('aria-label', effectiveTheme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); }); }
     $$('.theme-toggle').forEach(function (b) {
       on(b, 'click', function () { var next = effectiveTheme() === 'dark' ? 'light' : 'dark'; doc.dataset.theme = next; store('sceneview-theme', next); labelTheme(); });
@@ -639,20 +640,9 @@
     function frame() {
       ticking = false;
       // Every read before any write: one layout per frame, never a forced one.
-      var y = scrollY, r = hero && hero.getBoundingClientRect(), navH = nav ? nav.offsetHeight : 0, p = 0;
-      if (nav) {
-        nav.classList.toggle('is-scrolled', y > 8);
-        // Night set while the picture still shows below the header. Once only its last
-        // strip is left under the header, the bar takes the page's set at once, but solid
-        // (is-stage-edge): a translucent bar there let that strip through as a two-tone band.
-        var over = !!r && r.bottom > navH;
-        if (hero) {
-          nav.classList.toggle('is-over-stage', over);
-          nav.classList.toggle('is-stage-edge', !over && r.bottom > 0);
-        }
-        // Over a night picture the header takes the dark set, whatever the theme.
-        nav.classList.toggle('night', over && hero.classList.contains('night'));
-      }
+      var y = scrollY, r = hero && hero.getBoundingClientRect(), p = 0;
+      // M3 top app bar: surface at rest, surface-container once content scrolls under it.
+      if (nav) nav.classList.toggle('is-scrolled', y > 8);
       if (!hero) return;
       if (scrollFx) p = clamp(-r.top / Math.max(1, r.height - innerHeight), 0, 1);
       else p = clamp(-r.top / Math.max(1, r.height), 0, 1);
