@@ -226,6 +226,20 @@ class LiveCoverageGroundTest {
     }
 
     @Test
+    fun aDeskSeenBeforeTheFloorIsNotTheFloor() {
+        // ARCore's first upward plane is a desk at 75 cm, the floor not found yet: taken for the
+        // floor, it put the band on the desk and the floor round it all turned red.
+        val desk = List(2500) { floatArrayOf(3f + (it % 50) * 0.02f, 0.75f, (it / 50) * 0.02f, 0f) }
+        val room = floor(5, 5, extra = desk) { c, r -> if (c == 2 && r == 2) 0.2f else 1f }
+        assertEquals(9, weak(room, floorY = 0.75f).size)
+        val hint = LiveCoverageGround.floorHint(0.75f, firstEyeY = 1.4f)
+        assertEquals(1.4f - LiveCoverageGround.PHONE_HEIGHT_M, hint, 1e-6f)
+        assertEquals(listOf(CoverageGrid.key(2, 2)), weak(room, floorY = hint))
+        // Once the floor's plane comes, the lowest, it is taken.
+        assertEquals(0f, LiveCoverageGround.floorHint(0f, firstEyeY = 1.4f), 0f)
+    }
+
+    @Test
     fun aPhoneAtTheKneesStillJudges() {
         // The phone lowered to 0.7 m: 1.3 m under it is under the floor, and nothing was judged.
         val room = floor(5, 5) { c, r -> if (c == 2 && r == 2) 0.2f else 1f }

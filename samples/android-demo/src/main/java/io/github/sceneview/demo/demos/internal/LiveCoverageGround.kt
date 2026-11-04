@@ -369,12 +369,17 @@ internal object LiveCoverageGround {
     const val FLOOR_MIN_AREA_M2 = 0.1f
 
     /**
-     * The floor height the live map's worker judges from: ARCore's floor plane ([planeY]) once it
-     * has one, else [PHONE_HEIGHT_M] under the scan's first pose ([firstEyeY]) — never under the
-     * current one, which a phone raised over the head or lowered to the knees would move off the
-     * floor and onto a seat, or into nothing.
+     * The floor height the live map's worker judges from: ARCore's lowest upward plane ([planeY])
+     * once it lies at least [PLANE_UNDER_EYE_M] under the scan's first pose ([firstEyeY]), else
+     * [PHONE_HEIGHT_M] under that pose — never under the current one, which a phone raised over
+     * the head or lowered to the knees would move off the floor and onto a seat, or into nothing.
+     * ARCore calls every upward plane a floor: a desk seen before the floor is not taken for it.
      */
-    fun floorHint(planeY: Float?, firstEyeY: Float): Float = planeY ?: (firstEyeY - PHONE_HEIGHT_M)
+    fun floorHint(planeY: Float?, firstEyeY: Float): Float =
+        planeY?.takeIf { it <= firstEyeY - PLANE_UNDER_EYE_M } ?: (firstEyeY - PHONE_HEIGHT_M)
+
+    /** How far under the scan's first pose an upward plane must lie to be the floor ([floorHint]): a desk is not. */
+    const val PLANE_UNDER_EYE_M = 0.9f
 
     /** Covered cells before any is judged weak. */
     const val MIN_JUDGED_CELLS = 4
