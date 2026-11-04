@@ -70,13 +70,13 @@ class ReflectionProbeRegistryTest {
     }
 
     @Test
-    fun `a tie goes to the probe composed last, and an update keeps that order`() {
+    fun `a tie goes to the probe added last, and an update keeps that order`() {
         registry.setEnvironmentLight(sky)
         val first = registry.newProbe()
         val second = registry.newProbe()
         second.show(garage)
         first.show(office)
-        assertSame("composed last wins, not updated last", garage, slot.light)
+        assertSame("added last wins, not updated last", garage, slot.light)
 
         first.show(office, priority = 0, camera = inOffice)
         assertSame(garage, slot.light)

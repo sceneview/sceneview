@@ -1983,8 +1983,10 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * (or any non-positive value) for a **global probe** that always overrides the scene IBL.
      *
      * All probes of a scene are resolved together: the active probe with the highest [priority]
-     * wins (on a tie, the one composed last), and with no active probe the scene shows its
-     * `SceneView` environment again — a new environment never overrides an active probe.
+     * wins (on a tie, the one added most recently), and with no active probe the scene shows its
+     * `SceneView` environment again — a new `SceneView` environment never overrides an active
+     * probe. `ARSceneView` still writes its light directly, so this guarantee does not hold in AR
+     * yet (see #4928).
      *
      * ```kotlin
      * val probeEnv = rememberEnvironment(environmentLoader) {
@@ -2013,7 +2015,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param position       Centre of the reflection zone in world space. Defaults to the origin.
      * @param radius         Sphere radius in metres. `0f` or negative means always-active (global).
      * @param priority       Higher value wins when multiple probes are simultaneously active; on
-     *                       a tie, the probe composed last wins.
+     *                       a tie, the probe added most recently wins.
      * @param cameraPosition Current camera world-space position, updated each frame.
      */
     @Composable

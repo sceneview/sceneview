@@ -18,7 +18,7 @@ import java.util.WeakHashMap
  * environment — resolves the whole set again:
  *
  * - among the probes whose zone holds the camera, the highest [Probe.priority] wins, and on a tie
- *   the probe composed last wins;
+ *   the probe added most recently ([newProbe]) wins;
  * - with no active probe, the scene shows its own environment's light: the one `SceneView`
  *   declares through [setEnvironmentLight]. In a scene no `SceneView` drives, it is the light the
  *   scene held before a probe took over — or the one the caller wrote since.
@@ -39,7 +39,7 @@ internal class ReflectionProbeRegistry<L : Any>(private val target: Target<L>) {
         fun isAlive(light: L): Boolean
     }
 
-    /** One composed probe. Keeps its composition order across updates, so ties stay stable. */
+    /** One composed probe. Keeps its creation order across updates, so ties stay stable. */
     class Probe<L : Any> internal constructor(internal val order: Long) {
         internal var isRegistered = false
         internal var light: L? = null

@@ -20,12 +20,17 @@ import io.github.sceneview.math.Position
  * All the probes of a [Scene] are resolved together, again on every change (a probe added,
  * removed or moved, a zone entered or left, a new environment):
  * - among the probes whose zone contains the camera, the highest [priority] wins; on a tie, the
- *   probe composed **last** wins (Compose's top-down order);
+ *   probe added most recently wins (a probe that leaves the composition and comes back counts as
+ *   newly added);
  * - when no probe is active — the camera left every local zone, or the last probe left the
  *   composition — the scene goes back to its own environment's light, the `environment` passed
  *   to `SceneView`, even if that environment changed while a probe was active;
  * - a new `SceneView` environment (a dark/light toggle, `environment.copy(skybox = …)`) never
  *   overrides an active probe: it only replaces the light shown when no probe is active.
+ *
+ * The fallback and the guarantee above hold for `SceneView`. `ARSceneView` still writes its
+ * environment's light (and AR light estimation's) straight into the scene, so in AR a new
+ * environment or an estimate can replace an active probe until the next probe change (see #4928).
  *
  * Outside `SceneView` (a [Scene] you render yourself), the fallback is the light the scene held
  * before a probe took over, or the one you wrote into it since.
@@ -62,7 +67,7 @@ import io.github.sceneview.math.Position
  * @param radius         Sphere radius (metres) of the zone influence. `0f` or negative means
  *                       the probe is always active (global).
  * @param priority       Higher value wins when several probes are active at the same time; on a
- *                       tie, the probe composed last wins.
+ *                       tie, the probe added most recently wins.
  * @param cameraPosition Current camera world-space position, updated each frame. Drive this
  *                       from `onFrame` via [CameraNode.worldPosition].
  */
@@ -76,7 +81,7 @@ fun ReflectionProbeNode(
     cameraPosition: Position = Position(x = 0f, y = 0f, z = 0f)
 ) {
     // One registry per scene decides which light the scene shows (#4928); this probe is one entry,
-    // ordered by its first composition so ties keep following Compose's order.
+    // ordered by when it entered the composition: on a tie, the probe added most recently wins.
     val registry = remember(filamentScene) { filamentScene.reflectionProbes }
     val probe = remember(registry) { registry.newProbe() }
 
