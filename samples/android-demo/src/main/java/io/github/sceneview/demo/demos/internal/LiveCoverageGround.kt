@@ -196,7 +196,7 @@ internal object LiveCoverageGround {
         val minTileArea = TILE_MIN_SHARE * TILE_M * TILE_M
         val tileFloors = FloatArray(tileAreas.size) { t ->
             val area = tileAreas[t]
-            val peak = if (area.sum() < minTileArea) null else peakOf(area)
+            val peak = if (area.sum() < minTileArea) null else peakOf(area, minTileArea)
             peak?.let { floorY - TILE_SEARCH_M + (it + HALF) * voxelM } ?: floorY
         }
         fun floorAt(x: Float, z: Float): Float {
@@ -270,10 +270,10 @@ internal object LiveCoverageGround {
 
     /**
      * The floor's height in [surfels]: the lowest height within [FLOOR_SEARCH_M] of [hint] that
-     * holds at least half the most surfel area at any ([peakOf]), in [voxelM] steps — the floor
-     * is the lowest wide flat thing near where it is thought to be, not a sofa's seat or a low
-     * table wider than the floor seen round it. [hint] itself when nothing lies near it: the
-     * phone's height less [PHONE_HEIGHT_M] on the live map's worker.
+     * holds at least [FLOOR_MIN_AREA_M2] of surfel area ([peakOf]), in [voxelM] steps — the floor
+     * is the lowest flat thing near where it is thought to be, not a sofa's seat, a low bed or a
+     * low table, however much wider than the floor seen round it. [hint] itself when nothing lies
+     * near it: on the live map's worker, ARCore's floor plane ([floorHint]).
      */
     fun floorOf(surfels: Surfels, voxelM: Float, hint: Float): Float {
         val bins = (2 * FLOOR_SEARCH_M / voxelM).toInt() + 1
@@ -285,7 +285,7 @@ internal object LiveCoverageGround {
             val side = voxelM * (1 shl surfels.level(i))
             area[b] += side * side
         }
-        val best = peakOf(area) ?: return hint
+        val best = peakOf(area, FLOOR_MIN_AREA_M2) ?: return hint
         return hint - FLOOR_SEARCH_M + (best + HALF) * voxelM
     }
 
@@ -294,19 +294,18 @@ internal object LiveCoverageGround {
 
     /**
      * The floor's bin of [area] (by height): the lowest that holds, smoothed over
-     * [PEAK_SMOOTH_BINS] on each side, at least [PEAK_SHARE] of the most any does, then the
-     * fullest raw bin of the smoothing's width above it; `null` when all are empty. Depth noise
-     * spreads a floor over a few bins, and a wide flat seat above it can outweigh what is seen of
-     * the floor without being half as much again.
+     * [PEAK_SMOOTH_BINS] on each side, at least [minArea] (an area, never a share of the widest
+     * bin), then the fullest raw bin of the smoothing's width above it; `null` when none does.
+     * Depth noise spreads a floor over a few bins, and a low bed or a pouf can hold twice the
+     * floor seen round it: what is lowest and wide enough is the floor.
      */
-    fun peakOf(area: FloatArray): Int? {
+    fun peakOf(area: FloatArray, minArea: Float): Int? {
         val smooth = FloatArray(area.size) { b ->
             var sum = 0f
             for (d in -PEAK_SMOOTH_BINS..PEAK_SMOOTH_BINS) sum += area.getOrElse(b + d) { 0f }
             sum
         }
-        val most = smooth.maxOrNull()?.takeIf { it > 0f } ?: return null
-        val low = smooth.indices.first { smooth[it] >= PEAK_SHARE * most }
+        val low = smooth.indices.firstOrNull { smooth[it] > 0f && smooth[it] >= minArea } ?: return null
         // Smoothing pulled the edge down by its width: the floor is the fullest bin just above it.
         val window = low..minOf(area.lastIndex, low + 2 * PEAK_SMOOTH_BINS)
         return window.maxBy { area[it] }
@@ -366,8 +365,16 @@ internal object LiveCoverageGround {
     /** Bins [peakOf] smooths over on each side: depth noise spreads a floor over a few. */
     const val PEAK_SMOOTH_BINS = 2
 
-    /** The share of the widest height's area the floor's own must reach ([peakOf]). */
-    const val PEAK_SHARE = 0.5f
+    /** The surfel area, in square metres, a height must hold to be the room's floor ([floorOf]). */
+    const val FLOOR_MIN_AREA_M2 = 0.1f
+
+    /**
+     * The floor height the live map's worker judges from: ARCore's floor plane ([planeY]) once it
+     * has one, else [PHONE_HEIGHT_M] under the scan's first pose ([firstEyeY]) — never under the
+     * current one, which a phone raised over the head or lowered to the knees would move off the
+     * floor and onto a seat, or into nothing.
+     */
+    fun floorHint(planeY: Float?, firstEyeY: Float): Float = planeY ?: (firstEyeY - PHONE_HEIGHT_M)
 
     /** Covered cells before any is judged weak. */
     const val MIN_JUDGED_CELLS = 4

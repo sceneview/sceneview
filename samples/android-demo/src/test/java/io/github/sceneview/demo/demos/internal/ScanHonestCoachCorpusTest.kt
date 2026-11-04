@@ -50,10 +50,13 @@ class ScanHonestCoachCorpusTest {
         val results = ScanHonestCoachCorpus.run(corpus!!, out!!)
         // A corpus set and nothing read from it is a failure, not a skip.
         assertTrue("no readable .svscan or .rrd with a dense cloud under $corpus", results.isNotEmpty())
-        val flagged = results.sumOf { it.walk.after }
-        val falseCells = results.sumOf { it.walk.falseAfter }
+        // The truth is what each recording's own frames saw of its floor, never the floor rule.
+        val judged = results.filter { it.seen != null }
+        assertTrue("no scan under $corpus has an ARCore floor plane to judge against", judged.isNotEmpty())
+        val flagged = judged.sumOf { it.walk.after }
+        val falseCells = judged.sumOf { it.walk.falseAfter }
         assertTrue(
-            "after: $falseCells of $flagged cells red over a floor the scans hold",
+            "after: $falseCells of $flagged cells red over a floor the frames saw whole",
             falseCells <= MAX_FALSE_SHARE * flagged,
         )
         assertEquals("after: \"Moving too fast\" on a calm camera", 0, results.sumOf { it.after.coach.falseOnsets })
@@ -129,6 +132,27 @@ class ScanHonestCoachCorpusTest {
     }
 
     @Test
+    fun `a synthetic walk recording, judged against what its own frames saw`() {
+        // The recording the corpus test reads, made by a walk: its cloud fused from the walk's own
+        // depth frames, a frame moving too fast for a sharp photo keeping a fiftieth of its depth.
+        // The truth is computed from the recording alone (poses, lens, floor plane, cloud as an
+        // occluder), as for a real scan.
+        val corpus = temp.newFolder("walk")
+        val out = System.getenv(SYNTHETIC_OUT)?.takeIf { it.isNotBlank() }?.let(::File) ?: temp.newFolder("walk-out")
+        File(corpus, "synthetic-walk.svscan").writeBytes(ScanHonestCoachCorpus.syntheticWalkRecording())
+        val result = ScanHonestCoachCorpus.run(corpus, out).single()
+        val seen = requireNotNull(result.seen) { "no truth: $result" }
+        println(result)
+        File(out, "synthetic-walk.txt").writeText("$result\n")
+        assertTrue(result.toString(), seen.healthy.size >= MIN_SEEN_CELLS && seen.barely.size >= MIN_SEEN_CELLS)
+        // After: no red over a floor the frames saw whole along the walk, and at its end red on
+        // floor they barely saw. Barely seen floor on the scan's edge or under furniture stays
+        // unjudged, as the rule means it to.
+        assertEquals(result.toString(), 0, result.walk.falseAfter)
+        assertTrue(result.toString(), result.after.weak.count { it in seen.barely } >= MIN_BARELY_RED)
+    }
+
+    @Test
     fun `the map read in place judges as its cloud does, and what it costs`() {
         // The live map judges the whole map in place on the snapshot's worker; the corpus run, a
         // map seeded with the saved cloud ([ScanHonestCoachCorpus.seeded]). All three agree.
@@ -184,8 +208,14 @@ class ScanHonestCoachCorpusTest {
         const val MAX_BYTES_PER_CELL = 1024
         const val MAX_FIXED_BYTES = 4L * 1024 * 1024
 
-        /** The most cells painted to redo over a floor the scans hold, as a share of those painted. */
+        /** The most cells painted to redo over a floor the frames saw whole, as a share of those painted. */
         const val MAX_FALSE_SHARE = 0.05f
+
+        /** Red cells the synthetic walk's barely seen floor gets at its last pose, at least. */
+        const val MIN_BARELY_RED = 3
+
+        /** Cells the synthetic walk's frames saw whole, and barely, at least: a truth with both. */
+        const val MIN_SEEN_CELLS = 20
 
         /** Where the synthetic run's board goes when set, to look at; a temp folder otherwise. */
         const val SYNTHETIC_OUT = "SCENEVIEW_SYNTHETIC_OUT"
@@ -196,9 +226,13 @@ class ScanHonestCoachCorpusTest {
 internal object ScanHonestCoachCorpus {
     const val SUMMARY = "honest-coach-summary.txt"
 
-    /** The floor cells painted to redo, and how many of them lie over a floor the scan holds. */
+    /**
+     * The floor cells painted to redo, and how many of them lie over a floor the scan's own frames
+     * saw whole ([Seen]); [judged] the cells the truth sorted, healthy or barely seen.
+     */
     class Floor(val weak: Set<Long>, val falseCells: Int, val judged: Int, val coach: Coach) {
-        override fun toString() = "${weak.size} to redo, $falseCells false of $judged floor cells; coach $coach"
+        override fun toString() =
+            "${weak.size} to redo" + (if (judged > 0) ", $falseCells false of $judged floor cells" else "") + "; coach $coach"
     }
 
     /**
@@ -220,16 +254,20 @@ internal object ScanHonestCoachCorpus {
 
     /**
      * The live map refreshed [refreshes] times along the walk: the cells it painted to redo, summed
-     * over the refreshes, and how many of them lay over a floor the scan holds, before and after.
+     * over the refreshes, and how many of them lay over a floor the frames saw whole, before and after.
      */
-    class Walk(val refreshes: Int, val before: Int, val falseBefore: Int, val after: Int, val falseAfter: Int) {
+    class Walk(val refreshes: Int, val before: Int, val falseBefore: Int, val after: Int, val falseAfter: Int, val judged: Boolean) {
         private fun rate(f: Int, n: Int) = if (n == 0) 0f else f * PERCENT / n
 
-        override fun toString() = String.format(
-            Locale.ROOT,
-            "%d refreshes: before %d to redo, %d false (%.0f %%); after %d to redo, %d false (%.0f %%)",
-            refreshes, before, falseBefore, rate(falseBefore, before), after, falseAfter, rate(falseAfter, after),
-        )
+        override fun toString() = if (!judged) {
+            "$refreshes refreshes: before $before to redo; after $after to redo"
+        } else {
+            String.format(
+                Locale.ROOT,
+                "%d refreshes: before %d to redo, %d false (%.0f %%); after %d to redo, %d false (%.0f %%)",
+                refreshes, before, falseBefore, rate(falseBefore, before), after, falseAfter, rate(falseAfter, after),
+            )
+        }
     }
 
     /** One refresh of the live map: where from, red before and after. */
@@ -242,11 +280,37 @@ internal object ScanHonestCoachCorpus {
         val walk: Walk,
         val turnCaps: String,
         val eyes: List<Eye>,
+        val seen: Seen?,
     ) {
-        override fun toString() =
-            "$name\n  at the last pose, before: $before\n  at the last pose, after:  $after\n" +
-                "  over the walk: $walk\n  turn caps at 0.6 m/s: $turnCaps"
+        override fun toString() = buildString {
+            append("$name\n")
+            append(
+                seen?.let {
+                    String.format(
+                        Locale.ROOT,
+                        "  what its frames saw (floor plane at %.2f m): %d cells whole, %d barely; at the last pose, " +
+                            "barely seen and red: before %d, after %d; barely seen, not red after: %d (edge and furnished cells included)\n",
+                        it.floorY, it.healthy.size, it.barely.size, before.weak.count { k -> k in it.barely },
+                        after.weak.count { k -> k in it.barely }, it.barely.count { k -> k !in after.weak },
+                    )
+                } ?: "  no ARCore floor plane: no truth, the red is not judged\n",
+            )
+            append("  at the last pose, before: $before\n  at the last pose, after:  $after\n")
+            append("  over the walk: $walk\n  turn caps at 0.6 m/s: $turnCaps")
+        }
     }
+
+    /**
+     * What a recording's own frames saw of its floor, never the floor rule: per covered cell,
+     * [SAMPLES]² points on ARCore's floor plane ([floorY]), and at each how many calm frames
+     * ([ScanPhotoMotion]: a frame a sharp photo would be taken on; raw depth smears with the
+     * image) are expected to land a raw depth pixel on its 2 cm voxel square — a frame that had it
+     * in its lens, in depth range, with nothing of the scan standing in front ([BakeOcclusion]: its
+     * cloud above the floor band and its planes but the floor), and lands fewer the farther and the more grazing it looks. A point is seen
+     * from [SEEN_SAMPLES] such frames, the views the map wants of a voxel; a cell whole
+     * ([healthy]) from [SEEN_WHOLE] of its points seen, barely ([barely]) under [SEEN_BARELY].
+     */
+    class Seen(val healthy: Set<Long>, val barely: Set<Long>, val floorY: Float)
 
     fun run(corpus: File, out: File): List<Result> {
         val scans = corpus.walkTopDown()
@@ -256,7 +320,9 @@ internal object ScanHonestCoachCorpus {
         if (scans.isEmpty()) return emptyList()
         out.mkdirs()
         val summary = StringBuilder()
-        summary.appendLine("Floor: cells painted to redo; false = over a floor the saved cloud holds at full detail.")
+        summary.appendLine("Floor: cells painted to redo; false = over a floor the recording's calm frames saw whole: at least")
+        summary.appendLine("  two expected to land raw depth on each 2 cm square of it, cast from its poses onto its ARCore floor")
+        summary.appendLine("  plane, what stands over the floor hiding it. Never the floor rule itself.")
         summary.appendLine("Coach: shaky = a frame ScanPhotoMotion would not take a sharp photo on; a false onset comes on")
         summary.appendLine("  with the last second mostly calm. Before = 1.2 m/s, no turn cap; after = 0.6 m/s, 60°/s.")
         val results = scans.mapNotNull { scan ->
@@ -287,16 +353,16 @@ internal object ScanHonestCoachCorpus {
         val eyePose = poses.lastOrNull()?.pose ?: return null
         val eye = Vec3(eyePose.x, eyePose.y, eyePose.z)
         val trace = opened.trace
-        val hint = ArDebugGeometry.floorHeight(trace.frameAt(trace.duration))
+        val planes = trace.frameAt(trace.duration).planes
         val cell = CoverageGrid.CELL_METRES
-
-        // What the scan holds: each cell's floor at full detail.
-        val floorY = LiveCoverageGround.floorOf(saved, voxelM, hint)
         val all = CoverageGrid.coveredKeys(saved.positions)
-        val shares = LiveCoverageGround.shares(saved, voxelM, all, cell, floorY).floor
-        val held = all.indices.associate { all[it] to shares[it] }
-        val floorCells = shares.count { it > 0f }
-        fun falseOf(weak: Set<Long>) = weak.count { (held[it] ?: 0f) >= LiveCoverageGround.WEAK_SHARE }
+
+        // The truth: what the recording's own frames saw of its floor, not what the rule reads in its cloud.
+        val seen = seenByFrames(poses, opened.manifest.lens, saved, planes, all)
+        val judged = seen?.let { it.healthy.size + it.barely.size } ?: 0
+        fun falseOf(weak: Set<Long>) = seen?.let { weak.count { k -> k in it.healthy } } ?: 0
+        // The live map's floor: ARCore's plane, else under the first pose, as on the worker.
+        val hint = LiveCoverageGround.floorHint(ArDebugGeometry.floorPlaneHeight(planes), poses.first().pose.y)
 
         // The live map's view from the phone every [EYE_STEP_S] of the walk and at its last pose:
         // the saved cloud added to a new map, drawn as the app draws it, at its budget, judged
@@ -313,21 +379,21 @@ internal object ScanHonestCoachCorpus {
         var before = emptySet<Long>()
         var after = emptySet<Long>()
         val map = seeded(saved, voxelM)
-        val seen = ArrayList<Eye>()
+        val refreshes = ArrayList<Eye>()
         for (e in eyes) {
             val at = Vec3(e.pose.x, e.pose.y, e.pose.z)
             // Before: the old count on the snapshot the live card drew. After: the whole map, as
             // the snapshot's worker judges it.
             val live = map.liveCloud(at.x, at.y, at.z, maxPoints = ScanDenseMap.LIVE_DRAWN_SURFELS)
             before = legacyWeakCells(live.positions, covered, cell)
-            after = LiveCoverageGround.weakCells(map.surfels(), voxelM, covered, cell, at.y - LiveCoverageGround.PHONE_HEIGHT_M).toSet()
-            seen += Eye(at, before, after)
+            after = LiveCoverageGround.weakCells(map.surfels(), voxelM, covered, cell, hint).toSet()
+            refreshes += Eye(at, before, after)
             walkBefore += before.size
             walkAfter += after.size
             walkFalseBefore += falseOf(before)
             walkFalseAfter += falseOf(after)
         }
-        val walk = Walk(eyes.size, walkBefore, walkFalseBefore, walkAfter, walkFalseAfter)
+        val walk = Walk(eyes.size, walkBefore, walkFalseBefore, walkAfter, walkFalseAfter, judged = seen != null)
 
         val old = coach(poses, ScanCoach(maxSpeed = LEGACY_MAX_SPEED, maxTurn = Float.POSITIVE_INFINITY))
         val new = coach(poses, ScanCoach())
@@ -335,15 +401,85 @@ internal object ScanHonestCoachCorpus {
             val c = coach(poses, ScanCoach(maxTurn = cap))
             String.format(Locale.ROOT, "%.0f°/s told on %.0f %% of shaky, %d/%d false", cap, c.shakyCoachedShare * PERCENT, c.falseOnsets, c.onsets)
         }
-        File(out, "${scan.name}-floor.png").writeBytes(board(covered, before, after, eye))
+        File(out, "${scan.name}-floor.png").writeBytes(board(covered, before, after, seen, eye))
         return Result(
             scan.name,
-            Floor(before, falseOf(before), floorCells, old),
-            Floor(after, falseOf(after), floorCells, new),
+            Floor(before, falseOf(before), judged, old),
+            Floor(after, falseOf(after), judged, new),
             walk,
             caps,
+            refreshes,
             seen,
         )
+    }
+
+    /** [Seen] for a recording: its camera [poses], [lens], [cloud] and [planes], over its [covered] cells. */
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "LongParameterList")
+    fun seenByFrames(
+        poses: List<ArDebugEvent.CameraPose>,
+        lens: ReplayLens,
+        cloud: DenseCloud,
+        planes: List<DebugPlane>,
+        covered: LongArray,
+    ): Seen? {
+        val floorY = ArDebugGeometry.floorPlaneHeight(planes) ?: return null
+        if (covered.isEmpty() || poses.isEmpty()) return null
+        // What can hide the floor: what stands over it, the cloud above its band and the planes
+        // but the floor's (the floor itself, at a grazing angle, would hide its own far half).
+        val above = BooleanArray(cloud.count) { cloud.positions[it * 3 + 1] > floorY + LiveCoverageGround.FLOOR_BAND_M }
+        val occlusion = BakeOcclusion.of(cloud.select(above), planes.filter { it.kind != DebugPlaneKind.Floor })
+        val motion = ScanPhotoMotion()
+        val calm = poses.filter { motion.isCalm(it.nanos, it.pose) }.filterIndexed { k, _ -> k % TRUTH_STRIDE == 0 }
+        val cell = CoverageGrid.CELL_METRES
+        val per = SAMPLES * SAMPLES
+        val px = FloatArray(covered.size * per)
+        val pz = FloatArray(covered.size * per)
+        for ((k, key) in covered.withIndex()) {
+            for (a in 0 until SAMPLES) for (b in 0 until SAMPLES) {
+                px[k * per + a * SAMPLES + b] = (CoverageGrid.cxOf(key) + (a + HALF) / SAMPLES) * cell
+                pz[k * per + a * SAMPLES + b] = (CoverageGrid.czOf(key) + (b + HALF) / SAMPLES) * cell
+            }
+        }
+        val y = floorY + FLOOR_LIFT
+        // Raw depth pixels per unit of normalised image, ARCore's raw depth width across.
+        val focal = DEPTH_COLUMNS / (2f * lens.halfWidthPerDepth)
+        val square = DenseFusion.VOXEL_M * DenseFusion.VOXEL_M
+        val samples = FloatArray(px.size)
+        for (e in calm) {
+            val pose = e.pose
+            val right = pose.rotate(1f, 0f, 0f)
+            val up = pose.rotate(0f, 1f, 0f)
+            val back = pose.rotate(0f, 0f, 1f)
+            val view = occlusion?.viewOf(pose, lens)
+            for (i in px.indices) {
+                if (samples[i] >= SEEN_SAMPLES) continue
+                val dx = px[i] - pose.x
+                val dy = y - pose.y
+                val dz = pz[i] - pose.z
+                val depth = -(back.x * dx + back.y * dy + back.z * dz)
+                if (depth < DepthBackProjection.NEAR_M || depth > DepthBackProjection.FAR_M) continue
+                val nx = (right.x * dx + right.y * dy + right.z * dz) / depth / lens.halfWidthPerDepth
+                val ny = (up.x * dx + up.y * dy + up.z * dz) / depth / lens.halfHeightPerDepth
+                if (kotlin.math.abs(nx) > 1f || kotlin.math.abs(ny) > 1f) continue
+                if (view != null && view.depthAt(nx, ny, Int.MIN_VALUE) < depth - SEEN_OCCLUSION_M) continue
+                // The depth pixels this frame lands on the point's voxel square, fewer far off and
+                // at a grazing angle where a pixel's footprint on the floor stretches; the chance
+                // one at least does, which makes the frame one of the voxel's views.
+                val range2 = dx * dx + dy * dy + dz * dz
+                val pixels = focal * focal * (kotlin.math.abs(dy) / sqrt(range2)) / range2 * square
+                samples[i] += 1f - kotlin.math.exp(-pixels)
+            }
+        }
+        val healthy = HashSet<Long>()
+        val barely = HashSet<Long>()
+        for ((k, key) in covered.withIndex()) {
+            var seen = 0
+            for (i in k * per until (k + 1) * per) if (samples[i] >= SEEN_SAMPLES) seen++
+            val share = seen.toFloat() / per
+            if (share >= SEEN_WHOLE) healthy += key
+            if (share < SEEN_BARELY) barely += key
+        }
+        return Seen(healthy, barely, floorY)
     }
 
     /** "Moving too fast" over [poses], frame by frame, against [ScanPhotoMotion]'s calm. */
@@ -436,7 +572,12 @@ internal object ScanHonestCoachCorpus {
     }
 
     /** The floor from above, x right and z down: before on the left, after on the right, [eye] in black. */
-    private fun board(covered: LongArray, before: Set<Long>, after: Set<Long>, eye: Vec3): ByteArray {
+    /**
+     * The floor from above at [eye]: the red [before] on the left, [after] in the middle, and on
+     * the right what the frames saw ([seen]: whole in blue, barely in grey, between in pale grey).
+     */
+    @Suppress("CyclomaticComplexMethod")
+    private fun board(covered: LongArray, before: Set<Long>, after: Set<Long>, seen: Seen?, eye: Vec3): ByteArray {
         val cell = CoverageGrid.CELL_METRES
         val minC = covered.minOf { CoverageGrid.cxOf(it) } - 1
         val maxC = covered.maxOf { CoverageGrid.cxOf(it) } + 1
@@ -445,7 +586,24 @@ internal object ScanHonestCoachCorpus {
         val px = max(MIN_CELL_PX, min(MAX_CELL_PX, (PANEL_PX / max(maxC - minC + 1, maxR - minR + 1).toFloat()).toInt()))
         val panelW = (maxC - minC + 1) * px
         val panelH = (maxR - minR + 1) * px
-        val canvas = PlanCanvas(2 * panelW + 3 * MARGIN, panelH + 2 * MARGIN + LABEL_PX)
+        val panels = if (seen == null) 2 else 3
+        val canvas = PlanCanvas(panels * panelW + (panels + 1) * MARGIN, panelH + 2 * MARGIN + LABEL_PX)
+        if (seen != null) {
+            val left = MARGIN + 2 * (panelW + MARGIN)
+            for (key in covered) {
+                val x0 = (left + (CoverageGrid.cxOf(key) - minC) * px).toFloat()
+                val y0 = (MARGIN + (CoverageGrid.czOf(key) - minR) * px).toFloat()
+                val x1 = x0 + px - 1
+                val y1 = y0 + px - 1
+                val color = when (key) {
+                    in seen.healthy -> SEEN
+                    in seen.barely -> BARELY
+                    else -> BETWEEN
+                }
+                canvas.fillPolygon(floatArrayOf(x0, x1, x1, x0), floatArrayOf(y0, y0, y1, y1), color)
+            }
+            canvas.text(left, MARGIN + panelH + LABEL_GAP, "${seen.barely.size}", TEXT_SCALE, INK)
+        }
         for ((k, weak) in listOf(before, after).withIndex()) {
             val left = MARGIN + k * (panelW + MARGIN)
             for (key in covered) {
@@ -468,7 +626,7 @@ internal object ScanHonestCoachCorpus {
     /**
      * The synthetic floor's two patches swept too fast, 2 × 2 cells each by where the walk ends,
      * clear of the furniture: one kept at a tenth ([THIN_KEEP]), one at three tenths
-     * ([THIRTY_KEEP]), just under [LiveCoverageGround.WEAK_SHARE], in 2 cm stripes.
+     * ([THIRTY_KEEP]), both under [LiveCoverageGround.WEAK_SHARE] (a half), in 2 cm stripes.
      */
     private val THIN = floatArrayOf(0.5f, 0.5f, 1f, 1f)
     private val THIRTY = floatArrayOf(1f, 0.5f, 1.5f, 1f)
@@ -510,6 +668,42 @@ internal object ScanHonestCoachCorpus {
         )!!
         val device = ScanDevice("android", "Pixel 9", ScanDevice.TIER_DEPTH, ScanDevice.SOURCE_RAW_DEPTH)
         return RerunScanFile.write(runBlocking { RerunCaptureBuilder.build(walk(), lens, emptyList(), device, cloud) })
+    }
+
+    /**
+     * The walk of [syntheticRecording] recorded as a phone records it: its depth frames rendered in
+     * [RerunSyntheticRoom], one in [DEPTH_STRIDE] fused (the phone's depth rate), a frame moving
+     * too fast for a sharp photo ([ScanPhotoMotion]) keeping [SMEAR_KEEP] of its depth pixels (raw
+     * depth smears with the image), and ARCore's floor plane in its log. The floor the walk only
+     * swept fast is barely in its cloud.
+     */
+    fun syntheticWalkRecording(): ByteArray {
+        val events = walk()
+        val motion = ScanPhotoMotion()
+        val random = java.util.Random(SEED)
+        val fusion = DenseFusion()
+        for ((k, e) in events.filterIsInstance<ArDebugEvent.CameraPose>().withIndex()) {
+            val calm = motion.isCalm(e.nanos, e.pose)
+            if (k % DEPTH_STRIDE != 0) continue
+            val frame = RerunSyntheticRoom.scene.render(e.pose)
+            if (!calm) {
+                for (i in 0 until frame.width * frame.height) if (random.nextFloat() >= SMEAR_KEEP) frame.depthMm[i] = 0
+            }
+            fusion.add(DepthBackProjection.project(frame))
+        }
+        val lo = RerunSyntheticRoom.MIN
+        val hi = RerunSyntheticRoom.MAX
+        val floorPlane = ArDebugEvent.Plane(
+            FRAME_NANOS / 2, FLOOR_PLANE_ID, DebugPlaneKind.Floor,
+            floatArrayOf(lo.x, lo.y, lo.z, hi.x, lo.y, lo.z, hi.x, lo.y, hi.z, lo.x, lo.y, hi.z),
+        )
+        val lens = ReplayLens.of(
+            RerunSyntheticRoom.DEPTH_WIDTH.toFloat(), RerunSyntheticRoom.DEPTH_HEIGHT.toFloat(),
+            RerunSyntheticRoom.FOCAL, RerunSyntheticRoom.FOCAL,
+        )!!
+        val device = ScanDevice("android", "Pixel 9", ScanDevice.TIER_DEPTH, ScanDevice.SOURCE_RAW_DEPTH)
+        val cloud = fusion.cloud(minViews = DenseFusion.MIN_VIEWS)
+        return RerunScanFile.write(runBlocking { RerunCaptureBuilder.build(listOf(floorPlane) + events, lens, emptyList(), device, cloud) })
     }
 
     /**
@@ -666,6 +860,21 @@ internal object ScanHonestCoachCorpus {
     private const val SEEN_BARELY = 0.35f
     private const val FLOOR_LIFT = 0.001f
     private const val OCCLUSION_M = 0.01f
+
+    /** One calm frame in this many is ray cast for [Seen]: about the phone's depth rate. */
+    private const val TRUTH_STRIDE = 3
+
+    /** Something of the scan this much nearer than a floor point hides it ([Seen]), in metres. */
+    private const val SEEN_OCCLUSION_M = 0.15f
+
+    /** ARCore's raw depth image width, in pixels: a recording keeps its lens, not its depth's size. */
+    private const val DEPTH_COLUMNS = 160f
+
+    /** Frames expected to land depth on a voxel square for a floor point to be seen ([Seen]): the map's two views. */
+    private const val SEEN_SAMPLES = 2f
+    private const val DEPTH_STRIDE = 3
+    private const val SMEAR_KEEP = 0.02f
+    private const val FLOOR_PLANE_ID = 1
     private const val TINY = 1e-6f
     private const val UPRIGHT = 0.9f
     private const val HALF = 0.5f
@@ -677,7 +886,7 @@ internal object ScanHonestCoachCorpus {
     private const val PITCH_DEG = -20f
     private const val HALF_TURN = 180f
 
-    private const val PANEL_PX = 470
+    private const val PANEL_PX = 310
     private const val MIN_CELL_PX = 4
     private const val MAX_CELL_PX = 24
     private const val MARGIN = 16
@@ -687,5 +896,7 @@ internal object ScanHonestCoachCorpus {
     private const val EYE_PX = 5
     private const val SEEN = 0x8EC5E8
     private const val WEAK = 0xF28B82
+    private const val BARELY = 0x5F6368
+    private const val BETWEEN = 0xD0D7DE
     private const val INK = 0x1F1F1F
 }

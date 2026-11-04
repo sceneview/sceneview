@@ -10,6 +10,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
+import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseFusion
@@ -368,6 +369,8 @@ internal class ScanCapture private constructor(
             return
         }
         model?.offer(frame, scope)
+        // The floor the live map's "to redo" cells are judged from: ARCore's, stable as the phone moves.
+        dense.floorPlaneY = ArDebugGeometry.floorPlaneHeight(trace.lastPlanes())
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
