@@ -17,6 +17,8 @@
 //   fogDensity    — float [0,1], exponential falloff coefficient in 1/m.
 //   fogStart      — float, distance in metres where fog begins to accumulate.
 //   fogEnd        — float, distance in metres where fog is fully opaque.
+//   groundContact — float4, view-space contact centre (xyz, m) and grounding radius (w, m).
+//   groundNormal  — float4, view-space contact-plane normal (xyz) and 0/1 enable gate (w).
 // matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : personOcclusion,
@@ -68,6 +70,22 @@ material {
         {
             type : float,
             name : fogEnd
+        },
+        // Contact grounding (rule 4 below). Set every frame by ARCameraStream from the placed
+        // object's contact; groundNormal.w = 0 (the default) turns the rule off.
+        {
+            type : float4,
+            name : groundContact
+        },
+        {
+            type : float4,
+            name : groundNormal
+        }
+    ],
+    variables : [
+        {
+            name : groundRay,
+            precision : high
         }
     ],
     requires : [
@@ -97,14 +115,25 @@ fragment {
     //     zero: beyond ~8 m phone depth does not occlude at all.
     //  3. No depth. A texel with no depth (0, or the filter's 0xFFFF "none") occludes
     //     nothing (#3340).
-    // Three rules, not four: hiding what is too CLOSE to the camera cannot be done here.
-    // The camera quad can only hide what is farther than the depth it writes.
+    //  4. Contact grounding. Around a placed object's contact point (within groundContact.w,
+    //     fading out to (1 + kGroundFade) x that radius), measured depth up to kGroundBand
+    //     nearer than the contact plane counts as the plane itself. Depth noise on the floor
+    //     right under an object cut a pale tongue into its contact shadow and broke its
+    //     placement ring (Pixel 4a, 2026-11-04): the decals lie 1-5 mm above a plane whose
+    //     measured depth there wandered more than the tolerance. A real object standing in
+    //     front still occludes once it is nearer than the plane by kGroundBand + tolerance
+    //     (21 cm at 2 m), so a chair leg 30 cm in front still hides the shadow, the ring and
+    //     the model. Off (groundNormal.w = 0) the rule is the identity.
+    // Hiding what is too CLOSE to the camera cannot be done here: the camera quad can only
+    // hide what is farther than the depth it writes.
     const float kTolBase = 0.03;
     const float kTolLinear = 0.02;
     const float kTolQuad = 0.01;
     const float kFarFadeStart = 5.0;
     const float kFarFadeEnd = 8.0;
     const float kMaxValidDepthMeters = 60.0;
+    const float kGroundBand = 0.10;
+    const float kGroundFade = 0.5;
 
     // Interleaved gradient noise (Jimenez 2014): a per-pixel threshold in [0, 1) that is
     // stable from frame to frame (no temporal shimmer) and has no visible grid, unlike a
@@ -149,11 +178,32 @@ fragment {
         return decodeDepthMeters(packed_depth);
     }
 
+    // Rule 4 for the view-space ray `ray` through this pixel: x = distance along the view
+    // axis to the contact plane, y = the band (metres) by which nearer measured depth still
+    // counts as that plane — kGroundBand inside the contact disc, 0 beyond its fade, when the
+    // rule is off, and where the ray never meets the plane in front of the camera.
+    // Off returns (0, 0) before any division: max(d, min(0, d)) is exactly d, with no NaN for
+    // a GPU that does not drop it in min/max. highp throughout, like the depth reconstruction.
+    highp vec2 groundSurface(const highp vec3 ray) {
+        if (materialParams.groundNormal.w < 0.5) return vec2(0.0);
+        highp vec3 normal = materialParams.groundNormal.xyz;
+        highp vec3 contact = materialParams.groundContact.xyz;
+        highp float radius = max(materialParams.groundContact.w, 1e-4);
+        highp float facing = dot(normal, ray);
+        highp float along = dot(normal, contact) / (abs(facing) > 1e-4 ? facing : 1e-4);
+        highp vec3 hit = along * ray;
+        highp float fade = 1.0 - clamp((length(hit - contact) - radius) / (radius * kGroundFade), 0.0, 1.0);
+        highp float band_m = kGroundBand * step(0.0, along) * fade;
+        return vec2(-hit.z, band_m);
+    }
+
     // Distance, in metres, the camera quad writes into the z-buffer for a texel whose real
-    // depth is `depth_m` and validity `depth_valid`.
-    float occluderDistance(const float depth_m, const float depth_valid, const float b) {
+    // depth is `depth_m` and validity `depth_valid`; `ground` is groundSurface() for its ray.
+    float occluderDistance(const float depth_m, const float depth_valid, const float b,
+                           const vec2 ground) {
         float tolerance = kTolBase + depth_m * (kTolLinear + kTolQuad * depth_m);
-        float occluder_m = depth_m + tolerance;
+        float surface_m = max(depth_m, min(ground.x, depth_m + ground.y));
+        float occluder_m = surface_m + tolerance;
         float in_range = step(smoothstep(kFarFadeStart, kFarFadeEnd, depth_m), b);
         return mix(kNoDepthDistanceMeters, occluder_m, depth_valid * in_range);
     }
@@ -205,8 +255,9 @@ fragment {
         // everything. Same fix, same reason as `camera_stream_depth.mat` (#3340).
         float occlusion_m = occlusionDepthMeters(getUV0());
         float occlusion_valid = step(0.001f, occlusion_m) * step(occlusion_m, kMaxValidDepthMeters);
+        vec2 ground = groundSurface(variable_groundRay.xyz / variable_groundRay.w);
         float occlusion_depth_m = occluderDistance(occlusion_m, occlusion_valid,
-                occlusionThreshold(gl_FragCoord.xy));
+                occlusionThreshold(gl_FragCoord.xy), ground);
         vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, -occlusion_depth_m));
         float ndc_depth = view.z / view.w;
 
@@ -237,5 +288,8 @@ vertex {
         vec4 clip = getPosition();
         clip.z = 0.9999f;
         material.worldPosition = mulMat4x4Float3(getWorldFromClipMatrix(), clip.xyz);
+        // A view-space point on this pixel's ray, kept homogeneous: the quad is flat in clip
+        // space, so interpolating it and dividing per fragment is exact.
+        material.groundRay = getViewFromClipMatrix() * clip;
     }
 }

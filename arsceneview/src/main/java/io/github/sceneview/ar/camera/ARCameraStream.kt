@@ -17,9 +17,11 @@ import com.google.ar.core.Config
 import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.arcore.semanticImage
 import io.github.sceneview.ar.depth.DepthOcclusionFilter
+import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.node.ARFogConfig
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
@@ -59,6 +61,11 @@ const val kFogColorParameter = "fogColor"
 const val kFogDensityParameter = "fogDensity"
 const val kFogStartParameter = "fogStart"
 const val kFogEndParameter = "fogEnd"
+
+// Contact grounding (occlusion rule 4, see `camera_stream_depth.mat`): the placed object's
+// contact in view space. `groundNormal.w` is the 0/1 gate; 0, the default, turns it off.
+internal const val kGroundContactParameter = "groundContact"
+internal const val kGroundNormalParameter = "groundNormal"
 
 /**
  * Renders the live AR camera feed as the scene background using Filament.
@@ -260,6 +267,7 @@ open class ARCameraStream(
             setParameter(kFogStartParameter, 0f)
             setParameter(kFogEndParameter, 30f)
         }
+        disableGroundContact(this)
     }
 
     /**
@@ -313,6 +321,7 @@ open class ARCameraStream(
                 setParameter(kFogStartParameter, 0f)
                 setParameter(kFogEndParameter, 30f)
             }
+            disableGroundContact(this)
         }
 
     /**
@@ -403,6 +412,9 @@ open class ARCameraStream(
      *    standing on the floor, a shadow lying on it, is never cut by the floor's own noise.
      *  - Beyond 5 m the real world progressively stops occluding (dithered), and from 8 m it
      *    never does: phone depth that far is a guess.
+     *  - Around an object placed with `AutoPlacementModel`, measured depth up to 10 cm nearer
+     *    than the surface it stands on counts as that surface: the floor's noise never cuts its
+     *    contact shadow or its placement ring, and a real object 30 cm in front still hides them.
      *  - Untextured surfaces (a white wall, a door frame) have little depth of their own: ARCore
      *    fills them from their edges, which is right on a flat wall and wrong on a bare one seen
      *    from too close. That is a limit of motion-stereo depth, not of this renderer.
@@ -717,6 +729,46 @@ open class ARCameraStream(
     }
 
     /**
+     * The contacts of the placed objects that ground the occlusion around them (rule 4 in
+     * `camera_stream_depth.mat`). Set by `ARSceneView`; `null` grounds nothing.
+     */
+    internal var groundContacts: GroundContacts? = null
+
+    private val groundViewMatrix = FloatArray(16)
+    private val groundParameters = FloatArray(8)
+    private var groundContactWritten = false
+
+    /**
+     * Hands the nearest placed object's contact, in this frame's view space, to both occlusion
+     * materials. Called by `ARSceneView` once the frame's anchors and nodes have moved, so the
+     * contact is this frame's. ARCore's view matrix is the one
+     * [io.github.sceneview.ar.node.ARCameraNode] applies this frame (both read
+     * `displayOrientedPose`), so the plane never lags the camera either.
+     */
+    internal fun updateGroundContact(frame: Frame) {
+        val occluding = isDepthOcclusionEnabled || isPersonOcclusionEnabled
+        val camera = frame.camera
+        val grounded = groundContacts?.takeIf { occluding }?.let { contacts ->
+            camera.trackingState == TrackingState.TRACKING &&
+                contacts.viewParameters(groundViewMatrix.also { camera.getViewMatrix(it, 0) }, groundParameters)
+        } ?: false
+        // Nothing to ground two frames in a row: the materials already hold the off state.
+        if (!grounded && !groundContactWritten) return
+        if (!grounded) groundParameters.fill(0f)
+        writeGroundContact(depthOcclusionMaterial)
+        writeGroundContact(personOcclusionMaterial)
+        groundContactWritten = grounded
+    }
+
+    private fun writeGroundContact(material: com.google.android.filament.Material) {
+        // A custom occlusion material may not carry the parameters; Filament throws on a miss.
+        if (!material.hasParameter(kGroundContactParameter)) return
+        val p = groundParameters
+        material.defaultInstance.setParameter(kGroundContactParameter, p[0], p[1], p[2], p[3])
+        material.defaultInstance.setParameter(kGroundNormalParameter, p[4], p[5], p[6], p[7])
+    }
+
+    /**
      * Feeds this frame's ARCore depth through [depthFilter] and uploads the result to
      * [depthTexture].
      *
@@ -960,4 +1012,11 @@ internal fun cameraStreamPriority(
     ARCameraStream.CAMERA_PRIORITY_DEPTH_PRIME
 } else {
     ARCameraStream.CAMERA_PRIORITY_BACKGROUND
+}
+
+/** Turns occlusion rule 4 off on [material], if it carries its parameters (a custom one may not). */
+private fun disableGroundContact(material: com.google.android.filament.Material) {
+    if (!material.hasParameter(kGroundContactParameter)) return
+    material.defaultInstance.setParameter(kGroundContactParameter, 0f, 0f, 0f, 0f)
+    material.defaultInstance.setParameter(kGroundNormalParameter, 0f, 0f, 0f, 0f)
 }
