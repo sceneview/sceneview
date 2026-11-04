@@ -16,18 +16,18 @@ import java.nio.ByteOrder
  * *can* and *do* pin in pure JVM:
  *
  *  1. [ByteBuffer.clear] is metadata-only — it resets `position`/`limit` but never
- *    frees the underlying memory. The implementation in
- *    [ARCameraStream.update]'s upload-completed callback relies on this fact: the
- *    actual ARCore image memory release goes through [Image.close], not the
- *    `buffer.clear()` line below it.
+ *    frees the underlying memory. [ARCameraStream.update] copies the ARCore depth
+ *    image into the filter and closes the image in the same frame; Filament uploads
+ *    from a buffer of our own, which the upload-completed callback clears and puts
+ *    back in the pool for reuse.
  *  2. A toggle of `isDepthOcclusionEnabled` rapidly between `true → false → true`
  *    must not allocate a new buffer in the SETTER path (the buffer comes from
  *    ARCore via `acquireDepthImage16Bits`, which only runs inside the `update`
  *    method — not the setter).
  *
- * Together these pin the architectural invariant: there is exactly one buffer
- * lifecycle per acquired depth image, and the upload-completed callback is the
- * only place it is released.
+ * Together these pin the architectural invariant: an acquired depth image never
+ * outlives its frame, and an upload buffer is only reused once Filament is done
+ * with it.
  */
 class ARCameraStreamDepthBufferLifecycleTest {
 

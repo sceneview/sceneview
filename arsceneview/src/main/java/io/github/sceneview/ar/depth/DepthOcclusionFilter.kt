@@ -67,7 +67,7 @@ internal class DepthOcclusionFilter(
     var output: ByteBuffer = ByteBuffer.allocateDirect(0)
         private set
 
-    /** Fraction of texels with no depth (`0`) in [output] after the last [update]. */
+    /** Fraction of texels with no depth (written [NO_DEPTH_MM]) in [output] after the last [update]. */
     var holeFraction = 0f
         private set
 

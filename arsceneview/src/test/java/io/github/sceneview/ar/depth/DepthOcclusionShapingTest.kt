@@ -70,6 +70,8 @@ class DepthOcclusionShapingTest {
         )
         listOf("camera_stream_depth.mat", "camera_stream_person_occlusion.mat").forEach { name ->
             val source = File(root, "arsceneview/src/main/materials/$name").readText()
+            // The tolerance is a hard limit in the shader too, as in [DepthOcclusionShaping].
+            assertTrue("hard tolerance in $name", "float occluder_m = depth_m + tolerance;" in source)
             expected.forEach { (constant, value) ->
                 val match = Regex("const float $constant = ([0-9.]+);").find(source)
                     ?: throw AssertionError("$constant missing from $name")

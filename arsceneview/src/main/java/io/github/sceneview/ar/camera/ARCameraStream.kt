@@ -399,11 +399,10 @@ open class ARCameraStream(
      *    keeps the last one, one-image swings on thin or white occluders are ignored, noise on
      *    floors and walls is averaged.
      *  - The real world must be nearer than the virtual surface by a tolerance that grows with
-     *    distance (3 cm + 2 % + 1 %/m, so 6 cm at 1 m, 27 cm at 4 m), dithered over a band so the
-     *    edge is soft: a model standing on the floor, a shadow lying on it, is never cut by the
-     *    floor's own noise.
-     *  - Beyond 5 m the real world progressively stops occluding, and from 8 m it never does:
-     *    phone depth that far is a guess.
+     *    distance (3 cm + 2 % + 1 %/m, so 6 cm at 1 m, 27 cm at 4 m), a hard limit: a model
+     *    standing on the floor, a shadow lying on it, is never cut by the floor's own noise.
+     *  - Beyond 5 m the real world progressively stops occluding (dithered), and from 8 m it
+     *    never does: phone depth that far is a guess.
      *  - Untextured surfaces (a white wall, a door frame) have little depth of their own: ARCore
      *    fills them from their edges, which is right on a flat wall and wrong on a bare one seen
      *    from too close. That is a limit of motion-stereo depth, not of this renderer.
