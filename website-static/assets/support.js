@@ -227,6 +227,7 @@
       }
     }
     card.setAttribute('data-state', 'leave');
+    document.documentElement.classList.remove('svs-open');
     setTimeout(function () { if (card && card.parentNode) card.parentNode.removeChild(card); }, 400);
   }
 
@@ -246,6 +247,8 @@
       // background tab that comes back to the front would show a half-faded card.
       void card.offsetWidth;
       card.setAttribute('data-state', 'in');
+      // The page reads this to keep the card's Donate the only filled button on screen.
+      document.documentElement.classList.add('svs-open');
       document.addEventListener('keydown', onKey, true);
       if (!preview) { state.shown = Date.now(); persist(); }
       track('support_prompt_view', { trigger: trigger, page_views: preview ? 0 : state.pv });

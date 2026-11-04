@@ -75,6 +75,10 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .btn svg { width: 18px; height: 18px; flex: none; }
 .btn--filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
 .btn--tonal { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+/* While the support card is open (support.js sets .svs-open on <html>), its Donate
+   button is the one filled button on screen: the page's filled buttons turn tonal. */
+.btn--filled { transition: background-color var(--d-base) var(--md-sys-motion-easing-standard), color var(--d-base) var(--md-sys-motion-easing-standard); }
+.svs-open .btn--filled { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
 .btn--outlined { border: 1px solid var(--md-sys-color-outline); color: var(--md-sys-color-primary); }
 .btn--text { padding: 0 12px; }
 .btn--lg { height: 56px; padding: 0 28px; font: var(--md-sys-typescale-title-medium); }
@@ -149,8 +153,8 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
   transform: translate(-50%, -50%) scale(calc(var(--obj-scale) * var(--shadow-scale)));
   transition: transform var(--d-base) var(--md-sys-motion-easing-standard); }
 .stage__shadow::before, .stage__shadow::after { content: ""; position: absolute; border-radius: 50%; }
-.stage__shadow::before { inset: 18% 14%; background: radial-gradient(closest-side, rgba(0, 0, 0, var(--stage-shadow-a)), rgba(0, 0, 0, 0)); }
-.stage__shadow::after { inset: -14% -10%; background: radial-gradient(closest-side, rgba(0, 0, 0, calc(var(--stage-shadow-a) * .42)), rgba(0, 0, 0, 0)); }
+.stage__shadow::before { inset: 18% 14%; background: radial-gradient(closest-side, rgba(var(--stage-shadow), var(--stage-shadow-a)), rgba(var(--stage-shadow), 0)); }
+.stage__shadow::after { inset: -14% -10%; background: radial-gradient(closest-side, rgba(var(--stage-shadow), calc(var(--stage-shadow-a) * .42)), rgba(var(--stage-shadow), 0)); }
 .stage__frame { position: absolute; inset: 0;
   transform: scale(var(--obj-scale)); transform-origin: calc(var(--sx) * 100%) calc(var(--sy) * 100%);
   transition: transform var(--d-base) var(--md-sys-motion-easing-standard); }
@@ -319,7 +323,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .fund__note { font: var(--md-sys-typescale-body-medium) !important; }
 .sponsor__ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: var(--s-2); }
 @media (min-width: 960px) {
-  .fund { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-8); }
+  .fund { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); }   /* same grid as MCP and Adoption */
 }
 
 /* ── Code ↔ scene ─────────────────────────────────────────── */
@@ -512,7 +516,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
     .vs:has(input[value="realitykit"]:checked) .compare :is(th, td):nth-child(6) { display: table-cell; }
   }
 }
-.faq { margin-top: var(--s-7); border-top: 1px solid var(--md-sys-color-outline-variant); max-width: 52rem; }
+.faq { margin-top: var(--s-7); border-top: 1px solid var(--md-sys-color-outline-variant); }   /* full width: its right edge meets the table above */
 .faq details { border-bottom: 1px solid var(--md-sys-color-outline-variant); }
 .faq summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 12px 16px; margin-inline: -16px; cursor: pointer; list-style: none; font: var(--md-sys-typescale-title-medium); }
 .faq summary::-webkit-details-marker { display: none; }
@@ -529,7 +533,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 @media (max-width: 599px) { .finale__ctas .btn { flex: 1 1 100%; } }
 @media (min-width: 960px) {
   .finale { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); align-items: center; }
-  .finale__ctas { margin-top: 0; justify-content: flex-end; }
+  .finale__ctas { margin-top: 0; justify-content: flex-start; }
 }
 
 /* ── Footer ───────────────────────────────────────────────── */
@@ -542,8 +546,9 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .footer ul { list-style: none; margin: 0; padding: 0; }
 .footer li a { display: inline-flex; align-items: center; min-height: 48px; }
 .footer li a:hover { color: var(--md-sys-color-on-surface); text-decoration: underline; text-underline-offset: 3px; }
-.footer__credits { margin: var(--s-6) 0 0; padding-top: var(--s-5); border-top: 1px solid var(--md-sys-color-outline-variant); max-width: 72ch; font: var(--md-sys-typescale-body-small); }
+.footer__credits { margin: var(--s-6) 0 0; padding-top: var(--s-5); border-top: 1px solid var(--md-sys-color-outline-variant); font: var(--md-sys-typescale-body-small); }
 .footer__credits a { color: var(--md-sys-color-on-surface); text-decoration: underline; text-underline-offset: 2px; }
+.footer__credits a[href="/credits.html"] { white-space: nowrap; }   /* "All model credits" never splits */
 .footer__legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 24px; margin-top: var(--s-3); font: var(--md-sys-typescale-body-small); }
 .footer__legal-links { display: flex; gap: 16px; }
 .footer__legal a { display: inline-flex; align-items: center; min-height: 48px; color: var(--md-sys-color-on-surface); }

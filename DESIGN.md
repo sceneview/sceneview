@@ -308,40 +308,33 @@ so the eye lands on the one thing the screen is for.
 
 ### Website Home (`website-static/index.html`)
 
-The home page reads its palette from `website-static/assets/tokens.css` (CSS custom
-properties, dark and light) and `assets/site.css` never writes a colour literal: a
-value that is missing gets a token there first. Three groups are **the same in both
-themes** because their ground does not change with the theme — the code card and the
-command boxes stay dark, the media tiles are photographs, and the sheet scrim sits
-over whatever page is behind it.
+The home page is Material 3. `website-static/assets/tokens.css` holds the M3 colour
+roles as the official web tokens, `--md-sys-color-<role>`, generated from one source
+colour (#005BC1, scheme Fidelity, contrast 0) for light on `:root` and for dark under
+`prefers-color-scheme: dark` and `[data-theme="dark"]`. `assets/site.css` reads roles
+only and never writes a colour literal: a value that is missing is regenerated, never
+picked by eye. Every block follows the theme, the 3D stage and the code card included;
+there is no "always dark" island.
 
-**`.night`** (`tokens.css`): a block that is a night picture in both themes — the home
-hero's circuit scene and the header while it sits over it — carries the class and takes the
-**whole dark token set** (`--bg`, `--text`, `--accent`, the stage tokens…) whatever
-`data-theme` says, with `color-scheme: dark` so native controls follow. The light theme
-therefore does not re-light the scene: the picture ends on a clean edge and the page's
-light surfaces start under it. Inside a `.night` block, use the ordinary tokens; never
-reach for a dark literal to "force" the night.
+Type is the system font (`--md-ref-typeface-plain`: system-ui, -apple-system, Roboto,
+"Segoe UI", sans-serif) on the M3 type scale (`--md-sys-typescale-*`), and code uses
+`--md-ref-typeface-code` (ui-monospace, "SF Mono", Menlo, Consolas, monospace). No web
+font is loaded.
 
-| Token | Value | Usage |
-|---|---|---|
-| `--code-strong` | #F3F5F9 | Selected code tab, hovered copy button — 17.5:1 on `--code-bg` (#0C1017) |
-| `--code-fg-2` | #B4BCCB | Copy icon at rest — 10.0:1 on `--code-bg` |
-| `--code-border` | #252D3B | Edge of the code card |
-| `--code-line` | #1F2633 | Rule between the tab strip, the code and the footer — decorative, never the only edge of a control |
-| `--code-hover` · `--code-hover-strong` | rgba(255,255,255,.04) · rgba(255,255,255,.08) | Hover wash on a tab · on the copy button |
-| `--code-ok` · `--code-alpha` | #5BD49A · #F5C66B | Platform status inside the card ("Stable" / "Alpha") — 10.3:1 and 12.0:1 on `--code-bg`. Outside the card, status uses the themed `--ok` / `--alpha` |
-| `--code-flash` | rgba(255,184,107,.35) | Wash on a code literal that just changed (`--syn-str` at 35%), fades to transparent |
-| `--media-bg` · `--media-void` | #07090D · #000 | Ground of a media tile · behind the galaxy photograph |
-| `--media-glow` | #1A2233 | Light pool at the top of the AR tile |
-| `--media-border` | #252D3B | Edge of a media tile |
-| `--media-fg` · `--media-fg-2` | #F3F5F9 · #B4BCCB | Title · caption and tag on a media tile — 18.3:1 and 10.4:1 on `--media-bg` |
-| `--media-accent` | #8AB4FF | Link on a media tile — 9.5:1 on `--media-bg` |
-| `--media-veil` · `--media-veil-0` | rgba(7,9,13,.94) · rgba(7,9,13,0) | Gradient under the caption so the text never sits on the picture |
-| `--media-dots` · `--media-ring` | rgba(138,180,255,.55) · rgba(243,245,249,.85) | Detected-plane dot grid · placement reticle in the AR tile |
-| `--media-chip` · `--media-chip-border` | rgba(28,34,48,.8) · rgba(255,255,255,.14) | Read-out chips in the AR tile |
-| `--scrim` | rgba(3,4,6,.6) | Behind the navigation sheet |
-| `--live` · `--live-halo` · `--live-halo-0` | #2FBF7A · rgba(47,191,122,.2) · rgba(47,191,122,0) | The dot next to "Live" on the 3D stage and its pulse. A dot only: the word beside it carries the state |
+| Role | Usage on the home |
+|---|---|
+| `surface` · `on-surface` | Page ground · titles and body text |
+| `on-surface-variant` | Secondary text: leads, captions, footer, FAQ answers |
+| `surface-container-low` | Footer band, navigation sheet |
+| `surface-container` | Code card (`--code-bg`), filled cards (Commercial support), table header |
+| `surface-container-high` · `-highest` | Command boxes, rendered tiles · chip thumbnails |
+| `outline` · `outline-variant` | Edge of an outlined button, select or segmented control · dividers, table rules, card edges |
+| `secondary` (as outline) | Focus ring, 3 px, on every control |
+| `primary` · `on-primary` | The one filled button on screen ("Get started"; the support card's Donate while it is open) · links in body text |
+| `secondary-container` · `on-secondary-container` | Tonal buttons (the header's "Get started"), the selected segment or chip, and every filled button while the support card is open (`.svs-open` on `<html>`) |
+| `secondary` · `success` · `warning` | Syntax roles in the code card (`--syn-fn`, `--syn-str`, `--syn-num`; `--syn-key` is `primary`) and the copy button's check, never decoration |
+| `scrim` | Behind the navigation sheet, at 32% |
+| `shadow` | The contact shadow under the 3D object (`--stage-shadow`, an rgb triplet, with `--stage-shadow-a` per theme): a scene effect, not UI elevation |
 
 ### Text
 
@@ -401,7 +394,7 @@ reach for a dark literal to "force" the night.
 
 | Token | Value | Usage |
 |---|---|---|
-| `font-body` | 'Inter', system-ui, -apple-system, sans-serif | All body text |
+| `font-body` | system-ui, -apple-system, Roboto, "Segoe UI", sans-serif | All body text — the system font, no web font |
 | `font-mono` | 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace | Code, terminal |
 
 ### Font Scale (responsive)

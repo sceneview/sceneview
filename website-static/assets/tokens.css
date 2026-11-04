@@ -107,7 +107,9 @@
   --md-sys-state-focus-opacity: 10%;
   --md-sys-state-pressed-opacity: 10%;
 
-  /* Physical contact shadow under the 3D object (a scene effect, not UI elevation). */
+  /* Physical contact shadow under the 3D object (a scene effect, not UI elevation).
+     --stage-shadow is --md-sys-color-shadow as an rgb triplet; the alpha is set per layer. */
+  --stage-shadow: 0, 0, 0;
   --stage-shadow-a: .35;
 }
 
