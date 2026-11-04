@@ -12,7 +12,7 @@
   /* Light scheme */
   --md-primary-fg-color: #004494;          /* primary */
   --md-primary-fg-color--light: #005bc1;   /* primary-container */
-  --md-primary-fg-color--dark: #002e69;    /* primary, darker tone */
+  --md-primary-fg-color--dark: #005bc1;    /* primary-container */
   --md-primary-bg-color: #ffffff;          /* on-primary */
   --md-primary-bg-color--light: #c9d9ff;   /* on-primary-container */
   --md-accent-fg-color: #005bc1;           /* primary-container: link hover */
@@ -79,9 +79,15 @@
   background-color: var(--md-default-bg-color);
   color: var(--md-default-fg-color);
 }
-.md-header--shadow {
+.md-header--shadow,
+.md-header--shadow + .md-container .md-tabs {
   background-color: var(--sv-surface-container);
   box-shadow: none;
+}
+/* Drawer repository block: Material paints it in primary-dark; M3 keeps it a surface. */
+.md-nav__source {
+  background-color: var(--sv-surface-container);
+  color: var(--md-default-fg-color);
 }
 .md-header__button.md-logo img { height: 1.3rem; }
 .md-nav--primary .md-nav__title[for="__drawer"] {
