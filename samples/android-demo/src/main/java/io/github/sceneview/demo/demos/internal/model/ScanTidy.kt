@@ -96,14 +96,19 @@ internal object ScanTidy {
     }
 
     /**
-     * Which way the walls of [positions] run, their faces' [normals] beside them: the yaw the
-     * result is framed by ([ScanResultFraming.of]) — the walls' own way while they agree on one
+     * Which way the walls of [positions] run, their faces' [normals] beside them, by the rule the
+     * result is framed by ([ScanResultFraming.of]): the walls' own way while they agree on one
      * ([ScanResultFraming.MIN_WALL_COHERENCE]), the footprint's long axis when they do not (a
      * garden, a hedge, a round object). The crop and the frame stand square to the same walls.
      *
-     * The footprint is read without the [TAIL] of the vertices past each end of x and z: the
-     * framing reads the finished model, the pieces this crop cuts already gone, and one stray
-     * metres away would otherwise turn the whole box.
+     * The same rule, not always the same number: this reads the raw surface's face normals, the
+     * framing the finished model's vertex normals, so a scan whose walls agree about as much as
+     * [ScanResultFraming.MIN_WALL_COHERENCE] can take one branch here and the other there.
+     *
+     * The footprint is read without the [FOOTPRINT_TAIL] of its vertices farthest from its middle:
+     * the framing reads the finished model, the strays this crop and [dropIsolated] cut already
+     * gone, and one metres away would otherwise turn the whole box. A stray holding more than that
+     * share still turns it.
      */
     fun yawDegrees(positions: FloatArray, normals: FloatArray): Float =
         if (ScanResultFraming.wallCoherence(normals) >= ScanResultFraming.MIN_WALL_COHERENCE) {
@@ -112,25 +117,30 @@ internal object ScanTidy {
             ScanResultFraming.footprintYawDegrees(withinTails(positions))
         }
 
-    /** The vertices of [positions] between the [TAIL] and 1 - [TAIL] quantiles of x and of z. */
+    /**
+     * [positions] less the [FOOTPRINT_TAIL] of them farthest on the floor plan from its middle (the
+     * median of x and of z, which a stray does not move). Cut by a disc, a long footprint keeps
+     * its mirror symmetry about its long axis, so the axis does not tilt as a square cut would.
+     */
     private fun withinTails(positions: FloatArray): FloatArray {
         val n = positions.size / AXES
         if (n < MIN_VERTICES) return positions
-        val low = FloatArray(AXES)
-        val high = FloatArray(AXES)
         val axis = FloatArray(n)
+        val middle = FloatArray(AXES)
         for (k in PLAN) {
             for (v in 0 until n) axis[v] = positions[v * AXES + k]
             axis.sort()
-            low[k] = axis[((n - 1) * TAIL).toInt()]
-            high[k] = axis[((n - 1) * (1f - TAIL) + HALF).toInt().coerceAtMost(n - 1)]
+            middle[k] = axis[n / 2]
         }
-        fun inside(v: Int) = PLAN.all { k -> positions[v * AXES + k] in low[k]..high[k] }
-        val kept = (0 until n).count(::inside)
+        fun far(v: Int): Float = PLAN.sumOf { k -> (positions[v * AXES + k] - middle[k]).toDouble().let { it * it } }.toFloat()
+        for (v in 0 until n) axis[v] = far(v)
+        axis.sort()
+        val reach = axis[((n - 1) * (1f - FOOTPRINT_TAIL) + HALF).toInt().coerceAtMost(n - 1)]
+        val kept = (0 until n).count { far(it) <= reach }
         val out = FloatArray(kept * AXES)
         var i = 0
         for (v in 0 until n) {
-            if (!inside(v)) continue
+            if (far(v) > reach) continue
             positions.copyInto(out, i, v * AXES, v * AXES + AXES)
             i += AXES
         }
@@ -149,6 +159,12 @@ internal object ScanTidy {
 
     /** The share of a scan's vertices past each end of each axis [crop] leaves out. */
     const val TAIL = 0.01f
+
+    /**
+     * The share of a scan's vertices, the farthest from its middle on the floor plan, its
+     * footprint is read without ([yawDegrees]): a stray under it does not turn the box.
+     */
+    const val FOOTPRINT_TAIL = 0.05f
 
     /** How much wider than its quantiles [crop] keeps the box, metres. */
     const val MARGIN_M = 0.15f

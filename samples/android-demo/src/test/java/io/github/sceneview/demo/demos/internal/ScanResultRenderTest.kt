@@ -235,9 +235,16 @@ class ScanResultRenderTest {
         val (cropped, cut) = ScanTidy.crop(bed.plus(stray))
         assertEquals("the stray's triangles", stray.triangleCount, cut)
         assertEquals(bed.triangleCount, cropped.triangleCount)
-        // A stray metres away does not turn the footprint the box is squared on.
+        // A stray metres away does not turn the footprint the box is squared on: one of 9 vertices,
+        // and one holding 3 % of the scan's, under ScanTidy.FOOTPRINT_TAIL. Under half a degree
+        // off: the trim's disc, centred on the median, sits a little towards the stray.
+        val up = FloatArray(faces * 3) { if (it % 3 == 1) 1f else 0f }
         val far = grid(9f, 9f, 9.2f, 9.2f, step = 0.1f)
-        assertEquals(30f, ScanTidy.yawDegrees(bed.plus(far).positions, FloatArray(faces * 3) { if (it % 3 == 1) 1f else 0f }), 0.5f)
+        assertEquals(30f, ScanTidy.yawDegrees(bed.plus(far).positions, up), 0.5f)
+        val farther = grid(9f, 9f, 9.2f, 9.2f, step = 0.05f)
+        val share = farther.vertexCount.toFloat() / (bed.vertexCount + farther.vertexCount)
+        assertTrue("a 2-3 % stray: $share", share in 0.02f..ScanTidy.FOOTPRINT_TAIL)
+        assertEquals(30f, ScanTidy.yawDegrees(bed.plus(farther).positions, up), 0.5f)
     }
 
     // ── Which model frames the result ─────────────────────────────────────────
