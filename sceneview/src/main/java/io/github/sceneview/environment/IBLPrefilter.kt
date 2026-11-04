@@ -16,6 +16,7 @@ class IBLPrefilter(engine: Engine) {
     private val contextDelegate = lazy {
         // No-op when SceneView already initialised Filament; covers an engine created without it.
         PrefilterEntitySlots.reserve()
+        PrefilterEntitySlots.contextCreated()
         IBLPrefilterContext(engine)
     }
     private val equirectangularToCubemapDelegate = lazy {

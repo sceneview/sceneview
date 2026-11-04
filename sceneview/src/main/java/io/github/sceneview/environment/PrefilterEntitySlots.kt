@@ -2,6 +2,7 @@ package io.github.sceneview.environment
 
 import android.util.Log
 import com.google.android.filament.EntityManager
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Keeps the entities of [com.google.android.filament.utils.IBLPrefilterContext] visible to the
@@ -52,6 +53,8 @@ internal object PrefilterEntitySlots {
     @Volatile
     private var reserved: IntArray? = null
 
+    private val contextsCreated = AtomicInteger()
+
     /**
      * The first slot index the reservation got, or 0 before [reserve] ran. 1 means it covers every
      * slot the prefilter's manager hands out; more means some other code created entities first.
@@ -69,12 +72,35 @@ internal object PrefilterEntitySlots {
         EntityManager.get().create(entities)
         reserved = entities
         val first = entities.first() and INDEX_MASK
+        val last = entities.last() and INDEX_MASK
+        if (last - first != SLOT_COUNT - 1) {
+            Log.w(
+                TAG,
+                "Entity slots reserved from index $first to $last, not contiguous: another thread " +
+                    "created entities during the reservation. HDR environments may render black."
+            )
+        }
         if (first != 1) {
             Log.w(
                 TAG,
                 "Entity slots reserved from index $first, not 1: ${first - 1} entities were created " +
                     "before SceneView initialised Filament. HDR environments loaded after one of " +
                     "them is destroyed may render black (Filament 1.77+ IBLPrefilterContext)."
+            )
+        }
+    }
+
+    /**
+     * Counts one more `IBLPrefilterContext`, and warns once the count passes what the reservation
+     * covers: from then on, every new HDR environment renders black.
+     */
+    fun contextCreated() {
+        if (contextsCreated.incrementAndGet() == SLOT_COUNT / 2 + 1) {
+            Log.w(
+                TAG,
+                "More than ${SLOT_COUNT / 2} IBLPrefilterContexts created in this process: HDR " +
+                    "environments loaded from now on render black (Filament 1.77+). Share one " +
+                    "EnvironmentLoader per Engine instead of one per composition."
             )
         }
     }
