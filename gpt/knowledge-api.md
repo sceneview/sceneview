@@ -81,7 +81,7 @@ fun SceneView(
     fillLightNode: LightNode? = rememberFillLightNode(engine),  // dual-light default — soft opposite fill
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
-    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = remember { createDefaultCameraManipulator(eyePosition = cameraNode.worldPosition) },  // starts at cameraNode's position, read once, never rebuilt
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
@@ -683,6 +683,8 @@ SceneView(...) {
     )
 }
 ```
+
+**Shadow options on Filament 1.77.x (Android):** do not pass `shadowOptions(LightManager.ShadowOptions().apply { … })` to the builder. In the Java bindings of Filament 1.77, `ShadowOptions()` starts with every field at 0 (`mapSize` and the `transform` quaternion included) and the setter reorders the quaternion (google/filament#10565, fixed in 1.79), so the directional shadow disappears. Build the light with `castShadows(true)` only, then read the native options back, change the fields you need and write them: `lightManager.setShadowOptions(i, lightManager.getShadowOptions(i).apply { mapSize = 2048 })`. `Renderer.FrameRateOptions()` and `Renderer.DisplayInfo()` also start at 0 in 1.77: read the current value from the renderer before changing it. `Engine.isValid` is a SceneView extension that replaces the `Engine.isValid()` method removed in 1.77.
 
 ### CubeNode — box geometry
 ```kotlin
@@ -1382,6 +1384,18 @@ SceneView {
     cameraPosition: Position = Position(0f, 0f, 0f)
 )
 ```
+Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` from `onFrame`
+(`cameraNode.worldPosition`). All probes of a scene are resolved together on every change:
+- among the probes whose zone holds the camera, the highest `priority` wins; on a tie, the probe
+  added most recently wins (one that leaves the composition and comes back counts as new);
+- with no active probe (camera outside every local zone, or the last probe removed), the scene
+  shows its `SceneView(environment = …)` light again — the current one, even if it changed
+  meanwhile;
+- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+  overrides an active probe; a destroyed light is never handed back.
+- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
+  estimation's) directly, so in AR a new environment can replace an active probe until the next
+  probe change (see #4928).
 
 ---
 
@@ -4042,7 +4056,7 @@ class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalA
 
 **Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) is found before any Filament call: `awaitModelInstance` throws `UnsupportedGltfExtensionException` and `rememberModelLoadState` gives `Failed`; every other load (`create*`, `load*`, `load*Async`, `rememberModelInstance`) logs it and loads the model as before, without what the extension carries (untextured for AVIF). gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read: re-export without `-mi`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
 
-**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture (e.g. a `.gltf` image that cannot be resolved) is logged and the model loads without it; `awaitModelInstance` returns anyway, and after 10 s without texture progress returns the model as loaded, logged. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it. Before any native call, a glTF that a release build of Filament would abort on is refused the same way (`IllegalArgumentException` listing every reason, thrown by `awaitModelInstance` too; `null` from `loadModel`): an accessor, buffer view or sparse index past its buffer or at a negative offset (an external `.bin` or `data:` buffer shorter than declared included), a buffer cgltf cannot load (a `.glb` whose BIN chunk is missing or shorter than buffer 0, a `data:` buffer that is not valid base64 or holds a JSON escape, which cgltf decodes raw, an absolute `://` buffer URI), a buffer view reading a buffer cgltf leaves without data (no `uri` other than buffer 0 of a `.glb`, an empty `uri`, a percent-encoded `uri` that decodes to bytes no resource can be fed under or to the same name as another buffer `uri`, the fallback buffer of a `KHR_meshopt_compression` view, which the cgltf of Filament 1.72.1 does not parse), an index past the vertex count (when its bytes are in the `.glb` or an external `.bin`), an animation sampler whose keyframe times are in no buffer view, attributes or morph targets that disagree on their vertex count, indices that are not tightly packed unsigned integers, a drawn skin over 256 joints, animated morph weights over 256 targets, a drawn texture larger than the GPU supports, a JSON too large or too deeply nested to parse. A file the check cannot read is refused as `malformed glTF: <reason>`, never thrown. A percent-encoded buffer `uri` (`my%20model.bin`) is fed to gltfio under its raw name and under the name cgltf decodes it to (unless another resource has that name: cgltf then reads that one, whose length is checked; or two buffer `uri`s decode to it, as `a%20b.bin` and `a%20%62.bin` do: neither is fed under it, and a view reading either is refused; images are fed under their raw `uri` only), so it no longer loads without geometry; the resolver receives the raw `uri`. It loads when the resolver serves the decoded name (`file://` and `http(s)` loads, or a custom resolver); the asset and `File` resolvers open the literal encoded name, and fail when no file has it: `IllegalArgumentException` from `createModel*`, `null` from `loadModel`. A `uri` that decodes to bytes no resource can be fed under (not UTF-8, a NUL, a character outside the BMP) is refused when a buffer view reads it. A sampler whose output count does not match its keyframes is not refused: gltfio's `Animator` checks it in every build and leaves the model's animations off. Unused skins, images and fallback images are not counted. Each embedded `data:` URI is cut to its first 64 KiB before the JSON is parsed, so the check costs a few hundred KiB of heap whatever the size of the embedded data. Not covered: indices, sparse indices and images stored in a `data:` buffer, `EXT_meshopt_compression` buffer views, a `data:` URI whose header escapes its comma, a buffer `uri` containing a JSON escape (`\uXXXX`, `\/`), which is checked on its unescaped form while cgltf sees the raw string, an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed, a raw (not percent-encoded) `uri` holding a character outside the BMP, which JNI feeds under a name cgltf does not look up, iridescence and anisotropy textures (never decoded by gltfio), a texture that fails to decode in `updateLoad()`, an accessor without a buffer view whose `count` is too large to allocate, an unused accessor with an unknown `componentType`, a sampler whose keyframe times have no buffer view when another animation fails gltfio's checks, an external buffer that cannot be read before the load, WebP image sizes. Once the `ModelLoader` or its `Engine` is destroyed, `createModel*` / `createInstancedModel` / `createInstance` throw `IllegalStateException`; `updateLoad()`, `progress`, `isLoading` and `destroyModel` make no native call. Off the main thread, `progress` and `isLoading` return the last value read on it.
+**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture (e.g. a `.gltf` image that cannot be resolved) is logged and the model loads without it; `awaitModelInstance` returns anyway, and after 10 s without texture progress returns the model as loaded, logged. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it. Before any native call, a glTF that a release build of Filament would abort on is refused the same way (`IllegalArgumentException` listing every reason, thrown by `awaitModelInstance` too; `null` from `loadModel`): an accessor, buffer view or sparse index past its buffer or at a negative offset (an external `.bin` or `data:` buffer shorter than declared included), a buffer cgltf cannot load (a `.glb` whose BIN chunk is missing or shorter than buffer 0, a `data:` buffer that is not valid base64 or holds a JSON escape, which cgltf decodes raw, an absolute `://` buffer URI), a buffer view reading a buffer cgltf leaves without data (no `uri` other than buffer 0 of a `.glb`, an empty `uri`, a percent-encoded `uri` that decodes to bytes no resource can be fed under or to the same name as another buffer `uri`, the fallback buffer of a `KHR_meshopt_compression` view, which the cgltf of Filament 1.77.3 does not parse), an index past the vertex count (when its bytes are in the `.glb` or an external `.bin`), an animation sampler whose keyframe times are in no buffer view, attributes or morph targets that disagree on their vertex count, indices that are not tightly packed unsigned integers, a drawn skin over 256 joints, animated morph weights over 256 targets, a drawn texture larger than the GPU supports, a JSON too large or too deeply nested to parse. A file the check cannot read is refused as `malformed glTF: <reason>`, never thrown. A percent-encoded buffer `uri` (`my%20model.bin`) is fed to gltfio under its raw name and under the name cgltf decodes it to (unless another resource has that name: cgltf then reads that one, whose length is checked; or two buffer `uri`s decode to it, as `a%20b.bin` and `a%20%62.bin` do: neither is fed under it, and a view reading either is refused; images are fed under their raw `uri` only), so it no longer loads without geometry; the resolver receives the raw `uri`. It loads when the resolver serves the decoded name (`file://` and `http(s)` loads, or a custom resolver); the asset and `File` resolvers open the literal encoded name, and fail when no file has it: `IllegalArgumentException` from `createModel*`, `null` from `loadModel`. A `uri` that decodes to bytes no resource can be fed under (not UTF-8, a NUL, a character outside the BMP) is refused when a buffer view reads it. A sampler whose output count does not match its keyframes is not refused: gltfio's `Animator` checks it in every build and leaves the model's animations off. Unused skins, images and fallback images are not counted. Each embedded `data:` URI is cut to its first 64 KiB before the JSON is parsed, so the check costs a few hundred KiB of heap whatever the size of the embedded data. Not covered: indices, sparse indices and images stored in a `data:` buffer, `EXT_meshopt_compression` buffer views, a `data:` URI whose header escapes its comma, a buffer `uri` containing a JSON escape (`\uXXXX`, `\/`), which is checked on its unescaped form while cgltf sees the raw string, an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed, a raw (not percent-encoded) `uri` holding a character outside the BMP, which JNI feeds under a name cgltf does not look up, iridescence and anisotropy textures (never decoded by gltfio), a texture that fails to decode in `updateLoad()`, an accessor without a buffer view whose `count` is too large to allocate, an unused accessor with an unknown `componentType`, a sampler whose keyframe times have no buffer view when another animation fails gltfio's checks, an external buffer that cannot be read before the load, WebP image sizes. Once the `ModelLoader` or its `Engine` is destroyed, `createModel*` / `createInstancedModel` / `createInstance` throw `IllegalStateException`; `updateLoad()`, `progress`, `isLoading` and `destroyModel` make no native call. Off the main thread, `progress` and `isLoading` return the last value read on it.
 
 **WebP textures:** every entry point above re-encodes `EXT_texture_webp` textures to PNG
 before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305):
@@ -4269,8 +4283,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius` and `targetPosition`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
+| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?, key?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius`, `targetPosition` and `key`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Change `key` to reset the view (rebuild at the starting framing, camera glides back). Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?, inertia?, key?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Keyed on `orbitHomePosition`, `targetPosition` (by value) and `key`, like the `orbitRadius` overload; never pass a live value such as `cameraNode.worldPosition`. `creator` is not a key — change `key` to apply a new one. Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
@@ -4317,6 +4331,18 @@ SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
 ))
+
+// Both overloads are keyed on their inputs: a new radius, eye or target rebuilds the
+// manipulator and SceneView glides the camera there (~0.6 s). `key` rebuilds it on demand —
+// "double-tap to reset the view", no `key { }` block needed. Double-tap also zooms in by
+// default (#3608): turn that off on the manipulator, or the zoom starts before the reset glide.
+var resets by remember { mutableIntStateOf(0) }
+SceneView(
+    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f, key = resets).apply {
+        (this as? CameraGestureDetector.DefaultCameraManipulator)?.isDoubleTapZoomEnabled = false
+    },
+    onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
+)
 
 // Custom camera position
 SceneView(cameraNode = rememberCameraNode(engine) {
@@ -4431,9 +4457,11 @@ they all target the origin (#2873).
 - `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
   does **not** set the distance.
 - **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
-  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
-  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
-  default `CameraNode`.
+  own default manipulator (the `cameraManipulator` argument left out) starts at the camera node's
+  position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the default `CameraNode` — and reads it once.
+  Don't pass `orbitHomePosition = cameraNode.worldPosition` yourself: the manipulator is keyed on
+  `orbitHomePosition`, that value changes on every orbit, and each recomposition would rebuild the
+  manipulator under the user's finger (#4838).
 - Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
   bounding-box centre lands on the **world origin**. So the distance the subject is framed from
   is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
@@ -4463,8 +4491,12 @@ SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulat
 ))
 ```
 
-There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
-plain callback `SceneView` forwards to your code, never wired to the camera.
+There is no built-in gesture that returns the camera to `orbitHomePosition` — the built-in
+double-tap *zooms in* (see "Camera gestures" below). Wire a reset with `key`:
+`rememberCameraManipulator(orbitHomePosition = …, key = resets)` and `resets++` in `onDoubleTap`
+(or a button) rebuild the manipulator at that eye, and the camera glides back (#4838). On a
+double-tap, set `isDoubleTapZoomEnabled = false` on the `DefaultCameraManipulator` first, as in
+the example above, so the zoom and the reset do not fight.
 
 ### Auto-fit camera framing
 

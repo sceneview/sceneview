@@ -25,6 +25,7 @@ import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toColor
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.VideoNode
 import io.github.sceneview.node.ViewNode
@@ -47,7 +48,7 @@ const val DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE = 6_500.0f
  * setup out of the box. See audit `project_plan_v1_hybrid_2026-05-10`.
  */
 const val DEFAULT_MAIN_LIGHT_COLOR_INTENSITY = 10_000.0f
-val DEFAULT_MAIN_LIGHT_COLOR = Colors.cct(DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE).toColor()
+val DEFAULT_MAIN_LIGHT_COLOR = Colors.cct(DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE, null).toColor()
 val DEFAULT_MAIN_LIGHT_INTENSITY = DEFAULT_MAIN_LIGHT_COLOR_INTENSITY
 
 /**
@@ -58,7 +59,7 @@ val DEFAULT_MAIN_LIGHT_INTENSITY = DEFAULT_MAIN_LIGHT_COLOR_INTENSITY
  */
 const val DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE = 6_500.0f
 const val DEFAULT_FILL_LIGHT_COLOR_INTENSITY = 3_000.0f
-val DEFAULT_FILL_LIGHT_COLOR = Colors.cct(DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE).toColor()
+val DEFAULT_FILL_LIGHT_COLOR = Colors.cct(DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE, null).toColor()
 val DEFAULT_FILL_LIGHT_INTENSITY = DEFAULT_FILL_LIGHT_COLOR_INTENSITY
 
 /**
@@ -147,7 +148,7 @@ fun createView(engine: Engine): View = engine.createView().apply {
     // SplatNode and the demo's ViewerBackdrop invert this exact curve: change the tone mapper,
     // update them too.
     colorGrading = ColorGrading.Builder()
-        .toneMapper(ToneMapper.PBRNeutralToneMapper())
+        .toneMapper(ToneMapper.PBRNeutral())
         .build(engine)
 }
 
@@ -233,7 +234,7 @@ internal fun Node.matchToneMapInverse(view: View?) {
 }
 
 internal fun MaterialInstance.matchToneMapInverse(view: View?) {
-    if (view == null || !material.hasParameter("inverseFilmic")) return
+    if (view == null || materialOrNull?.hasParameter("inverseFilmic") != true) return
     setParameter("inverseFilmic", view in filmicViews)
 }
 

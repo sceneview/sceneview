@@ -13,7 +13,7 @@ import kotlin.math.sqrt
  *
  * A SceneView surface is opaque, so the renderer's clear — black — covers the stage colour the
  * layout paints behind it; the backdrop has to be drawn by Filament. And everything Filament draws
- * goes through the view's tone mapper, [com.google.android.filament.ToneMapper.PBRNeutralToneMapper]
+ * goes through the view's tone mapper, [com.google.android.filament.ToneMapper.PBRNeutral]
  * by default, whose toe pulls the darkest channel of a colour this dark close to black, and whose
  * shoulder compresses the light theme's near-white. So the backdrop is painted in the colour the
  * tone mapper maps *onto* the token — its exact inverse, the same idea as the AR camera materials'
@@ -41,7 +41,7 @@ object ViewerBackdrop {
             .map(::inverseFilmic).toFloatArray()
 
     /**
-     * Khronos PBR Neutral — Filament's `ToneMapper.PBRNeutralToneMapper` — on one linear RGB
+     * Khronos PBR Neutral — Filament's `ToneMapper.PBRNeutral` — on one linear RGB
      * colour. Past a small toe it keeps a colour as it is up to 0.76 and only rolls off what is
      * brighter, without the hue shifts and the lifted mid-tones of [filmic]: a white sofa stays
      * white and a red car stays the red it was authored in, which is what a product shot needs.

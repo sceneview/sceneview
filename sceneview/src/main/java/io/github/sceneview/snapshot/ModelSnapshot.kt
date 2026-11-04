@@ -37,6 +37,7 @@ import io.github.sceneview.DefaultCameraNode
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.createView
 import io.github.sceneview.destroyRendererWhenBackendIdle
+import io.github.sceneview.isValid
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.Model
@@ -663,7 +664,7 @@ class ModelSnapshot @MainThread constructor(
         ibl.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
         ibl.cubemap?.let { engine.safeDestroyTexture(it) }
         for (light in intArrayOf(keyLight, fillLight)) {
-            scene.removeEntity(light)
+            scene.remove(light)
             engine.safeDestroyLight(light)
             EntityManager.get().destroy(light)
         }
@@ -689,7 +690,7 @@ class ModelSnapshot @MainThread constructor(
     @MainThread
     private fun destroyPartlyBuilt() {
         for (light in intArrayOf(fillLight, keyLight)) {
-            scene.removeEntity(light)
+            scene.remove(light)
             engine.safeDestroyLight(light)
             EntityManager.get().destroy(light)
         }

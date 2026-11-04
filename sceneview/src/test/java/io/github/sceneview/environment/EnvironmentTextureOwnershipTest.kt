@@ -19,10 +19,10 @@ import org.junit.Test
  */
 class EnvironmentTextureOwnershipTest {
 
-    private val indirectLight = IndirectLight(1L)
-    private val skybox = Skybox(2L)
-    private val reflections = Texture(3L)
-    private val sky = Texture(4L)
+    private val indirectLight = IndirectLight.wrap(1L)
+    private val skybox = Skybox.wrap(2L)
+    private val reflections = Texture.wrap(3L)
+    private val sky = Texture.wrap(4L)
 
     /** Every handle a destroy pass was given, in the order it was given. */
     private fun Environment.destroyRecording(): List<Any> = buildList<Any> {

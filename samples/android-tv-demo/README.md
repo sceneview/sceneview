@@ -24,6 +24,7 @@ the camera, it stays where you put it.
   dark only — Google TV has no light theme and the chrome floats over the 3D stage.
 - Focus visible from the sofa: the focused card scales up with a 3 dp `primary` ring and glow,
   the model on stage keeps a 2 dp ring, the stage gets a `primary` frame when it holds the D-pad.
+  (Follow-up: the glow is outside the current `DESIGN.md`, which allows no shadow or glow.)
 - Overscan-safe margins (48 dp sides, 32 dp top and bottom).
 - An idle TV renders nothing: the camera loop parks once the turntable is off and the last
   D-pad step has eased in.
@@ -31,8 +32,8 @@ the camera, it stays where you put it.
 ## Play TV readiness
 
 The manifest already declares what the Play TV checks look for: a `LEANBACK_LAUNCHER` activity,
-a 320 × 180 banner with the app name (`res/drawable/tv_banner.xml`, a vector on the
-`DESIGN.md` `gradient-hero`), and `android.software.leanback` / `android.hardware.touchscreen` both
+a 320 × 180 banner with the app name (`res/drawable/tv_banner.xml`, a vector still on the
+retired `gradient-hero`, to be flattened per `DESIGN.md` § *Logo*), and `android.software.leanback` / `android.hardware.touchscreen` both
 `required="false"`. The app is not published: no Play workflow uploads it.
 
 ## Run

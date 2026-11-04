@@ -94,7 +94,7 @@ class GeometryRenderTest {
     fun teardown() {
         harness.runOnMain {
             light?.let {
-                harness.scene.removeEntity(it.entity)
+                harness.scene.remove(it.entity)
                 it.destroy()
             }
         }
@@ -131,7 +131,7 @@ class GeometryRenderTest {
             harness.renderFrames(5)
             bitmap = harness.capturePixels()
 
-            harness.scene.removeEntity(cubeNode.entity)
+            harness.scene.remove(cubeNode.entity)
             cubeNode.destroy()
         }
 
@@ -178,7 +178,7 @@ class GeometryRenderTest {
             harness.scene.addEntity(redCube.entity)
             harness.renderFrames(5)
             bitmapRed = harness.capturePixels()
-            harness.scene.removeEntity(redCube.entity)
+            harness.scene.remove(redCube.entity)
             redCube.destroy()
 
             // Blue cube
@@ -192,7 +192,7 @@ class GeometryRenderTest {
             harness.scene.addEntity(blueCube.entity)
             harness.renderFrames(5)
             bitmapBlue = harness.capturePixels()
-            harness.scene.removeEntity(blueCube.entity)
+            harness.scene.remove(blueCube.entity)
             blueCube.destroy()
         }
 
@@ -233,7 +233,7 @@ class GeometryRenderTest {
             harness.renderFrames(5)
             bitmap = harness.capturePixels()
 
-            harness.scene.removeEntity(sphereNode.entity)
+            harness.scene.remove(sphereNode.entity)
             sphereNode.destroy()
         }
 
@@ -286,7 +286,7 @@ class GeometryRenderTest {
             harness.renderFrames(5)
             bitmap = harness.capturePixels()
 
-            harness.scene.removeEntity(planeNode.entity)
+            harness.scene.remove(planeNode.entity)
             planeNode.destroy()
         }
 
@@ -345,7 +345,7 @@ class GeometryRenderTest {
             harness.renderFrames(10)
             bitmap2 = harness.capturePixels()
 
-            harness.scene.removeEntity(cubeNode.entity)
+            harness.scene.remove(cubeNode.entity)
             cubeNode.destroy()
         }
 
