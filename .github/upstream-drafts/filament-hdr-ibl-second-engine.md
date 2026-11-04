@@ -106,10 +106,17 @@ Possible fixes: export `utils::EntityManager` (or all of `utils::*`) from
 ## Workaround
 
 Reserve the first slots of the engine's entity manager before anything else
-creates an entity, and never free them (SceneView reserves 1024). The
-prefilter's manager then gets slots whose generation stays 0 on both sides.
-It holds until the prefilter's manager starts reusing slots, after 1024 frees,
-that is after 512 `IBLPrefilterContext`s have been destroyed in the process.
+creates an entity, and never free them (SceneView reserves 4096). The slots the
+prefilter's manager hands out then have generation 0 on both sides.
+
+It holds for the first 2048 contexts created in the process. Each
+`IBLPrefilterContext` takes two fresh slots from the gltfio copy and never gets
+one back: `~IBLPrefilterContext` destroys the triangle entity only, not the
+camera entity (`libs/iblprefilter/src/IBLPrefilterContext.cpp:171`), and a
+destroyed slot only returns to a manager's free list when its epochs advance
+(`libs/utils/src/EntityManagerImpl.h`, `recycleGarbageEpochs`), which only
+`FEngine` triggers, on its own manager (`filament/src/details/Engine.cpp:818`).
+So context k gets slots 2k-1 and 2k, alive or destroyed.
 
 ## What we ruled out earlier
 

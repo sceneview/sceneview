@@ -25,10 +25,13 @@ import com.google.android.filament.EntityManager
  * prefilter's manager hands out on those slots. The cost is [SLOT_COUNT] empty entities, held for
  * the life of the process.
  *
- * **The limit.** The prefilter's manager reuses a slot, with generation 1, once 1024 slots have
- * been freed: after 512 `IBLPrefilterContext`s have been destroyed in the process. Past that point
- * a new context renders black again. SceneView creates one context per `EnvironmentLoader`, so one
- * per engine that loads an HDR environment.
+ * **The limit.** Each `IBLPrefilterContext` takes two new slots from the prefilter's manager (its
+ * camera and its triangle) and none ever comes back: its destructor releases the triangle only, and
+ * a released slot returns to that manager's free list only when something advances its epochs,
+ * which only the engine does, on its own manager (`FEngine` calls `advanceEpoch`). Context k gets
+ * slots 2k-1 and 2k, so the reservation covers the first [SLOT_COUNT] / 2 = 2048 contexts
+ * **created** in the process, alive or destroyed. The next one renders black again. SceneView
+ * creates one context per `EnvironmentLoader`, so one per engine that loads an HDR environment.
  *
  * Remove this file once `libfilament-jni.so` exports `utils::EntityManager` again, or
  * `IBLPrefilterContext` takes the engine's entity manager.
@@ -38,10 +41,10 @@ internal object PrefilterEntitySlots {
     private const val TAG = "PrefilterEntitySlots"
 
     /**
-     * The prefilter's manager hands out fresh slots 1 to 1024 before it starts reusing them
-     * (`MIN_FREE_INDICES`, libs/utils/src/EntityManagerImpl.h).
+     * Slots reserved: two per `IBLPrefilterContext` created in the process. Creating them takes
+     * about 0.5 ms (median of 10 cold starts, Android 16 emulator on Apple silicon; 0.3 ms for 1024).
      */
-    internal const val SLOT_COUNT = 1024
+    internal const val SLOT_COUNT = 4096
 
     /** Low bits of an entity id: its slot index (`Entity::GENERATION_SHIFT`, libs/utils). */
     private const val INDEX_MASK = (1 shl 17) - 1
