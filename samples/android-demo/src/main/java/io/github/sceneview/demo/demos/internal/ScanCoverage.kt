@@ -326,7 +326,8 @@ object ScanFloorArea {
  * by default. Two things it says, from the phone's own movement and whether the grid still grows:
  *
  * - [Line.Slower] — the phone moves faster than [MAX_SPEED_M_PER_S] or turns faster than
- *   [MAX_TURN_DEGREES_PER_S]: depth and photos smear, and turning is what smears them most.
+ *   [MAX_TURN_DEGREES_PER_S]: depth and photos smear, and turning is what smears them most. It
+ *   goes once both are under [EXIT_SHARE] of their caps.
  * - [Line.NothingNew] — moving or turning, yet no cell became covered for [STALL_SECONDS]: the
  *   surfaces are too close, too far, too plain, or it is pointed at nothing.
  * - [Line.Still] — standing still, not turning, and nothing new for [STILL_SECONDS]: the scan waits for the
@@ -401,8 +402,11 @@ class ScanCoach(
             lastZ = camera.z
         }
         if (grew) grewAt = time
+        // Once told, slower until well under the caps: a pace hovering at one does not flash the
+        // banner and buzz every time the line's hold runs out.
+        val cap = if (line == Line.Slower) EXIT_SHARE else 1f
         val wanted = when {
-            speed > maxSpeed || turnRate > maxTurn -> Line.Slower
+            speed > maxSpeed * cap || turnRate > maxTurn * cap -> Line.Slower
             (speed > MOVING_M_PER_S || turnRate > TURNING_DEGREES_PER_S) && time - grewAt > STALL_SECONDS ->
                 Line.NothingNew
             time - grewAt > STILL_SECONDS -> Line.Still
@@ -467,6 +471,9 @@ class ScanCoach(
          * [ScanPhotoPolicy.MAX_TURN_DEGREES_PER_SECOND], the most a sharp photo is taken at.
          */
         const val MAX_TURN_DEGREES_PER_S = 60f
+
+        /** "Slower" goes once the speed and the turn are both under this share of their caps. */
+        const val EXIT_SHARE = 0.8f
 
         /** Slower than this the phone is standing still, and nothing new is expected. */
         const val MOVING_M_PER_S = 0.15f

@@ -82,17 +82,31 @@ internal object LiveCoverageGround {
     /**
      * The [covered] cells (keys of [CoverageGrid.key], [cellM] on a side) whose floor the dense
      * [cloud] barely holds: the camera passed there, but the floor did not stick — a cell to scan
-     * again. A cell is judged on its floor alone, as the share of its area the surfels of the floor
-     * band ([floorOf] near [floorY], from [FLOOR_BELOW_M] under it to [FLOOR_BAND_M] over it)
-     * cover seen from above, each `voxelM · 2^level` wide ([shares]): the live cloud merges far
-     * surfels into coarser ones, so a point count read distance, not coverage, and the walls'
-     * points over a cell counted as its floor. Weak under [WEAK_SHARE]. Never judged: a cell on the scan's edge (an
-     * uncovered 4-neighbour: a wall's foot, the frontier), and a cell something stands in (more
-     * than [OCCUPIED_SHARE] of its area of surfels between the band and [STANDING_M]) — the floor
-     * under a sofa is not there to scan. Nothing is weak before [MIN_JUDGED_CELLS] cells are covered.
+     * again. A cell is judged on its floor alone ([shares]): the share of its area the floor
+     * band's surfels cover seen from above, each `voxelM · 2^level` wide — the live cloud merges
+     * far surfels into coarser ones, so a point count read distance, not coverage, and the walls'
+     * points over a cell counted as its floor. Weak under [WEAK_SHARE].
+     *
+     * Never judged: a cell on the scan's edge (an uncovered 4-neighbour: a wall's foot, the
+     * frontier); a cell something stands in (more than [OCCUPIED_SHARE] of its area in surfels
+     * between its floor band and [STANDING_M]) — the floor under a sofa is not there to scan; a
+     * cell whose floor is merged coarser than [MAX_JUDGED_LEVEL]; and, in a live snapshot past its budget, a cell not wholly within [intactM] of the [eye]
+     * the snapshot was taken from ([DenseFusion.liveIntactM]): farther out it dropped surfels at
+     * random, and a floor with holes cut in it is not a floor swept too fast. Nothing is weak
+     * before [MIN_JUDGED_CELLS] cells are covered.
      */
-    fun weakCells(cloud: DenseCloud, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): LongArray {
+    @Suppress("LongParameterList")
+    fun weakCells(
+        cloud: DenseCloud,
+        voxelM: Float,
+        covered: LongArray,
+        cellM: Float,
+        floorY: Float,
+        eye: Vec3? = null,
+        intactM: Float = Float.POSITIVE_INFINITY,
+    ): LongArray {
         if (covered.size < MIN_JUDGED_CELLS || cellM <= 0f || voxelM <= 0f || cloud.count == 0) return LongArray(0)
+        if (intactM.isFinite() && (eye == null || intactM <= 0f)) return LongArray(0)
         val shares = shares(cloud, voxelM, covered, cellM, floorOf(cloud, voxelM, floorY))
         val coveredSet = HashSet<Long>(covered.size * 2).apply { covered.forEach { add(it) } }
         return covered.filterIndexed { k, key ->
@@ -100,59 +114,119 @@ internal object LiveCoverageGround {
             val cz = CoverageGrid.czOf(key)
             val inner = CoverageGrid.key(cx - 1, cz) in coveredSet && CoverageGrid.key(cx + 1, cz) in coveredSet &&
                 CoverageGrid.key(cx, cz - 1) in coveredSet && CoverageGrid.key(cx, cz + 1) in coveredSet
-            inner && shares.standing[k] <= OCCUPIED_SHARE && shares.floor[k] < WEAK_SHARE
+            inner && shares.standing[k] <= OCCUPIED_SHARE && shares.floor[k] < WEAK_SHARE &&
+                shares.coarsest[k] <= MAX_JUDGED_LEVEL &&
+                (!intactM.isFinite() || intact(eye!!, intactM, cx, cz, cellM, shares.floorY[k]))
         }.toLongArray()
+    }
+
+    /** Whether cell ([cx], [cz]) lies within [radius] of [eye], from its floor at [floorY] up to [STANDING_M]. */
+    private fun intact(eye: Vec3, radius: Float, cx: Int, cz: Int, cellM: Float, floorY: Float): Boolean {
+        val r2 = radius * radius
+        for (corner in 0 until CORNERS) {
+            val dx = (cx + (corner and 1)) * cellM - eye.x
+            val dz = (cz + (corner shr 1 and 1)) * cellM - eye.z
+            val dy = floorY + (if (corner shr 2 == 0) 0f else STANDING_M) - eye.y
+            if (dx * dx + dy * dy + dz * dz > r2) return false
+        }
+        return true
     }
 
     /**
      * Each of [covered]'s cells, by index: the share of its area the floor band's surfels cover
      * seen from above ([floor], `0..1`: a surfel `voxelM · 2^level` wide covers its footprint
-     * once, however many layers of depth noise stack it), and the area of what stands in it over
-     * its own ([standing]).
+     * once, however many layers of depth noise stack it), the area of what stands in it over its
+     * own ([standing]), and the floor height it was judged at ([floorY]).
      */
-    class Shares(val floor: FloatArray, val standing: FloatArray)
+    class Shares(val floor: FloatArray, val standing: FloatArray, val floorY: FloatArray, val coarsest: IntArray)
 
-    /** [Shares] of [covered] in [cloud], the floor at [floorY] (see [weakCells]). */
+    /**
+     * [Shares] of [covered] in [cloud]. The floor's height is found again in every [TILE_M] tile,
+     * within [TILE_SEARCH_M] of [floorY] ([peakOf]): a floor sloping a centimetre a metre, a step
+     * down into another room or ARCore drifting over a long scan keeps its band. A tile with too
+     * little floor to tell keeps [floorY].
+     */
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun shares(cloud: DenseCloud, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): Shares {
         val index = HashMap<Long, Int>(covered.size * 2)
         covered.forEachIndexed { i, key -> index[key] = i }
-        val floorShare = FloatArray(covered.size)
-        val standing = FloatArray(covered.size)
-        val footprint = HashSet<Long>()
-        val cellArea = cellM * cellM
         val p = cloud.positions
+        // The floor of each tile: the surfel area at each height near the room's floor.
+        val bins = (2 * TILE_SEARCH_M / voxelM).toInt() + 1
+        val tiles = HashMap<Long, FloatArray>()
+        for (i in 0 until cloud.count) {
+            val b = floor((p[i * 3 + 1] - floorY + TILE_SEARCH_M) / voxelM).toInt()
+            if (b !in 0 until bins) continue
+            val tile = CoverageGrid.key(floor(p[i * 3] / TILE_M).toInt(), floor(p[i * 3 + 2] / TILE_M).toInt())
+            val side = voxelM * (1 shl cloud.levelOf(i))
+            tiles.getOrPut(tile) { FloatArray(bins) }[b] += side * side
+        }
+        val minTileArea = TILE_MIN_SHARE * TILE_M * TILE_M
+        val tileFloor = HashMap<Long, Float>(tiles.size * 2)
+        for ((tile, area) in tiles) {
+            val peak = if (area.sum() < minTileArea) null else peakOf(area)
+            tileFloor[tile] = peak?.let { floorY - TILE_SEARCH_M + (it + HALF) * voxelM } ?: floorY
+        }
+        fun floorAt(x: Float, z: Float): Float =
+            tileFloor[CoverageGrid.key(floor(x / TILE_M).toInt(), floor(z / TILE_M).toInt())] ?: floorY
+
+        // Each cell's footprint, one bit per voxel square whose centre lies in the cell.
+        val side = ceil(cellM / voxelM).toInt() + 1
+        val words = (side * side + Long.SIZE_BITS - 1) / Long.SIZE_BITS
+        val bits = LongArray(covered.size * words)
+        val standing = FloatArray(covered.size)
+        val coarsest = IntArray(covered.size)
+        val cellArea = cellM * cellM
         for (i in 0 until cloud.count) {
             val x = p[i * 3]
             val z = p[i * 3 + 2]
-            val above = p[i * 3 + 1] - floorY
+            val above = p[i * 3 + 1] - floorAt(x, z)
             if (above < -FLOOR_BELOW_M || above > STANDING_M) continue
             val span = 1 shl cloud.levelOf(i)
             if (above > FLOOR_BAND_M) {
                 val k = index[CoverageGrid.key(floor(x / cellM).toInt(), floor(z / cellM).toInt())] ?: continue
-                val side = voxelM * span
-                standing[k] += side * side / cellArea
+                val w = voxelM * span
+                standing[k] += w * w / cellArea
                 continue
+            }
+            index[CoverageGrid.key(floor(x / cellM).toInt(), floor(z / cellM).toInt())]?.let {
+                coarsest[it] = maxOf(coarsest[it], cloud.levelOf(i))
             }
             // The surfel's footprint, in voxel squares: one for a full-detail surfel.
             val sx = floor(x / voxelM).toInt() - span / 2
             val sz = floor(z / voxelM).toInt() - span / 2
-            for (a in 0 until span) for (b in 0 until span) footprint += CoverageGrid.key(sx + a, sz + b)
+            for (a in 0 until span) for (b in 0 until span) {
+                val vx = sx + a
+                val vz = sz + b
+                val cx = floor((vx + HALF) * voxelM / cellM).toInt()
+                val cz = floor((vz + HALF) * voxelM / cellM).toInt()
+                val k = index[CoverageGrid.key(cx, cz)] ?: continue
+                val bit = (vx - firstVoxel(cx, cellM, voxelM)) * side + (vz - firstVoxel(cz, cellM, voxelM))
+                if (bit !in 0 until side * side) continue
+                bits[k * words + bit / Long.SIZE_BITS] = bits[k * words + bit / Long.SIZE_BITS] or (1L shl bit % Long.SIZE_BITS)
+            }
         }
         val square = voxelM * voxelM / cellArea
-        for (key in footprint) {
-            val cx = floor((CoverageGrid.cxOf(key) + HALF) * voxelM / cellM).toInt()
-            val cz = floor((CoverageGrid.czOf(key) + HALF) * voxelM / cellM).toInt()
-            val k = index[CoverageGrid.key(cx, cz)] ?: continue
-            floorShare[k] += square
+        val floorShare = FloatArray(covered.size) { k ->
+            var n = 0
+            for (w in 0 until words) n += java.lang.Long.bitCount(bits[k * words + w])
+            n * square
         }
-        return Shares(floorShare, standing)
+        val floors = FloatArray(covered.size) { k ->
+            floorAt((CoverageGrid.cxOf(covered[k]) + HALF) * cellM, (CoverageGrid.czOf(covered[k]) + HALF) * cellM)
+        }
+        return Shares(floorShare, standing, floors, coarsest)
     }
 
+    /** The first voxel square whose centre lies in cell [c]. */
+    private fun firstVoxel(c: Int, cellM: Float, voxelM: Float): Int = ceil(c * cellM / voxelM - HALF).toInt()
+
     /**
-     * The floor's height in [cloud]: the height within [FLOOR_SEARCH_M] of [hint] the most surfel
-     * area lies at, in [voxelM] steps — the floor is the widest flat thing near where it is
-     * thought to be. [hint] itself when nothing lies near it. The live map's floor height is a
-     * floor plane's, or a guess from the phone's height without one.
+     * The floor's height in [cloud]: the lowest height within [FLOOR_SEARCH_M] of [hint] that
+     * holds at least half the most surfel area at any ([peakOf]), in [voxelM] steps — the floor
+     * is the lowest wide flat thing near where it is thought to be, not a sofa's seat or a low
+     * table wider than the floor seen round it. [hint] itself when nothing lies near it. The
+     * live map's floor height is a floor plane's, or a guess from the phone's height without one.
      */
     fun floorOf(cloud: DenseCloud, voxelM: Float, hint: Float): Float {
         val bins = (2 * FLOOR_SEARCH_M / voxelM).toInt() + 1
@@ -164,19 +238,46 @@ internal object LiveCoverageGround {
             val side = voxelM * (1 shl cloud.levelOf(i))
             area[b] += side * side
         }
-        val best = area.indices.maxByOrNull { area[it] }?.takeIf { area[it] > 0f } ?: return hint
+        val best = peakOf(area) ?: return hint
         return hint - FLOOR_SEARCH_M + (best + HALF) * voxelM
+    }
+
+    /**
+     * The floor's bin of [area] (by height): the lowest that holds, smoothed over
+     * [PEAK_SMOOTH_BINS] on each side, at least [PEAK_SHARE] of the most any does, then the
+     * fullest raw bin of the smoothing's width above it; `null` when all are empty. Depth noise
+     * spreads a floor over a few bins, and a wide flat seat above it can outweigh what is seen of
+     * the floor without being half as much again.
+     */
+    fun peakOf(area: FloatArray): Int? {
+        val smooth = FloatArray(area.size) { b ->
+            var sum = 0f
+            for (d in -PEAK_SMOOTH_BINS..PEAK_SMOOTH_BINS) sum += area.getOrElse(b + d) { 0f }
+            sum
+        }
+        val most = smooth.maxOrNull()?.takeIf { it > 0f } ?: return null
+        val low = smooth.indices.first { smooth[it] >= PEAK_SHARE * most }
+        // Smoothing pulled the edge down by its width: the floor is the fullest bin just above it.
+        val window = low..minOf(area.lastIndex, low + 2 * PEAK_SMOOTH_BINS)
+        return window.maxBy { area[it] }
     }
 
     /** Whether the live map paints [weakCells] in soft red, "to redo". */
     const val SHOW_WEAK_CELLS = true
 
     /**
-     * A judged cell whose floor surfels stand for less than this share of its area is weak. Under
-     * one merged surfel's share: the live cloud merges the floor 4 m away into 16 cm surfels, a
-     * 25 cm cell holds at least one, 0.41 of it, and a fully seen far cell is never weak.
+     * A judged cell whose floor surfels cover less than this share of its area is weak: half.
+     * Merged surfels up to [MAX_JUDGED_LEVEL] (8 cm) cut a seen cell finely enough — a 25 cm cell
+     * holds the centres of at least nine, 0.92 of it — and a cell whose floor is merged coarser
+     * is not judged ([weakCells]).
      */
-    const val WEAK_SHARE = 0.35f
+    const val WEAK_SHARE = 0.5f
+
+    /**
+     * The coarsest floor surfel a judged cell may hold: 8 cm. The live cloud merges 16 cm surfels
+     * only 8 m from the eye (4 m past its budget), and one of them is 0.41 of a cell.
+     */
+    const val MAX_JUDGED_LEVEL = 2
 
     /**
      * The floor band over the floor's height, in metres: depth noise and a rug's or a skirting
@@ -196,8 +297,25 @@ internal object LiveCoverageGround {
     /** How far from the floor height it is given [floorOf] looks for the floor, in metres. */
     const val FLOOR_SEARCH_M = 0.5f
 
+    /** The side of the tiles the floor's height is found again in, in metres. */
+    const val TILE_M = 1f
+
+    /** How far from the room's floor a tile's floor may lie, in metres: a step, a slope, drift. */
+    const val TILE_SEARCH_M = 0.3f
+
+    /** Floor area under this share of a tile's, it keeps the room's floor height. */
+    const val TILE_MIN_SHARE = 0.1f
+
+    /** Bins [peakOf] smooths over on each side: depth noise spreads a floor over a few. */
+    const val PEAK_SMOOTH_BINS = 2
+
+    /** The share of the widest height's area the floor's own must reach ([peakOf]). */
+    const val PEAK_SHARE = 0.5f
+
     /** Covered cells before any is judged weak. */
     const val MIN_JUDGED_CELLS = 4
+
+    private const val CORNERS = 8
 
     /** Whether (x, z) lies inside [polygon], by the even-odd rule. */
     fun contains(polygon: List<Pair<Float, Float>>, x: Float, z: Float): Boolean {

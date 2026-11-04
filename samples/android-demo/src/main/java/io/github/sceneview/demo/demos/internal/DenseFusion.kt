@@ -239,8 +239,17 @@ class DenseFusion(
      * map only: [cloud] and a saved scan are left as they were.
      */
     @Suppress("LongMethod", "CyclomaticComplexMethod") // two passes over the map, one merge
+    /**
+     * How far from its eye the last [liveCloud] kept every surfel, in metres: unbounded within its
+     * budget; past it, where its near surfels end (farther ones were picked at random); `0` when
+     * not even the near ones fitted. What lies beyond has holes the scan did not leave.
+     */
+    var liveIntactM = Float.POSITIVE_INFINITY
+        private set
+
     fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud {
         val n = count
+        liveIntactM = Float.POSITIVE_INFINITY
         if (n == 0 || maxPoints <= 0) return DenseCloud.Empty
         var first = LIVE_FIRST_LEVEL_M
         var tries = 0
@@ -334,6 +343,11 @@ class DenseFusion(
         // it do; only a cell whose level changes, the eye having crossed a boundary, draws anew.
         // The draw has no order of its own: it spreads the kept cells at random, not evenly.
         val keepNear = past && nearOut < maxPoints
+        liveIntactM = when {
+            !past -> Float.POSITIVE_INFINITY
+            keepNear -> first
+            else -> 0f
+        }
         val keep = scratch.keep
         if (past) {
             pickLowest(out, room = if (keepNear) maxPoints - nearOut else maxPoints, keepNear = keepNear)

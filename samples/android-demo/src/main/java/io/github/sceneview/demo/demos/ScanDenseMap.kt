@@ -10,6 +10,7 @@ import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.DenseSamples
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
+import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.MonotonicCount
 import io.github.sceneview.demo.demos.internal.ScanDetail
@@ -177,6 +178,13 @@ internal class ScanDenseMap(
             // The saving orbit and the open top read the map as it stands, not the merged
             // surfels, dense by the eye and sparse away from it (#4792).
             whole = whole,
+            liveEye = at?.let { Vec3(it.x, it.y, it.z) },
+            // Without an eye, an even stride of the map once it holds more than the snapshot reads.
+            intactM = when {
+                at != null -> fusion.liveIntactM
+                drawn.count < LIVE_MAX_SURFELS -> Float.POSITIVE_INFINITY
+                else -> 0f
+            },
         )
     }
 
