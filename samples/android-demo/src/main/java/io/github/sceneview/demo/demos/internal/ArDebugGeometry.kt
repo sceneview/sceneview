@@ -692,15 +692,16 @@ object ArDebugGeometry {
      * (a phone held at chest height), else 0.
      */
     fun floorHeight(frame: ArDebugFrame): Float {
-        val floors = frame.planes.filter { it.kind == DebugPlaneKind.Floor && it.vertexCount >= 3 }
-        if (floors.isNotEmpty()) {
-            return floors.minOf { plane ->
-                (0 until plane.vertexCount).map { plane.polygon[it * 3 + 1] }.average().toFloat()
-            }
-        }
+        floorPlaneHeight(frame.planes)?.let { return it }
         if (frame.trail.size >= 3) return frame.trail[1] - 1.3f
         return 0f
     }
+
+    /** The lowest upward-facing plane's mean height in [planes]; `null` without one. */
+    fun floorPlaneHeight(planes: List<DebugPlane>): Float? =
+        planes.filter { it.kind == DebugPlaneKind.Floor && it.vertexCount >= 3 }.minOfOrNull { plane ->
+            (0 until plane.vertexCount).map { plane.polygon[it * 3 + 1] }.average().toFloat()
+        }
 
     /**
      * Bounds of what the camera should frame: the trail, the planes and the anchors. Points are

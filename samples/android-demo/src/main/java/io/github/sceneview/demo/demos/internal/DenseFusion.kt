@@ -226,20 +226,6 @@ class DenseFusion(
     }
 
     /**
-     * The map as a live view draws it from ([eyeX], [eyeY], [eyeZ]) (#4743): the voxels at least
-     * [minViews] depth frames saw, those nearer than [LIVE_FIRST_LEVEL_M] as they are and farther
-     * ones merged on the map's own grid, one level coarser each time the distance doubles, up to
-     * [LIVE_MAX_LEVEL] — a far surfel spans about as many pixels as a near one, and a far wall
-     * keeps its surface with a quarter, a sixteenth of the surfels, where a stride ([cloud] with
-     * `maxPoints`) thins the whole room into holes. While that leaves more than [maxPoints], the
-     * merging starts nearer, down to [LIVE_NEAR_M]; past it still, the near ones whole while they
-     * fit and, of the others, those whose cell draws lowest from its own key ([drawOf]), so a far
-     * wall keeps the same surfels from one snapshot to the next. Merged surfels average their
-     * parts weighted by the surface each stands for, in the order the map found them. Reads the
-     * map only: [cloud] and a saved scan are left as they were.
-     */
-    @Suppress("LongMethod", "CyclomaticComplexMethod") // two passes over the map, one merge
-    /**
      * The map's surfels [minViews] depth frames saw, read in place: what the live map's "to redo"
      * cells are judged on ([LiveCoverageGround.weakCells]), every snapshot, without copying the
      * map. Valid until the next [add]; on the thread that adds.
@@ -258,6 +244,20 @@ class DenseFusion(
         override fun level(i: Int) = levelOf(voxelKeys[i])
     }
 
+    /**
+     * The map as a live view draws it from ([eyeX], [eyeY], [eyeZ]) (#4743): the voxels at least
+     * [minViews] depth frames saw, those nearer than [LIVE_FIRST_LEVEL_M] as they are and farther
+     * ones merged on the map's own grid, one level coarser each time the distance doubles, up to
+     * [LIVE_MAX_LEVEL] — a far surfel spans about as many pixels as a near one, and a far wall
+     * keeps its surface with a quarter, a sixteenth of the surfels, where a stride ([cloud] with
+     * `maxPoints`) thins the whole room into holes. While that leaves more than [maxPoints], the
+     * merging starts nearer, down to [LIVE_NEAR_M]; past it still, the near ones whole while they
+     * fit and, of the others, those whose cell draws lowest from its own key ([drawOf]), so a far
+     * wall keeps the same surfels from one snapshot to the next. Merged surfels average their
+     * parts weighted by the surface each stands for, in the order the map found them. Reads the
+     * map only: [cloud] and a saved scan are left as they were.
+     */
+    @Suppress("LongMethod", "CyclomaticComplexMethod") // two passes over the map, one merge
     fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud {
         val n = count
         if (n == 0 || maxPoints <= 0) return DenseCloud.Empty
