@@ -87,14 +87,13 @@ fun rememberCameraManipulator(
     remember(orbitRadius, targetPosition, key) { creator() }.also { it.applyInertia(inertia) }
 
 /**
- * Binary-compatibility shim for the pre-`key` descriptor of the `orbitRadius`
- * [rememberCameraManipulator]: keeps a library compiled against the old signature linking, with
- * no `key`.
+ * The `orbitRadius` [rememberCameraManipulator] without a `key`: same manipulator, same keys on
+ * [orbitRadius] and [targetPosition], never rebuilt on demand.
+ *
+ * Kept visible on purpose: `key` sits before the trailing [creator] lambda, so without this
+ * overload `rememberCameraManipulator(3f, target, Inertia.None, factory)` would still compile and
+ * silently pass `factory` as the key. Kotlin resolves every call that does not name `key` here.
  */
-@Deprecated(
-    "Binary-compatibility overload. Use the rememberCameraManipulator overload that takes `key`.",
-    level = DeprecationLevel.HIDDEN,
-)
 @Composable
 fun rememberCameraManipulator(
     orbitRadius: Float,

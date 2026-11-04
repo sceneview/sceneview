@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import io.github.sceneview.gesture.CameraGestureDetector
+import io.github.sceneview.gesture.Inertia
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -116,6 +117,27 @@ class CameraManipulatorInputsTest {
         assertNotSame(first, host.manipulator)
         assertEquals(listOf("stock", "custom"), host.builtWith)
     }
+
+    @Test
+    fun `a positional factory after inertia is still the creator, never the key`() = runTest {
+        // `key` sits before `creator`; the overload without `key` keeps this call meaning what
+        // it meant before. Were `factory` taken as the key, the stock creator would run instead.
+        val host = Host(this) {
+            rememberCameraManipulator(EYE, null, Inertia.None, { build("factory") })
+        }
+        host.frame()
+        assertEquals(listOf("factory"), host.builtWith)
+    }
+
+    @Test
+    fun `a positional factory after inertia is still the creator for orbitRadius too`() =
+        runTest {
+            val host = Host(this) {
+                rememberCameraManipulator(3f, null, Inertia.None, { build("factory") })
+            }
+            host.frame()
+            assertEquals(listOf("factory"), host.builtWith)
+        }
 
     // ---------------------------------------------------------------- orbitRadius overload
 

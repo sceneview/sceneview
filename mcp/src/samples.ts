@@ -418,8 +418,10 @@ fun CameraManipulatorScreen() {
         engine = engine,
         modelLoader = modelLoader,
         cameraNode = cameraNode,
+        // A fixed eye, never a live value such as cameraNode.worldPosition: the manipulator
+        // is keyed on it, and the camera node moves on every orbit.
         cameraManipulator = rememberCameraManipulator(
-            orbitHomePosition = cameraNode.worldPosition,
+            orbitHomePosition = Position(z = 4f),
             targetPosition = Position(0f)
         )
     ) {

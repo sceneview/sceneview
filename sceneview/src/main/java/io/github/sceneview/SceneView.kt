@@ -2285,14 +2285,16 @@ fun rememberCameraManipulator(
     remember(orbitHomePosition, targetPosition, key) { creator() }.also { it.applyInertia(inertia) }
 
 /**
- * Binary-compatibility shim for the pre-`key` descriptor of [rememberCameraManipulator]. The
- * Compose compiler puts every parameter in the JVM signature, so the new parameter retyped the
- * function: this keeps a library compiled against the old signature linking, with no [key].
+ * [rememberCameraManipulator] without a `key`: same manipulator, same keys on
+ * [orbitHomePosition] and [targetPosition], never rebuilt on demand. See the overload that
+ * takes `key` for the full documentation.
+ *
+ * Kept visible on purpose, not only for binary compatibility. `key` sits before the trailing
+ * [creator] lambda, so without this overload a positional call such as
+ * `rememberCameraManipulator(eye, target, Inertia.None, factory)` would still compile but
+ * silently pass `factory` as the key. With it, Kotlin resolves that call (and every call that
+ * does not name `key`) here, where the fourth argument is the [creator] it always was.
  */
-@Deprecated(
-    "Binary-compatibility overload. Use the rememberCameraManipulator overload that takes `key`.",
-    level = DeprecationLevel.HIDDEN,
-)
 @Composable
 fun rememberCameraManipulator(
     orbitHomePosition: Position? = null,

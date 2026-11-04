@@ -158,7 +158,7 @@ fun SceneView(
     fillLightNode: LightNode? = rememberFillLightNode(engine),  // dual-light default — soft opposite fill
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
-    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(orbitRadius = 2.78f),  // in fact starts at cameraNode's position, read once (2.78 m for the stock node)
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = remember { createDefaultCameraManipulator(eyePosition = cameraNode.worldPosition) },  // starts at cameraNode's position, read once, never rebuilt
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
