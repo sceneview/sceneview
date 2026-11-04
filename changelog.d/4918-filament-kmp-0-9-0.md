@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Compose Multiplatform (desktop):** `sceneview-compose` now renders through filament-kmp 0.9.0, which wraps Filament 1.79.0 (material version 79). No API change. filament-kmp no longer pulls the macOS arm64 Compose Desktop runtime in by itself: a desktop app must declare `compose.desktop.currentOs` (or its platform artifact), as `samples/desktop-demo` already does (#4918).
