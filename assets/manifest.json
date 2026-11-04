@@ -165,15 +165,6 @@
       "author": "Poly Haven"
     },
     {
-      "path": "samples/android-demo/src/main/assets/models/khronos_damaged_helmet.glb",
-      "scope": "android",
-      "sha256": "ae1c83ada65823f4f562d5c791843fa30e837dd5ded1766105b56a0654fdc5bb",
-      "size": 3485948,
-      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
-      "license": "CC-BY-NC-4.0",
-      "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)"
-    },
-    {
       "path": "samples/android-demo/src/main/assets/models/khronos_fox.glb",
       "scope": "android",
       "sha256": "d4dda1047f1ae22a8c6a69457396300d1c36d9aceb79432938880e7f734daee2",
@@ -228,6 +219,15 @@
       "author": "Guido Odendahl (model); Eric Chadwick (extensions and scene composition)"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/moto_helmet_v2.glb",
+      "scope": "android",
+      "sha256": "77c3ab5042092f9762394a496646ff66b98789f8a6694c96c4cb14760356ae08",
+      "size": 3134276,
+      "source": "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
+      "license": "CC-BY-4.0",
+      "author": "sayedgamal655"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/night_circuit.glb",
       "scope": "android",
       "sha256": "e36f8a9a5ea6fd2957e49422fd104e739c192ac37b27e5057a7ffe6312982609",
@@ -235,6 +235,15 @@
       "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
       "license": "CC-BY-4.0",
       "author": "Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/phoenix_bird.glb",
+      "scope": "android",
+      "sha256": "cb68b7f4827d6f7bee47ca7b8bb882437b9945d00c974338e55a720f53b5d6f0",
+      "size": 1630364,
+      "source": "https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042",
+      "license": "CC-BY-4.0",
+      "author": "NORBERTO-3D"
     },
     {
       "path": "samples/android-demo/src/main/assets/models/quaternius_ranger.glb",
@@ -381,33 +390,6 @@
       "author": "LasquetiSpice"
     },
     {
-      "path": "samples/ios-demo/SceneViewDemo/Models/audi_tt.usdz",
-      "scope": "ios",
-      "sha256": "1cdc8070d1c72e21b754fdec8bba95e269efa3d6871e174d608b7652d8c8e8b5",
-      "size": 6817323,
-      "source": "https://sketchfab.com/3d-models/2007-audi-tt-coupe-b548ef872a8b4164a700e5b8cdb85a14",
-      "license": "CC-BY-NC-SA-4.0",
-      "author": "Ddiaz Design"
-    },
-    {
-      "path": "samples/ios-demo/SceneViewDemo/Models/black_dragon.usdz",
-      "scope": "ios",
-      "sha256": "bca2aa7dada6218e06f51518a6872b4765fc5c925804078ea35daa02bf971658",
-      "size": 16031277,
-      "source": "https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36",
-      "license": "CC-BY-4.0",
-      "author": "Arturs J"
-    },
-    {
-      "path": "samples/ios-demo/SceneViewDemo/Models/bmw_m3_e30.usdz",
-      "scope": "ios",
-      "sha256": "fd59c09e36825a05c61eb761eabf4846d9e93b12d4d5ae1985b6afe453d41404",
-      "size": 9669385,
-      "source": "https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91",
-      "license": "CC-BY-NC-4.0",
-      "author": "Lexyc16"
-    },
-    {
       "path": "samples/ios-demo/SceneViewDemo/Models/cyberpunk_car.usdz",
       "scope": "ios",
       "sha256": "bf5d877fdf8b23d18719e78bddca3421819d8db1d4da62ba42b17229779650ab",
@@ -431,8 +413,8 @@
       "sha256": "1cf38e850f10f9a4a0b7f3d1dd270ce306a29eb5f95beec7d6e5f1f77b2339e2",
       "size": 3695242,
       "source": "https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c",
-      "license": "CC-BY-4.0",
-      "author": "Karol Miklas (modified by SceneView — display plinth removed)"
+      "license": "CC-BY-SA-4.0",
+      "author": "Lionsharp Studios (modified by SceneView — display plinth removed)"
     },
     {
       "path": "samples/ios-demo/SceneViewDemo/Models/earthquake_california.usdz",
@@ -480,15 +462,6 @@
       "author": "JonhyOliver"
     },
     {
-      "path": "samples/ios-demo/SceneViewDemo/Models/khronos_damaged_helmet.usdz",
-      "scope": "ios",
-      "sha256": "c8fca87bf4ee6b0f13e11f0740d2d6cfea417f85141cf18dd9bdad0543641219",
-      "size": 4191290,
-      "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
-      "license": "CC-BY-NC-4.0",
-      "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)"
-    },
-    {
       "path": "samples/ios-demo/SceneViewDemo/Models/khronos_fox.usdz",
       "scope": "ios",
       "sha256": "4b794d7df67ed5cf6b6d29d0e601991c941b28b1a63253df2809dfe6ec615b61",
@@ -525,24 +498,6 @@
       "author": "Guido Odendahl (model); Eric Chadwick (extensions and scene composition)"
     },
     {
-      "path": "samples/ios-demo/SceneViewDemo/Models/lamborghini_countach.usdz",
-      "scope": "ios",
-      "sha256": "d02a43bef851e5172c807221cebdfbd517a10db0189a29e40bd529d472f26e3d",
-      "size": 8965293,
-      "source": "https://sketchfab.com/3d-models/2021-lamborghini-countach-lpi-800-4-d76b94884432422b966d1a7f8815afb5",
-      "license": "CC-BY-NC-4.0",
-      "author": "Lexyc16"
-    },
-    {
-      "path": "samples/ios-demo/SceneViewDemo/Models/mercedes_a45_amg.usdz",
-      "scope": "ios",
-      "sha256": "f249fb49127b240328c7825f1f8343678ac7982d0c6d265467745c0879f10e42",
-      "size": 9050162,
-      "source": "https://sketchfab.com/3d-models/mercedes-benz-a45-amg-2018-9482f251f9c34a6e91d7777db5934cfc",
-      "license": "CC-BY-NC-4.0",
-      "author": "Lexyc16"
-    },
-    {
       "path": "samples/ios-demo/SceneViewDemo/Models/mosquito_amber.usdz",
       "scope": "ios",
       "sha256": "1a6197aa3c3262136fa408bd1e5e6dc592a5d36147157cf0848101e79c866830",
@@ -559,15 +514,6 @@
       "source": "https://sketchfab.com/3d-models/nike-air-jordan-fd462c530d974f33a523d88a7562f1cf",
       "license": "CC-BY-4.0",
       "author": "Ar41k"
-    },
-    {
-      "path": "samples/ios-demo/SceneViewDemo/Models/nintendo_switch.usdz",
-      "scope": "ios",
-      "sha256": "580275d204cedf643b9a8b99180cbd25fda3198df28bb88312f3bb6cbbfb9fcd",
-      "size": 846974,
-      "source": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
-      "license": "CC-BY-NC-4.0",
-      "author": "Mikkel Garde Blaase"
     },
     {
       "path": "samples/ios-demo/SceneViewDemo/Models/phoenix_bird.usdz",
@@ -604,24 +550,6 @@
       "source": "https://www.fab.com/listings/c86be43c-3923-4c98-b752-40bedb121239",
       "license": "CC-BY-4.0",
       "author": "SerjogaSan"
-    },
-    {
-      "path": "samples/ios-demo/SceneViewDemo/Models/retro_piano.usdz",
-      "scope": "ios",
-      "sha256": "8d1738aed0d3f6da00f9e1dd126f78a2fc977819c58374cff770b65fc81ddc46",
-      "size": 1926166,
-      "source": "https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185",
-      "license": "CC-BY-NC-4.0",
-      "author": "DailyArt"
-    },
-    {
-      "path": "samples/ios-demo/SceneViewDemo/Models/shelby_cobra.usdz",
-      "scope": "ios",
-      "sha256": "c73b46b18591146b02f7384c0ef660597b83cd8721796d2bd1b8a5c374e7c244",
-      "size": 5121065,
-      "source": "https://sketchfab.com/3d-models/1965-ac-shelby-cobra-427-wwwvecarzcom-3e9c994c428b44f087d64e738428886c",
-      "license": "CC-BY-NC-SA-4.0",
-      "author": "vecarz"
     },
     {
       "path": "samples/ios-demo/SceneViewDemo/Models/shiba.usdz",
@@ -775,15 +703,6 @@
       "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp",
       "license": "CC-BY-4.0",
       "author": "Wayfair, LLC (Eric Chadwick)"
-    },
-    {
-      "path": "website-static/models/platforms/KindredLol.glb",
-      "scope": "web",
-      "sha256": "13a163f8b24c5e33d1d146640da2016e3497101be1a304577c32cda2c92ccfab",
-      "size": 27923312,
-      "source": "https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400",
-      "license": "CC-BY-4.0",
-      "author": ""
     },
     {
       "path": "website-static/models/platforms/KoiFish.glb",

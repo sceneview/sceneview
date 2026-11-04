@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **144** (plus 6 pending metadata, 8 pending license review).
+Total models: **140** (plus 6 pending metadata, 9 pending license review).
 
 ---
 
@@ -35,7 +35,6 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 - **[Apple Watch Series 7](https://sketchfab.com/3d-models/apple-watch-series-7-free-watch-face-sdctm-cf15ecbf159f42a28df5e56bdfa666bb)** by SDC PERFORMANCE™️ — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[August 7, 2024 M5.2 Earthquake in California](https://sketchfab.com/3d-models/august-7-2024-m52-earthquake-in-california-9c38a08933154e128bb550246285f9e4)** by Kyle — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Baked Goods](https://sketchfab.com/3d-models/baked-goods-d1ae09e3cb8343bc8790b15928452906)** by Aullwen — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Black Dragon with Idle Animation](https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36)** by Arturs J — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Canon AT-1 (1977)](https://sketchfab.com/3d-models/canon-at-1-retro-camera-9de66868d0f240e985da00c9480bfc82)** by AleixoAlonso — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Canon EOS RP Mirrorless Camera](https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1)** by fahadratul — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Casio VL-Tone Keyboard](https://sketchfab.com/3d-models/keyboard-casio-vl-tone-be22fbe1ef0044f3bedc6e3edf459593)** by AleixoAlonso — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -46,7 +45,7 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 - **[Converse Chuck Taylor](https://sketchfab.com/3d-models/converse-free-bc791439d26f4dd9974819c168e12385)** by Yaroslav Karas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Car](https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0)** by 4d_Bob — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Character](https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51)** by Esk — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Karol Miklas (modified by SceneView — display plinth removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Lionsharp Studios (modified by SceneView — display plinth removed) — [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 - **[D.S.S. Harbinger Battle Cruiser](https://sketchfab.com/3d-models/dss-harbinger-battle-cruiser-474f62d00ed54212b37f93ce91569c53)** by Mike Pan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Desktop 3D printer](https://sketchfab.com/3d-models/3d-printer-0e825a8d48b14bee883a131fe029d4fc)** by Gregsterius — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[DJI Mavic 3 Cine](https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b)** by aurumjuda747 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -67,7 +66,6 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 - **[iPad mini 6](https://sketchfab.com/3d-models/ipad-mini-6-2021-f363c2b1c74a462588db184bd4fb024e)** by DatSketch — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[iPhone 13 Pro Max](https://sketchfab.com/3d-models/apple-iphone-13-pro-max-4328dea00e47497dbeac73c556121bc9)** by DatSketch — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[JBL Tour One M3 Headphones](https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16)** by cubemodelex — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Kindred (League of Legends) - Rigged](https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400)** by maisth — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[KitchenAid stand mixer](https://sketchfab.com/3d-models/kitchenaid-stand-mixer-716dfa11eb8f4020833584a3c3d09d5d)** by MelissaVerdonck — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Koi Fish](https://sketchfab.com/3d-models/koi-fish-236859b809984f52b70c94fd040b9c59)** by 7PLUS — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Low Poly Night City Building Skyline](https://sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)** by 99.Miles — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -102,7 +100,6 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 - **[SMEG toaster](https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1)** by The Fresh Lab — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sneaker Vibe](https://sketchfab.com/3d-models/sneaker-vibe-1e52862eb2634fa3b5c13bf9e261945b)** by vmmaniac — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sony MDR-7506 headphones](https://sketchfab.com/3d-models/sony-mdr-7506-headphones-05735b74d3524f00b648231138122a28)** by AndreiVNK — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Star Wars Speeder Bike](https://sketchfab.com/3d-models/starwars-speeder-bike-free-download-1d0ea6fe43c1405b8d4b17722e166f6e)** by NORBERTO-3D — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Tennis racket](https://sketchfab.com/3d-models/tennis-racket-c314dcce06ba488ca624957f579b8196)** by Yanez Designs — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Tesla Cybertruck](https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb)** by hashikemu — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Tesla Model 3](https://sketchfab.com/3d-models/tesla-model-3-123c10f376ec4f18b93c73afc382808b)** by David_Holiday — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -110,7 +107,6 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 - **[Toon Cat](https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386)** by Omabuarts Studio — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Trumpet](https://sketchfab.com/3d-models/trumpet-3f2d4f5b962340b2933012e1bc634d88)** by Charlie Tinley — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Vespa Primavera ET3](https://sketchfab.com/3d-models/old-scooter-5e9b5072b2224ba982366490ad5f31d9)** by Nadia Ribitis — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Wall-E (Animated)](https://sketchfab.com/3d-models/wall-eanimated-a6758de2e5a04f9e821596592ef4279c)** by Zeckensack — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Xbox Wireless Controller](https://sketchfab.com/3d-models/xbox-inalambric-controller-black-29cc9624894a4f2cae7d2a675044db45)** by Chistodrako._. — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Khronos glTF Sample Assets
@@ -197,6 +193,7 @@ via an app store, since app store distribution may be considered commercial.
 Replace or remove before the next store publication:
 
 - **[Retro Piano](https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185)** by DailyArt — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)
+- **[Black Dragon with Idle Animation](https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36)** by 3DHaupt — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 - **[1965 AC Shelby Cobra 427](https://sketchfab.com/3d-models/1965-ac-shelby-cobra-427-wwwvecarzcom-3e9c994c428b44f087d64e738428886c)** by vecarz — [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 - **[2007 Audi TT Coupe](https://sketchfab.com/3d-models/2007-audi-tt-coupe-b548ef872a8b4164a700e5b8cdb85a14)** by Ddiaz Design — [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 - **[2021 Lamborghini Countach LPI 800-4](https://sketchfab.com/3d-models/2021-lamborghini-countach-lpi-800-4-d76b94884432422b966d1a7f8815afb5)** by Lexyc16 — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/)

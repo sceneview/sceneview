@@ -86,7 +86,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
+private const val HELMET_ASSET = "models/moto_helmet_v2.glb"
 
 /** The helmet's largest side, in metres; it stands on the floor. */
 private const val HELMET_SIZE = 0.5f

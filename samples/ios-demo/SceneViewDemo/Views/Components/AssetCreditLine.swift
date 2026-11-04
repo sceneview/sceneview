@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// Before this view every demo printed `by <slug.author> · CC-BY 4.0`
 /// unconditionally. On a keyless build the resolver hands back the bundled
-/// fallback, so the App Store build captioned a Khronos Damaged Helmet
+/// fallback, so the App Store build captioned a bundled Khronos sample
 /// "by ChubbyPanda". The caption is an attribution surface, so it now follows
 /// the same measured verdict the `AssetSourcePill` uses:
 ///

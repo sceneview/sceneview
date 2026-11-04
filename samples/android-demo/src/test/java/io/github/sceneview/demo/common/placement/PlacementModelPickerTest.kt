@@ -11,7 +11,7 @@ import org.junit.Test
  * to arm when the viewer's "View in AR" button names a model.
  *
  * The bug this guards: the report was filed from the Model Viewer while looking at the bundled
- * Damaged Helmet — deliberately absent from [BUNDLED_PLACEMENT_MODELS] (#2023) — and tapping
+ * Phoenix Bird — deliberately absent from [BUNDLED_PLACEMENT_MODELS] (#2023) — and tapping
  * "View in AR" dropped the user on the model picker instead of opening the camera on the helmet.
  * The handoff silently produced no armed row for any model outside the curated six, so
  * `ARPlacementDemo`'s `flow.enterAr()` never fired.
@@ -51,26 +51,26 @@ class PlacementModelPickerTest {
     }
 
     @Test
-    fun `the Damaged Helmet — bundled, but outside the curated six — still gets a row`() {
+    fun `the Phoenix Bird — bundled, but outside the curated six — still gets a row`() {
         // This is the exact #3493 repro: a bundled model the Model Viewer shows but the AR
         // placement catalogue does not curate. It must not be dropped on the floor.
         val row = resolveRequestedExtraPlacementRow(
-            requestedModel = "models/khronos_damaged_helmet.glb",
+            requestedModel = "models/phoenix_bird.glb",
             catalogue = catalogue,
-            requestedDisplayName = "Damaged Helmet",
+            requestedDisplayName = "Phoenix Bird",
         )
         assertEquals(REQUESTED_MODEL_PLACEMENT_ROW_ID, row?.id)
-        assertEquals("Damaged Helmet", row?.displayName)
-        assertEquals("models/khronos_damaged_helmet.glb", row?.assetLocation)
+        assertEquals("Phoenix Bird", row?.displayName)
+        assertEquals("models/phoenix_bird.glb", row?.assetLocation)
     }
 
     @Test
     fun `an uncatalogued model with no viewer-supplied name derives one from the file stem`() {
         val row = resolveRequestedExtraPlacementRow(
-            requestedModel = "models/khronos_damaged_helmet.glb",
+            requestedModel = "models/phoenix_bird.glb",
             catalogue = catalogue,
         )
-        assertEquals("khronos_damaged_helmet", row?.displayName)
+        assertEquals("phoenix_bird", row?.displayName)
     }
 
     @Test
@@ -92,7 +92,7 @@ class PlacementModelPickerTest {
         // DemoSettings.openedModelSizeMeters is a measurement of the file the viewer had
         // loaded. A bundled handoff must not inherit it just because the field was still set.
         val row = resolveRequestedExtraPlacementRow(
-            requestedModel = "models/khronos_damaged_helmet.glb",
+            requestedModel = "models/phoenix_bird.glb",
             catalogue = catalogue,
             openedSizeMeters = 0.06f,
         )

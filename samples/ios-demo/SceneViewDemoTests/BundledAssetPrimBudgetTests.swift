@@ -7,9 +7,7 @@
 //
 //   | asset                   | bytes  | mesh prims | triangles | parse    |
 //   |-------------------------|--------|------------|-----------|----------|
-//   | retro_piano.usdz        |  1.9 MB|          1 |    21 555 |   1.12 s |
 //   | earthquake_california   | 25.3 MB|         17 | 1 305 082 |   0.85 s |
-//   | black_dragon.usdz       | 16.0 MB|          2 |    37 998 |   2.91 s |
 //   | tree_scene.usdz (before)| 14.8 MB|     2 712  |   256 652 |  91.71 s |
 //   | tree_scene.usdz (after) | 14.1 MB|        47  |    83 622 |   2.58 s |
 //

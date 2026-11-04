@@ -1117,7 +1117,7 @@
 
       // Curated, self-hosted model catalog. Every `file` MUST exist under
       // `samples/web-demo/site/models/` — `validate-demo-assets.sh` enforces
-      // this. Kept lean (12 GLBs, ~60 MB) so the demo distribution stays
+      // this. Kept lean (10 GLBs), CC-BY or CC0 only (no NC model on a demo surface) so the demo distribution stays
       // small; the network catalog sources (Icosa, Poly Haven, Sketchfab)
       // cover the wider catalogs. A `frontYaw` (degrees from glTF's +Z, as on /view's
       // tiles, #4575) opens the camera on the model's front three-quarter; without one,
@@ -1127,14 +1127,12 @@
         { name: 'Toy Car', file: 'khronos_toy_car.glb', category: 'Showcase' },
         { name: 'Chronograph Watch', file: 'chronograph_watch.glb', category: 'Showcase' },
         { name: 'Ferrari F40', file: 'ferrari_f40.glb', category: 'Vehicles' },
-        { name: 'BMW M3 E30', file: 'bmw_m3_e30.glb', category: 'Vehicles' },
         { name: 'Animated Butterfly', file: 'animated_butterfly.glb', category: 'Animated' },
         { name: 'Animated Dragon', file: 'animated_dragon.glb', category: 'Animated' },
         { name: 'Phoenix Bird', file: 'phoenix_bird.glb', category: 'Animated' },
         { name: 'Cyberpunk Character', file: 'cyberpunk_character.glb', category: 'Characters' },
         { name: 'Game Boy Classic', file: 'game_boy_classic.glb', category: 'Objects' },
-        { name: 'Nintendo Switch OLED', file: 'nintendo_switch_oled.glb', category: 'Objects', frontYaw: 0 },
-        { name: 'Retro Piano', file: 'retro_piano.glb', category: 'Objects' }
+        { name: 'Nintendo Switch OLED', file: 'nintendo_switch_oled.glb', category: 'Objects', frontYaw: 0 }
       ];
 
       // ---- State ----
