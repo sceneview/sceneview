@@ -204,7 +204,7 @@ var body: some View {
         Text(tapped ? "Tapped!" : "Tap the model")
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
+            .background(Color(.secondarySystemBackground), in: Capsule())
             .padding(.bottom, 32)
     }
 }
@@ -245,7 +245,7 @@ struct ContentView: View {
             Text(tapped ? "Tapped!" : "Tap the model")
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background(Color(.secondarySystemBackground), in: Capsule())
                 .padding(.bottom, 32)
         }
     }
