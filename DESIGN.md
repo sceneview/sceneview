@@ -61,7 +61,7 @@ hardcode one outside the theme files, never add a role. If a role is missing for
 need is wrong or the component is wrong.
 
 Fidelity keeps the brand blue: `primary-container` is the source `#005BC1` itself in both
-themes, and `primary` is its darker tone `#004494` (light) / `#ADC6FF` (dark) so text and
+themes, and `primary` is its AA tone `#004494` (light) / `#ADC6FF` (dark) so text and
 icons on it reach AA. Every `on-*` pair below reaches at least 4.5:1 (WCAG 2.2 formula on the
 hex values; the tightest is `on-primary-container` on `primary-container`, 4.55:1).
 
@@ -144,8 +144,8 @@ whatever a file contains.
 |---|---|---|
 | Web | `website-static/assets/tokens.css` | CSS custom properties named after the official M3 web tokens, `--md-sys-color-<role>` (e.g. `--md-sys-color-surface-container`), light on `:root`, dark under `prefers-color-scheme: dark` and `[data-theme="dark"]` |
 | Docs (MkDocs Material) | `docs/docs/stylesheets/extra.css` | The same values, mapped onto MkDocs Material's palette variables |
-| Android (Compose) | `samples/android-demo/src/main/java/io/github/sceneview/demo/SceneViewColors.kt` | `lightColorScheme(…)` / `darkColorScheme(…)` with every role above, read through `MaterialTheme.colorScheme.<role>`; `dynamicColor = false` |
-| Apple (SwiftUI) | `samples/ios-demo/SceneViewDemo/Theme.swift` | System colours only — `.primary`, `.secondary`, `Color(.systemBackground)`, `Color(.secondarySystemBackground)`, `Color(.separator)`, `.red` / `.green` / `.orange` for state — plus one `AccentColor` asset: `primary` light `#004494`, dark `#ADC6FF` |
+| Android (Compose) | `samples/android-demo/src/main/java/io/github/sceneview/demo/theme/Color.kt` (values) and `theme/Theme.kt` (schemes) — not `SceneViewColors.kt`, which is the 3D scene palette | `lightColorScheme(…)` / `darkColorScheme(…)` with every role above, read through `MaterialTheme.colorScheme.<role>`; `dynamicColor = false` |
+| Apple (SwiftUI) | `samples/ios-demo/SceneViewDemo/Theme.swift` | System colours only — `.primary`, `.secondary`, `Color(.systemBackground)`, `Color(.secondarySystemBackground)`, `Color(.separator)`, `.red` / `.green` / `.orange` for state — plus one `AccentColor` asset: `primary` light `#004494`, dark `#ADC6FF`. A filled button (`.borderedProminent`) sets its label to `on-primary` (`#FFFFFF` light, `#002E69` dark) with `.foregroundStyle`: SwiftUI's default white label on `#ADC6FF` is 1.7:1 |
 
 ---
 
