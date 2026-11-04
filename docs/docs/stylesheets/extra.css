@@ -108,3 +108,21 @@
 
 /* M3 common buttons are fully rounded. */
 .md-typeset .md-button { border-radius: 100rem; }
+
+/* Top app bar title: M3 Title Large is weight 400. */
+.md-header__topic:first-child { font-weight: 400; }
+
+/* M3 tabs: the active indicator is primary. */
+.js .md-typeset .tabbed-labels::before { background: var(--md-typeset-a-color); }
+
+/* M3 outlined button: the border takes the outline role, the label stays primary. */
+.md-typeset .md-button:not(.md-button--primary) { border-color: var(--md-default-fg-color--lighter); }
+
+/* On phones, code blocks keep the 16 dp page margin and their corners on every page
+ * (Material for MkDocs runs top-level blocks edge to edge, tabbed ones not). */
+@media screen and (max-width: 44.984375em) {
+  .md-content__inner > pre,
+  .md-content__inner > .highlight { margin: 1em 0; }
+  .md-content__inner > pre code,
+  .md-content__inner > .highlight > pre > code { border-radius: .1rem; }
+}
