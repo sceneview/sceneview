@@ -81,7 +81,7 @@ fun SceneView(
     fillLightNode: LightNode? = rememberFillLightNode(engine),  // dual-light default — soft opposite fill
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
-    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = remember { createDefaultCameraManipulator(eyePosition = cameraNode.worldPosition) },  // starts at cameraNode's position, read once, never rebuilt
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
@@ -1384,6 +1384,18 @@ SceneView {
     cameraPosition: Position = Position(0f, 0f, 0f)
 )
 ```
+Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` from `onFrame`
+(`cameraNode.worldPosition`). All probes of a scene are resolved together on every change:
+- among the probes whose zone holds the camera, the highest `priority` wins; on a tie, the probe
+  added most recently wins (one that leaves the composition and comes back counts as new);
+- with no active probe (camera outside every local zone, or the last probe removed), the scene
+  shows its `SceneView(environment = …)` light again — the current one, even if it changed
+  meanwhile;
+- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+  overrides an active probe; a destroyed light is never handed back.
+- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
+  estimation's) directly, so in AR a new environment can replace an active probe until the next
+  probe change (see #4928).
 
 ---
 
@@ -4271,8 +4283,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius` and `targetPosition`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
+| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?, key?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius`, `targetPosition` and `key`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Change `key` to reset the view (rebuild at the starting framing, camera glides back). Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?, inertia?, key?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Keyed on `orbitHomePosition`, `targetPosition` (by value) and `key`, like the `orbitRadius` overload; never pass a live value such as `cameraNode.worldPosition`. `creator` is not a key — change `key` to apply a new one. Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
@@ -4319,6 +4331,18 @@ SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
 ))
+
+// Both overloads are keyed on their inputs: a new radius, eye or target rebuilds the
+// manipulator and SceneView glides the camera there (~0.6 s). `key` rebuilds it on demand —
+// "double-tap to reset the view", no `key { }` block needed. Double-tap also zooms in by
+// default (#3608): turn that off on the manipulator, or the zoom starts before the reset glide.
+var resets by remember { mutableIntStateOf(0) }
+SceneView(
+    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f, key = resets).apply {
+        (this as? CameraGestureDetector.DefaultCameraManipulator)?.isDoubleTapZoomEnabled = false
+    },
+    onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
+)
 
 // Custom camera position
 SceneView(cameraNode = rememberCameraNode(engine) {
@@ -4433,9 +4457,11 @@ they all target the origin (#2873).
 - `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
   does **not** set the distance.
 - **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
-  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
-  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
-  default `CameraNode`.
+  own default manipulator (the `cameraManipulator` argument left out) starts at the camera node's
+  position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the default `CameraNode` — and reads it once.
+  Don't pass `orbitHomePosition = cameraNode.worldPosition` yourself: the manipulator is keyed on
+  `orbitHomePosition`, that value changes on every orbit, and each recomposition would rebuild the
+  manipulator under the user's finger (#4838).
 - Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
   bounding-box centre lands on the **world origin**. So the distance the subject is framed from
   is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
@@ -4465,8 +4491,12 @@ SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulat
 ))
 ```
 
-There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
-plain callback `SceneView` forwards to your code, never wired to the camera.
+There is no built-in gesture that returns the camera to `orbitHomePosition` — the built-in
+double-tap *zooms in* (see "Camera gestures" below). Wire a reset with `key`:
+`rememberCameraManipulator(orbitHomePosition = …, key = resets)` and `resets++` in `onDoubleTap`
+(or a button) rebuild the manipulator at that eye, and the camera glides back (#4838). On a
+double-tap, set `isDoubleTapZoomEnabled = false` on the `DefaultCameraManipulator` first, as in
+the example above, so the zoom and the reset do not fight.
 
 ### Auto-fit camera framing
 

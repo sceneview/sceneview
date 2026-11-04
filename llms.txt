@@ -5980,14 +5980,14 @@ setSpatialAudioListenerPose(cameraPos, cameraForward, cameraUp)  // call as the 
 ```kotlin
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 
 val listState = rememberLazyListState()
 Box(Modifier.fillMaxSize()) {
     CinematicHero(
         listState = listState,
         height = 420.dp,
-        backdrop = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)),
+        backdrop = SolidColor(MaterialTheme.colorScheme.surfaceContainerLow), // flat: no gradients (DESIGN.md)
     ) {
         rememberModelInstance(modelLoader, "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb")
             ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
