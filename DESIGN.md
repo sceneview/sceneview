@@ -54,49 +54,63 @@ These are the patterns that make a screen look generated. None of them ships, on
 ### One source colour, generated roles
 
 Every colour is an M3 colour role generated from **one source colour, `#005BC1`**, scheme
-**TonalSpot**, contrast level 0, with Google's
+**Fidelity**, contrast level 0, with Google's
 [`@material/material-color-utilities`](https://www.npmjs.com/package/@material/material-color-utilities)
-(v0.4.0, `SchemeTonalSpot` + `MaterialDynamicColors`). Never pick a value by eye, never
+(v0.4.0, `SchemeFidelity` + `MaterialDynamicColors`). Never pick a value by eye, never
 hardcode one outside the theme files, never add a role. If a role is missing for a need, the
 need is wrong or the component is wrong.
 
-TonalSpot deliberately mutes the source: `primary` is `#445E91`, not `#005BC1`. That is the
-scheme, not a mistake.
+Fidelity keeps the brand blue: `primary-container` is the source `#005BC1` itself in both
+themes, and `primary` is its darker tone `#004494` (light) / `#ADC6FF` (dark) so text and
+icons on it reach AA. Every `on-*` pair below reaches at least 4.5:1 (WCAG 2.2 formula on the
+hex values; the tightest is `on-primary-container` on `primary-container`, 4.55:1).
 
 | Role | Light | Dark |
 |---|---|---|
-| `primary` | `#445E91` | `#ADC6FF` |
-| `on-primary` | `#FFFFFF` | `#102F60` |
-| `primary-container` | `#D8E2FF` | `#2B4678` |
-| `on-primary-container` | `#2B4678` | `#D8E2FF` |
-| `secondary` | `#565E71` | `#BFC6DC` |
-| `on-secondary` | `#FFFFFF` | `#293041` |
-| `secondary-container` | `#DBE2F9` | `#3F4759` |
-| `on-secondary-container` | `#3F4759` | `#DBE2F9` |
-| `tertiary` | `#715573` | `#DEBCDF` |
-| `on-tertiary` | `#FFFFFF` | `#402843` |
-| `tertiary-container` | `#FBD7FC` | `#583E5B` |
-| `on-tertiary-container` | `#583E5B` | `#FBD7FC` |
+| `primary` | `#004494` | `#ADC6FF` |
+| `on-primary` | `#FFFFFF` | `#002E69` |
+| `primary-container` | `#005BC1` | `#005BC1` |
+| `on-primary-container` | `#C9D9FF` | `#C9D9FF` |
+| `secondary` | `#4B5E86` | `#B3C6F4` |
+| `on-secondary` | `#FFFFFF` | `#1B3055` |
+| `secondary-container` | `#BBCFFD` | `#33466D` |
+| `on-secondary-container` | `#44587F` | `#A1B5E2` |
+| `tertiary` | `#7C2F00` | `#FFB595` |
+| `on-tertiary` | `#FFFFFF` | `#571E00` |
+| `tertiary-container` | `#A33F00` | `#A33F00` |
+| `on-tertiary-container` | `#FFCFBB` | `#FFCFBB` |
 | `error` | `#BA1A1A` | `#FFB4AB` |
 | `on-error` | `#FFFFFF` | `#690005` |
 | `error-container` | `#FFDAD6` | `#93000A` |
 | `on-error-container` | `#93000A` | `#FFDAD6` |
-| `surface-dim` | `#D9D9E0` | `#111318` |
-| `surface` | `#F9F9FF` | `#111318` |
-| `surface-bright` | `#F9F9FF` | `#37393E` |
-| `surface-container-lowest` | `#FFFFFF` | `#0C0E13` |
-| `surface-container-low` | `#F3F3FA` | `#1A1B20` |
-| `surface-container` | `#EDEDF4` | `#1E1F25` |
-| `surface-container-high` | `#E8E7EE` | `#282A2F` |
-| `surface-container-highest` | `#E2E2E9` | `#33353A` |
-| `on-surface` | `#1A1B20` | `#E2E2E9` |
-| `on-surface-variant` | `#44474F` | `#C4C6D0` |
-| `outline` | `#74777F` | `#8E9099` |
-| `outline-variant` | `#C4C6D0` | `#44474F` |
-| `inverse-surface` | `#2F3036` | `#E2E2E9` |
-| `inverse-on-surface` | `#F0F0F7` | `#2F3036` |
-| `inverse-primary` | `#ADC6FF` | `#445E91` |
+| `surface-dim` | `#D8D9E2` | `#11131A` |
+| `surface` | `#F9F9FF` | `#11131A` |
+| `surface-bright` | `#F9F9FF` | `#373940` |
+| `surface-container-lowest` | `#FFFFFF` | `#0C0E14` |
+| `surface-container-low` | `#F2F3FC` | `#191B22` |
+| `surface-container` | `#ECEDF6` | `#1D2026` |
+| `surface-container-high` | `#E7E7F1` | `#272A31` |
+| `surface-container-highest` | `#E1E2EB` | `#32353C` |
+| `on-surface` | `#191B22` | `#E1E2EB` |
+| `on-surface-variant` | `#424753` | `#C2C6D5` |
+| `outline` | `#727784` | `#8C909E` |
+| `outline-variant` | `#C2C6D5` | `#424753` |
+| `inverse-surface` | `#2E3037` | `#E1E2EB` |
+| `inverse-on-surface` | `#EFF0F9` | `#2E3037` |
+| `inverse-primary` | `#ADC6FF` | `#005BC0` |
 | `scrim` | `#000000` | `#000000` |
+| `shadow` | `#000000` | `#000000` |
+| `surface-variant` | `#DEE2F1` | `#424753` |
+| `surface-tint` | `#005BC0` | `#ADC6FF` |
+| `primary-fixed` / `primary-fixed-dim` | `#D8E2FF` / `#ADC6FF` | same |
+| `on-primary-fixed` / `on-primary-fixed-variant` | `#001A41` / `#004493` | same |
+| `secondary-fixed` / `secondary-fixed-dim` | `#D8E2FF` / `#B3C6F4` | same |
+| `on-secondary-fixed` / `on-secondary-fixed-variant` | `#021A3F` / `#33466D` | same |
+| `tertiary-fixed` / `tertiary-fixed-dim` | `#FFDBCC` / `#FFB595` | same |
+| `on-tertiary-fixed` / `on-tertiary-fixed-variant` | `#351000` / `#7C2E00` | same |
+
+Every role is set explicitly, the `*-fixed` ones included: a Compose `lightColorScheme` /
+`darkColorScheme` call that omits a role fills it with the M3 baseline purple.
 
 **Semantic colours** (M3 custom colours, same utility, `customColor` unblended, so green stays
 green and orange stays orange). Use them for state only, never for decoration.
@@ -110,7 +124,7 @@ green and orange stays orange). Use them for state only, never for decoration.
 
 Rules:
 
-- **Light and dark, always.** Dark starts from the dark `surface` above (`#111318`): never pure
+- **Light and dark, always.** Dark starts from the dark `surface` above (`#11131A`): never pure
   black, never `#0D1117`, never an inversion of light. Design and capture dark first.
 - **Text is an `on-*` role on its matching ground** (`on-surface` on any `surface*`,
   `on-primary-container` on `primary-container`…). The generated pairs meet WCAG 2.2 AA;
@@ -122,12 +136,16 @@ Rules:
 
 ### Where the values live
 
-| Surface | How |
-|---|---|
-| Web (`website-static/`) | CSS custom properties named after the official M3 web tokens, `--md-sys-color-<role>` (e.g. `--md-sys-color-surface-container`), in `assets/tokens.css`, light on `:root`, dark under `prefers-color-scheme: dark` and `[data-theme="dark"]` |
-| Docs (`docs/`, MkDocs Material) | The same values in `docs/docs/stylesheets/extra.css`, mapped onto MkDocs Material's palette variables |
-| Android (Compose) | `lightColorScheme(…)` / `darkColorScheme(…)` with the values above, read through `MaterialTheme.colorScheme.<role>`; `dynamicColor = false` |
-| Apple (SwiftUI) | System colours only — `.primary`, `.secondary`, `Color(.systemBackground)`, `Color(.secondarySystemBackground)`, `Color(.separator)`, `.red` / `.green` / `.orange` for state — plus one `AccentColor` asset: `primary` light `#445E91`, dark `#ADC6FF` |
+**Target, not the current state.** The files below still carry the retired palette; each one
+is migrated to this table in its own PR (follow-ups). Until then the table above wins over
+whatever a file contains.
+
+| Surface | File | Target |
+|---|---|---|
+| Web | `website-static/assets/tokens.css` | CSS custom properties named after the official M3 web tokens, `--md-sys-color-<role>` (e.g. `--md-sys-color-surface-container`), light on `:root`, dark under `prefers-color-scheme: dark` and `[data-theme="dark"]` |
+| Docs (MkDocs Material) | `docs/docs/stylesheets/extra.css` | The same values, mapped onto MkDocs Material's palette variables |
+| Android (Compose) | `samples/android-demo/src/main/java/io/github/sceneview/demo/SceneViewColors.kt` | `lightColorScheme(…)` / `darkColorScheme(…)` with every role above, read through `MaterialTheme.colorScheme.<role>`; `dynamicColor = false` |
+| Apple (SwiftUI) | `samples/ios-demo/SceneViewDemo/Theme.swift` | System colours only — `.primary`, `.secondary`, `Color(.systemBackground)`, `Color(.secondarySystemBackground)`, `Color(.separator)`, `.red` / `.green` / `.orange` for state — plus one `AccentColor` asset: `primary` light `#004494`, dark `#ADC6FF` |
 
 ---
 
@@ -260,8 +278,8 @@ rules as everywhere else, with these additions:
   filled card (`surface-container-high`) for anything with actions. Opaque means the contrast
   holds over a white wall and a dark room alike.
 - **Text that must sit directly on the picture** (a full-screen caption, the system bars over
-  a bright scene) gets a **flat** band of `scrim` at 60 % behind it, edge to edge, hard-edged.
-  Never a fade, never a vignette.
+  a bright scene) gets a **flat** band of `scrim` at 60 % behind it, edge to edge, hard-edged, with text
+  in white `#FFFFFF` in both themes. Never a fade, never a vignette.
 - **A sheet you tweak the scene through** is a standard (non-modal) bottom sheet resting low
   enough to keep the subject in view; browsing sheets (pickers, credits) are modal.
 - **The 3D stage background** is a scheme surface (`surface` or `surface-container-low`) or a
@@ -313,7 +331,7 @@ Each demo ships `preview_<demo_id>_light.webp` and `preview_<demo_id>_dark.webp`
 `samples/android-demo/src/main/res/drawable-nodpi/`, 800 × 640 (5 : 4).
 
 - Three-quarter view, ~20° elevation, subject ~70 % of the frame, soft key + rim light.
-- Field: flat `surface-container-low` of the theme (`#F3F3FA` / `#1A1B20`). No gradient, no
+- Field: flat `surface-container-low` of the theme (`#F2F3FC` / `#191B22`). No gradient, no
   vignette, no props.
 - AR demos keep a real camera photo as the background, never a synthetic room.
 - Never text, UI, device frames or watermarks.
@@ -368,3 +386,9 @@ merged:
 Screen-level specs written before this reset (glass dock, ambient home cards, the brand
 gradient, the custom type and radius scales) are retired; code comments that still cite their
 tokens are being migrated surface by surface and are not a reference.
+
+Known follow-ups, each its own PR: the theme files under *Where the values live*; the logo
+files under *Logo*; `CinematicHero`'s bottom-edge fade (a veil, forbidden above — to be removed
+from the SDK, #4942); the MCP widgets and artifacts (`mcp/src/widgets.ts`, `mcp/src/artifact.ts`:
+gradients and `#0d1117`); `branding/social-preview.html`; the Khronos BoomBox model in the
+`CinematicHero` recipe of `llms.txt`.

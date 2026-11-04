@@ -47,9 +47,9 @@ Play graphics README for the full recipe and for what is deliberately absent
 
 ## Colours
 
-Only the DESIGN.md role table, dark column: `surface` `#111318`,
-`surface-container` `#1E1F25`, `on-surface` `#E2E2E9`, `on-surface-variant`
-`#C4C6D0`, `primary` `#ADC6FF`. No gradient, no shadowed card (DESIGN.md
+Only the DESIGN.md role table, dark column: `surface` `#11131A`,
+`surface-container` `#1D2026`, `on-surface` `#E1E2EB`, `on-surface-variant`
+`#C2C6D5`, `primary` `#ADC6FF`. No gradient, no shadowed card (DESIGN.md
 § *Forbidden*).
 
 Follow-up: `compose.py` still hard-codes the retired values (`#0d1117`,

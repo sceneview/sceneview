@@ -1,7 +1,7 @@
 # SceneView Store & Platform Assets
 
 Colours, type and the Forbidden list come from [`DESIGN.md`](../DESIGN.md): M3 roles from
-`#005BC1` (primary `#445E91` light / `#ADC6FF` dark), the system font, flat colour only.
+`#005BC1` (Fidelity: primary `#004494` light / `#ADC6FF` dark, primary-container `#005BC1`), the system font, flat colour only.
 
 ## Source Files
 
@@ -128,16 +128,16 @@ To generate raster assets from SVG sources:
 brew install librsvg
 
 # App icon 512x512 (Play Store)
-rsvg-convert -w 512 -h 512 -b '#111318' branding/logo.svg -o branding/icon-512.png
+rsvg-convert -w 512 -h 512 -b '#11131A' branding/logo.svg -o branding/icon-512.png
 
 # App icon 1024x1024 (App Store)
-rsvg-convert -w 1024 -h 1024 -b '#111318' branding/logo.svg -o branding/icon-1024.png
+rsvg-convert -w 1024 -h 1024 -b '#11131A' branding/logo.svg -o branding/icon-1024.png
 
 # OG image — requires compositing (use Figma or ImageMagick)
 # favicon.ico — use https://realfavicongenerator.net/ with favicon.svg
 
 # Apple touch icon 180x180
-rsvg-convert -w 180 -h 180 -b '#111318' branding/logo.svg -o branding/apple-touch-icon.png
+rsvg-convert -w 180 -h 180 -b '#11131A' branding/logo.svg -o branding/apple-touch-icon.png
 ```
 
 ---

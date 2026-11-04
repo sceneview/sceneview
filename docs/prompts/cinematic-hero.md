@@ -46,9 +46,9 @@ effect.
 
 ![The hero on a blank Compose app: light theme at rest and scrolled, then dark theme at rest and scrolled](cinematic-hero.png)
 
-- At rest: the model sits in the top 420 dp, over a gradient from your theme, turning slowly.
+- At rest: the model sits in the top 420 dp, over the flat backdrop from your theme, turning slowly.
   Your cards start right under it. The sample model is a 10 MB download, so on first launch the
-  gradient shows alone for a few seconds before the model appears.
+  flat backdrop shows alone for a few seconds before the model appears.
 - While you scroll: the camera swings round about 70°, rises and moves closer, and the whole
   hero moves up slower than the cards. Its bottom edge fades into the page.
 - Touches anywhere, the hero included, scroll the list. The hero never catches a drag.
@@ -60,7 +60,7 @@ effect.
 |---|---|
 | Build fails with "requires … compile against version 37" | `compileSdk = 37` in the app module. `minSdk` can stay where it is. |
 | `Unresolved reference: CinematicHero` | SceneView is older than 4.44.0. Use 4.44.0 or later. |
-| The gradient shows but no model appears | Give the 10 MB download a few seconds. If it never comes: missing `INTERNET` permission, or the device is offline. Check Logcat for the download error. |
+| The flat backdrop shows but no model appears | Give the 10 MB download a few seconds. If it never comes: missing `INTERNET` permission, or the device is offline. Check Logcat for the download error. |
 | Model tiny or cropped | Keep `scaleToUnits = 1f` on `ModelNode`. For a model that still feels too close or too far, pass `contentRadius` to `CinematicHero`: larger pulls the camera back (default `0.75f`). |
 | Blank gap at the top, no 3D | The hero is drawn over by something opaque: the list has a `background`, or the hero was placed after the list in the `Box`. |
 | The 3D does not follow the scroll, or overlaps the first card | The `Spacer` is not the list's first item, or its height differs from `height`. |
