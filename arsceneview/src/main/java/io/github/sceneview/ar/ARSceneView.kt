@@ -1528,6 +1528,10 @@ fun ARSceneView(
     // main looper. The guard logs and drops that gesture instead of crashing the app.
     val safeGestureListener = remember(onGestureListener) { onGestureListener?.arSessionSafe() }
     SideEffect { gestureDetector.listener = safeGestureListener }
+    // A drag released mid-flick coasts along its surface, not across the screen: the phone turning
+    // mid-coast must not carry the object with the camera.
+    val moveCoastSpace = remember(view) { ARMoveCoastSpace(view) }
+    SideEffect { gestureDetector.moveCoastSpace = moveCoastSpace }
 
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }
