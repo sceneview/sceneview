@@ -222,8 +222,6 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 
 /* Install: M3 secondary tabs over a command field. */
 .install { position: relative; margin-top: var(--s-6); max-width: 36rem; container: install / inline-size; }
-.install:has(.seg[data-more~="end"])::after { content: ""; position: absolute; top: 0; right: 0; width: 48px; height: 47px; background: linear-gradient(to right, transparent, var(--md-sys-color-surface)); pointer-events: none; }
-.install:has(.seg[data-more~="start"])::before { content: ""; position: absolute; z-index: 1; top: 0; left: 0; width: 48px; height: 47px; background: linear-gradient(to left, transparent, var(--md-sys-color-surface)); pointer-events: none; }
 .seg { --cols: 6; display: flex; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 16px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { flex: 1 0 auto; height: 48px; padding: 0 16px; font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface-variant); white-space: nowrap; }
@@ -335,10 +333,8 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
    scrolls sideways; site.js keeps the selected tab clear of the edges. */
 .tabs { display: flex; padding: 0 8px; border-bottom: 1px solid var(--md-sys-color-outline-variant); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px; }
 .tabs::-webkit-scrollbar { display: none; }
-/* M3 scrollable tabs: when the strip overflows, site.js sets data-more to the
-   side(s) that still hide tabs, and that side fades into the card colour. */
-.codecard:has(.tabs[data-more~="end"])::after { content: ""; position: absolute; top: 0; right: 0; width: 48px; height: 47px; background: linear-gradient(to right, transparent, var(--md-sys-color-surface-container)); pointer-events: none; }
-.codecard:has(.tabs[data-more~="start"])::before { content: ""; position: absolute; z-index: 1; top: 0; left: 0; width: 48px; height: 47px; background: linear-gradient(to left, transparent, var(--md-sys-color-surface-container)); pointer-events: none; }
+/* M3 scrollable tabs: when the strip overflows, the tabs are cut at the card's edge,
+   with no fade (the charter forbids gradients). */
 .tab { flex: none; height: 48px; padding: 0 16px; font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface-variant); white-space: nowrap; }
 .tab:focus-visible { outline-offset: -3px; }   /* the strip clips what lies outside it */
 .tab[aria-selected="true"] { color: var(--md-sys-color-primary); }
@@ -411,9 +407,9 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 /* Media is a real render or nothing. */
 .tile__media--render { background: var(--md-sys-color-surface-container-high); }
 .tile__media--render img { position: absolute; inset: 8%; width: 84%; height: 84%; object-fit: contain; }
-/* Literal black on purpose, in both themes: the photograph is a galaxy on black space
-   and its edges must melt into the fill around it; no colour role is pure black. */
-.cosmos { background: #000 url(home/cosmos-galaxy.webp) 50% 38% / cover no-repeat; }
+/* Black in both themes: the photograph is a galaxy on black space and its edges must
+   melt into the fill around it. The scrim role is pure black in both themes. */
+.cosmos { background: var(--md-sys-color-scrim) url(home/cosmos-galaxy.webp) 50% 38% / cover no-repeat; }
 /* Below the fold: the photograph waits for the page's load event (site.js), so it never
    competes with the hero poster for the first paint. */
 .js-ready:not(.is-loaded) .cosmos { background-image: none; }
