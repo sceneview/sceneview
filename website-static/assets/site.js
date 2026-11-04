@@ -69,8 +69,10 @@
    * the box-reflect reflection line up with the poster and the live render. */
   var live = [];                         // [{stage, sv}] oldest first
   function num(stage, k, d) { var v = parseFloat(stage.dataset[k]); return isNaN(v) ? d : v; }
+  // The aspect is the box's own (5:4 for most stages, square or 16:10 for the hero).
   function fitOptions(stage) {
-    return { aspect: 1.25, elev: num(stage, 'elev', 0.25), angle: num(stage, 'angle', 0), fill: num(stage, 'fill', 0.9), top: num(stage, 'top', 0.7), hull: stage.dataset.hull || 'box' };
+    var r = $('.stage__box', stage).getBoundingClientRect();
+    return { aspect: r.height ? r.width / r.height : 1.25, elev: num(stage, 'elev', 0.25), angle: num(stage, 'angle', 0), fill: num(stage, 'fill', 0.9), top: num(stage, 'top', 0.7), bottom: num(stage, 'bottom', -0.985), hull: stage.dataset.hull || 'box' };
   }
   function setShadow(stage, s) {
     var box = $('.stage__box', stage);
@@ -333,13 +335,15 @@
     else on(window, 'load', function () { doc.classList.add('is-loaded'); });
 
     /* Theme */
-    var mqLight = matchMedia('(prefers-color-scheme: light)');
-    function effectiveTheme() { return doc.dataset.theme || (mqLight.matches ? 'light' : 'dark'); }
+    // Light is the default set (tokens.css): dark only when picked or asked for by the system.
+    var mqDark = matchMedia('(prefers-color-scheme: dark)');
+    function effectiveTheme() { return doc.dataset.theme || (mqDark.matches ? 'dark' : 'light'); }
     function labelTheme() { $$('.theme-toggle').forEach(function (b) { b.setAttribute('aria-label', effectiveTheme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); }); }
     $$('.theme-toggle').forEach(function (b) {
       on(b, 'click', function () { var next = effectiveTheme() === 'dark' ? 'light' : 'dark'; doc.dataset.theme = next; store('sceneview-theme', next); labelTheme(); });
     });
     labelTheme();
+    on(mqDark, 'change', labelTheme);   // the label follows the system while no theme is picked
 
     /* Mobile sheet, with a focus trap */
     var sheet = $('#menu'), opener = null;
@@ -365,8 +369,9 @@
     });
 
     /* A tab strip too narrow for its tabs scrolls sideways (the code card on a
-       phone). The selected tab is brought clear of the faded edges — the strip
-       scrolls, never the page — and data-more names the side(s) still hiding tabs. */
+       phone): M3 scrollable tabs. The selected tab is brought clear of the edges —
+       the strip scrolls, never the page — and data-more names the side(s) still
+       hiding tabs. */
     function stripEdges(list) {
       var max = list.scrollWidth - list.clientWidth, x = list.scrollLeft;
       var more = max > 1 ? ((x > 1 ? 'start ' : '') + (x < max - 1 ? 'end' : '')).trim() : '';
@@ -411,7 +416,7 @@
       var status = card && $('.codecard__foot [data-status]', card);
       if (status && tab.dataset.status) { status.className = 'status status--' + tab.dataset.status; status.textContent = tab.dataset.statusLabel || tab.dataset.status; }
       var qlink = card && $('[data-quickstart]', card);
-      if (qlink && tab.dataset.href) { qlink.href = tab.dataset.href; qlink.textContent = 'Quickstart · ' + tab.textContent + ' →'; }
+      if (qlink && tab.dataset.href) { qlink.href = tab.dataset.href; qlink.textContent = tab.textContent + ' quickstart'; }
       list.dispatchEvent(new CustomEvent('sv:tab', { detail: { key: key } }));
     }
     $$('[role="tablist"]').forEach(function (list) {
@@ -441,7 +446,7 @@
       on(list, 'sv:tab', function (e) {
         var tab = $('[role="tab"][data-key="' + e.detail.key + '"]', list); if (!tab) return;
         $$('[data-start]').forEach(function (a) { a.href = tab.dataset.href; });
-        $$('[data-start-label]').forEach(function (s) { s.textContent = 'Quickstart · ' + tab.dataset.label; });
+        $$('[data-start-label]').forEach(function (s) { s.textContent = tab.dataset.label + ' quickstart'; });
       });
     });
 
@@ -451,8 +456,10 @@
     if (stars) $$('[data-stars]').forEach(function (el) { el.textContent = (el.dataset.starsPrefix || '') + stars.textContent.trim(); });
     var ver = /sceneview:sceneview:(\d+)\.(\d+)\.(\d+)/.exec(($('#ins-android') || {}).textContent || '');
     if (ver) $$('[data-release]').forEach(function (a) {
-      a.textContent = 'v' + ver[1] + '.' + ver[2];
+      a.textContent = 'Latest release: v' + ver[1] + '.' + ver[2];
       a.href = 'https://github.com/sceneview/sceneview/releases/tag/v' + ver[1] + '.' + ver[2] + '.' + ver[3];
+      // The line ships hidden: it shows only once the version is known, never half filled.
+      var li = a.closest('li[hidden]'); if (li) li.hidden = false;
     });
 
     /* Copy: the tick and "Copied" show only once the text is on the clipboard. */
@@ -474,34 +481,18 @@
       });
     });
 
-    /* AI assistants: eight equal buttons, none selected by default. Every setup
-       is also laid out, hidden and aria-hidden, in the cell of the one shown
-       (site.css): the box takes the height of the tallest, so the page under it
-       does not jump. Only the shown setup changes, so the live region reads it. */
-    $$('[data-assistants]').forEach(function (group) {
-      var out = document.getElementById(group.dataset.assistants);
+    /* AI assistants: one M3 select, "Any MCP client" first. The box below shows the
+       chosen client's setup at its own height, and the live region reads it. */
+    $$('select[data-assistants]').forEach(function (pick) {
+      var out = document.getElementById(pick.dataset.assistants);
       var shown = out && $('.mcp__setup', out);
       if (!shown) return;
-      $$('template[id^="mcp-"]').forEach(function (tpl) {
-        var ghost = document.createElement('div');
-        ghost.className = 'mcp__setup';
-        ghost.setAttribute('aria-hidden', 'true');
-        ghost.inert = true;
-        ghost.innerHTML = tpl.innerHTML;
-        out.appendChild(ghost);
-      });
-      $$('button', group).forEach(function (b) {
-        on(b, 'click', function () {
-          var was = b.getAttribute('aria-pressed') === 'true';
-          $$('button', group).forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
-          var tpl = document.getElementById(was ? 'mcp-any' : 'mcp-' + b.dataset.id);
-          if (!was) b.setAttribute('aria-pressed', 'true');
-          if (tpl) {
-            shown.innerHTML = tpl.innerHTML;
-            $$('.copy', shown).forEach(function (c) {
-              on(c, 'click', function () { copy(c, c.dataset.copyText || $('code', c.parentElement).textContent); });
-            });
-          }
+      on(pick, 'change', function () {
+        var tpl = document.getElementById('mcp-' + pick.value);
+        if (!tpl) return;
+        shown.innerHTML = tpl.innerHTML;
+        $$('.copy', shown).forEach(function (c) {
+          on(c, 'click', function () { copy(c, c.dataset.copyText || $('code', c.parentElement).textContent); });
         });
       });
     });
@@ -639,20 +630,9 @@
     function frame() {
       ticking = false;
       // Every read before any write: one layout per frame, never a forced one.
-      var y = scrollY, r = hero && hero.getBoundingClientRect(), navH = nav ? nav.offsetHeight : 0, p = 0;
-      if (nav) {
-        nav.classList.toggle('is-scrolled', y > 8);
-        // Night set while the picture still shows below the header. Once only its last
-        // strip is left under the header, the bar takes the page's set at once, but solid
-        // (is-stage-edge): a translucent bar there let that strip through as a two-tone band.
-        var over = !!r && r.bottom > navH;
-        if (hero) {
-          nav.classList.toggle('is-over-stage', over);
-          nav.classList.toggle('is-stage-edge', !over && r.bottom > 0);
-        }
-        // Over a night picture the header takes the dark set, whatever the theme.
-        nav.classList.toggle('night', over && hero.classList.contains('night'));
-      }
+      var y = scrollY, r = hero && hero.getBoundingClientRect(), p = 0;
+      // M3 top app bar: surface at rest, surface-container once content scrolls under it.
+      if (nav) nav.classList.toggle('is-scrolled', y > 8);
       if (!hero) return;
       if (scrollFx) p = clamp(-r.top / Math.max(1, r.height - innerHeight), 0, 1);
       else p = clamp(-r.top / Math.max(1, r.height), 0, 1);

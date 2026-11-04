@@ -1,13 +1,13 @@
 /* SceneView website — the support prompt (assets/support.js).
  *
- * It runs on the "Stage" home page (tokens.css) and on the pages still on styles.css:
- * each colour reads the Stage token and falls back to the same value where tokens.css
- * is absent, dark first.
- * Contrast ratios are WCAG 2.x, measured on the card surface (surface-1):
- *   dark  — text 14.6, text-2 8.3, text-3 5.4, accent 7.6, on-accent on fill 9.5,
- *           control edge (outline) 3.54
- *   light — text 19.1, text-2 8.1, text-3 6.2, accent 6.1, on-accent on fill 6.1,
- *           control edge (outline) 4.15
+ * It runs on the Material 3 home page (tokens.css) and on the pages still on styles.css:
+ * each colour reads the token and falls back to a fixed value where tokens.css is
+ * absent, dark first. The one filled button is the M3 primary role on every page
+ * (#ADC6FF / #002E69 dark, #004494 / #FFFFFF light: 7.7 and 9.3).
+ * Contrast ratios are WCAG 2.x, measured on the card surface (surface-1) of the
+ * styles.css fallbacks:
+ *   dark  — text 14.6, text-2 8.3, text-3 5.4, accent 7.6, control edge (outline) 3.54
+ *   light — text 19.1, text-2 8.1, text-3 6.2, accent 6.1, control edge (outline) 4.15
  * Theme: dark by default; light when the OS asks for it and the visitor did not pick
  * dark, or when the visitor picked light (both sites set data-theme on <html>). */
 
@@ -20,10 +20,11 @@
   --svs-text-2: var(--text-2, #B4BCCB);
   --svs-text-3: var(--text-3, #8D97A8);
   --svs-accent: var(--accent, #8AB4FF);
-  --svs-fill: var(--accent-fill, #8AB4FF);
-  --svs-on-fill: var(--on-accent, #06080C);
-  --svs-warm: var(--warm, #FFB86B);
-  --svs-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 24px 64px -16px rgba(0,0,0,.75);
+  --svs-fill: var(--md-sys-color-primary, #ADC6FF);
+  --svs-on-fill: var(--md-sys-color-on-primary, #002E69);
+  --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);   /* M3 elevation level 3 */
+  --svs-sel: var(--md-sys-color-secondary-container, #33466D);
+  --svs-on-sel: var(--md-sys-color-on-secondary-container, #A1B5E2);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -36,10 +37,11 @@
     --svs-text-2: var(--text-2, #465061);
     --svs-text-3: var(--text-3, #586272);
     --svs-accent: var(--accent, #0B5BD3);
-    --svs-fill: var(--accent-fill, #0B5BD3);
-    --svs-on-fill: var(--on-accent, #FFFFFF);
-    --svs-warm: var(--warm, #A2560A);
-    --svs-shadow: 0 2px 4px rgba(10,13,19,.06), 0 32px 64px -24px rgba(10,13,19,.30);
+    --svs-fill: var(--md-sys-color-primary, #004494);
+    --svs-on-fill: var(--md-sys-color-on-primary, #FFFFFF);
+    --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);
+    --svs-sel: var(--md-sys-color-secondary-container, #BBCFFD);
+    --svs-on-sel: var(--md-sys-color-on-secondary-container, #44587F);
     color-scheme: light;
   }
 }
@@ -52,10 +54,11 @@
   --svs-text-2: var(--text-2, #465061);
   --svs-text-3: var(--text-3, #586272);
   --svs-accent: var(--accent, #0B5BD3);
-  --svs-fill: var(--accent-fill, #0B5BD3);
-  --svs-on-fill: var(--on-accent, #FFFFFF);
-  --svs-warm: var(--warm, #A2560A);
-  --svs-shadow: 0 2px 4px rgba(10,13,19,.06), 0 32px 64px -24px rgba(10,13,19,.30);
+  --svs-fill: var(--md-sys-color-primary, #004494);
+  --svs-on-fill: var(--md-sys-color-on-primary, #FFFFFF);
+  --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);
+  --svs-sel: var(--md-sys-color-secondary-container, #BBCFFD);
+  --svs-on-sel: var(--md-sys-color-on-secondary-container, #44587F);
   color-scheme: light;
 }
 
@@ -65,9 +68,9 @@
   right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box;
   padding: 20px 20px 16px;
-  border-radius: 24px; border: 1px solid var(--svs-hairline);
+  border-radius: 28px; border: 1px solid var(--svs-hairline);
   background: var(--svs-surface); color: var(--svs-text); box-shadow: var(--svs-shadow);
-  font: 400 1rem/1.5 "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 400 1rem/1.5 system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   transform: translateY(16px); opacity: 0;
   transition: transform 420ms cubic-bezier(.16, 1, .3, 1), opacity 220ms ease-out;
@@ -86,46 +89,44 @@
 
 .svs__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-right: -10px; }
 .svs__head > div { min-width: 0; padding-top: 2px; }
-.svs__eyebrow {
-  display: inline-flex; align-items: center; gap: 8px;
-  font: 500 .75rem/1 "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  letter-spacing: .08em; text-transform: uppercase; color: var(--svs-text-3);
-  margin-bottom: 10px;
-}
-.svs__heart { width: 16px; height: 16px; color: var(--svs-warm); flex: none; }
 .svs__close {
   width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 11px; margin-top: -10px;
   border: 0; border-radius: 999px; background: transparent; color: var(--svs-text-2); cursor: pointer;
 }
 .svs__close:hover { background: var(--svs-surface-2); color: var(--svs-text); }
 
-.svs__title { font-size: 1.25rem; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em; color: var(--svs-text); }
+.svs__title { font-size: 1.25rem; line-height: 1.2; font-weight: 400; color: var(--svs-text); }
 .svs__text { margin-top: 6px; font-size: .9375rem; line-height: 1.5; color: var(--svs-text-2); }
 
-.svs__freq {
-  display: inline-flex; margin-top: 16px; padding: 3px; gap: 2px;
-  border-radius: 999px; background: var(--svs-surface-2);
+/* Both choices are one M3 segmented button style: outlined, fully round, the selected
+   segment on secondary-container with a leading check. The fallbacks are the same M3 roles. */
+.svs__seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin-top: 16px; }
+.svs__seg--amt { margin-top: 12px; }
+.svs__seg button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 0; min-height: 40px; padding: 0 8px; cursor: pointer;
+  border: 1px solid var(--svs-outline); border-radius: 0; background: transparent;
+  color: var(--svs-text); font: inherit; font-size: .875rem; font-weight: 500; letter-spacing: .1px; white-space: nowrap;
 }
-.svs__freq button {
-  min-height: 34px; padding: 0 14px; border: 0; border-radius: 999px; cursor: pointer;
-  background: transparent; color: var(--svs-text-2); font: inherit; font-size: .875rem; font-weight: 600;
-}
-.svs__freq button[aria-pressed="true"] { background: var(--svs-surface); color: var(--svs-text); box-shadow: 0 0 0 1px var(--svs-outline) inset; }
+.svs__seg button + button { border-left: 0; }
+.svs__seg button:first-child { border-radius: 999px 0 0 999px; }
+.svs__seg button:last-child { border-radius: 0 999px 999px 0; }
+.svs__seg button::after { content: ""; position: absolute; inset: -4px 0; }   /* 48 dp touch target */
+.svs__seg button:hover { background: color-mix(in srgb, var(--svs-text) 8%, transparent); }
+.svs__seg button[aria-pressed="true"] { background: var(--svs-sel); color: var(--svs-on-sel); }
+.svs__seg button[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--svs-on-sel) 8%, var(--svs-sel)); }
+.svs .svs__check { display: none; width: 18px; height: 18px; flex: none; }
+.svs__seg button[aria-pressed="true"] .svs__check { display: block; }
 
-.svs__amts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-.svs__amt {
-  display: grid; place-items: center; min-height: 48px; padding: 0 6px;
-  border-radius: 14px; border: 1px solid var(--svs-outline);
-  background: var(--svs-surface); color: var(--svs-text);
-  font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; white-space: nowrap;
-  transition: transform 140ms cubic-bezier(.16, 1, .3, 1), background-color 220ms, border-color 220ms;
+/* The one action: an M3 filled button, full width. */
+.svs__give {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; margin-top: 16px; padding: 0 24px; border-radius: 999px;
+  background: var(--svs-fill); color: var(--svs-on-fill);
+  font-size: .875rem; font-weight: 500; letter-spacing: .1px; text-decoration: none;
 }
-.svs__amt:hover { border-color: var(--svs-accent); background: var(--svs-surface-2); }
-.svs__amt:active { transform: scale(.97); }
-/* $20 is the suggested amount: the only filled button. */
-.svs__amt[data-amount="20"] { background: var(--svs-fill); border-color: transparent; color: var(--svs-on-fill); }
-.svs__amt[data-amount="20"]:hover { background: var(--svs-fill); filter: brightness(1.08); }
-.svs__amt--other { font-size: .9375rem; }
+.svs__give:hover { background: color-mix(in srgb, var(--svs-on-fill) 8%, var(--svs-fill)); }
+.svs .svs__give svg { width: 18px; height: 18px; flex: none; }
 
 .svs__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px -8px 0; }
 .svs__never, .svs__alt {
@@ -146,13 +147,12 @@
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     padding: 16px 16px 12px; border-radius: 20px;
   }
-  .svs__eyebrow { display: none; }
   .svs__head > div { padding-top: 0; }
   .svs__close { margin-top: -12px; }
   .svs__title { font-size: 1.125rem; }
   .svs__text { font-size: .875rem; }
-  .svs__freq { margin-top: 12px; }
-  .svs__amts { margin-top: 10px; }
+  .svs__seg { margin-top: 12px; }
+  .svs__seg--amt { margin-top: 10px; }
 }
 
 @media print { .svs { display: none !important; } }
