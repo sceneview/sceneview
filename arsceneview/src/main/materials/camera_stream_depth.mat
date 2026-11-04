@@ -98,7 +98,8 @@ fragment {
     //     ARCore's depth error grows about quadratically with distance. A hard limit, not
     //     dithered: spread over [0.5, 1.5] x tolerance by `b`, the contact band of a model
     //     on the floor broke into vertical streaks and the placement ring into dashes
-    //     (Pixel 4a, 2026-11-04).
+    //     (Pixel 4a, 2026-11-04). The edge stays soft because `d` is a smooth cubic
+    //     reconstruction of the depth texture (occlusionDepthMeters), not its bilinear sample.
     //  2. Range. From kFarFadeStart to kFarFadeEnd the share of texels that occlude falls to
     //     zero: beyond ~8 m phone depth does not occlude at all.
     //  3. No depth. A texel with no depth (0, or the filter's 0xFFFF "none") occludes
@@ -117,6 +118,40 @@ fragment {
     // Bayer matrix.
     float occlusionThreshold(const vec2 fragCoord) {
         return fract(52.9829189 * fract(dot(fragCoord, vec2(0.06711056, 0.00583715))));
+    }
+
+    // Packed depth (mm in .xy) decoded to metres.
+    float decodeDepthMeters(const vec2 packed_depth) {
+        return dot(packed_depth, vec2(255.f, 256.f * 255.f)) / 1000.f;
+    }
+
+    // Depth for the occlusion test, reconstructed with a cubic B-spline from four bilinear
+    // taps (Sigg & Hadwiger, GPU Gems 2 ch. 20). A plain bilinear sample is only C0: its
+    // contour against the tolerance kinks on every texel boundary, so the edge where the
+    // floor's depth crosses the tolerance came out as 160x90 steps (Pixel 4a, 2026-11-04).
+    // The B-spline is C2 and low-pass, so that edge is a smooth curve. The packed .xy blend
+    // linearly, so blending before decoding is exact.
+    float occlusionDepthMeters(const vec2 uv) {
+        vec2 size = vec2(textureSize(materialParams_depthTexture, 0));
+        vec2 st = uv * size - 0.5;
+        vec2 i = floor(st);
+        vec2 f = st - i;
+        vec2 f2 = f * f;
+        vec2 f3 = f2 * f;
+        vec2 w0 = (1.f / 6.f) * (1.f - 3.f * f + 3.f * f2 - f3);
+        vec2 w1 = (1.f / 6.f) * (4.f - 6.f * f2 + 3.f * f3);
+        vec2 w2 = (1.f / 6.f) * (1.f + 3.f * f + 3.f * f2 - 3.f * f3);
+        vec2 w3 = (1.f / 6.f) * f3;
+        vec2 g0 = w0 + w1;
+        vec2 g1 = w2 + w3;
+        vec2 uv0 = (i - 0.5f + w1 / g0) / size;
+        vec2 uv1 = (i + 1.5f + w3 / g1) / size;
+        vec2 packed_depth =
+                g0.y * (g0.x * texture(materialParams_depthTexture, vec2(uv0.x, uv0.y)).xy +
+                        g1.x * texture(materialParams_depthTexture, vec2(uv1.x, uv0.y)).xy) +
+                g1.y * (g0.x * texture(materialParams_depthTexture, vec2(uv0.x, uv1.y)).xy +
+                        g1.x * texture(materialParams_depthTexture, vec2(uv1.x, uv1.y)).xy);
+        return decodeDepthMeters(packed_depth);
     }
 
     // Distance, in metres, the camera quad writes into the z-buffer for a texel whose real
@@ -162,14 +197,12 @@ fragment {
         // pixel rather than `if (fogEnabled > 0.5)` to keep the shader divergent-
         // free on tile-based GPUs.
         //
-        // depth_valid : 1 when ARCore returned a non-zero depth for this texel,
+        // fog_valid   : 1 when ARCore returned a depth for the unfiltered texel,
         //               0 otherwise. Keeps the camera pixel crisp on regions
         //               where the depth API has no data (e.g. moving objects,
-        //               sky, near edges). Occlusion only.
-        // fog_valid   : the same test on the unfiltered texel, for the fog.
+        //               sky, near edges).
         // adjusted   : metres beyond `fogStart`, clamped to fogEnd.
         // factor     : 1 - exp(-density * adjusted), clamped to [0, 1].
-        float depth_valid = step(0.001f, depth_m) * step(depth_m, kMaxValidDepthMeters);
         float fog_valid = step(0.001f, nearest_m) * step(nearest_m, kMaxValidDepthMeters);
         float adjusted = clamp(fog_m - materialParams.fogStart, 0.f,
                                max(materialParams.fogEnd - materialParams.fogStart, 0.001f));
@@ -199,7 +232,9 @@ fragment {
         // depth near the far plane under whatever convention the active projection
         // uses — no division by zero, no clamped infinity, and "no data" degrades to
         // "occludes nothing", which is the documented intent.
-        float occlusion_depth_m = occluderDistance(depth_m, depth_valid,
+        float occlusion_m = occlusionDepthMeters(getUV0());
+        float occlusion_valid = step(0.001f, occlusion_m) * step(occlusion_m, kMaxValidDepthMeters);
+        float occlusion_depth_m = occluderDistance(occlusion_m, occlusion_valid,
                 occlusionThreshold(gl_FragCoord.xy));
         vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, -occlusion_depth_m));
         float ndc_depth = view.z / view.w;

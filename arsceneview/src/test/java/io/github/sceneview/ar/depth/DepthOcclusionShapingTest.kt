@@ -72,6 +72,12 @@ class DepthOcclusionShapingTest {
             val source = File(root, "arsceneview/src/main/materials/$name").readText()
             // The tolerance is a hard limit in the shader too, as in [DepthOcclusionShaping].
             assertTrue("hard tolerance in $name", "float occluder_m = depth_m + tolerance;" in source)
+            // ...applied to a smooth reconstruction of the depth, or its edge shows the
+            // 160x90 texel grid as steps.
+            assertTrue(
+                "smooth occlusion depth in $name",
+                "float occlusion_m = occlusionDepthMeters(getUV0());" in source,
+            )
             expected.forEach { (constant, value) ->
                 val match = Regex("const float $constant = ([0-9.]+);").find(source)
                     ?: throw AssertionError("$constant missing from $name")
