@@ -173,17 +173,18 @@ class LiveWallsTest {
     }
 
     @Test
-    fun `the cue turns to the open edge`() {
+    fun `the cue leads to the open edge`() {
         val phone = DebugPose(0f, 0f, 0f) // looks down -z, right is +x
-        assertEquals(ScanTurn.Ahead, ScanGuide.turnTo(phone, 0f, -2f))
-        assertEquals(ScanTurn.Right, ScanGuide.turnTo(phone, 2f, 0f))
-        assertEquals(ScanTurn.Left, ScanGuide.turnTo(phone, -2f, 0f))
-        assertEquals(ScanTurn.Behind, ScanGuide.turnTo(phone, 0f, 2f))
+        assertEquals(ScanTurn.Ahead, ScanGuide.turnOf(ScanGuide.heading(phone, 0f, -2f).degrees, null))
+        assertEquals(ScanTurn.Right, ScanGuide.turnOf(ScanGuide.heading(phone, 2f, 0f).degrees, null))
+        assertEquals(ScanTurn.Left, ScanGuide.turnOf(ScanGuide.heading(phone, -2f, 0f).degrees, null))
+        assertEquals(ScanTurn.Behind, ScanGuide.turnOf(ScanGuide.heading(phone, 0f, 2f).degrees, null))
         val rightEdge = floatArrayOf(2f, -2f, 2f, 2f)
         val cue = ScanGuide.cue(phone, listOf(floatArrayOf(-0.5f, -2f, 0f, -2f), rightEdge))
         assertNotNull(cue)
-        assertEquals(ScanTurn.Right, cue!!.turn)
-        assertTrue(cue.edge === rightEdge)
+        assertTrue(cue!!.edge === rightEdge)
+        assertEquals(2f, cue.x, 1e-6f)
+        assertEquals(0f, cue.z, 1e-6f)
         assertNull(ScanGuide.cue(null, listOf(rightEdge)))
         assertNull(ScanGuide.cue(phone, emptyList()))
         // Turned right a quarter, the same edge is ahead.
@@ -191,7 +192,7 @@ class LiveWallsTest {
         val turned = DebugPose(0f, 0f, 0f, qy = kotlin.math.sin(q).toFloat(), qw = kotlin.math.cos(q).toFloat())
         val f = turned.rotate(0f, 0f, -1f)
         assertEquals(0.0, Math.toDegrees(atan2(f.z, f.x).toDouble()), 1.0)
-        assertEquals(ScanTurn.Ahead, ScanGuide.turnTo(turned, 2f, 0f))
+        assertEquals(0f, ScanGuide.heading(turned, 2f, 0f).degrees, 1e-3f)
     }
 
     @Test
@@ -231,7 +232,7 @@ class LiveWallsTest {
         val room = ScanScope.Room
         assertEquals(
             ScanCopy.turnHint(ScanTurn.Left),
-            ScanScopeCopy.coaching(room, ScanCopy.COACH_SCANNING, walls = 2, turn = ScanTurn.Left),
+            ScanScopeCopy.coaching(room, ScanCopy.COACH_SCANNING, walls = 2, guide = ScanGuideHint(ScanTurn.Left, null, false)),
         )
         assertEquals(
             ScanCopy.ROOM_DONE,
@@ -244,7 +245,7 @@ class LiveWallsTest {
         // Tracking lost still says so, whatever the walls.
         assertEquals(
             ScanCopy.TRACKING_LOST,
-            ScanScopeCopy.coaching(room, ScanCopy.TRACKING_LOST, walls = 2, turn = ScanTurn.Left),
+            ScanScopeCopy.coaching(room, ScanCopy.TRACKING_LOST, walls = 2, guide = ScanGuideHint(ScanTurn.Left, 2f, false)),
         )
     }
 

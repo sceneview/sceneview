@@ -1465,8 +1465,6 @@ private fun RerunLiveScreen(
     val scanCoverage = remember(scanMedia) { ScanCoverageState() }
     // A room's walls, recognised as it is scanned (#4540): Room and Home only.
     val scanWalls = remember(scanMedia, scanScope) { if (scanScope.hasFloorPlan) ScanWallsState() else null }
-    // The turn to its next gap, held once: the arrow and the coaching line change together.
-    val heldTurn = rememberHeld(scanWalls?.turn)
     // Tapped open, the live map is the map to complete (#4718): the fallback card, where the
     // screen is too short to share between the live 3D map and the camera.
     var scanMapExpanded by remember(scanMedia) { mutableStateOf(false) }
@@ -1518,6 +1516,8 @@ private fun RerunLiveScreen(
         }
     }
     LaunchedEffect(scanReview.fix) { scanReview.watchFix(scanning = { phase.integrates }) { phase = phase.finish() } }
+    // The guide's ribbon and arrow lead to the part being fixed, not to the room's next gap.
+    SideEffect { scanWalls?.fixTarget = scanReview.fix?.zone?.centre }
     val reviewShown = scanReview.shown?.takeIf { phase == ScanPhase.Reviewing }
     val reviewFlying by rememberUpdatedState(reviewShown != null)
 
@@ -2171,7 +2171,7 @@ private fun RerunLiveScreen(
                                             ),
                                             nextRoom = roomNumber.takeIf { betweenRooms },
                                             walls = scanWalls?.wallCount,
-                                            turn = heldTurn,
+                                            guide = scanWalls?.hint,
                                             done = scanWalls?.done == true,
                                             facingWall = scanCoverage.facingWall,
                                             wallToFinish = scanWalls?.facingUnfinished == true,
@@ -2375,7 +2375,6 @@ private fun RerunLiveScreen(
                         livePose = scanLivePose,
                         saving = phase == ScanPhase.Saving,
                         walls = scanWalls,
-                        turn = heldTurn,
                         reviewing = phase == ScanPhase.Reviewing,
                         reviewPose = reviewShown?.let { scanReview.poseFor(it, scanOrbit.verticalFovDegrees) }
                             ?.let { pose -> { pose } },

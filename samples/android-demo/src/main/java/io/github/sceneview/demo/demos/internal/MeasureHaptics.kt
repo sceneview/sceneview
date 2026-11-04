@@ -55,3 +55,28 @@ fun measureAimHapticEvent(kind: MeasureSnapKind?, closes: Boolean?, covered: Boo
 /** The haptic event of a tap that placed a point: closing the outline, or a plain point. */
 fun measurePointHapticEvent(closes: Boolean): MeasureHapticEvent =
     if (closes) MeasureHapticEvent.OutlineClosed else MeasureHapticEvent.PointAdded
+
+/**
+ * The tick of a phone lining up with what it is led to — 3D Scan's guide ([ScanGuidance]), on the
+ * same [MeasureHapticEvent.AimLocked] as Measure's reticle locking on. Played as [aligned] turns on,
+ * never twice within [minGapMs]: a phone swaying on the edge of the line-up, which the guide's
+ * hysteresis already holds, still ticks at most once a second.
+ */
+class AlignTick(private val minGapMs: Long = MIN_GAP_MS) {
+    private var was = false
+    private var lastMs = Long.MIN_VALUE
+
+    /** [aligned] at [nowMs]: [MeasureHapticEvent.AimLocked] when it just turned on, past the gap since the last tick. */
+    fun update(aligned: Boolean, nowMs: Long): MeasureHapticEvent? {
+        val rising = aligned && !was
+        was = aligned
+        if (!rising || (lastMs != Long.MIN_VALUE && nowMs - lastMs < minGapMs)) return null
+        lastMs = nowMs
+        return MeasureHapticEvent.AimLocked
+    }
+
+    companion object {
+        /** At most one tick a second. */
+        const val MIN_GAP_MS = 1_000L
+    }
+}
