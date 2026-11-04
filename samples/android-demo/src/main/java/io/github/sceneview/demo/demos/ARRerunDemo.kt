@@ -1510,9 +1510,12 @@ private fun RerunLiveScreen(
     // and the review comes back once it is filled in. Not for an object, a home's rooms nor a re-scan.
     val scanReview = remember(scanMedia) { ScanReviewSession() }
     val reviewsParts = scanScope.mapsGround && !scanScope.roomByRoom && rescan == null
+    val reviewCycles by rememberUpdatedState(rememberReviewCycles())
     LaunchedEffect(scanReview, phase == ScanPhase.Reviewing && reviewsParts) {
-        if (phase != ScanPhase.Reviewing || !reviewsParts) return@LaunchedEffect
-        scanReview.review { scan?.reviewCloud() ?: qaLong?.let { withContext(Dispatchers.Default) { it.dense.savedCloud() } } }
+        if (phase != ScanPhase.Reviewing || !reviewsParts) return@LaunchedEffect scanReview.leave()
+        scanReview.review(cycles = { reviewCycles }) {
+            scan?.reviewCloud() ?: qaLong?.let { withContext(Dispatchers.Default) { it.dense.savedCloud() } }
+        }
     }
     LaunchedEffect(scanReview.fix) { scanReview.watchFix(scanning = { phase.integrates }) { phase = phase.finish() } }
     val reviewShown = scanReview.shown?.takeIf { phase == ScanPhase.Reviewing }
@@ -2104,10 +2107,11 @@ private fun RerunLiveScreen(
                                 checking = scanReview.checking && reviewsParts,
                                 focus = scanReview.focus,
                                 onFixNow = { zone ->
-                                    val live = scanMedia?.liveDense?.invoke()?.cloud
-                                    scope.launch { scanReview.startFix(zone, live) }
+                                    scanReview.startFix(zone, scanMedia?.liveDense?.invoke()?.cloud)
                                     moveTo(ScanPhase.Scanning)
                                 },
+                                onHold = scanReview::hold,
+                                onNext = scanReview::next,
                             )
                             phase == ScanPhase.Saving -> ScanSavingCard(points = keptPoints)
                             phase == ScanPhase.SaveFailed -> ScanSaveFailedCard(

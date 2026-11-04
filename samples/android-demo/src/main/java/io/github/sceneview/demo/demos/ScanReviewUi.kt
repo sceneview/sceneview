@@ -1,7 +1,9 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -17,6 +19,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
@@ -27,6 +30,7 @@ import io.github.sceneview.demo.demos.internal.OrbitPose
 import io.github.sceneview.demo.demos.internal.RescanZone
 import io.github.sceneview.demo.demos.internal.ScanReview
 import io.github.sceneview.demo.demos.internal.ScanReviewResult
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -35,11 +39,15 @@ import kotlinx.coroutines.withContext
 /**
  * Review before you leave, for one capture: what the review at Stop found ([result], read once
  * per review by [review]), the part the 3D view is on ([focus]), and the part being fixed ([fix]).
- * Main thread; the reads run on [Dispatchers.Default].
+ * Main thread; the reads run on [Dispatchers.Default]. [millis] and [nanoTime] are the clocks,
+ * fake ones in tests.
  */
 @Stable
-internal class ScanReviewSession {
-    /** What the last review found; `null` before one, [ScanReviewResult.Empty] without a dense map. */
+internal class ScanReviewSession(
+    private val millis: () -> Long = SystemClock::uptimeMillis,
+    private val nanoTime: () -> Long = System::nanoTime,
+) {
+    /** What the last review found; `null` outside a review, [ScanReviewResult.Empty] without a dense map. */
     var result by mutableStateOf<ScanReviewResult?>(null)
         private set
 
@@ -51,9 +59,16 @@ internal class ScanReviewSession {
     var focus by mutableIntStateOf(0)
         private set
 
+    /** `true` once the user has touched the card: the view stays on the part they are reading. */
+    var held by mutableStateOf(false)
+        private set
+
     /** The part Fix now is filling in, `null` when none. */
     var fix by mutableStateOf<SessionFix?>(null)
         private set
+
+    /** The parts a fix was started on, this capture: found again, they are set aside ([ScanReview.untried]). */
+    private val tried = ArrayList<RescanZone>()
 
     /** The part the review's 3D view flies to, `null` while there is none to show. */
     val shown: RescanZone? get() = if (checking) null else result?.zones?.getOrNull(focus)
@@ -62,13 +77,16 @@ internal class ScanReviewSession {
     val found: ScanReviewResult? get() = result?.takeUnless { it === ScanReviewResult.Empty }
 
     /**
-     * One review, at Stop and review: [read] gives the capture's dense map as it stands, read once,
-     * then the 3D view moves from part to part every [ScanReview.DWELL_S] until the review is left
-     * (the caller's effect is cancelled).
+     * One review, at Stop and review: [read] gives the capture's dense map as it stands, read once.
+     * Then, while [cycles] (motion on, no screen reader) and until the card is touched, the 3D view
+     * moves from part to part every [ScanReview.DWELL_S] until the review is left (the caller's
+     * effect is cancelled, and calls [leave]).
      */
-    suspend fun review(read: suspend () -> DenseCloud?) {
+    suspend fun review(cycles: () -> Boolean = { true }, read: suspend () -> DenseCloud?) {
         fix = null
         focus = 0
+        held = false
+        result = null
         checking = true
         val found = try {
             val cloud = read()
@@ -78,51 +96,97 @@ internal class ScanReviewSession {
         } finally {
             checking = false
         }
-        result = found ?: ScanReviewResult.Empty
+        result = found?.without(tried) ?: ScanReviewResult.Empty
         found?.let { r -> Log.i(TAG, "review: ${r.zones.size} parts in ${r.millis} ms${r.zones.joinToString("") { "\n  $it" }}") }
-        val count = found?.zones?.size ?: 0
+        val count = result?.zones?.size ?: 0
         if (count < 2) return
-        val started = SystemClock.uptimeMillis()
+        var last = millis()
+        var dwelt = 0L
         while (true) {
             delay(FOCUS_TICK_MS)
-            focus = ScanReview.focusAt((SystemClock.uptimeMillis() - started) / MS_PER_S, count)
+            val now = millis()
+            if (!held && cycles()) dwelt += now - last
+            last = now
+            if (!held) focus = ScanReview.focusAt(dwelt / MS_PER_S, count)
         }
     }
 
-    /** Fix now on [zone]: its fill measured on [live], the capture as it stands, then followed. */
-    suspend fun startFix(zone: RescanZone, live: DenseCloud?) {
-        val now = System.nanoTime()
-        fix = withContext(Dispatchers.Default) { SessionFix.start(zone, live, now) }
+    /** The review is left: nothing of it is shown again until the next one is read. */
+    fun leave() {
+        result = null
+        checking = false
+        focus = 0
+        held = false
+    }
+
+    /** A finger on the card: the view stays on the part being read, Fix now aims at it. */
+    fun hold() {
+        held = true
+    }
+
+    /** Next part: the view flies on to the next one, and stays there. */
+    fun next() {
+        val count = result?.zones?.size ?: return
+        if (count == 0) return
+        held = true
+        focus = (focus + 1) % count
     }
 
     /**
-     * While [fix] is under way: once its part is filled in ([ScanFixWatch.done]) while [scanning],
-     * the line says so for a moment, then [onDone] — the review again.
+     * Fix now on [zone]: set at once, on the tap, so a review that follows always sees it — its
+     * fill measured on [live], the capture as it stands, as the review measured the part.
+     */
+    fun startFix(zone: RescanZone, live: DenseCloud?) {
+        tried += zone
+        fix = SessionFix.start(zone, live, nanoTime(), found, nanoTime)
+    }
+
+    /**
+     * While [fix] is under way: once its part is filled in ([SessionFix.done]) while [scanning],
+     * the line says so for a moment, then [onDone] — the review again. A pause or a Back in that
+     * moment only waits: the fix is watched again once scanning resumes.
      */
     suspend fun watchFix(scanning: () -> Boolean, onDone: () -> Unit) {
         val current = fix ?: return
-        while (true) {
+        while (fix === current) {
             delay(FIX_TICK_MS)
             val fill = (current.status as? RescanStatus.Lined)?.fill ?: continue
-            if (scanning() && current.watch.done(fill, System.nanoTime())) break
+            if (!scanning() || !current.done(fill)) continue
+            delay(COVERED_HOLD_MS)
+            if (fix === current && scanning()) {
+                onDone()
+                return
+            }
         }
-        delay(COVERED_HOLD_MS)
-        if (fix === current && scanning()) onDone()
     }
 
     /** The pose the 3D view looks at [zone] from, in a view [verticalFovDegrees] high. */
     fun poseFor(zone: RescanZone, verticalFovDegrees: Double): OrbitPose? =
         result?.let { ScanReview.poseFor(zone, it, verticalFovDegrees) }
 
-    private companion object {
-        const val TAG = "ScanReview"
-        const val FOCUS_TICK_MS = 250L
+    companion object {
+        private const val TAG = "ScanReview"
+        private const val FOCUS_TICK_MS = 250L
         const val FIX_TICK_MS = 500L
 
         /** How long "Covered" stays up before the review comes back, ms: long enough to read. */
         const val COVERED_HOLD_MS = 1_200L
-        const val MS_PER_S = 1000f
+        private const val MS_PER_S = 1000f
     }
+}
+
+/**
+ * Whether the review's 3D view may move from part to part by itself: not under reduced motion
+ * ([LocalMotionEnabled]), nor with a screen reader on, whose user moves on with Next part.
+ */
+@Composable
+internal fun rememberReviewCycles(): Boolean {
+    val motion = LocalMotionEnabled.current
+    val context = LocalContext.current
+    val reader = remember(context) {
+        (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)?.isTouchExplorationEnabled == true
+    }
+    return motion && !reader
 }
 
 /** The amber frame round the part the review's 3D view is on. */

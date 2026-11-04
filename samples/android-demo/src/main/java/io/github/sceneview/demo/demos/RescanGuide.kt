@@ -44,6 +44,8 @@ import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.RescanRegistrar
 import io.github.sceneview.demo.demos.internal.RescanZone
 import io.github.sceneview.demo.demos.internal.ScanFixWatch
+import io.github.sceneview.demo.demos.internal.ScanReview
+import io.github.sceneview.demo.demos.internal.ScanReviewResult
 import io.github.sceneview.demo.demos.internal.ScanLens
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -91,10 +93,15 @@ internal interface RescanFollower {
 /**
  * "Fix now" at the review (Review before you leave): [watch]'s part, filled in by the same capture
  * that missed it. Same session, same ARCore frame: the part is lined up from the first frame
- * ([RescanPose] identity), nothing to line up nor merge, and [follow] only measures the fill.
+ * ([RescanPose] identity), nothing to line up nor merge, and [follow] only measures the fill —
+ * as the review that found the part measured it ([review], [ScanReview.fillOf]).
  */
 @Stable
-internal class SessionFix(val watch: ScanFixWatch) : RescanFollower {
+internal class SessionFix(
+    val watch: ScanFixWatch,
+    private val review: ScanReviewResult? = null,
+    private val nanoTime: () -> Long = System::nanoTime,
+) : RescanFollower {
     override val zone: RescanZone get() = watch.zone
 
     override var status: RescanStatus by mutableStateOf(RescanStatus.Lined(SAME_FRAME, watch.baseline))
@@ -102,17 +109,29 @@ internal class SessionFix(val watch: ScanFixWatch) : RescanFollower {
 
     /** The part's fill on [live], the capture as it stands. Off the main thread. */
     override fun follow(live: DenseCloud) {
-        status = RescanStatus.Lined(SAME_FRAME, RescanGuidance.fill(zone.kind, zone.box, live))
+        status = RescanStatus.Lined(SAME_FRAME, ScanReview.fillOf(zone, live, review))
     }
+
+    /** Whether [fill] is enough for the review to come back now: the only time the guide says Covered. */
+    fun done(fill: Float): Boolean = watch.done(fill, nanoTime())
 
     companion object {
         /** The capture's own frame: the part stands where the review found it. */
         val SAME_FRAME = RescanPose(0f, 0f, 0f, 0f)
 
-        /** A fix of [zone], [live] the capture as it stands when Fix now is tapped, at [nowNanos]. */
-        fun start(zone: RescanZone, live: DenseCloud?, nowNanos: Long): SessionFix {
-            val baseline = live?.takeIf { it.count > 0 }?.let { RescanGuidance.fill(zone.kind, zone.box, it) } ?: 0f
-            return SessionFix(ScanFixWatch(zone, baseline, nowNanos))
+        /**
+         * A fix of [zone], found by [review], [live] the capture as it stands when Fix now is
+         * tapped at [nowNanos]: one pass over the drawn surfels, cheap enough for the tap itself.
+         */
+        fun start(
+            zone: RescanZone,
+            live: DenseCloud?,
+            nowNanos: Long,
+            review: ScanReviewResult? = null,
+            nanoTime: () -> Long = System::nanoTime,
+        ): SessionFix {
+            val baseline = live?.takeIf { it.count > 0 }?.let { ScanReview.fillOf(zone, it, review) } ?: 0f
+            return SessionFix(ScanFixWatch(zone, baseline, nowNanos), review, nanoTime)
         }
     }
 }
@@ -238,9 +257,8 @@ internal fun RescanGuide(
             text = when {
                 status is RescanStatus.Refused -> stringResource(R.string.scan_rescan_refused)
                 lined == null -> stringResource(R.string.scan_rescan_lining_up)
-                RescanGuidance.covered(lined.fill) -> stringResource(
-                    if (target is SessionFix) R.string.scan_fix_covered else R.string.scan_rescan_covered,
-                )
+                target is SessionFix && target.done(lined.fill) -> stringResource(R.string.scan_fix_covered)
+                target !is SessionFix && RescanGuidance.covered(lined.fill) -> stringResource(R.string.scan_rescan_covered)
                 else -> stringResource(R.string.scan_rescan_fill, (lined.fill * PERCENT).roundToInt())
             },
             modifier = Modifier.align(BiasAlignment(0f, LINE_BIAS)),

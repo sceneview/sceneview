@@ -66,6 +66,56 @@ class ScanReviewTest {
     }
 
     @Test
+    fun `a sparse patch fixed three quarters of the way is not offered again as it was`() {
+        val review = ScanReview.of(sparse)
+        val patch = review.zones.single { it.kind == RescanKind.LowDensity }
+        // Measured by a point per small cell, the patch starts covered: the fix would say
+        // Covered on its first frame and the review would find it again, forever.
+        assertTrue(RescanGuidance.covered(RescanGuidance.fill(patch.kind, patch.box, sparse)))
+        // Measured as the review found it, it starts empty.
+        val fix = SessionFix.start(patch, sparse, 0L, review) { LATER_NS }
+        assertTrue("baseline ${fix.watch.baseline}", fix.watch.baseline < ScanFixWatch.MIN_GAIN)
+        assertFalse(fix.done(fix.watch.baseline))
+
+        // Three quarters of it scanned again at full density.
+        val partly = partlyFixed(patch)
+        fix.follow(partly)
+        val fill = (fix.status as io.github.sceneview.demo.demos.RescanStatus.Lined).fill
+        println("sparse patch ${patch.footprintM2} m², fill ${fix.watch.baseline} -> $fill")
+        assertTrue("fill $fill", fill in 0.6f..0.95f)
+
+        // Whatever is still thin there is set aside, never offered again over the tried part.
+        val again = ScanReview.of(partly).without(listOf(patch))
+        val back = again.zones.filter { it.overlapM2(patch.box) > 0f }
+        assertTrue(again.zones.joinToString("\n"), back.isEmpty())
+    }
+
+    @Test
+    fun `a part that cannot gain is never done, whatever it started at`() {
+        val zone = RescanZone(RescanKind.FloorHole, floatArrayOf(0f, 0f, 0f, 1f, 0.05f, 1f), 1f, "hole")
+        val full = ScanFixWatch(zone, baseline = 0.99f, startedNanos = 0L)
+        assertFalse(full.done(1f, LATER_NS))
+    }
+
+    @Test
+    fun `the read at Stop on a full budget of surfels`() {
+        // DenseFusion.MAX_BUDGET (600 k) is the most a phone's map holds: the room twice, a
+        // millimetre apart, stands in for it.
+        val room = RescanZonesTest.room
+        val n = room.count
+        val twice = DenseCloud(
+            positions = FloatArray(n * 6) { if (it < n * 3) room.positions[it] else room.positions[it - n * 3] + 0.001f },
+            colors = IntArray(n * 2) { room.colors[it % n] },
+            normals = room.normals?.let { r -> FloatArray(n * 6) { r[it % (n * 3)] } },
+            levels = room.levels?.let { l -> ByteArray(n * 2) { l[it % n] } },
+        )
+        ScanReview.of(twice) // warm up
+        val review = ScanReview.of(twice)
+        println("review at ${twice.count} surfels: ${review.zones.size} parts in ${review.millis} ms")
+        assertTrue(review.millis < SLOW_MS)
+    }
+
+    @Test
     fun `the view looks at a wall part from inside the room, at a floor part from above`() {
         val review = ScanReview.of(damaged)
         val wall = review.zones.single { it.kind == RescanKind.MissingWall }
@@ -100,6 +150,7 @@ class ScanReviewTest {
         val watch = ScanFixWatch(zone, baseline = 0.9f, startedNanos = 0L)
         assertFalse(watch.done(0.92f, LATER_NS))
         assertTrue(watch.done(1f, LATER_NS))
+        assertFalse("not before it scanned a while", watch.done(1f, NS))
         val empty = ScanFixWatch(zone, baseline = 0f, startedNanos = 0L)
         assertFalse("under the covered share", empty.done(0.5f, LATER_NS))
         assertTrue(empty.done(0.8f, LATER_NS))
@@ -147,6 +198,29 @@ class ScanReviewTest {
         private const val HOLE_TOLERANCE_M2 = 0.15f
         private const val NS = 1_000_000_000L
         private val LATER_NS = (ScanFixWatch.MIN_SECONDS * NS).toLong() + NS
+        private const val SLOW_MS = 10_000L
+
+        /** The near-right corner kept one point in ten, at every height: a sparse patch. */
+        private const val SPARSE_X0 = 1.0f
+        private const val SPARSE_X1 = 2.1f
+        private const val SPARSE_Z0 = -1.9f
+        private const val SPARSE_Z1 = -0.8f
+        private const val SPARSE_EVERY = 10
+        private fun inSparse(x: Float, z: Float) = x in SPARSE_X0..SPARSE_X1 && z in SPARSE_Z0..SPARSE_Z1
+
+        val sparse: DenseCloud by lazy {
+            var kept = 0
+            RescanZonesTest.room.filter { x, _, z -> !inSparse(x, z) || kept++ % SPARSE_EVERY == 0 }
+        }
+
+        /** [sparse] with the three quarters of [patch] nearest the room's middle (lower x) scanned again. */
+        fun partlyFixed(patch: RescanZone): DenseCloud {
+            var kept = 0
+            val edge = patch.box[0] + PARTLY * (patch.box[3] - patch.box[0])
+            return RescanZonesTest.room.filter { x, _, z -> !inSparse(x, z) || x < edge || kept++ % SPARSE_EVERY == 0 }
+        }
+
+        private const val PARTLY = 0.75f
 
         private fun inWall(x: Float, z: Float) = x > WALL_X - 0.1f && z in WALL_Z0..WALL_Z1
         private fun inFloor(x: Float, y: Float, z: Float) = y < FLOOR_TOP_M && x in FLOOR_X0..FLOOR_X1 && z in FLOOR_Z0..FLOOR_Z1

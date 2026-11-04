@@ -1229,7 +1229,16 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   on a lost track "Scan paused. Point at an area you already scanned.") over two 48 dp
   buttons: tonal Pause (Resume) and filled Finish. Finish opens a review card ("Review your
   scan", the figures, tonal Keep scanning and filled Save scan) that returns to the same
-  capture; only Save scan builds it. A failed write stays as a card ("Couldn't save your
+  capture; only Save scan builds it. A room's or an area's review also reads the capture once
+  for the parts it missed ("Checking for parts you missed…", then "2 parts to fix before you
+  leave" and "Part 1 of 2 · Missing wall · 0.9 m", a live region): the 3D view leaves the
+  phone's eye and rests on each part, framed in `warning` amber, 3 s each — not by itself under
+  reduced motion or a screen reader, and not once a finger is on the card; a text Next part
+  moves on by hand. Tonal Build anyway and filled Fix now (spoken "Fix part 1 of 2, Missing
+  wall") replace its two buttons; Fix now scans on with the part framed in amber over the
+  camera and "Fill the amber frame: 40%", says "Covered. Checking your scan again…" only when
+  the review is about to come back, and the review ends on "Nothing left to fix". A part fixed
+  and found again is set aside and said, never offered again. A failed write stays as a card ("Couldn't save your
   scan", Discard, Try again), never a toast; its Discard asks "Discard this scan?" first.
   Back during a capture pauses it and asks Keep scanning, Save scan or Discard (`error`) —
   only Keep scanning and Discard when nothing was captured; Keep scanning scans again. A lost

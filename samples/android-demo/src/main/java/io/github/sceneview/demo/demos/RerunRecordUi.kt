@@ -89,6 +89,10 @@ import io.github.sceneview.demo.demos.internal.RescanZone
 import io.github.sceneview.demo.demos.internal.ScanReviewCopy
 import io.github.sceneview.demo.demos.internal.ScanReviewResult
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.liveRegion
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -346,7 +350,9 @@ private fun ScanPauseButton(paused: Boolean, label: String, onClick: () -> Unit)
  * Review before you leave: a room's capture is read once for the parts it missed ([review],
  * `null` when there is no dense map to read; [checking] while it is read). With parts to fix the
  * card says how many, names the one the 3D view is on ([focus]), and offers Fix now — the same
- * capture, that part framed in amber ([onFixNow]) — or Build anyway.
+ * capture, that part framed in amber ([onFixNow]) — or Build anyway. A finger on the card holds
+ * the view on the part being read ([onHold]) so Fix now aims where the user looks; Next part
+ * ([onNext]) moves on by hand, as a screen reader's user or reduced motion does.
  */
 @Composable
 @Suppress("LongParameterList") // the review's answers, and what it found
@@ -359,10 +365,20 @@ internal fun ScanReviewCard(
     checking: Boolean = false,
     focus: Int = 0,
     onFixNow: ((RescanZone) -> Unit)? = null,
+    onHold: () -> Unit = {},
+    onNext: () -> Unit = {},
 ) {
     val zones = review?.zones.orEmpty().takeUnless { empty || checking }.orEmpty()
-    val focused = zones.getOrNull(focus.coerceIn(0, (zones.size - 1).coerceAtLeast(0)))
-    OverlayCard(testTag = SCAN_REVIEW_TAG) {
+    val focusIndex = focus.coerceIn(0, (zones.size - 1).coerceAtLeast(0))
+    val focused = zones.getOrNull(focusIndex)
+    val holdOnTouch = Modifier.pointerInput(onHold) {
+        // The initial pass: the view stops on the part before any button sees the tap.
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            onHold()
+        }
+    }
+    OverlayCard(testTag = SCAN_REVIEW_TAG, modifier = holdOnTouch) {
         ScanStepRow(ScanStep.Review)
         val title = when {
             empty -> ScanCopy.EMPTY_TITLE
@@ -375,11 +391,21 @@ internal fun ScanReviewCard(
         val detail = when {
             empty -> null
             checking -> ScanReviewCopy.CHECKING
-            focused != null -> ScanReviewCopy.focus(focused, zones.indexOf(focused), zones.size)
+            focused != null -> ScanReviewCopy.focus(focused, focusIndex, zones.size)
+            review?.clear == true && review.setAside > 0 -> ScanReviewCopy.setAside(review.setAside)
             review?.clear == true -> ScanReviewCopy.CLEAR_DETAIL
             else -> CaptureChrome.REVIEW_DETAIL
         }
-        if (detail != null) Text(text = detail, style = ScanDetailStyle.copy(color = ArOverlay.onScrim))
+        if (detail != null) {
+            Text(
+                text = detail,
+                style = ScanDetailStyle.copy(color = ArOverlay.onScrim),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        if (focused != null && zones.size > 1) {
+            TextButton(onClick = onNext, modifier = Modifier.testTag(SCAN_NEXT_PART_TAG)) { Text(ScanReviewCopy.NEXT_PART) }
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             if (empty) {
                 Button(onClick = onKeepScanning, modifier = Modifier.weight(1f)) { Text(ScanCopy.KEEP_SCANNING) }
@@ -387,7 +413,11 @@ internal fun ScanReviewCard(
                 FilledTonalButton(onClick = onSave, modifier = Modifier.weight(1f).testTag(SCAN_BUILD_ANYWAY_TAG)) {
                     Text(ScanReviewCopy.BUILD_ANYWAY)
                 }
-                Button(onClick = { onFixNow(focused) }, modifier = Modifier.weight(1f).testTag(SCAN_FIX_NOW_TAG)) {
+                val label = ScanReviewCopy.fixLabel(focused, focusIndex, zones.size)
+                Button(
+                    onClick = { onFixNow(focused) },
+                    modifier = Modifier.weight(1f).testTag(SCAN_FIX_NOW_TAG).semantics { contentDescription = label },
+                ) {
                     Text(ScanReviewCopy.FIX_NOW)
                 }
             } else {
@@ -772,6 +802,7 @@ internal const val SCAN_HINT_TAG = "ar_rerun_scan_hint"
 internal const val SCAN_REVIEW_TAG = "ar_rerun_scan_review"
 internal const val SCAN_FIX_NOW_TAG = "ar_rerun_scan_fix_now"
 internal const val SCAN_BUILD_ANYWAY_TAG = "ar_rerun_scan_build_anyway"
+internal const val SCAN_NEXT_PART_TAG = "ar_rerun_scan_next_part"
 internal const val SCAN_SAVING_TAG = "ar_rerun_scan_saving"
 internal const val SCAN_SAVE_FAILED_TAG = "ar_rerun_scan_save_failed"
 internal const val SCAN_SAVE_AS_FILE_TAG = "ar_rerun_scan_save_as_file"
