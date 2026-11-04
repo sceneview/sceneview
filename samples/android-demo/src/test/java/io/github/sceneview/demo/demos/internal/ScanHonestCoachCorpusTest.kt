@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.demo.demos.RerunCaptureBuilder
+import io.github.sceneview.demo.demos.ScanDenseMap
 import io.github.sceneview.demo.demos.internal.room.PlanCanvas
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -47,7 +48,15 @@ class ScanHonestCoachCorpusTest {
         val out = System.getenv(OUT)?.takeIf { it.isNotBlank() }?.let(::File)
         assumeTrue("$CORPUS and $OUT not both set", corpus != null && out != null)
         val results = ScanHonestCoachCorpus.run(corpus!!, out!!)
-        assumeTrue("no .svscan or .rrd under $corpus", results.isNotEmpty())
+        // A corpus set and nothing read from it is a failure, not a skip.
+        assertTrue("no readable .svscan or .rrd with a dense cloud under $corpus", results.isNotEmpty())
+        val flagged = results.sumOf { it.walk.after }
+        val falseCells = results.sumOf { it.walk.falseAfter }
+        assertTrue(
+            "after: $falseCells of $flagged cells red over a floor the scans hold",
+            falseCells <= MAX_FALSE_SHARE * flagged,
+        )
+        assertEquals("after: \"Moving too fast\" on a calm camera", 0, results.sumOf { it.after.coach.falseOnsets })
     }
 
     @Test
@@ -58,10 +67,33 @@ class ScanHonestCoachCorpusTest {
         val result = ScanHonestCoachCorpus.run(corpus, out).single()
         assertTrue(File(out, "synthetic-living-room.svscan-floor.png").length() > 0)
         assertTrue(File(out, ScanHonestCoachCorpus.SUMMARY).readText().contains("synthetic-living-room"))
-        // After: nothing red over a floor the scan holds, and the patch swept too fast is red.
-        assertEquals(result.toString(), 0, result.after.falseCells)
-        val patch = ScanHonestCoachCorpus.patchCells()
-        assertTrue(result.toString(), result.after.weak.count { it in patch } >= patch.size - 1)
+        // The truth, from the generator, not from the rule: which floor the fused depth frames
+        // saw (ray cast), and which patches it thinned.
+        val truth = ScanHonestCoachCorpus.syntheticTruth()
+        val report = buildString {
+            appendLine(result)
+            appendLine("  independent truth: ${truth.healthy.size} floor cells seen whole, ${truth.unseen.size} barely seen")
+            for ((k, eye) in result.eyes.withIndex()) {
+                appendLine(
+                    String.format(
+                        java.util.Locale.ROOT,
+                        "  refresh %d at (%.1f, %.1f), whole to %.2f m: before %d red, %d over a healthy floor; " +
+                            "after %d red, %d over a healthy floor, patch 10 %% %d/4, patch 30 %% %d/4",
+                        k, eye.eye.x, eye.eye.z, eye.intactM, eye.before.size, eye.before.count { it in truth.healthy },
+                        eye.after.size, eye.after.count { it in truth.healthy },
+                        eye.after.count { it in truth.thin }, eye.after.count { it in truth.thirty },
+                    ),
+                )
+            }
+        }
+        println(report)
+        File(out, "synthetic-truth.txt").writeText(report)
+        // After: never red over a floor the frames saw whole.
+        for (eye in result.eyes) assertEquals(report, 0, eye.after.count { it in truth.healthy })
+        // At the last pose, by the patches: both are red.
+        val last = result.eyes.last()
+        assertTrue(report, last.after.count { it in truth.thin } >= 3)
+        assertTrue(report, last.after.count { it in truth.thirty } >= 3)
         // The coach: the whip pan is told off now, the calm walk still is not.
         assertTrue(result.toString(), result.after.coach.shakyCoached > result.before.coach.shakyCoached)
         assertEquals(result.toString(), 0, result.after.coach.falseOnsets)
@@ -71,25 +103,34 @@ class ScanHonestCoachCorpusTest {
     }
 
     @Test
-    fun `the live cloud's merging is what the corpus run stands in for`() {
-        // The corpus has the saved cloud, not the live one: [ScanHonestCoachCorpus.liveLike]
-        // merges it by distance as [DenseFusion.liveCloud] does. On the synthetic room, both
-        // judge the same cells.
+    fun `a fusion seeded from the saved cloud draws what the live one drew`() {
+        // The corpus has the saved cloud, not the map: [ScanHonestCoachCorpus.seeded] adds it to a
+        // new map, whose [DenseFusion.liveCloud] the corpus run judges. On the synthetic room,
+        // both judge the same cells at the app's budget.
         val fusion = DenseFusion()
         RerunSyntheticRoom.frames().forEach { fusion.add(DepthBackProjection.project(it)) }
-        val eye = RerunSyntheticRoom.STOPS[2]
-        val live = fusion.liveCloud(eye.x, eye.y, eye.z, maxPoints = Int.MAX_VALUE)
-        val like = ScanHonestCoachCorpus.liveLike(fusion.cloud(minViews = DenseFusion.MIN_VIEWS), DenseFusion.VOXEL_M, eye)
+        val seeded = ScanHonestCoachCorpus.seeded(fusion.cloud(minViews = DenseFusion.MIN_VIEWS), DenseFusion.VOXEL_M)
         val cell = CoverageGrid.CELL_METRES
-        val weakLive = LiveCoverageGround.weakCells(live, DenseFusion.VOXEL_M, CoverageGrid.coveredKeys(live.positions), cell, 0f)
-        val weakLike = LiveCoverageGround.weakCells(like, DenseFusion.VOXEL_M, CoverageGrid.coveredKeys(like.positions), cell, 0f)
-        println("live ${live.count} surfels, ${weakLive.size} weak; like ${like.count} surfels, ${weakLike.size} weak")
-        assertEquals(weakLive.toSet(), weakLike.toSet())
+        val covered = CoverageGrid.coveredKeys(fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS))
+        val budget = ScanDenseMap.LIVE_DRAWN_SURFELS
+        for (eye in RerunSyntheticRoom.STOPS) {
+            val live = fusion.liveCloud(eye.x, eye.y, eye.z, maxPoints = budget)
+            val liveIntact = fusion.liveIntactM
+            val again = seeded.liveCloud(eye.x, eye.y, eye.z, maxPoints = budget)
+            val weakLive = LiveCoverageGround.weakCells(live, DenseFusion.VOXEL_M, covered, cell, 0f, eye, liveIntact)
+            val weakAgain = LiveCoverageGround.weakCells(again, DenseFusion.VOXEL_M, covered, cell, 0f, eye, seeded.liveIntactM)
+            println("eye $eye: live ${live.count} surfels whole to $liveIntact m, ${weakLive.size} weak; seeded ${again.count}, ${weakAgain.size} weak")
+            assertEquals(liveIntact, seeded.liveIntactM, 0.01f)
+            assertEquals(weakLive.toSet(), weakAgain.toSet())
+        }
     }
 
     private companion object {
         const val CORPUS = "SCENEVIEW_SCAN_CORPUS"
         const val OUT = "SCENEVIEW_SCAN_OUT"
+
+        /** The most cells painted to redo over a floor the scans hold, as a share of those painted. */
+        const val MAX_FALSE_SHARE = 0.05f
 
         /** Where the synthetic run's board goes when set, to look at; a temp folder otherwise. */
         const val SYNTHETIC_OUT = "SCENEVIEW_SYNTHETIC_OUT"
@@ -136,7 +177,17 @@ internal object ScanHonestCoachCorpus {
         )
     }
 
-    class Result(val name: String, val before: Floor, val after: Floor, val walk: Walk, val turnCaps: String) {
+    /** One refresh of the live map: where from, how far its snapshot was whole, red before and after. */
+    class Eye(val eye: Vec3, val intactM: Float, val before: Set<Long>, val after: Set<Long>)
+
+    class Result(
+        val name: String,
+        val before: Floor,
+        val after: Floor,
+        val walk: Walk,
+        val turnCaps: String,
+        val eyes: List<Eye>,
+    ) {
         override fun toString() =
             "$name\n  at the last pose, before: $before\n  at the last pose, after:  $after\n" +
                 "  over the walk: $walk\n  turn caps at 0.6 m/s: $turnCaps"
@@ -192,8 +243,9 @@ internal object ScanHonestCoachCorpus {
         val floorCells = shares.count { it > 0f }
         fun falseOf(weak: Set<Long>) = weak.count { (held[it] ?: 0f) >= LiveCoverageGround.WEAK_SHARE }
 
-        // The live map's view of the whole cloud from the phone every [EYE_STEP_S] of the walk and
-        // at its last pose: the saved cloud merged by distance, judged both ways.
+        // The live map's view from the phone every [EYE_STEP_S] of the walk and at its last pose:
+        // the saved cloud added to a new map, drawn as the app draws it, at its budget, judged
+        // both ways. The grid's covered cells come from the whole map, as in the app.
         val eyes = poses.fold(ArrayList<ArDebugEvent.CameraPose>()) { kept, e ->
             if (kept.isEmpty() || (e.nanos - kept.last().nanos) / NS_PER_S >= EYE_STEP_S || e === poses.last()) kept += e
             kept
@@ -202,14 +254,18 @@ internal object ScanHonestCoachCorpus {
         var walkAfter = 0
         var walkFalseBefore = 0
         var walkFalseAfter = 0
-        var covered = LongArray(0)
+        val covered = all
         var before = emptySet<Long>()
         var after = emptySet<Long>()
+        val map = seeded(saved, voxelM)
+        val seen = ArrayList<Eye>()
         for (e in eyes) {
-            val live = liveLike(saved, voxelM, Vec3(e.pose.x, e.pose.y, e.pose.z))
-            covered = CoverageGrid.coveredKeys(live.positions)
+            val at = Vec3(e.pose.x, e.pose.y, e.pose.z)
+            val live = map.liveCloud(at.x, at.y, at.z, maxPoints = ScanDenseMap.LIVE_DRAWN_SURFELS)
+            val intact = map.liveIntactM
             before = legacyWeakCells(live.positions, covered, cell)
-            after = LiveCoverageGround.weakCells(live, voxelM, covered, cell, hint).toSet()
+            after = LiveCoverageGround.weakCells(live, voxelM, covered, cell, hint, at, intact).toSet()
+            seen += Eye(at, intact, before, after)
             walkBefore += before.size
             walkAfter += after.size
             walkFalseBefore += falseOf(before)
@@ -230,6 +286,7 @@ internal object ScanHonestCoachCorpus {
             Floor(after, falseOf(after), floorCells, new),
             walk,
             caps,
+            seen,
         )
     }
 
@@ -280,51 +337,46 @@ internal object ScanHonestCoachCorpus {
     }
 
     /**
-     * [cloud] as the live map would hold it seen from [eye] ([DenseFusion.liveCloud]): surfels
-     * nearer than [DenseFusion.LIVE_FIRST_LEVEL_M] as they are, farther ones merged one level
-     * coarser each time the distance doubles, up to [DenseFusion.LIVE_MAX_LEVEL], positions
-     * averaged by the surface each stands for.
+     * A map holding [cloud] as a scan's map held it: each surfel added twice (seen by two depth
+     * frames, [DenseFusion.MIN_VIEWS]) at full detail, a coarser one as the full-detail squares of
+     * its footprint in its own plane. Its [DenseFusion.liveCloud] is what the live map drew.
      */
-    fun liveLike(cloud: DenseCloud, voxelM: Float, eye: Vec3): DenseCloud {
-        class Cell(var x: Float = 0f, var y: Float = 0f, var z: Float = 0f, var w: Float = 0f, var color: Int = 0)
-        val cells = LinkedHashMap<Triple<Int, Long, Int>, Cell>()
+    fun seeded(cloud: DenseCloud, voxelM: Float): DenseFusion {
+        val positions = ArrayList<Float>(cloud.count * 3)
+        val normals = ArrayList<Float>(cloud.count * 3)
+        val colors = ArrayList<Int>(cloud.count)
         val p = cloud.positions
         for (i in 0 until cloud.count) {
-            val x = p[i * 3]
-            val y = p[i * 3 + 1]
-            val z = p[i * 3 + 2]
-            val dx = x - eye.x
-            val dy = y - eye.y
-            val dz = z - eye.z
-            val d = sqrt(dx * dx + dy * dy + dz * dz)
-            val far = if (d < DenseFusion.LIVE_FIRST_LEVEL_M) 0 else 1 + floor(ln(d / DenseFusion.LIVE_FIRST_LEVEL_M) / LN2).toInt()
-            val level = max(cloud.levelOf(i), min(far, DenseFusion.LIVE_MAX_LEVEL))
-            val side = voxelM * (1 shl level)
-            val key = Triple(
-                level,
-                CoverageGrid.key(floor(x / side).toInt(), floor(z / side).toInt()),
-                floor(y / side).toInt(),
-            )
-            val w = (voxelM * (1 shl cloud.levelOf(i))).let { it * it }
-            val c = cells.getOrPut(key) { Cell(color = cloud.colors[i]) }
-            c.x += x * w
-            c.y += y * w
-            c.z += z * w
-            c.w += w
+            val n = cloud.normals?.let { Vec3(it[i * 3], it[i * 3 + 1], it[i * 3 + 2]) }?.takeIf { it.length() > TINY }
+                ?.normalized() ?: Vec3(0f, 1f, 0f)
+            val span = 1 shl cloud.levelOf(i)
+            // Two directions across the surfel's plane.
+            val t1 = (if (kotlin.math.abs(n.y) < UPRIGHT) Vec3(0f, 1f, 0f) else Vec3(1f, 0f, 0f)).cross(n).normalized()
+            val t2 = n.cross(t1)
+            for (a in 0 until span) for (b in 0 until span) {
+                val u = ((a + HALF) / span - HALF) * voxelM * span
+                val v = ((b + HALF) / span - HALF) * voxelM * span
+                positions += p[i * 3] + t1.x * u + t2.x * v
+                positions += p[i * 3 + 1] + t1.y * u + t2.y * v
+                positions += p[i * 3 + 2] + t1.z * u + t2.z * v
+                normals += n.x
+                normals += n.y
+                normals += n.z
+                colors += cloud.colors[i]
+            }
         }
-        val positions = FloatArray(cells.size * 3)
-        val colors = IntArray(cells.size)
-        val levels = ByteArray(cells.size)
-        var n = 0
-        for ((key, c) in cells) {
-            positions[n * 3] = c.x / c.w
-            positions[n * 3 + 1] = c.y / c.w
-            positions[n * 3 + 2] = c.z / c.w
-            colors[n] = c.color
-            levels[n] = key.first.toByte()
-            n++
+        val count = colors.size
+        val samples = DenseSamples(
+            count,
+            positions.toFloatArray(),
+            normals.toFloatArray(),
+            colors.toIntArray(),
+            ByteArray(count) { FULL_CONFIDENCE },
+        )
+        return DenseFusion(voxelM).apply {
+            add(samples)
+            add(samples)
         }
-        return DenseCloud(positions, colors, levels = levels)
     }
 
     /** The floor from above, x right and z down: before on the left, after on the right, [eye] in black. */
@@ -357,35 +409,43 @@ internal object ScanHonestCoachCorpus {
 
     // ── The synthetic recording ──────────────────────────────────────────────────────────────
 
-    /** The patch of floor the synthetic scan sweeps too fast: 3 × 3 cells clear of the furniture. */
-    private const val PATCH_MIN_X = -0.5f
-    private const val PATCH_MIN_Z = 0.5f
-    private const val PATCH_CELLS = 3
+    /**
+     * The synthetic floor's two patches swept too fast, 2 × 2 cells each by where the walk ends,
+     * clear of the furniture: one kept at a tenth ([THIN_KEEP]), one at three tenths
+     * ([THIRTY_KEEP]), just under [LiveCoverageGround.WEAK_SHARE], in 2 cm stripes.
+     */
+    private val THIN = floatArrayOf(0.5f, 0.5f, 1f, 1f)
+    private val THIRTY = floatArrayOf(1f, 0.5f, 1.5f, 1f)
 
-    fun patchCells(): Set<Long> {
-        val c0 = floor(PATCH_MIN_X / CoverageGrid.CELL_METRES).toInt()
-        val r0 = floor(PATCH_MIN_Z / CoverageGrid.CELL_METRES).toInt()
-        return buildSet { for (c in 0 until PATCH_CELLS) for (r in 0 until PATCH_CELLS) add(CoverageGrid.key(c0 + c, r0 + r)) }
+    private fun cellsOf(box: FloatArray): Set<Long> = buildSet {
+        val cell = CoverageGrid.CELL_METRES
+        for (c in floor(box[0] / cell).toInt() until floor(box[2] / cell).toInt()) {
+            for (r in floor(box[1] / cell).toInt() until floor(box[3] / cell).toInt()) add(CoverageGrid.key(c, r))
+        }
     }
 
+    private fun inBox(box: FloatArray, x: Float, z: Float) = x >= box[0] && x < box[2] && z >= box[1] && z < box[3]
+
     /**
-     * [RerunSyntheticRoom] fused as the app fuses it, with the floor of [patchCells] kept in
-     * [STRIPE_M] stripes one in [STRIPE_EVERY] (a patch swept too fast: only a frame here and there
-     * stuck), and a camera
-     * walk of calm sweeps, a whip pan and a brisk walk at 30 frames a second.
+     * [RerunSyntheticRoom] fused as the app fuses it, the floor of [THIN] and [THIRTY] kept in
+     * stripes (a patch swept too fast: a frame here and there stuck), and a camera walk of calm
+     * sweeps, a whip pan and a brisk walk at 30 frames a second.
      */
     fun syntheticRecording(): ByteArray {
         val fusion = DenseFusion()
         RerunSyntheticRoom.frames().forEach { fusion.add(DepthBackProjection.project(it)) }
         val full = fusion.cloud()
-        val patchMaxX = PATCH_MIN_X + PATCH_CELLS * CoverageGrid.CELL_METRES
-        val patchMaxZ = PATCH_MIN_Z + PATCH_CELLS * CoverageGrid.CELL_METRES
         val keep = BooleanArray(full.count) { i ->
             val x = full.positions[i * 3]
             val y = full.positions[i * 3 + 1]
             val z = full.positions[i * 3 + 2]
-            val inPatch = x in PATCH_MIN_X..patchMaxX && z in PATCH_MIN_Z..patchMaxZ && y < LiveCoverageGround.FLOOR_BAND_M
-            !inPatch || floor(x / STRIPE_M).toInt().mod(STRIPE_EVERY) == 0
+            val stripe = floor(x / STRIPE_M).toInt().mod(STRIPES)
+            when {
+                y >= LiveCoverageGround.FLOOR_BAND_M -> true
+                inBox(THIN, x, z) -> stripe < THIN_KEEP
+                inBox(THIRTY, x, z) -> stripe < THIRTY_KEEP
+                else -> true
+            }
         }
         val cloud = full.select(keep)
         val lens = ReplayLens.of(
@@ -395,6 +455,74 @@ internal object ScanHonestCoachCorpus {
         val device = ScanDevice("android", "Pixel 9", ScanDevice.TIER_DEPTH, ScanDevice.SOURCE_RAW_DEPTH)
         return RerunScanFile.write(runBlocking { RerunCaptureBuilder.build(walk(), lens, emptyList(), device, cloud) })
     }
+
+    /**
+     * What the synthetic scan really holds, from its generator and never from the rule: the floor
+     * cells clear of furniture that at least two of its depth frames saw whole ([healthy], at
+     * least [SEEN_WHOLE] of [SAMPLES]² points on the cell, ray-cast through the room) or barely
+     * ([unseen], under [SEEN_BARELY]); and the two patches it thinned.
+     */
+    class Truth(val healthy: Set<Long>, val unseen: Set<Long>, val thin: Set<Long>, val thirty: Set<Long>)
+
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
+    fun syntheticTruth(): Truth {
+        val cell = CoverageGrid.CELL_METRES
+        val scene = RerunSyntheticRoom.scene
+        val poses = RerunSyntheticRoom.poses()
+        val inverse = poses.map { DebugPose(0f, 0f, 0f, qx = -it.qx, qy = -it.qy, qz = -it.qz, qw = it.qw) }
+        val halfW = RerunSyntheticRoom.DEPTH_WIDTH / 2f
+        val halfH = RerunSyntheticRoom.DEPTH_HEIGHT / 2f
+        val min = RerunSyntheticRoom.MIN
+        val max = RerunSyntheticRoom.MAX
+        val healthy = HashSet<Long>()
+        val unseen = HashSet<Long>()
+        val patches = cellsOf(THIN) + cellsOf(THIRTY)
+        for (c in floor(min.x / cell).toInt() until floor(max.x / cell).toInt()) {
+            for (r in floor(min.z / cell).toInt() until floor(max.z / cell).toInt()) {
+                val x0 = c * cell
+                val z0 = r * cell
+                val inside = x0 >= min.x && x0 + cell <= max.x && z0 >= min.z && z0 + cell <= max.z
+                val box = floatArrayOf(x0, z0, x0 + cell, z0 + cell)
+                val clear = FURNITURE.none { f -> f[0] < box[2] && f[2] > box[0] && f[1] < box[3] && f[3] > box[1] }
+                val key = CoverageGrid.key(c, r)
+                if (!inside || !clear || key in patches) continue
+                var seen = 0
+                for (a in 0 until SAMPLES) for (b in 0 until SAMPLES) {
+                    val px = x0 + (a + HALF) / SAMPLES * cell
+                    val pz = z0 + (b + HALF) / SAMPLES * cell
+                    var views = 0
+                    for ((k, pose) in poses.withIndex()) {
+                        val vx = px - pose.x
+                        val vy = FLOOR_LIFT - pose.y
+                        val vz = pz - pose.z
+                        val local = inverse[k].rotate(vx, vy, vz)
+                        val depth = -local.z
+                        if (depth < DepthBackProjection.NEAR_M || depth > DepthBackProjection.FAR_M) continue
+                        val u = local.x / depth * RerunSyntheticRoom.FOCAL
+                        val v = local.y / depth * RerunSyntheticRoom.FOCAL
+                        if (kotlin.math.abs(u) > halfW || kotlin.math.abs(v) > halfH) continue
+                        val dist = sqrt(vx * vx + vy * vy + vz * vz)
+                        val hit = scene.shapes.minOf { it.hit(pose.x, pose.y, pose.z, vx / dist, vy / dist, vz / dist) }
+                        if (hit < dist - OCCLUSION_M) continue
+                        if (++views >= DenseFusion.MIN_VIEWS) break
+                    }
+                    if (views >= DenseFusion.MIN_VIEWS) seen++
+                }
+                val share = seen.toFloat() / (SAMPLES * SAMPLES)
+                if (share >= SEEN_WHOLE) healthy += key
+                if (share < SEEN_BARELY) unseen += key
+            }
+        }
+        return Truth(healthy, unseen, cellsOf(THIN), cellsOf(THIRTY))
+    }
+
+    /** Furniture footprints in the synthetic room, (x0, z0, x1, z1): sofa, table, cabinet, ball. */
+    private val FURNITURE = listOf(
+        floatArrayOf(-1.7f, -1.8f, -0.3f, -0.95f),
+        floatArrayOf(0.3f, -0.3f, 1.3f, 0.4f),
+        floatArrayOf(1.55f, 0.6f, 2f, 1.6f),
+        floatArrayOf(-1.4f, 0.7f, -0.8f, 1.3f),
+    )
 
     /**
      * A phone's walk, 30 frames a second, a hand's tremor on it: a calm pan (30°/s, 0.2 m/s), a
@@ -474,7 +602,18 @@ internal object ScanHonestCoachCorpus {
     private val TURN_CAPS = listOf(45f, 60f, 90f)
 
     private const val STRIPE_M = 0.02f
-    private const val STRIPE_EVERY = 10
+    private const val STRIPES = 10
+    private const val THIN_KEEP = 1
+    private const val THIRTY_KEEP = 3
+    private const val SAMPLES = 5
+    private const val SEEN_WHOLE = 0.65f
+    private const val SEEN_BARELY = 0.35f
+    private const val FLOOR_LIFT = 0.001f
+    private const val OCCLUSION_M = 0.01f
+    private const val TINY = 1e-6f
+    private const val UPRIGHT = 0.9f
+    private const val HALF = 0.5f
+    private val FULL_CONFIDENCE = 255.toByte()
     private const val FPS = 30
     private const val FRAME_NANOS = 33_333_333L
     private const val SEED = 4_2L
