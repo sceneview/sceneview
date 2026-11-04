@@ -37,10 +37,10 @@ import org.robolectric.annotation.Config
 @Config(instrumentedPackages = ["com.google.android.filament"])
 class ReflectionProbeNodeCompositionTest {
 
-    private val day = IndirectLight(1L)
-    private val night = IndirectLight(2L)
-    private val office = IndirectLight(3L)
-    private val garage = IndirectLight(4L)
+    private val day = indirectLight(1L)
+    private val night = indirectLight(2L)
+    private val office = indirectLight(3L)
+    private val garage = indirectLight(4L)
 
     private val inOffice = Position(0f, 0f, 1f)
     private val outside = Position(50f, 0f, 0f)
@@ -133,6 +133,12 @@ class ReflectionProbeNodeCompositionTest {
 
         assertNull(host.scene.indirectLight)
     }
+
+    /** Filament 1.77 made the handle constructor package-private. */
+    private fun indirectLight(handle: Long): IndirectLight =
+        IndirectLight::class.java.getDeclaredConstructor(Long::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+            .newInstance(handle)
 
     /** What `Engine.destroyIndirectLight` leaves behind: a wrapper whose handle getter throws. */
     private fun IndirectLight.destroyWithoutJni() {
