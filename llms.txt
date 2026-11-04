@@ -1460,6 +1460,18 @@ SceneView {
     cameraPosition: Position = Position(0f, 0f, 0f)
 )
 ```
+Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` from `onFrame`
+(`cameraNode.worldPosition`). All probes of a scene are resolved together on every change:
+- among the probes whose zone holds the camera, the highest `priority` wins; on a tie, the probe
+  added most recently wins (one that leaves the composition and comes back counts as new);
+- with no active probe (camera outside every local zone, or the last probe removed), the scene
+  shows its `SceneView(environment = …)` light again — the current one, even if it changed
+  meanwhile;
+- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+  overrides an active probe; a destroyed light is never handed back.
+- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
+  estimation's) directly, so in AR a new environment can replace an active probe until the next
+  probe change (see #4928).
 
 ---
 

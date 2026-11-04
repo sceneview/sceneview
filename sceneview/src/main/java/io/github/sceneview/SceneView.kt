@@ -87,6 +87,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.node.findActivity
+import io.github.sceneview.node.reflectionProbes
 
 /**
  * A Filament 3D scene declared as Compose UI.
@@ -548,7 +549,9 @@ fun SceneView(
     // after the caller's, so its `onDispose` runs first: the scene is already empty-handed when
     // the old environment dies, and the swap completes before any frame can be drawn.
     DisposableEffect(scene, environment) {
-        scene.indirectLight = environment.indirectLight
+        // Through the scene's probe registry: an active `ReflectionProbeNode` keeps the scene's
+        // light, and this one comes back when the last probe lets go (#4928).
+        scene.reflectionProbes.setEnvironmentLight(environment.indirectLight)
         scene.skybox = environment.skybox
         // The first frozen image anyone would have hit: a dark/light toggle that swaps the
         // environment while the scene is parked. The IBL and skybox are replaced in Filament and
@@ -559,7 +562,7 @@ fun SceneView(
             // Only what this effect put there: a `ReflectionProbeNode`, or the caller, may have
             // given the scene another light since.
             if (scene.skybox === environment.skybox) scene.skybox = null
-            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+            scene.reflectionProbes.releaseEnvironmentLight(environment.indirectLight)
         }
     }
     LaunchedEffect(view, scene) {
