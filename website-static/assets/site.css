@@ -206,6 +206,12 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 @media (min-width: 600px) {
   .hero__stage { max-width: 560px; }
 }
+/* Below the side-by-side layout the picture is 16:10 (the car stays in frame, the
+   poster is cropped top and bottom): on a 390 × 844 phone the title and both
+   actions stay in the first screen. */
+@media not ((min-width: 960px) and (min-height: 600px)) {
+  .hero__stage .stage__box { aspect-ratio: 16 / 10; }
+}
 
 /* Install: M3 secondary tabs over a command field. */
 .install { margin-top: var(--s-6); max-width: 36rem; container: install / inline-size; }
@@ -304,7 +310,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .fund__facts li { display: grid; gap: 4px; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
 .fund__facts b { font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface); }
 .fund__facts a { color: var(--md-sys-color-primary); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
-.fund__note { font: var(--md-sys-typescale-body-small) !important; }
+.fund__note { font: var(--md-sys-typescale-body-medium) !important; }
 .sponsor__ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: var(--s-2); }
 @media (min-width: 960px) {
   .fund__offers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-7); }
@@ -318,8 +324,8 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
    scrolls sideways; site.js keeps the selected tab clear of the edges. */
 .tabs { display: flex; padding: 0 8px; border-bottom: 1px solid var(--md-sys-color-outline-variant); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px; }
 .tabs::-webkit-scrollbar { display: none; }
-/* M3 scrollable tabs: when the strip overflows, site.js wraps it with two icon
-   buttons on its edges (data-more says which side has more tabs). */
+/* M3 scrollable tabs: when the strip overflows, site.js sets data-more to the
+   side(s) that still hide tabs. */
 .tab { flex: none; height: 48px; padding: 0 16px; font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface-variant); white-space: nowrap; }
 .tab:focus-visible { outline-offset: -3px; }   /* the strip clips what lies outside it */
 .tab[aria-selected="true"] { color: var(--md-sys-color-primary); }
@@ -338,9 +344,13 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .codecard__foot { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 12px 4px 24px; border-top: 1px solid var(--md-sys-color-outline-variant); }
 .codecard__link { display: inline-flex; align-items: center; height: 40px; margin-block: 4px; padding: 0 12px; border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-primary); font: var(--md-sys-typescale-label-large); }
 @media (max-width: 519px) {
-  /* The five code tabs fit a 390 px phone at 8 px padding; narrower, the strip scrolls. */
-  .codecard .tabs { padding: 0; }
-  .codecard .tab { flex: 1 0 auto; min-width: 48px; padding-inline: 8px; }
+  /* M3 scrollable tabs: the five code tabs keep 12 px padding and an 8 px inset at both
+     ends of the strip, so on a phone the last label is cut at the edge, which shows the
+     strip scrolls. The ::after keeps the end inset once scrolled to the end. */
+  .codecard .tabs { padding-inline: 8px 0; scroll-padding-inline: 8px; }
+  .codecard .tabs::after { content: ""; flex: none; width: 8px; }
+  .codecard .tab { padding-inline: 12px; }
+  .codecard .tab[aria-selected="true"]::after { left: 12px; right: 12px; }
   /* 12px and half-width indentation: every sample fits a 360px phone. */
   .codecard pre { padding-inline: 16px; font-size: .75rem; }
   .codecard pre[data-tab="4"] { --indent: .5; }
@@ -441,7 +451,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 }
 .mcp__label { margin: 0; font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
 .mcp__label code { font-size: inherit; }
-.footnote { margin: var(--s-4) 0 0; font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
+.footnote { margin: var(--s-4) 0 0; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
 .footnote a { color: var(--md-sys-color-primary); }
 @media (min-width: 960px) { .ai { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); align-items: start; } }
 
@@ -449,15 +459,11 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .numbers { margin: 0; max-width: 46rem; font: var(--md-sys-typescale-body-large); color: var(--md-sys-color-on-surface); }
 .numbers a { color: var(--md-sys-color-primary); text-decoration: underline; text-underline-offset: 3px; }
 .numbers__source { margin-top: var(--s-4); max-width: 46rem; }
-/* Adoption is one sentence: it continues the AI band instead of opening a new one, and on a
-   wide screen it takes the same two columns (heading left, facts right). */
-#proof { padding-top: 0; }
-@media (min-width: 960px) {
-  #proof .container { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); column-gap: var(--s-8); align-items: baseline; }
-  #proof .section__head { margin-bottom: 0; }
-  #proof .numbers, #proof .numbers__source { grid-column: 2; }
-  #proof .section__head { grid-row: 1 / span 2; }
-}
+/* Adoption is one sentence: it continues the AI band instead of opening a new one. One
+   column at every width, and no padding of its own: the sections around it keep the
+   page's one section spacing. */
+#proof { padding-block: 0; }
+#proof .section__head { margin-bottom: var(--s-4); }
 
 /* ── Compare + FAQ ────────────────────────────────────────── */
 .compare { overflow-x: auto; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-medium); }
@@ -506,17 +512,10 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .faq details p { margin: 0 0 20px; font: var(--md-sys-typescale-body-large); color: var(--md-sys-color-on-surface-variant); max-width: 44rem; }
 .faq code { font-size: .875em; }
 
-/* ── Final CTA + sponsor ──────────────────────────────────── */
+/* ── Final CTA ───────────────────────────────────────────── */
 .finale { max-width: 40rem; }
 .finale .lead { margin-top: var(--s-4); }
 .finale__ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: var(--s-5); }
-.sponsor { display: grid; gap: var(--s-3); align-content: start; margin-top: var(--s-7); padding-top: var(--s-5); border-top: 1px solid var(--md-sys-color-outline-variant); max-width: 40rem; }
-@media (min-width: 960px) {
-  #start .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-8); align-items: start; }
-  .sponsor { margin-top: 0; padding: 0 0 0 var(--s-6); border-top: 0; border-left: 1px solid var(--md-sys-color-outline-variant); }
-}
-.sponsor p { margin: 8px 0 0; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
-.sponsor .sponsor__ctas { margin-top: 0; }
 
 /* ── Footer ───────────────────────────────────────────────── */
 .footer { margin-top: var(--s-6); background: var(--md-sys-color-surface-container-low); padding-top: var(--s-7); padding-bottom: calc(24px + env(safe-area-inset-bottom)); color: var(--md-sys-color-on-surface-variant); font: var(--md-sys-typescale-body-medium); }

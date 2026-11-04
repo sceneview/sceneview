@@ -456,6 +456,8 @@
     if (ver) $$('[data-release]').forEach(function (a) {
       a.textContent = 'Latest release: v' + ver[1] + '.' + ver[2];
       a.href = 'https://github.com/sceneview/sceneview/releases/tag/v' + ver[1] + '.' + ver[2] + '.' + ver[3];
+      // The line ships hidden: it shows only once the version is known, never half filled.
+      var li = a.closest('li[hidden]'); if (li) li.hidden = false;
     });
 
     /* Copy: the tick and "Copied" show only once the text is on the clipboard. */

@@ -108,35 +108,35 @@
 .svs__title { font-size: 1.25rem; line-height: 1.2; font-weight: 400; color: var(--svs-text); }
 .svs__text { margin-top: 6px; font-size: .9375rem; line-height: 1.5; color: var(--svs-text-2); }
 
-/* M3 segmented button, as on the home page's compare picker: outlined, fully round,
-   the selected segment on secondary-container. The fallbacks are the same M3 roles. */
-.svs__freq { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin-top: 16px; }
-.svs__freq button {
-  position: relative; min-width: 96px; min-height: 40px; padding: 0 16px; cursor: pointer;
+/* Both choices are one M3 segmented button style: outlined, fully round, the selected
+   segment on secondary-container with a leading check. The fallbacks are the same M3 roles. */
+.svs__seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin-top: 16px; }
+.svs__seg--amt { margin-top: 12px; }
+.svs__seg button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 0; min-height: 40px; padding: 0 8px; cursor: pointer;
   border: 1px solid var(--svs-outline); border-radius: 0; background: transparent;
-  color: var(--svs-text); font: inherit; font-size: .875rem; font-weight: 500; letter-spacing: .1px;
+  color: var(--svs-text); font: inherit; font-size: .875rem; font-weight: 500; letter-spacing: .1px; white-space: nowrap;
 }
-.svs__freq button + button { border-left: 0; }
-.svs__freq button:first-child { border-radius: 999px 0 0 999px; }
-.svs__freq button:last-child { border-radius: 0 999px 999px 0; }
-.svs__freq button::after { content: ""; position: absolute; inset: -5px 0; }   /* 48 dp touch target */
-.svs__freq button:hover { background: color-mix(in srgb, var(--svs-text) 8%, transparent); }
-.svs__freq button[aria-pressed="true"] { background: var(--svs-sel); color: var(--svs-on-sel); }
+.svs__seg button + button { border-left: 0; }
+.svs__seg button:first-child { border-radius: 999px 0 0 999px; }
+.svs__seg button:last-child { border-radius: 0 999px 999px 0; }
+.svs__seg button::after { content: ""; position: absolute; inset: -4px 0; }   /* 48 dp touch target */
+.svs__seg button:hover { background: color-mix(in srgb, var(--svs-text) 8%, transparent); }
+.svs__seg button[aria-pressed="true"] { background: var(--svs-sel); color: var(--svs-on-sel); }
+.svs__seg button[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--svs-on-sel) 8%, var(--svs-sel)); }
+.svs .svs__check { display: none; width: 18px; height: 18px; flex: none; }
+.svs__seg button[aria-pressed="true"] .svs__check { display: block; }
 
-.svs__amts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-.svs__amt {
-  display: grid; place-items: center; min-height: 48px; padding: 0 6px;
-  border-radius: 14px; border: 1px solid var(--svs-outline);
-  background: var(--svs-surface); color: var(--svs-text);
-  font-size: 1rem; font-weight: 500; text-decoration: none; white-space: nowrap;
-  transition: background-color 220ms, border-color 220ms;
+/* The one action: an M3 filled button, full width. */
+.svs__give {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; margin-top: 16px; padding: 0 24px; border-radius: 999px;
+  background: var(--svs-fill); color: var(--svs-on-fill);
+  font-size: .875rem; font-weight: 500; letter-spacing: .1px; text-decoration: none;
 }
-.svs__amt:hover { border-color: var(--svs-accent); background: var(--svs-surface-2); }
-
-/* $20 is the suggested amount: the only filled button. */
-.svs__amt[data-amount="20"] { background: var(--svs-fill); border-color: transparent; color: var(--svs-on-fill); }
-.svs__amt[data-amount="20"]:hover { background: var(--svs-fill); filter: brightness(1.08); }
-.svs__amt--other { font-size: .9375rem; }
+.svs__give:hover { background: color-mix(in srgb, var(--svs-on-fill) 8%, var(--svs-fill)); }
+.svs .svs__give svg { width: 18px; height: 18px; flex: none; }
 
 .svs__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px -8px 0; }
 .svs__never, .svs__alt {
@@ -162,8 +162,8 @@
   .svs__close { margin-top: -12px; }
   .svs__title { font-size: 1.125rem; }
   .svs__text { font-size: .875rem; }
-  .svs__freq { margin-top: 12px; }
-  .svs__amts { margin-top: 10px; }
+  .svs__seg { margin-top: 12px; }
+  .svs__seg--amt { margin-top: 10px; }
 }
 
 @media print { .svs { display: none !important; } }

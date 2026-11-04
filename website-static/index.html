@@ -190,7 +190,7 @@
           </div>
         </div>
         <div class="stage__bar">
-          <p class="stage__credit credit"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept">Car Concept</a> by Eric Chadwick, Darmstadt Graphics Group, CC BY 4.0, adapted</p>
+          <p class="stage__credit credit"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept">Car Concept</a> by Eric Chadwick, Darmstadt Graphics Group, CC&nbsp;BY&nbsp;4.0, adapted</p>
           <button class="stage__load btn btn--outlined" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
           <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the camera move"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
         </div>
@@ -199,14 +199,14 @@
       <div class="container hero__inner">
         <div class="hero__copy">
           <h1 class="display" id="hero-title">Declarative 3D and AR for Compose, SwiftUI and the web</h1>
-          <p class="lead">A scene is a view and a model is a node, written like the rest of your UI in Jetpack Compose, SwiftUI or the browser.</p>
+          <p class="lead">SceneView renders 3D models and AR scenes inside Jetpack Compose, SwiftUI and web apps. Scenes are declared in code, like the rest of the UI.</p>
           <div class="hero__ctas">
             <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
             <a class="btn btn--outlined btn--lg" href="/playground.html">Try it in the browser</a>
           </div>
           <ul class="hero__meta">
             <li>Open source under Apache 2.0</li>
-            <li><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
+            <li hidden><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
           </ul>
           <div class="install">
             <div class="seg" role="tablist" aria-label="Install for" data-install>
@@ -340,20 +340,20 @@
     </div>
   </section>
 
-  <!-- 2b · FOR COMPANIES — funding and commercial support, after the code. Generic on purpose: no company is named here.
+  <!-- 2b · FUNDING — the page's one donation call, and commercial support, after the code. Generic on purpose: no company is named here.
        Open Collective first, GitHub Sponsors second, nothing else. Same message as
        companies.html#sponsor and the README's Sponsors section: edit the three together. -->
   <section class="section" id="fund" aria-labelledby="fund-title">
     <div class="container">
       <div class="fund reveal">
         <h2 class="h2" id="fund-title">Funding and commercial support</h2>
-        <p class="lead">For companies that ship SceneView in a product. Commercial products use it, few contribute back in code or in funding, and the maintainers carry every fix and every release. Sponsorship and paid support fund that work.</p>
+        <p class="lead">SceneView is free and built in the open by its contributors. Donations and paid support pay for the fixes, the Filament upgrades and the releases that apps depend on.</p>
         <div class="fund__offers">
           <div class="fund__offer">
-            <h3 class="h3">Sponsor</h3>
-            <p>Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.</p>
+            <h3 class="h3">Donations</h3>
+            <p>Once or monthly, from a person or a company. Open Source Collective, the fiscal host, issues the invoice and the receipt, and a donor is listed nowhere unless they ask.</p>
             <div class="sponsor__ctas">
-              <a class="btn btn--filled" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Sponsor on Open Collective</a>
+              <a class="btn btn--filled" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
               <a class="link" href="https://github.com/sponsors/sceneview">or through GitHub Sponsors</a>
             </div>
           </div>
@@ -437,7 +437,7 @@
         <li><b>React Native</b><small>Fabric view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
         <li><b>Android XR</b><small>Jetpack XR SceneCore</small><span class="status status--planned">Planned</span></li>
       </ul>
-      <p class="plat-note reveal">Compose Multiplatform: one <code>SceneViewer</code> for Android, iOS and desktop — a viewer subset, without AR. <a href="/docs/platforms/">Feature matrix per platform</a></p>
+      <p class="plat-note reveal">Compose Multiplatform: one <code>SceneViewer</code> for Android, iOS and desktop, a viewer subset without AR. <a href="/docs/platforms/">Feature matrix per platform</a></p>
     </div>
   </section>
 
@@ -447,7 +447,7 @@
     <span id="ai-setup"></span>
     <div class="container ai">
       <div>
-        <h2 class="h2 reveal" id="ai-title">Works with your AI coding assistant</h2>
+        <h2 class="h2 reveal" id="ai-title">MCP server for AI coding assistants</h2>
         <p class="lead reveal">SceneView ships an MCP server and an <code>llms.txt</code>, so any assistant that speaks MCP reads the real API instead of guessing it.</p>
         <div class="ai__links reveal">
           <a class="link" href="/docs/ai-context/">Setup for each client</a>
@@ -530,7 +530,7 @@
           <caption class="sr-only">SceneView compared with Unity, Filament used directly, Three.js and RealityKit</caption>
           <thead><tr><th scope="col"></th><th scope="col">SceneView</th><th scope="col">Unity</th><th scope="col">Filament, direct</th><th scope="col">Three.js</th><th scope="col">RealityKit</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Declarative UI</th><td>Compose, SwiftUI</td><td>No — editor and C#</td><td>No — imperative</td><td>No — imperative</td><td>SwiftUI</td></tr>
+            <tr><th scope="row">Declarative UI</th><td>Compose, SwiftUI</td><td>No, editor and C#</td><td>No, imperative</td><td>No, imperative</td><td>SwiftUI</td></tr>
             <tr><th scope="row">Setup</th><td>One Gradle or SwiftPM dependency</td><td>Separate engine, embedded as a library</td><td>Engine, materials and loaders wired by hand</td><td>One npm package</td><td>Part of the Apple SDKs</td></tr>
             <tr><th scope="row">Platforms</th><td>Android stable; Apple, web, desktop, Flutter, React Native alpha</td><td>Most platforms</td><td>Android, Apple, desktop, web</td><td>Web</td><td>Apple only</td></tr>
             <tr><th scope="row">AR</th><td>ARCore, ARKit</td><td>AR Foundation</td><td>Bring your own</td><td>WebXR</td><td>ARKit</td></tr>
@@ -549,7 +549,7 @@
     </div>
   </section>
 
-  <!-- 8 · FINAL CTA + SPONSOR (Open Collective first, GitHub Sponsors second, nothing else) -->
+  <!-- 8 · FINAL CTA (the one donation call is #fund) -->
   <section class="section" id="start" aria-labelledby="start-title">
     <div class="container">
       <div class="finale reveal">
@@ -558,16 +558,6 @@
         <div class="finale__ctas">
           <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
           <a class="btn btn--outlined btn--lg" href="/playground.html">Open the playground</a>
-        </div>
-      </div>
-      <div class="sponsor reveal">
-        <div>
-          <h3 class="h3">Donations</h3>
-          <p>SceneView is built in the open by its contributors. Donations pay for its upkeep and keep it free.</p>
-        </div>
-        <div class="sponsor__ctas">
-          <a class="btn btn--outlined" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
-          <a class="link" href="https://github.com/sponsors/sceneview">or sponsor on GitHub</a>
         </div>
       </div>
     </div>
