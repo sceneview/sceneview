@@ -77,17 +77,43 @@ class ScanHonestCoachCorpusTest {
                 appendLine(
                     String.format(
                         java.util.Locale.ROOT,
-                        "  refresh %d at (%.1f, %.1f), whole to %.2f m: before %d red, %d over a healthy floor; " +
+                        "  refresh %d at (%.1f, %.1f): before %d red, %d over a healthy floor; " +
                             "after %d red, %d over a healthy floor, patch 10 %% %d/4, patch 30 %% %d/4",
-                        k, eye.eye.x, eye.eye.z, eye.intactM, eye.before.size, eye.before.count { it in truth.healthy },
+                        k, eye.eye.x, eye.eye.z, eye.before.size, eye.before.count { it in truth.healthy },
                         eye.after.size, eye.after.count { it in truth.healthy },
                         eye.after.count { it in truth.thin }, eye.after.count { it in truth.thirty },
                     ),
                 )
             }
         }
-        println(report)
-        File(out, "synthetic-truth.txt").writeText(report)
+        // The whole room seen from its centre and from its three stops, at the live card's budget.
+        val saved = requireNotNull(RescanZonesCorpusTest.cloudOf(File(corpus, "synthetic-living-room.svscan")))
+        val map = ScanHonestCoachCorpus.seeded(saved, DenseFusion.VOXEL_M)
+        val covered = CoverageGrid.coveredKeys(saved.positions)
+        val cell = CoverageGrid.CELL_METRES
+        val views = listOf("centre" to Vec3(0f, 1.4f, 0f)) + RerunSyntheticRoom.STOPS.mapIndexed { k, v -> "stop ${k + 1}" to v }
+        val still = views.map { (name, eye) ->
+            val live = map.liveCloud(eye.x, eye.y, eye.z, maxPoints = ScanDenseMap.LIVE_DRAWN_SURFELS)
+            val before = ScanHonestCoachCorpus.legacyWeakCells(live.positions, covered, cell)
+            val after = LiveCoverageGround.weakCells(map.surfels(), DenseFusion.VOXEL_M, covered, cell, eye.y - LiveCoverageGround.PHONE_HEIGHT_M).toSet()
+            Triple(name, before, after)
+        }
+        val full = report + still.joinToString("") { (name, before, after) ->
+            String.format(
+                java.util.Locale.ROOT,
+                "  %s, the live card at %d surfels: before %d red, %d over a healthy floor; after %d red, %d over a healthy floor, " +
+                    "patch 10 %% %d/4, patch 30 %% %d/4\n",
+                name, ScanDenseMap.LIVE_DRAWN_SURFELS, before.size,
+                before.count { it in truth.healthy }, after.size, after.count { it in truth.healthy },
+                after.count { it in truth.thin }, after.count { it in truth.thirty },
+            )
+        }
+        println(full)
+        File(out, "synthetic-truth.txt").writeText(full)
+        for ((_, _, after) in still) {
+            assertEquals(full, 0, after.count { it in truth.healthy })
+            assertTrue(full, after.count { it in truth.thin } >= 3 && after.count { it in truth.thirty } >= 3)
+        }
         // After: never red over a floor the frames saw whole.
         for (eye in result.eyes) assertEquals(report, 0, eye.after.count { it in truth.healthy })
         // At the last pose, by the patches: both are red.
@@ -103,31 +129,60 @@ class ScanHonestCoachCorpusTest {
     }
 
     @Test
-    fun `a fusion seeded from the saved cloud draws what the live one drew`() {
-        // The corpus has the saved cloud, not the map: [ScanHonestCoachCorpus.seeded] adds it to a
-        // new map, whose [DenseFusion.liveCloud] the corpus run judges. On the synthetic room,
-        // both judge the same cells at the app's budget.
+    fun `the map read in place judges as its cloud does, and what it costs`() {
+        // The live map judges the whole map in place on the snapshot's worker; the corpus run, a
+        // map seeded with the saved cloud ([ScanHonestCoachCorpus.seeded]). All three agree.
         val fusion = DenseFusion()
         RerunSyntheticRoom.frames().forEach { fusion.add(DepthBackProjection.project(it)) }
-        val seeded = ScanHonestCoachCorpus.seeded(fusion.cloud(minViews = DenseFusion.MIN_VIEWS), DenseFusion.VOXEL_M)
+        val cloud = fusion.cloud(minViews = DenseFusion.MIN_VIEWS)
+        val seeded = ScanHonestCoachCorpus.seeded(cloud, DenseFusion.VOXEL_M)
         val cell = CoverageGrid.CELL_METRES
-        val covered = CoverageGrid.coveredKeys(fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS))
-        val budget = ScanDenseMap.LIVE_DRAWN_SURFELS
-        for (eye in RerunSyntheticRoom.STOPS) {
-            val live = fusion.liveCloud(eye.x, eye.y, eye.z, maxPoints = budget)
-            val liveIntact = fusion.liveIntactM
-            val again = seeded.liveCloud(eye.x, eye.y, eye.z, maxPoints = budget)
-            val weakLive = LiveCoverageGround.weakCells(live, DenseFusion.VOXEL_M, covered, cell, 0f, eye, liveIntact)
-            val weakAgain = LiveCoverageGround.weakCells(again, DenseFusion.VOXEL_M, covered, cell, 0f, eye, seeded.liveIntactM)
-            println("eye $eye: live ${live.count} surfels whole to $liveIntact m, ${weakLive.size} weak; seeded ${again.count}, ${weakAgain.size} weak")
-            assertEquals(liveIntact, seeded.liveIntactM, 0.01f)
-            assertEquals(weakLive.toSet(), weakAgain.toSet())
+        val covered = CoverageGrid.coveredKeys(cloud.positions)
+        val hint = RerunSyntheticRoom.STOPS[0].y - LiveCoverageGround.PHONE_HEIGHT_M
+        val inPlace = LiveCoverageGround.weakCells(fusion.surfels(), DenseFusion.VOXEL_M, covered, cell, hint).toSet()
+        val copied = LiveCoverageGround.weakCells(cloud, DenseFusion.VOXEL_M, covered, cell, hint).toSet()
+        val again = LiveCoverageGround.weakCells(seeded.surfels(), DenseFusion.VOXEL_M, covered, cell, hint).toSet()
+        assertEquals(copied, inPlace)
+        assertEquals(copied, again)
+
+        // The cost per snapshot on the biggest synthetic map: the QA walkthrough's flat.
+        val flat = DenseFusion()
+        ScanWalkthrough().frames().forEach { flat.add(DepthBackProjection.project(it)) }
+        val flatCovered = CoverageGrid.coveredKeys(flat.cloudPositions(minViews = DenseFusion.MIN_VIEWS))
+        // The JVM's per-thread allocation counter, by reflection: android.jar has no java.lang.management.
+        val threads = Class.forName("java.lang.management.ManagementFactory").getMethod("getThreadMXBean").invoke(null)
+        val allocated = Class.forName("com.sun.management.ThreadMXBean")
+            .getMethod("getThreadAllocatedBytes", Long::class.javaPrimitiveType)
+        val id = Thread.currentThread().id
+        val times = ArrayList<Double>()
+        var bytes = 0L
+        repeat(COST_RUNS) { run ->
+            val before = (allocated.invoke(threads, id) as Long)
+            val started = System.nanoTime()
+            LiveCoverageGround.weakCells(flat.surfels(), DenseFusion.VOXEL_M, flatCovered, cell, hint)
+            times += (System.nanoTime() - started) / 1e6
+            if (run == COST_RUNS - 1) bytes = (allocated.invoke(threads, id) as Long) - before
         }
+        val median = times.sorted()[COST_RUNS / 2]
+        val line = String.format(
+            java.util.Locale.ROOT,
+            "flat: %d surfels, %d covered cells; weakCells in place %.1f ms median of %d (first %.1f ms), %d kB allocated",
+            flat.count, flatCovered.size, median, COST_RUNS, times.first(), bytes / BYTES_PER_KB,
+        )
+        println(line)
+        System.getenv(SYNTHETIC_OUT)?.takeIf { it.isNotBlank() }?.let { File(it, "cost.txt").writeText(line + "\n") }
+        // Allocation stays per cell and per tile, never per surfel.
+        assertTrue(line, bytes < flatCovered.size * MAX_BYTES_PER_CELL + MAX_FIXED_BYTES)
     }
 
     private companion object {
         const val CORPUS = "SCENEVIEW_SCAN_CORPUS"
         const val OUT = "SCENEVIEW_SCAN_OUT"
+
+        const val COST_RUNS = 7
+        const val BYTES_PER_KB = 1024L
+        const val MAX_BYTES_PER_CELL = 1024
+        const val MAX_FIXED_BYTES = 4L * 1024 * 1024
 
         /** The most cells painted to redo over a floor the scans hold, as a share of those painted. */
         const val MAX_FALSE_SHARE = 0.05f
@@ -177,8 +232,8 @@ internal object ScanHonestCoachCorpus {
         )
     }
 
-    /** One refresh of the live map: where from, how far its snapshot was whole, red before and after. */
-    class Eye(val eye: Vec3, val intactM: Float, val before: Set<Long>, val after: Set<Long>)
+    /** One refresh of the live map: where from, red before and after. */
+    class Eye(val eye: Vec3, val before: Set<Long>, val after: Set<Long>)
 
     class Result(
         val name: String,
@@ -261,11 +316,12 @@ internal object ScanHonestCoachCorpus {
         val seen = ArrayList<Eye>()
         for (e in eyes) {
             val at = Vec3(e.pose.x, e.pose.y, e.pose.z)
+            // Before: the old count on the snapshot the live card drew. After: the whole map, as
+            // the snapshot's worker judges it.
             val live = map.liveCloud(at.x, at.y, at.z, maxPoints = ScanDenseMap.LIVE_DRAWN_SURFELS)
-            val intact = map.liveIntactM
             before = legacyWeakCells(live.positions, covered, cell)
-            after = LiveCoverageGround.weakCells(live, voxelM, covered, cell, hint, at, intact).toSet()
-            seen += Eye(at, intact, before, after)
+            after = LiveCoverageGround.weakCells(map.surfels(), voxelM, covered, cell, at.y - LiveCoverageGround.PHONE_HEIGHT_M).toSet()
+            seen += Eye(at, before, after)
             walkBefore += before.size
             walkAfter += after.size
             walkFalseBefore += falseOf(before)

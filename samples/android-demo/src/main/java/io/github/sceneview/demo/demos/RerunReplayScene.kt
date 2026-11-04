@@ -158,10 +158,11 @@ internal class ReplayDenseLayer(
      * its mean slid to where the scan ended.
      */
     val whole: FloatArray = cloud.positions,
-    /** Where a live snapshot was taken from, `null` for none ([DenseFusion.liveCloud]'s eye). */
-    val liveEye: Vec3? = null,
-    /** How far from [liveEye] [cloud] holds every surfel ([DenseFusion.liveIntactM]). */
-    val intactM: Float = Float.POSITIVE_INFINITY,
+    /**
+     * A live scan's floor cells to scan again ([LiveCoverageGround.weakCells]), judged on the whole
+     * map off the main thread with the snapshot, not on the surfels [cloud] keeps.
+     */
+    val weakCells: LongArray = LongArray(0),
 ) {
     /**
      * This layer with its lid off ([ScanOpenTop.cloud]), the floor read from [whole], which it
