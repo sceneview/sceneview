@@ -741,4 +741,5 @@ emu_pool_status() {
     fi
   done
   [[ "$any" -eq 0 ]] && _emu_log "  no active leases"
+  return 0
 }

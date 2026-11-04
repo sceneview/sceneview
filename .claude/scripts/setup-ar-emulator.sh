@@ -66,7 +66,7 @@
 #                    state + pool state (running emulator count, RAM-budgeted
 #                    cap, free RAM, active leases) + golden-snapshot presence
 #                    + camera-id topology of the running emulator (#2754 —
-#                    no HAL id 0 means ARCore live-camera AR cannot start).
+#                    no HAL id 0 means ARCore cannot start at all).
 #                    No mutation.
 #   --clean          Wipe the AVD's userdata and recreate config from scratch.
 #                    Also drops the golden `qa-clean` snapshot — re-seed it with
@@ -657,6 +657,8 @@ select_or_boot_emulator() {
     if emu_lease_acquire "$free_serial" "$ADB_BIN"; then
       log "leased already-running emulator $free_serial — no boot"
       EMU_SERIAL="$free_serial"
+      # An emulator booted before #1645 may still run without camera id 0.
+      show_camera_topology "$EMU_SERIAL"
       return 0
     fi
     # Lost the lease race — fall through and re-evaluate.
@@ -895,10 +897,11 @@ if [[ -n "$serial" ]]; then
       fi
     fi
   fi
-  # Honest arm64 limitation notice (#2754): the device APK installed above runs, but
-  # it requires the back camera at HAL id "0", which arm64 AVDs never expose — and
-  # ARCore ships no arm64 emulator build. Say it loudly here instead of letting AR
-  # demos fail later with a silent black viewport and no tracking.
+  # Honest arm64 limitation notice (#2754): with `-camera-back emulated` the AVD
+  # exposes HAL id "0" and recorded-session playback works, but live-camera
+  # sessions still abort inside ARCore (ARCore ships no arm64 emulator build).
+  # Say it loudly here instead of letting AR demos fail later with a silent
+  # black viewport and no tracking.
   if [[ "$IMG_ARCH" == "arm64-v8a" ]]; then
     log "⚠ arm64 AVD: live-camera AR sessions abort inside ARCore a moment after"
     log "  they open (#2754). 3D demos, UI/state QA and recorded-session replay QA"
