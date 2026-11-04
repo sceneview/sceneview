@@ -809,6 +809,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             opened = resultModel,
             // Framed as what it is (Scan redesign, PR 1): an object on its own box, a room square to its walls.
             scope = if (showingScan) scanKind else ScanScope.Room,
+            // The Photo layer's splats when the model is read back from the cache (no source, #4896).
+            surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
         )
     }
     val exportable = when (screen) {

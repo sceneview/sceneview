@@ -39,12 +39,20 @@ import kotlin.math.sqrt
 object SplatBuffers {
 
     /**
-     * Filament hardware-instancing cap per renderable ([Phase-0 spike, #2646]): a single
-     * `RenderableManager.Builder.instances(n)` draw supports at most 65535 instances. Clouds
-     * above this are split into multiple renderables ("batches") sharing the same two data
-     * textures, each shifted by its `instanceOffset` material parameter.
+     * Filament hardware-instancing cap per renderable: `RenderableManager.Builder.instances(n)`
+     * **silently clamps** `n` to 32767 (`RenderableManager.h`, Filament 1.71+). Clouds above
+     * this are split into multiple renderables ("batches") sharing the same data textures,
+     * each shifted by its `instanceOffset` material parameter.
+     *
+     * It was 65535 until #4896: each batch then asked for up to 65535 instances, Filament drew
+     * 32767 of them, and the back half of every batch — a slice of view depth, since the slots
+     * are sorted back to front — was never drawn, which showed as straight-edged gaps along the
+     * batch seams. [FILAMENT_INSTANCE_CLAMP] is that clamp; this cap must never exceed it.
      */
-    const val MAX_INSTANCES_PER_BATCH = 65535
+    const val MAX_INSTANCES_PER_BATCH = 32767
+
+    /** The most instances Filament draws for one renderable, whatever `instances(n)` asks for. */
+    internal const val FILAMENT_INSTANCE_CLAMP = 32767
 
     /**
      * Furthest reach of a splat quad in gaussian standard deviations: `splat.mat` never draws
@@ -271,11 +279,27 @@ object SplatBuffers {
      * position transformed by the inverse of the node's world transform) whenever the node is
      * transformed; for an untransformed node, world space is model space.
      */
-    fun sortBackToFront(positions: FloatArray, count: Int, camX: Float, camY: Float, camZ: Float): IntArray {
+    fun sortBackToFront(positions: FloatArray, count: Int, camX: Float, camY: Float, camZ: Float): IntArray =
+        sortBackToFront(positions, count, camX, camY, camZ, LongArray(count), IntArray(count))
+
+    /**
+     * [sortBackToFront] into caller-owned scratch: [keys] and [order] (each at least [count]
+     * long) are overwritten and [order] is returned. `SplatNode` re-sorts on almost every frame of
+     * an orbit; reusing the two arrays spares it 12 bytes of garbage per splat per sort.
+     */
+    internal fun sortBackToFront(
+        positions: FloatArray,
+        count: Int,
+        camX: Float,
+        camY: Float,
+        camZ: Float,
+        keys: LongArray,
+        order: IntArray,
+    ): IntArray {
         require(positions.size >= 3 * count) {
             "positions must hold 3 floats per splat: expected >= ${3 * count}, was ${positions.size}"
         }
-        val keys = LongArray(count)
+        require(keys.size >= count && order.size >= count) { "scratch must hold $count splats" }
         for (i in 0 until count) {
             val dx = positions[i * 3] - camX
             val dy = positions[i * 3 + 1] - camY
@@ -284,8 +308,7 @@ object SplatBuffers {
             // d2 >= 0 ⇒ raw IEEE-754 bits sort in numeric order as a (positive) int.
             keys[i] = (java.lang.Float.floatToRawIntBits(d2).toLong() shl 32) or i.toLong()
         }
-        keys.sort() // ascending distance = front-to-back
-        val order = IntArray(count)
+        keys.sort(0, count) // ascending distance = front-to-back
         for (i in 0 until count) {
             order[i] = (keys[count - 1 - i] and 0xFFFFFFFFL).toInt() // reversed = back-to-front
         }
