@@ -11,6 +11,7 @@ import com.google.android.filament.Filament
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.utils.Utils
+import io.github.sceneview.environment.PrefilterEntitySlots
 import io.github.sceneview.utils.OpenGL
 
 /**
@@ -192,9 +193,15 @@ class EngineWarmUpInitializer : Initializer<Unit> {
 /**
  * Loads Filament's three native libraries. Idempotent, and safe from any thread: the second load of
  * a library returns at once, or waits for the first one's `JNI_OnLoad`.
+ *
+ * Then reserves the entity slots that keep HDR environments lit on every engine, not only the
+ * first one, on Filament 1.77+ ([PrefilterEntitySlots]). It has to happen before any entity
+ * exists, which is why it lives here, the first Filament call of both [EngineWarmUp] and
+ * [createEglContext].
  */
 internal fun loadFilamentLibraries() {
     Gltfio.init()
     Filament.init()
     Utils.init()
+    PrefilterEntitySlots.reserve()
 }

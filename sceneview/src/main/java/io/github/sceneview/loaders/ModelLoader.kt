@@ -16,6 +16,7 @@ import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
 import com.google.android.filament.gltfio.isReleased
 import com.google.android.filament.gltfio.releaseSourceDataIfAlive
+import io.github.sceneview.BuildConfig
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
@@ -140,6 +141,17 @@ class ModelLoader(
 
     /** Whether [materialProvider] and [assetLoader] exist yet. */
     internal val hasGltfLoaders: Boolean get() = gltfLoaders.isInitialized()
+
+    // gltfio keeps the JNIEnv of the thread that first created its material provider and calls
+    // back into Java through it (AssetLoader.cpp), so a model created on another thread aborts
+    // natively with no message. Fail loudly in debug instead; dead code in release.
+    private fun checkMainThread(call: String) {
+        if (BuildConfig.DEBUG) {
+            check(Looper.myLooper() == Looper.getMainLooper()) {
+                "ModelLoader.$call must be called on the main thread (Filament JNI is main-thread-only)."
+            }
+        }
+    }
 
     // Not `assetLoader::createAsset`: a bound reference reads `assetLoader` where it is written, on
     // the suspend load's own thread, and the first read creates the material provider.
@@ -307,6 +319,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): Model {
         lifecycle.checkCanCreate("create a model")
+        checkMainThread("createModel")
         val source = buffer.toFilamentModelSource()
         val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
         val model = assetLoader.createAsset(source.buffer)
@@ -1043,6 +1056,7 @@ class ModelLoader(
     @MainThread
     fun createInstance(model: Model): ModelInstance? {
         lifecycle.checkCanCreate("create an instance")
+        checkMainThread("createInstance")
         // gltfio reads the asset's native pointer without checking it: 0 once the asset is freed.
         // A model of another ModelLoader is fine, as it always was; one destroyed (by any loader),
         // or this loader's model whose destroy waits for its textures to decode, is not.
