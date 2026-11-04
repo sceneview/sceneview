@@ -28,7 +28,7 @@ Output (--kind store):
   to that store slot's exact pixel spec (PNG), under the repo-relative path it is meant for. These are the generated AR visuals
   that lead every listing (#2844). Dark-only, prompt verbatim, `aspect` and `size` per item.
 The key is read from GEMINI_API_KEY or from the env file named by GEMINI_ENV_FILE (never printed).
-See DESIGN.md "Preview Image Art Direction" for the rules these prompts must follow.
+See DESIGN.md "Preview images" (under "3D models shown") for the rules these prompts must follow.
 """
 import argparse, base64, json, os, re, subprocess, sys, time, urllib.request, urllib.error
 from PIL import Image

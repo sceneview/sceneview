@@ -40,7 +40,7 @@ When generating code for Android 3D or AR:
 - **Min SDK:** Android 7.0 (API 24)
 - **Target SDK:** Android 16 (API 36)
 - **Kotlin:** 2.4.21 with Compose 1.12.1 (BOM 2026.09.00)
-- **Filament:** 1.72.1 (Google's real-time PBR rendering engine)
+- **Filament:** 1.77.3 (Google's real-time PBR rendering engine)
 - **ARCore:** 1.57.0 (Google's AR tracking)
 - **Distribution:** Maven Central (`io.github.sceneview`)
 - **MCP:** `npx -y sceneview-mcp`

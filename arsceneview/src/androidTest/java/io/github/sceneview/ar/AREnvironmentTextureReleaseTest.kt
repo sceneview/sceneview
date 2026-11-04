@@ -13,9 +13,7 @@ import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.utils.readBuffer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,8 +28,9 @@ import org.junit.runner.RunWith
  * rebuilds an indirect light that may sample this same cubemap, and only a device with a camera
  * exercises that.
  *
- * The probe is the one of the 3D `EnvironmentTextureReleaseTest`: a second wrapper on the native
- * cubemap, read before the destroy, and `Engine.isValidTexture` asked after it.
+ * The probe is the one of the 3D `EnvironmentTextureReleaseTest`: `Engine.getTextureCount()` read
+ * before the environment is built and again after it is destroyed (Filament 1.77 dropped
+ * `Engine.isValidTexture`).
  */
 @RunWith(AndroidJUnit4::class)
 class AREnvironmentTextureReleaseTest {
@@ -68,30 +67,32 @@ class AREnvironmentTextureReleaseTest {
     @Test
     fun baselineEnvironment_cubemapIsReleasedWithIt() {
         onMain {
+            val baseline = engine.textureCount
             val environment = createAREnvironment(engine, assets.readBuffer(NEUTRAL_IBL))
             assertNull("the camera feed is the AR backdrop", environment.skybox)
-            val cubemap = checkNotNull(environment.indirectLight?.reflectionsTexture)
-            assertTrue(engine.isValidTexture(cubemap))
+            checkNotNull(environment.indirectLight?.reflectionsTexture)
+            assertEquals(1, engine.textureCount - baseline)
 
             engine.safeDestroyEnvironment(environment)
 
-            assertFalse("the KTX cubemap is still in the engine", engine.isValidTexture(cubemap))
+            assertEquals("the KTX cubemap is still in the engine", 0, engine.textureCount - baseline)
         }
     }
 
     @Test
     fun baselineEnvironment_noCubemapSurvivesTwentySwaps() {
         onMain {
-            var leaked = 0
+            val baseline = engine.textureCount
             repeat(SWAPS) {
                 val environment = createAREnvironment(engine, assets.readBuffer(NEUTRAL_IBL))
-                val cubemap = checkNotNull(environment.indirectLight?.reflectionsTexture)
+                checkNotNull(environment.indirectLight?.reflectionsTexture)
                 engine.safeDestroyEnvironment(environment)
                 // Destroyed twice when the screen and its engine owner leave together.
                 engine.safeDestroyEnvironment(environment)
-                if (engine.isValidTexture(cubemap)) leaked++
             }
-            assertEquals("cubemaps left in the engine after $SWAPS swaps", 0, leaked)
+            assertEquals(
+                "cubemaps left in the engine after $SWAPS swaps", 0, engine.textureCount - baseline
+            )
         }
     }
 

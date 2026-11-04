@@ -181,7 +181,7 @@ h1 { color: #fff; }
     fun teardown() {
         harness.runOnMain {
             light?.let {
-                harness.scene.removeEntity(it.entity)
+                harness.scene.remove(it.entity)
                 it.destroy()
             }
         }
@@ -388,7 +388,7 @@ h1 { color: #fff; }
             harness.renderFrames(5)
             bitmap = harness.capturePixels()
 
-            harness.scene.removeEntity(pointLight.entity)
+            harness.scene.remove(pointLight.entity)
             pointLight.destroy()
         }
 

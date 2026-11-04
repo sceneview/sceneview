@@ -2,6 +2,11 @@
 
 Audited: 2026-03-26 · **Refreshed: 2026-07-18 (#2773)**
 
+> **2026-11-04:** this audit records what the files contain, not what they should be.
+> [`DESIGN.md`](../DESIGN.md) now rules: the logo is a flat cube in solid tones of the M3
+> primary palette, with no gradient. Every gradient icon listed below is due to be
+> flattened, and the palette below is superseded by the `DESIGN.md` role table.
+
 ## Brand Assets (Source of Truth)
 
 | File | Description |

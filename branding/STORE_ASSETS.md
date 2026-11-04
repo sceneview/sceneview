@@ -1,8 +1,7 @@
 # SceneView Store & Platform Assets
 
-Brand color: **#1A73E8** (light) / **#8AB4F8** (dark)
-Background: **#0D2137** (dark navy)
-Font: Inter (Material Design 3 Expressive)
+Colours, type and the Forbidden list come from [`DESIGN.md`](../DESIGN.md): M3 roles from
+`#005BC1` (Fidelity: primary `#004494` light / `#ADC6FF` dark, primary-container `#005BC1`), the system font, flat colour only.
 
 ## Source Files
 
@@ -34,7 +33,7 @@ Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` an
 
 ### Screenshot content suggestions
 
-1. **Hero shot** — Phoenix Bird (CC-BY 4.0) on gradient background, "SceneView" overlay. Never a CC-BY-NC model such as the DamagedHelmet sculpt: a store listing is promotional use.
+1. **Hero shot** — Phoenix Bird (CC-BY 4.0), a premium PBR model (`DESIGN.md` § *3D models shown*), on a flat scheme surface. Never a CC-BY-NC model such as the DamagedHelmet sculpt: a store listing is promotional use.
 2. **AR placement** — Virtual furniture on real floor with plane indicators
 3. **Material 3 UI** — Full app showing tabs, cards, Material You theming
 4. **Multi-model** — Grid of different GLB models loaded simultaneously
@@ -60,7 +59,7 @@ Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` an
 
 - iOS icon must be exactly 1024x1024 with NO alpha channel
 - Round corners are applied by the OS, do NOT round manually
-- Export `logo.svg` at 1024x1024 with `#0D2137` background, no transparency
+- Export `logo.svg` at 1024x1024 on a flat background from the role table, no transparency
 - Screenshots should show SwiftUI + RealityKit features
 
 ---
@@ -72,7 +71,7 @@ Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` an
 | favicon.svg | 32x32 SVG | DONE | `website-static/favicon.svg` |
 | favicon.ico | 16x16 + 32x32 ICO | NEEDED | Generate from favicon.svg |
 | apple-touch-icon.png | 180x180 PNG | NEEDED | Export from logo.svg, add 20px padding, blue bg |
-| og-image.png | 1200x630 PNG | NEEDED | Open Graph — blue gradient bg, logo, "SceneView" text, tagline |
+| og-image.png | 1200x630 PNG | NEEDED | Open Graph — flat `surface` background, logo, "SceneView" text, tagline |
 | og-image-docs.png | 1200x630 PNG | OPTIONAL | For docs pages — include "Documentation" subtitle |
 | twitter-card.png | 1200x600 PNG | OPTIONAL | Same as og-image, 2:1 ratio preferred by Twitter |
 
@@ -90,7 +89,7 @@ Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` an
 
 | Asset | Size | Status | Notes |
 |---|---|---|---|
-| Social preview | 1280x640 PNG | NEEDED | Repo Settings > Social preview. Blue gradient bg, logo, "SceneView" text, platform badges |
+| Social preview | 1280x640 PNG | NEEDED | Repo Settings > Social preview. Flat background, logo, "SceneView" text, platforms as plain text — spec in `SOCIAL_PREVIEW.md` |
 | README badge/logo | ~200px wide SVG | DONE | Use inline version of `logo.svg` |
 | Sponsor banner | 1280x640 PNG | OPTIONAL | For GitHub Sponsors page |
 
@@ -115,24 +114,10 @@ Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` an
 - **On dark backgrounds**: Use `logo-dark.svg` (light blue brackets, brighter cube)
 - **Monochrome**: White version on colored backgrounds is acceptable
 
-### Color palette
+### Colour and type
 
-| Name | Hex | Usage |
-|---|---|---|
-| Primary Blue | `#1A73E8` | Brackets, buttons, links (light mode) |
-| Primary Blue Dark | `#8AB4F8` | Brackets, buttons, links (dark mode) |
-| Deep Blue | `#0D47A1` | Cube shadow face |
-| Navy Background | `#0D2137` | Icon background, dark surfaces |
-| Light Blue | `#42A5F5` | Cube top face gradient end |
-| Highlight Blue | `#A8CBFA` | Cube top face highlight |
-| Surface Light | `#F8FAFF` | Light mode background |
-| Surface Dark | `#0F1A2E` | Dark mode background |
-
-### Typography
-
-- **Headings**: Inter Bold / Semi-Bold
-- **Body**: Inter Regular
-- **Code**: JetBrains Mono
+Not repeated here: the M3 role table and the system font in [`DESIGN.md`](../DESIGN.md).
+The logo files still use gradients and are due to be flattened (`DESIGN.md` § *Logo*).
 
 ### Export instructions
 
@@ -143,16 +128,16 @@ To generate raster assets from SVG sources:
 brew install librsvg
 
 # App icon 512x512 (Play Store)
-rsvg-convert -w 512 -h 512 -b '#0D2137' branding/logo.svg -o branding/icon-512.png
+rsvg-convert -w 512 -h 512 -b '#11131A' branding/logo.svg -o branding/icon-512.png
 
 # App icon 1024x1024 (App Store)
-rsvg-convert -w 1024 -h 1024 -b '#0D2137' branding/logo.svg -o branding/icon-1024.png
+rsvg-convert -w 1024 -h 1024 -b '#11131A' branding/logo.svg -o branding/icon-1024.png
 
 # OG image — requires compositing (use Figma or ImageMagick)
 # favicon.ico — use https://realfavicongenerator.net/ with favicon.svg
 
 # Apple touch icon 180x180
-rsvg-convert -w 180 -h 180 -b '#0D2137' branding/logo.svg -o branding/apple-touch-icon.png
+rsvg-convert -w 180 -h 180 -b '#11131A' branding/logo.svg -o branding/apple-touch-icon.png
 ```
 
 ---

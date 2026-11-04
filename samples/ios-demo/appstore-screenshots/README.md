@@ -60,7 +60,7 @@ English caption.
 The listing text sells AR and no capture can show it: the simulator has no
 camera. `01-ar.png` in each class is an **AI-generated marketing visual**
 (Gemini `gemini-3.1-flash-image`, image-to-image, cropped to the class's exact
-pixel spec), per DESIGN.md's "Preview Image Art Direction" (real camera
+pixel spec), per DESIGN.md's "Preview images" (real camera
 background, no text/UI/device frame/people). It is the same art the #3461
 `00-ar.png` carried, recomposited under its caption; the prompts live in
 `tools/demo-previews/store.json` (`ar-phone`, `ar-tablet`). Replace it with a

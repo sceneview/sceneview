@@ -56,6 +56,8 @@ The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and 
 - `environmentLoader.createHDREnvironment(...)` — **main thread only**.
 - Use `modelLoader.loadModelInstanceAsync(...)` or `suspend fun loadModelInstance(...)` for imperative async code.
 - Inside `SceneView { }` composable scope, you are on the main thread — safe for all Filament calls.
+- `EngineWarmUp.start()` — any thread. The `Engine` itself is still created on the main thread: Filament's job system adopts the creating thread, and `Engine.destroy()` must run on it.
+- `modelLoader.materialProvider` / `modelLoader.assetLoader` — the first read creates gltfio's material provider (a JNI call): **main thread only**, it throws elsewhere.
 
 ---
 
@@ -72,6 +74,7 @@ The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and 
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.
 - **Compose**: use `remember` for Position/Rotation/Scale — no allocations in composition body.
 - **Engine**: create one `rememberEngine()` at app level, share across all scenes.
+- **Startup**: call `EngineWarmUp.start()` (any thread) a little before a 3D screen — or in `Application.onCreate()` when the first screen is 3D — and the first `rememberEngine()` / `rememberModelLoader()` no longer load Filament's native libraries, create the shared EGL context or build gltfio's Basis Universal transcoder tables inside their composition: the warm-up does all three on a background thread, and `rememberEngine()` only builds the `Engine`, which Filament ties to the main thread. **Opt-in** — nothing starts it on its own. Without code, list `io.github.sceneview.EngineWarmUpInitializer` under `androidx.startup.InitializationProvider` in the app manifest. A prepared context no engine takes within 5 s is released. Started at app startup it competes with the app's own startup (Pixel 10 Pro XL: 3D first frame 194 → 151 ms, time to first frame 134 → 149 ms), so when the 3D screen is not the first one, start it after the first frame instead. `rememberModelLoader(engine)` is cheap too: gltfio's material provider is built by the loader's first model. Keep model creation out of a screen's first frame with `rememberModelInstance` or the `suspend` `loadModelInstance` / `loadInstancedModel` instead of `createModel*` / `createInstancedModel` in `remember { }`.
 - **AR**: disable `planeRenderer` after object placement to reduce overdraw.
 - **Rerun bridge**: adds ~0.5ms when active. Gate with `BuildConfig.DEBUG`.
 - **Hot paths**: never call a decomposing/allocating getter inside `onFrame`/`onSessionUpdated`. Set whole `node.transform = …` once (don't write `position`/`quaternion`/`scale` one at a time → recompose + drift); use `mat4.copyColumnsInto(scratch)` not `toColumnsFloatArray()`; use the TRS-tuple `slerp(...)` overload; `worldPosition`/`worldQuaternion` are cached so per-frame reads are fine. AR: don't read `pose.transform` per frame (allocates) — use `pose.toTransform(scratch)` or a node setter. See docs/docs/performance.md § Hot Paths & Allocation-Free APIs (audit #2263).
@@ -91,6 +94,7 @@ The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and 
 | Model too big/small | Model units mismatch | Use `scaleToUnits` parameter |
 | Oversaturated AR camera | Wrong tone mapper | Use `rememberARView(engine)` (Filmic tone mapper — round-trips the camera background, #1434) |
 | Crash on empty bounding box | Filament 1.70+ enforcement | SceneView auto-sanitizes; update to latest version |
+| Directional shadow gone after updating SceneView | `LightManager.ShadowOptions()` starts at 0 in Filament 1.77 (#10565) | Use `castShadows(true)` and edit `lightManager.getShadowOptions(instance)` instead of a new `ShadowOptions()` |
 | Material crash on dispose | Entity still in scene | SceneView handles cleanup order automatically |
 
 ### `ARSessionFailure` — typed AR error taxonomy (#1759)

@@ -204,14 +204,14 @@ struct ARContentView: View {
                 if model == nil {
                     ProgressView("Loading model...")
                         .padding()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 } else {
                     Text(placedCount == 0
                         ? "Tap on a surface to place"
                         : "Placed \(placedCount) object\(placedCount == 1 ? "" : "s")")
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color(.secondarySystemBackground), in: Capsule())
                 }
             }
             .padding(.bottom, 32)
@@ -256,14 +256,14 @@ struct ARContentView: View {
                 if model == nil {
                     ProgressView("Loading model...")
                         .padding()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 } else {
                     Text(placedCount == 0
                         ? "Tap on a surface to place"
                         : "Placed \(placedCount) object\(placedCount == 1 ? "" : "s")")
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color(.secondarySystemBackground), in: Capsule())
                 }
             }
             .padding(.bottom, 32)

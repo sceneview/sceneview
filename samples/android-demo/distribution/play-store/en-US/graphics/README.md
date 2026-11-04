@@ -27,7 +27,7 @@ The listing text sells AR, and until #2844 no image showed any. No emulator and
 no simulator has a camera, so an AR frame cannot be captured whole — but the
 *app* half of one can. **`phone-screenshot-2.png` is a composite**: an
 AI-generated room photo (Gemini `gemini-3.1-flash-image`, image-to-image, per
-DESIGN.md's "Preview Image Art Direction" — real camera background, no
+DESIGN.md's "Preview images" — real camera background, no
 text/UI/device frame/people) with the app's **real AR chrome captured on
 `emulator-5554`** composited over it by `compose.py` (`kind: ar`).
 
