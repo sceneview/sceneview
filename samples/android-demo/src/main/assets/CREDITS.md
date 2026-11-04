@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **50**.
+Assets bundled: **51**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -34,15 +34,16 @@ Assets bundled: **50**.
 
 ## 3D models
 
-- `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0) — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) (3.5 MB)
 - `models/khronos_fox.glb` — **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (96 KB)
 - `models/khronos_glam_velvet_sofa.glb` — **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
 - `models/khronos_iridescent_dish.glb` — **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (5.7 MB)
 - `models/khronos_lantern.glb` — **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (9.0 MB)
 - `models/khronos_sheen_chair.glb` — **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (4.1 MB)
 - `models/khronos_toy_car.glb` — **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by Guido Odendahl (model); Eric Chadwick (extensions and scene composition) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (2.2 MB)
+- `models/moto_helmet_v2.glb` — **[Motorcycle Helmet](https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac)** by sayedgamal655 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
 - `models/night_circuit.glb` — **[Night circuit (Khronos Car Concept on a SceneView set)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept)** by Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (4.2 MB)  
   The Car Concept on the night circuit built by `tools/scenes/circuit/build.sh`, the android-demo home hero (#3948)
+- `models/phoenix_bird.glb` — **[Phoenix Bird](https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042)** by NORBERTO-3D — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (1.6 MB)
 - `models/quaternius_ranger.glb` — **[Ranger](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html)** by Quaternius — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (5.7 MB)
 - `models/shiba.glb` — **[Shiba](https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c)** by zixisun51 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (669 KB)
 - `splats/rainbow_sphere.ply` — **[rainbow_sphere.ply](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (448 KB)  

@@ -118,11 +118,11 @@ internal data class ModelEntry(
 // folder through `sourceSets.main.assets.srcDirs` — see build.gradle. `internal` so
 // TvModelListTest can assert every assetPath resolves to a bundled file.
 internal val models = listOf(
-    ModelEntry("Damaged Helmet", "models/khronos_damaged_helmet.glb", "theblueturtle_ · CC BY 4.0", R.drawable.model_thumb_khronos_damaged_helmet),
-    ModelEntry("Toy Car", "models/khronos_toy_car.glb", "Khronos Group · CC BY 4.0", R.drawable.model_thumb_khronos_toy_car),
+    ModelEntry("Phoenix Bird", "models/phoenix_bird.glb", "NORBERTO-3D · CC BY 4.0", R.drawable.model_thumb_phoenix_bird),
+    ModelEntry("Toy Car", "models/khronos_toy_car.glb", "Guido Odendahl · CC0", R.drawable.model_thumb_khronos_toy_car),
     ModelEntry("Sheen Chair", "models/khronos_sheen_chair.glb", "Wayfair · CC0", R.drawable.model_thumb_khronos_sheen_chair),
     ModelEntry("Velvet Sofa", "models/khronos_glam_velvet_sofa.glb", "Wayfair · CC BY 4.0", R.drawable.model_thumb_khronos_glam_velvet_sofa),
-    ModelEntry("Lantern", "models/khronos_lantern.glb", "Microsoft · CC BY 4.0", R.drawable.model_thumb_khronos_lantern),
+    ModelEntry("Lantern", "models/khronos_lantern.glb", "Microsoft · CC0", R.drawable.model_thumb_khronos_lantern),
     ModelEntry("Iridescent Dish", "models/khronos_iridescent_dish.glb", "Wayfair · CC BY 4.0", R.drawable.model_thumb_khronos_iridescent_dish),
     ModelEntry("Fox", "models/khronos_fox.glb", "PixelMannen, tomkranis · CC BY 4.0", R.drawable.model_thumb_khronos_fox),
     ModelEntry("Shiba", "models/shiba.glb", "zixisun51 · CC BY 4.0", R.drawable.model_thumb_shiba),

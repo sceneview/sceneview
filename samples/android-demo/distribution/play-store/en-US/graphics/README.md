@@ -81,9 +81,18 @@ at all. `feature-graphic.png` has been a real capture since 2026-10-30.
 
 Until #3461 these were drawn from `refs/hero.webp`, a stylised rusty helmet the
 app never renders — the same defect #3454 fixed on the catalog cards, one
-surface further out. That file is gone; every helmet the listing shows is now
+surface further out. That file is gone; the helmet the listing then showed was
 the teal-visor `khronos_damaged_helmet.glb` the Showcase hero banner and the
-Model Viewer show on the app's first screen.
+Model Viewer showed on the app's first screen.
+
+**That helmet left the app (#nc-assets):** its original sculpt is CC-BY-NC 4.0,
+so it may not appear on a store listing. The Model Viewer now opens on the
+CC-BY 4.0 Phoenix Bird. Still showing the helmet, and to be regenerated before
+the next listing sync: `tablet7-screenshot-1..4.png` and
+`tablet10-screenshot-1..4.png` (slot 1 is the generated `ar-tablet` item, whose
+`store.json` prompt and `refs/damaged_helmet.webp` reference must move to a
+CC-BY subject first; slots 2–4 are tablet captures, and the tablet AVDs they
+came from were deleted).
 
 Why generated: a real AR capture needs a device camera. ARCore's emulator
 recording/playback path fails on the QA AVDs — session creation probes camera

@@ -34,7 +34,7 @@ Assets live in `samples/android-demo/distribution/play-store/en-US/graphics/` an
 
 ### Screenshot content suggestions
 
-1. **Hero shot** — DamagedHelmet model on gradient background, "SceneView" overlay
+1. **Hero shot** — Phoenix Bird (CC-BY 4.0) on gradient background, "SceneView" overlay. Never a CC-BY-NC model such as the DamagedHelmet sculpt: a store listing is promotional use.
 2. **AR placement** — Virtual furniture on real floor with plane indicators
 3. **Material 3 UI** — Full app showing tabs, cards, Material You theming
 4. **Multi-model** — Grid of different GLB models loaded simultaneously

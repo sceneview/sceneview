@@ -18,23 +18,18 @@ struct ModelItem: Identifiable, Hashable {
     static func == (lhs: ModelItem, rhs: ModelItem) -> Bool { lhs.id == rhs.id }
 
     static let all: [ModelItem] = [
-        // Vehicles
+        // Vehicles (the Lamborghini, Shelby Cobra, BMW M3 E30, Mercedes AMG and
+        // Audi TT were dropped: their licences were non-commercial or unknown.)
         ModelItem(id: "red_car",              name: "Red Car",       icon: "car.fill",         asset: "red_car",              scale: 1.0, category: .vehicles),
         ModelItem(id: "ferrari_f40",          name: "Ferrari F40",   icon: "car.side.fill",    asset: "ferrari_f40",          scale: 0.6, category: .vehicles),
         ModelItem(id: "porsche_911",          name: "Porsche 911",   icon: "car.rear.fill",    asset: "porsche_911",          scale: 0.6, category: .vehicles),
-        ModelItem(id: "lamborghini_countach", name: "Lamborghini",   icon: "car.fill",         asset: "lamborghini_countach", scale: 0.5, category: .vehicles),
-        ModelItem(id: "shelby_cobra",         name: "Shelby Cobra",  icon: "car.rear.fill",    asset: "shelby_cobra",         scale: 0.6, category: .vehicles),
-        ModelItem(id: "bmw_m3_e30",           name: "BMW M3 E30",    icon: "car.side.fill",    asset: "bmw_m3_e30",           scale: 0.6, category: .vehicles),
-        ModelItem(id: "mercedes_a45_amg",     name: "Mercedes AMG",  icon: "car.fill",         asset: "mercedes_a45_amg",     scale: 0.5, category: .vehicles),
-        ModelItem(id: "audi_tt",              name: "Audi TT",       icon: "car.rear.fill",    asset: "audi_tt",              scale: 0.7, category: .vehicles),
         ModelItem(id: "fiat_punto",           name: "Fiat Punto",    icon: "car.side.fill",    asset: "fiat_punto",           scale: 0.7, category: .vehicles),
         ModelItem(id: "tesla_cybertruck",     name: "Cybertruck",    icon: "truck.box.fill",   asset: "tesla_cybertruck",     scale: 0.6, category: .vehicles),
         ModelItem(id: "cyberpunk_car",        name: "Cyberpunk Car", icon: "bolt.car.fill",    asset: "cyberpunk_car",        scale: 0.8, category: .vehicles),
         ModelItem(id: "cyberpunk_hovercar",   name: "Hovercar",      icon: "airplane",         asset: "cyberpunk_hovercar",   scale: 0.6, category: .vehicles),
 
-        // Creatures (`animated_dragon` removed in #1152 Stage 3 IPA slim-down
-        // — the dragon role is still represented by `black_dragon` below.)
-        ModelItem(id: "black_dragon",        name: "Black Dragon",      icon: "lizard.fill",       asset: "black_dragon",        scale: 0.5, category: .creatures),
+        // Creatures (`animated_dragon` left in #1152's IPA slim-down; its
+        // stand-in, a CC-BY-NC dragon, was dropped for its licence.)
         ModelItem(id: "phoenix_bird",        name: "Phoenix",           icon: "bird.fill",         asset: "phoenix_bird",        scale: 0.8, category: .creatures),
         ModelItem(id: "animated_butterfly",  name: "Butterfly",         icon: "sparkles",          asset: "animated_butterfly",  scale: 0.8, category: .creatures),
         ModelItem(id: "mosquito_amber",      name: "Mosquito in Amber", icon: "ant.fill",          asset: "mosquito_amber",      scale: 1.0, category: .creatures),
@@ -42,11 +37,10 @@ struct ModelItem: Identifiable, Hashable {
 
         // Objects
         ModelItem(id: "game_boy_classic", name: "Game Boy",       icon: "gamecontroller.fill",    asset: "game_boy_classic", scale: 0.8, category: .objects),
-        ModelItem(id: "nintendo_switch",  name: "Switch",         icon: "square.grid.2x2.fill",  asset: "nintendo_switch",  scale: 0.8, category: .objects),
         ModelItem(id: "ps5_dualsense",    name: "PS5 Controller", icon: "gamecontroller",         asset: "ps5_dualsense",    scale: 0.8, category: .objects),
         ModelItem(id: "nike_air_jordan",  name: "Air Jordan",     icon: "shoe.fill",              asset: "nike_air_jordan",  scale: 0.8, category: .objects),
-        ModelItem(id: "retro_piano",      name: "Retro Piano",    icon: "pianokeys",              asset: "retro_piano",      scale: 0.7, category: .objects),
         ModelItem(id: "fantasy_book",     name: "Fantasy Book",   icon: "book.fill",              asset: "fantasy_book",     scale: 0.7, category: .objects),
+        ModelItem(id: "khronos_lantern",  name: "Lantern",        icon: "lightbulb.fill",         asset: "khronos_lantern",  scale: 1.0, category: .objects),
 
         // Scenes
         ModelItem(id: "tree_scene",           name: "Tree Scene",  icon: "tree.fill",      asset: "tree_scene",           scale: 0.6, category: .scenes),
@@ -159,10 +153,10 @@ struct ExploreTab: View {
 
     /// Curated featured set — first 6 bundled models, picked for visual variety.
     /// Used as fallback when no Sketchfab API key is configured.
-    /// `animated_dragon` replaced with `black_dragon` after #1152 Stage 3
-    /// dropped the 8.6 MB `animated_dragon.usdz` from the bundle.
+    /// The creature slot is the CC-BY Phoenix: `animated_dragon` left the
+    /// bundle in #1152 and its stand-in, a CC-BY-NC dragon, was dropped.
     private var featuredModels: [ModelItem] {
-        let ids = ["ferrari_f40", "black_dragon", "cyberpunk_character",
+        let ids = ["ferrari_f40", "phoenix_bird", "cyberpunk_character",
                    "game_boy_classic", "fantasy_book", "tree_scene"]
         return ids.compactMap { id in ModelItem.all.first { $0.id == id } }
     }

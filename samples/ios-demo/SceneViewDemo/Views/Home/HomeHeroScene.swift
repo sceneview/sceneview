@@ -24,7 +24,7 @@ final class HomeHeroScroll {
     var onScreen = true
 }
 
-/// Keeps the hero's flight — its entities, the helmet, the terrain, the
+/// Keeps the hero's flight — its entities, the hero model, the terrain, the
 /// lighting and the flight's clock — for as long as the home screen lives, so
 /// the 3D view can come and go (scrolled away, a demo opened, the app in the
 /// background, a search) and the flight resumes on the frame it left instead
@@ -228,7 +228,7 @@ private struct HomeHeroSky: View {
 
 #if os(iOS)
 /// The live flight: a valley of flat-shaded ridges streaming under a camera
-/// that sways and rolls, the sun low ahead, and the Model Viewer's helmet
+/// that sways and rolls, the sun low ahead, and the Model Viewer's hero model
 /// turning beside the camera — Android's `HomeHeroScene`, on RealityKit.
 ///
 /// SceneViewSwift's `SceneView` owns its camera (a fixed 60° field of view)
@@ -289,14 +289,14 @@ final class HomeHeroRenderer {
 
     private let root = Entity()
     private let camera = PerspectiveCamera()
-    private let helmetHolder = Entity()
-    private var helmet: ModelNode?
+    private let heroModelHolder = Entity()
+    private var heroModel: ModelNode?
     private var terrainEntity: ModelEntity?
     /// Stops the per-frame `Update` callback; nil while none is subscribed.
     private var stopUpdates: (() -> Void)?
     private var attachments = 0
     private var built = false
-    /// Loads still running (lighting then helmet, terrain): the frame is not
+    /// Loads still running (lighting then hero model, terrain): the frame is not
     /// final before they land, so a held flight does not go idle before that.
     private var pendingLoads = 0
 
@@ -364,15 +364,15 @@ final class HomeHeroRenderer {
         discEntity.position = Self.sunDiscCentre
         root.addChild(discEntity)
 
-        helmetHolder.scale = .init(repeating: 0.001)
-        root.addChild(helmetHolder)
+        heroModelHolder.scale = .init(repeating: 0.001)
+        root.addChild(heroModelHolder)
 
         // Loaded once the RealityKit view is in the hierarchy: `Entity(named:)`
         // does not resume before that (see git history of `HomeHero`).
         pendingLoads = 2
         Task { @MainActor [weak self] in
             await self?.loadLighting()
-            await self?.loadHelmet()
+            await self?.loadHeroModel()
             self?.loadLanded()
         }
         Task { @MainActor [weak self] in
@@ -387,21 +387,23 @@ final class HomeHeroRenderer {
 
     /// `sunset.hdr` is the 2048×1024 original of Android's `sunset_2k.hdr`
     /// (downscaled to 1024×512 in #934): the same sky and the same light, so
-    /// the helmet and the terrain's ambient cube (`HeroDusk`, integrated from
+    /// the hero model and the terrain's ambient cube (`HeroDusk`, integrated from
     /// Android's file) agree without the app shipping that sky twice.
     private func loadLighting() async {
         let sunset = SceneEnvironment.custom(name: "Sunset", hdrFile: "sunset.hdr", intensity: 1, showSkybox: false)
         guard let resource = try? await sunset.load() else { return }
         root.components.set(ImageBasedLightComponent(source: .single(resource), intensityExponent: 0))
-        helmetHolder.components.set(ImageBasedLightReceiverComponent(imageBasedLight: root))
+        heroModelHolder.components.set(ImageBasedLightReceiverComponent(imageBasedLight: root))
     }
 
-    private func loadHelmet() async {
-        guard helmet == nil, let model = try? await ModelNode.load(HomeHero.heroAssetName) else { return }
-        _ = model.scaleToUnits(HeroFlight.helmetUnits)
+    private func loadHeroModel() async {
+        guard heroModel == nil, let model = try? await ModelNode.load(HomeHero.heroAssetName) else { return }
+        _ = model.scaleToUnits(HeroFlight.heroModelUnits)
         _ = model.centerOrigin()
-        helmetHolder.addChild(model.entity)
-        helmet = model
+        heroModelHolder.addChild(model.entity)
+        // The phoenix flies: its baked wing-beat loop plays for as long as the hero lives.
+        model.playAllAnimations()
+        heroModel = model
     }
 
     private func adoptTerrain(_ faces: [HeroTerrain.Face]) {
@@ -442,7 +444,7 @@ final class HomeHeroRenderer {
             tilt.feed(gravityX: gravity.x, gravityZ: gravity.z)
             tilt.update(delta: Float(delta))
         }
-        if helmet != nil, entranceStart == nil { entranceStart = clock.seconds }
+        if heroModel != nil, entranceStart == nil { entranceStart = clock.seconds }
         if terrainEntity != nil, terrainStart == nil { terrainStart = clock.seconds }
 
         let pose = HeroFlight.pose(seconds: clock.seconds, period: Self.terrain.period, tilt: tilt.value,
@@ -463,10 +465,10 @@ final class HomeHeroRenderer {
         camera.look(at: pose.target, from: pose.eye, upVector: pose.up, relativeTo: nil)
         let terrainOffset = SIMD3<Float>(0, -HeroFlight.terrainRiseUnits * (1 - pose.terrainRise), pose.terrainOffsetZ)
         terrainEntity?.position = terrainOffset
-        helmetHolder.position = pose.helmet
-        helmetHolder.orientation = simd_quatf(angle: pose.helmetYawDegrees * .pi / 180, axis: [0, 1, 0])
+        heroModelHolder.position = pose.heroModel
+        heroModelHolder.orientation = simd_quatf(angle: pose.heroModelYawDegrees * .pi / 180, axis: [0, 1, 0])
             * simd_quatf(angle: -6 * .pi / 180, axis: [1, 0, 0])
-        helmetHolder.scale = .init(repeating: max(pose.helmetEntrance, 0.001))
+        heroModelHolder.scale = .init(repeating: max(pose.heroModelEntrance, 0.001))
 
         if let shader, sinceShade >= Self.shadeInterval || !moving {
             sinceShade = 0

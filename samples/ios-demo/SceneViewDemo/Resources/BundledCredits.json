@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView iOS demo",
   "artefact": "the App Store build",
   "source": "assets/catalog.json",
-  "total": 47,
+  "total": 38,
   "sections": [
     {
       "title": "3D models",
@@ -17,36 +17,6 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/animated-flying-fluttering-butterfly-loop-80f8d9a6dadc411e89ca366cb0cfb0d9",
           "size": 3228959,
-          "note": ""
-        },
-        {
-          "file": "Models/audi_tt.usdz",
-          "name": "2007 Audi TT Coupe",
-          "author": "Ddiaz Design",
-          "license": "CC-BY-NC-SA-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/2007-audi-tt-coupe-b548ef872a8b4164a700e5b8cdb85a14",
-          "size": 6817323,
-          "note": ""
-        },
-        {
-          "file": "Models/black_dragon.usdz",
-          "name": "Black Dragon with Idle Animation",
-          "author": "Arturs J",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36",
-          "size": 16031277,
-          "note": ""
-        },
-        {
-          "file": "Models/bmw_m3_e30.usdz",
-          "name": "BMW M3 Coupe (E30) 1986",
-          "author": "Lexyc16",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91",
-          "size": 9669385,
           "note": ""
         },
         {
@@ -73,8 +43,8 @@
           "file": "Models/cyberpunk_hovercar.usdz",
           "name": "Cyberpunk Hovercar",
           "author": "Karol Miklas (modified by SceneView — display plinth removed)",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "license": "CC-BY-SA-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c",
           "size": 3695242,
           "note": ""
@@ -130,16 +100,6 @@
           "note": ""
         },
         {
-          "file": "Models/khronos_damaged_helmet.usdz",
-          "name": "Damaged Helmet",
-          "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
-          "size": 4191290,
-          "note": ""
-        },
-        {
           "file": "Models/khronos_fox.usdz",
           "name": "Fox",
           "author": "PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion)",
@@ -180,26 +140,6 @@
           "note": ""
         },
         {
-          "file": "Models/lamborghini_countach.usdz",
-          "name": "2021 Lamborghini Countach LPI 800-4",
-          "author": "Lexyc16",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/2021-lamborghini-countach-lpi-800-4-d76b94884432422b966d1a7f8815afb5",
-          "size": 8965293,
-          "note": ""
-        },
-        {
-          "file": "Models/mercedes_a45_amg.usdz",
-          "name": "Mercedes-Benz A45 AMG 2018",
-          "author": "Lexyc16",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/mercedes-benz-a45-amg-2018-9482f251f9c34a6e91d7777db5934cfc",
-          "size": 9050162,
-          "note": ""
-        },
-        {
           "file": "Models/mosquito_amber.usdz",
           "name": "Mosquito in Amber",
           "author": "Loïc Norgeot",
@@ -217,16 +157,6 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/nike-air-jordan-fd462c530d974f33a523d88a7562f1cf",
           "size": 10820512,
-          "note": ""
-        },
-        {
-          "file": "Models/nintendo_switch.usdz",
-          "name": "Nintendo Switch Diorama",
-          "author": "Mikkel Garde Blaase",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
-          "size": 846974,
           "note": ""
         },
         {
@@ -267,26 +197,6 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://www.fab.com/listings/c86be43c-3923-4c98-b752-40bedb121239",
           "size": 241457,
-          "note": ""
-        },
-        {
-          "file": "Models/retro_piano.usdz",
-          "name": "Retro Piano",
-          "author": "DailyArt",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185",
-          "size": 1926166,
-          "note": ""
-        },
-        {
-          "file": "Models/shelby_cobra.usdz",
-          "name": "1965 AC Shelby Cobra 427",
-          "author": "vecarz",
-          "license": "CC-BY-NC-SA-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/1965-ac-shelby-cobra-427-wwwvecarzcom-3e9c994c428b44f087d64e738428886c",
-          "size": 5121065,
           "note": ""
         },
         {

@@ -41,14 +41,18 @@ struct ModelViewerDemo: View {
     /// added here without its `model_thumb_<asset>` tile fails the suite
     /// instead of silently regressing to the blank-cube placeholder (#3584).
     static let bundledModels: [BundledViewerModel] = [
-        BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet",
-                           description: "Scuffed metal and glass"),
+        // First-run model: Phoenix Bird (NORBERTO-3D, CC-BY 4.0), the same
+        // subject the home hero flies. It replaced the Damaged Helmet, whose
+        // CC-BY-NC source cannot ship in a store build. iOS-only tile, so its
+        // line is written in the register of the others.
+        BundledViewerModel(assetName: "phoenix_bird", displayName: "Phoenix",
+                           description: "Fiery plumage, wings in flight"),
         // HD pack: 52 MB, full 2K textures, downloaded once. The bundled
-        // Damaged Helmet stands in until the file is on disk — same choice
-        // as Android.
+        // Lantern (Khronos, CC0) stands in until the file is on disk: a
+        // static PBR prop of wood, metal and glass, like the helmet itself.
         BundledViewerModel(assetName: "khronos_flight_helmet", displayName: "Flight Helmet",
                            description: "Leather, brass and glass · HD",
-                           hdPackID: "flight-helmet", standInAssetName: "khronos_damaged_helmet"),
+                           hdPackID: "flight-helmet", standInAssetName: "khronos_lantern"),
         // Fox, Hovercar and Butterfly are iOS-only tiles: Android has no
         // description to copy, so theirs are written in the same register.
         BundledViewerModel(assetName: "khronos_fox", displayName: "Fox",
@@ -159,9 +163,9 @@ struct ModelViewerDemo: View {
     static let showsEnvironmentByDefault = false
 
     /// The subject App Store slot 1 is meant to show. The interactive default
-    /// is `bundledModels[0]` (Damaged Helmet) — the Khronos reference model a
-    /// first-run user should land on — but `dynamic-sky`, which fills slot 2,
-    /// loads that *same* helmet since #3003. Left alone the listing showed one
+    /// is `bundledModels[0]` (Phoenix) — the model a first-run user should
+    /// land on — but `dynamic-sky`, which fills slot 2, loaded that *same*
+    /// first-run model since #3003. Left alone the listing showed one
     /// subject twice: the redesign (#3308) rewrote this view and kept the
     /// "hovercar is the iOS store hero" comment while defaulting to index 0,
     /// so the store hero silently stopped being captured (#3006). Under
@@ -214,7 +218,7 @@ struct ModelViewerDemo: View {
     /// aspect, not in preference: the auto-fit pass inscribes the *space
     /// diagonal* of the union bounds in a sphere and fits that sphere to the
     /// narrower of the two FOV axes — width, in a portrait store frame. A
-    /// near-isotropic subject (the helmet) fills that sphere; the hovercar is
+    /// near-isotropic subject (a compact prop) fills that sphere; the hovercar is
     /// wide and short, so the same margin leaves it visibly smaller.
     ///
     /// 0.62 is the floor, not a preference: swept on the 6.9" simulator with
@@ -537,7 +541,7 @@ struct ModelViewerDemo: View {
         .task {
             // Under `qa_mode` the store hero and its stage replace the
             // first-run defaults, so slot 1 captures the hovercar instead of
-            // repeating slot 2's helmet (#3006), lit against a drawn backdrop
+            // repeating slot 2's subject (#3006), lit against a drawn backdrop
             // instead of the clear colour (#2896). Assigned before the load so
             // a single pass runs.
             if qaMode {

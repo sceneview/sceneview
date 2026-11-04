@@ -272,12 +272,14 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  * load them.
  */
 private val BUNDLED_VIEWER_MODELS = listOf(
-    BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet", R.string.demo_model_desc_damaged_helmet),
+    // Phoenix Bird by NORBERTO-3D, CC-BY 4.0: the hero since the Damaged Helmet left (its
+    // original is CC-BY-NC, which a store screenshot or a demo card cannot show).
+    BundledViewerModel("models/phoenix_bird.glb", "Phoenix Bird", R.string.demo_model_desc_phoenix_bird),
     // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
-    // Its stand-in is the bundled Damaged Helmet — the nearest thing the APK ships, another
-    // helmet at the same scale — shown instantly while the HD file downloads or loads.
+    // Its stand-in is the bundled motorcycle helmet — the nearest thing the APK ships, another
+    // helmet — shown instantly while the HD file downloads or loads.
     BundledViewerModel(
-        "models/khronos_damaged_helmet.glb",
+        "models/moto_helmet_v2.glb",
         "Flight Helmet",
         R.string.demo_model_desc_flight_helmet,
         hdAssetId = "flight-helmet",
@@ -774,10 +776,10 @@ private fun ModeSelector(
 // ─── Single Model section ─────────────────────────────────────────────────────
 // The original `model-viewer` demo — the flagship full-screen 3D model viewer.
 //
-// **Default state.** Loads the bundled `khronos_damaged_helmet.glb` so the demo
+// **Default state.** Loads the bundled `phoenix_bird.glb` (CC-BY 4.0) so the demo
 // renders identically with or without a Sketchfab API key — the very first
 // frame the user sees is the same hero shot the screenshots and store assets
-// promise. The CAMERA orbits the helmet so lights, reflections and IBL hit the
+// promise. The CAMERA orbits the bird so lights, reflections and IBL hit the
 // same surface every frame.
 //
 // **"Surprise me" button.** When the user taps the extended FAB at the
@@ -948,7 +950,7 @@ private fun SingleModelSection(
         if (surpriseStage == SurpriseStage.Decoding) surpriseStage = null
     }
     val streamedModelInstance = streamedModel?.instance
-    // The bundled hero — assets/models/khronos_damaged_helmet.glb. Loaded
+    // The bundled hero — assets/models/phoenix_bird.glb. Loaded
     // eagerly so the first frame after launch shows the hero shot.
     // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
     // Called unconditionally, for the reason above (#1464): a null path is a value, not a
@@ -1365,7 +1367,7 @@ private fun SingleModelSection(
     // #3822 — swapping to a bundled model (e.g. "Soldier") from the Models sheet is not a
     // navigation the back stack knows about either: it is the same screen with different
     // content. Without this, back from a swapped-in model skipped straight past the demo's
-    // own default (the Damaged Helmet) to the Showcase home. One level at a time: revert to
+    // own default (the Phoenix Bird) to the Showcase home. One level at a time: revert to
     // the default model first, exit only from there. Scoped to the bundled-model swap only —
     // an opened external file still on stage (`openedFile`, the "Open with SceneView" handoff) is
     // a different, narrower flow this issue does not report on.
@@ -1628,7 +1630,7 @@ private fun SingleModelSection(
             DemoSettings.openedModelDisplayName = openedFile?.displayName
             // #3493 — whatever the viewer is showing must be what AR opens on, never a picker.
             // `selectedModel.assetPath` covers every bundled row, including ones the AR
-            // placement catalogue itself doesn't curate (the Damaged Helmet, #2023) — its name
+            // placement catalogue itself doesn't curate (the Phoenix Bird, cf. #2023) — its name
             // has to ride along too, for AR to label a row the catalogue has no entry for. Set
             // unconditionally: a match against the curated catalogue uses ITS OWN name instead,
             // and this value is consumed once then cleared.

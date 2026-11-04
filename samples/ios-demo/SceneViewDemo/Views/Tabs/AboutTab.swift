@@ -802,8 +802,8 @@ private final class AboutMarkRenderer {
         /// Key light from the upper right, a little in front.
         static let keyLight = SIMD3<Float>(-0.45, -0.82, -0.36)
         /// Android lights the mark with a 70 000-lux key over its default IBL.
-        /// The Home hero keeps Android's 95 000 lux because its helmet is dark
-        /// metal under a dim sunset sky; a saturated blue cube is not. From
+        /// The Home hero keeps Android's 95 000 lux because its model is lit
+        /// under a dim sunset sky; a saturated blue cube is not. From
         /// 10 000 lux, RealityKit's tone mapping pushes the lit face's blue
         /// past its top and the face turns sky-cyan; at 2 000 lux over the
         /// untouched studio IBL the faces go dull and grey. Tuned side by side

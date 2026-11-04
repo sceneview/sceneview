@@ -27,7 +27,7 @@ struct SketchfabSlug: Hashable, Sendable {
     ///
     /// The defect #2940 named is "a fallback whose subject is semantically
     /// incompatible with the label it renders under" — a book under
-    /// "Wine Barrel", a piano under "Coffee Mug". The bundled set has no vase,
+    /// "Wine Barrel", a scanned insect under "Coffee Mug". The bundled set has no vase,
     /// mug, crate, table, sofa or statue, so most of those cannot be re-pointed
     /// without shipping a new binary. Until then the demo must *say* it is
     /// showing a placeholder rather than pretend: the asset-source pill reads

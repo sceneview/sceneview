@@ -210,11 +210,11 @@ internal object DemoMath {
     private fun Float.wrapTo360(): Float = ((this % 360f) + 360f) % 360f
 
     /**
-     * Asset path of the bundled Khronos *DamagedHelmet* GLB — the Model Viewer's hero, the
-     * model "View in AR" hands to the placement screen, and the comparison model of the
-     * Depth / People occlusion demos.
+     * Asset path of the bundled motorcycle helmet GLB (sayedgamal655, CC-BY 4.0) — the
+     * comparison model of the Depth / People occlusion demos. It replaced the Khronos
+     * *DamagedHelmet*, whose original is CC-BY-NC and so cannot sit on a promotional screen.
      */
-    const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
+    const val HELMET_ASSET = "models/moto_helmet_v2.glb"
 
     /**
      * Per-asset yaw, in degrees, that an AR placement adds on top of an asset's loaded glTF

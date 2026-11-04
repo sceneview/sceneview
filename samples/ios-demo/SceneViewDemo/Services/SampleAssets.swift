@@ -94,8 +94,9 @@ enum SampleAssets {
             displayName: "Nile (Classical Statue)",
             author: "rigsters",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/retro_piano.usdz",
-            // Offline placeholder (#2960): no statue is bundled; a piano keeps the gallery picker working.
+            fallbackBundledPath: "Models/mosquito_amber.usdz",
+            // Offline placeholder (#2960): no statue is bundled; another scanned
+            // artefact (CC-BY 4.0) keeps the gallery picker working.
             fallbackRole: .placeholder,
             scaleToUnits: 0.85,
             hasBakedAnimation: false,
@@ -229,9 +230,9 @@ enum SampleAssets {
             displayName: "Simple Park Bench",
             author: "Planetrix23",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            // No bench is bundled; the 1.8 MB piano keeps a piece of furniture in the slot.
-            fallbackBundledPath: "Models/retro_piano.usdz",
-            // Offline placeholder (#2960): a piano is not a bench.
+            // No bench is bundled; the CC-BY fantasy book keeps a prop in the slot.
+            fallbackBundledPath: "Models/fantasy_book.usdz",
+            // Offline placeholder (#2960): a book is not a bench.
             fallbackRole: .placeholder,
             scaleToUnits: 0.70,
             hasBakedAnimation: false,
@@ -271,8 +272,8 @@ enum SampleAssets {
             displayName: "Coffee Mug",
             author: "FrenchBaguette",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/retro_piano.usdz",
-            // Offline placeholder (#2960): no mug is bundled; the piano only keeps something placeable.
+            fallbackBundledPath: "Models/mosquito_amber.usdz",
+            // Offline placeholder (#2960): no mug is bundled; the amber only keeps something placeable.
             fallbackRole: .placeholder,
             scaleToUnits: 0.10,
             hasBakedAnimation: false,
@@ -284,10 +285,10 @@ enum SampleAssets {
             displayName: "Potted Monstera",
             author: "ChubbyPanda",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            // Keyless fallback — no plant is bundled, so a Khronos reference
-            // object stands in rather than a mislabelled real object; the
-            // previous tree_scene read as an actual potted plant (#2940).
-            fallbackBundledPath: "Models/khronos_damaged_helmet.usdz",
+            // Keyless fallback — no plant is bundled, so the CC-BY fantasy book
+            // stands in (the tree_scene read as an actual potted plant, #2940;
+            // the helmet after it was CC-BY-NC).
+            fallbackBundledPath: "Models/fantasy_book.usdz",
             // Offline placeholder (#2960): no plant is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.45,
