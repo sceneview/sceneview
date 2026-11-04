@@ -36,11 +36,9 @@ Full API reference: [`llms.txt`](./llms.txt).
 - **Merging to `main` deploys.** Play Store rollout is automatic. The App Store
   submission is automated but Apple's review is not — "submitted" ≠ "live". Maven
   Central / npm / SPM are irreversible once published.
-- **Never QA on a personal device.** `bash .claude/scripts/setup-ar-emulator.sh` boots
-  the reusable emulator; `.claude/scripts/device-qa.sh` drives the harness. There is
-  exactly **one AVD**, `Pixel_7a` on `emulator-5554` — every other AVD (the tablet
-  rigs, the x86_64-under-Rosetta probe of #2758) was deleted. If it is missing, that
-  same script recreates it; `--seed-snapshot` re-seeds the warm `qa-clean` snapshot.
+- **Never QA on a personal device.** One AVD, `Pixel_7a` on `emulator-5554`:
+  `bash .claude/scripts/setup-ar-emulator.sh` boots or recreates it (`--seed-snapshot`
+  re-seeds `qa-clean`); `.claude/scripts/device-qa.sh` drives the harness.
 - **Demo and website 3D assets are not in git.** `assets/manifest.json` lists them;
   `tools/fetch-assets.sh` fetches them from the `assets-v1` release (Gradle and Xcode run
   it on every build). A new model needs `--register` and its upload to `assets-v1` before
@@ -59,25 +57,8 @@ Full API reference: [`llms.txt`](./llms.txt).
   `<!-- category: Fixed -->` tag. `CHANGELOG.md` is generated — never hand-edit it, same
   for `gpt/knowledge-*.md` and every `CREDITS.md` (licence compliance).
 - **Public surfaces are English only** — commit messages and PR bodies included.
-- **Codex is a delegation lever, not a rule** — it bills a quota separate from Claude's.
-  Always `.claude/scripts/codex-delegate.sh` (`ask` · `review` · `implement
-  --new-worktree` · `qa`, which drives a device unsandboxed from a throwaway
-  clone), never a raw `codex`, never an OpenAI API key. Commits, merges and
-  releases stay with the lead session. Route to Codex what it does as well for less: an
-  independent review of a merged PR, a whole-module read to draft an inventory, unit
-  tests and mechanical refactors from a closed brief. Keep with Claude: product
-  decisions, UI validated by capture, anything touching secrets, billing or irreversible
-  steps — and the reading of whatever Codex returns. The script pins the model
-  (`gpt-5.6-sol`) so a CLI update cannot change it silently; `--model gpt-6-astra` is
-  opt-in, per call, and now implies `--effort high` — Astra at its own default effort
-  reports nothing. `ask` escalates to Astra on its own when the prompt outgrows Sol's
-  272K window, because Sol truncates such a prompt instead of refusing it. Astra is
-  **not** the default for `implement`: three parallel Astra implements at effort high
-  exhausted a whole ChatGPT Plus five-hour window — for every model, Sol included — in
-  nine minutes. And the CLI caps **one turn at 1,048,576 characters** whatever the model
-  window is, so Astra's advertised ~922K-token input is not reachable from `codex exec`:
-  a corpus bigger than that has to be split, and the script refuses it up front instead
-  of letting the upload bounce.
+- **Codex**: always `.claude/scripts/codex-delegate.sh`, never a raw `codex` or an OpenAI
+  key; commits, merges and releases stay with Claude. Details: [`.claude/scripts/CODEX.md`](.claude/scripts/CODEX.md).
 - **CI**: `.github/workflows/ci.yml` is the one PR workflow; its `changes` job gates
   every other job and `changes-verdict` ("Path filter completed") is the required check.
   Heavy suites and their path gates: [CONTRIBUTING.md](CONTRIBUTING.md).
