@@ -325,7 +325,8 @@ object ScanFloorArea {
  * One coach line at a time while scanning, RoomPlan's way (#4631): short, imperative, and silent
  * by default. Two things it says, from the phone's own movement and whether the grid still grows:
  *
- * - [Line.Slower] — the phone moves faster than [MAX_SPEED_M_PER_S]; depth does not keep up.
+ * - [Line.Slower] — the phone moves faster than [MAX_SPEED_M_PER_S] or turns faster than
+ *   [MAX_TURN_DEGREES_PER_S]: depth and photos smear, and turning is what smears them most.
  * - [Line.NothingNew] — moving or turning, yet no cell became covered for [STALL_SECONDS]: the
  *   surfaces are too close, too far, too plain, or it is pointed at nothing.
  * - [Line.Still] — standing still, not turning, and nothing new for [STILL_SECONDS]: the scan waits for the
@@ -333,7 +334,11 @@ object ScanFloorArea {
  *
  * A line holds [holdSeconds] once shown so it can be read, and goes when its cause has gone.
  */
-class ScanCoach(private val holdSeconds: Float = HOLD_SECONDS) {
+class ScanCoach(
+    private val holdSeconds: Float = HOLD_SECONDS,
+    private val maxSpeed: Float = MAX_SPEED_M_PER_S,
+    private val maxTurn: Float = MAX_TURN_DEGREES_PER_S,
+) {
 
     enum class Line { Slower, NothingNew, Still }
 
@@ -397,7 +402,7 @@ class ScanCoach(private val holdSeconds: Float = HOLD_SECONDS) {
         }
         if (grew) grewAt = time
         val wanted = when {
-            speed > MAX_SPEED_M_PER_S -> Line.Slower
+            speed > maxSpeed || turnRate > maxTurn -> Line.Slower
             (speed > MOVING_M_PER_S || turnRate > TURNING_DEGREES_PER_S) && time - grewAt > STALL_SECONDS ->
                 Line.NothingNew
             time - grewAt > STILL_SECONDS -> Line.Still
@@ -450,8 +455,18 @@ class ScanCoach(private val holdSeconds: Float = HOLD_SECONDS) {
         /** `duration-long` of DESIGN.md three times over: a line is read, not glimpsed. */
         const val HOLD_SECONDS = 2.1f
 
-        /** Faster than this, depth frames smear: a brisk walk is 1.4 m/s. */
-        const val MAX_SPEED_M_PER_S = 1.2f
+        /**
+         * Faster than this, smoothed, frames smear: a step above [ScanPhotoPolicy.MAX_SPEED_MPS],
+         * the most a sharp photo is taken at, so a pace the photos take is never told off. A
+         * stroll is 1 m/s.
+         */
+        const val MAX_SPEED_M_PER_S = 0.6f
+
+        /**
+         * Turning faster than this, smoothed, smears the frames more than any walk: a step above
+         * [ScanPhotoPolicy.MAX_TURN_DEGREES_PER_SECOND], the most a sharp photo is taken at.
+         */
+        const val MAX_TURN_DEGREES_PER_S = 60f
 
         /** Slower than this the phone is standing still, and nothing new is expected. */
         const val MOVING_M_PER_S = 0.15f

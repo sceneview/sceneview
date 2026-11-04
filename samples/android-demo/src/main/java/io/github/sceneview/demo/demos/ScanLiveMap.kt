@@ -152,7 +152,7 @@ internal fun ScanLiveMap(
                 val cell = grid.cellMetres
                 val built = withContext(Dispatchers.Default) {
                     val weak = dense?.takeIf { LiveCoverageGround.SHOW_WEAK_CELLS }
-                        ?.let { LiveCoverageGround.weakCells(it.cloud.positions, keys, cell) }
+                        ?.let { LiveCoverageGround.weakCells(it.cloud, it.voxelM, keys, cell, floorY) }
                         ?: LongArray(0)
                     LiveCoverageGround.of(keys, cell, outline, floorY, weak)?.let {
                         ScanGroundMeshes.of(it, hatchMissing = true) to ScanLiveMapFraming.zonesOf(it)
