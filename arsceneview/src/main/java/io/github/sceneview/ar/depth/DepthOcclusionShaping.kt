@@ -8,7 +8,7 @@ package io.github.sceneview.ar.depth
  *
  * For a real surface measured at `depth` metres, the camera quad writes a distance into the
  * z-buffer; a virtual fragment farther than that is hidden. `threshold` is the shader's stable
- * per-pixel value in `[0, 1)` that turns each hard limit into a dithered ramp.
+ * per-pixel value in `[0, 1)` that dithers the far fade; the tolerance itself is a hard limit.
  */
 internal object DepthOcclusionShaping {
     const val TOL_BASE = 0.03f
@@ -27,7 +27,7 @@ internal object DepthOcclusionShaping {
         val valid = depth > MIN_VALID_DEPTH && depth <= MAX_VALID_DEPTH
         val inRange = threshold >= smoothstep(FAR_FADE_START, FAR_FADE_END, depth)
         return if (valid && inRange) {
-            depth + tolerance(depth) * (HALF + threshold)
+            depth + tolerance(depth)
         } else {
             NO_DEPTH_DISTANCE
         }
@@ -43,5 +43,4 @@ internal object DepthOcclusionShaping {
     }
 
     private const val MIN_VALID_DEPTH = 0.001f
-    private const val HALF = 0.5f
 }

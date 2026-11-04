@@ -34,9 +34,11 @@ class DepthOcclusionShapingTest {
     }
 
     @Test
-    fun `the occlusion edge is a ramp, not a step`() {
-        val share = hiddenShare(depth = 2f, virtualDepth = 2f + tolerance(2f))
-        assertTrue("share $share", share > 0.3f && share < 0.7f)
+    fun `the tolerance is a hard limit, never dithered`() {
+        // A dithered tolerance band broke a model's floor contact into vertical streaks on the
+        // Pixel 4a: inside the tolerance nothing is hidden, past it everything is.
+        assertEquals(0f, hiddenShare(depth = 2f, virtualDepth = 2f + tolerance(2f) * 0.99f))
+        assertEquals(1f, hiddenShare(depth = 2f, virtualDepth = 2f + tolerance(2f) * 1.01f))
     }
 
     @Test

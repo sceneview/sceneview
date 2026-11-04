@@ -95,9 +95,10 @@ fragment {
     //
     //  1. Tolerance. The real surface must be nearer than the virtual one by
     //     kTolBase + kTolLinear*d + kTolQuad*d^2 (6 cm at 1 m, 11 cm at 2 m, 27 cm at 4 m):
-    //     ARCore's depth error grows about quadratically with distance. Spread over
-    //     [0.5, 1.5] x tolerance by `b`, so the transition is a dithered ramp (soft
-    //     occlusion through the z-buffer) rather than a hard noisy line.
+    //     ARCore's depth error grows about quadratically with distance. A hard limit, not
+    //     dithered: spread over [0.5, 1.5] x tolerance by `b`, the contact band of a model
+    //     on the floor broke into vertical streaks and the placement ring into dashes
+    //     (Pixel 4a, 2026-11-04).
     //  2. Range. From kFarFadeStart to kFarFadeEnd the share of texels that occlude falls to
     //     zero: beyond ~8 m phone depth does not occlude at all.
     //  3. No depth. A texel with no depth (0, or the filter's 0xFFFF "none") occludes
@@ -122,7 +123,7 @@ fragment {
     // depth is `depth_m` and validity `depth_valid`.
     float occluderDistance(const float depth_m, const float depth_valid, const float b) {
         float tolerance = kTolBase + depth_m * (kTolLinear + kTolQuad * depth_m);
-        float occluder_m = depth_m + tolerance * (0.5 + b);
+        float occluder_m = depth_m + tolerance;
         float in_range = step(smoothstep(kFarFadeStart, kFarFadeEnd, depth_m), b);
         return mix(kNoDepthDistanceMeters, occluder_m, depth_valid * in_range);
     }
