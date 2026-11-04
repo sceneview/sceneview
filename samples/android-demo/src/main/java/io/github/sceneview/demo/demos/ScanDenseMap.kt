@@ -56,6 +56,13 @@ internal class ScanDenseMap(
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
     private var eye: DebugPose? = null
 
+    /** The first projected frame's height: the floor's guess without a floor plane. On the worker. */
+    private var firstEyeY = Float.NaN
+
+    /** ARCore's floor plane height, set from the main thread as planes come; `null` before one. */
+    @Volatile
+    var floorPlaneY: Float? = null
+
     /** How long the last [add] took, and the longest so far, in milliseconds: a device log's figures. */
     @Volatile
     var lastAddMs = 0f
@@ -98,6 +105,7 @@ internal class ScanDenseMap(
         }
         confidence.record(nanos, samples.count, atBase)
         eye = frame.pose
+        if (firstEyeY.isNaN()) firstEyeY = frame.pose.y
         return samples
     }
 
@@ -172,7 +180,8 @@ internal class ScanDenseMap(
         // merged and, past their budget, picked at random far off.
         val weak = if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
             LiveCoverageGround.weakCells(
-                fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES, at.y - LiveCoverageGround.PHONE_HEIGHT_M,
+                fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES,
+                LiveCoverageGround.floorHint(floorPlaneY, firstEyeY),
             )
         }
         live = ReplayDenseLayer(
