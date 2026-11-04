@@ -341,6 +341,7 @@
       on(b, 'click', function () { var next = effectiveTheme() === 'dark' ? 'light' : 'dark'; doc.dataset.theme = next; store('sceneview-theme', next); labelTheme(); });
     });
     labelTheme();
+    on(mqDark, 'change', labelTheme);   // the label follows the system while no theme is picked
 
     /* Mobile sheet, with a focus trap */
     var sheet = $('#menu'), opener = null;
@@ -366,8 +367,28 @@
     });
 
     /* A tab strip too narrow for its tabs scrolls sideways (the code card on a
-       phone). The selected tab is brought clear of the faded edges — the strip
-       scrolls, never the page — and data-more names the side(s) still hiding tabs. */
+       phone): M3 scrollable tabs. The selected tab is brought clear of the edges —
+       the strip scrolls, never the page — and data-more names the side(s) still
+       hiding tabs; site.css then shows the two pagination buttons around the strip.
+       They repeat what swiping and the arrow keys already do, so they stay out of
+       the tab order and the accessibility tree. */
+    $$('[role="tablist"]').forEach(function (list) {
+      var pager = document.createElement('div');
+      pager.className = 'tabs-pager';
+      list.parentNode.insertBefore(pager, list);
+      ['prev', 'next'].forEach(function (dir) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'tabs-pager__btn'; b.dataset.dir = dir;
+        b.tabIndex = -1; b.setAttribute('aria-hidden', 'true');
+        b.innerHTML = '<svg><use href="#i-chevron"/></svg>';
+        on(b, 'click', function () {
+          var step = Math.max(list.clientWidth * .8, 96) * (dir === 'prev' ? -1 : 1);
+          list.scrollBy({ left: step, behavior: caps.reduced ? 'auto' : 'smooth' });
+        });
+        if (dir === 'prev') pager.appendChild(b);
+        else { pager.appendChild(list); pager.appendChild(b); }
+      });
+    });
     function stripEdges(list) {
       var max = list.scrollWidth - list.clientWidth, x = list.scrollLeft;
       var more = max > 1 ? ((x > 1 ? 'start ' : '') + (x < max - 1 ? 'end' : '')).trim() : '';
@@ -412,7 +433,7 @@
       var status = card && $('.codecard__foot [data-status]', card);
       if (status && tab.dataset.status) { status.className = 'status status--' + tab.dataset.status; status.textContent = tab.dataset.statusLabel || tab.dataset.status; }
       var qlink = card && $('[data-quickstart]', card);
-      if (qlink && tab.dataset.href) { qlink.href = tab.dataset.href; qlink.textContent = 'Quickstart · ' + tab.textContent + ' →'; }
+      if (qlink && tab.dataset.href) { qlink.href = tab.dataset.href; qlink.textContent = tab.textContent + ' quickstart'; }
       list.dispatchEvent(new CustomEvent('sv:tab', { detail: { key: key } }));
     }
     $$('[role="tablist"]').forEach(function (list) {
@@ -442,7 +463,7 @@
       on(list, 'sv:tab', function (e) {
         var tab = $('[role="tab"][data-key="' + e.detail.key + '"]', list); if (!tab) return;
         $$('[data-start]').forEach(function (a) { a.href = tab.dataset.href; });
-        $$('[data-start-label]').forEach(function (s) { s.textContent = 'Quickstart · ' + tab.dataset.label; });
+        $$('[data-start-label]').forEach(function (s) { s.textContent = tab.dataset.label + ' quickstart'; });
       });
     });
 
@@ -452,7 +473,7 @@
     if (stars) $$('[data-stars]').forEach(function (el) { el.textContent = (el.dataset.starsPrefix || '') + stars.textContent.trim(); });
     var ver = /sceneview:sceneview:(\d+)\.(\d+)\.(\d+)/.exec(($('#ins-android') || {}).textContent || '');
     if (ver) $$('[data-release]').forEach(function (a) {
-      a.textContent = 'v' + ver[1] + '.' + ver[2];
+      a.textContent = 'Latest release: v' + ver[1] + '.' + ver[2];
       a.href = 'https://github.com/sceneview/sceneview/releases/tag/v' + ver[1] + '.' + ver[2] + '.' + ver[3];
     });
 
@@ -475,28 +496,18 @@
       });
     });
 
-    /* AI assistants: eight equal buttons, none selected by default. Every setup
-       is also laid out, hidden and aria-hidden, in the cell of the one shown
-       (site.css): the box takes the height of the tallest, so the page under it
-       does not jump. Only the shown setup changes, so the live region reads it. */
+    /* AI assistants: M3 filter chips, single select. "Any MCP client" is selected
+       first and the named clients are equal; one chip is always selected, and the
+       box below shows that client's setup at its own height. The live region reads it. */
     $$('[data-assistants]').forEach(function (group) {
       var out = document.getElementById(group.dataset.assistants);
       var shown = out && $('.mcp__setup', out);
       if (!shown) return;
-      $$('template[id^="mcp-"]').forEach(function (tpl) {
-        var ghost = document.createElement('div');
-        ghost.className = 'mcp__setup';
-        ghost.setAttribute('aria-hidden', 'true');
-        ghost.inert = true;
-        ghost.innerHTML = tpl.innerHTML;
-        out.appendChild(ghost);
-      });
       $$('button', group).forEach(function (b) {
         on(b, 'click', function () {
-          var was = b.getAttribute('aria-pressed') === 'true';
-          $$('button', group).forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
-          var tpl = document.getElementById(was ? 'mcp-any' : 'mcp-' + b.dataset.id);
-          if (!was) b.setAttribute('aria-pressed', 'true');
+          if (b.getAttribute('aria-pressed') === 'true') return;
+          $$('button', group).forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+          var tpl = document.getElementById('mcp-' + b.dataset.id);
           if (tpl) {
             shown.innerHTML = tpl.innerHTML;
             $$('.copy', shown).forEach(function (c) {

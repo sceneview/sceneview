@@ -121,7 +121,7 @@
   <symbol id="i-close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></g></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
-  <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m10 6 6 6-6 6"/></symbol>
   <symbol id="i-cube" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></g></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 20s-7.5-4.4-7.5-10.1A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.5 2.6C19.5 15.6 12 20 12 20Z"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/></symbol>
@@ -179,13 +179,6 @@
   <section class="hero hero--scene" aria-labelledby="hero-title">
     <div class="hero__pin">
       <div class="stage hero__stage" id="hero-stage" data-stage data-scene="circuit" data-autoload="idle" data-mobile="tap">
-        <div class="stage__controls">
-          <span class="badge"><span class="dot"></span><span class="when-poster">Still</span><b class="when-live">Live</b> · SceneView Web</span>
-          <span class="stage__actions">
-            <button class="stage__load" type="button"><svg><use href="#i-cube"/></svg>View in 3D <small>6&nbsp;MB</small></button>
-            <button class="stage__pause" type="button" aria-pressed="false" aria-label="Pause the camera move"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
-          </span>
-        </div>
         <div class="stage__box">
           <div class="stage__frame">
             <picture>
@@ -196,18 +189,25 @@
             <canvas class="stage__canvas" role="img" aria-label="Interactive 3D scene: a sports car on the wet start grid of a circuit at night, in the rain. Drag to move the camera."></canvas>
           </div>
         </div>
-        <p class="stage__credit credit"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept">Car Concept</a> · Eric Chadwick, Darmstadt Graphics Group · CC BY 4.0, adapted</p>
+        <div class="stage__bar">
+          <button class="stage__load btn btn--tonal" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
+          <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the camera move"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+          <p class="stage__credit credit"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept">Car Concept</a> by Eric Chadwick, Darmstadt Graphics Group, CC BY 4.0, adapted</p>
+        </div>
       </div>
 
       <div class="container hero__inner">
         <div class="hero__copy">
-          <h1 class="display" id="hero-title">3D and AR, <em>written like UI.</em></h1>
-          <p class="lead">Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. A scene is a view; a model is a node.</p>
+          <h1 class="display" id="hero-title">Declarative 3D and AR for Compose, SwiftUI and the web</h1>
+          <p class="lead">A scene is a view and a model is a node, written like the rest of your UI in Jetpack Compose, SwiftUI or the browser.</p>
           <div class="hero__ctas">
-            <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
+            <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
             <a class="btn btn--outlined btn--lg" href="/playground.html">Try it in the browser</a>
           </div>
-          <p class="hero__meta">Open source · Apache 2.0 · <a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>latest release</a></p>
+          <ul class="hero__meta">
+            <li>Open source under Apache 2.0</li>
+            <li><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
+          </ul>
           <div class="install">
             <div class="seg" role="tablist" aria-label="Install for" data-install>
               <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
@@ -219,20 +219,20 @@
             </div>
             <div class="install__panels">
             <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.65.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.65.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode › Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.65.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode: File, Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.65.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code class="cmd__tags"><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.65.0/<wbr>website-static/<wbr>js/<wbr>filament</span><span class="tagline__tail"><span class="str">/<wbr>filament.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span><br><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.65.0/<wbr>website-static/<wbr>js</span><span class="tagline__tail"><span class="str">/<wbr>sceneview.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.65.0/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.65.0/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-flutter" aria-labelledby="it-flutter" hidden><code><span class="pfx">$ </span>flutter pub add <span class="str">flutter_sceneview</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='flutter pub add flutter_sceneview'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-rn" aria-labelledby="it-rn" hidden><code><span class="pfx">$ </span>npm install <span class="str">@sceneview-sdk/react-native</span><br><span class="pfx">$ </span>npx pod-install</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='npm install @sceneview-sdk/react-native&#10;npx pod-install'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview-compose:4.65.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.65.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             </div>
-            <a class="install__next" href="/docs/quickstart/" data-start><span data-start-label>Quickstart · Android</span> <svg><use href="#i-arrow"/></svg></a>
+            <a class="install__next link" href="/docs/quickstart/" data-start><span data-start-label>Android quickstart</span></a>
           </div>
         </div>
 
         <ol class="hero__specs" aria-label="What the scene shows">
           <li><b>Clear-coat paint</b><code>KHR_materials_clearcoat</code></li>
           <li><b>Reflections on a wet track</b><code>setScreenSpaceReflections()</code></li>
-          <li><b>Floodlights, bloom and fog</b><code>addLight() · setBloom() · setFog()</code></li>
+          <li><b>Floodlights, bloom and fog</b><code>addLight(), setBloom(), setFog()</code></li>
         </ol>
       </div>
     </div>
@@ -243,9 +243,9 @@
        companies.html#sponsor and the README's Sponsors section: edit the three together. -->
   <section class="section" id="fund" aria-labelledby="fund-title">
     <div class="container">
-      <div class="card fund reveal">
-        <h2 class="h2" id="fund-title">SceneView runs in commercial products. Sponsor it or buy support.</h2>
-        <p class="lead">Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, sponsor it or buy support, now.</p>
+      <div class="fund reveal">
+        <h2 class="h2" id="fund-title">Sponsor SceneView or buy support for your product</h2>
+        <p class="lead">This is for companies shipping SceneView. Commercial products ship it, and almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, sponsor it or buy support, now.</p>
         <div class="fund__offers">
           <div class="fund__offer">
             <h3 class="h3">Sponsor</h3>
@@ -258,8 +258,8 @@
           <div class="fund__offer">
             <h3 class="h3">Commercial support</h3>
             <ul class="fund__facts">
-              <li><b>Incident &middot; $600</b><span>One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.</span></li>
-              <li><b>2.3 LTS &middot; $1,800 for 90 days</b><span>One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.</span></li>
+              <li><b>Incident: $600</b><span>One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.</span></li>
+              <li><b>2.3 LTS: $1,800 for 90 days</b><span>One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.</span></li>
             </ul>
             <p class="fund__note">Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective&rsquo;s budget. Payment comes before any work. Every version stays under Apache&nbsp;2.0.</p>
             <div class="sponsor__ctas">
@@ -275,20 +275,20 @@
   <section class="section" id="code" aria-labelledby="code-title">
     <div class="container">
       <div class="section__head">
-        <h2 class="h2 reveal" id="code-title">The code is the scene.</h2>
+        <h2 class="h2 reveal" id="code-title">The code and the scene it renders</h2>
         <p class="lead reveal">Pick a model: the string in the code and the scene beside it change together. In the Compose tab, drag the value of <code>scaleToUnits</code> and watch the model follow.</p>
       </div>
 
       <div class="cs">
         <div class="codecard reveal">
           <div class="tabs" role="tablist" aria-label="Code for" data-sync="platform">
-            <button class="tab" role="tab" id="t-compose" aria-controls="p-compose" aria-selected="true" data-key="compose" data-status="stable" data-status-label="Android · Stable" data-href="/docs/quickstart/">Compose</button>
-            <button class="tab" role="tab" id="t-swift" aria-controls="p-swift" aria-selected="false" tabindex="-1" data-key="swiftui" data-status="alpha" data-status-label="iOS · macOS · visionOS · Alpha" data-href="/docs/quickstart-ios/">SwiftUI</button>
-            <button class="tab" role="tab" id="t-web" aria-controls="p-web" aria-selected="false" tabindex="-1" data-key="web" data-status="alpha" data-status-label="Web · Alpha" data-href="/docs/quickstart-web/">Web</button>
-            <button class="tab" role="tab" id="t-flutter" aria-controls="p-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-status="alpha" data-status-label="Flutter · Alpha" data-href="/docs/quickstart-flutter/">Flutter</button>
-            <button class="tab" role="tab" id="t-rn" aria-controls="p-rn" aria-selected="false" tabindex="-1" data-key="rn" data-status="alpha" data-status-label="React Native · Alpha" data-href="/docs/quickstart-react-native/">React Native</button>
+            <button class="tab" role="tab" id="t-compose" aria-controls="p-compose" aria-selected="true" data-key="compose" data-status="stable" data-status-label="Stable on Android" data-href="/docs/quickstart/">Compose</button>
+            <button class="tab" role="tab" id="t-swift" aria-controls="p-swift" aria-selected="false" tabindex="-1" data-key="swiftui" data-status="alpha" data-status-label="Alpha on iOS, macOS and visionOS" data-href="/docs/quickstart-ios/">SwiftUI</button>
+            <button class="tab" role="tab" id="t-web" aria-controls="p-web" aria-selected="false" tabindex="-1" data-key="web" data-status="alpha" data-status-label="Alpha on the web" data-href="/docs/quickstart-web/">Web</button>
+            <button class="tab" role="tab" id="t-flutter" aria-controls="p-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-status="alpha" data-status-label="Alpha on Flutter" data-href="/docs/quickstart-flutter/">Flutter</button>
+            <button class="tab" role="tab" id="t-rn" aria-controls="p-rn" aria-selected="false" tabindex="-1" data-key="rn" data-status="alpha" data-status-label="Alpha on React Native" data-href="/docs/quickstart-react-native/">React Native</button>
           </div>
-<div role="tabpanel" id="p-compose" aria-labelledby="t-compose"><pre data-tab="4"><code><span class="cl"><span class="c">// Android · Jetpack Compose</span></span>
+<div role="tabpanel" id="p-compose" aria-labelledby="t-compose"><pre data-tab="4"><code><span class="cl"><span class="c">// Android, Jetpack Compose</span></span>
 <span class="cl"><span class="k">@Composable</span></span>
 <span class="cl"><span class="k">fun</span> <span class="f">ModelScreen</span>() {</span>
 <span class="cl" style="--in:4"><span class="in">    </span><span class="f">SceneView</span>(<wbr><span class="nb">modifier = Modifier.<span class="f">fillMaxSize</span>()) {</span></span>
@@ -302,7 +302,7 @@
 <span class="cl" style="--in:12"><span class="in">            </span>}</span>
 <span class="cl" style="--in:4"><span class="in">    </span>}</span>
 <span class="cl">}</span></code></pre><p class="codecard__hint">Drag <b>1.0f</b> sideways, or focus it and use the arrow keys.</p></div>
-<div role="tabpanel" id="p-swift" aria-labelledby="t-swift" hidden><pre data-tab="4"><code><span class="cl"><span class="c">// iOS · macOS · visionOS · SwiftUI</span></span>
+<div role="tabpanel" id="p-swift" aria-labelledby="t-swift" hidden><pre data-tab="4"><code><span class="cl"><span class="c">// iOS, macOS and visionOS, SwiftUI</span></span>
 <span class="cl"><span class="k">struct</span> <span class="f">ModelScreen</span>: View {</span>
 <span class="cl" style="--in:4"><span class="in">    </span><span class="k">@State private var</span> model: ModelNode?</span>
 <span class="cl"></span>
@@ -316,14 +316,14 @@
 <span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">task</span> { model = <span class="k">try?</span> <span class="k">await</span> ModelNode.<span class="f">load</span>(<wbr><span class="nb"><span class="s" data-literal="usdz" data-dir="">"sheen_chair.usdz"</span>) }</span></span>
 <span class="cl" style="--in:4"><span class="in">    </span>}</span>
 <span class="cl">}</span></code></pre></div>
-<div role="tabpanel" id="p-web" aria-labelledby="t-web" hidden><pre><code><span class="cl"><span class="c">&lt;!-- Web · Filament on WebAssembly --&gt;</span></span>
+<div role="tabpanel" id="p-web" aria-labelledby="t-web" hidden><pre><code><span class="cl"><span class="c">&lt;!-- Web, Filament on WebAssembly --&gt;</span></span>
 <span class="cl"><span class="k">&lt;canvas</span> id=<span class="s">"viewer"</span><span class="k">&gt;&lt;/canvas&gt;</span></span>
 <span class="cl"><span class="k">&lt;script</span> src=<span class="s">"…/filament.js"</span><span class="k">&gt;&lt;/script&gt;</span></span>
 <span class="cl"><span class="k">&lt;script</span> src=<span class="s">"…/sceneview.js"</span><span class="k">&gt;&lt;/script&gt;</span></span>
 <span class="cl"><span class="k">&lt;script&gt;</span></span>
 <span class="cl" style="--in:2"><span class="in">  </span>SceneView.<span class="f">modelViewer</span>(<span class="s">"viewer"</span>, <span class="s" data-literal="glb">"models/sheen_chair.glb"</span>)</span>
 <span class="cl"><span class="k">&lt;/script&gt;</span></span></code></pre></div>
-<div role="tabpanel" id="p-flutter" aria-labelledby="t-flutter" hidden><pre><code><span class="cl"><span class="c">// Flutter · Android and iOS</span></span>
+<div role="tabpanel" id="p-flutter" aria-labelledby="t-flutter" hidden><pre><code><span class="cl"><span class="c">// Flutter, Android and iOS</span></span>
 <span class="cl"><span class="k">final</span> controller = <span class="f">SceneViewController</span>();</span>
 <span class="cl"></span>
 <span class="cl"><span class="f">SceneView</span>(</span>
@@ -332,26 +332,19 @@
 <span class="cl" style="--in:4"><span class="in">    </span><span class="k">const</span> <span class="f">ModelNode</span>(modelPath: <span class="s" data-literal="glb" data-q="'">'models/sheen_chair.glb'</span>),</span>
 <span class="cl" style="--in:2"><span class="in">  </span>),</span>
 <span class="cl">)</span></code></pre></div>
-<div role="tabpanel" id="p-rn" aria-labelledby="t-rn" hidden><pre><code><span class="cl"><span class="c">// React Native · Android and iOS</span></span>
+<div role="tabpanel" id="p-rn" aria-labelledby="t-rn" hidden><pre><code><span class="cl"><span class="c">// React Native, Android and iOS</span></span>
 <span class="cl"><span class="k">&lt;</span><span class="f">SceneView</span></span>
 <span class="cl" style="--in:2"><span class="in">  </span>style={{ flex: <span class="n">1</span> }}</span>
 <span class="cl" style="--in:2"><span class="in">  </span>modelNodes={[{ <span class="nb">src: <span class="s" data-literal="glb" data-q="'">'models/sheen_chair.glb'</span>,</span> <span class="nb">position: [<span class="n">0</span>, <span class="n">0</span>, <span class="n">-2</span>] }]}</span></span>
 <span class="cl" style="--in:2"><span class="in">  </span>cameraControlMode=<span class="s">"orbit"</span></span>
 <span class="cl"><span class="k">/&gt;</span></span></code></pre></div>
           <div class="codecard__foot">
-            <span class="status status--stable" data-status>Android · Stable</span>
-            <a class="codecard__link" href="/docs/quickstart/" data-quickstart>Quickstart · Compose →</a>
+            <span class="status status--stable" data-status>Stable on Android</span>
+            <a class="codecard__link" href="/docs/quickstart/" data-quickstart>Compose quickstart</a>
           </div>
         </div>
 
         <div class="viewport reveal" style="--i:1" data-stage-wrap>
-          <div class="viewport__top">
-            <span class="badge"><span class="dot"></span><span class="when-poster">Still</span><b class="when-live">Live</b><span class="badge__more"> · same renderer as the code</span></span>
-            <span class="stage__actions">
-              <button class="stage__load" type="button"><svg><use href="#i-play"/></svg>Run it live <small>≈ 8&nbsp;MB</small></button>
-              <button class="stage__pause" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
-            </span>
-          </div>
           <div class="stage stage--fit" id="code-stage" data-stage data-src="/models/platforms/SheenChair.glb" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935"
                data-autoload="visible" data-mobile="tap" data-elev="0.26" data-angle="0.6" data-fill="0.7" data-top="0.42">
             <div class="stage__box" style="--sx:.5;--sy:.8103;--sw:.3553;--sh:.1911">
@@ -364,12 +357,16 @@
             </div>
           </div>
           <div class="viewport__bottom">
-            <div class="chips chips--stage" data-models="code-stage" role="group" aria-label="Swap the model">
-              <button class="chip" type="button" aria-pressed="true" data-file="SheenChair.glb" data-name="sheen_chair" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935" data-elev="0.26" data-angle="0.6" data-hull="box" data-poster="assets/home/vp-chair.webp" data-shadow=".5,.8103,.3553,.1911" data-credit="Sheen Chair · © 2020 Wayfair LLC · CC0"><img src="assets/home/thumb-chair.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Sheen chair</button>
-              <button class="chip" type="button" aria-pressed="false" data-file="Fox.glb" data-name="fox" data-bbox="-12.5927,-0.1217,-88.095,12.5927,78.9072,66.6249" data-anim="1" data-elev="0.2" data-angle="0.9" data-hull="box" data-poster="assets/home/vp-fox.webp" data-shadow=".5,.8008,.3424,.1586" data-credit='Fox · mesh PixelMannen (CC0) · rig &amp; animation tomkranis, glTF AsoboStudio &amp; scurest (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)'><img src="assets/home/thumb-fox.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Fox, animated</button>
-              <button class="chip" type="button" aria-pressed="false" data-file="ToyCar.glb" data-name="toy_car" data-bbox="-0.035,-0.0162,-0.037,0.0384,0.0126,0.037" data-elev="0.38" data-angle="0.75" data-hull="ellipse" data-poster="assets/home/vp-car.webp" data-shadow=".5,.7456,.5852,.3704" data-credit="Toy Car · Guido Odendahl · CC0"><img src="assets/home/thumb-car.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Toy car</button>
+            <div class="stage__bar">
+              <button class="stage__load btn btn--tonal" type="button"><svg><use href="#i-play"/></svg>Run it live</button>
+              <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
             </div>
-            <p class="credit" data-credit>Sheen Chair · © 2020 Wayfair LLC · CC0</p>
+            <div class="chips chips--stage" data-models="code-stage" role="group" aria-label="Swap the model">
+              <button class="chip" type="button" aria-pressed="true" data-file="SheenChair.glb" data-name="sheen_chair" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935" data-elev="0.26" data-angle="0.6" data-hull="box" data-poster="assets/home/vp-chair.webp" data-shadow=".5,.8103,.3553,.1911" data-credit="Sheen Chair, © 2020 Wayfair LLC, CC0"><img src="assets/home/thumb-chair.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Sheen chair</button>
+              <button class="chip" type="button" aria-pressed="false" data-file="Fox.glb" data-name="fox" data-bbox="-12.5927,-0.1217,-88.095,12.5927,78.9072,66.6249" data-anim="1" data-elev="0.2" data-angle="0.9" data-hull="box" data-poster="assets/home/vp-fox.webp" data-shadow=".5,.8008,.3424,.1586" data-credit='Fox: mesh by PixelMannen (CC0), rig and animation by tomkranis, glTF by AsoboStudio and scurest (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)'><img src="assets/home/thumb-fox.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Fox, animated</button>
+              <button class="chip" type="button" aria-pressed="false" data-file="ToyCar.glb" data-name="toy_car" data-bbox="-0.035,-0.0162,-0.037,0.0384,0.0126,0.037" data-elev="0.38" data-angle="0.75" data-hull="ellipse" data-poster="assets/home/vp-car.webp" data-shadow=".5,.7456,.5852,.3704" data-credit="Toy Car by Guido Odendahl, CC0"><img src="assets/home/thumb-car.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Toy car</button>
+            </div>
+            <p class="credit" data-credit>Sheen Chair, © 2020 Wayfair LLC, CC0</p>
           </div>
         </div>
       </div>
@@ -382,35 +379,34 @@
     <span id="features"></span>
     <div class="container">
       <div class="section__head">
-        <h2 class="h2 reveal" id="build-title">From a product viewer to a galaxy.</h2>
+        <h2 class="h2 reveal" id="build-title">What you can build, from a product viewer to a galaxy</h2>
       </div>
       <div class="bento">
         <article class="card tile tile--a tile--media reveal">
           <div class="tile__media ar-scene" aria-hidden="true">
             <div class="ar-scene__ring"></div>
             <img class="ar-scene__obj" src="assets/home/vp-chair.webp" alt="" loading="lazy">
-            <div class="ar-scene__measure"><span>plane · horizontal</span><span>scale 1 : 1</span></div>
           </div>
           <div class="tile__body">
-            <h3 class="h3"><a class="tile__link" href="/open?demo=ar-placement">Place it in the room, at real size.</a></h3>
+            <h3 class="h3"><a class="tile__link" href="/open?demo=ar-placement">AR placement at real size</a></h3>
             <p>Plane detection, anchors, depth occlusion and real-world scale: ARCore on Android, ARKit on iOS, written as composables and views.</p>
-            <span class="tile__go">Open the AR demo <svg><use href="#i-arrow"/></svg></span>
+            <span class="tile__go">Open the AR demo</span>
           </div>
         </article>
         <article class="card tile tile--b reveal" style="--i:1">
           <div class="tile__media tile__media--wire" aria-hidden="true"><svg class="wire" viewBox="0 0 200 200" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1"><path d="M100 20 170 60v80l-70 40-70-40V60z"/><path d="m30 60 70 40 70-40M100 100v80"/><path d="m65 40 70 40M135 40 65 80M30 100l70 40 70-40" opacity=".5"/></g></svg></div>
           <div class="tile__body">
-            <h3 class="h3"><a class="tile__link" href="/docs/formats/">Bring the files you already have.</a></h3>
-            <p>glTF and GLB on Filament, USDZ on RealityKit. STL, OBJ, PLY and 3MF are converted on load.</p>
-            <span class="tile__go">Formats guide <svg><use href="#i-arrow"/></svg></span>
+            <h3 class="h3"><a class="tile__link" href="/docs/formats/">The 3D formats you already use</a></h3>
+            <p>glTF, GLB, USDZ, STL, OBJ, PLY and 3MF. glTF and GLB render on Filament, USDZ on RealityKit; STL, OBJ, PLY and 3MF are converted on load.</p>
+            <span class="tile__go">Formats guide</span>
           </div>
         </article>
         <article class="card tile tile--c tile--media reveal">
           <div class="tile__media cosmos" role="img" aria-label="A spiral galaxy of 60,000 stars, from the SceneView iOS demo."></div>
           <div class="tile__body">
-            <h3 class="h3"><a class="tile__link" href="/docs/samples-ios/">60,000 stars, built in code.</a></h3>
+            <h3 class="h3"><a class="tile__link" href="/docs/samples-ios/">A 60,000-star galaxy generated in code</a></h3>
             <p>The Cosmos demo generates a spiral galaxy in real time. No mesh file to ship.</p>
-            <span class="tile__go">Apple samples <svg><use href="#i-arrow"/></svg></span>
+            <span class="tile__go">Apple samples</span>
           </div>
         </article>
         <article class="card tile tile--d reveal" style="--i:1">
@@ -418,22 +414,22 @@
             <div class="uiscene__card">
               <div class="uiscene__row">
                 <div class="uiscene__thumb" style="background-image:url(assets/home/thumb-chair.webp)"></div>
-                <div><div class="uiscene__title">Sheen chair</div><div class="uiscene__sub">Velvet · view in your room</div></div>
+                <div><div class="uiscene__title">Sheen chair</div><div class="uiscene__sub">Velvet, view in your room</div></div>
               </div>
               <div class="uiscene__btn">View in AR</div>
             </div>
           </div>
           <div class="tile__body">
-            <h3 class="h3"><a class="tile__link" href="/open?demo=view-node">Your UI, inside the scene.</a></h3>
+            <h3 class="h3"><a class="tile__link" href="/open?demo=view-node">Compose UI inside the 3D scene</a></h3>
             <p>ViewNode renders real Compose content on a node: labels, cards and controls placed in 3D space.</p>
-            <span class="tile__go">Open the ViewNode demo <svg><use href="#i-arrow"/></svg></span>
+            <span class="tile__go">Open the ViewNode demo</span>
           </div>
         </article>
       </div>
       <p class="try reveal"><span class="try__label">Try every demo on your phone:</span>
-        <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Google Play</a> ·
-        <a href="https://apps.apple.com/us/app/sceneview/id6761329763">App Store</a> ·
-        <a href="/web-demo/">Web demo</a></p>
+        <a class="link" href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Google Play</a>
+        <a class="link" href="https://apps.apple.com/us/app/sceneview/id6761329763">App Store</a>
+        <a class="link" href="/web-demo/">Web demo</a></p>
     </div>
   </section>
 
@@ -441,15 +437,15 @@
   <section class="section" id="platforms" aria-labelledby="platforms-title">
     <div class="container">
       <div class="section__head">
-        <h2 class="h2 reveal" id="platforms-title">Stable on Android. Alpha everywhere else, and labelled that way.</h2>
+        <h2 class="h2 reveal" id="platforms-title">Stable on Android, alpha on every other platform</h2>
         <p class="lead reveal">Native renderers underneath: Filament on Android, desktop and the web, RealityKit on Apple.</p>
       </div>
       <ul class="plat reveal">
-        <li><b>Android</b><small>Jetpack Compose · Filament · ARCore</small><span class="status status--stable">Stable</span></li>
-        <li><b>Apple</b><small>iOS, macOS, visionOS · one SwiftUI package · RealityKit · AR on iOS · USDZ, no glTF</small><span class="status status--alpha">Alpha</span></li>
-        <li><b>Web</b><small>Filament WASM · WebGL2 · glTF</small><span class="status status--alpha">Alpha</span></li>
-        <li><b>Desktop</b><small>Compose Desktop · Filament · JDK 21+</small><span class="status status--alpha">Alpha</span></li>
-        <li><b>Android TV</b><small>Same artifact as Android · D-pad input</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Android</b><small>Jetpack Compose, Filament, ARCore</small><span class="status status--stable">Stable</span></li>
+        <li><b>Apple</b><small>iOS, macOS and visionOS in one SwiftUI package on RealityKit. AR on iOS. USDZ, no glTF</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Web</b><small>Filament WASM, WebGL2, glTF</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Desktop</b><small>Compose Desktop, Filament, JDK 21+</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Android TV</b><small>Same artifact as Android, D-pad input</small><span class="status status--alpha">Alpha</span></li>
         <li><b>Flutter</b><small>Platform view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
         <li><b>React Native</b><small>Fabric view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
         <li><b>Android XR</b><small>Jetpack XR SceneCore</small><span class="status status--planned">Planned</span></li>
@@ -458,48 +454,49 @@
     </div>
   </section>
 
-  <!-- 5 · AI ASSISTANTS — neutral: equal buttons, none selected, order sourced (footnote).
+  <!-- 5 · AI ASSISTANTS — neutral: "Any MCP client" is selected first, the named clients are equal filter chips, order sourced (footnote).
        The empty span keeps /#ai-setup alive (linked from the docs). -->
   <section class="section" id="ai" aria-labelledby="ai-title">
     <span id="ai-setup"></span>
     <div class="container ai">
       <div>
-        <h2 class="h2 reveal" id="ai-title">Works with the assistant you already use.</h2>
+        <h2 class="h2 reveal" id="ai-title">Works with your AI coding assistant</h2>
         <p class="lead reveal">SceneView ships an MCP server and an <code>llms.txt</code>, so any assistant that speaks MCP reads the real API instead of guessing it.</p>
         <div class="ai__links reveal">
-          <a href="/docs/ai-context/">Setup for each client <svg width="16" height="16"><use href="#i-arrow"/></svg></a>
-          <a href="/llms.txt">Read llms.txt <svg width="16" height="16"><use href="#i-arrow"/></svg></a>
+          <a class="link" href="/docs/ai-context/">Setup for each client</a>
+          <a class="link" href="/llms.txt">Read llms.txt</a>
         </div>
       </div>
       <div class="reveal" style="--i:1">
         <div class="assistants" role="group" aria-label="Show the setup for" data-assistants="mcp-out">
-          <button type="button" aria-pressed="false" data-id="claude">Claude Code</button>
-          <button type="button" aria-pressed="false" data-id="copilot">GitHub Copilot</button>
-          <button type="button" aria-pressed="false" data-id="codex">OpenAI Codex</button>
-          <button type="button" aria-pressed="false" data-id="cursor">Cursor</button>
-          <button type="button" aria-pressed="false" data-id="gemini">Gemini Code Assist</button>
-          <button type="button" aria-pressed="false" data-id="jetbrains">JetBrains AI</button>
-          <button type="button" aria-pressed="false" data-id="opencode">OpenCode</button>
-          <button type="button" aria-pressed="false" data-id="antigravity">Google Antigravity</button>
+          <button type="button" aria-pressed="true" data-id="any"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>Any MCP client</button>
+          <button type="button" aria-pressed="false" data-id="claude"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>Claude Code</button>
+          <button type="button" aria-pressed="false" data-id="copilot"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>GitHub Copilot</button>
+          <button type="button" aria-pressed="false" data-id="codex"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>OpenAI Codex</button>
+          <button type="button" aria-pressed="false" data-id="cursor"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>Cursor</button>
+          <button type="button" aria-pressed="false" data-id="gemini"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>Gemini Code Assist</button>
+          <button type="button" aria-pressed="false" data-id="jetbrains"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>JetBrains AI</button>
+          <button type="button" aria-pressed="false" data-id="opencode"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>OpenCode</button>
+          <button type="button" aria-pressed="false" data-id="antigravity"><svg class="chip__check" width="18" height="18" aria-hidden="true"><use href="#i-check"/></svg>Google Antigravity</button>
         </div>
         <div class="mcp" id="mcp-out" aria-live="polite">
           <div class="mcp__setup">
-            <p class="mcp__label">Any MCP client · pick your assistant above for its exact setup</p>
+            <p class="mcp__label">Any MCP client: run the server with npx</p>
             <div class="cmd"><code><span class="pfx">$ </span>npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
           </div>
         </div>
         <p class="footnote">Ordered by the share of professional developers who use each tool at work, from the <a href="https://blog.jetbrains.com/research/2026/08/ai-coding-agent-adoption-2026/">JetBrains Developer Ecosystem Survey 2026</a> (published Aug 18, 2026). Gemini is placed using the <a href="https://stackoverflow.blog/2026/05/27/agents-on-a-leash-agentic-ai-remains-mostly-monitored-at-work/">Stack Overflow pulse survey</a> of April 2026, since JetBrains does not report it. Any MCP client works; names belong to their owners.</p>
       </div>
     </div>
-    <template id="mcp-any"><p class="mcp__label">Any MCP client · pick your assistant above for its exact setup</p><div class="cmd"><code><span class="pfx">$ </span>npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-claude"><p class="mcp__label">Claude Code · terminal</p><div class="cmd"><code><span class="pfx">$ </span>claude mcp add sceneview <span class="nb">-- npx -y <span class="str">sceneview-mcp</span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="claude mcp add sceneview -- npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-copilot"><p class="mcp__label">GitHub Copilot in VS Code · <code>.vscode/mcp.json</code></p><div class="cmd"><code>{"servers":{"sceneview":{<span class="json__in"><span class="kv">"type":"stdio",</span><wbr><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"servers":{"sceneview":{"type":"stdio","command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-codex"><p class="mcp__label">OpenAI Codex · terminal</p><div class="cmd"><code><span class="pfx">$ </span>codex mcp add sceneview <span class="nb">-- npx -y <span class="str">sceneview-mcp</span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="codex mcp add sceneview -- npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-cursor"><p class="mcp__label">Cursor · <code>.cursor/mcp.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-gemini"><p class="mcp__label">Gemini CLI and Code Assist · <code>~/.gemini/settings.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-jetbrains"><p class="mcp__label">JetBrains AI Assistant · Settings › Tools › AI Assistant › Model Context Protocol</p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-opencode"><p class="mcp__label">OpenCode · <code>opencode.json</code></p><div class="cmd"><code>{"mcp":{"sceneview":{<span class="json__in"><span class="kv">"type":"local",</span><wbr><span class="kv">"command":["npx",<wbr><span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"],</span><wbr><span class="kv">"enabled":true</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcp":{"sceneview":{"type":"local","command":["npx","-y","sceneview-mcp"],"enabled":true}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
-    <template id="mcp-antigravity"><p class="mcp__label">Google Antigravity · <code>mcp_config.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-any"><p class="mcp__label">Any MCP client: run the server with npx</p><div class="cmd"><code><span class="pfx">$ </span>npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-claude"><p class="mcp__label">Claude Code: run in a terminal</p><div class="cmd"><code><span class="pfx">$ </span>claude mcp add sceneview <span class="nb">-- npx -y <span class="str">sceneview-mcp</span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="claude mcp add sceneview -- npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-copilot"><p class="mcp__label">GitHub Copilot in VS Code: <code>.vscode/mcp.json</code></p><div class="cmd"><code>{"servers":{"sceneview":{<span class="json__in"><span class="kv">"type":"stdio",</span><wbr><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"servers":{"sceneview":{"type":"stdio","command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-codex"><p class="mcp__label">OpenAI Codex: run in a terminal</p><div class="cmd"><code><span class="pfx">$ </span>codex mcp add sceneview <span class="nb">-- npx -y <span class="str">sceneview-mcp</span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="codex mcp add sceneview -- npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-cursor"><p class="mcp__label">Cursor: <code>.cursor/mcp.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-gemini"><p class="mcp__label">Gemini CLI and Code Assist: <code>~/.gemini/settings.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-jetbrains"><p class="mcp__label">JetBrains AI Assistant: Settings, Tools, AI Assistant, Model Context Protocol</p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-opencode"><p class="mcp__label">OpenCode: <code>opencode.json</code></p><div class="cmd"><code>{"mcp":{"sceneview":{<span class="json__in"><span class="kv">"type":"local",</span><wbr><span class="kv">"command":["npx",<wbr><span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"],</span><wbr><span class="kv">"enabled":true</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcp":{"sceneview":{"type":"local","command":["npx","-y","sceneview-mcp"],"enabled":true}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-antigravity"><p class="mcp__label">Google Antigravity: <code>mcp_config.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{<span class="json__in"><span class="kv">"command":"npx",</span><wbr><span class="kv">"args":[<span class="nb">"-y",</span><wbr>"<span class="str">sceneview-mcp</span>"]</span></span>}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
   </section>
 
   <!-- 6 · PROOF — numbers that anyone can re-check, each with its source.
@@ -508,7 +505,7 @@
     <span id="metrics"></span>
     <div class="container">
       <div class="section__head">
-        <h2 class="h2 reveal" id="proof-title">Public numbers anyone can re-check.</h2>
+        <h2 class="h2 reveal" id="proof-title">Public adoption numbers anyone can re-check</h2>
       </div>
       <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
            the nav (its data-metric anchor) is the one value rewritten weekly by
@@ -526,7 +523,7 @@
   <section class="section" id="faq" aria-labelledby="faq-title">
     <div class="container">
       <div class="section__head">
-        <h2 class="h2 reveal" id="faq-title">Where SceneView fits.</h2>
+        <h2 class="h2 reveal" id="faq-title">How SceneView compares</h2>
       </div>
       <div class="vs reveal">
         <!-- Narrow screens show SceneView next to one alternative at a time (CSS only). -->
@@ -567,16 +564,16 @@
   <section class="section" id="start" aria-labelledby="start-title">
     <div class="container">
       <div class="finale reveal">
-        <h2 class="h2" id="start-title">Your first scene is ten lines away.</h2>
+        <h2 class="h2" id="start-title">Get started in ten lines of code</h2>
         <p class="lead">Follow the quickstart for your platform, or open the playground and edit a live scene in the browser.</p>
         <div class="finale__ctas">
-          <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
+          <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
           <a class="btn btn--outlined btn--lg" href="/playground.html">Open the playground</a>
         </div>
       </div>
-      <div class="card sponsor reveal">
+      <div class="sponsor reveal">
         <div>
-          <h3 class="h3">Keep SceneView free and open.</h3>
+          <h3 class="h3">Donate to keep SceneView free and open</h3>
           <p>SceneView is built in the open by its contributors. If it saves you time, a donation helps keep it moving.</p>
         </div>
         <div class="sponsor__ctas">
