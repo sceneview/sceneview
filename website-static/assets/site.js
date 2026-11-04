@@ -369,26 +369,7 @@
     /* A tab strip too narrow for its tabs scrolls sideways (the code card on a
        phone): M3 scrollable tabs. The selected tab is brought clear of the edges —
        the strip scrolls, never the page — and data-more names the side(s) still
-       hiding tabs; site.css then shows the two pagination buttons around the strip.
-       They repeat what swiping and the arrow keys already do, so they stay out of
-       the tab order and the accessibility tree. */
-    $$('[role="tablist"]').forEach(function (list) {
-      var pager = document.createElement('div');
-      pager.className = 'tabs-pager';
-      list.parentNode.insertBefore(pager, list);
-      ['prev', 'next'].forEach(function (dir) {
-        var b = document.createElement('button');
-        b.type = 'button'; b.className = 'tabs-pager__btn'; b.dataset.dir = dir;
-        b.tabIndex = -1; b.setAttribute('aria-hidden', 'true');
-        b.innerHTML = '<svg><use href="#i-chevron"/></svg>';
-        on(b, 'click', function () {
-          var step = Math.max(list.clientWidth * .8, 96) * (dir === 'prev' ? -1 : 1);
-          list.scrollBy({ left: step, behavior: caps.reduced ? 'auto' : 'smooth' });
-        });
-        if (dir === 'prev') pager.appendChild(b);
-        else { pager.appendChild(list); pager.appendChild(b); }
-      });
-    });
+       hiding tabs. */
     function stripEdges(list) {
       var max = list.scrollWidth - list.clientWidth, x = list.scrollLeft;
       var more = max > 1 ? ((x > 1 ? 'start ' : '') + (x < max - 1 ? 'end' : '')).trim() : '';
@@ -496,24 +477,18 @@
       });
     });
 
-    /* AI assistants: M3 filter chips, single select. "Any MCP client" is selected
-       first and the named clients are equal; one chip is always selected, and the
-       box below shows that client's setup at its own height. The live region reads it. */
-    $$('[data-assistants]').forEach(function (group) {
-      var out = document.getElementById(group.dataset.assistants);
+    /* AI assistants: one M3 select, "Any MCP client" first. The box below shows the
+       chosen client's setup at its own height, and the live region reads it. */
+    $$('select[data-assistants]').forEach(function (pick) {
+      var out = document.getElementById(pick.dataset.assistants);
       var shown = out && $('.mcp__setup', out);
       if (!shown) return;
-      $$('button', group).forEach(function (b) {
-        on(b, 'click', function () {
-          if (b.getAttribute('aria-pressed') === 'true') return;
-          $$('button', group).forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
-          var tpl = document.getElementById('mcp-' + b.dataset.id);
-          if (tpl) {
-            shown.innerHTML = tpl.innerHTML;
-            $$('.copy', shown).forEach(function (c) {
-              on(c, 'click', function () { copy(c, c.dataset.copyText || $('code', c.parentElement).textContent); });
-            });
-          }
+      on(pick, 'change', function () {
+        var tpl = document.getElementById('mcp-' + pick.value);
+        if (!tpl) return;
+        shown.innerHTML = tpl.innerHTML;
+        $$('.copy', shown).forEach(function (c) {
+          on(c, 'click', function () { copy(c, c.dataset.copyText || $('code', c.parentElement).textContent); });
         });
       });
     });

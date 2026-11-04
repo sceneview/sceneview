@@ -24,6 +24,8 @@
   --svs-on-fill: var(--on-accent, #06080C);
   --svs-warm: var(--warm, #FFB86B);
   --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);   /* M3 elevation level 3 */
+  --svs-sel: var(--md-sys-color-secondary-container, #33466D);
+  --svs-on-sel: var(--md-sys-color-on-secondary-container, #A1B5E2);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -40,6 +42,8 @@
     --svs-on-fill: var(--on-accent, #FFFFFF);
     --svs-warm: var(--warm, #A2560A);
     --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);
+    --svs-sel: var(--md-sys-color-secondary-container, #BBCFFD);
+    --svs-on-sel: var(--md-sys-color-on-secondary-container, #44587F);
     color-scheme: light;
   }
 }
@@ -56,6 +60,8 @@
   --svs-on-fill: var(--on-accent, #FFFFFF);
   --svs-warm: var(--warm, #A2560A);
   --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);
+  --svs-sel: var(--md-sys-color-secondary-container, #BBCFFD);
+  --svs-on-sel: var(--md-sys-color-on-secondary-container, #44587F);
   color-scheme: light;
 }
 
@@ -102,15 +108,20 @@
 .svs__title { font-size: 1.25rem; line-height: 1.2; font-weight: 400; color: var(--svs-text); }
 .svs__text { margin-top: 6px; font-size: .9375rem; line-height: 1.5; color: var(--svs-text-2); }
 
-.svs__freq {
-  display: inline-flex; margin-top: 16px; padding: 3px; gap: 2px;
-  border-radius: 999px; background: var(--svs-surface-2);
-}
+/* M3 segmented button, as on the home page's compare picker: outlined, fully round,
+   the selected segment on secondary-container. The fallbacks are the same M3 roles. */
+.svs__freq { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin-top: 16px; }
 .svs__freq button {
-  min-height: 34px; padding: 0 14px; border: 0; border-radius: 999px; cursor: pointer;
-  background: transparent; color: var(--svs-text-2); font: inherit; font-size: .875rem; font-weight: 600;
+  position: relative; min-width: 96px; min-height: 40px; padding: 0 16px; cursor: pointer;
+  border: 1px solid var(--svs-outline); border-radius: 0; background: transparent;
+  color: var(--svs-text); font: inherit; font-size: .875rem; font-weight: 500; letter-spacing: .1px;
 }
-.svs__freq button[aria-pressed="true"] { background: var(--svs-surface); color: var(--svs-text); box-shadow: 0 0 0 1px var(--svs-outline) inset; }
+.svs__freq button + button { border-left: 0; }
+.svs__freq button:first-child { border-radius: 999px 0 0 999px; }
+.svs__freq button:last-child { border-radius: 0 999px 999px 0; }
+.svs__freq button::after { content: ""; position: absolute; inset: -5px 0; }   /* 48 dp touch target */
+.svs__freq button:hover { background: color-mix(in srgb, var(--svs-text) 8%, transparent); }
+.svs__freq button[aria-pressed="true"] { background: var(--svs-sel); color: var(--svs-on-sel); }
 
 .svs__amts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
 .svs__amt {
