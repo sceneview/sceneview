@@ -27,12 +27,29 @@ import io.github.sceneview.node.CameraNode
  *
  * ### Changing the radius or the target
  *
- * The manipulator is keyed on [orbitRadius] and [targetPosition]: pass a new value (a radius
- * derived from a model's measured size, a target that moves once the model has loaded) and a
- * fresh manipulator frames it. `SceneView` glides the camera from the pose on screen to the new
- * framing over ~0.6 s instead of cutting. A rebuild starts a new orbit, so the user's current
+ * The manipulator is keyed on [orbitRadius], [targetPosition] and [key]: pass a new value (a
+ * radius derived from a model's measured size, a target that moves once the model has loaded)
+ * and a fresh manipulator frames it. `SceneView` glides the camera from the pose on screen to the
+ * new framing over ~0.6 s instead of cutting. A rebuild starts a new orbit, so the user's current
  * orbit angle is replaced by the default 3/4 view: derive the radius once from what it depends
  * on, don't animate it frame by frame.
+ *
+ * [creator] is not a key (a lambda that captures a value re-created on recomposition is a new
+ * instance every time): a different [creator] is used at the next rebuild — change [key] to make
+ * that happen now.
+ *
+ * ### Going back to the start
+ *
+ * Change [key] to rebuild the manipulator at its starting framing; the camera glides back. A
+ * "double-tap to reset the view", with no `key { }` block around the call:
+ *
+ * ```kotlin
+ * var resets by remember { mutableIntStateOf(0) }
+ * SceneView(
+ *     cameraManipulator = rememberCameraManipulator(orbitRadius = 3f, key = resets),
+ *     onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
+ * )
+ * ```
  *
  * ### Inertia
  *
@@ -45,10 +62,39 @@ import io.github.sceneview.node.CameraNode
  *                       (optional; defaults to the origin).
  * @param inertia        How orbit, pan and pinch coast after release. Applied to the manipulator
  *                       [creator] returns when it is a
- *                       [CameraGestureDetector.DefaultCameraManipulator].
+ *                       [CameraGestureDetector.DefaultCameraManipulator]. Never rebuilds it.
+ * @param key            Any value, like the key of `remember(key) { }`: when it changes, the
+ *                       manipulator is rebuilt by [creator] at its starting framing and the
+ *                       camera glides back there. `null` (the default) never triggers a rebuild
+ *                       on its own.
  * @param creator        Factory for the manipulator. Override to set a custom orbit speed, etc.
- *                       Called again whenever [orbitRadius] or [targetPosition] changes.
+ *                       Called again whenever [orbitRadius], [targetPosition] or [key] changes —
+ *                       not when only the lambda instance changes.
  */
+@Composable
+fun rememberCameraManipulator(
+    orbitRadius: Float,
+    targetPosition: Position? = null,
+    inertia: Inertia = Inertia.Default,
+    key: Any? = null,
+    creator: () -> CameraGestureDetector.CameraManipulator = {
+        createDefaultCameraManipulator(orbitRadius = orbitRadius, targetPosition = targetPosition)
+    }
+): CameraGestureDetector.CameraManipulator =
+    // Keyed on the framing inputs. The keyless `remember(creator)` this replaces built the
+    // manipulator once and silently ignored every later radius, which pushed callers into
+    // rebuilding it themselves — and every such rebuild used to be a visible camera cut.
+    remember(orbitRadius, targetPosition, key) { creator() }.also { it.applyInertia(inertia) }
+
+/**
+ * Binary-compatibility shim for the pre-`key` descriptor of the `orbitRadius`
+ * [rememberCameraManipulator]: keeps a library compiled against the old signature linking, with
+ * no `key`.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the rememberCameraManipulator overload that takes `key`.",
+    level = DeprecationLevel.HIDDEN,
+)
 @Composable
 fun rememberCameraManipulator(
     orbitRadius: Float,
@@ -57,11 +103,13 @@ fun rememberCameraManipulator(
     creator: () -> CameraGestureDetector.CameraManipulator = {
         createDefaultCameraManipulator(orbitRadius = orbitRadius, targetPosition = targetPosition)
     }
-): CameraGestureDetector.CameraManipulator =
-    // Keyed on the framing inputs. The keyless `remember(creator)` this replaces built the
-    // manipulator once and silently ignored every later radius, which pushed callers into
-    // rebuilding it themselves — and every such rebuild used to be a visible camera cut.
-    remember(orbitRadius, targetPosition) { creator() }.also { it.applyInertia(inertia) }
+): CameraGestureDetector.CameraManipulator = rememberCameraManipulator(
+    orbitRadius = orbitRadius,
+    targetPosition = targetPosition,
+    inertia = inertia,
+    key = null,
+    creator = creator,
+)
 
 /**
  * Binary-compatibility shim for the pre-`inertia` descriptor of the `orbitRadius`
@@ -85,6 +133,24 @@ fun rememberCameraManipulator(
     inertia = Inertia.Default,
     creator = creator,
 )
+
+/**
+ * `SceneView`'s own default manipulator, started at [initialEyePosition] — the camera node's
+ * position — and deliberately **not** keyed on it: only the first value is read. The camera node
+ * follows the manipulator, so its position changes on every orbit; keying on it, as the public
+ * overloads key on what callers pass (#4838), would rebuild the manipulator and re-home the camera
+ * on every recomposition after the user moved it.
+ *
+ * @param creator Builds the manipulator from the eye position; injectable for tests, which cannot
+ *                load Filament's native `Manipulator`.
+ */
+@Composable
+internal fun rememberDefaultCameraManipulator(
+    initialEyePosition: Position,
+    creator: (eyePosition: Position) -> CameraGestureDetector.CameraManipulator = { eyePosition ->
+        createDefaultCameraManipulator(eyePosition = eyePosition)
+    },
+): CameraGestureDetector.CameraManipulator = remember { creator(initialEyePosition) }
 
 /** Sets [inertia] on the manipulator when it is the stock one (a plain property write). */
 internal fun CameraGestureDetector.CameraManipulator.applyInertia(inertia: Inertia) {
