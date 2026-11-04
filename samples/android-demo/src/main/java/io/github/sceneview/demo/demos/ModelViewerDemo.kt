@@ -274,7 +274,11 @@ fun ModelViewerDemo(onBack: () -> Unit) {
 private val BUNDLED_VIEWER_MODELS = listOf(
     // Phoenix Bird by NORBERTO-3D, CC-BY 4.0: the hero since the Damaged Helmet left (its
     // original is CC-BY-NC, which a store screenshot or a demo card cannot show).
-    BundledViewerModel("models/phoenix_bird.glb", "Phoenix Bird", R.string.demo_model_desc_phoenix_bird),
+    // Authored ~960 units long: shown with a ~1.9 m wingspan, inside the viewer camera's range.
+    BundledViewerModel(
+        "models/phoenix_bird.glb", "Phoenix Bird", R.string.demo_model_desc_phoenix_bird,
+        scale = PHOENIX_BIRD_SCALE,
+    ),
     // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
     // Its stand-in is the bundled motorcycle helmet — the nearest thing the APK ships, another
     // helmet — shown instantly while the HD file downloads or loads.
@@ -1030,9 +1034,6 @@ private fun SingleModelSection(
     // where the garden's canopy tinted them green). A lighting the user picked stays. One default
     // for every model also retires the per-model switch of #4171 and its "yellow flash".
     val requestedEnvironment = userEnvironment ?: viewerEnvironments.first()
-    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
-    // Apollo 11 scans) is shown at its real size.
-    val modelScale = hdAssetOnStage?.scale ?: 1f
     // Whether the instance on stage is the one the current selection asked for, rather than the
     // previous model kept up while the next one loads.
     val stageShowsSelection = when {
@@ -1146,14 +1147,17 @@ private fun SingleModelSection(
     // Read from the entry that owns the instance on stage, not from the pick: the model still up
     // while the next one loads keeps its own turn instead of taking the next model's (the helmet
     // spun 180° for Soldier's sake between a Surprise model and Soldier).
-    val frontYaw = remember(activeModelInstance, hdAssetOnStage) {
-        val owner = when {
+    val stageOwner = remember(activeModelInstance, hdAssetOnStage) {
+        when {
             activeModelInstance == null || streamedModelInstance != null -> null
             hdAssetOnStage != null -> ALL_VIEWER_MODELS.firstOrNull { it.hdAssetId == hdAssetOnStage.id }
             else -> ALL_VIEWER_MODELS.firstOrNull { it.assetPath == bundledModel?.assetPath }
         }
-        owner?.frontYaw ?: 0f
     }
+    val frontYaw = stageOwner?.frontYaw ?: 0f
+    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
+    // Apollo 11 scans) is shown at its real size, a bundled one by its entry's `scale`.
+    val modelScale = hdAssetOnStage?.scale ?: stageOwner?.scale ?: 1f
     val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
         runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
@@ -2994,3 +2998,6 @@ internal fun viewerHomeFraming(
  * default bulged a car's bonnet towards the lens.
  */
 internal const val VIEWER_FOCAL_LENGTH_MM = 40.0
+
+/** Metres per unit of `phoenix_bird.glb`, authored ~960 units long: a ~1.9 m wingspan. */
+internal const val PHOENIX_BIRD_SCALE = 0.002f
