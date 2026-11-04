@@ -36,7 +36,7 @@ import SceneViewSwift
 /// ⚠️ That swap is also why this demo is deliberately absent from the App Store
 /// screenshot set (#2896). The bundled stand-ins are intentionally distinct
 /// silhouettes rather than four copies of one hero (#2355), so a keyless build
-/// composes a tree island, a piano, a lantern and a shiba — a scene no keyless
+/// composes a tree island, a book, a lantern and a shiba — a scene no keyless
 /// user sees as the documented park. The substitution itself is by design;
 /// what it is not is a listing screenshot.
 struct MultiModelDemo: View {

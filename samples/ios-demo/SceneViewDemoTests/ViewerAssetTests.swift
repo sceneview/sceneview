@@ -180,6 +180,20 @@ final class ViewerAssetTests: XCTestCase {
         )
     }
 
+    /// The home hero, the viewer's first-run model and the AR occlusion demos
+    /// show the CC-BY Phoenix Bird: the Damaged Helmet they used to show has a
+    /// CC-BY-NC source and cannot appear on a store screen.
+    func testFirstRunModelIsTheCCBYPhoenix() {
+        XCTAssertEqual(HomeHero.heroAssetName, "phoenix_bird")
+        XCTAssertEqual(models.first?.assetName, HomeHero.heroAssetName)
+        #if os(iOS)
+        XCTAssertEqual(ARPlacementExperience.comparisonModel, "phoenix_bird")
+        #endif
+        let credit = BundledAssetCredits.credit(forBundledPath: "Models/phoenix_bird.usdz")
+        XCTAssertEqual(credit?.author, "NORBERTO-3D")
+        XCTAssertEqual(credit?.license, "CC-BY 4.0")
+    }
+
     /// Every picker card carries its one line, and a model Android also ships
     /// reads Android's `demo_model_desc_*` string word for word. The strings
     /// are read from the Android sources, so a change on either side fails
@@ -188,7 +202,6 @@ final class ViewerAssetTests: XCTestCase {
         let android = try Self.androidModelDescriptions()
         // iOS asset name → Android `demo_model_desc_<key>`.
         let keys: [String: String] = [
-            "khronos_damaged_helmet": "damaged_helmet",
             "khronos_flight_helmet": "flight_helmet",
             "khronos_lantern": "lantern",
             "khronos_toy_car": "toy_car",
