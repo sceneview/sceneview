@@ -11,6 +11,7 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene
 import com.google.android.filament.Texture
 import com.google.android.filament.Texture.PixelBufferDescriptor
+import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Config
 import com.google.ar.core.Coordinates2d
@@ -18,6 +19,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.arcore.semanticImage
+import io.github.sceneview.ar.depth.DepthOcclusionFilter
 import io.github.sceneview.ar.node.ARFogConfig
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
@@ -38,6 +40,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.ShortBuffer
+import java.util.concurrent.ConcurrentLinkedQueue
 
 const val kUVTransformParameter = "uvTransform"
 const val kCameraTextureParameter = "cameraTexture"
@@ -188,6 +191,12 @@ open class ARCameraStream(
     private var depthWidth = 0
     private var depthHeight = 0
 
+    /** Temporal filter between ARCore's depth image and [depthTexture] — see [updateDepth]. */
+    internal val depthFilter = DepthOcclusionFilter()
+
+    // Upload buffers handed back by Filament's upload-completed callback (any thread).
+    private val depthUploadBuffers = ConcurrentLinkedQueue<ByteBuffer>()
+
     /**
      * (Re)builds [depthTexture] at [width]×[height] when the depth resolution first becomes
      * known or later changes (display rotation, camera-config switch), and rebinds it on both
@@ -214,9 +223,9 @@ open class ARCameraStream(
         depthWidth = width
         depthHeight = height
         depthOcclusionMaterial.defaultInstance
-            .setTexture(kDepthTextureParameter, depthTexture)
+            .setTexture(kDepthTextureParameter, depthTexture, depthSampler)
         personOcclusionMaterial.defaultInstance
-            .setTexture(kDepthTextureParameter, depthTexture)
+            .setTexture(kDepthTextureParameter, depthTexture, depthSampler)
     }
 
     /**
@@ -243,7 +252,7 @@ open class ARCameraStream(
         defaultInstance.apply {
             setParameter(kUVTransformParameter, Transform())
             setExternalTexture(kCameraTextureParameter, cameraTexture)
-            setTexture(kDepthTextureParameter, depthTexture)
+            setTexture(kDepthTextureParameter, depthTexture, depthSampler)
             // Fog defaults — match `FogNode`'s defaults for parameter parity.
             setParameter(kFogEnabledParameter, 0f)
             setParameter(kFogColorParameter, Float3(0.8f, 0.866f, 1.0f))
@@ -295,7 +304,7 @@ open class ARCameraStream(
             defaultInstance.apply {
                 setParameter(kUVTransformParameter, Transform())
                 setExternalTexture(kCameraTextureParameter, cameraTexture)
-                setTexture(kDepthTextureParameter, depthTexture)
+                setTexture(kDepthTextureParameter, depthTexture, depthSampler)
                 setTexture(kPersonTextureParameter, personMaskTexture)
                 // Fog defaults — match `FogNode`'s defaults for parameter parity.
                 setParameter(kFogEnabledParameter, 0f)
@@ -381,21 +390,30 @@ open class ARCameraStream(
      *
      * Disable this value to apply the standard camera material to the CameraStream.
      *
-     * ### Depth ByteBuffer lifecycle (#1757)
+     * Prefer [Config.DepthMode.AUTOMATIC]: its smoothed depth is dense, where raw depth leaves
+     * holes on every untextured surface.
      *
-     * The depth [ByteBuffer] handed to Filament via [PixelBufferDescriptor] is borrowed
-     * from the ARCore [com.google.ar.core.Image] — **not cloned**. Closure of the ARCore
-     * image is serialised to the descriptor's upload-completed callback, so a stale
-     * read after `Image.close()` is structurally impossible:
+     * ### What occludes, and what does not
      *
-     *  - Filament keeps the [PixelBufferDescriptor] alive until the GPU transfer
-     *    finishes; only then does the callback fire and call [Image.close].
-     *  - Toggling this property mid-upload is safe: the setter only swaps material
-     *    instances, never the in-flight buffer. The upload-completed callback still
-     *    fires and closes its own image. See the long-form comment in [update].
-     *  - On [destroy], Filament cancels in-flight uploads BEFORE freeing
-     *    [depthTexture], so the callback still fires and the image is closed exactly
-     *    once.
+     *  - The depth is filtered over time ([DepthOcclusionFilter]): a frame with no new depth
+     *    keeps the last one, one-image swings on thin or white occluders are ignored, noise on
+     *    floors and walls is averaged.
+     *  - The real world must be nearer than the virtual surface by a tolerance that grows with
+     *    distance (3 cm + 2 % + 1 %/m, so 6 cm at 1 m, 27 cm at 4 m), dithered over a band so the
+     *    edge is soft: a model standing on the floor, a shadow lying on it, is never cut by the
+     *    floor's own noise.
+     *  - Beyond 5 m the real world progressively stops occluding, and from 8 m it never does:
+     *    phone depth that far is a guess.
+     *  - Untextured surfaces (a white wall, a door frame) have little depth of their own: ARCore
+     *    fills them from their edges, which is right on a flat wall and wrong on a bare one seen
+     *    from too close. That is a limit of motion-stereo depth, not of this renderer.
+     *
+     * ### Depth buffer lifecycle (#1757)
+     *
+     * The ARCore depth [com.google.ar.core.Image] is copied into the filter and closed in the
+     * same frame; Filament uploads from a buffer of our own, recycled by the upload-completed
+     * callback. Toggling this property or [destroy] while an upload is in flight is safe: no
+     * ARCore image is held by it.
      */
     var isDepthOcclusionEnabled = false
         set(value) {
@@ -687,96 +705,84 @@ open class ARCameraStream(
         // material (the latter keeps the depth path so static geometry still occludes). Upload
         // depth whenever either path is active.
         if (isDepthOcclusionEnabled || isPersonOcclusionEnabled) {
-            when (session.config.depthMode) {
-                Config.DepthMode.AUTOMATIC -> {
-                    runCatching {
-                        frame.acquireDepthImage16Bits()
-                    }.getOrNull()
-                }
-
-                Config.DepthMode.RAW_DEPTH_ONLY -> {
-                    runCatching {
-                        frame.acquireRawDepthImage16Bits()
-                    }.getOrNull()
-                }
-
-                else -> null
-            }?.let { depthImage ->
-                // Depth ByteBuffer lifecycle invariant (#1757).
-                //
-                // We pass `depthImage.planes[0].buffer` directly to Filament's
-                // [PixelBufferDescriptor] WITHOUT cloning it. The earlier comment
-                // claimed the buffer was cloned (followed by a `//.clone()` strike-through
-                // in the source) — that was misleading: the code never has cloned
-                // and we have intentionally kept it that way.
-                //
-                // The correct invariant is: Filament uploads asynchronously, holding a
-                // strong reference to the [PixelBufferDescriptor] (and through it, our
-                // ARCore-owned buffer) until the GPU transfer completes. The completion
-                // callback below is THE serialization point that makes
-                // [depthImage.close] safe: it fires AFTER Filament releases its hold,
-                // so the ARCore native handle is never released while a transfer is
-                // still draining.
-                //
-                // Why not clone defensively?
-                //  - The buffer is sized W×H×2 bytes (e.g. 160×120×2 = 38.4 kB on a
-                //    Pixel-class device for depth16 AUTOMATIC mode). Cloning at 30 Hz
-                //    would churn ~1.1 MB/s of fresh DirectByteBuffer allocation +
-                //    cleaner work, for zero correctness benefit.
-                //  - The current path is structurally race-free: the upload-completed
-                //    callback owns the close, no other code path closes the image.
-                //
-                // What about toggling [isDepthOcclusionEnabled] off mid-upload?
-                //  - The toggle setter only swaps the material instance — it does NOT
-                //    touch any in-flight [depthImage] or its [PixelBufferDescriptor].
-                //  - Subsequent frames skip this whole block (we're inside
-                //    `if (isDepthOcclusionEnabled)`), so no NEW depth acquire happens.
-                //  - The previously-uploaded depth image still completes via its
-                //    callback, closing itself cleanly. No use-after-close.
-                //
-                // What about destruction (`destroy()`) while an upload is in flight?
-                //  - `engine.safeDestroyTexture(depthTexture)` runs in `destroy()`.
-                //    Filament guarantees the descriptor callback fires (with the
-                //    upload either completed or cancelled) before the texture is
-                //    freed, so `depthImage.close` is still invoked exactly once.
-                //
-                // `buffer.clear()` inside the callback only resets ByteBuffer
-                // position/limit metadata — it does NOT free native memory. The actual
-                // memory is owned by the ARCore [com.google.ar.core.Image] and freed
-                // by [depthImage.close].
-                val depthPlane = depthImage.planes[0]
-                val buffer = depthPlane.buffer
-                val width = depthImage.width
-                val height = depthImage.height
-                if (width <= 0 || height <= 0) {
-                    // Nothing uploadable — close the ARCore image ourselves, since no
-                    // PixelBufferDescriptor callback will run to do it for us.
-                    depthImage.close()
-                    return@let
-                }
-
-                ensureDepthTexture(width, height)
-
-                // ARCore's depth plane may be row-padded, so the buffer's row pitch is
-                // `rowStride` BYTES while Filament wants a stride in TEXELS. RG8 is 2 bytes
-                // per texel — without this the padding is consumed as image data and every
-                // row drifts progressively sideways (a shear).
-                val strideTexels = depthPlane.rowStride / 2
-                depthTexture.setImage(engine, 0, PixelBufferDescriptor(
-                    buffer, Texture.Format.RG, Texture.Type.UBYTE, 1, 0, 0, strideTexels, null
-                ) {
-                    // Close the ARCore image only after Filament has finished draining
-                    // the buffer to the GPU. This callback is the load-bearing
-                    // synchronisation point — see the long-form comment above.
-                    depthImage.close()
-                    buffer.clear()
-                })
-            }
+            updateDepth(session, frame)
+        } else if (depthFilter.width != 0) {
+            // Occlusion off: the next time it is turned on, start from the live depth rather
+            // than from whatever the room looked like when it was turned off.
+            depthFilter.reset()
         }
 
         if (isPersonOcclusionEnabled) {
             updatePersonMask(frame)
         }
+    }
+
+    /**
+     * Feeds this frame's ARCore depth through [depthFilter] and uploads the result to
+     * [depthTexture].
+     *
+     * ### Never clear, never reset
+     *
+     * A frame with no depth (`NotYetAvailableException`, a full image pool) and a frame that
+     * hands back the depth image already uploaded (same `Image.timestamp`, the norm on a 60 Hz
+     * display in front of a 30 Hz depth stream) upload nothing: the texture keeps the last
+     * valid depth. Only a new depth image is filtered and uploaded.
+     *
+     * ### Lifecycle (#1757)
+     *
+     * The ARCore image is read once by [DepthOcclusionFilter.update] — a copy into the filter's
+     * own state — and closed right here, so ARCore's small depth-image pool is never held by an
+     * in-flight GPU upload. Filament uploads asynchronously from a buffer of our own, taken from
+     * [depthUploadBuffers] and handed back by the upload-completed callback.
+     */
+    private fun updateDepth(session: Session, frame: Frame) {
+        val depthImage = runCatching {
+            when (session.config.depthMode) {
+                Config.DepthMode.AUTOMATIC -> frame.acquireDepthImage16Bits()
+                Config.DepthMode.RAW_DEPTH_ONLY -> frame.acquireRawDepthImage16Bits()
+                else -> null
+            }
+        }.getOrNull() ?: return
+        val changed = depthImage.use { image ->
+            val plane = image.planes[0]
+            image.width > 0 && image.height > 0 &&
+                depthFilter.update(image.timestamp, plane.buffer, image.width, image.height, plane.rowStride)
+        }
+        if (!changed) return
+        logDepthStats(frame.timestamp)
+
+        ensureDepthTexture(depthFilter.width, depthFilter.height)
+        val filtered = depthFilter.output
+        val upload = depthUploadBuffers.poll()?.takeIf { it.capacity() == filtered.capacity() }
+            ?: ByteBuffer.allocateDirect(filtered.capacity()).order(ByteOrder.LITTLE_ENDIAN)
+        upload.clear()
+        upload.put(filtered.duplicate().apply { clear() })
+        upload.flip()
+        depthTexture.setImage(
+            engine, 0,
+            PixelBufferDescriptor(upload, Texture.Format.RG, Texture.Type.UBYTE, 1, 0, 0, 0, null) {
+                depthUploadBuffers.offer(upload)
+            }
+        )
+    }
+
+    private var lastDepthLogNs = 0L
+
+    /**
+     * One debug line per second while `adb shell setprop log.tag.SceneViewDepth DEBUG` is set:
+     * the share of the depth map with no depth, and how far the depth image lags the frame.
+     */
+    private fun logDepthStats(frameTimestampNs: Long) {
+        if (!Log.isLoggable(DEPTH_LOG_TAG, Log.DEBUG)) return
+        val now = System.nanoTime()
+        if (now - lastDepthLogNs < DEPTH_LOG_PERIOD_NS) return
+        lastDepthLogNs = now
+        Log.d(
+            DEPTH_LOG_TAG,
+            "depth ${depthFilter.width}x${depthFilter.height} " +
+                "holes=${"%.3f".format(depthFilter.holeFraction)} " +
+                "lagMs=${(frameTimestampNs - depthFilter.lastTimestampNs) / NS_PER_MS}"
+        )
     }
 
     /**
@@ -906,6 +912,23 @@ open class ARCameraStream(
          * before the content it must hide is drawn.
          */
         const val OCCLUDER_PRIORITY = 1
+
+        private const val DEPTH_LOG_TAG = "SceneViewDepth"
+        private const val DEPTH_LOG_PERIOD_NS = 1_000_000_000L
+        private const val NS_PER_MS = 1_000_000L
+
+        /**
+         * Bilinear, clamped, no mipmaps: the 160×120 depth map is magnified ~15× on screen, so
+         * an occluder's edge is interpolated between texels instead of drawn as 15-pixel steps,
+         * and the clamp keeps the top row from blending with the bottom one (the default
+         * `REPEAT` sampler did). Packed millimetres stay exact under linear filtering: the
+         * decoded depth is a linear function of the two channels.
+         */
+        private val depthSampler = TextureSampler(
+            TextureSampler.MinFilter.LINEAR,
+            TextureSampler.MagFilter.LINEAR,
+            TextureSampler.WrapMode.CLAMP_TO_EDGE,
+        )
 
         private const val VERTEX_COUNT = 3
         private const val POSITION_BUFFER_INDEX = 0

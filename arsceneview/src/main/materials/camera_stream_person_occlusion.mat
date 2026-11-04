@@ -79,6 +79,47 @@ fragment {
     // See `camera_stream_depth.mat` — stand-in distance for texels with no ARCore depth.
     const float kNoDepthDistanceMeters = 1000.0;
 
+    // ── Occlusion shaping (2026-11-04 device QA, ARMV #71) ────────────────────────────────
+    // ARCore's depth is a 160x120 motion-stereo estimate. Writing it into the z-buffer as is
+    // made a binary, noisy test: a model on the floor was cut in saw-teeth by the floor's own
+    // noise, a model far away was chopped by depth that far being a guess, and the camera
+    // could see the real world through holes in its own floor. All in metres along the view
+    // axis, decided per fragment with one stable screen-space threshold `b` in [0, 1):
+    //
+    //  1. Tolerance. The real surface must be nearer than the virtual one by
+    //     kTolBase + kTolLinear*d + kTolQuad*d^2 (6 cm at 1 m, 11 cm at 2 m, 27 cm at 4 m):
+    //     ARCore's depth error grows about quadratically with distance. Spread over
+    //     [0.5, 1.5] x tolerance by `b`, so the transition is a dithered ramp (soft
+    //     occlusion through the z-buffer) rather than a hard noisy line.
+    //  2. Range. From kFarFadeStart to kFarFadeEnd the share of texels that occlude falls to
+    //     zero: beyond ~8 m phone depth does not occlude at all.
+    //  3. No depth. A texel with no depth (0, or the filter's 0xFFFF "none") occludes
+    //     nothing (#3340).
+    // Three rules, not four: hiding what is too CLOSE to the camera cannot be done here.
+    // The camera quad can only hide what is farther than the depth it writes.
+    const float kTolBase = 0.03;
+    const float kTolLinear = 0.02;
+    const float kTolQuad = 0.01;
+    const float kFarFadeStart = 5.0;
+    const float kFarFadeEnd = 8.0;
+    const float kMaxValidDepthMeters = 60.0;
+
+    // Interleaved gradient noise (Jimenez 2014): a per-pixel threshold in [0, 1) that is
+    // stable from frame to frame (no temporal shimmer) and has no visible grid, unlike a
+    // Bayer matrix.
+    float occlusionThreshold(const vec2 fragCoord) {
+        return fract(52.9829189 * fract(dot(fragCoord, vec2(0.06711056, 0.00583715))));
+    }
+
+    // Distance, in metres, the camera quad writes into the z-buffer for a texel whose real
+    // depth is `depth_m` and validity `depth_valid`.
+    float occluderDistance(const float depth_m, const float depth_valid, const float b) {
+        float tolerance = kTolBase + depth_m * (kTolLinear + kTolQuad * depth_m);
+        float occluder_m = depth_m + tolerance * (0.5 + b);
+        float in_range = step(smoothstep(kFarFadeStart, kFarFadeEnd, depth_m), b);
+        return mix(kNoDepthDistanceMeters, occluder_m, depth_valid * in_range);
+    }
+
     // Reverse-Z near plane. Filament maps 1.0 to NEAR and 0.0 to far (see
     // ARDepthOfField's convention note), so this is "as close to the lens as a
     // fragment can be" — what the PERSON mask has to write to win every depth test.
@@ -102,7 +143,7 @@ fragment {
         float depth_m = depth_mm / 1000.f;
 
         // Environment-aware fog blend — copied verbatim from `camera_stream_depth.mat`.
-        float depth_valid = step(0.001f, depth_m);
+        float depth_valid = step(0.001f, depth_m) * step(depth_m, kMaxValidDepthMeters);
         float adjusted = clamp(depth_m - materialParams.fogStart, 0.f,
                                max(materialParams.fogEnd - materialParams.fogStart, 0.001f));
         float factor = 1.f - exp(-materialParams.fogDensity * adjusted);
@@ -116,7 +157,8 @@ fragment {
         // ARCore depth are pushed to `kNoDepthDistanceMeters` rather than left at 0,
         // which would divide by `view.w == 0` and clamp to the near plane, occluding
         // everything. Same fix, same reason as `camera_stream_depth.mat` (#3340).
-        float occlusion_depth_m = mix(kNoDepthDistanceMeters, depth_m, depth_valid);
+        float occlusion_depth_m = occluderDistance(depth_m, depth_valid,
+                occlusionThreshold(gl_FragCoord.xy));
         vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, -occlusion_depth_m));
         float ndc_depth = view.z / view.w;
 
