@@ -5,32 +5,32 @@ Real-world applications of SceneView across industries. Each example includes th
 <div class="showcase-gallery">
 
 <div class="showcase-item">
-<img src="assets/images/industry-ecommerce.svg" alt="E-commerce" class="showcase-item__img" style="border-radius: 24px;">
+<img src="../assets/images/industry-ecommerce.svg" alt="E-commerce" class="showcase-item__img" style="border-radius: 24px;">
 <div class="showcase-item__label">E-commerce</div>
 </div>
 
 <div class="showcase-item">
-<img src="assets/images/industry-medical.svg" alt="Healthcare" class="showcase-item__img" style="border-radius: 24px;">
+<img src="../assets/images/industry-medical.svg" alt="Healthcare" class="showcase-item__img" style="border-radius: 24px;">
 <div class="showcase-item__label">Healthcare</div>
 </div>
 
 <div class="showcase-item">
-<img src="assets/images/industry-education.svg" alt="Education" class="showcase-item__img" style="border-radius: 24px;">
+<img src="../assets/images/industry-education.svg" alt="Education" class="showcase-item__img" style="border-radius: 24px;">
 <div class="showcase-item__label">Education</div>
 </div>
 
 <div class="showcase-item">
-<img src="assets/images/industry-realestate.svg" alt="Real Estate" class="showcase-item__img" style="border-radius: 24px;">
+<img src="../assets/images/industry-realestate.svg" alt="Real Estate" class="showcase-item__img" style="border-radius: 24px;">
 <div class="showcase-item__label">Real Estate</div>
 </div>
 
 <div class="showcase-item">
-<img src="assets/images/industry-gaming.svg" alt="Gaming" class="showcase-item__img" style="border-radius: 24px;">
+<img src="../assets/images/industry-gaming.svg" alt="Gaming" class="showcase-item__img" style="border-radius: 24px;">
 <div class="showcase-item__label">Gaming</div>
 </div>
 
 <div class="showcase-item">
-<img src="assets/images/industry-automotive.svg" alt="Automotive" class="showcase-item__img" style="border-radius: 24px;">
+<img src="../assets/images/industry-automotive.svg" alt="Automotive" class="showcase-item__img" style="border-radius: 24px;">
 <div class="showcase-item__label">Automotive</div>
 </div>
 
