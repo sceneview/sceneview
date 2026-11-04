@@ -94,6 +94,13 @@
   background-color: var(--md-default-bg-color);
   color: var(--md-default-fg-color);
 }
+/* Nested drawer headers: Material paints them in a grey tint; M3 keeps them a surface. */
+@media screen and (max-width: 76.234375em) {
+  .md-nav--primary .md-nav__title:not([for="__drawer"]) {
+    background-color: var(--sv-surface-container);
+    color: var(--md-default-fg-color);
+  }
+}
 .md-tabs__link { color: var(--md-default-fg-color--light); opacity: 1; }
 .md-tabs__item--active .md-tabs__link,
 .md-tabs__link:hover,
