@@ -1982,6 +1982,10 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * applied while [cameraPosition] is within [radius] metres of [position]. Set [radius] to `0f`
      * (or any non-positive value) for a **global probe** that always overrides the scene IBL.
      *
+     * All probes of a scene are resolved together: the active probe with the highest [priority]
+     * wins (on a tie, the one composed last), and with no active probe the scene shows its
+     * `SceneView` environment again — a new environment never overrides an active probe.
+     *
      * ```kotlin
      * val probeEnv = rememberEnvironment(environmentLoader) {
      *     environmentLoader.createHDREnvironment("environments/office.hdr") ?: createEnvironment(environmentLoader)
@@ -2008,7 +2012,8 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param environment    The [Environment] whose [Environment.indirectLight] is applied.
      * @param position       Centre of the reflection zone in world space. Defaults to the origin.
      * @param radius         Sphere radius in metres. `0f` or negative means always-active (global).
-     * @param priority       Higher value wins when multiple probes are simultaneously active.
+     * @param priority       Higher value wins when multiple probes are simultaneously active; on
+     *                       a tie, the probe composed last wins.
      * @param cameraPosition Current camera world-space position, updated each frame.
      */
     @Composable

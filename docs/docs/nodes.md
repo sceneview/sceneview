@@ -891,6 +891,8 @@ The same on `BillboardNode`, `TextNode` and [ViewNode](#viewnode), which all tak
 
 Overrides the scene's indirect light (IBL) with a baked `Environment` inside a spherical zone. With `radius = 0f` (the default) the probe is global and always active; otherwise it applies only while `cameraPosition` is within `radius` metres of `position`.
 
+When several zones hold the camera, the highest `priority` wins (on a tie, the probe composed last). When none does, the scene goes back to its `SceneView` environment — the current one, so a dark/light toggle made while a probe was active is honoured, and a new environment never overrides an active probe.
+
 ```kotlin
 val scene = rememberScene(engine)
 val probeEnv = rememberEnvironment(environmentLoader) {
