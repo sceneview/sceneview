@@ -52,14 +52,15 @@ internal object DepthOcclusionShaping {
     /**
      * The shader's `groundSurface` for the view-space [ray] (any point on the pixel's ray from
      * the camera at the origin): `x` = the distance along the view axis to the contact plane
-     * through [contact] facing [normal], `y` = its band — `0` when [enabled] is `0` or the ray
-     * meets the plane behind the camera.
+     * through [contact] facing [normal], `y` = its band — `0` when the ray meets the plane behind
+     * the camera. With [enabled] `0` it is `(0, 0)`, returned before any division.
      */
     fun groundSurface(ray: Float3, contact: Float3, normal: Float3, radius: Float, enabled: Float): Float2 {
+        if (enabled < 0.5f) return Float2(0f, 0f)
         val facing = dot(normal, ray)
-        val along = dot(normal, contact) / (if (kotlin.math.abs(facing) > 1e-6f) facing else 1e-6f)
+        val along = dot(normal, contact) / (if (kotlin.math.abs(facing) > 1e-4f) facing else 1e-4f)
         val hit = ray * along
-        val band = groundBand(length(hit - contact), radius) * enabled * (if (along >= 0f) 1f else 0f)
+        val band = groundBand(length(hit - contact), radius) * (if (along >= 0f) 1f else 0f)
         return Float2(-hit.z, band)
     }
 

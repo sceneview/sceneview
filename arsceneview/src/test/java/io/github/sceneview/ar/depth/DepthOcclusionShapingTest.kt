@@ -1,5 +1,6 @@
 package io.github.sceneview.ar.depth
 
+import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.camera.kGroundContactParameter
 import io.github.sceneview.ar.camera.kGroundNormalParameter
@@ -136,7 +137,7 @@ class DepthOcclusionShapingTest {
         assertEquals(2.4f, centre.x, 1e-4f)
         assertEquals(GROUND_BAND, centre.y, 1e-6f)
         // Off, there is no band whatever the geometry.
-        assertEquals(0f, groundSurface(contact, contact, normal, radius = 0.25f, enabled = 0f).y, 0f)
+        assertEquals(Float2(0f, 0f), groundSurface(contact, contact, normal, radius = 0.25f, enabled = 0f))
         // A ray meeting the plane behind the camera (looking up) grounds nothing.
         assertEquals(0f, groundSurface(Float3(0f, 1f, -1f), contact, normal, radius = 100f, enabled = 1f).y, 0f)
         // Neither does a pixel 60 cm beside a 25 cm contact.
@@ -170,7 +171,8 @@ class DepthOcclusionShapingTest {
             )
             // ...with the band gated by the stream's parameters and fed by the pixel's view ray...
             listOf(
-                "float band_m = kGroundBand * materialParams.groundNormal.w * step(0.0, along) * fade;",
+                "if (materialParams.groundNormal.w < 0.5) return vec2(0.0);",
+                "highp float band_m = kGroundBand * step(0.0, along) * fade;",
                 "material.groundRay = getViewFromClipMatrix() * clip;",
                 "vec2 ground = groundSurface(variable_groundRay.xyz / variable_groundRay.w);",
                 "name : $kGroundContactParameter",
