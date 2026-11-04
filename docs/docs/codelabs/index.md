@@ -4,92 +4,22 @@ Step-by-step guides for building 3D and AR apps with SceneView and Jetpack Compo
 
 ## Getting started
 
-<div class="grid cards" markdown>
+Beginner level.
 
--   :octicons-package-24: **3D with Compose**
-
-    ---
-
-    Build your first 3D scene with a rotating glTF model, HDR lighting, and orbit camera gestures.
-
-    **~25 minutes · Beginner**
-
-    [:octicons-arrow-right-24: Start](codelab-3d-compose.md)
-
--   :octicons-eye-24: **AR with Compose**
-
-    ---
-
-    Place 3D objects in the real world using ARCore plane detection and anchor tracking.
-
-    **~20 minutes · Beginner**
-
-    [:octicons-arrow-right-24: Start](codelab-ar-compose.md)
-
--   :material-apple: **3D with SwiftUI**
-
-    ---
-
-    Build a 3D model viewer on iOS/macOS using SceneViewSwift, RealityKit, and orbit camera.
-
-    **~15 minutes · Beginner**
-
-    [:octicons-arrow-right-24: Start](codelab-3d-swiftui.md)
-
--   :material-cube-scan: **AR with SwiftUI**
-
-    ---
-
-    Detect planes with ARKit and tap to place 3D objects in the real world on iOS.
-
-    **~15 minutes · Beginner**
-
-    [:octicons-arrow-right-24: Start](codelab-ar-swiftui.md)
-
-</div>
+| Codelab | What you build | Time |
+|---|---|---|
+| [3D with Compose](codelab-3d-compose.md) | Build your first 3D scene with a rotating glTF model, HDR lighting, and orbit camera gestures. | 25 min |
+| [AR with Compose](codelab-ar-compose.md) | Place 3D objects in the real world using ARCore plane detection and anchor tracking. | 20 min |
+| [3D with SwiftUI](codelab-3d-swiftui.md) | Build a 3D model viewer on iOS/macOS using SceneViewSwift, RealityKit, and orbit camera. | 15 min |
+| [AR with SwiftUI](codelab-ar-swiftui.md) | Detect planes with ARKit and tap to place 3D objects in the real world on iOS. | 15 min |
 
 ## Advanced guides
 
-<div class="grid cards" markdown>
+Intermediate level.
 
--   :material-soccer: **Physics simulation**
-
-    ---
-
-    Bouncing spheres with gravity, floor collisions, and configurable restitution.
-
-    **~15 minutes · Intermediate**
-
-    [:octicons-arrow-right-24: Start](guide-physics.md)
-
--   :material-weather-sunset: **Dynamic sky & fog**
-
-    ---
-
-    Time-of-day sun cycle with atmospheric fog for moody outdoor scenes.
-
-    **~15 minutes · Intermediate**
-
-    [:octicons-arrow-right-24: Start](guide-dynamic-sky.md)
-
--   :material-mirror: **Reflection probes**
-
-    ---
-
-    Zone-based IBL overrides for realistic metallic and glossy materials.
-
-    **~15 minutes · Intermediate**
-
-    [:octicons-arrow-right-24: Start](guide-reflection-probes.md)
-
--   :material-vector-line: **Lines, paths & text**
-
-    ---
-
-    3D line drawings, polylines, and camera-facing text labels for annotation.
-
-    **~15 minutes · Intermediate**
-
-    [:octicons-arrow-right-24: Start](guide-lines-text.md)
-
-</div>
+| Codelab | What you build | Time |
+|---|---|---|
+| [Physics simulation](guide-physics.md) | Bouncing spheres with gravity, floor collisions, and configurable restitution. | 15 min |
+| [Dynamic sky & fog](guide-dynamic-sky.md) | Time-of-day sun cycle with atmospheric fog for moody outdoor scenes. | 15 min |
+| [Reflection probes](guide-reflection-probes.md) | Zone-based IBL overrides for realistic metallic and glossy materials. | 15 min |
+| [Lines, paths & text](guide-lines-text.md) | 3D line drawings, polylines, and camera-facing text labels for annotation. | 15 min |
