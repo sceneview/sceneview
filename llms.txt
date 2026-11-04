@@ -4399,10 +4399,13 @@ SceneView(cameraManipulator = rememberCameraManipulator(
 
 // Both overloads are keyed on their inputs: a new radius, eye or target rebuilds the
 // manipulator and SceneView glides the camera there (~0.6 s). `key` rebuilds it on demand —
-// "double-tap to reset the view", no `key { }` block needed:
+// "double-tap to reset the view", no `key { }` block needed. Double-tap also zooms in by
+// default (#3608): turn that off on the manipulator, or the zoom starts before the reset glide.
 var resets by remember { mutableIntStateOf(0) }
 SceneView(
-    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f, key = resets),
+    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f, key = resets).apply {
+        (this as? CameraGestureDetector.DefaultCameraManipulator)?.isDoubleTapZoomEnabled = false
+    },
     onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
 )
 
@@ -4553,10 +4556,12 @@ SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulat
 ))
 ```
 
-There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
-plain callback `SceneView` forwards to your code, never wired to the camera. Wire it with `key`:
+There is no built-in gesture that returns the camera to `orbitHomePosition` — the built-in
+double-tap *zooms in* (see "Camera gestures" below). Wire a reset with `key`:
 `rememberCameraManipulator(orbitHomePosition = …, key = resets)` and `resets++` in `onDoubleTap`
-rebuild the manipulator at that eye, and the camera glides back (#4838).
+(or a button) rebuild the manipulator at that eye, and the camera glides back (#4838). On a
+double-tap, set `isDoubleTapZoomEnabled = false` on the `DefaultCameraManipulator` first, as in
+the example above, so the zoom and the reset do not fight.
 
 ### Auto-fit camera framing
 

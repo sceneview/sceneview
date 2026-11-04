@@ -2163,9 +2163,8 @@ fun rememberOnGestureListener(
  * Pass `null` to `SceneView(cameraManipulator = null)` to disable camera interaction entirely.
  *
  * `orbitHomePosition` is the camera's **eye position** — not a "home" it returns to on its own:
- * no built-in gesture does that, `onDoubleTap` is a plain callback `SceneView` forwards to your
- * code and never wires to the camera (see "Going back to the start" below for the one-line way
- * to do it). For the common case of framing a subject from a known distance,
+ * no built-in gesture does that, the built-in double-tap zooms in (see "Going back to the start"
+ * below for the one-line way to reset). For the common case of framing a subject from a known distance,
  * prefer [rememberCameraManipulator] with `orbitRadius` instead — it sidesteps the vector-length
  * reasoning below entirely.
  *
@@ -2231,7 +2230,7 @@ fun rememberOnGestureListener(
  *
  * Change [key] to rebuild the manipulator at its starting pose: `SceneView` glides the camera
  * back over ~0.6 s. The classic "double-tap to reset the view", with no `key { }` block around
- * the call:
+ * the call — the built-in double-tap zoom is turned off so it does not start before the glide:
  *
  * ```kotlin
  * var resets by remember { mutableIntStateOf(0) }
@@ -2239,7 +2238,9 @@ fun rememberOnGestureListener(
  *     cameraManipulator = rememberCameraManipulator(
  *         orbitHomePosition = Position(x = 0f, y = 0.5f, z = 2.45f),
  *         key = resets,
- *     ),
+ *     ).apply {
+ *         (this as? CameraGestureDetector.DefaultCameraManipulator)?.isDoubleTapZoomEnabled = false
+ *     },
  *     onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
  * )
  * ```
