@@ -87,7 +87,10 @@ material {
         }
     ],
     variables : [
-        groundRay
+        {
+            name : groundRay,
+            precision : high
+        }
     ],
     requires : [
         uv0
@@ -186,15 +189,18 @@ fragment {
     // axis to the contact plane, y = the band (metres) by which nearer measured depth still
     // counts as that plane — kGroundBand inside the contact disc, 0 beyond its fade, when the
     // rule is off, and where the ray never meets the plane in front of the camera.
-    vec2 groundSurface(const vec3 ray) {
-        vec3 normal = materialParams.groundNormal.xyz;
-        vec3 contact = materialParams.groundContact.xyz;
-        float radius = max(materialParams.groundContact.w, 1e-4);
-        float facing = dot(normal, ray);
-        float along = dot(normal, contact) / (abs(facing) > 1e-6 ? facing : 1e-6);
-        vec3 hit = along * ray;
-        float fade = 1.0 - clamp((length(hit - contact) - radius) / (radius * kGroundFade), 0.0, 1.0);
-        float band_m = kGroundBand * materialParams.groundNormal.w * step(0.0, along) * fade;
+    // Off returns (0, 0) before any division: max(d, min(0, d)) is exactly d, with no NaN for
+    // a GPU that does not drop it in min/max. highp throughout, like the depth reconstruction.
+    highp vec2 groundSurface(const highp vec3 ray) {
+        if (materialParams.groundNormal.w < 0.5) return vec2(0.0);
+        highp vec3 normal = materialParams.groundNormal.xyz;
+        highp vec3 contact = materialParams.groundContact.xyz;
+        highp float radius = max(materialParams.groundContact.w, 1e-4);
+        highp float facing = dot(normal, ray);
+        highp float along = dot(normal, contact) / (abs(facing) > 1e-4 ? facing : 1e-4);
+        highp vec3 hit = along * ray;
+        highp float fade = 1.0 - clamp((length(hit - contact) - radius) / (radius * kGroundFade), 0.0, 1.0);
+        highp float band_m = kGroundBand * step(0.0, along) * fade;
         return vec2(-hit.z, band_m);
     }
 
