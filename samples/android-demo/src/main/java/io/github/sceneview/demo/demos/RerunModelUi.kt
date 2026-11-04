@@ -165,6 +165,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
 /*
@@ -614,12 +615,32 @@ private sealed interface ModelState {
 
     /**
      * [model] shown; not [final] while it is a big scan's raw surface, its finished model on the
-     * way. Framed by [framedBy]: the first model shown, so the finished one replacing the raw
-     * surface keeps the camera, the reveal and the toggles where they are.
+     * way. Framed by [framedBy] ([resultFramedBy]): the first model shown, so the finished one
+     * replacing the raw surface keeps the camera, the reveal and the toggles where they are.
      */
     class Ready(val model: RerunScanModel, val final: Boolean = true, val framedBy: RerunScanModel = model) : ModelState
 
     data object Failed : ModelState
+}
+
+/**
+ * The model the result is framed by once [model] is known: the one [shownFirst] while it was
+ * built — a big scan's raw surface, a retry's — so the finished model taking its place keeps the
+ * camera, the reveal and the toggles where they are. A [stale] model built again is replaced for
+ * good, its frame with it: the new model's box, cut and turned as it is, not the earlier finish's.
+ */
+internal fun resultFramedBy(model: RerunScanModel, shownFirst: RerunScanModel?, stale: RerunScanModel?): RerunScanModel =
+    if (stale != null && model !== stale) model else shownFirst ?: model
+
+/**
+ * The renderer's copy of a model's `.glb`, shaded and cut off the main thread, handed to Filament
+ * once: [take] lets it go, so a big scan's 12 MB are not held for as long as the model is shown.
+ * Compared by identity, never by its bytes.
+ */
+private class RendererCopy(buffer: ByteBuffer) {
+    private var buffer: ByteBuffer? = buffer
+
+    fun take(): ByteBuffer? = buffer.also { buffer = null }
 }
 
 /** The model is known for good: the finished one, the fallback, or none. */
@@ -717,7 +738,7 @@ internal fun RerunModelScreen(
             }
             if (saved) (source as? RerunModelSource.Live)?.release()
         }
-        value = if (model != null) ModelState.Ready(model, framedBy = shownFirst ?: model) else ModelState.Failed
+        value = if (model != null) ModelState.Ready(model, framedBy = resultFramedBy(model, shownFirst, stale)) else ModelState.Failed
     }
     val model = (state as? ModelState.Ready)?.model
     val settled = state.settled
@@ -752,15 +773,28 @@ internal fun RerunModelScreen(
     var shading by remember {
         mutableStateOf(ResultShading.of(DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() }))
     }
-    // Created before the SceneView, so released after its node (Compose forgets in reverse).
-    // On the main thread, as every Filament call (CLAUDE.md); the cut writes the renderer's copy
-    // only, the model kept and shared as it is.
-    // Left unshown, not thrown, when the heap has no room for the renderer's copy.
-    val instance = remember(drawn, cutY, shading) {
-        drawn?.let { shading.buffer(it) }?.let { buffer ->
-            cutY?.let { ScanResultCut.cut(buffer, it) }
-            runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+    // The renderer's copy, prepared off the main thread: the QA shading writes the whole `.glb`
+    // again and the cut reads its JSON and walks every triangle, half a million on a big room.
+    // The cut writes the copy only, the model kept and shared as it is. The one shown stays until
+    // the next is ready, so a finished model or a shading toggle never blinks through nothing.
+    // Left unshown, not thrown, when the heap has no room for the copy.
+    val copy by produceState<RendererCopy?>(null, drawn, cutY, shading) {
+        val from = drawn
+        if (from == null) {
+            value = null
+            return@produceState
         }
+        value = withContext(Dispatchers.Default) {
+            shading.buffer(from)?.let { buffer ->
+                cutY?.let { ScanResultCut.cut(buffer, it) }
+                RendererCopy(buffer)
+            }
+        }
+    }
+    // Created before the SceneView, so released after its node (Compose forgets in reverse).
+    // Only the upload on the main thread, as every Filament call (CLAUDE.md).
+    val instance = remember(copy) {
+        copy?.take()?.let { buffer -> runCatching { modelLoader.createModelInstance(buffer) }.getOrNull() }
     }
     DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
     // The slow turn the result opens on (ScanResultTurntable), until the first touch; never

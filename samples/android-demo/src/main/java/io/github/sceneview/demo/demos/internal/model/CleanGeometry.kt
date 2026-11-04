@@ -44,7 +44,8 @@ internal object CleanGeometry {
         require(raw.triangleCount <= MAX_TRIANGLES) { "${raw.triangleCount} triangles: clean takes $MAX_TRIANGLES" }
         val trianglesIn = raw.triangleCount
         val piecesIn = MeshCleanup.pieces(raw)
-        // Cut to the scan's own box first: what depth saw through a window is not the room.
+        // Cut to the scan's own box first, never from above: what depth saw through a window is
+        // not the room, a thin stem standing over it is.
         val (cropped, croppedTriangles) = ScanTidy.crop(raw)
         val (whole, small) = MeshCleanup.removeSmallPieces(cropped)
         val (pieces, apart) = ScanTidy.dropIsolated(whole)
