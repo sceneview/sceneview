@@ -2310,10 +2310,12 @@ public class io/github/sceneview/gesture/GestureDetector {
 	public fun <init> (Landroid/content/Context;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;)V
 	public final fun advanceInertia (F)V
 	public final fun getListener ()Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;
+	public final fun getMoveCoastSpace ()Lio/github/sceneview/gesture/MoveCoastSpace;
 	public final fun getTouchedNode ()Lio/github/sceneview/node/Node;
 	public final fun isCoasting ()Z
 	public final fun onTouchEvent (Landroid/view/MotionEvent;Lio/github/sceneview/collision/HitResult;)V
 	public final fun setListener (Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;)V
+	public final fun setMoveCoastSpace (Lio/github/sceneview/gesture/MoveCoastSpace;)V
 	public final fun setTouchedNode (Lio/github/sceneview/node/Node;)V
 }
 
@@ -2366,6 +2368,19 @@ public class io/github/sceneview/gesture/GestureDetector$SimpleOnGestureListener
 public final class io/github/sceneview/gesture/HandedBackDownKt {
 	public static final fun replayHandedBackDown (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;Z)V
 	public static synthetic fun replayHandedBackDown$default (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;ZILjava/lang/Object;)V
+}
+
+public abstract interface class io/github/sceneview/gesture/MoveCoastSpace {
+	public abstract fun release (Lio/github/sceneview/node/Node;FF)Lio/github/sceneview/gesture/MoveCoastSpace$Surface;
+	public abstract fun toScreen (Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float2;
+}
+
+public final class io/github/sceneview/gesture/MoveCoastSpace$Surface {
+	public static final field $stable I
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public final fun getOrigin ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPerPixelX ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPerPixelY ()Ldev/romainguy/kotlin/math/Float3;
 }
 
 public class io/github/sceneview/gesture/MoveGestureDetector {
