@@ -76,9 +76,10 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .btn--filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
 .btn--tonal { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
 /* While the support card is open (support.js sets .svs-open on <html>), its Donate
-   button is the one filled button on screen: the page's filled buttons turn tonal. */
+   button is the one filled button on screen: the page's filled buttons become M3 text
+   buttons (no container, primary label, like "View in 3D"). The size stays, so nothing moves. */
 .btn--filled { transition: background-color var(--d-base) var(--md-sys-motion-easing-standard), color var(--d-base) var(--md-sys-motion-easing-standard); }
-.svs-open .btn--filled { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.svs-open .btn--filled { background: transparent; color: var(--md-sys-color-primary); }
 .btn--outlined { border: 1px solid var(--md-sys-color-outline); color: var(--md-sys-color-primary); }
 .btn--text { padding: 0 12px; }
 .btn--lg { height: 56px; padding: 0 28px; font: var(--md-sys-typescale-title-medium); }
