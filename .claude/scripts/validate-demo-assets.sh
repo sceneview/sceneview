@@ -499,6 +499,14 @@ run_catalog_check() {
     declared=$(grep -oE '"file"[[:space:]]*:[[:space:]]*"[^"]+"' "$CATALOG" |
         sed -E 's/.*"file"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' |
         sed -E 's#.*/##' | sort -u)
+    # `shippedAs` names the other basenames an asset is bundled under (the
+    # credits generator reads it the same way), so those count as declared too.
+    declared=$(printf '%s\n%s\n' "$declared" "$(python3 -c '
+import json, sys
+for m in json.load(open(sys.argv[1])).get("models", []):
+    for alias in m.get("shippedAs") or ():
+        print(alias.rsplit("/", 1)[-1])
+' "$CATALOG" 2>/dev/null)" | sed '/^$/d' | sort -u)
 
     if [ -z "$declared" ]; then
         echo -e "  ${YELLOW}SKIP${NC}  no \"file\" entries parsed from $CATALOG"

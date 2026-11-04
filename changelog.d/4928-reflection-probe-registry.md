@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **ReflectionProbeNode** now resolves all the probes of a scene together, so the scene always shows the right indirect light: the active probe with the highest `priority` wins (it was never read; the last effect to run won), leaving a local zone hands the scene back its environment (the probe used to keep its light until disposed), a new `SceneView` environment such as a dark/light toggle no longer overrides an active probe, and removing chained probes ends on the scene's current environment instead of a stale or destroyed light. (#4928)

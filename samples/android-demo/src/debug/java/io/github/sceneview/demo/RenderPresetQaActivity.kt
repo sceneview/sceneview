@@ -55,7 +55,7 @@ import kotlin.math.sin
  *
  * ```
  * adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.RenderPresetQaActivity \
- *     --es model models/khronos_damaged_helmet.glb \
+ *     --es model models/moto_helmet_v2.glb \
  *     --es preset before|default|middle|cinematic|performance|agx \
  *     [--ef dist 2.6] [--ef ty 0.35] [--ef yaw -35] [--ef pitch 15] [--ef lx .. --ef ly .. --ef lz ..]
  * ```
@@ -72,7 +72,7 @@ class RenderPresetQaActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val model = intent.getStringExtra(EXTRA_MODEL) ?: "models/khronos_damaged_helmet.glb"
+        val model = intent.getStringExtra(EXTRA_MODEL) ?: "models/moto_helmet_v2.glb"
         val preset = intent.getStringExtra(EXTRA_PRESET) ?: "default"
         val label = intent.getStringExtra(EXTRA_LABEL)
         val distance = intent.getFloatExtra(EXTRA_DISTANCE, DEFAULT_DISTANCE)

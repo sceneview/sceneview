@@ -3,28 +3,28 @@ import RealityKit
 import SceneViewSwift
 
 /// One scene, two cameras: an interactive main view and an independent
-/// picture-in-picture inset render the same helmet on the same floor.
+/// picture-in-picture inset render the same lantern on the same floor.
 ///
 /// iOS twin of Android's `SecondaryCameraDemo`
 /// (`samples/android-demo/.../demos/SecondaryCameraDemo.kt`):
 ///
 /// - The **main view** orbits under the user's finger and is framed on the stage
-///   the helmet can walk on, 24° above it.
+///   the lantern can walk on, 24° above it.
 /// - The **inset** is a second `SceneView` whose camera the user never drags: the
 ///   Top / Side / Front / Corner / Orbit strip parks it on Android's lines of
-///   sight, at ``SecondaryCameraMath/insetZoom`` of their distance so the helmet
+///   sight, at ``SecondaryCameraMath/insetZoom`` of their distance so the lantern
 ///   reads in a 192 × 128 pt inset, and Orbit sweeps it round the stage once
 ///   every 12 s.
 /// - **The edit is shared.** A tap in either view casts a ray with *that* view's
-///   camera: through the helmet it turns it a quarter turn, on the floor it walks
-///   the helmet there (kept on a 70 cm stage). Both views show the change, each
+///   camera: through the lantern it turns it a quarter turn, on the floor it walks
+///   the lantern there (kept on a 70 cm stage). Both views show the change, each
 ///   from its own angle.
 ///
 /// ## What differs from Android, and why
 ///
 /// Android renders both views from one Filament scene through two `View`s.
 /// RealityKit gives each `RealityView` its own scene, so iOS keeps one *state*
-/// (``SecondaryCameraStage``) and two copies of the entities: the helmet is
+/// (``SecondaryCameraStage``) and two copies of the entities: the lantern is
 /// loaded once and the inset gets a `clone(recursive:)` that shares its meshes
 /// and textures — the RealityKit counterpart of Android's
 /// `createInstancedModel(count = 2)`. An edit writes the state once and moves
@@ -69,9 +69,9 @@ struct SecondaryCameraDemo: View {
             .background(SceneViewTokens.Stage.background)
             .demoChrome(
                 dock: [
-                    DockItem(icon: "arrow.counterclockwise", label: "Reset the helmet",
+                    DockItem(icon: "arrow.counterclockwise", label: "Reset the lantern",
                              caption: "Reset", enabled: stage.lastEdit != nil) {
-                        stage.resetHelmet(animated: !reduceMotion)
+                        stage.resetModel(animated: !reduceMotion)
                     },
                 ],
                 onReset: { reset() },
@@ -110,7 +110,7 @@ struct SecondaryCameraDemo: View {
         switch stage.lastEdit {
         case .main: return "Edited in the main view — the inset shows the same change from its own angle."
         case .inset: return "Edited in the inset — the main view shows the same change from its own angle."
-        case nil: return "Tap the floor in either view to move the helmet, or tap the helmet to turn it."
+        case nil: return "Tap the floor in either view to move the lantern, or tap the lantern to turn it."
         }
     }
 
@@ -132,21 +132,21 @@ struct SecondaryCameraDemo: View {
                 }
             }
             .pickerStyle(.segmented)
-            Button("Reset the helmet") { stage.resetHelmet(animated: !reduceMotion) }
+            Button("Reset the lantern") { stage.resetModel(animated: !reduceMotion) }
                 .buttonStyle(.bordered)
                 .disabled(stage.lastEdit == nil)
             if stage.loadFailed {
-                Label("Could not load the helmet.", systemImage: "exclamationmark.triangle")
+                Label("Could not load the lantern.", systemImage: "exclamationmark.triangle")
                     .font(SceneViewTokens.TypeScale.caption)
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
             }
         }
     }
 
-    /// The sheet's Reset: the helmet home, the inset back on Corner, the main
+    /// The sheet's Reset: the lantern home, the inset back on Corner, the main
     /// camera back on its framing.
     private func reset() {
-        stage.resetHelmet(animated: false)
+        stage.resetModel(animated: false)
         preset = .corner
         framingRequest += 1
     }
@@ -158,7 +158,7 @@ struct SecondaryCameraDemo: View {
             + SceneViewTokens.Space.sm
     }
 
-    /// Studio IBL for the helmet, no backdrop: the themed sky gradient behind the
+    /// Studio IBL for the lantern, no backdrop: the themed sky gradient behind the
     /// scene shows through, as Android's stage sky does.
     static let environment: SceneEnvironment = {
         var studio = SceneEnvironment.studio
@@ -200,7 +200,7 @@ private struct SecondaryCameraMainView: View {
             }
             .environment(SecondaryCameraDemo.environment)
             .cameraControls(.orbit)
-            // The helmet moves; re-centring on the scene's bounds would move the
+            // The lantern moves; re-centring on the scene's bounds would move the
             // stage with it (Android: `autoCenterContent = false`).
             .autoCenterContent(false)
             .cameraPose(pose)
@@ -378,14 +378,14 @@ enum SecondaryCameraEditSource {
 
 // MARK: - Stage
 
-/// The one scene state both views draw — where the helmet stands and which way it
+/// The one scene state both views draw — where the lantern stands and which way it
 /// faces — and the entities that draw it, one set per view.
 @MainActor
 @Observable
 final class SecondaryCameraStage {
-    private(set) var helmetX: Float = 0
-    private(set) var helmetZ: Float = 0
-    private(set) var helmetYaw: Float = 0
+    private(set) var modelX: Float = 0
+    private(set) var modelZ: Float = 0
+    private(set) var modelYaw: Float = 0
     private(set) var lastEdit: SecondaryCameraEditSource?
     private(set) var loadFailed = false
 
@@ -400,22 +400,23 @@ final class SecondaryCameraStage {
     @ObservationIgnored private var loadStarted = false
     @ObservationIgnored private var dark = false
 
-    /// Adds this view's floor and helmet pivot to its scene root. The content
+    /// Adds this view's floor and lantern pivot to its scene root. The content
     /// closure runs once per `RealityView`; re-adding re-parents.
     func install(in root: Entity, slot: Slot) {
         let set = entities(for: slot)
         root.addChild(set.floor)
         root.addChild(set.pivot)
-        set.pivot.transform = helmetTransform
+        set.pivot.transform = modelTransform
     }
 
-    /// Loads the helmet once and stands one copy in each view.
+    /// Loads the lantern once and stands one copy in each view.
     func loadIfNeeded(sampleId: String) async {
         guard !loadStarted else { return }
         loadStarted = true
         do {
-            let node = try await ModelNode.load("khronos_damaged_helmet")
-            _ = node.scaleToUnits(SecondaryCameraMath.helmetSize)
+            // Khronos Lantern, CC0 1.0 — it replaced a CC-BY-NC helmet.
+            let node = try await ModelNode.load("khronos_lantern")
+            _ = node.scaleToUnits(SecondaryCameraMath.modelSize)
             // Stands on the floor: the bounds' bottom centre onto the origin.
             _ = node.centerOrigin(normalized: SIMD3(0, -1, 0))
             mainSet.pivot.addChild(node.entity)
@@ -431,28 +432,28 @@ final class SecondaryCameraStage {
         }
     }
 
-    /// A tap resolved against the camera it was made through: on the helmet it
+    /// A tap resolved against the camera it was made through: on the lantern it
     /// turns it a quarter turn, on the floor it walks it there.
     func edit(ray: SecondaryCameraMath.Ray, from source: SecondaryCameraEditSource, animated: Bool) {
-        let centre = SIMD3<Float>(helmetX, SecondaryCameraMath.helmetSize / 2, helmetZ)
-        if SecondaryCameraMath.passes(ray, within: SecondaryCameraMath.helmetPickRadius, of: centre) {
-            helmetYaw += .pi / 2
+        let centre = SIMD3<Float>(modelX, SecondaryCameraMath.modelSize / 2, modelZ)
+        if SecondaryCameraMath.passes(ray, within: SecondaryCameraMath.modelPickRadius, of: centre) {
+            modelYaw += .pi / 2
         } else {
             guard let hit = SecondaryCameraMath.floorHit(ray) else { return }
             let edge = SecondaryCameraMath.stageHalfExtent
-            helmetX = min(max(hit.x, -edge), edge)
-            helmetZ = min(max(hit.z, -edge), edge)
+            modelX = min(max(hit.x, -edge), edge)
+            modelZ = min(max(hit.z, -edge), edge)
         }
         lastEdit = source
-        applyHelmet(animated: animated)
+        applyModel(animated: animated)
     }
 
-    func resetHelmet(animated: Bool) {
-        helmetX = 0
-        helmetZ = 0
-        helmetYaw = 0
+    func resetModel(animated: Bool) {
+        modelX = 0
+        modelZ = 0
+        modelYaw = 0
         lastEdit = nil
-        applyHelmet(animated: animated)
+        applyModel(animated: animated)
     }
 
     /// Floor and grid take the scheme's `Stage.pipFloor` / `Stage.pipGrid`.
@@ -466,15 +467,15 @@ final class SecondaryCameraStage {
         slot == .main ? mainSet : insetSet
     }
 
-    private var helmetTransform: Transform {
+    private var modelTransform: Transform {
         Transform(scale: .one,
-                  rotation: simd_quatf(angle: helmetYaw, axis: SIMD3(0, 1, 0)),
-                  translation: SIMD3(helmetX, 0, helmetZ))
+                  rotation: simd_quatf(angle: modelYaw, axis: SIMD3(0, 1, 0)),
+                  translation: SIMD3(modelX, 0, modelZ))
     }
 
     /// Moves both copies — Android's 450 ms glide, none under Reduce Motion.
-    private func applyHelmet(animated: Bool) {
-        let target = helmetTransform
+    private func applyModel(animated: Bool) {
+        let target = modelTransform
         for pivot in [mainSet.pivot, insetSet.pivot] {
             if animated, pivot.scene != nil, let parent = pivot.parent {
                 _ = pivot.move(to: target, relativeTo: parent,
@@ -487,7 +488,7 @@ final class SecondaryCameraStage {
     }
 }
 
-/// One view's floor (its grid drawn in) and helmet pivot.
+/// One view's floor (its grid drawn in) and lantern pivot.
 @MainActor
 private final class StageEntities {
     let pivot = Entity()
@@ -502,7 +503,7 @@ private final class StageEntities {
         floor = ModelEntity(mesh: .generatePlane(width: size, depth: size), materials: [])
         floor.components.set(ModelSortGroupComponent(group: Self.sortGroup, order: 0))
 
-        // A soft contact shadow that travels and turns with the helmet. The
+        // A soft contact shadow that travels and turns with the lantern. The
         // floor is unlit (see `recolour`), so RealityKit's grounding shadow has
         // nothing to land on; this disc stands in for Android's shadow.
         if let shadow = Self.contactShadow() {
@@ -538,7 +539,7 @@ private final class StageEntities {
         var material = UnlitMaterial(applyPostProcessToneMap: false)
         material.color = .init(tint: .white, texture: .init(texture))
         material.blending = .transparent(opacity: .init(floatLiteral: 1))
-        let size = SecondaryCameraMath.helmetSize * 1.3
+        let size = SecondaryCameraMath.modelSize * 1.3
         return ModelEntity(mesh: .generatePlane(width: size, depth: size), materials: [material])
     }
 
@@ -628,9 +629,9 @@ enum SecondaryCameraMath {
     }
 
     // Android constants, value for value.
-    static let helmetSize: Float = 0.5
+    static let modelSize: Float = 0.5
     static let stageHalfExtent: Float = 0.35
-    static let helmetPickRadius: Float = 0.2
+    static let modelPickRadius: Float = 0.2
     static let editGlide: TimeInterval = 0.45
     static let stageCentre = SIMD3<Float>(0, 0.2, 0)
     static let mainElevation: Float = 24 * .pi / 180
@@ -643,7 +644,7 @@ enum SecondaryCameraMath {
     static let gridSpacing: Float = 0.25
     static let gridLineWidth: Float = 0.008
     /// The inset's camera sits at 80 % of Android's distance from the stage
-    /// centre: in a 192 × 128 pt window the helmet then fills a third of the
+    /// centre: in a 192 × 128 pt window the lantern then fills a third of the
     /// height instead of a quarter, and the 70 cm stage still fits every preset.
     static let insetZoom: Float = 0.8
     /// SceneView's vertical field of view.
@@ -698,15 +699,15 @@ enum SecondaryCameraMath {
     }
 
     /// The main camera: 24° above the stage, at the distance that fits the
-    /// stage the helmet can walk on (1.2 × 0.5 × 1.2 m, Android's fit extents)
+    /// stage the lantern can walk on (1.2 × 0.5 × 1.2 m, Android's fit extents)
     /// into the screen band between `bandTop` and `bandBottom`, centred on it.
     static func mainFraming(size: CGSize, bandTop: CGFloat, bandBottom: CGFloat) -> SceneCameraPose {
         let elevation = mainElevation
-        let halfX = stageHalfExtent + helmetSize / 2
+        let halfX = stageHalfExtent + modelSize / 2
         let target = stageCentre
         var corners: [SIMD3<Float>] = []
         for sx in [-1, 1] as [Float] {
-            for y in [0, helmetSize] {
+            for y in [0, modelSize] {
                 for sz in [-1, 1] as [Float] {
                     corners.append(SIMD3(sx * halfX, y, sz * halfX))
                 }

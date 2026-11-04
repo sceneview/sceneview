@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.65.0)
+  Source of truth: /llms.txt  (SceneView 4.66.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.65.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.66.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -20,14 +20,14 @@
 ```kotlin
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 
 val listState = rememberLazyListState()
 Box(Modifier.fillMaxSize()) {
     CinematicHero(
         listState = listState,
         height = 420.dp,
-        backdrop = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)),
+        backdrop = SolidColor(MaterialTheme.colorScheme.surfaceContainerLow), // flat: no gradients (DESIGN.md)
     ) {
         rememberModelInstance(modelLoader, "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb")
             ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }

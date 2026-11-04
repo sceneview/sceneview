@@ -2,7 +2,7 @@
 
 `gen.py` generates the light/dark 5:4 preview WebPs in
 `samples/android-demo/src/main/res/drawable-nodpi/` with Gemini image-to-image,
-following the art direction in `DESIGN.md` ("Preview Image Art Direction").
+following the art direction in `DESIGN.md` ("Preview images", under "3D models shown").
 
 ```bash
 GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \

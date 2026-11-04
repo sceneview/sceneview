@@ -59,6 +59,9 @@ import io.github.sceneview.demo.ui.home.outlineSubtle
  * @param thumbnailStem [ModelThumbnails] key when it is not the stem of [assetPath].
  * @param autoplayAnimations `false` for a model whose clips are not a performance but a rig —
  *   Perseverance's 23 mechanism clips: it opens still, and the animation bar still plays them.
+ * @param scale metres per model unit, for a bundled file not authored in metres. The viewer
+ *   frames the model at its glTF size, and its camera stops at 900 m: the Phoenix Bird, ~960
+ *   units long, put the eye inside the bird until it was shown at a bird's size.
  */
 data class BundledViewerModel(
     val assetPath: String?,
@@ -68,6 +71,7 @@ data class BundledViewerModel(
     val hdAssetId: String? = null,
     val thumbnailStem: String? = null,
     val autoplayAnimations: Boolean = true,
+    val scale: Float = 1f,
 ) {
     init {
         require(assetPath != null || (hdAssetId != null && thumbnailStem != null)) {

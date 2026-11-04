@@ -74,6 +74,19 @@ class DemoMathTest {
         assertTrue("front face spans $frontWidth of the width", frontWidth <= 0.9f)
     }
 
+    @Test fun `the Phoenix Bird hero frames inside the viewer camera's range`() {
+        // phoenix_bird.glb is authored ~910 x 317 x 962 units. At glTF size its fit distance is
+        // far past MAX_VIEWER_DISTANCE, so the clamped eye sat inside the bird; at its viewer
+        // scale it frames like any metre-scale model.
+        val (x, y, z) = Triple(910f, 317f, 962f)
+        val raw = DemoMath.viewerFraming(x, y, z, 411f, 914f, 96f, 128f)
+        assertEquals(DemoMath.MAX_VIEWER_DISTANCE, raw.distance, 1e-3f)
+        val s = io.github.sceneview.demo.demos.PHOENIX_BIRD_SCALE
+        val scaled = DemoMath.viewerFraming(x * s, y * s, z * s, 411f, 914f, 96f, 128f)
+        assertTrue("distance ${scaled.distance}", scaled.distance < DemoMath.MAX_VIEWER_DISTANCE / 10f)
+        assertTrue("eye outside the bird", scaled.distance > z * s / 2f)
+    }
+
     @Test fun `viewerFraming moves a model above a sheet and back when it closes`() {
         // #4053 — the Lighting sheet covers ~40 % of the screen from the bottom. The model must
         // fit the band above it: smaller than at rest, and aimed higher.
@@ -547,15 +560,10 @@ class DemoMathTest {
 
     @Test
     fun `the helmet stands in AR the way the Model Viewer shows it`() {
-        // The +90° X root quaternion is the file's own Z-up to Y-up conversion. gltfio applies
-        // it on load, which is why the Model Viewer — no correction at all — shows the helmet
-        // upright, visor forward.
+        // Whatever up-axis conversion the file carries in its node rotations, gltfio applies it
+        // on load, which is why the Model Viewer — no correction at all — shows the helmet
+        // upright. The AR placement must keep exactly those axes.
         val root = glbRootRotation(bundledModel(DemoMath.HELMET_ASSET))
-        assertEquals(0.70710677f, root.x, 1e-6f)
-        assertEquals(0f, root.y, 1e-6f)
-        assertEquals(0f, root.z, 1e-6f)
-        assertEquals(0.70710677f, root.w, 1e-6f)
-
         val viewer = root
         val ar = Quaternion.fromEuler(DemoMath.placementRotationFor(DemoMath.HELMET_ASSET)) * root
         assertSameAxes("helmet AR vs viewer", viewer, ar)

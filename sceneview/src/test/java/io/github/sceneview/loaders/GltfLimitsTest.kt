@@ -885,12 +885,11 @@ class GltfLimitsTest {
         const val MAX = 4096
 
         /**
-         * The repository models Filament cannot load, each for a reason Filament itself asserts:
-         * this website model skins more bones than `CONFIG_MAX_BONE_COUNT`.
+         * The repository models Filament cannot load, each for a reason Filament itself asserts.
+         * Empty since the only one, a 1,523-joint fan-art rig of a commercial game character, was
+         * removed from the website for licensing reasons.
          */
-        val KNOWN_REFUSED = mapOf(
-            "website-static/models/platforms/KindredLol.glb" to listOf("skin 0 has 1523 joints, more than the 256 Filament can skin"),
-        )
+        val KNOWN_REFUSED = emptyMap<String, List<String>>()
 
         fun joints(count: Int) = (0 until count).joinToString(",", "[", "]")
 

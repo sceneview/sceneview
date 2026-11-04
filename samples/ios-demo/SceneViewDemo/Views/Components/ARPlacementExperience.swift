@@ -90,7 +90,10 @@ struct ARPlacementExperience: View {
         }
     }
 
-    static let comparisonModel = "khronos_damaged_helmet"
+    /// The model the depth / people occlusion demos place. Phoenix Bird
+    /// (NORBERTO-3D, CC-BY 4.0) replaced the Damaged Helmet, whose source
+    /// scan is CC-BY-NC and cannot ship in a store build.
+    static let comparisonModel = "phoenix_bird"
     var wallTV = false
     private var title: String?
     private var occlusion: Occlusion?
@@ -157,7 +160,7 @@ struct ARPlacementExperience: View {
     }
     private var displayName: String {
         if wallTV { return "TV" }
-        if !usesOpenedFile && modelName == Self.comparisonModel { return "Damaged Helmet" }
+        if !usesOpenedFile && modelName == Self.comparisonModel { return "Phoenix" }
         if usesOpenedFile { return initialModelURL!.deletingPathExtension().lastPathComponent }
         return Self.models.first { $0.asset == modelName }?.name
             ?? modelName.replacingOccurrences(of: "_", with: " ").capitalized
@@ -459,10 +462,10 @@ struct ARPlacementExperience: View {
         }
     }
 
-    // No per-asset orientation correction (#3735). The helmet USDZ's +90° X node rotation is
-    // its own Z-up-to-Y-up conversion: RealityKit loads it upright, as the Model Viewer shows
-    // it. The -90° X that used to be applied here mirrored an Android correction that laid
-    // the helmet on its back in AR only; both are gone.
+    // No per-asset orientation correction (#3735). A USDZ's own Z-up-to-Y-up node rotation
+    // is honoured by RealityKit, which loads the model upright, as the Model Viewer shows it.
+    // The -90° X that used to be applied here mirrored an Android correction that laid
+    // the former Damaged Helmet on its back in AR only; both are gone.
 
     /// Same authored metre geometry and physical material parameters as Android's TV.
     /// This is a procedural TV model, not a simulated camera or placement.
