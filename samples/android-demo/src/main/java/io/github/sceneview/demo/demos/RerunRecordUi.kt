@@ -85,6 +85,11 @@ import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanPhase
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanStep
+import io.github.sceneview.demo.demos.internal.RescanZone
+import io.github.sceneview.demo.demos.internal.ScanReviewCopy
+import io.github.sceneview.demo.demos.internal.ScanReviewResult
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
@@ -337,22 +342,54 @@ private fun ScanPauseButton(paused: Boolean, label: String, onClick: () -> Unit)
  * Finish's review: the capture frozen, nothing built yet. Keep scanning returns to the same
  * capture; Save scan builds and writes it. A capture with nothing in it offers only Keep
  * scanning — there is nothing to save.
+ *
+ * Review before you leave: a room's capture is read once for the parts it missed ([review],
+ * `null` when there is no dense map to read; [checking] while it is read). With parts to fix the
+ * card says how many, names the one the 3D view is on ([focus]), and offers Fix now — the same
+ * capture, that part framed in amber ([onFixNow]) — or Build anyway.
  */
 @Composable
+@Suppress("LongParameterList") // the review's answers, and what it found
 internal fun ScanReviewCard(
     empty: Boolean,
     figures: String,
     onKeepScanning: () -> Unit,
     onSave: () -> Unit,
+    review: ScanReviewResult? = null,
+    checking: Boolean = false,
+    focus: Int = 0,
+    onFixNow: ((RescanZone) -> Unit)? = null,
 ) {
+    val zones = review?.zones.orEmpty().takeUnless { empty || checking }.orEmpty()
+    val focused = zones.getOrNull(focus.coerceIn(0, (zones.size - 1).coerceAtLeast(0)))
     OverlayCard(testTag = SCAN_REVIEW_TAG) {
         ScanStepRow(ScanStep.Review)
-        Text(text = if (empty) ScanCopy.EMPTY_TITLE else ScanCopy.REVIEW_TITLE, style = OnScrimTitle)
+        val title = when {
+            empty -> ScanCopy.EMPTY_TITLE
+            zones.isNotEmpty() -> ScanReviewCopy.title(zones.size)
+            review?.clear == true && !checking -> ScanReviewCopy.CLEAR_TITLE
+            else -> ScanCopy.REVIEW_TITLE
+        }
+        Text(text = title, style = OnScrimTitle, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         Text(text = if (empty) ScanCopy.EMPTY_DETAIL else figures, style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted))
-        if (!empty) Text(text = CaptureChrome.REVIEW_DETAIL, style = ScanDetailStyle.copy(color = ArOverlay.onScrim))
+        val detail = when {
+            empty -> null
+            checking -> ScanReviewCopy.CHECKING
+            focused != null -> ScanReviewCopy.focus(focused, zones.indexOf(focused), zones.size)
+            review?.clear == true -> ScanReviewCopy.CLEAR_DETAIL
+            else -> CaptureChrome.REVIEW_DETAIL
+        }
+        if (detail != null) Text(text = detail, style = ScanDetailStyle.copy(color = ArOverlay.onScrim))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             if (empty) {
                 Button(onClick = onKeepScanning, modifier = Modifier.weight(1f)) { Text(ScanCopy.KEEP_SCANNING) }
+            } else if (focused != null && onFixNow != null) {
+                FilledTonalButton(onClick = onSave, modifier = Modifier.weight(1f).testTag(SCAN_BUILD_ANYWAY_TAG)) {
+                    Text(ScanReviewCopy.BUILD_ANYWAY)
+                }
+                Button(onClick = { onFixNow(focused) }, modifier = Modifier.weight(1f).testTag(SCAN_FIX_NOW_TAG)) {
+                    Text(ScanReviewCopy.FIX_NOW)
+                }
             } else {
                 FilledTonalButton(onClick = onKeepScanning, modifier = Modifier.weight(1f)) {
                     Text(ScanCopy.KEEP_SCANNING)
@@ -607,11 +644,16 @@ internal fun ScanLiveView(
     walls: ScanWallsState? = null,
     turn: ScanTurn? = walls?.turn,
     reviewing: Boolean = false,
+    reviewPose: (() -> OrbitPose?)? = null,
 ) {
+    // Review before you leave: the view leaves the phone and flies to each part still to fix
+    // ([reviewPose], the part of the moment), over the room with its lid off, as the save does.
+    val flying = reviewPose != null && !saving
+    val reviewPoseNow by rememberUpdatedState(reviewPose)
     // Saving, the view is handed back to the automatic framing, which the orbit then drives.
-    LaunchedEffect(saving) { if (saving) orbit.recenter() }
+    LaunchedEffect(saving, flying) { if (saving || flying) orbit.recenter() }
     val veil by animateColorAsState(
-        targetValue = if (saving) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
+        targetValue = if (saving || flying) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
         animationSpec = tween(SceneViewTokens.Duration.longMillis, easing = SceneViewTokens.Ease.expressive),
         label = "scanVeil",
     )
@@ -623,6 +665,7 @@ internal fun ScanLiveView(
     var openTop by remember { mutableStateOf<ReplayDenseLayer?>(null) }
     var lidOff by remember { mutableStateOf(false) }
     val savingNow by rememberUpdatedState(saving)
+    val flyingNow by rememberUpdatedState(flying)
     LaunchedEffect(cutting) {
         openTop = null
         lidOff = false
@@ -635,7 +678,9 @@ internal fun ScanLiveView(
     val drawn = remember(media) {
         // Over the camera its surfels are capped small; the save flight leaves the phone's eye.
         media.liveDense?.let { live ->
-            media.withLiveDense(overCamera = { !savingNow }) { openTop?.takeIf { savingNow } ?: live() }
+            media.withLiveDense(overCamera = { !savingNow && !flyingNow }) {
+                openTop?.takeIf { savingNow || flyingNow } ?: live()
+            }
         } ?: media
     }
     val observed = remember(coverage, walls) { ScanObserveGate() }
@@ -656,7 +701,9 @@ internal fun ScanLiveView(
                 val phone = follow.poseFor(livePose(frame.camera))
                 // Round the map as it stands, not the merged surfels the live view draws (#4792).
                 val points = (drawn.liveDense?.invoke() ?: media.dense)?.whole ?: frame.mapPoints
-                savingOrbit?.poseFor(phone, points, orbit, ready = lidOff) ?: phone
+                savingOrbit?.poseFor(phone, points, orbit, ready = lidOff)
+                    ?: reviewPoseNow?.invoke()?.takeIf { flyingNow && lidOff }
+                    ?: phone
             },
             observe = { frame ->
                 val pose = livePose(frame.camera)
@@ -676,9 +723,9 @@ internal fun ScanLiveView(
             // second view drawn at the display's 60 Hz redrew the same picture every other vsync,
             // one GPU pass and one swap too many on a mid-range phone (#4743). Saving, the orbit is
             // the view's own motion and gets the display's full rate back.
-            maxFps = if (saving) null else SCAN_LIVE_FPS,
+            maxFps = if (saving || flying) null else SCAN_LIVE_FPS,
         )
-        if (walls != null && !saving) ScanTurnArrow(turn)
+        if (walls != null && !saving && !flying) ScanTurnArrow(turn)
     }
 }
 
@@ -723,6 +770,8 @@ internal const val SCAN_PAUSE_TAG = "ar_rerun_scan_pause"
 internal const val SCAN_FINISH_TAG = "ar_rerun_scan_finish"
 internal const val SCAN_HINT_TAG = "ar_rerun_scan_hint"
 internal const val SCAN_REVIEW_TAG = "ar_rerun_scan_review"
+internal const val SCAN_FIX_NOW_TAG = "ar_rerun_scan_fix_now"
+internal const val SCAN_BUILD_ANYWAY_TAG = "ar_rerun_scan_build_anyway"
 internal const val SCAN_SAVING_TAG = "ar_rerun_scan_saving"
 internal const val SCAN_SAVE_FAILED_TAG = "ar_rerun_scan_save_failed"
 internal const val SCAN_SAVE_AS_FILE_TAG = "ar_rerun_scan_save_as_file"

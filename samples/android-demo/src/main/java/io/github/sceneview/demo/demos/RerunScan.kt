@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthAlignment
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
@@ -400,6 +401,22 @@ internal class ScanCapture private constructor(
         recordedTotal = total
         recordedFrames += dense.frames
         trace.addDepthStats(nanos, denseAdded.getAndSet(0), denseKept.getAndSet(0), total)
+    }
+
+    /**
+     * The dense map as it stands — what Save would write — for the review at Stop (review before you
+     * leave), `null` without one. Called on the main thread, where depth is fused from: the fusion
+     * under way finishes first, and while the map is read new depth frames are let go as they are
+     * behind a busy fusion, so a capture resumed meanwhile never writes under the read.
+     */
+    suspend fun reviewCloud(): DenseCloud? {
+        val map = dense ?: return null
+        while (!fusing.compareAndSet(false, true)) fuseJob?.join() ?: return null
+        return try {
+            withContext(Dispatchers.Default) { map.takeIf { it.fusion.count > 0 }?.savedCloud() }
+        } finally {
+            fusing.set(false)
+        }
     }
 
     /**
