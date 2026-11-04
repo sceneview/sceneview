@@ -25,9 +25,8 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
-  font:
-    text: Inter
-    code: JetBrains Mono
+  # No web font: the system font (Roboto on Android, SF on Apple). extra.css names it.
+  font: false
   # The same mark as the home page's header (website-static/index.html, #i-logo).
   logo: assets/images/logo-sceneview.svg
   features:
