@@ -69,8 +69,10 @@
    * the box-reflect reflection line up with the poster and the live render. */
   var live = [];                         // [{stage, sv}] oldest first
   function num(stage, k, d) { var v = parseFloat(stage.dataset[k]); return isNaN(v) ? d : v; }
+  // The aspect is the box's own (5:4 for most stages, square or 16:10 for the hero).
   function fitOptions(stage) {
-    return { aspect: 1.25, elev: num(stage, 'elev', 0.25), angle: num(stage, 'angle', 0), fill: num(stage, 'fill', 0.9), top: num(stage, 'top', 0.7), hull: stage.dataset.hull || 'box' };
+    var r = $('.stage__box', stage).getBoundingClientRect();
+    return { aspect: r.height ? r.width / r.height : 1.25, elev: num(stage, 'elev', 0.25), angle: num(stage, 'angle', 0), fill: num(stage, 'fill', 0.9), top: num(stage, 'top', 0.7), bottom: num(stage, 'bottom', -0.985), hull: stage.dataset.hull || 'box' };
   }
   function setShadow(stage, s) {
     var box = $('.stage__box', stage);

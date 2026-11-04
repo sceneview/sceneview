@@ -1,13 +1,13 @@
 /* SceneView website — the support prompt (assets/support.js).
  *
- * It runs on the "Stage" home page (tokens.css) and on the pages still on styles.css:
- * each colour reads the Stage token and falls back to the same value where tokens.css
- * is absent, dark first.
- * Contrast ratios are WCAG 2.x, measured on the card surface (surface-1):
- *   dark  — text 14.6, text-2 8.3, text-3 5.4, accent 7.6, on-accent on fill 9.5,
- *           control edge (outline) 3.54
- *   light — text 19.1, text-2 8.1, text-3 6.2, accent 6.1, on-accent on fill 6.1,
- *           control edge (outline) 4.15
+ * It runs on the Material 3 home page (tokens.css) and on the pages still on styles.css:
+ * each colour reads the token and falls back to a fixed value where tokens.css is
+ * absent, dark first. The one filled button is the M3 primary role on every page
+ * (#ADC6FF / #002E69 dark, #004494 / #FFFFFF light: 7.7 and 9.3).
+ * Contrast ratios are WCAG 2.x, measured on the card surface (surface-1) of the
+ * styles.css fallbacks:
+ *   dark  — text 14.6, text-2 8.3, text-3 5.4, accent 7.6, control edge (outline) 3.54
+ *   light — text 19.1, text-2 8.1, text-3 6.2, accent 6.1, control edge (outline) 4.15
  * Theme: dark by default; light when the OS asks for it and the visitor did not pick
  * dark, or when the visitor picked light (both sites set data-theme on <html>). */
 
@@ -20,9 +20,8 @@
   --svs-text-2: var(--text-2, #B4BCCB);
   --svs-text-3: var(--text-3, #8D97A8);
   --svs-accent: var(--accent, #8AB4FF);
-  --svs-fill: var(--accent-fill, #8AB4FF);
-  --svs-on-fill: var(--on-accent, #06080C);
-  --svs-warm: var(--warm, #FFB86B);
+  --svs-fill: var(--md-sys-color-primary, #ADC6FF);
+  --svs-on-fill: var(--md-sys-color-on-primary, #002E69);
   --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);   /* M3 elevation level 3 */
   --svs-sel: var(--md-sys-color-secondary-container, #33466D);
   --svs-on-sel: var(--md-sys-color-on-secondary-container, #A1B5E2);
@@ -38,9 +37,8 @@
     --svs-text-2: var(--text-2, #465061);
     --svs-text-3: var(--text-3, #586272);
     --svs-accent: var(--accent, #0B5BD3);
-    --svs-fill: var(--accent-fill, #0B5BD3);
-    --svs-on-fill: var(--on-accent, #FFFFFF);
-    --svs-warm: var(--warm, #A2560A);
+    --svs-fill: var(--md-sys-color-primary, #004494);
+    --svs-on-fill: var(--md-sys-color-on-primary, #FFFFFF);
     --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);
     --svs-sel: var(--md-sys-color-secondary-container, #BBCFFD);
     --svs-on-sel: var(--md-sys-color-on-secondary-container, #44587F);
@@ -56,9 +54,8 @@
   --svs-text-2: var(--text-2, #465061);
   --svs-text-3: var(--text-3, #586272);
   --svs-accent: var(--accent, #0B5BD3);
-  --svs-fill: var(--accent-fill, #0B5BD3);
-  --svs-on-fill: var(--on-accent, #FFFFFF);
-  --svs-warm: var(--warm, #A2560A);
+  --svs-fill: var(--md-sys-color-primary, #004494);
+  --svs-on-fill: var(--md-sys-color-on-primary, #FFFFFF);
   --svs-shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15);
   --svs-sel: var(--md-sys-color-secondary-container, #BBCFFD);
   --svs-on-sel: var(--md-sys-color-on-secondary-container, #44587F);
@@ -92,13 +89,6 @@
 
 .svs__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-right: -10px; }
 .svs__head > div { min-width: 0; padding-top: 2px; }
-.svs__eyebrow {
-  display: inline-flex; align-items: center; gap: 8px;
-  font: 500 .75rem/1rem system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
-  color: var(--svs-text-2);
-  margin-bottom: 10px;
-}
-.svs__heart { width: 16px; height: 16px; color: var(--svs-warm); flex: none; }
 .svs__close {
   width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 11px; margin-top: -10px;
   border: 0; border-radius: 999px; background: transparent; color: var(--svs-text-2); cursor: pointer;
@@ -157,7 +147,6 @@
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     padding: 16px 16px 12px; border-radius: 20px;
   }
-  .svs__eyebrow { display: none; }
   .svs__head > div { padding-top: 0; }
   .svs__close { margin-top: -12px; }
   .svs__title { font-size: 1.125rem; }

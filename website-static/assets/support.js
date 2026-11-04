@@ -149,12 +149,11 @@
       '<div class="svs__body">' +
         '<div class="svs__head">' +
           '<div>' +
-            '<p class="svs__eyebrow"><span class="svs__heart">' + HEART + '</span>Open source</p>' +
             '<h2 class="svs__title" id="svs-title">Help keep SceneView going</h2>' +
           '</div>' +
           '<button class="svs__close" type="button" aria-label="Close">' + X + '</button>' +
         '</div>' +
-        '<p class="svs__text">Free, built by volunteers, funded by the people who use it. If it saves you time, chip in.</p>' +
+        '<p class="svs__text">SceneView is free and open source. Donations pay for its fixes and releases.</p>' +
         '<div class="svs__seg svs__seg--freq" role="group" aria-label="How often">' +
           seg('data-interval', 'oneTime', 'Once') + seg('data-interval', 'month', 'Monthly') +
         '</div>' +

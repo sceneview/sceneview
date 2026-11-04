@@ -55,7 +55,8 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <link rel="preload" as="image" href="assets/home/hero-circuit-sq-960.webp" imagesrcset="assets/home/hero-circuit-sq-640.webp 640w, assets/home/hero-circuit-sq-960.webp 960w" imagesizes="(min-width: 960px) 44vw, 100vw" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/hero-phoenix-sq-960.webp" imagesrcset="assets/home/hero-phoenix-sq-640.webp 640w, assets/home/hero-phoenix-sq-960.webp 960w" imagesizes="44vw" media="(min-width: 960px) and (min-height: 600px)" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/hero-phoenix-wide-960.webp" imagesrcset="assets/home/hero-phoenix-wide-640.webp 640w, assets/home/hero-phoenix-wide-960.webp 960w" imagesizes="100vw" media="not ((min-width: 960px) and (min-height: 600px))" fetchpriority="high">
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/fit.js" defer></script>
@@ -141,7 +142,7 @@
     <div class="nav__end">
       <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars data-metric="stars">1.3K</span></a>
       <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg></button>
-      <a class="btn btn--filled" href="/docs/quickstart/" data-start>Get started</a>
+      <a class="btn btn--tonal" href="/docs/quickstart/" data-start>Get started</a>
       <button class="icon-btn nav__menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open menu"><svg><use href="#i-menu"/></svg></button>
     </div>
   </div>
@@ -171,28 +172,31 @@
 
 <main id="main">
 
-  <!-- 1 · HERO — a showpiece scene rendered live by SceneView Web: a car on the wet start grid
-       of a circuit at night, shown as a square media card on the page's own surface. Poster
-       first; a desktop goes live when idle, a phone on tap. Desktop ≥ 960 (no reduced motion): the hero is pinned
-       for one extra screen; scrolling turns the camera and walks through what the scene shows.
-       The scene itself (lights, lens, camera move) is assets/scenes/circuit.js. -->
-  <section class="hero hero--scene" aria-labelledby="hero-title">
+  <!-- 1 · HERO — a model rendered live by SceneView Web on a transparent canvas, over a square
+       media card on the page's own surface. Poster first; a desktop goes live when idle, a
+       phone on tap. Desktop ≥ 960 (no reduced motion): the hero is pinned for one extra screen;
+       scrolling turns the model and walks through the calls the page uses. A phone shows the
+       title first, then the picture (site.css, hero). The fit (data-bbox …) is assets/fit.js. -->
+  <section class="hero" aria-labelledby="hero-title">
     <div class="hero__pin">
-      <div class="stage hero__stage" id="hero-stage" data-stage data-scene="circuit" data-autoload="idle" data-mobile="tap">
+      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/web-demo/models/phoenix_bird.glb" data-anim="0"
+           data-bbox="-730,-370,-536,238,610,528" data-hull="ellipse" data-elev="0.15" data-angle="0.6" data-fill="0.86" data-top="0.8" data-bottom="-1.12"
+           data-autoload="idle" data-mobile="tap">
         <div class="stage__box">
           <div class="stage__frame">
             <picture>
-              <img class="stage__poster" src="assets/home/hero-circuit-sq-960.webp" srcset="assets/home/hero-circuit-sq-640.webp 640w, assets/home/hero-circuit-sq-960.webp 960w"
-                   sizes="(min-width: 960px) 44vw, 100vw" width="960" height="960" fetchpriority="high"
-                   alt="A red sports car on the wet start grid of a circuit at night, in the rain under floodlights, rendered by SceneView Web.">
+              <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-phoenix-sq-640.webp 640w, assets/home/hero-phoenix-sq-960.webp 960w" sizes="44vw" width="960" height="960">
+              <img class="stage__poster" src="assets/home/hero-phoenix-wide-960.webp" srcset="assets/home/hero-phoenix-wide-640.webp 640w, assets/home/hero-phoenix-wide-960.webp 960w"
+                   sizes="100vw" width="960" height="600" fetchpriority="high"
+                   alt="A phoenix in flight, its long tail feathers in orange and blue, rendered by SceneView Web.">
             </picture>
-            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D scene: a sports car on the wet start grid of a circuit at night, in the rain. Drag to move the camera."></canvas>
+            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a phoenix in flight. Drag sideways to turn it."></canvas>
           </div>
         </div>
         <div class="stage__bar">
-          <p class="stage__credit credit"><a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept">Car Concept</a> by Eric Chadwick, Darmstadt Graphics Group, CC&nbsp;BY&nbsp;4.0, adapted</p>
-          <button class="stage__load btn btn--outlined" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
-          <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the camera move"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+          <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042">Phoenix Bird</a> by NORBERTO-3D, CC&nbsp;BY&nbsp;4.0</p>
+          <button class="stage__load btn btn--text" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
+          <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
         </div>
       </div>
 
@@ -229,10 +233,10 @@
           </div>
         </div>
 
-        <ol class="hero__specs" aria-label="What the scene shows">
-          <li><b>Clear-coat paint</b><code>KHR_materials_clearcoat</code></li>
-          <li><b>Reflections on a wet track</b><code>setScreenSpaceReflections()</code></li>
-          <li><b>Floodlights, bloom and fog</b><code>addLight(), setBloom(), setFog()</code></li>
+        <ol class="hero__specs" aria-label="What the page uses">
+          <li><b>A transparent canvas on the page</b><code>SceneView.create(canvas, { transparent: true })</code></li>
+          <li><b>The model's own animation</b><code>playAnimation(0, true)</code></li>
+          <li><b>Image-based lighting</b><code>iblUrl, iblIntensity</code></li>
         </ol>
       </div>
     </div>
@@ -259,7 +263,7 @@
 <span class="cl"><span class="k">@Composable</span></span>
 <span class="cl"><span class="k">fun</span> <span class="f">ModelScreen</span>() {</span>
 <span class="cl" style="--in:4"><span class="in">    </span><span class="f">SceneView</span>(<wbr><span class="nb">modifier = Modifier.<span class="f">fillMaxSize</span>()) {</span></span>
-<span class="cl" style="--in:8"><span class="in">        </span><span class="f">rememberModelInstance</span>(modelLoader, <span class="s" data-literal="glb">"models/sheen_chair.glb"</span>)</span>
+<span class="cl" style="--in:8"><span class="in">        </span><span class="f">rememberModelInstance</span>(modelLoader, <span class="s" data-literal="glb">"models/armchair.glb"</span>)</span>
 <span class="cl" style="--in:12"><span class="in">            </span>?.<span class="f">let</span> { instance <span class="k">-&gt;</span></span>
 <span class="cl" style="--in:16"><span class="in">                </span><span class="f">ModelNode</span>(</span>
 <span class="cl" style="--in:20"><span class="in">                    </span>modelInstance = instance,</span>
@@ -280,7 +284,7 @@
 <span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">contentID</span>(model != <span class="k">nil</span>)</span>
 <span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">environment</span>(.studio)</span>
 <span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">cameraControls</span>(.orbit)</span>
-<span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">task</span> { model = <span class="k">try?</span> <span class="k">await</span> ModelNode.<span class="f">load</span>(<wbr><span class="nb"><span class="s" data-literal="usdz" data-dir="">"sheen_chair.usdz"</span>) }</span></span>
+<span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">task</span> { model = <span class="k">try?</span> <span class="k">await</span> ModelNode.<span class="f">load</span>(<wbr><span class="nb"><span class="s" data-literal="usdz" data-dir="">"armchair.usdz"</span>) }</span></span>
 <span class="cl" style="--in:4"><span class="in">    </span>}</span>
 <span class="cl">}</span></code></pre></div>
 <div role="tabpanel" id="p-web" aria-labelledby="t-web" hidden><pre><code><span class="cl"><span class="c">&lt;!-- Web, Filament on WebAssembly --&gt;</span></span>
@@ -288,7 +292,7 @@
 <span class="cl"><span class="k">&lt;script</span> src=<span class="s">"…/filament.js"</span><span class="k">&gt;&lt;/script&gt;</span></span>
 <span class="cl"><span class="k">&lt;script</span> src=<span class="s">"…/sceneview.js"</span><span class="k">&gt;&lt;/script&gt;</span></span>
 <span class="cl"><span class="k">&lt;script&gt;</span></span>
-<span class="cl" style="--in:2"><span class="in">  </span>SceneView.<span class="f">modelViewer</span>(<span class="s">"viewer"</span>, <span class="s" data-literal="glb">"models/sheen_chair.glb"</span>)</span>
+<span class="cl" style="--in:2"><span class="in">  </span>SceneView.<span class="f">modelViewer</span>(<span class="s">"viewer"</span>, <span class="s" data-literal="glb">"models/armchair.glb"</span>)</span>
 <span class="cl"><span class="k">&lt;/script&gt;</span></span></code></pre></div>
 <div role="tabpanel" id="p-flutter" aria-labelledby="t-flutter" hidden><pre><code><span class="cl"><span class="c">// Flutter, Android and iOS</span></span>
 <span class="cl"><span class="k">final</span> controller = <span class="f">SceneViewController</span>();</span>
@@ -296,13 +300,13 @@
 <span class="cl"><span class="f">SceneView</span>(</span>
 <span class="cl" style="--in:2"><span class="in">  </span>controller: controller,</span>
 <span class="cl" style="--in:2"><span class="in">  </span>onViewCreated: () =&gt; controller.<span class="f">loadModel</span>(</span>
-<span class="cl" style="--in:4"><span class="in">    </span><span class="k">const</span> <span class="f">ModelNode</span>(modelPath: <span class="s" data-literal="glb" data-q="'">'models/sheen_chair.glb'</span>),</span>
+<span class="cl" style="--in:4"><span class="in">    </span><span class="k">const</span> <span class="f">ModelNode</span>(modelPath: <span class="s" data-literal="glb" data-q="'">'models/armchair.glb'</span>),</span>
 <span class="cl" style="--in:2"><span class="in">  </span>),</span>
 <span class="cl">)</span></code></pre></div>
 <div role="tabpanel" id="p-rn" aria-labelledby="t-rn" hidden><pre><code><span class="cl"><span class="c">// React Native, Android and iOS</span></span>
 <span class="cl"><span class="k">&lt;</span><span class="f">SceneView</span></span>
 <span class="cl" style="--in:2"><span class="in">  </span>style={{ flex: <span class="n">1</span> }}</span>
-<span class="cl" style="--in:2"><span class="in">  </span>modelNodes={[{ <span class="nb">src: <span class="s" data-literal="glb" data-q="'">'models/sheen_chair.glb'</span>,</span> <span class="nb">position: [<span class="n">0</span>, <span class="n">0</span>, <span class="n">-2</span>] }]}</span></span>
+<span class="cl" style="--in:2"><span class="in">  </span>modelNodes={[{ <span class="nb">src: <span class="s" data-literal="glb" data-q="'">'models/armchair.glb'</span>,</span> <span class="nb">position: [<span class="n">0</span>, <span class="n">0</span>, <span class="n">-2</span>] }]}</span></span>
 <span class="cl" style="--in:2"><span class="in">  </span>cameraControlMode=<span class="s">"orbit"</span></span>
 <span class="cl"><span class="k">/&gt;</span></span></code></pre></div>
           <div class="codecard__foot">
@@ -312,13 +316,13 @@
         </div>
 
         <div class="viewport reveal" style="--i:1" data-stage-wrap>
-          <div class="stage stage--fit" id="code-stage" data-stage data-src="/models/platforms/SheenChair.glb" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935"
+          <div class="stage stage--fit" id="code-stage" data-stage data-src="/models/platforms/rivet_aiden_armchair.glb" data-bbox="-0.464,0,-0.3991,0.464,0.767,0.3991"
                data-autoload="visible" data-mobile="tap" data-elev="0.26" data-angle="0.6" data-fill="0.7" data-top="0.42">
-            <div class="stage__box" style="--sx:.5;--sy:.8103;--sw:.3553;--sh:.1911">
+            <div class="stage__box" style="--sx:.5;--sy:.7995;--sw:.3816;--sh:.2029">
               <div class="stage__shadow" aria-hidden="true"></div>
               <div class="stage__frame">
-                <img class="stage__poster" src="assets/home/vp-chair.webp" width="1200" height="960" loading="lazy"
-                     alt="A velvet armchair with sheen fabric, rendered by SceneView.">
+                <img class="stage__poster" src="assets/home/vp-armchair.webp" width="1200" height="960" loading="lazy"
+                     alt="A tan leather armchair, rendered by SceneView.">
                 <canvas class="stage__canvas" role="img" aria-label="Interactive 3D preview of the selected model. Drag sideways to turn it."></canvas>
               </div>
             </div>
@@ -329,44 +333,11 @@
               <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
             </div>
             <div class="chips chips--stage" data-models="code-stage" role="group" aria-label="Swap the model">
-              <button class="chip" type="button" aria-pressed="true" data-file="SheenChair.glb" data-name="sheen_chair" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935" data-elev="0.26" data-angle="0.6" data-hull="box" data-poster="assets/home/vp-chair.webp" data-shadow=".5,.8103,.3553,.1911" data-credit="Sheen Chair, © 2020 Wayfair LLC, CC0"><img src="assets/home/thumb-chair.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Sheen chair</button>
-              <button class="chip" type="button" aria-pressed="false" data-file="Fox.glb" data-name="fox" data-bbox="-12.5927,-0.1217,-88.095,12.5927,78.9072,66.6249" data-anim="1" data-elev="0.2" data-angle="0.9" data-hull="box" data-poster="assets/home/vp-fox.webp" data-shadow=".5,.8008,.3424,.1586" data-credit='Fox: mesh by PixelMannen (CC0), rig and animation by tomkranis, glTF by AsoboStudio and scurest (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)'><img src="assets/home/thumb-fox.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Fox, animated</button>
-              <button class="chip" type="button" aria-pressed="false" data-file="ToyCar.glb" data-name="toy_car" data-bbox="-0.035,-0.0162,-0.037,0.0384,0.0126,0.037" data-elev="0.38" data-angle="0.75" data-hull="ellipse" data-poster="assets/home/vp-car.webp" data-shadow=".5,.7456,.5852,.3704" data-credit="Toy Car by Guido Odendahl, CC0"><img src="assets/home/thumb-car.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Toy car</button>
+              <button class="chip" type="button" aria-pressed="true" data-file="rivet_aiden_armchair.glb" data-name="armchair" data-bbox="-0.464,0,-0.3991,0.464,0.767,0.3991" data-elev="0.26" data-angle="0.6" data-hull="box" data-poster="assets/home/vp-armchair.webp" data-shadow=".5,.7995,.3816,.2029" data-credit='Rivet Aiden armchair, Amazon Berkeley Objects, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>'><img src="assets/home/thumb-armchair.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Armchair</button>
+              <button class="chip" type="button" aria-pressed="false" data-file="ToonCat.glb" data-name="cat" data-bbox="-96,-8,-262,96,370,258" data-anim="0" data-elev="0.26" data-angle="0.6" data-hull="box" data-poster="assets/home/vp-cat.webp" data-shadow=".5,.8101,.3286,.1763" data-credit='Toon Cat by Omabuarts Studio, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>'><img src="assets/home/thumb-cat.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Cat, animated</button>
+              <button class="chip" type="button" aria-pressed="false" data-file="vespa_et3.glb" data-name="scooter" data-bbox="-0.3442,0,-0.845,0.3442,1.27,0.845" data-elev="0.26" data-angle="1.0" data-hull="box" data-poster="assets/home/vp-scooter.webp" data-shadow=".5,.8129,.3291,.1773" data-credit='Old scooter by Nadia Ribitis, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>'><img src="assets/home/thumb-scooter.webp" alt="" width="28" height="28" loading="lazy" decoding="async">Scooter</button>
             </div>
-            <p class="credit" data-credit>Sheen Chair, © 2020 Wayfair LLC, CC0</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 2b · FUNDING — the page's one donation call, and commercial support, after the code. Generic on purpose: no company is named here.
-       Open Collective first, GitHub Sponsors second, nothing else. Same message as
-       companies.html#sponsor and the README's Sponsors section: edit the three together. -->
-  <section class="section" id="fund" aria-labelledby="fund-title">
-    <div class="container">
-      <div class="fund reveal">
-        <h2 class="h2" id="fund-title">Funding and commercial support</h2>
-        <p class="lead">SceneView is free and built in the open by its contributors. Donations and paid support pay for the fixes, the Filament upgrades and the releases that apps depend on.</p>
-        <div class="fund__offers">
-          <div class="fund__offer">
-            <h3 class="h3">Donations</h3>
-            <p>Once or monthly, from a person or a company. Open Source Collective, the fiscal host, issues the invoice and the receipt, and a donor is listed nowhere unless they ask.</p>
-            <div class="sponsor__ctas">
-              <a class="btn btn--filled" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
-              <a class="link" href="https://github.com/sponsors/sceneview">or through GitHub Sponsors</a>
-            </div>
-          </div>
-          <div class="fund__offer">
-            <h3 class="h3">Commercial support</h3>
-            <ul class="fund__facts">
-              <li><b>Incident: $600</b><span>One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.</span></li>
-              <li><b>2.3 LTS: $1,800 for 90 days</b><span>One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.</span></li>
-            </ul>
-            <p class="fund__note">Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective&rsquo;s budget. Payment comes before any work. Every version stays under Apache&nbsp;2.0.</p>
-            <div class="sponsor__ctas">
-              <a class="btn btn--outlined" href="mailto:hello@sceneview.dev">Buy support: hello@sceneview.dev</a>
-            </div>
+            <p class="credit" data-credit>Rivet Aiden armchair, Amazon Berkeley Objects, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
           </div>
         </div>
       </div>
@@ -383,7 +354,7 @@
       </div>
       <div class="bento">
         <article class="card tile reveal">
-          <div class="tile__media tile__media--render" aria-hidden="true"><img src="assets/home/vp-chair.webp" alt="" width="1200" height="960" loading="lazy"></div>
+          <div class="tile__media tile__media--render" aria-hidden="true"><img src="assets/home/vp-armchair.webp" alt="" width="1200" height="960" loading="lazy"></div>
           <div class="tile__body">
             <h3 class="h3"><a class="tile__link" href="/open?demo=ar-placement">AR placement at real size</a></h3>
             <p>Plane detection, anchors, depth occlusion and real-world scale: ARCore on Android, ARKit on iOS, written as composables and views.</p>
@@ -417,6 +388,39 @@
         <a class="link" href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Google Play</a>
         <a class="link" href="https://apps.apple.com/us/app/sceneview/id6761329763">App Store</a>
         <a class="link" href="/web-demo/">Web demo</a></p>
+    </div>
+  </section>
+
+  <!-- 3b · FUNDING — the page's one donation call, and commercial support, after what you can build. Generic on purpose: no company is named here.
+       Open Collective first, GitHub Sponsors second, nothing else. Same message as
+       companies.html#sponsor and the README's Sponsors section: edit the three together. -->
+  <section class="section" id="fund" aria-labelledby="fund-title">
+    <div class="container">
+      <div class="fund reveal">
+        <div class="fund__main">
+          <h2 class="h2" id="fund-title">Funding and commercial support</h2>
+          <p class="lead">SceneView is free and built in the open by its contributors. Donations and paid support pay for the fixes, the Filament upgrades and the releases that apps depend on.</p>
+          <div class="fund__offer">
+            <h3 class="h3">Donations</h3>
+            <p>Once or monthly, from a person or a company. Open Source Collective, the fiscal host, issues the invoice and the receipt, and a donor is listed nowhere unless they ask.</p>
+            <div class="sponsor__ctas">
+              <a class="btn btn--filled" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
+              <a class="link" href="https://github.com/sponsors/sceneview">or through GitHub Sponsors</a>
+            </div>
+          </div>
+        </div>
+        <div class="fund__offer fund__offer--side">
+          <h3 class="h3">Commercial support</h3>
+          <ul class="fund__facts">
+            <li><b>Incident: $600</b><span>One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.</span></li>
+            <li><b>2.3 LTS: $1,800 for 90 days</b><span>One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.</span></li>
+          </ul>
+          <p class="fund__note">Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective&rsquo;s budget. Payment comes before any work. Every version stays under Apache&nbsp;2.0.</p>
+          <div class="sponsor__ctas">
+            <a class="btn btn--outlined" href="mailto:hello@sceneview.dev">Buy support: hello@sceneview.dev</a>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -495,16 +499,16 @@
        The empty span keeps /#metrics alive (linked from the companies page). -->
   <section class="section" id="proof" aria-labelledby="proof-title">
     <span id="metrics"></span>
-    <div class="container">
-      <div class="section__head">
-        <h2 class="h2 reveal" id="proof-title">Adoption</h2>
-      </div>
+    <div class="container proof">
+      <h2 class="h2 reveal" id="proof-title">Adoption</h2>
+      <div>
       <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
            the nav (its data-metric anchor) is the one value rewritten weekly by
            .claude/scripts/update-site-metrics.sh. No company names here: an Apache 2.0 user has not
            endorsed SceneView, and Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
       <p class="numbers reveal">SceneView has <a href="https://github.com/sceneview/sceneview">more than 1,300 stars on GitHub</a>, and <a href="/companies.html">over 500 public repositories</a> declare it as a dependency.</p>
       <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Star count from the GitHub repository page.</p>
+      </div>
     </div>
   </section>
 
@@ -553,8 +557,10 @@
   <section class="section" id="start" aria-labelledby="start-title">
     <div class="container">
       <div class="finale reveal">
-        <h2 class="h2" id="start-title">Getting started</h2>
-        <p class="lead">Each platform has a quickstart of about ten lines, and the playground edits a live scene in the browser.</p>
+        <div class="finale__text">
+          <h2 class="h2" id="start-title">Getting started</h2>
+          <p class="lead">Each platform has a quickstart of about ten lines, and the playground edits a live scene in the browser.</p>
+        </div>
         <div class="finale__ctas">
           <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
           <a class="btn btn--outlined btn--lg" href="/playground.html">Open the playground</a>
@@ -588,7 +594,7 @@
         <li><a href="https://github.com/sceneview/sceneview/discussions">Discussions</a></li>
         <li><a href="/docs/contributing/">Contributing</a></li><li><a href="https://opencollective.com/sceneview">Donate</a></li><li><a href="/sponsors.html">Sponsors</a></li></ul></div>
     </div>
-    <p class="footer__credits">3D models from <a href="https://github.com/KhronosGroup/glTF-Sample-Assets">Khronos glTF-Sample-Assets</a>: <a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept">Car Concept</a> by Eric Chadwick, © 2024 Darmstadt Graphics Group GmbH (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), from the CC0 Free Concept Car 004 by Unity Fan; adapted for the night circuit: logos replaced, textures resized, set, lighting and rain added. Toy Car by Guido Odendahl, materials by Eric Chadwick (CC0). Sheen Chair © 2020 Wayfair LLC, by Eric Chadwick (CC0). Fox: mesh by PixelMannen (CC0); rigging and animation by tomkranis, glTF conversion by AsoboStudio and scurest (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). Galaxy: rendered by the SceneView iOS demo.</p>
+    <p class="footer__credits">3D models by NORBERTO-3D, Amazon Berkeley Objects, Omabuarts Studio and Nadia Ribitis, under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. <a href="/credits.html">All model credits</a></p>
     <div class="footer__legal">
       <span>© 2026 SceneView contributors</span>
       <span class="footer__legal-links"><a href="/privacy.html">Privacy</a><a href="/credits.html">Credits</a></span>

@@ -100,7 +100,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .nav__gh svg { width: 20px; height: 20px; }
 .icon-btn { width: 48px; height: 48px; display: inline-grid; place-items: center; border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-on-surface-variant); }
 .icon-btn svg { width: 24px; height: 24px; }
-.nav .btn--filled { display: none; margin-left: var(--s-2); }
+.nav .btn--tonal { display: none; margin-left: var(--s-2); }
 /* The toggle shows the theme in use: a sun in light (the default set), a moon in dark. */
 .theme-toggle .i-moon { display: none; }
 :root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
@@ -111,7 +111,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 }
 @media (min-width: 960px) {
   .nav__links, .nav__gh { display: flex; }
-  .nav .btn--filled { display: inline-flex; }
+  .nav .btn--tonal { display: inline-flex; }
   .nav__menu { display: none; }
 }
 
@@ -177,19 +177,14 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .credit a { text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── Hero ─────────────────────────────────────────────────────
- * The page's own surface in both themes. The scene (assets/scenes/circuit.js) is a
- * square media card: under the header on a phone, on the right of the copy from
- * 960 × 600. With motion allowed, the expanded hero is pinned for one extra screen
- * (.has-scroll-fx, set by site.js): the copy gives way to what the scene shows and
- * the camera turns. */
+ * The page's own surface in both themes. The model sits on a media card: 16:10 under
+ * the title on a phone, square on the right of the copy from 960 × 600. With motion
+ * allowed, the expanded hero is pinned for one extra screen (.has-scroll-fx, set by
+ * site.js): the copy gives way to the calls the page uses and the model turns. */
 .hero { position: relative; padding-top: var(--header-h); background: var(--md-sys-color-surface); }
 .hero__pin { position: relative; display: flex; flex-direction: column; }
 .hero__stage { position: relative; z-index: 1; margin: 8px var(--gutter) 0; }
 .hero__stage .stage__box { aspect-ratio: 1; border-radius: var(--md-sys-shape-corner-extra-large); overflow: hidden; background: var(--md-sys-color-surface-container-highest); }
-.hero--scene .stage__frame { transform: none; }
-.hero--scene .stage__poster { object-fit: cover; }
-/* The canvas is opaque: the poster stays under it, so the hand-off never dips to the background. */
-.hero--scene .hero__stage.is-live .stage__poster { opacity: 1; }
 .hero__stage .stage__bar { margin-top: 8px; }
 .hero__stage .stage__credit { flex: 1 0 100%; }
 .hero__inner { position: relative; z-index: 2; pointer-events: none; }
@@ -206,15 +201,24 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 @media (min-width: 600px) {
   .hero__stage { max-width: 560px; }
 }
-/* Below the side-by-side layout the picture is 16:10 (the car stays in frame, the
-   poster is cropped top and bottom): on a 390 × 844 phone the title and both
-   actions stay in the first screen. */
+/* Below the side-by-side layout the picture is 16:10 and comes after the title: the
+   copy's wrappers step aside (display: contents) so the title, the picture and the
+   rest of the copy are one column. On a 390 × 844 phone the title, the picture and
+   both actions stay in the first screen. */
 @media not ((min-width: 960px) and (min-height: 600px)) {
   .hero__stage .stage__box { aspect-ratio: 16 / 10; }
+  .hero__inner, .hero__copy { display: contents; }
+  .hero__copy > * { margin-inline: var(--gutter); }
+  .hero .display { order: 1; margin-top: var(--s-4); }
+  .hero__stage { order: 2; margin-top: var(--s-5); }
+  .hero__copy > :not(.display) { order: 3; }
+  .hero .install { margin-bottom: var(--s-7); }
 }
 
 /* Install: M3 secondary tabs over a command field. */
-.install { margin-top: var(--s-6); max-width: 36rem; container: install / inline-size; }
+.install { position: relative; margin-top: var(--s-6); max-width: 36rem; container: install / inline-size; }
+.install:has(.seg[data-more~="end"])::after { content: ""; position: absolute; top: 0; right: 0; width: 48px; height: 47px; background: linear-gradient(to right, transparent, var(--md-sys-color-surface)); pointer-events: none; }
+.install:has(.seg[data-more~="start"])::before { content: ""; position: absolute; z-index: 1; top: 0; left: 0; width: 48px; height: 47px; background: linear-gradient(to left, transparent, var(--md-sys-color-surface)); pointer-events: none; }
 .seg { --cols: 6; display: flex; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 16px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { flex: 1 0 auto; height: 48px; padding: 0 16px; font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface-variant); white-space: nowrap; }
@@ -300,11 +304,13 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .card { background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-medium); }
 
 /* ── For companies: the funding call (home #fund, mirrored on companies.html) ── */
-.fund { display: grid; gap: var(--s-4); }
+.fund { display: grid; gap: var(--s-6); }
+.fund__main { display: grid; gap: var(--s-4); align-content: start; }
 .fund .h2 { max-width: 24ch; }
 .fund .lead { max-width: 44rem; }
-.fund__offers { display: grid; gap: var(--s-5); margin-top: var(--s-2); }
 .fund__offer { display: grid; gap: var(--s-3); align-content: start; padding-top: var(--s-5); border-top: 1px solid var(--md-sys-color-outline-variant); }
+/* M3 filled card: the priced offer. */
+.fund__offer--side { padding: var(--s-5); border-top: 0; border-radius: var(--md-sys-shape-corner-large); background: var(--md-sys-color-surface-container); }
 .fund__offer > p { margin: 0; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
 .fund__facts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
 .fund__facts li { display: grid; gap: 4px; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
@@ -313,19 +319,21 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .fund__note { font: var(--md-sys-typescale-body-medium) !important; }
 .sponsor__ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: var(--s-2); }
 @media (min-width: 960px) {
-  .fund__offers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-7); }
+  .fund { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-8); }
 }
 
 /* ── Code ↔ scene ─────────────────────────────────────────── */
 .cs { display: grid; gap: var(--s-4); }
-.codecard { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); }
+.codecard { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); }
 .codecard [role="tabpanel"] { flex: 1; min-width: 0; }
 /* One row at every width. Where the five tabs do not fit (a phone), the strip
    scrolls sideways; site.js keeps the selected tab clear of the edges. */
 .tabs { display: flex; padding: 0 8px; border-bottom: 1px solid var(--md-sys-color-outline-variant); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px; }
 .tabs::-webkit-scrollbar { display: none; }
 /* M3 scrollable tabs: when the strip overflows, site.js sets data-more to the
-   side(s) that still hide tabs. */
+   side(s) that still hide tabs, and that side fades into the card colour. */
+.codecard:has(.tabs[data-more~="end"])::after { content: ""; position: absolute; top: 0; right: 0; width: 48px; height: 47px; background: linear-gradient(to right, transparent, var(--md-sys-color-surface-container)); pointer-events: none; }
+.codecard:has(.tabs[data-more~="start"])::before { content: ""; position: absolute; z-index: 1; top: 0; left: 0; width: 48px; height: 47px; background: linear-gradient(to left, transparent, var(--md-sys-color-surface-container)); pointer-events: none; }
 .tab { flex: none; height: 48px; padding: 0 16px; font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface-variant); white-space: nowrap; }
 .tab:focus-visible { outline-offset: -3px; }   /* the strip clips what lies outside it */
 .tab[aria-selected="true"] { color: var(--md-sys-color-primary); }
@@ -344,11 +352,11 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .codecard__foot { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 12px 4px 24px; border-top: 1px solid var(--md-sys-color-outline-variant); }
 .codecard__link { display: inline-flex; align-items: center; height: 40px; margin-block: 4px; padding: 0 12px; border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-primary); font: var(--md-sys-typescale-label-large); }
 @media (max-width: 519px) {
-  /* M3 scrollable tabs: the five code tabs keep 12 px padding and an 8 px inset at both
-     ends of the strip, so on a phone the last label is cut at the edge, which shows the
-     strip scrolls. The ::after keeps the end inset once scrolled to the end. */
-  .codecard .tabs { padding-inline: 8px 0; scroll-padding-inline: 8px; }
-  .codecard .tabs::after { content: ""; flex: none; width: 8px; }
+  /* M3 scrollable tabs, start-aligned: 4 px of strip plus 12 px of tab put the first
+     label on the 16 px inset of the code. The ::after keeps the same inset once
+     scrolled to the end; the scroll padding keeps the selected tab clear of the fades. */
+  .codecard .tabs { padding-inline: 4px 0; scroll-padding-inline: 40px; }
+  .codecard .tabs::after { content: ""; flex: none; width: 4px; }
   .codecard .tab { padding-inline: 12px; }
   .codecard .tab[aria-selected="true"]::after { left: 12px; right: 12px; }
   /* 12px and half-width indentation: every sample fits a 360px phone. */
@@ -428,7 +436,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .ai__links { display: flex; flex-wrap: wrap; gap: 0 24px; margin-top: var(--s-3); }
 /* M3 filter chips, single select: "Any MCP client" is selected first; a selected chip shows its check mark. */
 /* M3 outlined select: one choice drives the setup box under it. */
-.field { display: grid; gap: 4px; max-width: 22rem; }
+.field { display: grid; gap: 4px; }
 .field__label { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
 .select { position: relative; }
 .select select { appearance: none; width: 100%; height: 56px; padding: 0 48px 0 16px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-extra-small); background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); font: var(--md-sys-typescale-body-large); cursor: pointer; }
@@ -453,15 +461,17 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .mcp__label code { font-size: inherit; }
 .footnote { margin: var(--s-4) 0 0; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
 .footnote a { color: var(--md-sys-color-primary); }
-@media (min-width: 960px) { .ai { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); align-items: start; } }
+@media (min-width: 960px) { .ai, .proof { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); align-items: start; } }
 
 /* ── Proof ────────────────────────────────────────────────── */
+.proof { display: grid; row-gap: var(--s-4); }
+.proof .h2 { margin: 0; }
 .numbers { margin: 0; max-width: 46rem; font: var(--md-sys-typescale-body-large); color: var(--md-sys-color-on-surface); }
 .numbers a { color: var(--md-sys-color-primary); text-decoration: underline; text-underline-offset: 3px; }
 .numbers__source { margin-top: var(--s-4); max-width: 46rem; }
-/* Adoption is one sentence: it continues the AI band instead of opening a new one. One
-   column at every width, and no padding of its own: the sections around it keep the
-   page's one section spacing. */
+/* Adoption is one sentence: it continues the AI band instead of opening a new one, on
+   its two columns, with no padding of its own: the sections around it keep the page's
+   one section spacing. */
 #proof { padding-block: 0; }
 #proof .section__head { margin-bottom: var(--s-4); }
 
@@ -513,9 +523,14 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .faq code { font-size: .875em; }
 
 /* ── Final CTA ───────────────────────────────────────────── */
-.finale { max-width: 40rem; }
+.finale__text { max-width: 40rem; }
 .finale .lead { margin-top: var(--s-4); }
 .finale__ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: var(--s-5); }
+@media (max-width: 599px) { .finale__ctas .btn { flex: 1 1 100%; } }
+@media (min-width: 960px) {
+  .finale { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); align-items: center; }
+  .finale__ctas { margin-top: 0; justify-content: flex-end; }
+}
 
 /* ── Footer ───────────────────────────────────────────────── */
 .footer { margin-top: var(--s-6); background: var(--md-sys-color-surface-container-low); padding-top: var(--s-7); padding-bottom: calc(24px + env(safe-area-inset-bottom)); color: var(--md-sys-color-on-surface-variant); font: var(--md-sys-typescale-body-medium); }
@@ -527,7 +542,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .footer ul { list-style: none; margin: 0; padding: 0; }
 .footer li a { display: inline-flex; align-items: center; min-height: 48px; }
 .footer li a:hover { color: var(--md-sys-color-on-surface); text-decoration: underline; text-underline-offset: 3px; }
-.footer__credits { margin: var(--s-6) 0 0; padding-top: var(--s-5); border-top: 1px solid var(--md-sys-color-outline-variant); max-width: 72ch; font: var(--md-sys-typescale-body-medium); line-height: 1.6; }
+.footer__credits { margin: var(--s-6) 0 0; padding-top: var(--s-5); border-top: 1px solid var(--md-sys-color-outline-variant); max-width: 72ch; font: var(--md-sys-typescale-body-small); }
 .footer__credits a { color: var(--md-sys-color-on-surface); text-decoration: underline; text-underline-offset: 2px; }
 .footer__legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 24px; margin-top: var(--s-3); font: var(--md-sys-typescale-body-small); }
 .footer__legal-links { display: flex; gap: 16px; }
