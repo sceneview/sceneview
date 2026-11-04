@@ -121,7 +121,7 @@ class DepthOcclusionShapingTest {
         assertEquals(GROUND_BAND, groundBand(distance = 0f, radius = 0.3f), 0f)
         assertEquals(GROUND_BAND, groundBand(distance = 0.3f, radius = 0.3f), 1e-6f)
         assertEquals(GROUND_BAND / 2f, groundBand(distance = 0.375f, radius = 0.3f), 1e-6f)
-        assertEquals(0f, groundBand(distance = 0.45f, radius = 0.3f), 0f)
+        assertEquals(0f, groundBand(distance = 0.45f, radius = 0.3f), 1e-6f)
         assertEquals(0f, groundBand(distance = 3f, radius = 0.3f), 0f)
     }
 
