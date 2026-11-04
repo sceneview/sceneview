@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **3D Scan leads you to what is missing** — while a room is scanned, a ribbon of chevrons on the floor runs from your feet to the next wall still to find (or, during Fix now, to the part being fixed), with an arrow that turns with you and says how far it is, updated each stride. When you face it, the arrow goes with a light tick (at most once a second); TalkBack reads the turn and the distance, and the ribbon stands still under reduced motion. Replaces the four fixed turns that could stay frozen on screen while you turned.
