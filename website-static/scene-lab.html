@@ -15,6 +15,10 @@
     :root {
       --lab-font: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
     }
+    /* The stage stands off the page: --stage-bg is the page background itself in dark. */
+    :root { --lab-stage: var(--stage-wall); }
+    @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --lab-stage: var(--stage-bg); } }
+    :root[data-theme="light"] { --lab-stage: var(--stage-bg); }
     * { box-sizing: border-box; }
     html, body { margin: 0; }
     body {
@@ -72,7 +76,7 @@
       aspect-ratio: 4 / 3;
       border-radius: var(--r-sm);
       overflow: hidden;
-      background: var(--stage-bg);
+      background: var(--lab-stage);
     }
     @media (max-width: 899px) {
       .stage { aspect-ratio: 1 / 1; }
@@ -231,8 +235,9 @@
     var env = dark ? '/environments/studio_showroom_dark_ibl.ktx' : '/environments/studio_showroom_light_ibl.ktx';
     var descriptor = {
       environment: { url: env, intensity: 30000 },
-      // Framed for a 4:3 stage; a narrower one (the 1:1 phone stage) backs off to keep the width.
-      camera: { target: [0, 0.45, 0], angle: 0.5, height: 1.5, radius: 4.2 * Math.sqrt(Math.max(1, (4 / 3) / stageAspect())) },
+      // Framed for a 4:3 stage; a narrower one (the 1:1 phone stage) backs off in proportion to
+      // keep the whole width, the lantern and the lamp at the edges included.
+      camera: { target: [0, 0.45, 0], angle: 0.5, height: 1.5, radius: 4.2 * Math.max(1, (4 / 3) / stageAspect()) },
       models: [
         { id: 'Fox', role: 'primary', src: M + 'Fox.glb', position: [0.2, 0, 0.7], rotation: [0, 60, 0], scale: 0.008,
           animation: 'Survey', bytes: 162852, triangles: 576 },
@@ -328,7 +333,7 @@
       lab.device = tier;
       SceneView.create('stage', {
         autoRotate: false,
-        backgroundColor: rgb('--stage-bg'),
+        backgroundColor: rgb('--lab-stage'),
         iblUrl: env,           // the scene's environment: loadScene() reuses it
         iblIntensity: 30000
       }).then(function (sv) {
