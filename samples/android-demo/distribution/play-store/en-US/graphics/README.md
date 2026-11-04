@@ -85,7 +85,7 @@ surface further out. That file is gone; the helmet the listing then showed was
 the teal-visor `khronos_damaged_helmet.glb` the Showcase hero banner and the
 Model Viewer showed on the app's first screen.
 
-**That helmet left the app (#nc-assets):** its original sculpt is CC-BY-NC 4.0,
+**That helmet left the app (#4947):** its original sculpt is CC-BY-NC 4.0,
 so it may not appear on a store listing. The Model Viewer now opens on the
 CC-BY 4.0 Phoenix Bird. Still showing the helmet, and to be regenerated before
 the next listing sync: `tablet7-screenshot-1..4.png` and
