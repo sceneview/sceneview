@@ -1,6 +1,6 @@
 # CodeLab: AR with Jetpack Compose — SceneView
 
-<img src="../assets/images/showcase-ar-placement.svg" alt="What you'll build: AR model placement" width="200" style="border-radius: 28px; float: right; margin-left: 1rem; margin-bottom: 1rem;">
+<img src="../../assets/images/showcase-ar-placement.svg" alt="What you'll build: AR model placement" width="200" style="border-radius: 28px; float: right; margin-left: 1rem; margin-bottom: 1rem;">
 
 **Time:** ~20 minutes
 **Prerequisites:** Complete the [3D CodeLab](codelab-3d-compose.md) first, or have basic SceneView knowledge
