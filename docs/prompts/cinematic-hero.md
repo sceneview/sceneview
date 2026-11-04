@@ -24,8 +24,8 @@ Add a cinematic, scroll-driven 3D hero to the top of my app's home screen with S
 3. Make the list's FIRST item a transparent Spacer(Modifier.height(420.dp)); in a grid use
    item(span = { GridItemSpan(maxLineSpan) }). Keep every other item as it is, and give the
    list itself no background, so the hero shows through the spacer.
-4. Pass backdrop = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer,
-   MaterialTheme.colorScheme.surface)) and this content:
+4. Pass backdrop = SolidColor(MaterialTheme.colorScheme.surfaceContainerLow) (flat, never a
+   gradient — see DESIGN.md) and this content:
    rememberModelInstance(modelLoader, "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb")
        ?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
    Import io.github.sceneview.rememberModelInstance; ModelNode needs no import.

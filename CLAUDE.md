@@ -51,10 +51,10 @@ Full API reference: [`llms.txt`](./llms.txt).
 
 ## Conventions
 
-- **UI**: tokens live in [`DESIGN.md`](./DESIGN.md) — read it before writing any UI,
-  never hardcode colors or spacing, always light + dark. Demo-app UI is designed
-  natively against real references (Sketchfab, Polycam, Reality Composer), never
-  tool-generated.
+- **UI**: [`DESIGN.md`](./DESIGN.md) — read it before writing any UI. Material 3 on
+  Android and the web, Apple HIG on Apple, system font, M3 colour roles from one source
+  colour, light + dark, never a gradient or glass. A screen ships only when its capture
+  passes "could this be a Google or Apple screen?".
 - **Changelog**: one fragment per PR, `changelog.d/<issue-or-pr>-<slug>.md` with a
   `<!-- category: Fixed -->` tag. `CHANGELOG.md` is generated — never hand-edit it, same
   for `gpt/knowledge-*.md` and every `CREDITS.md` (licence compliance).
