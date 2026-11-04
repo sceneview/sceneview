@@ -83,6 +83,7 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.ar.node.AnchorNode
@@ -1453,8 +1454,12 @@ fun ARSceneView(
     // even if it was recreated by a recomposition.
     val cameraStreamRef = remember { AtomicReference<ARCameraStream?>(cameraStream) }
     val prevCameraStreamRef = remember { AtomicReference<ARCameraStream?>(null) }
+    // Placed objects' contacts, registered through the scope and grounding the occlusion around
+    // them; handed to whichever camera stream is current.
+    val groundContacts = remember { GroundContacts() }
     SideEffect {
         cameraStreamRef.set(cameraStream)
+        cameraStream?.groundContacts = groundContacts
         val prev = prevCameraStreamRef.get()
         if (prev != cameraStream) {
             prev?.let {
@@ -1856,7 +1861,8 @@ fun ARSceneView(
                 environmentLoader = environmentLoader,
                 _nodes = scopeChildNodes,
                 // Synchronous detach — see ARSceneScope KDoc on `nodeRemover`.
-                nodeRemover = nodeManager::removeNode
+                nodeRemover = nodeManager::removeNode,
+                groundContacts = groundContacts,
             )
         }
         scope.content()
@@ -1991,6 +1997,9 @@ private fun onARFrame(
         is DepthMeshNode -> n.update(session, frame)
         is PointCloudNode -> n.update(session, frame)
     }
+
+    // Last: the placed objects' contacts are read from the anchors moved just above.
+    cameraStream?.updateGroundContact(frame)
 }
 
 /**
