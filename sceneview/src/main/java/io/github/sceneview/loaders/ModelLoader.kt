@@ -22,6 +22,7 @@ import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.GltfioTextureTables
 import io.github.sceneview.freshFenceProbe
 import io.github.sceneview.isAsyncLoadPending
 import io.github.sceneview.isValid
@@ -104,30 +105,48 @@ class ModelLoader(
         coroutineScope.coroutineContext + SupervisorJob(coroutineScope.coroutineContext[Job])
     )
 
-    val materialProvider = UbershaderProvider(engine)
-
-    // gltfio gets the ubershader through a recorder of each instance's Material, which Filament
-    // 1.77 no longer keeps (see `materialOrNull`).
-    private val recordingProvider = RecordingMaterialProvider(materialProvider)
-
-    private val assetLoaderHolder = lazy {
+    // gltfio's material provider and asset loader, created by the first model, on the main thread
+    // like every model. Building the UbershaderProvider decompresses gltfio's whole material
+    // archive, tens of milliseconds, and a loader that never creates a model — `SceneView {}` makes
+    // one by default — never needs it. Out of `rememberModelLoader`, it no longer lands in the
+    // composition a 3D screen opens with.
+    private val gltfLoaders = lazy {
+        // A JNI call into the engine, like every model: a first read on another thread would race
+        // the main thread's Filament calls.
         check(Looper.myLooper() == Looper.getMainLooper()) {
-            "ModelLoader.assetLoader is created on first read, and that read must be on the main " +
-                "thread: gltfio keeps the creating thread's JNIEnv for its material callbacks."
+            "ModelLoader creates gltfio's material provider on first use, on the main thread: read " +
+                "materialProvider or assetLoader there first, or create a model first"
         }
-        AssetLoader(engine, recordingProvider, EntityManager.get())
+        lifecycle.checkCanCreate("create gltfio's material provider")
+        val provider = UbershaderProvider(engine)
+        recordingProvider.attach(provider)
+        provider to AssetLoader(engine, recordingProvider, EntityManager.get())
     }
 
+    // gltfio gets the ubershader through a recorder of each instance's Material, which Filament
+    // 1.77 no longer keeps (see `materialOrNull`). It exists before the ubershader so that release
+    // paths can use its ownership records without creating gltfio's loaders.
+    private val recordingProvider = RecordingMaterialProvider()
+
     /**
-     * The gltfio loader behind every `createModel*` / `createInstance` call.
-     *
-     * Created on its first read, which must happen on the main thread (it throws
-     * [IllegalStateException] otherwise). gltfio calls SceneView's material recorder back with the
-     * JNIEnv of the thread that created this loader, so a first read from a background thread
-     * would leave it holding the wrong JNIEnv and abort the process on the next model load.
-     * Every SceneView entry point that creates models already runs on the main thread.
+     * gltfio's ubershader material provider, shared by every model of this loader. Created on first
+     * use — by the first model, or by reading this — which must happen on the main thread: a first
+     * read anywhere else throws an [IllegalStateException].
      */
-    val assetLoader: AssetLoader by assetLoaderHolder
+    val materialProvider: UbershaderProvider get() = gltfLoaders.value.first
+
+    /** gltfio's asset loader. Created with [materialProvider], on first use. */
+    val assetLoader: AssetLoader get() = gltfLoaders.value.second
+
+    /** Whether [materialProvider] and [assetLoader] exist yet. */
+    internal val hasGltfLoaders: Boolean get() = gltfLoaders.isInitialized()
+
+    // Not `assetLoader::createAsset`: a bound reference reads `assetLoader` where it is written, on
+    // the suspend load's own thread, and the first read creates the material provider.
+    private fun createAsset(buffer: Buffer): Model? = assetLoader.createAsset(buffer)
+
+    // Never while EngineWarmUp builds Basis's tables on its own thread: see GltfioTextureTables.
+    private fun newResourceLoader() = GltfioTextureTables.creating { ResourceLoader(engine, true) }
 
     /**
      * The gltfio loader that finalises every model's textures, pumped by [updateLoad].
@@ -136,7 +155,7 @@ class ModelLoader(
      * model's load has to be cancelled before its textures finished decoding, this property moves
      * to a fresh loader (see [destroyModel]). The previous one stays valid until [destroy].
      */
-    var resourceLoader = ResourceLoader(engine, true)
+    var resourceLoader = newResourceLoader()
 
     // Loaders swapped out by an interrupted cancel (see `asyncLoad`), kept alive until `destroy()`:
     // gltfio's Java `ResourceLoader.destroy()` does not zero its native handle, so any caller still
@@ -206,7 +225,7 @@ class ModelLoader(
             if (interrupted) {
                 resourceLoader.evictResourceData()
                 retiredResourceLoaders += resourceLoader
-                resourceLoader = ResourceLoader(engine, true)
+                resourceLoader = newResourceLoader()
             }
             asyncLoadStarted = false
             readProgress()
@@ -218,7 +237,7 @@ class ModelLoader(
             // effect, dropping the asset pointer before the asset is freed, comes from retiring
             // this loader instead: nothing of it is left to finalise, and a fresh one takes over.
             retiredResourceLoaders += resourceLoader
-            resourceLoader = ResourceLoader(engine, true)
+            resourceLoader = newResourceLoader()
             asyncLoadStarted = false
             readProgress()
         },
@@ -359,7 +378,7 @@ class ModelLoader(
     suspend fun loadModel(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): Model? = loadModelThen(fileLocation, resourceResolver, create = { assetLoader.createAsset(it) }) { it }
+    ): Model? = loadModelThen(fileLocation, resourceResolver, ::createAsset) { it }
 
     /**
      * Shared body of every suspend load: reads and converts the file off the main thread, creates
@@ -645,7 +664,7 @@ class ModelLoader(
     suspend fun loadModelInstance(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, create = { assetLoader.createAsset(it) }) { model ->
+    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, ::createAsset) { model ->
         releasedInstance(model)
     }
 
@@ -730,7 +749,7 @@ class ModelLoader(
                     loadModelThen(
                         fileLocation,
                         resourceResolver,
-                        { assetLoader.createAsset(it) },
+                        ::createAsset,
                         onProgress = { steps.value = it },
                         onDestroyedMeanwhile = { throw IllegalStateException("$fileLocation was destroyed while it loaded") },
                         // The only load that throws it: the others keep their `null`-and-log contract.
@@ -1146,10 +1165,13 @@ class ModelLoader(
             // loaders: freeing the material provider's materials would call into the dead engine,
             // so they are all left to leak (a few small objects) rather than freed.
             if (!lifecycle.release()) return@afterAll
-            if (assetLoaderHolder.isInitialized()) assetLoader.destroy()
+            if (gltfLoaders.isInitialized()) {
+                val (provider, loader) = gltfLoaders.value
+                loader.destroy()
+                provider.destroyMaterials()
+                provider.destroy()
+            }
             recordingProvider.detach()
-            materialProvider.destroyMaterials()
-            materialProvider.destroy()
             resourceLoader.destroy()
             retiredResourceLoaders.forEach { it.destroy() }
             retiredResourceLoaders.clear()

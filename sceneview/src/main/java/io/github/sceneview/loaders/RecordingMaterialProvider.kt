@@ -19,20 +19,28 @@ import io.github.sceneview.model.Model
  *
  * gltfio takes a provider implemented in Java through JNI callbacks, on the thread that created
  * the `AssetLoader` (it keeps that thread's `JNIEnv`). [ModelLoader] therefore creates its loader
- * on first use, from a create call, which the SDK requires on the main thread. This class must
+ * on first use, from a create call, which the SDK requires on the main thread, and [attach]es
+ * the ubershader it creates there. This class must
  * not declare `getNativeObject()`: gltfio would take it for a native provider.
  *
  * gltfio never frees a Java provider's native shim, so this object is kept alive by a JNI global
  * reference after the loader is destroyed; [detach] drops what it holds.
  */
-internal class RecordingMaterialProvider(ubershader: UbershaderProvider) : MaterialProvider {
+internal class RecordingMaterialProvider : MaterialProvider {
 
-    private var ubershader: UbershaderProvider? = ubershader
+    private var ubershader: UbershaderProvider? = null
 
     val ownership = InstanceOwnership<Model> { materialRegistry.forgetHandles(it) }
 
     private val delegate: UbershaderProvider
-        get() = checkNotNull(ubershader) { "The material provider of a destroyed ModelLoader" }
+        get() = checkNotNull(ubershader) {
+            "The material provider of a ModelLoader that has no ubershader yet, or was destroyed"
+        }
+
+    /** Hands this the ubershader that does the work; [ModelLoader] does it before any load. */
+    fun attach(ubershader: UbershaderProvider) {
+        this.ubershader = ubershader
+    }
 
     override fun createMaterialInstance(
         config: MaterialKey,

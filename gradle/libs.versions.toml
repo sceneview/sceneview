@@ -9,6 +9,7 @@ coreKtx = "1.19.1"
 coreSplashscreen = "1.2.0"
 appcompat = "1.8.0"
 fragmentKtx = "1.9.1"
+startupRuntime = "1.2.0"
 
 # Compose
 composeBom = "2026.09.00"
@@ -149,7 +150,7 @@ mediapipeTasksVision = "0.10.26"
 # OpenCL/OpenGL accelerator that 2.1.5 bundled). 2.2.x gave `litert` and `litert-api` the same
 # namespace, which failed AGP 9's app manifest merge; `:samples:android-demo:processDebugMainManifest`
 # is the proof for any bump. `litert-gpu` must stay declared or `Backend.Gpu` loses its accelerator.
-litert = "2.3.0"
+litert = "2.3.2"
 # ONNX Runtime (MIT) — JVM tests only: the desktop artifact runs YOLOX-Tiny's ONNX export, which the
 # demo's LiteRT model was converted from, in the tests that judge the detector on photos and on real
 # scans. Not in any app: the Android artifact started a telemetry provider at every launch.
@@ -195,6 +196,7 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
+androidx-startup-runtime = { group = "androidx.startup", name = "startup-runtime", version.ref = "startupRuntime" }
 
 # Compose BOM (manages all Compose versions)
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }

@@ -218,6 +218,20 @@ public final class io/github/sceneview/EngineRenderInvalidators {
 	public final fun unregister (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
 }
 
+public final class io/github/sceneview/EngineWarmUp {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/EngineWarmUp;
+	public static final fun start ()V
+}
+
+public final class io/github/sceneview/EngineWarmUpInitializer : androidx/startup/Initializer {
+	public static final field $stable I
+	public fun <init> ()V
+	public synthetic fun create (Landroid/content/Context;)Ljava/lang/Object;
+	public fun create (Landroid/content/Context;)V
+	public fun dependencies ()Ljava/util/List;
+}
+
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
 }
 

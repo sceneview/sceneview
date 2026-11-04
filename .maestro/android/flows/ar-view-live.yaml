@@ -19,7 +19,7 @@
 # `PlacementBottomAnchorStatesTest` (Robolectric) instead.
 #
 # REQUIRES the ARCore-friendly emulator from
-# `.claude/scripts/setup-ar-emulator.sh` (virtualscene back camera, host GPU,
+# `.claude/scripts/setup-ar-emulator.sh` (emulated back camera, host GPU,
 # Google Play Services for AR installed): the "Start AR Camera" CTA only
 # enables when ARCore is SUPPORTED_INSTALLED. The android/ar device-QA legs
 # are advisory (continue-on-error, #1651), so a slow emulator AR frame never
