@@ -14,16 +14,20 @@ import kotlin.math.sin
 internal object ScanTidy {
     /**
      * [mesh] less every triangle whose middle lies outside the scan's box: square to its walls
-     * (the frame [ScanResultFraming] reads), from the [TAIL] quantile of the vertices to the
+     * as the result is framed ([yawDegrees]), from the [TAIL] quantile of the vertices to the
      * 1 - [TAIL] on each axis, [MARGIN_M] wider all round. A wall holds far more than [TAIL] of a
      * room's vertices, so it stays whole; a piece beyond it does not. Returns the triangles cut.
+     *
+     * Never cut from above: what stands up thin over the rest — a plant's stem, a lamp's pole, an
+     * antenna — holds far less than [TAIL] of the vertices, and depth sees nothing through a
+     * ceiling. Only the floor's side is cut, where a mirror or a glossy floor puts a room under it.
      */
     @Suppress("ReturnCount")
     fun crop(mesh: WorkMesh): Pair<WorkMesh, Int> {
         val n = mesh.vertexCount
         if (n < MIN_VERTICES || mesh.triangleCount == 0) return mesh to 0
         val faces = FaceGeometry(mesh.positions, mesh.indices)
-        val yaw = Math.toRadians(ScanResultFraming.yawDegrees(faces.normals).toDouble())
+        val yaw = Math.toRadians(yawDegrees(mesh.positions, faces.normals).toDouble())
         val c = cos(yaw).toFloat()
         val s = sin(yaw).toFloat()
         val axis = FloatArray(n)
@@ -33,7 +37,11 @@ internal object ScanTidy {
             for (v in 0 until n) axis[v] = turned(mesh.positions, v, k, c, s)
             axis.sort()
             low[k] = axis[((n - 1) * TAIL).toInt()] - MARGIN_M
-            high[k] = axis[((n - 1) * (1f - TAIL) + HALF).toInt().coerceAtMost(n - 1)] + MARGIN_M
+            high[k] = if (k == UP) {
+                Float.MAX_VALUE
+            } else {
+                axis[((n - 1) * (1f - TAIL) + HALF).toInt().coerceAtMost(n - 1)] + MARGIN_M
+            }
         }
         val keep = BooleanArray(mesh.triangleCount)
         var cut = 0
@@ -87,6 +95,58 @@ internal object ScanTidy {
         return mesh.keepTriangles(BooleanArray(mesh.triangleCount) { keepPiece[piece[mesh.indices[it * 3]]] }) to dropped
     }
 
+    /**
+     * Which way the walls of [positions] run, their faces' [normals] beside them, by the rule the
+     * result is framed by ([ScanResultFraming.of]): the walls' own way while they agree on one
+     * ([ScanResultFraming.MIN_WALL_COHERENCE]), the footprint's long axis when they do not (a
+     * garden, a hedge, a round object). The crop and the frame stand square to the same walls.
+     *
+     * The same rule, not always the same number: this reads the raw surface's face normals, the
+     * framing the finished model's vertex normals, so a scan whose walls agree about as much as
+     * [ScanResultFraming.MIN_WALL_COHERENCE] can take one branch here and the other there.
+     *
+     * The footprint is read without the [FOOTPRINT_TAIL] of its vertices farthest from its middle:
+     * the framing reads the finished model, the strays this crop and [dropIsolated] cut already
+     * gone, and one metres away would otherwise turn the whole box. A stray holding more than that
+     * share still turns it.
+     */
+    fun yawDegrees(positions: FloatArray, normals: FloatArray): Float =
+        if (ScanResultFraming.wallCoherence(normals) >= ScanResultFraming.MIN_WALL_COHERENCE) {
+            ScanResultFraming.yawDegrees(normals)
+        } else {
+            ScanResultFraming.footprintYawDegrees(withinTails(positions))
+        }
+
+    /**
+     * [positions] less the [FOOTPRINT_TAIL] of them farthest on the floor plan from its middle (the
+     * median of x and of z, which a stray does not move). Cut by a disc, a long footprint keeps
+     * its mirror symmetry about its long axis, so the axis does not tilt as a square cut would.
+     */
+    private fun withinTails(positions: FloatArray): FloatArray {
+        val n = positions.size / AXES
+        if (n < MIN_VERTICES) return positions
+        val axis = FloatArray(n)
+        val middle = FloatArray(AXES)
+        for (k in PLAN) {
+            for (v in 0 until n) axis[v] = positions[v * AXES + k]
+            axis.sort()
+            middle[k] = axis[n / 2]
+        }
+        fun far(v: Int): Float = PLAN.sumOf { k -> (positions[v * AXES + k] - middle[k]).toDouble().let { it * it } }.toFloat()
+        for (v in 0 until n) axis[v] = far(v)
+        axis.sort()
+        val reach = axis[((n - 1) * (1f - FOOTPRINT_TAIL) + HALF).toInt().coerceAtMost(n - 1)]
+        val kept = (0 until n).count { far(it) <= reach }
+        val out = FloatArray(kept * AXES)
+        var i = 0
+        for (v in 0 until n) {
+            if (far(v) > reach) continue
+            positions.copyInto(out, i, v * AXES, v * AXES + AXES)
+            i += AXES
+        }
+        return out
+    }
+
     private fun turned(positions: FloatArray, v: Int, axis: Int, c: Float, s: Float): Float {
         val x = positions[v * 3]
         val z = positions[v * 3 + 2]
@@ -99,6 +159,12 @@ internal object ScanTidy {
 
     /** The share of a scan's vertices past each end of each axis [crop] leaves out. */
     const val TAIL = 0.01f
+
+    /**
+     * The share of a scan's vertices, the farthest from its middle on the floor plan, its
+     * footprint is read without ([yawDegrees]): a stray under it does not turn the box.
+     */
+    const val FOOTPRINT_TAIL = 0.05f
 
     /** How much wider than its quantiles [crop] keeps the box, metres. */
     const val MARGIN_M = 0.15f
@@ -114,5 +180,6 @@ internal object ScanTidy {
 
     private const val MIN_VERTICES = 100
     private const val AXES = 3
+    private const val UP = 1
     private const val HALF = 0.5f
 }
