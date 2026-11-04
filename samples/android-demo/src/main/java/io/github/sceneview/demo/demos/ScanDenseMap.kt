@@ -10,7 +10,7 @@ import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.DenseSamples
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
-import io.github.sceneview.demo.demos.internal.Vec3
+import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.MonotonicCount
 import io.github.sceneview.demo.demos.internal.ScanDetail
@@ -167,6 +167,14 @@ internal class ScanDenseMap(
         } else {
             fusion.liveCloud(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS)
         }
+        val covered = CoverageGrid.coveredKeys(whole)
+        // The floor to scan again, judged on the whole map read in place: the drawn surfels are
+        // merged and, past their budget, picked at random far off.
+        val weak = if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
+            LiveCoverageGround.weakCells(
+                fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES, at.y - LiveCoverageGround.PHONE_HEIGHT_M,
+            )
+        }
         live = ReplayDenseLayer(
             cloud = drawn,
             voxelM = fusion.voxelM,
@@ -174,17 +182,11 @@ internal class ScanDenseMap(
             atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
             // The floor cells are found here too, on the worker, from the map as before: the
             // live map and the area read them, however far the drawn surfels are merged.
-            coveredCells = CoverageGrid.coveredKeys(whole),
+            coveredCells = covered,
             // The saving orbit and the open top read the map as it stands, not the merged
             // surfels, dense by the eye and sparse away from it (#4792).
             whole = whole,
-            liveEye = at?.let { Vec3(it.x, it.y, it.z) },
-            // Without an eye, an even stride of the map once it holds more than the snapshot reads.
-            intactM = when {
-                at != null -> fusion.liveIntactM
-                drawn.count < LIVE_MAX_SURFELS -> Float.POSITIVE_INFINITY
-                else -> 0f
-            },
+            weakCells = weak,
         )
     }
 

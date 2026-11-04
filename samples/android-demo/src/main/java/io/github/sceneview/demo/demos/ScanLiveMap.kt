@@ -151,9 +151,7 @@ internal fun ScanLiveMap(
                 val floorY = stageFloorY(trace.frameAt(trace.duration))
                 val cell = grid.cellMetres
                 val built = withContext(Dispatchers.Default) {
-                    val weak = dense?.takeIf { LiveCoverageGround.SHOW_WEAK_CELLS }
-                        ?.let { LiveCoverageGround.weakCells(it.cloud, it.voxelM, keys, cell, floorY, it.liveEye, it.intactM) }
-                        ?: LongArray(0)
+                    val weak = dense?.takeIf { LiveCoverageGround.SHOW_WEAK_CELLS }?.weakCells ?: LongArray(0)
                     LiveCoverageGround.of(keys, cell, outline, floorY, weak)?.let {
                         ScanGroundMeshes.of(it, hatchMissing = true) to ScanLiveMapFraming.zonesOf(it)
                     }

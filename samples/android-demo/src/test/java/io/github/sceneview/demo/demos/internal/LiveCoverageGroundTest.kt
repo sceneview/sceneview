@@ -216,19 +216,6 @@ class LiveCoverageGroundTest {
     }
 
     @Test
-    fun pastItsBudgetASnapshotIsJudgedOnlyWhereItIsWhole() {
-        val strip = floor(14, 3) { c, r -> if ((c == 2 || c == 11) && r == 1) 0.2f else 1f }
-        val all = keys(14, 3)
-        val eye = Vec3(0.5f, 1.4f, 0.4f)
-        val both = listOf(CoverageGrid.key(2, 1), CoverageGrid.key(11, 1))
-        assertEquals(both, LiveCoverageGround.weakCells(strip, voxel, all, cell, 0f).toList())
-        // Kept whole 2.5 m round the eye: the far thin cell may be the budget's holes.
-        assertEquals(listOf(CoverageGrid.key(2, 1)), LiveCoverageGround.weakCells(strip, voxel, all, cell, 0f, eye, 2.5f).toList())
-        assertEquals(emptyList<Long>(), LiveCoverageGround.weakCells(strip, voxel, all, cell, 0f, null, 2.5f).toList())
-        assertEquals(emptyList<Long>(), LiveCoverageGround.weakCells(strip, voxel, all, cell, 0f, eye, 0f).toList())
-    }
-
-    @Test
     fun tooLittleScannedToJudge() {
         val three = LongArray(3) { CoverageGrid.key(it, 0) }
         assertEquals(emptyList<Long>(), weak(cloud { _, _ -> 1 to 0 }, covered = three))
