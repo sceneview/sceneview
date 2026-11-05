@@ -295,6 +295,7 @@ fun ARSceneView(
     fillLightNode: LightNode? = rememberFillLightNode(engine),  // v4.3.0+ — dual-light AR baseline; pass null for single-light
     cameraNode: ARCameraNode = rememberARCameraNode(engine),
     cameraExposure: Float? = null,  // Filament absolute exposure scale (1.0 ≈ ISO 100). NOT EV stops; negative = black framebuffer (#1179). Prefer null.
+    emissiveFollowsLightEstimate: Boolean = true,  // ENVIRONMENTAL_HDR: glTF emissive glow follows the room (x0.2..1 of the authored KHR_materials_emissive_strength, #4950). false if you set emissiveStrength yourself.
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onSessionCreated: ((session: Session) -> Unit)? = null,

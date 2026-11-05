@@ -31,6 +31,7 @@ import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
+import io.github.sceneview.material.EmissiveScale
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.FileLoader
 import io.github.sceneview.utils.loadFileBuffer
@@ -540,6 +541,8 @@ class ModelLoader(
                                 "(its meshopt-compressed data could not be decoded)",
                         )
                     }
+                    // The authored glow AR scales from (#4950): Filament cannot read it back.
+                    EmissiveScale.record(model, gltf.emissiveStrengths())
                     onLoadBegun(model)
                 }
             }
@@ -1120,6 +1123,7 @@ class ModelLoader(
         ) {
             // Its material instances go with it, whether or not there are natives left to free.
             recordingProvider.ownership.release(it)
+            EmissiveScale.forget(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
@@ -1394,6 +1398,8 @@ class ModelLoader(
             Log.w(TAG, "${failure.message}; the model was destroyed", failure.cause)
             throw failure
         }
+        // The authored glow AR scales from (#4950): Filament cannot read a parameter back.
+        EmissiveScale.record(model, gltf.emissiveStrengths())
     }
 
     companion object {

@@ -75,7 +75,17 @@ class LightEstimator(
         var mainLightIntensity: Float? = null,
         var mainLightDirection: Direction? = null,
         var reflections: Texture? = null,
-        var irradiance: FloatArray? = null
+        var irradiance: FloatArray? = null,
+        /**
+         * How much of their authored glow emissive materials keep in this room, in
+         * `[EMISSIVE_MIN_SCALE, 1]`, or `null` to leave them as they are (#4950).
+         *
+         * Filament adds emissive after lighting, so the estimate that darkens the rest of a
+         * model in a dim room never reaches its glow, which then shines as if in the dark.
+         * Only [LightEstimationMode.ENVIRONMENTAL_HDR] sets it: the calibration was measured
+         * on its ambient spherical harmonics.
+         */
+        var emissiveScale: Float? = null
     ) {
         /**
          * Resets every field to `null` so the single reused instance (#1105) starts
@@ -89,6 +99,7 @@ class LightEstimator(
             mainLightDirection = null
             reflections = null
             irradiance = null
+            emissiveScale = null
         }
     }
 
@@ -708,13 +719,18 @@ class LightEstimator(
                         }
                     }
                 }
+                // The constant SH term is the room's brightness, which also sets how much of
+                // its glow an emissive material keeps (#4950): read even when the SH
+                // themselves are not applied.
+                val ambientSh = lightEstimate.environmentalHdrAmbientSphericalHarmonics
+                emissiveScale = emissiveScale(ambientLuminance(ambientSh))
                 if (environmentalHdrSphericalHarmonics) {
                     // Convert Environmental HDR's spherical harmonics to Filament
                     // irradiance spherical harmonics, in place into the reused
                     // `irradianceBuffer` field (#1105) — the previous
                     // `mapIndexed { … }.toFloatArray()` allocated a 27-element
                     // `List<Float>` plus a fresh `FloatArray` every frame.
-                    val sh = lightEstimate.environmentalHdrAmbientSphericalHarmonics
+                    val sh = ambientSh
                     // ARCore documents this as always 9 SH coefficients × 3 RGB
                     // channels. Guard the fixed-size buffer against a future
                     // ARCore that changes that rather than indexing out of bounds.
@@ -787,6 +803,33 @@ class LightEstimator(
     }
 
     companion object {
+
+        /**
+         * The ambient luminance (see [ambientLuminance]) from which emissive materials keep
+         * their full authored glow (#4950). Measured on a Pixel 4a: a daylit room reads 0.75 to
+         * 0.8, which halves the glow; a dim room reads far less, down to [EMISSIVE_MIN_SCALE].
+         */
+        internal const val EMISSIVE_ROOM_REFERENCE = 1.6f
+
+        /** The least glow a dark room leaves an emissive material, so it never goes out (#4950). */
+        internal const val EMISSIVE_MIN_SCALE = 0.2f
+
+        /**
+         * The Rec. 709 luminance of the constant term (`[0..2]`) of ARCore's ambient spherical
+         * harmonics, or `NaN` when there is none.
+         */
+        internal fun ambientLuminance(sh: FloatArray): Float =
+            if (sh.size < 3) Float.NaN
+            else 0.2126f * sh[0] + 0.7152f * sh[1] + 0.0722f * sh[2]
+
+        /**
+         * The share of its authored glow an emissive material keeps in a room of
+         * [roomLuminance]: proportional to it, within `[EMISSIVE_MIN_SCALE, 1]`, so never
+         * brighter than authored; `null` for a reading that is not a number (#4950).
+         */
+        internal fun emissiveScale(roomLuminance: Float): Float? =
+            if (!roomLuminance.isFinite()) null
+            else (roomLuminance / EMISSIVE_ROOM_REFERENCE).coerceIn(EMISSIVE_MIN_SCALE, 1f)
 
         /**
          * Legacy Sceneform pixel-intensity gain applied to the `AMBIENT_INTENSITY`

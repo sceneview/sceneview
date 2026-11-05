@@ -185,6 +185,31 @@ internal object GltfLimits {
             if (violations.isNotEmpty()) throw GltfLimitException(violations)
         }
 
+        /**
+         * The `KHR_materials_emissive_strength` of each named material, by name, or `null` when no
+         * material declares the extension: gltfio then sets every `emissiveStrength` to 1 (#4950).
+         *
+         * gltfio names each material instance after its glTF material, which is how a strength is
+         * found again. A name two materials share with different strengths maps to `NaN`: which
+         * instance had which is unknown. An unnamed material is left out.
+         */
+        fun emissiveStrengths(): Map<String, Float>? {
+            val materials = json?.optJSONArray("materials") ?: return null
+            var declared = false
+            val byName = HashMap<String, Float>()
+            materials.forEachObject { _, material ->
+                val strength = material.optJSONObject("extensions")
+                    ?.optJSONObject(EMISSIVE_STRENGTH_EXTENSION)
+                    ?.let {
+                        declared = true
+                        it.optDouble("emissiveStrength", 1.0).toFloat()
+                    } ?: 1f
+                val name = material.optString("name").takeIf { it.isNotEmpty() } ?: return@forEachObject
+                byName[name] = byName[name]?.takeIf { it != strength }?.let { Float.NaN } ?: strength
+            }
+            return byName.takeIf { declared }
+        }
+
         internal companion object {
             val NOT_GLTF = Parsed(null, null, null, null)
         }
@@ -921,6 +946,7 @@ internal object GltfLimits {
     }
 
     private const val FLOAT = 5126
+    private const val EMISSIVE_STRENGTH_EXTENSION = "KHR_materials_emissive_strength"
     private val INDEX_TYPES = setOf(5121, 5123, 5125)
     private val CORE_TEXTURES = listOf("normalTexture", "occlusionTexture", "emissiveTexture")
     private val EXTENSION_TEXTURES = listOf(
