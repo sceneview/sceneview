@@ -48,6 +48,10 @@ val Model.collisionShape get() = restPoseBoundingBox.toVector3Box()
  * .recomputeBoundingBoxes()` is not in gltfio's Java API, and needs the source data SceneView
  * releases once a model is loaded. Animation and morph targets are not followed.
  *
+ * When a primitive's weights cannot be read (Draco, meshopt or sparse data) the box is the
+ * accessors' min / max moved by every joint of the skin: still enclosing, but looser. A `.gltf`
+ * whose buffers are embedded `data:` URIs keeps gltfio's box.
+ *
  * Read it instead of [Model.getBoundingBox] wherever a model is framed, scaled or placed from its
  * size: `ModelNode.boundingBox`, `scaleToUnits` and the collision shape already do.
  */
