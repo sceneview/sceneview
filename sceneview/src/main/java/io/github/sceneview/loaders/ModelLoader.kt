@@ -29,6 +29,7 @@ import io.github.sceneview.isAsyncLoadPending
 import io.github.sceneview.isValid
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
 import io.github.sceneview.material.EmissiveScale
@@ -505,6 +506,8 @@ class ModelLoader(
                     throw UnloadableModelException("Could not load $fileLocation without ${missing.joinToString()}")
                 }
                 val cgltfKeys = withContext(Dispatchers.Default) { cgltfKeys(source.buffer, uris) }
+                // Every vertex of a skinned mesh is moved by its joints: off the main thread.
+                val restPose = withContext(Dispatchers.Default) { gltf.restPoseBounds(resources.toMap()::get) }
                 if (resources.isNotEmpty()) {
                     // The converted bytes (a PNG for an external WebP image), as gltfio gets them.
                     val loaded = resources.toMap()
@@ -543,6 +546,7 @@ class ModelLoader(
                     }
                     // The authored glow AR scales from (#4950): Filament cannot read it back.
                     EmissiveScale.record(model, gltf.emissiveStrengths())
+                    RestPoseBounds.record(model, restPose)
                     onLoadBegun(model)
                 }
             }
@@ -1124,6 +1128,7 @@ class ModelLoader(
             // Its material instances go with it, whether or not there are natives left to free.
             recordingProvider.ownership.release(it)
             EmissiveScale.forget(it)
+            RestPoseBounds.forget(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
@@ -1400,6 +1405,8 @@ class ModelLoader(
         }
         // The authored glow AR scales from (#4950): Filament cannot read a parameter back.
         EmissiveScale.record(model, gltf.emissiveStrengths())
+        // Read before `releaseSourceData`, while the external buffers are at hand.
+        RestPoseBounds.record(model, gltf.restPoseBounds(resolved::get))
     }
 
     companion object {
