@@ -24,6 +24,7 @@ import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.restPoseBoundingBox
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -63,7 +64,7 @@ class CatalogueProduct internal constructor(
 ) {
     val realSizeMetres: Float?
         get() = instance?.let { model ->
-            val half = model.asset.boundingBox.halfExtent
+            val half = model.asset.restPoseBoundingBox.halfExtent
             maxOf(half[0], half[1], half[2]) * 2f * (asset?.scale ?: 1f)
         }
 

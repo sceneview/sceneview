@@ -96,6 +96,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import io.github.sceneview.model.restPoseBoundingBox
 
 /**
  * Animation demo — skeletal / keyframe animation playback with a model carousel,
@@ -410,7 +411,7 @@ private fun AnimationSection(onBack: () -> Unit) {
         val units = activeModel.scaleToUnits
         val fallback = Position(units * 0.6f, units, units * 0.6f)
         val extents = modelInstance?.let { instance ->
-            runCatching { instance.model.boundingBox.toAabb() }.getOrNull()
+            runCatching { instance.model.restPoseBoundingBox.toAabb() }.getOrNull()
                 ?.takeUnless { it.isEmpty }?.extents
         } ?: return@remember fallback
         val largest = maxOf(extents.x, extents.y, extents.z)

@@ -197,6 +197,7 @@ import com.google.ar.core.ArCoreApk
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.animation.core.Animatable
+import io.github.sceneview.model.restPoseBoundingBox
 
 /**
  * Unified "Models" demo — consolidates the retired `multi-model` and
@@ -1160,7 +1161,7 @@ private fun SingleModelSection(
     val modelScale = hdAssetOnStage?.scale ?: stageOwner?.scale ?: 1f
     val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
-        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+        runCatching { instance.model.restPoseBoundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
             ?.let { box ->
                 val half = box.halfExtent * modelScale
                 val yawRadians = Math.toRadians(frontYaw.toDouble())
@@ -1177,7 +1178,7 @@ private fun SingleModelSection(
     // UNTURNED footprint (the shadow quads turn with the model), every size in its radius.
     val footprint = remember(activeModelInstance, modelScale) {
         val instance = activeModelInstance ?: return@remember null
-        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+        runCatching { instance.model.restPoseBoundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
             ?.let { it.halfExtent * modelScale }
     }
     val stageFloorY = bounds?.let { it.center.y - it.halfExtent.y } ?: 0f
@@ -2294,7 +2295,7 @@ private class StreamedModel(val location: String, val instance: io.github.scenev
 
 /** Whether the model measures a finite, non-empty box the viewer can frame. */
 private fun io.github.sceneview.model.ModelInstance.hasFramableBounds(): Boolean = runCatching {
-    val box = model.boundingBox
+    val box = model.restPoseBoundingBox
     val half = box.halfExtent
     val center = box.center
     (half + center).all { it.isFinite() } && half.any { it > 0f }

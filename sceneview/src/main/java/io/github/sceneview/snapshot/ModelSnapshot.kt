@@ -41,6 +41,7 @@ import io.github.sceneview.isValid
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.Model
+import io.github.sceneview.model.restPoseBoundingBox
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.safeDestroyCamera
 import io.github.sceneview.safeDestroyIndirectLight
@@ -493,7 +494,7 @@ class ModelSnapshot @MainThread constructor(
     /** Aims the camera and the light rig at [model]; `false` when its box cannot be framed. */
     @MainThread
     private fun frame(model: Model, key: SnapshotKey): Boolean {
-        val box = model.boundingBox
+        val box = model.restPoseBoundingBox
         if (!isFramable(box.center, box.halfExtent)) return false
         val options = key.options
         val aspect = key.width.toFloat() / key.height

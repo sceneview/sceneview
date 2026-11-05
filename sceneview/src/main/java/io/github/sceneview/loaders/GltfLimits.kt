@@ -185,6 +185,27 @@ internal object GltfLimits {
             if (violations.isNotEmpty()) throw GltfLimitException(violations)
         }
 
+        /**
+         * The rest-pose bounds of its skinned meshes, skinning included, as
+         * `[minX, minY, minZ, maxX, maxY, maxZ]` (see [GltfRestPose]); `null` when it has none, or
+         * when they cannot be told and gltfio's box stands.
+         *
+         * @param resource the external resource a relative URI names, as in [violations].
+         */
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
+        fun restPoseBounds(resource: (uri: String) -> Buffer? = { null }): FloatArray? {
+            val json = json ?: return null
+            if (json.optJSONArray("skins")?.length()?.takeIf { it > 0 } == null) return null
+            return try {
+                val gltf = Gltf(json, glb, bin, resource)
+                GltfRestPose.bounds(json, gltf::accessorFloats)
+            } catch (_: RuntimeException) {
+                null
+            } catch (_: OutOfMemoryError) {
+                null
+            }
+        }
+
         internal companion object {
             val NOT_GLTF = Parsed(null, null, null, null)
         }
@@ -594,6 +615,43 @@ internal object GltfLimits {
 
         private fun bufferView(index: Int): JSONObject? = bufferViews?.optJSONObject(index)
 
+        /**
+         * Accessor [index]'s components as floats, normalised when it says so: `null` for a sparse
+         * one, one without data at hand (Draco, meshopt, a `data:` buffer), or a MAT2 / MAT3.
+         */
+        fun accessorFloats(index: Int): FloatArray? {
+            val accessor = accessors?.optJSONObject(index) ?: return null
+            if (accessor.has("sparse")) return null
+            val view = bufferView(accessor.optInt("bufferView", -1)) ?: return null
+            val bytes = bufferViewBytes(view) ?: return null
+            val type = accessor.optString("type")
+            val componentType = accessor.optInt("componentType", 0)
+            val components = components(type).takeIf { type != "MAT2" && type != "MAT3" } ?: 0
+            val size = componentSize(componentType)
+            val count = accessor.optLong("count", 0)
+            if (components == 0 || size == 0 || count <= 0 || count * components > MAX_READ_COMPONENTS) return null
+            val elementSize = size * components
+            val stride = view.optInt("byteStride", 0).takeIf { it > 0 }?.toLong() ?: elementSize.toLong()
+            val offset = accessor.optLong("byteOffset", 0)
+            if (offset < 0 || offset + (count - 1) * stride + elementSize > bytes.limit()) return null
+            val normalized = accessor.optBoolean("normalized", false)
+            val out = FloatArray((count * components).toInt())
+            for (e in 0 until count.toInt()) {
+                for (c in 0 until components) {
+                    val at = (offset + e * stride + c * size).toInt()
+                    out[e * components + c] = when (componentType) {
+                        FLOAT -> bytes.getFloat(at)
+                        5120 -> bytes.get(at).toFloat().let { if (normalized) maxOf(it / 127f, -1f) else it }
+                        5121 -> (bytes.get(at).toInt() and 0xFF).toFloat().let { if (normalized) it / 255f else it }
+                        5122 -> bytes.getShort(at).toFloat().let { if (normalized) maxOf(it / 32767f, -1f) else it }
+                        5123 -> (bytes.getShort(at).toInt() and 0xFFFF).toFloat().let { if (normalized) it / 65535f else it }
+                        else -> (bytes.getInt(at).toLong() and 0xFFFFFFFFL).toFloat()
+                    }
+                }
+            }
+            return out
+        }
+
         private fun JSONObject?.accessorCounts(): List<Long> {
             if (this == null) return emptyList()
             return keys().asSequence().mapNotNull { accessors?.optJSONObject(optInt(it, -1))?.optLong("count", 0) }.toList()
@@ -921,6 +979,8 @@ internal object GltfLimits {
     }
 
     private const val FLOAT = 5126
+    /** The most components [Gltf.accessorFloats] reads at once: 64 MB of floats. */
+    private const val MAX_READ_COMPONENTS = 16L * 1024 * 1024
     private val INDEX_TYPES = setOf(5121, 5123, 5125)
     private val CORE_TEXTURES = listOf("normalTexture", "occlusionTexture", "emissiveTexture")
     private val EXTENSION_TEXTURES = listOf(
