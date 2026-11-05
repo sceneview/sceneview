@@ -220,7 +220,7 @@ class DemoRegistryIntegrityTest {
         // The common Featured list of the samples audit (§ 5), the same five ids as iOS.
         assertEquals(
             "The Featured list drifted from the one iOS shows",
-            listOf("cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials"),
+            listOf("ar-rerun", "cosmos", "ar-placement", "model-viewer", "materials"),
             FEATURED_IDS,
         )
         // What the pager pages through never comes back as a banner (#4304), the hero
@@ -235,7 +235,7 @@ class DemoRegistryIntegrityTest {
         // leave some.
         assertEquals(
             "The Featured banners under the pager",
-            listOf("ar-placement", "ar-rerun", "materials"),
+            listOf("ar-rerun", "ar-placement", "materials"),
             shelf,
         )
     }
