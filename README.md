@@ -42,6 +42,12 @@ The demo apps are built from [`samples/`](samples/). Any demo opens straight fro
 [Cosmos](https://sceneview.github.io/open?demo=cosmos), the galaxy the catalogue opens on, or
 [3D Scan](https://sceneview.github.io/open?demo=ar-rerun), a space scanned with ARCore and rebuilt in 3D.
 
+<p align="center">
+  <a href="https://sceneview.github.io/open?demo=ar-rerun"><img src="website-static/assets/demos/scan-room.webp" alt="3D Scan on a Pixel 9: a living room is scanned wall by wall, then rebuilt as a 3D model you can turn" width="300"></a>
+  <br>
+  <sub>A living room scanned in 3D Scan on a Pixel 9, then rebuilt as a model (sped up).</sub>
+</p>
+
 ### Help test the demos
 
 Install the Android demo, record your screen while you use a demo, and tell us what breaks or
