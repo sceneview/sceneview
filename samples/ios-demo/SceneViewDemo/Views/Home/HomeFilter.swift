@@ -148,11 +148,13 @@ enum HomeCatalogue {
     /// both platforms share since the samples audit (step 0, § 5): only cards
     /// present and current on Android and iOS. HomeTopSections removes the
     /// hero before these candidates become banners.
+    /// 3D Scan leads: the scanned room rebuilt in 3D is the SDK's most striking
+    /// demo, and its landing plays the example scan without a camera.
     static let featuredIds: [String] = [
+        "ar-rerun",
         "cosmos",
         "ar-placement",
         "model-viewer",
-        "ar-rerun",
         "materials",
     ]
 

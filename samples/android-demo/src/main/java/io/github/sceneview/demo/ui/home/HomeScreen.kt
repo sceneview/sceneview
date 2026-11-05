@@ -870,8 +870,12 @@ const val HERO_DEMO_ID = "model-viewer"
 /**
  * The common Featured list, identical on Android and iOS (samples audit § 5): the five cards
  * present and current on both platforms, in rank order.
+ *
+ * 3D Scan leads it: a room scanned on the phone and rebuilt in 3D is the most striking thing
+ * the SDK does, and the first banner is the one card under the hero seen on first open. Its
+ * landing plays the bundled example scan without a camera, so the card works for everyone.
  */
-internal val FEATURED_IDS = listOf("cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials")
+internal val FEATURED_IDS = listOf("ar-rerun", "cosmos", "ar-placement", "model-viewer", "materials")
 
 /**
  * The featured pager's demo pages (#3567), in page order: [HERO_DEMO_ID] first — it is the
