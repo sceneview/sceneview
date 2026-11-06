@@ -66,21 +66,23 @@ object RescanSources {
      * The zones of a scan whose dense points are [cloud] and whose model stands on [ground],
      * [survey] the room read off [cloud] ([surveyOf]): a view that already has it passes it in.
      */
-    fun zones(cloud: DenseCloud, ground: ScanGround?, survey: RoomSurvey? = surveyOf(cloud)): List<RescanZone> {
+    fun zones(cloud: DenseCloud, ground: ScanGround?, survey: RoomSurvey? = surveyOf(cloud)): List<RescanZone> =
+        input(cloud, ground, survey)?.let(RescanZones::find) ?: emptyList()
+
+    /** What [zones] hands [RescanZones.find], `null` without a floor to read it from. */
+    fun input(cloud: DenseCloud, ground: ScanGround?, survey: RoomSurvey? = surveyOf(cloud)): RescanInput? {
         val normals = cloud.normals
         @Suppress("NAME_SHADOWING")
         val survey = survey?.takeIf { it.walls.isNotEmpty() }
-        val floorY = survey?.floorY ?: ground?.floorY ?: lowest(cloud) ?: return emptyList()
+        val floorY = survey?.floorY ?: ground?.floorY ?: lowest(cloud) ?: return null
         val height = survey?.ceilingHeight?.value ?: RescanZones.DEFAULT_HEIGHT_M
         val walls = if (survey != null && normals != null) walls(survey, cloud.positions, normals, cloud.count) else emptyList()
-        return RescanZones.find(
-            RescanInput(
-                floorY = floorY,
-                height = height,
-                walls = walls,
-                holes = ground?.let { holes(it) } ?: emptyList(),
-                coverage = coverage(cloud, floorY, height),
-            ),
+        return RescanInput(
+            floorY = floorY,
+            height = height,
+            walls = walls,
+            holes = ground?.let { holes(it) } ?: emptyList(),
+            coverage = coverage(cloud, floorY, height),
         )
     }
 
