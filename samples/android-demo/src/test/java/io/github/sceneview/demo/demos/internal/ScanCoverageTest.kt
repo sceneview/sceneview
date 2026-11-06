@@ -218,6 +218,54 @@ class ScanCoachTest {
         assertNull(coach.line)
     }
 
+    /** Turns on the spot about +Y at [rate] degrees a second (a function of time) for [seconds]; the times "Slower" came on. */
+    private fun ScanCoach.turn(seconds: Float, rate: (Float) -> Float): Int {
+        var t = 0f
+        var yaw = 0f
+        var onsets = 0
+        var was = false
+        repeat((seconds * FPS).toInt()) {
+            t += 1f / FPS
+            yaw += rate(t) / FPS
+            val half = yaw * kotlin.math.PI.toFloat() / 180f / 2f
+            val told = update(t, DebugPose(0f, 1.4f, 0f, qy = kotlin.math.sin(half), qw = kotlin.math.cos(half)), grew = true) ==
+                ScanCoach.Line.Slower
+            if (told && !was) onsets++
+            was = told
+        }
+        return onsets
+    }
+
+    @Test
+    fun `a walk over the photos' pace is told to slow down, one under it is not`() {
+        val brisk = ScanCoach()
+        brisk.walk(speed = 0.7f, seconds = 3f, grow = true)
+        assertEquals(ScanCoach.Line.Slower, brisk.line)
+        val calm = ScanCoach()
+        calm.walk(speed = 0.5f, seconds = 3f, grow = true)
+        assertNull(calm.line)
+    }
+
+    @Test
+    fun `a fast turn on the spot is told to slow down, a calm one is not`() {
+        val whip = ScanCoach()
+        assertEquals(1, whip.turn(seconds = 3f) { 70f })
+        assertEquals(ScanCoach.Line.Slower, whip.line)
+        val pan = ScanCoach()
+        assertEquals(0, pan.turn(seconds = 3f) { 50f })
+        assertNull(pan.line)
+    }
+
+    @Test
+    fun `a turn hovering round the cap comes on once, not every hold`() {
+        // 55 to 65 degrees a second, a two-second swing, for twenty seconds.
+        val coach = ScanCoach()
+        val onsets = coach.turn(seconds = 20f) { t -> 60f + 5f * kotlin.math.sin(t * kotlin.math.PI.toFloat()) }
+        assertEquals(1, onsets)
+        // Without the way out under the cap, the same turn flashed the line again and again.
+        assertTrue(ScanCoach.EXIT_SHARE < 55f / 65f)
+    }
+
     @Test
     fun `no pose leaves the line as it was`() {
         val coach = ScanCoach()
