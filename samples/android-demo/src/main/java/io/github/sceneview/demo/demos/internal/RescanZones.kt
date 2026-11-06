@@ -357,14 +357,16 @@ object RescanZones {
             }
             val emptyCells = patch.filter { coverage.density[it] < empty || holeOf[it] >= 0 }
             val patchHoles = patch.map { holeOf[it] }.filter { it >= 0 }.distinct()
+            // A hole whose cells fall in several patches is one part, given by the first of them.
+            val freshHoles = patchHoles.filter { !used[it] }
             patchHoles.forEach { used[it] = true }
             if (emptyCells.size >= HOLE_EMPTY_SHARE * patch.size) {
-                val zone = if (patchHoles.isNotEmpty()) {
-                    holeZone(input, patchHoles.map { holes[it] })
-                } else {
-                    cellsZone(input, coverage, emptyCells, RescanKind.FloorHole, emptyCells.size * cellArea(coverage))
+                val zone = when {
+                    freshHoles.isNotEmpty() -> holeZone(input, freshHoles.map { holes[it] })
+                    patchHoles.isNotEmpty() -> null
+                    else -> cellsZone(input, coverage, emptyCells, RescanKind.FloorHole, emptyCells.size * cellArea(coverage))
                 }
-                if (zone.size >= MIN_HOLE_M2) zones += zone
+                if (zone != null && zone.size >= MIN_HOLE_M2) zones += zone
             } else {
                 val area = patch.size * cellArea(coverage)
                 if (area >= MIN_LOW_M2) {

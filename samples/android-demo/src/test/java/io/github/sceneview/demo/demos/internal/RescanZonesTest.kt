@@ -94,6 +94,22 @@ class RescanZonesTest {
     }
 
     @Test
+    fun `a hole whose cells fall in two patches is one zone`() {
+        // Two squares joined by a neck no cell centre falls in: two patches, one hole.
+        val hole = RescanHole(
+            floatArrayOf(
+                -1.5f, -0.5f, -0.5f, -0.5f, -0.5f, -0.05f, 0.5f, -0.05f, 0.5f, -0.5f, 1.5f, -0.5f,
+                1.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.05f, -0.5f, 0.05f, -0.5f, 0.5f, -1.5f, 0.5f,
+            ),
+        )
+        val cover = coverage { x, z -> if (hole.contains(x, z)) 0f else null }
+        val zones = RescanZones.find(RescanInput(floorY = 0f, walls = walls(), holes = listOf(hole), coverage = cover))
+        assertEquals(zones.joinToString(), 1, zones.size)
+        assertEquals(RescanKind.FloorHole, zones.single().kind)
+        assertEquals(hole.area, zones.single().size, 1e-4f)
+    }
+
+    @Test
     fun `a hole under furniture is not a zone`() {
         // The floor under a cabinet: never seen, but the cabinet over it was.
         val hole = square(1f, 0.5f, 1.75f, 1.25f)
