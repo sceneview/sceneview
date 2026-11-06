@@ -533,7 +533,10 @@
           sp.setAttribute('aria-label', held ? 'Play the scan videos' : 'Pause the scan videos');
           playAll(!held && seen);
         });
-        ac.signal.addEventListener('abort', function () { vio.disconnect(); playAll(false); });
+        ac.signal.addEventListener('abort', function () {
+          vio.disconnect(); playAll(false); held = false;
+          if (sp) { sp.setAttribute('aria-pressed', 'false'); sp.setAttribute('aria-label', 'Pause the scan videos'); }
+        });
       }
     }
 
