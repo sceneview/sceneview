@@ -853,6 +853,43 @@ class GltfLimitsTest {
     }
 
     /** The bytes this thread allocated so far, by reflection: `java.lang.management` is not in android.jar. */
+    @Test
+    fun `no material declaring KHR_materials_emissive_strength gives no strengths`() {
+        val gltf = text("""{"materials":[{"name":"glow","emissiveFactor":[1,0.5,0]}]}""")
+
+        assertEquals(null, GltfLimits.parse(gltf).emissiveStrengths())
+        assertEquals(null, GltfLimits.parse(text("""{"asset":{"version":"2.0"}}""")).emissiveStrengths())
+    }
+
+    @Test
+    fun `each named material keeps its authored emissive strength, 1 without the extension`() {
+        val gltf = text(
+            """{"materials":[""" +
+                """{"name":"fire","extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":6}}},""" +
+                """{"name":"body"},""" +
+                """{"extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":3}}}""" +
+                """]}""",
+        )
+
+        assertEquals(mapOf("fire" to 6f, "body" to 1f), GltfLimits.parse(gltf).emissiveStrengths())
+    }
+
+    @Test
+    fun `a name two materials share with different strengths is ambiguous`() {
+        val gltf = text(
+            """{"materials":[""" +
+                """{"name":"a","extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":2}}},""" +
+                """{"name":"a"},""" +
+                """{"name":"b","extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":4}}},""" +
+                """{"name":"b","extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":4}}}""" +
+                """]}""",
+        )
+
+        val strengths = GltfLimits.parse(gltf).emissiveStrengths()!!
+        assertTrue(strengths.getValue("a").isNaN())
+        assertEquals(4f, strengths.getValue("b"))
+    }
+
     private fun allocatedBytes(): Long {
         val threads = Class.forName("java.lang.management.ManagementFactory").getMethod("getThreadMXBean").invoke(null)
         return Class.forName("com.sun.management.ThreadMXBean").getMethod("getCurrentThreadAllocatedBytes").invoke(threads) as Long

@@ -32,6 +32,7 @@ import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
+import io.github.sceneview.material.EmissiveScale
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.FileLoader
 import io.github.sceneview.utils.loadFileBuffer
@@ -543,6 +544,8 @@ class ModelLoader(
                                 "(its meshopt-compressed data could not be decoded)",
                         )
                     }
+                    // The authored glow AR scales from (#4950): Filament cannot read it back.
+                    EmissiveScale.record(model, gltf.emissiveStrengths())
                     RestPoseBounds.record(model, restPose)
                     onLoadBegun(model)
                 }
@@ -1124,6 +1127,7 @@ class ModelLoader(
         ) {
             // Its material instances go with it, whether or not there are natives left to free.
             recordingProvider.ownership.release(it)
+            EmissiveScale.forget(it)
             RestPoseBounds.forget(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
@@ -1399,6 +1403,8 @@ class ModelLoader(
             Log.w(TAG, "${failure.message}; the model was destroyed", failure.cause)
             throw failure
         }
+        // The authored glow AR scales from (#4950): Filament cannot read a parameter back.
+        EmissiveScale.record(model, gltf.emissiveStrengths())
         // Read before `releaseSourceData`, while the external buffers are at hand.
         RestPoseBounds.record(model, gltf.restPoseBounds(resolved::get))
     }

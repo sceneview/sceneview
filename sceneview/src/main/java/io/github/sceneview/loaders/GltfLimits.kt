@@ -186,6 +186,31 @@ internal object GltfLimits {
         }
 
         /**
+         * The `KHR_materials_emissive_strength` of each named material, by name, or `null` when no
+         * material declares the extension: gltfio then sets every `emissiveStrength` to 1 (#4950).
+         *
+         * gltfio names each material instance after its glTF material, which is how a strength is
+         * found again. A name two materials share with different strengths maps to `NaN`: which
+         * instance had which is unknown. An unnamed material is left out.
+         */
+        fun emissiveStrengths(): Map<String, Float>? {
+            val materials = json?.optJSONArray("materials") ?: return null
+            var declared = false
+            val byName = HashMap<String, Float>()
+            materials.forEachObject { _, material ->
+                val strength = material.optJSONObject("extensions")
+                    ?.optJSONObject(EMISSIVE_STRENGTH_EXTENSION)
+                    ?.let {
+                        declared = true
+                        it.optDouble("emissiveStrength", 1.0).toFloat()
+                    } ?: 1f
+                val name = material.optString("name").takeIf { it.isNotEmpty() } ?: return@forEachObject
+                byName[name] = byName[name]?.takeIf { it != strength }?.let { Float.NaN } ?: strength
+            }
+            return byName.takeIf { declared }
+        }
+
+        /**
          * The rest-pose bounds of its skinned meshes, skinning included, as
          * `[minX, minY, minZ, maxX, maxY, maxZ]` (see [GltfRestPose]); `null` when it has none, or
          * when they cannot be told and gltfio's box stands.
@@ -979,6 +1004,7 @@ internal object GltfLimits {
     }
 
     private const val FLOAT = 5126
+    private const val EMISSIVE_STRENGTH_EXTENSION = "KHR_materials_emissive_strength"
     /** The most components [Gltf.accessorFloats] reads at once: 64 MB of floats. */
     private const val MAX_READ_COMPONENTS = 16L * 1024 * 1024
     private val INDEX_TYPES = setOf(5121, 5123, 5125)
