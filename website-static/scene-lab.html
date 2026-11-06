@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Scene loading lab</title>
+  <meta name="description" content="Test bench for SceneView Web multi-model scenes: progressive loading, device tiers and budgets, with timings, bytes, triangles and frame time on screen.">
+  <!-- Not linked from the site. ?tier=low|mid|high forces a tier, ?when=immediate loads
+       every entry at once instead of after the primary on idle. -->
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <link rel="preload" as="image" href="/assets/home/vp-fox.webp">
+  <style>
+    :root {
+      --lab-font: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+    }
+    /* The stage stands off the page: --stage-bg is the page background itself in dark. */
+    :root { --lab-stage: var(--stage-wall); }
+    @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --lab-stage: var(--stage-bg); } }
+    :root[data-theme="light"] { --lab-stage: var(--stage-bg); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 400 14px/20px var(--lab-font);
+      -webkit-font-smoothing: antialiased;
+    }
+    /* M3 small top app bar */
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: var(--s-4);
+      flex-wrap: wrap;
+      min-height: 64px;
+      padding: var(--s-2) var(--s-4);
+      background: var(--bg);
+    }
+    .bar h1 {
+      flex: 1 1 auto;
+      margin: 0;
+      font: 400 22px/28px var(--lab-font);
+    }
+    /* M3 segmented button */
+    .seg {
+      display: inline-flex;
+      height: 40px;
+      border: 1px solid var(--outline);
+      border-radius: var(--r-full);
+      overflow: hidden;
+    }
+    .seg a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      padding: 0 var(--s-3);
+      color: var(--text);
+      font: 500 14px/20px var(--lab-font);
+      text-decoration: none;
+    }
+    .seg a + a { border-left: 1px solid var(--outline); }
+    .seg a[aria-current="true"] { background: var(--surface-3); }
+    .seg a:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+    main {
+      display: grid;
+      gap: var(--s-4);
+      padding: 0 var(--s-4) var(--s-5);
+    }
+    @media (min-width: 900px) {
+      main { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+    }
+    .stage {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border-radius: var(--r-sm);
+      overflow: hidden;
+      background: var(--lab-stage);
+    }
+    @media (max-width: 899px) {
+      .stage { aspect-ratio: 1 / 1; }
+    }
+    .stage canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    .poster {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transition: opacity var(--d-base) linear;
+      pointer-events: none;
+    }
+    .poster.gone { opacity: 0; }
+    .status {
+      position: absolute;
+      left: var(--s-3);
+      bottom: var(--s-3);
+      margin: 0;
+      padding: var(--s-1) var(--s-3);
+      border-radius: var(--r-xs);
+      background: var(--stage-chip);
+      color: var(--stage-fg);
+      font: 500 12px/16px var(--lab-font);
+    }
+    .panel {
+      background: var(--surface-1);
+      border-radius: var(--r-sm);
+      padding: var(--s-2) 0;
+    }
+    .panel h2 {
+      margin: 0;
+      padding: var(--s-3) var(--s-4) var(--s-1);
+      color: var(--text-2);
+      font: 500 14px/20px var(--lab-font);
+    }
+    dl { margin: 0; }
+    .row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--s-4);
+      min-height: 40px;
+      padding: var(--s-2) var(--s-4);
+    }
+    .row dt { color: var(--text); }
+    .row dd {
+      margin: 0;
+      text-align: right;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .row dd small { display: block; color: var(--text-3); font: 400 12px/16px var(--lab-font); }
+    .key {
+      display: flex;
+      align-items: baseline;
+      gap: var(--s-2);
+      padding: var(--s-2) var(--s-4) var(--s-3);
+    }
+    .key strong { font: 400 36px/44px var(--lab-font); font-variant-numeric: tabular-nums; }
+    .key span { color: var(--text-2); font: 500 12px/16px var(--lab-font); }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: var(--s-2) var(--s-4); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--text-2); font: 500 12px/16px var(--lab-font); }
+    tbody tr { border-top: 1px solid var(--hairline); }
+    td.out { color: var(--text-3); }
+    .table { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <h1>Scene loading lab</h1>
+    <nav class="seg" aria-label="Device tier" id="tiers">
+      <a href="?">Auto</a><a href="?tier=low">Low</a><a href="?tier=mid">Mid</a><a href="?tier=high">High</a>
+    </nav>
+  </header>
+  <main>
+    <section class="stage" aria-label="3D scene">
+      <canvas id="stage"></canvas>
+      <img class="poster" id="poster" src="/assets/home/vp-fox.webp" alt="" width="1200" height="960" fetchpriority="high">
+      <p class="status" id="status" role="status">Loading the engine</p>
+    </section>
+    <section class="panel" aria-label="Measurements">
+      <div class="key"><strong id="k-full">–</strong><span>full scene, ms after navigation</span></div>
+      <h2>Device</h2>
+      <dl>
+        <div class="row"><dt>Tier</dt><dd id="d-tier">–</dd></div>
+        <div class="row"><dt>Budget</dt><dd id="d-budget">–</dd></div>
+      </dl>
+      <h2>Timings, ms after navigation</h2>
+      <dl>
+        <div class="row"><dt>Poster</dt><dd id="t-poster">–</dd></div>
+        <div class="row"><dt>Engine ready</dt><dd id="t-engine">–</dd></div>
+        <div class="row"><dt>First model</dt><dd id="t-first">–</dd></div>
+        <div class="row"><dt>Environment</dt><dd id="t-env">–</dd></div>
+        <div class="row"><dt>Full scene</dt><dd id="t-full">–</dd></div>
+      </dl>
+      <h2>Load</h2>
+      <dl>
+        <div class="row"><dt>Downloaded</dt><dd id="l-bytes">–</dd></div>
+        <div class="row"><dt>Triangles</dt><dd id="l-tris">–</dd></div>
+        <div class="row"><dt>Frame time</dt><dd id="l-frame">–</dd></div>
+      </dl>
+      <h2>Models</h2>
+      <div class="table">
+        <table>
+          <thead><tr><th scope="col">Entry</th><th scope="col">MB</th><th scope="col">Triangles</th><th scope="col">At, ms</th></tr></thead>
+          <tbody id="models"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Time to poster: the poster image is decoded and painted.
+    (function () {
+      var img = document.getElementById('poster');
+      function painted() {
+        requestAnimationFrame(function () { window.__posterAt = Math.round(performance.now()); });
+      }
+      if (img.complete) painted(); else img.addEventListener('load', painted, { once: true });
+    })();
+  </script>
+  <script src="/js/filament/filament.js" defer></script>
+  <script src="/js/sceneview.js" defer></script>
+  <script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var forced = params.get('tier');
+    var when = params.get('when') === 'immediate' ? 'immediate' : 'idle';
+    var dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    var $ = function (id) { return document.getElementById(id); };
+    var lab = window.sceneLabStats = { forcedTier: forced, when: when, frames: null };
+
+    Array.prototype.forEach.call(document.querySelectorAll('#tiers a'), function (a) {
+      var t = new URL(a.href).searchParams.get('tier');
+      a.setAttribute('aria-current', String(t === forced || (!t && !forced)));
+    });
+
+    // Every file below is in assets/manifest.json; none is a brand or a CC-BY-NC model.
+    // `bytes` and `triangles` are hints, so an entry over the budget is skipped unfetched.
+    function stageAspect() {
+      var c = $('stage');
+      return c.clientHeight ? c.clientWidth / c.clientHeight : 4 / 3;
+    }
+    var M = '/models/platforms/';
+    var env = dark ? '/environments/studio_showroom_dark_ibl.ktx' : '/environments/studio_showroom_light_ibl.ktx';
+    var descriptor = {
+      environment: { url: env, intensity: 30000 },
+      // Framed for a 4:3 stage; a narrower one (the 1:1 phone stage) backs off in proportion to
+      // keep the whole width, the lantern and the lamp at the edges included.
+      camera: { target: [0, 0.45, 0], angle: 0.5, height: 1.5, radius: 4.2 * Math.max(1, (4 / 3) / stageAspect()) },
+      models: [
+        { id: 'Fox', role: 'primary', src: M + 'Fox.glb', position: [0.2, 0, 0.7], rotation: [0, 60, 0], scale: 0.008,
+          animation: 'Survey', bytes: 162852, triangles: 576 },
+        { id: 'Velvet sofa', src: M + 'VelvetSofa.glb', position: [0, 0, -0.7], bytes: 3149844, triangles: 4196 },
+        { id: 'Sheen chair', src: M + 'SheenChair.glb', position: [1.35, 0, 0.1], rotation: [0, -45, 0], bytes: 4125648, triangles: 39936 },
+        { id: 'Iridescence lamp', src: M + 'IridescenceLamp.glb', position: [-1.75, 0, -0.7], scale: 1.4, bytes: 4083912, triangles: 18866 },
+        { id: 'Lantern', optional: true, src: M + 'Lantern.glb', position: [-1.2, 0, 1.0], rotation: [0, 180, 0], scale: 0.06, bytes: 9564264, triangles: 5394 },
+        { id: 'Water bottle', optional: true, src: M + 'WaterBottle.glb', position: [0.8, 0.25, 0.9], scale: 2, bytes: 8966700, triangles: 4510 }
+      ]
+    };
+
+    function rgb(token) {
+      var hex = getComputedStyle(document.documentElement).getPropertyValue(token).trim().replace('#', '');
+      if (hex.length !== 6) return [0.5, 0.5, 0.5, 1];
+      return [0, 2, 4].map(function (i) { return parseInt(hex.substr(i, 2), 16) / 255; }).concat([1]);
+    }
+    function mb(n) { return (n / 1e6).toFixed(n >= 1e7 ? 1 : 2); }
+    function int(n) { return Math.round(n).toLocaleString('en-US'); }
+    function set(id, text, sub) {
+      var el = $(id);
+      el.textContent = text;
+      if (sub) { var s = document.createElement('small'); s.textContent = sub; el.appendChild(s); }
+    }
+
+    var sceneStart = 0;
+    function at(ms) { return ms == null ? null : Math.round(sceneStart + ms); }
+
+    function render(stats) {
+      lab.stats = stats;
+      set('d-tier', stats.tier + (forced ? ' (forced)' : ''),
+        'detected ' + stats.detectedTier + (stats.reasons.length ? ': ' + stats.reasons.join(', ') : ''));
+      var b = stats.budget;
+      set('d-budget', mb(b.bytes) + ' MB · ' + int(b.triangles) + ' tris',
+        'textures ≤ ' + b.textureSize + ' px · pixel ratio ≤ ' + b.pixelRatio + (b.optional ? '' : ' · no optional entries'));
+      set('t-first', stats.firstModelAt == null ? '–' : int(at(stats.firstModelAt)),
+        stats.primaryReadyAt == null ? '' : 'textures in at ' + int(at(stats.primaryReadyAt)));
+      set('t-env', stats.environmentAt == null ? '–' : int(at(stats.environmentAt)));
+      set('t-full', stats.completeAt == null ? (stats.aborted ? 'aborted' : '–') : int(at(stats.completeAt)),
+        stats.modelsAt == null ? '' : 'geometry in at ' + int(at(stats.modelsAt)));
+      $('k-full').textContent = stats.completeAt == null ? '–' : int(at(stats.completeAt));
+      set('l-bytes', mb(stats.bytes) + ' MB', 'of ' + mb(b.bytes) + ' MB');
+      set('l-tris', int(stats.triangles), 'of ' + int(b.triangles));
+      var rows = stats.models.map(function (m) {
+        return '<tr><td>' + m.id + (m.lod !== 'src' ? ' (' + m.lod + ')' : '') + (m.textures.resized ? ' · ' + m.textures.resized + ' tex resized' : '') +
+          '</td><td>' + mb(m.bytes) + '</td><td>' + int(m.triangles) + '</td><td>' + int(at(m.at)) + '</td></tr>';
+      }).concat(stats.skipped.map(function (s) {
+        return '<tr><td class="out">' + s.id + '</td><td class="out" colspan="3">skipped: ' + s.reason + '</td></tr>';
+      })).concat(stats.failed.map(function (f) {
+        return '<tr><td class="out">' + f.id + '</td><td class="out" colspan="3">failed</td></tr>';
+      }));
+      $('models').innerHTML = rows.join('');
+    }
+
+    // Frame time: the gap between drawn frames. The steady figure is read over 5 s once
+    // the scene is complete.
+    function trackFrames(sv) {
+      var last = 0, gaps = [], steady = null;
+      sv.onFrame(function () {
+        var now = performance.now();
+        if (last) {
+          gaps.push(now - last);
+          if (gaps.length > 120) gaps.shift();
+          if (steady) steady.push(now - last);
+        }
+        last = now;
+      });
+      function pct(a, p) { var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; }
+      setInterval(function () {
+        if (!gaps.length) return;
+        var med = pct(gaps, 0.5);
+        set('l-frame', med.toFixed(1) + ' ms', (1000 / med).toFixed(0) + ' fps, p95 ' + pct(gaps, 0.95).toFixed(1) + ' ms' +
+          (lab.frames ? ' · steady ' + lab.frames.fps + ' fps' : ''));
+      }, 500);
+      return function startSteady() {
+        steady = [];
+        var t0 = performance.now();
+        setTimeout(function () {
+          var total = performance.now() - t0;
+          lab.frames = {
+            windowMs: Math.round(total),
+            frames: steady.length,
+            fps: +(steady.length / (total / 1000)).toFixed(1),
+            medianMs: +pct(steady, 0.5).toFixed(1),
+            p95Ms: +pct(steady, 0.95).toFixed(1)
+          };
+          steady = null;
+        }, 5000);
+      };
+    }
+
+    window.addEventListener('DOMContentLoaded', function () {
+      var tier = SceneView.deviceTier({ tier: forced });
+      lab.device = tier;
+      SceneView.create('stage', {
+        autoRotate: false,
+        backgroundColor: rgb('--lab-stage'),
+        iblUrl: env,           // the scene's environment: loadScene() reuses it
+        iblIntensity: 30000
+      }).then(function (sv) {
+        window.sv = sv;
+        lab.engineAt = Math.round(performance.now());
+        set('t-engine', int(lab.engineAt));
+        $('status').textContent = 'Loading the fox';
+        var startSteady = trackFrames(sv);
+        sceneStart = performance.now();
+        var scene = window.scene = sv.loadScene(descriptor, {
+          tier: forced || undefined,
+          when: when,
+          onProgress: function (e) {
+            render(e.stats);
+            if (e.type === 'model' && e.model.role !== 'primary') $('status').textContent = 'Added ' + e.id;
+          }
+        });
+        render(scene.stats);
+        scene.primary.then(function (fox) { return fox && fox.ready; }).then(function () {
+          $('poster').classList.add('gone');
+          $('status').textContent = 'Loading the rest on idle';
+        }, function () {});
+        scene.complete.then(function (stats) {
+          render(stats);
+          $('status').textContent = stats.aborted ? 'Aborted' : 'Scene complete';
+          lab.done = true;
+          startSteady();
+        });
+      }).catch(function (e) {
+        $('status').textContent = 'The engine did not start';
+        lab.error = String(e && e.message || e);
+      });
+      var poll = setInterval(function () {
+        if (window.__posterAt) { lab.posterAt = window.__posterAt; set('t-poster', int(window.__posterAt)); clearInterval(poll); }
+      }, 50);
+    });
+  })();
+  </script>
+</body>
+</html>

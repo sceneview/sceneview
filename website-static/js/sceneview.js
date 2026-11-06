@@ -1716,6 +1716,438 @@
   }
 
   // ---------------------------------------------------------------
+  // Multi-model scenes: device budget, model statistics, transforms
+  // ---------------------------------------------------------------
+
+  /**
+   * What a scene may load on each device tier (see deviceTier()). `bytes`: the models'
+   * download, the environment not counted. `triangles`: drawn in total. `textureSize`:
+   * the largest texture edge kept, bigger embedded PNG / JPEG textures are downscaled at
+   * load time. `pixelRatio`: the canvas device-pixel-ratio cap. `optional`: whether the
+   * entries a scene marks `optional` load at all.
+   */
+  var _TIER_BUDGETS = {
+    low: { bytes: 5e6, triangles: 100000, textureSize: 1024, pixelRatio: 1.25, optional: false },
+    mid: { bytes: 12e6, triangles: 300000, textureSize: 2048, pixelRatio: 1.5, optional: true },
+    high: { bytes: 40e6, triangles: 1500000, textureSize: 4096, pixelRatio: 2, optional: true }
+  };
+
+  /** Entry-level and old mobile GPUs, and software renderers: the low tier whatever else. */
+  var _WEAK_GPU = /Mali-(?:[2-4]\d\d|T\d+|G3\d|G5[01])\b|Adreno \(TM\) [1-5]\d\d\b|PowerVR|SwiftShader|llvmpipe|softpipe|Software|Microsoft Basic/i;
+  /** Desktop and flagship GPUs: what lets a phone with 8 GB reach the high tier. */
+  var _STRONG_GPU = /NVIDIA|GeForce|Quadro|Radeon|Apple M\d|Intel.*(?:Iris|Arc)|Adreno \(TM\) (?:7[3-9]\d|[89]\d\d)|Mali-G(?:7[6-9]|7\d\d|9\d\d)|Immortalis|Xclipse/i;
+
+  /** The WebGL renderer string and texture limit, from `gl` or a throwaway context. */
+  function _gpuInfo(gl) {
+    var own = !gl;
+    try {
+      if (own) {
+        var canvas = document.createElement('canvas');
+        gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      }
+      if (!gl) return { renderer: '', maxTextureSize: 0 };
+      var ext = gl.getExtension('WEBGL_debug_renderer_info');
+      var info = {
+        renderer: String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || ''),
+        maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE) || 0
+      };
+      if (own) {
+        var lose = gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      }
+      return info;
+    } catch (e) {
+      return { renderer: '', maxTextureSize: 0 };
+    }
+  }
+
+  /**
+   * The device tier and its budget. low: Save-Data or a 2G/3G link, 2 GB of memory or
+   * less, 2 cores or less, a weak GPU, or textures capped under 4096. A phone is mid
+   * unless it has 8 GB and a flagship GPU; a desktop is high unless it has 4 GB / 4 cores
+   * or less without a discrete-class GPU. Safari and Firefox do not report memory, so an
+   * iPhone is mid and a Mac with 8 cores high.
+   */
+  function _deviceTier(gl, override) {
+    var nav = typeof navigator !== 'undefined' ? navigator : {};
+    var ua = nav.userAgent || '';
+    var mobile = !!(nav.userAgentData && nav.userAgentData.mobile) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && nav.maxTouchPoints > 1);
+    var memory = Number(nav.deviceMemory) || null;  // Chromium only: rounded, capped at 8
+    var cores = Number(nav.hardwareConcurrency) || null;
+    var conn = nav.connection || {};
+    var gpu = _gpuInfo(gl);
+    var strong = _STRONG_GPU.test(gpu.renderer);
+    var reasons = [];
+    if (conn.saveData) reasons.push('Save-Data is on');
+    if (/^(?:slow-2g|2g|3g)$/.test(conn.effectiveType || '')) reasons.push('network ' + conn.effectiveType);
+    if (memory && memory <= 2) reasons.push(memory + ' GB of memory');
+    if (cores && cores <= 2) reasons.push(cores + ' cores');
+    if (_WEAK_GPU.test(gpu.renderer)) reasons.push('GPU ' + gpu.renderer);
+    if (gpu.maxTextureSize && gpu.maxTextureSize < 4096) reasons.push('textures capped at ' + gpu.maxTextureSize);
+    var tier;
+    if (reasons.length) tier = 'low';
+    else if (mobile) tier = memory >= 8 && strong ? 'high' : 'mid';
+    else tier = ((memory && memory <= 4) || (cores && cores <= 4)) && !strong ? 'mid' : 'high';
+    var detected = tier;
+    if (Object.prototype.hasOwnProperty.call(_TIER_BUDGETS, override)) tier = override;
+    var b = _TIER_BUDGETS[tier];
+    return {
+      tier: tier,
+      detected: detected,
+      mobile: mobile,
+      budget: {
+        bytes: b.bytes,
+        triangles: b.triangles,
+        textureSize: gpu.maxTextureSize ? Math.min(b.textureSize, gpu.maxTextureSize) : b.textureSize,
+        pixelRatio: b.pixelRatio,
+        optional: b.optional
+      },
+      reasons: reasons,
+      signals: {
+        deviceMemory: memory,
+        hardwareConcurrency: cores,
+        devicePixelRatio: typeof devicePixelRatio === 'number' ? devicePixelRatio : 1,
+        gpu: gpu.renderer,
+        maxTextureSize: gpu.maxTextureSize,
+        saveData: !!conn.saveData,
+        effectiveType: conn.effectiveType || null
+      }
+    };
+  }
+
+  /** The URL an entry loads on a tier: lod.low, then lod.mid, then src on low; lod.mid, then src on mid. */
+  function _pickLod(entry, tier) {
+    var lod = entry.lod || {};
+    var order = tier === 'low' ? ['low', 'mid'] : tier === 'mid' ? ['mid'] : [];
+    for (var i = 0; i < order.length; i++) {
+      if (typeof lod[order[i]] === 'string' && lod[order[i]]) return { url: lod[order[i]], lod: order[i] };
+    }
+    return { url: entry.src || entry.url, lod: 'src' };
+  }
+
+  /** Triangles a glTF draws: each mesh counted once per node that instances it. */
+  function _glbTriangles(json) {
+    if (!json || !json.nodes || !json.meshes) return 0;
+    var accessors = json.accessors || [], total = 0;
+    _glbMeshNodes(json).forEach(function(n) {
+      (n.mesh.primitives || []).forEach(function(p) {
+        var mode = p.mode === undefined ? 4 : p.mode;
+        var acc = accessors[p.indices !== undefined ? p.indices : (p.attributes || {}).POSITION];
+        var count = (acc && acc.count) || 0;
+        if (mode === 4) total += Math.floor(count / 3);
+        else if (mode === 5 || mode === 6) total += Math.max(0, count - 2);
+      });
+    });
+    return total;
+  }
+
+  /** [width, height] of PNG, JPEG or KTX2 bytes, from their header; null otherwise. */
+  function _imageSize(b) {
+    if (!b || b.length < 32) return null;
+    function be32(o) { return ((b[o] << 24) >>> 0) + (b[o + 1] << 16) + (b[o + 2] << 8) + b[o + 3]; }
+    function le32(o) { return b[o] + (b[o + 1] << 8) + (b[o + 2] << 16) + ((b[o + 3] << 24) >>> 0); }
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return [be32(16), be32(20)];
+    if (b[0] === 0xAB && b[1] === 0x4B && b[2] === 0x54 && b[3] === 0x58 && b[5] === 0x32) return [le32(20), le32(24)];
+    if (b[0] === 0xFF && b[1] === 0xD8) {
+      for (var o = 2; o + 9 < b.length;) {
+        if (b[o] !== 0xFF) { o++; continue; }
+        var m = b[o + 1];
+        if (m === 0xFF) { o++; continue; }
+        if (m === 0x01 || (m >= 0xD0 && m <= 0xD8)) { o += 2; continue; }
+        // SOF0..SOF15, except DHT (C4), JPG (C8) and DAC (CC): height then width.
+        if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+          return [(b[o + 7] << 8) | b[o + 8], (b[o + 5] << 8) | b[o + 6]];
+        }
+        o += 2 + ((b[o + 2] << 8) | b[o + 3]);
+      }
+    }
+    return null;
+  }
+
+  /** An image's bytes when they are inside the GLB's BIN chunk, else null. */
+  function _binImage(json, bin, im) {
+    var buffer0 = json.buffers && json.buffers[0];
+    var v = im && Number.isInteger(im.bufferView) && json.bufferViews && json.bufferViews[im.bufferView];
+    if (!v || !bin || (v.buffer || 0) !== 0 || !buffer0 || buffer0.uri !== undefined) return null;
+    var o = v.byteOffset || 0, n = v.byteLength || 0;
+    return o >= 0 && n > 0 && o + n <= bin.length ? bin.subarray(o, o + n) : null;
+  }
+
+  /** `src` (PNG or JPEG) redrawn at w x h and re-encoded in its own format; null on failure. */
+  function _resizeImage(src, mime, w, h) {
+    if (typeof createImageBitmap !== 'function') return Promise.resolve(null);
+    return createImageBitmap(new Blob([src], { type: mime }), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
+      .then(function(bitmap) {
+        var canvas;
+        if (typeof OffscreenCanvas === 'function') canvas = new OffscreenCanvas(w, h);
+        else { canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; }
+        var ctx = canvas.getContext('2d');
+        if (!ctx) { bitmap.close(); return null; }
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close();
+        var blob = canvas.convertToBlob ? canvas.convertToBlob({ type: mime, quality: 0.9 })
+          : new Promise(function(resolve) { canvas.toBlob(resolve, mime, 0.9); });
+        return blob.then(function(b) { return b ? b.arrayBuffer() : null; })
+          .then(function(ab) { return ab ? new Uint8Array(ab) : null; });
+      })
+      .catch(function() { return null; });
+  }
+
+  /**
+   * A GLB whose embedded PNG / JPEG textures are at most `maxEdge` texels on a side, and
+   * a report: `largest` edge found, `resized` images, `oversized` ones left over the cap
+   * (KTX2, external files, data: URIs, or a failed decode). A 4096 texture holds 85 MB of
+   * GPU memory with its mipmaps, a 2048 one 22 MB: on a 4 GB phone a few of them are what
+   * the tab is killed for. The smaller images are appended to the BIN chunk, so the
+   * download is not smaller: author LOD variants for that. Never rejects.
+   */
+  function _capTextures(bytes, maxEdge, stale) {
+    var report = { largest: 0, resized: 0, oversized: 0 }, g = null;
+    try { g = _glbChunks(bytes); } catch (e) { /* not a GLB */ }
+    if (!g || !g.json.images) return Promise.resolve({ bytes: bytes, textures: report });
+    var json = g.json, bin = g.bin, todo = [];
+    json.images.forEach(function(im) {
+      var src = _binImage(json, bin, im), size = src && _imageSize(src);
+      if (!size) return;
+      var edge = Math.max(size[0], size[1]);
+      report.largest = Math.max(report.largest, edge);
+      if (!(maxEdge > 0) || edge <= maxEdge) return;
+      var mime = src[0] === 0x89 ? 'image/png' : src[0] === 0xFF ? 'image/jpeg' : '';
+      if (!mime) { report.oversized++; return; }
+      var k = maxEdge / edge;
+      todo.push({ im: im, src: src, mime: mime, w: Math.max(1, Math.round(size[0] * k)), h: Math.max(1, Math.round(size[1] * k)) });
+    });
+    if (!todo.length) return Promise.resolve({ bytes: bytes, textures: report });
+    var out = new Array(todo.length), next = 0;
+    function worker() {
+      if (next >= todo.length || (stale && stale())) return Promise.resolve();
+      var k = next++, t = todo[k];
+      return _resizeImage(t.src, t.mime, t.w, t.h).then(function(r) { out[k] = r; return worker(); });
+    }
+    return Promise.all([worker(), worker()]).then(function() {
+      if (stale && stale()) return { bytes: bytes, textures: report };
+      var sink = _binSink(bin);
+      todo.forEach(function(t, k) {
+        if (!out[k]) { report.oversized++; return; }
+        t.im.bufferView = sink.appendView(json, out[k]);
+        t.im.mimeType = t.mime;
+        report.resized++;
+      });
+      if (!report.resized) return { bytes: bytes, textures: report };
+      var newBin = sink.bytes();
+      json.buffers[0].byteLength = newBin.length;
+      return { bytes: _buildGlb(json, newBin), textures: report };
+    }).catch(function(e) {
+      console.warn('SceneView: texture downscale skipped', e);
+      return { bytes: bytes, textures: report };
+    });
+  }
+
+  /**
+   * A rotation as a glTF quaternion [x, y, z, w]: a 4-array is taken as one; a 3-array is
+   * Euler angles in degrees applied X, then Y, then Z (R = Rz * Ry * Rx, Android's
+   * Node.rotation order).
+   */
+  function _rotationQuat(r) {
+    if (!Array.isArray(r) || r.length < 3 || !r.every(Number.isFinite)) return [0, 0, 0, 1];
+    if (r.length >= 4) {
+      var n = Math.hypot(r[0], r[1], r[2], r[3]) || 1;
+      return [r[0] / n, r[1] / n, r[2] / n, r[3] / n];
+    }
+    var hx = r[0] * Math.PI / 360, hy = r[1] * Math.PI / 360, hz = r[2] * Math.PI / 360;
+    var cx = Math.cos(hx), sx = Math.sin(hx), cy = Math.cos(hy), sy = Math.sin(hy), cz = Math.cos(hz), sz = Math.sin(hz);
+    return [
+      sx * cy * cz - cx * sy * sz,
+      cx * sy * cz + sx * cy * sz,
+      cx * cy * sz - sx * sy * cz,
+      cx * cy * cz + sx * sy * sz
+    ];
+  }
+
+  /** `v` as an [x, y, z] of finite numbers (a number repeated when `uniform`), else `fallback`. */
+  function _vec3(v, fallback, uniform) {
+    if (uniform && Number.isFinite(v)) return [v, v, v];
+    return Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every(Number.isFinite) ? [v[0], v[1], v[2]] : fallback;
+  }
+
+  /** The axis-aligned box around `box` once moved by the column-major matrix `M`. */
+  function _transformBox(box, M) {
+    var min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (var c = 0; c < 8; c++) {
+      var x = c & 1 ? box.max[0] : box.min[0], y = c & 2 ? box.max[1] : box.min[1], z = c & 4 ? box.max[2] : box.min[2];
+      for (var a = 0; a < 3; a++) {
+        var v = M[a] * x + M[4 + a] * y + M[8 + a] * z + M[12 + a];
+        if (v < min[a]) min[a] = v;
+        if (v > max[a]) max[a] = v;
+      }
+    }
+    return { min: min, max: max };
+  }
+
+  function _abortError(what) {
+    var e = new Error('SceneView: ' + (what || 'the load') + ' was aborted');
+    e.name = 'AbortError';
+    return e;
+  }
+
+  /** An entry left out to keep a scene inside its budget: `reason` is 'bytes' or 'triangles'. */
+  function _budgetError(url, reason, amount, room) {
+    var e = new Error('SceneView: ' + url + ' skipped, it needs ' + amount + ' ' + reason + ' and the budget has ' + Math.max(0, room) + ' left');
+    e.name = 'BudgetError';
+    e.reason = reason;
+    return e;
+  }
+
+  /** Abort `controller` when any of `signals` aborts; returns the function that unhooks it. */
+  function _linkAbort(controller, signals) {
+    var hooked = [];
+    signals.forEach(function(s) {
+      if (!s) return;
+      if (s.aborted) { controller.abort(); return; }
+      var on = function() { controller.abort(); };
+      s.addEventListener('abort', on);
+      hooked.push([s, on]);
+    });
+    return function() { hooked.forEach(function(h) { h[0].removeEventListener('abort', h[1]); }); };
+  }
+
+  /** Resolves when the main thread is idle (requestIdleCallback), or after `timeout` ms. */
+  function _whenIdle(timeout) {
+    return new Promise(function(resolve) {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(function() { resolve(); }, { timeout: timeout });
+      else setTimeout(resolve, 50);
+    });
+  }
+
+  /**
+   * One model added with addModel() or loadScene(). It stays in the scene, with the
+   * models around it, until remove() (or clearScene() / dispose()).
+   */
+  class SceneModel {
+    constructor(viewer, url) {
+      this._viewer = viewer;
+      this._asset = null;
+      this._animator = null;
+      this._anim = -1;
+      this._animLoop = true;
+      this._animStart = 0;
+      this._animDone = false;
+      this._matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+      /** The URL loaded: the entry's `src`, or the LOD variant picked for the device. */
+      this.url = url;
+      /** loadScene(): the entry's id ('' for addModel()), its role and the LOD loaded ('src', 'mid' or 'low'). */
+      this.id = '';
+      this.role = '';
+      this.lod = 'src';
+      /** Bytes downloaded and triangles drawn. */
+      this.bytes = 0;
+      this.triangles = 0;
+      /** Largest texture edge in the file, textures downscaled to the budget, and those left over it. */
+      this.textures = { largest: 0, resized: 0, oversized: 0 };
+      this.animationNames = [];
+      this.position = [0, 0, 0];
+      this.rotation = [0, 0, 0, 1];
+      this.scale = [1, 1, 1];
+      this.removed = false;
+      /** Resolves once every texture of the model is decoded (or it was removed). */
+      this.ready = new Promise((resolve) => { this._resolveReady = resolve; });
+    }
+
+    /** World-space bounding box { min, max } with the transform applied; null once removed. */
+    get boundingBox() {
+      if (this.removed || !this._localBox) return null;
+      return _transformBox(this._localBox, this._matrix);
+    }
+
+    /** True while an animation plays (a one-shot that reached its end is not playing). */
+    get playing() {
+      return !this.removed && this._anim >= 0 && (this._animLoop || !this._animDone);
+    }
+
+    /**
+     * Place the model. Every field is optional; one left out keeps its value.
+     * @param {Object} t
+     * @param {number[]} [t.position] - [x, y, z] in metres
+     * @param {number[]} [t.rotation] - [x, y, z] Euler degrees (X, then Y, then Z) or a quaternion [x, y, z, w]
+     * @param {number|number[]} [t.scale] - uniform number or [x, y, z]
+     * @returns {SceneModel} this
+     */
+    setTransform(t) {
+      t = t || {};
+      if (this.removed) return this;
+      this.position = _vec3(t.position, this.position);
+      if (t.rotation !== undefined) this.rotation = _rotationQuat(t.rotation);
+      this.scale = _vec3(t.scale, this.scale, true);
+      this._matrix = _nodeMatrix({ translation: this.position, rotation: this.rotation, scale: this.scale });
+      var tm = this._viewer._engine.getTransformManager();
+      tm.setTransform(tm.getInstance(this._asset.getRoot()), this._matrix);
+      this._viewer.requestRender();
+      return this;
+    }
+
+    /**
+     * Play one of the model's glTF animations, by index or by name.
+     * @param {number|string} [which=0]
+     * @param {Object} [options]
+     * @param {boolean} [options.loop=true]
+     * @returns {SceneModel} this
+     */
+    playAnimation(which, options) {
+      var count = this.animationNames.length;
+      if (this.removed || !this._animator || !count) return this;
+      var index = typeof which === 'string' ? this.animationNames.indexOf(which) : Number.isInteger(which) ? which : 0;
+      if (index < 0 || index >= count) {
+        console.warn('SceneView: ' + this.url + ' has no animation ' + JSON.stringify(which) +
+          ' (it has ' + JSON.stringify(this.animationNames) + ')');
+        return this;
+      }
+      this._anim = index;
+      this._animLoop = !(options && options.loop === false);
+      this._animStart = performance.now();
+      this._animDone = false;
+      this._viewer.requestRender();
+      return this;
+    }
+
+    /** Stop the animation where it is. @returns {SceneModel} this */
+    stopAnimation() {
+      this._anim = -1;
+      this._viewer.requestRender();
+      return this;
+    }
+
+    /** Take the model off the scene and free it. The other models stay. */
+    remove() {
+      if (this.removed) return;
+      this.removed = true;
+      var viewer = this._viewer;
+      viewer._models.delete(this);
+      viewer._destroyAsset(this._asset);
+      this._asset = null;
+      this._animator = null;
+      this._resolveReady(this);
+      viewer.requestRender();
+    }
+
+    /** Pose the playing animation for this frame. @private */
+    _tick(now) {
+      if (!this._animator || this._anim < 0 || this._animDone) return;
+      try {
+        var t = (now - this._animStart) / 1000;
+        var dur = this._animator.getAnimationDuration(this._anim) || 0;
+        if (dur > 0) {
+          if (this._animLoop) t -= Math.floor(t / dur) * dur;
+          else if (t > dur) { t = dur; this._animDone = true; }
+        }
+        this._animator.applyAnimation(this._anim, t);
+        if (this._animator.updateBoneMatrices) this._animator.updateBoneMatrices();
+      } catch (e) { /* never break the render loop */ }
+    }
+  }
+
+  // ---------------------------------------------------------------
   // SceneView instance
   // ---------------------------------------------------------------
 
@@ -1740,6 +2172,8 @@
       this._disposed = false;
       this._abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
       this._assets = new Set();         // every live gltfio asset created by this viewer
+      this._models = new Set();         // SceneModel handles from addModel() / loadScene()
+      this._visibleWaiters = null;      // loadScene() steps waiting for the canvas to be on screen
       this._resourceLoads = new Map();  // asset -> its running resource load (see _loadResources)
       this._ibl = null;                 // { light, ktx } currently set on the scene
       this._loadingVideos = new Map();  // <video> still loading (createVideo) -> its reject()
@@ -1919,6 +2353,441 @@
       });
     }
 
+    // ---------------------------------------------------------------
+    // Multi-model scenes: addModel(), loadScene(), deviceTier()
+    // ---------------------------------------------------------------
+
+    /**
+     * This device's tier ('low', 'mid' or 'high') and the budget loadScene() keeps to on
+     * it. Read from navigator.deviceMemory and hardwareConcurrency (Chromium), the
+     * network's Save-Data and effective type, and the WebGL renderer string.
+     *
+     * @param {Object} [options]
+     * @param {'low'|'mid'|'high'} [options.tier] - force a tier (`detected` keeps the measured one)
+     * @returns {{tier: string, detected: string, mobile: boolean, reasons: string[],
+     *   budget: {bytes: number, triangles: number, textureSize: number, pixelRatio: number, optional: boolean},
+     *   signals: Object}}
+     */
+    deviceTier(options) {
+      var gl = null;
+      try { gl = this._canvas.getContext('webgl2'); } catch (e) { /* none */ }
+      return _deviceTier(gl, options && options.tier);
+    }
+
+    /**
+     * Add a model to the scene, next to the ones already there (loadModel() replaces the
+     * model; this does not). Resolves with its handle once its geometry is on screen;
+     * `handle.ready` resolves when its textures are decoded too.
+     *
+     * @param {string} url - GLB or glTF URL
+     * @param {Object} [options]
+     * @param {number[]} [options.position=[0,0,0]] - metres
+     * @param {number[]} [options.rotation] - [x, y, z] Euler degrees or a quaternion [x, y, z, w]
+     * @param {number|number[]} [options.scale=1]
+     * @param {boolean|number|string} [options.animation] - play an animation: true for the
+     *   first, or its index or name
+     * @param {boolean} [options.loop=true]
+     * @param {number} [options.maxTextureSize] - downscale embedded PNG / JPEG textures above this edge
+     * @param {number} [options.maxBytes] - reject with a `BudgetError` past this download
+     * @param {number} [options.maxTriangles] - reject with a `BudgetError` past this many triangles
+     * @param {AbortSignal} [options.signal] - cancels the download
+     * @returns {Promise<SceneModel>} rejects with an `AbortError` on abort or dispose()
+     */
+    addModel(url, options) {
+      var self = this;
+      var o = options || {};
+      if (this._disposed) return Promise.reject(_disposedError());
+      return this._fetchModel(url, { signal: o.signal, maxBytes: o.maxBytes, maxTextureSize: o.maxTextureSize })
+        .then(function(fetched) {
+          if (self._disposed) throw _disposedError();
+          if (o.signal && o.signal.aborted) throw _abortError(url);
+          return self._placeModel(url, fetched, o);
+        });
+    }
+
+    /** Every model added with addModel() or loadScene() and not removed yet. */
+    getModels() {
+      return Array.from(this._models);
+    }
+
+    /**
+     * Load a scene of several models in the order a visitor sees it: the environment and
+     * the primary model at once, the rest later, once the canvas is on screen and the main
+     * thread is idle, two downloads at a time and one model built per idle period. Every
+     * entry is held to the device budget (deviceTier()): the LOD variant for the tier,
+     * `optional` entries dropped on the low tier, an entry left out when its bytes or
+     * triangles would pass what is left of the budget, embedded textures downscaled to the
+     * tier's size, the pixel ratio capped. It stops when the page is left (`pagehide`),
+     * the canvas leaves the document, the viewer is disposed, `options.signal` aborts or
+     * `abort()` is called; what is already on screen stays.
+     *
+     * Returns at once; nothing in it blocks the first paint.
+     *
+     * @param {Object} descriptor
+     * @param {string|{url: string, intensity: number}} [descriptor.environment] - KTX IBL
+     * @param {{target: number[], angle: number, height: number, radius: number, fov: number}} [descriptor.camera]
+     *   - an orbit (setCameraOrbit); without one, the camera frames the primary model
+     * @param {Object[]} descriptor.models - each `{ id, src, lod: {mid, low}, position,
+     *   rotation, scale, animation, loop, role: 'primary', optional, bytes, triangles }`;
+     *   `bytes` and `triangles` are hints that let an entry be skipped before it downloads.
+     *   The primary is the entry with `role: 'primary'`, else the first.
+     * @param {Object} [options]
+     * @param {'low'|'mid'|'high'} [options.tier] - force a tier
+     * @param {Object} [options.budget] - override fields of the tier's budget
+     * @param {'idle'|'immediate'} [options.when='idle'] - when the entries after the primary load
+     * @param {boolean} [options.applyPixelRatio=true] - cap the pixel ratio at the tier's
+     * @param {AbortSignal} [options.signal]
+     * @param {function(Object): void} [options.onProgress] - `{ type, id, model, stats }`, type
+     *   'environment', 'model', 'skipped', 'failed' or 'complete'
+     * @returns {{models: SceneModel[], stats: Object, primary: Promise<SceneModel|null>,
+     *   complete: Promise<Object>, abort: function(): void, remove: function(): void}}
+     */
+    loadScene(descriptor, options) {
+      var self = this;
+      var d = descriptor || {};
+      var o = options || {};
+      var t0 = performance.now();
+      function ms() { return Math.round(performance.now() - t0); }
+
+      var device = this.deviceTier({ tier: o.tier });
+      var budget = Object.assign({}, device.budget, o.budget || {});
+      var ctl = new AbortController();
+      var unlink = _linkAbort(ctl, [this._abort && this._abort.signal, o.signal]);
+      var aborted = new Promise(function(resolve) {
+        if (ctl.signal.aborted) resolve();
+        else ctl.signal.addEventListener('abort', function() { resolve(); }, { once: true });
+      });
+      var onPageHide = function() { ctl.abort(); };
+      if (typeof window !== 'undefined') window.addEventListener('pagehide', onPageHide);
+
+      var stats = {
+        tier: device.tier,
+        detectedTier: device.detected,
+        reasons: device.reasons,
+        budget: budget,
+        environmentAt: null,   // ms after loadScene(): the environment lights the scene
+        firstModelAt: null,    // the primary model's geometry is on screen
+        primaryReadyAt: null,  // ... and its textures are decoded
+        modelsAt: null,        // every entry kept is on screen
+        completeAt: null,      // ... with its textures, and the environment
+        bytes: 0,
+        triangles: 0,
+        models: [],
+        skipped: [],
+        failed: [],
+        aborted: false
+      };
+      var scene = {
+        models: [],
+        stats: stats,
+        abort: function() { ctl.abort(); },
+        remove: function() {
+          ctl.abort();
+          scene.models.slice().forEach(function(m) { m.remove(); });
+          scene.models.length = 0;
+        }
+      };
+
+      function stale() {
+        if (self._disposed) return _disposedError();
+        if (!ctl.signal.aborted && self._canvas && self._canvas.isConnected === false) ctl.abort();
+        return ctl.signal.aborted ? _abortError('the scene') : null;
+      }
+      function progress(type, extra) {
+        if (typeof o.onProgress !== 'function') return;
+        try { o.onProgress(Object.assign({ type: type, stats: stats }, extra)); }
+        catch (e) { console.warn('SceneView: onProgress threw', e); }
+      }
+
+      if (o.applyPixelRatio !== false && Number.isFinite(budget.pixelRatio)) {
+        this.setPixelRatio(Math.min(this._maxPixelRatio || 2, budget.pixelRatio));
+      }
+      if (d.camera) this.setCameraOrbit(d.camera);
+
+      // The environment, alongside the primary.
+      var env = d.environment, envDone = Promise.resolve();
+      if (env) {
+        var envUrl = typeof env === 'string' ? env : env.url;
+        var envIntensity = typeof env === 'string' ? undefined : env.intensity;
+        var current = this._envSource;
+        // Already the viewer's environment (create({ iblUrl })): wait for it, no second download.
+        var same = current && current.url === envUrl && !current.studio &&
+          (envIntensity === undefined || envIntensity === current.intensity) && this._environmentReady;
+        envDone = (same ? this._environmentReady : this.loadEnvironment(envUrl, envIntensity))
+          .then(function() {
+            stats.environmentAt = ms();
+            progress('environment', { id: 'environment' });
+          }, function(e) {
+            if (stale()) return;
+            stats.failed.push({ id: 'environment', url: envUrl, error: String(e && e.message || e) });
+            progress('failed', { id: 'environment' });
+          });
+      }
+
+      var entries = (d.models || d.entries || []).map(function(e, i) {
+        if (typeof e === 'string') e = { src: e };
+        var src = e.src || e.url || '';
+        return Object.assign({}, e, { id: e.id || src.split('/').pop() || ('model-' + i) });
+      });
+      var primaryEntry = entries.filter(function(e) { return e.role === 'primary'; })[0] || entries[0] || null;
+      var rest = entries.filter(function(e) { return e !== primaryEntry; });
+
+      var room = { bytes: budget.bytes, triangles: budget.triangles, reserved: 0 };
+      var buildChain = Promise.resolve();
+      function skip(e, reason, url) {
+        stats.skipped.push({ id: e.id, url: url, reason: reason });
+        progress('skipped', { id: e.id });
+        return null;
+      }
+
+      // One entry: budget checks, download, then (after the primary) an idle period to build it.
+      function load(e, deferBuild) {
+        var abort = stale();
+        if (abort) return Promise.reject(abort);
+        var pick = _pickLod(e, device.tier);
+        if (!pick.url) return Promise.resolve(skip(e, 'no src', ''));
+        if (e.optional && !budget.optional) return Promise.resolve(skip(e, 'optional', pick.url));
+        // Hints describe `src`; a LOD variant is smaller, so only `src` is skipped on them.
+        if (pick.lod === 'src') {
+          if (e.bytes > room.bytes - room.reserved) return Promise.resolve(skip(e, 'bytes', pick.url));
+          if (e.triangles > room.triangles) return Promise.resolve(skip(e, 'triangles', pick.url));
+        }
+        var hold = pick.lod === 'src' && e.bytes > 0 ? e.bytes : 0;
+        room.reserved += hold;
+        return self._fetchModel(pick.url, {
+          signal: ctl.signal,
+          maxBytes: room.bytes - room.reserved + hold,
+          maxTextureSize: budget.textureSize
+        }).then(function(fetched) {
+          if (!deferBuild) return fetched;
+          // One build per idle period: two models parsed in the same frame would drop it.
+          var turn = buildChain.then(function() { return _whenIdle(1000); });
+          buildChain = turn;
+          return turn.then(function() { return fetched; });
+        }).then(function(fetched) {
+          room.reserved -= hold;
+          hold = 0;
+          var abort = stale();
+          if (abort) throw abort;
+          if (fetched.downloaded > room.bytes) throw _budgetError(pick.url, 'bytes', fetched.downloaded, room.bytes);
+          var m = self._placeModel(pick.url, fetched, Object.assign({}, e, { maxTriangles: room.triangles }));
+          room.bytes -= m.bytes;
+          room.triangles -= m.triangles;
+          m.id = e.id;
+          m.role = e === primaryEntry ? 'primary' : (e.role || '');
+          m.lod = pick.lod;
+          scene.models.push(m);
+          stats.bytes += m.bytes;
+          stats.triangles += m.triangles;
+          stats.models.push({ id: m.id, url: m.url, lod: m.lod, bytes: m.bytes, triangles: m.triangles,
+            textures: m.textures, at: ms() });
+          progress('model', { id: m.id, model: m });
+          return m;
+        }).catch(function(err) {
+          room.reserved -= hold;
+          if (err && err.name === 'BudgetError') return skip(e, err.reason, pick.url);
+          var abort = stale();
+          if (abort) throw abort;
+          stats.failed.push({ id: e.id, url: pick.url, error: String(err && err.message || err) });
+          progress('failed', { id: e.id });
+          return null;
+        });
+      }
+
+      var primary = primaryEntry ? load(primaryEntry, false) : Promise.resolve(null);
+      var primaryShown = primary.then(function(m) {
+        if (!m) return null;
+        stats.firstModelAt = ms();
+        if (!d.camera) {
+          var box = m.boundingBox;
+          if (box) self._frameBox(box, o.fill);
+          self.requestRender();
+        }
+        return m.ready.then(function() { stats.primaryReadyAt = ms(); return m; });
+      });
+      primaryShown.catch(function() { /* reported through scene.complete */ });
+
+      // The rest: after the primary (or at once with when: 'immediate'), on screen, idle.
+      var immediate = o.when === 'immediate';
+      var queue = rest.slice();
+      function worker() {
+        if (!queue.length) return Promise.resolve();
+        var abort = stale();
+        if (abort) return Promise.reject(abort);
+        return Promise.race([self._whenVisible(), aborted])
+          .then(function() { return immediate ? null : _whenIdle(1500); })
+          .then(function() {
+            var abort = stale();
+            if (abort) throw abort;
+            var e = queue.shift();
+            return e ? load(e, !immediate) : null;
+          })
+          .then(worker);
+      }
+      var restDone = (immediate ? Promise.resolve() : primary.then(function() {}, function() {}))
+        .then(function() { return Promise.all([worker(), worker()]); });
+
+      scene.primary = primary;
+      scene.primary.catch(function() { /* reported through scene.complete */ });
+      scene.complete = Promise.all([primary, restDone])
+        .then(function() {
+          stats.modelsAt = ms();
+          return Promise.race([
+            Promise.all(scene.models.map(function(m) { return m.ready; }).concat([envDone, primaryShown])),
+            aborted
+          ]);
+        })
+        .catch(function(err) {
+          if (!(err && (err.name === 'AbortError'))) {
+            stats.failed.push({ id: 'scene', error: String(err && err.message || err) });
+          }
+        })
+        .then(function() {
+          if (ctl.signal.aborted || self._disposed) stats.aborted = true;
+          else stats.completeAt = ms();
+          unlink();
+          if (typeof window !== 'undefined') window.removeEventListener('pagehide', onPageHide);
+          self.requestRender();
+          progress('complete', {});
+          return stats;
+        });
+      return scene;
+    }
+
+    /** Resolves once the canvas is on screen in a visible tab (or the viewer is disposed). @private */
+    _whenVisible() {
+      if (this._disposed || (this._onScreen && this._tabVisible)) return Promise.resolve();
+      var self = this;
+      return new Promise(function(resolve) { (self._visibleWaiters = self._visibleWaiters || []).push(resolve); });
+    }
+
+    /** Release the _whenVisible() waiters. @private */
+    _flushVisibleWaiters() {
+      var waiters = this._visibleWaiters;
+      if (!waiters) return;
+      this._visibleWaiters = null;
+      waiters.forEach(function(resolve) { resolve(); });
+    }
+
+    /**
+     * Download a model for addModel() / loadScene(), held to `maxBytes` (Content-Length
+     * first, so an oversized file is not downloaded), and rewrite it as loadModel() does:
+     * WebP to PNG, oversized skins split, then textures capped at `maxTextureSize`.
+     * @private
+     */
+    _fetchModel(url, o) {
+      var self = this;
+      var ctl = new AbortController();
+      var unlink = _linkAbort(ctl, [this._abort && this._abort.signal, o.signal]);
+      var capped = Number.isFinite(o.maxBytes);
+      var downloaded = 0;
+      function stale() {
+        if (self._disposed) return _disposedError();
+        return ctl.signal.aborted ? _abortError(url) : null;
+      }
+      return fetch(url, { signal: ctl.signal })
+        .then(function(resp) {
+          if (!resp.ok) throw new Error('HTTP ' + resp.status + ' loading ' + url);
+          var length = Number(resp.headers.get('Content-Length'));
+          if (capped && length > o.maxBytes) {
+            var over = _budgetError(url, 'bytes', length, o.maxBytes);
+            ctl.abort();
+            throw over;
+          }
+          return resp.arrayBuffer();
+        })
+        .then(function(buffer) {
+          var abort = stale();
+          if (abort) throw abort;
+          downloaded = buffer.byteLength;
+          if (capped && downloaded > o.maxBytes) throw _budgetError(url, 'bytes', downloaded, o.maxBytes);
+          return _transcodeWebP(new Uint8Array(buffer), stale);
+        })
+        .then(function(bytes) {
+          var abort = stale();
+          if (abort) throw abort;
+          try {
+            bytes = _splitOversizedSkins(bytes);
+          } catch (e) {
+            console.warn('SceneView: oversized skin not split', e);
+          }
+          return _capTextures(bytes, o.maxTextureSize, stale);
+        })
+        .then(function(r) {
+          var abort = stale();
+          if (abort) throw abort;
+          unlink();
+          return { bytes: r.bytes, downloaded: downloaded, textures: r.textures };
+        })
+        .catch(function(e) {
+          unlink();
+          if (e && e.name === 'BudgetError') throw e;
+          throw stale() || e;
+        });
+    }
+
+    /** Build a fetched model, put it on the scene with its transform, track its handle. @private */
+    _placeModel(url, fetched, o) {
+      var self = this;
+      var data = fetched.bytes, json = null;
+      try { json = _glbChunks(data).json; } catch (e) { /* a .gltf: no count */ }
+      var triangles = _glbTriangles(json);
+      if (Number.isFinite(o.maxTriangles) && triangles > o.maxTriangles) {
+        throw _budgetError(url, 'triangles', triangles, o.maxTriangles);
+      }
+      var model = new SceneModel(this, url);
+      var asset;
+      try {
+        asset = this._createAsset(data, function() {
+          model._resolveReady(model);
+          self.requestRender();
+        });
+      } catch (e) {
+        if (e instanceof Error) throw e;
+        throw new Error('Failed to parse model: ' + url + _gltfioRejectionHint(data));
+      }
+      if (!asset) throw new Error('Failed to parse model: ' + url);
+      model._asset = asset;
+      model.bytes = fetched.downloaded;
+      model.triangles = triangles;
+      model.textures = fetched.textures;
+
+      // The model's own box, read while its root is still at identity.
+      var box = null;
+      try { box = this._fixQuantizedBounds(asset, data); } catch (e) { /* gltfio's box */ }
+      if (!box) {
+        var b = asset.getBoundingBox();
+        box = { min: [b.min[0], b.min[1], b.min[2]], max: [b.max[0], b.max[1], b.max[2]] };
+      }
+      model._localBox = box;
+
+      try {
+        var inst = asset.getInstance ? asset.getInstance() : null;
+        model._animator = inst && inst.getAnimator ? inst.getAnimator() : null;
+      } catch (e) {
+        model._animator = null;
+      }
+      if (model._animator) {
+        try {
+          for (var i = 0, n = model._animator.getAnimationCount(); i < n; i++) {
+            model.animationNames.push(model._animator.getAnimationName(i) || '');
+          }
+        } catch (e) { /* no names */ }
+        // Pose the skin from its rest transforms, as _showModel does (#4566).
+        try { if (model._animator.updateBoneMatrices) model._animator.updateBoneMatrices(); } catch (e) { /* no skin */ }
+      }
+
+      this._scene.addEntity(asset.getRoot());
+      this._scene.addEntities(asset.getRenderableEntities());
+      this._models.add(model);
+      model.setTransform(o);
+      if (o.animation !== undefined && o.animation !== null && o.animation !== false) {
+        model.playAnimation(o.animation === true ? 0 : o.animation, { loop: o.loop });
+      }
+      this.requestRender();
+      return model;
+    }
+
     /**
      * Paint a subtle "3D preview unavailable" placeholder over the canvas when a
      * model fails to load (#2509). Delegates to the shared module-level painter
@@ -2050,7 +2919,15 @@
      */
     _frameAsset(asset, fill) {
       try {
-        const bbox = this._assetBox(asset);
+        return this._frameBox(this._assetBox(asset), fill);
+      } catch (_e) {
+        return false; // keep the current camera
+      }
+    }
+
+    /** Point the orbit camera at a { min, max } box so it fills `fill` of the view. @private */
+    _frameBox(bbox, fill) {
+      try {
         const cx = (bbox.min[0] + bbox.max[0]) / 2;
         const cy = (bbox.min[1] + bbox.max[1]) / 2;
         const cz = (bbox.min[2] + bbox.max[2]) / 2;
@@ -2274,6 +3151,15 @@
           this._frameAsset(this._asset, fill);
           if (this._studio) this._studioClampLimits();
         }
+      } else if (this._models.size) {
+        // A scene of addModel() / loadScene() models: frame all of them.
+        var min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+        this._models.forEach(function(m) {
+          var b = m.boundingBox;
+          if (!b) return;
+          for (var a = 0; a < 3; a++) { min[a] = Math.min(min[a], b.min[a]); max[a] = Math.max(max[a], b.max[a]); }
+        });
+        if (min[0] <= max[0]) this._frameBox({ min: min, max: max }, fill);
       }
       this._velocityAngle = 0;
       this._velocityHeight = 0;
@@ -2353,6 +3239,7 @@
       // Video quads are not listed: each new video frame wakes the loop itself.
       if (this._animator && this._animationIndex >= 0 && this._animationPauseTime < 0
           && (this._animationLoop || !this._animationDone)) return false;
+      for (var m of this._models) if (m.playing) return false;
       return true;
     }
 
@@ -4558,6 +5445,16 @@
       // Remove any load-failure fallback overlay we painted into the DOM.
       this._hideLoadFallback();
 
+      // addModel() / loadScene() handles: _releaseNative() frees their assets.
+      this._models.forEach(function(m) {
+        m.removed = true;
+        m._asset = null;
+        m._animator = null;
+        m._resolveReady(m);
+      });
+      this._models.clear();
+      this._flushVisibleWaiters();
+
       this._releaseNative();
       // The engine is gone: hand the canvas's WebGL context back to the browser.
       _releaseContext(this._canvas);
@@ -4834,6 +5731,7 @@
      * Idempotent — never schedules a second concurrent rAF.
      */
     _maybeResume() {
+      if (this._visibleWaiters && this._onScreen && this._tabVisible) this._flushVisibleWaiters();
       if (this._rafId === null && this._shouldRender()) {
         this._startRenderLoop();
       }
@@ -4886,6 +5784,7 @@
 
         // Drive glTF animation playback (if any)
         self._updateAnimator();
+        if (self._models.size) self._models.forEach(function(m) { m._tick(now); });
 
         // 'onDemand': park once a frame is on screen and nothing moves any more.
         // requestRender() (input, camera and scene calls) re-arms the loop. A call
@@ -5052,6 +5951,8 @@
         this._asset = null;
         this._destroyAsset(model);
       }
+      // Models from addModel() / loadScene()
+      Array.from(this._models).forEach(function(m) { m.remove(); });
       // Reset animator state — no model, no animation
       this._animator = null;
       this._animationIndex = -1;
@@ -5761,7 +6662,12 @@
   global.SceneView = {
     version: '4.66.0',
     create: create,
-    modelViewer: modelViewer
+    modelViewer: modelViewer,
+    /**
+     * The device tier and budget loadScene() would use, before any viewer exists (a
+     * throwaway WebGL context reads the GPU). `options.tier` forces one.
+     */
+    deviceTier: function(options) { return _deviceTier(null, options && options.tier); }
   };
 
 })(typeof globalThis !== 'undefined' ? globalThis : window);
