@@ -59,23 +59,31 @@ final class BundledAssetCreditsTests: XCTestCase {
         )
     }
 
-    /// The App Store shape: the helmet is on screen, so the helmet is credited
-    /// and the streamed author is nowhere in the caption.
+    /// The App Store shape: the fantasy book is on screen, so the book is
+    /// credited and the streamed author is nowhere in the caption.
     func testBundledCaptionCreditsTheFallbackNotTheStreamedAuthor() throws {
         let text = try XCTUnwrap(AssetCreditLine.text(slug: monstera, source: .bundled))
         XCTAssertTrue(text.hasPrefix("Offline stand-in:"), text)
-        XCTAssertTrue(text.contains("Damaged Helmet"), text)
-        XCTAssertTrue(text.contains("KhronosGroup"), text)
+        XCTAssertTrue(text.contains("Medieval Fantasy Book"), text)
+        XCTAssertTrue(text.contains("Pixel"), text)
         XCTAssertFalse(text.contains("ChubbyPanda"), "streamed author leaked into the fallback caption: \(text)")
     }
 
-    /// `retro_piano` is CC-BY-NC, so the caption must print the fallback's own
+    /// `khronos_toy_car` is CC0, so the caption must print the fallback's own
     /// licence rather than the registry's blanket "CC-BY 4.0".
     func testBundledCaptionPrintsTheFallbackLicence() throws {
-        let mug = try XCTUnwrap(SampleAssets.all.first { $0.displayName == "Coffee Mug" })
-        let text = try XCTUnwrap(AssetCreditLine.text(slug: mug, source: .bundled))
-        XCTAssertTrue(text.contains("CC-BY-NC 4.0"), text)
-        XCTAssertFalse(text.contains("FrenchBaguette"), text)
+        let table = try XCTUnwrap(SampleAssets.all.first { $0.displayName == "Wooden End Table" })
+        let text = try XCTUnwrap(AssetCreditLine.text(slug: table, source: .bundled))
+        XCTAssertTrue(text.contains("CC0 1.0"), text)
+        XCTAssertFalse(text.contains("mozillareality"), text)
+    }
+
+    /// No bundled model may carry a non-commercial licence: the demo ships on
+    /// the App Store.
+    func testNoBundledCreditIsNonCommercial() {
+        for (path, credit) in BundledAssetCredits.byPath {
+            XCTAssertFalse(credit.license.contains("NC"), "\(path) is \(credit.license)")
+        }
     }
 
     func testStreamingHasNoCaption() {

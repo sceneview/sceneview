@@ -5,60 +5,7 @@ It delivers Filament's physically-based rendering and ARCore's full AR capabilit
 a declarative API that developers already understand. SceneViewSwift (alpha) brings
 the same experience to iOS, macOS, and visionOS via RealityKit, and the web build plus the
 Flutter and React Native bridges carry it further. Android XR headsets are still on the roadmap.
-
-<div class="showcase-gallery">
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-model-viewer.svg" alt="3D Model Viewer" class="showcase-item__img">
-<div class="showcase-item__label">Model Viewer</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-ar-placement.svg" alt="AR Placement" class="showcase-item__img">
-<div class="showcase-item__label">AR Placement</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-physics.svg" alt="Physics Demo" class="showcase-item__img">
-<div class="showcase-item__label">Physics</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-dynamic-sky.svg" alt="Dynamic Sky" class="showcase-item__img">
-<div class="showcase-item__label">Dynamic Sky</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-post-processing.svg" alt="Post-Processing" class="showcase-item__img">
-<div class="showcase-item__label">Post-Processing</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-camera.svg" alt="Camera Controls" class="showcase-item__img">
-<div class="showcase-item__label">Camera</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-autopilot.svg" alt="Autopilot HUD" class="showcase-item__img">
-<div class="showcase-item__label">Autopilot HUD</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-line-paths.svg" alt="Line Paths" class="showcase-item__img">
-<div class="showcase-item__label">Line Paths</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-text-labels.svg" alt="Text Labels" class="showcase-item__img">
-<div class="showcase-item__label">Text Labels</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/showcase-reflection.svg" alt="Reflection Probes" class="showcase-item__img">
-<div class="showcase-item__label">Reflections</div>
-</div>
-
-</div>
+To see these features running, install the demo apps: [Android samples](samples.md), [Apple samples](samples-ios.md).
 
 ---
 
@@ -189,40 +136,6 @@ ARSceneView(
 ---
 
 ## Real-world use cases
-
-<div class="showcase-gallery">
-
-<div class="showcase-item">
-<img src="../assets/images/industry-ecommerce.svg" alt="E-commerce 3D product viewer and AR try-on" class="showcase-item__img" style="border-radius: 24px;">
-<div class="showcase-item__label">E-commerce</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/industry-automotive.svg" alt="Automotive HUD and Android Auto" class="showcase-item__img" style="border-radius: 24px;">
-<div class="showcase-item__label">Automotive</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/industry-medical.svg" alt="Medical anatomy and molecular viewer" class="showcase-item__img" style="border-radius: 24px;">
-<div class="showcase-item__label">Healthcare</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/industry-realestate.svg" alt="Real estate AR staging and floor plans" class="showcase-item__img" style="border-radius: 24px;">
-<div class="showcase-item__label">Real Estate</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/industry-gaming.svg" alt="3D gaming and level editor" class="showcase-item__img" style="border-radius: 24px;">
-<div class="showcase-item__label">Gaming</div>
-</div>
-
-<div class="showcase-item">
-<img src="../assets/images/industry-education.svg" alt="Interactive globe and solar system" class="showcase-item__img" style="border-radius: 24px;">
-<div class="showcase-item__label">Education</div>
-</div>
-
-</div>
 
 ### E-commerce: product viewer in 10 lines
 

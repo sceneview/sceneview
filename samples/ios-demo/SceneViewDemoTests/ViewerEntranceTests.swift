@@ -213,7 +213,7 @@ final class ViewerEntranceTests: XCTestCase {
     func testOtherAssetsAreLeftAlone() {
         let box = ModelEntity(mesh: .generateBox(size: 0.1), materials: [PhysicallyBasedMaterial()])
         box.name = ViewerMaterialRepairs.toyCarFabric
-        ViewerMaterialRepairs.apply(to: box, asset: "khronos_damaged_helmet")
+        ViewerMaterialRepairs.apply(to: box, asset: "phoenix_bird")
         let pbr = box.model?.materials.first as? PhysicallyBasedMaterial
         XCTAssertNil(pbr?.sheen)
     }

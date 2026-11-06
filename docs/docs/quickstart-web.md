@@ -154,6 +154,68 @@ environment(
 )
 ```
 
+## A scene of several models on a phone budget
+
+The script-tag viewer (`https://sceneview.github.io/js/sceneview.js`, global `SceneView`,
+not the `sceneview-web` package above) loads a whole set — one primary model, props, an
+environment — and keeps it smooth on a mid-range phone:
+
+```html
+<canvas id="viewer" style="width:100%;aspect-ratio:4/3"></canvas>
+<script src="https://sceneview.github.io/js/filament/filament.js"></script>
+<script src="https://sceneview.github.io/js/sceneview.js"></script>
+<script>
+  SceneView.create('viewer', { autoRotate: false }).then(function (sv) {
+    var scene = sv.loadScene({
+      environment: { url: '/environments/studio_showroom_light_ibl.ktx', intensity: 30000 },
+      camera: { target: [0, 0.45, 0], angle: 0.5, height: 1.5, radius: 4.2 },
+      models: [
+        { id: 'fox', role: 'primary', src: '/models/fox.glb', scale: 0.008,
+          position: [0.2, 0, 0.7], rotation: [0, 60, 0], animation: 'Survey',
+          bytes: 162852, triangles: 576 },
+        { id: 'sofa', src: '/models/sofa.glb',
+          lod: { mid: '/models/sofa-mid.glb', low: '/models/sofa-low.glb' },
+          position: [0, 0, -0.7], bytes: 3149844, triangles: 4196 },
+        { id: 'lantern', src: '/models/lantern.glb', optional: true, position: [-1.2, 0, 1] }
+      ]
+    }, { onProgress: function (e) { console.log(e.type, e.id); } });
+    scene.complete.then(function (stats) { console.log(stats); });
+  });
+</script>
+```
+
+- **Order.** `loadScene()` returns at once. The environment and the primary model load
+  first; the rest waits until the canvas is on screen and the page is idle, and each model
+  is built in its own idle period. Keep a poster image in the HTML until `scene.primary`
+  resolves. Loading stops when the visitor leaves the page or the canvas leaves the
+  document; `scene.abort()` and `scene.remove()` do it by hand.
+- **Budget.** `sv.deviceTier()` reads the device memory, cores, pixel ratio, Save-Data and
+  the GPU, and picks a tier:
+
+| Tier | Typical device | Download | Triangles | Texture edge | Pixel ratio | `optional` |
+|---|---|---|---|---|---|---|
+| low | 2 GB, Save-Data, 3G, old GPU | 5 MB | 100k | 1024 | 1.25 | skipped |
+| mid | Pixel 4a, Moto G | 12 MB | 300k | 2048 | 1.5 | loaded |
+| high | recent flagship, desktop | 40 MB | 1.5M | 4096 | 2 | loaded |
+
+An entry that would pass what is left of the budget is skipped (`stats.skipped`). The
+`bytes` and `triangles` hints let it be skipped before it downloads. `lod.low` and
+`lod.mid` are smaller files for those tiers. Embedded PNG and JPEG textures above the
+tier's edge are downscaled before upload.
+- **One model at a time.** `sv.addModel(url, { position, rotation, scale, animation })`
+  adds a model next to the others and resolves with a handle: `setTransform()`,
+  `playAnimation()`, `stopAnimation()`, `boundingBox`, `ready`, `remove()`.
+  `loadModel()` still replaces the model.
+- **Preparing the files.** Filament.js decodes Draco, meshopt, `KHR_mesh_quantization`,
+  `KHR_texture_transform`, WebP and KTX2 Basis textures. A good default is
+  `npx gltfpack -i in.glb -o out.glb -cc -tc` (meshopt geometry, KTX2 textures that stay
+  compressed on the GPU). Make the low-tier file with
+  `npx @gltf-transform/cli resize in.glb low.glb --width 1024 --height 1024`, then
+  `simplify`, and write each file's size and triangle count into the descriptor.
+
+The test page `website-static/scene-lab.html` shows the tier, the timings, the bytes, the
+triangles and the frame time of such a scene; `?tier=low|mid|high` forces a tier.
+
 ## Limitations
 
 - **No AR** — requires native sensors (camera, compass, accelerometer)

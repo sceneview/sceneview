@@ -45,9 +45,9 @@ import SceneViewSwift
 ///
 /// ## The stage
 ///
-/// Android's `LightingStage`, value for value: the Khronos Damaged Helmet as the hero (0.5 m,
-/// centred on the orbit target), a slate floor just under it, and the gaffer's pair of probe
-/// balls at its feet. The first iOS cut had the probes alone, 0.28 m each, on a 4 m grey slab
+/// Android's `LightingStage`, value for value, with the Khronos Lantern (CC0) as the hero
+/// (0.5 m tall, centred on the orbit target; it replaced a CC-BY-NC helmet), a slate floor
+/// just under it, and the gaffer's pair of probe balls at its feet. The first iOS cut had the probes alone, 0.28 m each, on a 4 m grey slab
 /// that the auto-framing fitted instead of the subject — the balls came out as two small dots
 /// on a grey band (#3907 parity audit). The camera now frames the subject, not the floor, and
 /// circles it slowly like Android's idle orbit so the reflections travel.
@@ -67,7 +67,7 @@ import SceneViewSwift
 /// ## The former Lighting Lab, folded in (#4603)
 ///
 /// Android merged its separate `lighting-lab` card into this screen (#4605):
-/// same helmet, same floor, same sliders — QA could not tell which of the two
+/// same hero, same floor, same sliders — QA could not tell which of the two
 /// to open. iOS follows. What the lab offered and RealityKit can do now lives
 /// here and applies to whichever rig is up:
 ///
@@ -194,15 +194,15 @@ struct LightingDemo: View {
 
     // MARK: - Stage constants (Android `LightingStage`)
 
-    /// Largest side of the hero helmet.
+    /// Largest side of the hero lantern — its height, so its base meets the floor.
     private static let heroUnits: Float = 0.5
     /// Radius of both probe balls.
     private static let probeRadius: Float = 0.065
-    /// The probes stand either side of the helmet and a little in front of it.
+    /// The probes stand either side of the lantern and a little in front of it.
     private static let probeSpacing: Float = 0.34
     private static let probeOffsetZ: Float = 0.14
     private static let stageZ: Float = 0
-    /// Top of the floor: 1 cm under the helmet's underside.
+    /// Top of the floor: 1 cm under the lantern's base.
     private static let floorY: Float = -heroUnits / 2 - 0.01
     /// Runs well past the frame at every orbit distance, so its edge is never seen.
     private static let floorSize: Float = 60
@@ -211,7 +211,7 @@ struct LightingDemo: View {
     private static let orbitElevationDegrees: Float = 20
     private static let orbitPeriod: Double = 26
     private static let staticYawDegrees: Double = 32
-    /// What the camera fits: both probes across, the helmet up and deep.
+    /// What the camera fits: both probes across, the lantern up and deep.
     private static let subjectExtent = SIMD3<Float>((0.34 + 0.065) * 2, 0.5, 0.5)
 
     /// The analytic rigs need the IBL *dimmed*, not off: at full strength the
@@ -505,7 +505,7 @@ struct LightingDemo: View {
         if abs(distance - cameraDistance) >= 0.05 { cameraDistance = distance }
     }
 
-    /// The pose that fits the helmet and both probes between the top chrome and the dock at
+    /// The pose that fits the lantern and both probes between the top chrome and the dock at
     /// any yaw — Android's `rememberFitOrbitRadius` on the subject extent, not the floor.
     /// The distance is the worst case over a full turn, so the orbit never breathes.
     private func framingPose(yawDegrees: Double) -> SceneCameraPose {
@@ -552,7 +552,7 @@ struct LightingDemo: View {
     private func loadHeroIfNeeded() async {
         guard heroNode == nil, !heroLoadFailed else { return }
         do {
-            let node = try await ModelNode.load("khronos_damaged_helmet")
+            let node = try await ModelNode.load("khronos_lantern")
             _ = node.scaleToUnits(Self.heroUnits)
             _ = node.centerOrigin()
             node.entity.position = .init(x: 0, y: 0, z: Self.stageZ)
@@ -595,7 +595,7 @@ struct LightingDemo: View {
 
         // A slate floor, so the key's shadow has somewhere to land — Android's
         // `FLOOR_COLOR` at roughness 0.45: glossy enough to hold a soft
-        // reflection of the helmet, which is what seats it on the floor.
+        // reflection of the lantern, which is what seats it on the floor.
         var floorMaterial = PhysicallyBasedMaterial()
         floorMaterial.baseColor = .init(tint: SceneViewTokens.Stage.lightingFloor)
         floorMaterial.roughness = .init(floatLiteral: 0.45)

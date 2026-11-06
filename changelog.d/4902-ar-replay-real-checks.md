@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **AR replay QA grades every demo on real checks.** `LocalARSessionProbe` (arsceneview) lets one probe hand a recorded dataset to every `ARSceneView` and watch its frames. `ARReplayProbe` with `ARReplayMetrics` / `evaluateReplay` measures planes, anchors, the visible model's screen coverage and the scene's brightness. The demo's `ARReplayHarnessTest` uses them to grade all 24 AR demos, flagging dark renders and invisible or giant models. It replays a local corpus of real recordings when one is present. (#4902)

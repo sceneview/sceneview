@@ -2,8 +2,9 @@
  * SceneView website — the support prompt.
  *
  * A small, dismissable card at the bottom of the page that asks regular readers to fund
- * the project, with amount buttons that open the Open Collective donation flow already
- * filled in (`/donate?amount=20&interval=month`). Open Collective is the destination,
+ * the project: two M3 segmented buttons (how often, how much) and one filled button that
+ * opens the Open Collective donation flow already filled in
+ * (`/donate?amount=20&interval=month`). Open Collective is the destination,
  * GitHub Sponsors the secondary link, and there is no third one (README, companies.html
  * and index.html#fund say the same).
  *
@@ -110,18 +111,21 @@
     timer = setTimeout(schedule, left);
   }
 
-  var card, interval = 'oneTime';
+  // Two M3 segmented buttons pick how often and how much; the one filled button then
+  // opens Open Collective with both filled in. 0 is "Other": the amount is typed there.
+  var card, interval = 'oneTime', amount = 20;
 
-  function ocUrl(amount) {
+  function ocUrl() {
     return OC + '?interval=' + interval + (amount ? '&amount=' + amount : '');
   }
   function refreshLinks() {
-    Array.prototype.forEach.call(card.querySelectorAll('[data-amount]'), function (a) {
-      a.href = ocUrl(+a.getAttribute('data-amount') || 0);
-    });
     Array.prototype.forEach.call(card.querySelectorAll('[data-interval]'), function (b) {
       b.setAttribute('aria-pressed', String(b.getAttribute('data-interval') === interval));
     });
+    Array.prototype.forEach.call(card.querySelectorAll('[data-amount]'), function (b) {
+      b.setAttribute('aria-pressed', String((+b.getAttribute('data-amount') || 0) === amount));
+    });
+    card.querySelector('.svs__give').href = ocUrl();
   }
 
   function el(tag, attrs, html) {
@@ -132,28 +136,29 @@
   }
 
   var X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="m6 6 12 12M18 6 6 18"/></svg>';
+  var CHECK = '<svg class="svs__check" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
   var HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 20s-7.5-4.4-7.5-10.1A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.5 2.6C19.5 15.6 12 20 12 20Z"/></svg>';
 
   function build() {
     card = el('aside', { 'class': 'svs', 'aria-labelledby': 'svs-title', 'data-state': 'enter' });
-    var amounts = AMOUNTS.map(function (a) {
-      return '<a class="svs__amt" data-amount="' + a + '" target="_blank" rel="noopener">$' + a + '</a>';
-    }).join('') + '<a class="svs__amt svs__amt--other" data-amount="" target="_blank" rel="noopener">Other</a>';
+    var seg = function (attr, value, label) {
+      return '<button type="button" ' + attr + '="' + value + '" aria-pressed="false">' + CHECK + '<span>' + label + '</span></button>';
+    };
+    var amounts = AMOUNTS.map(function (a) { return seg('data-amount', a, '$' + a); }).join('') + seg('data-amount', '', 'Other');
     card.innerHTML =
       '<div class="svs__body">' +
         '<div class="svs__head">' +
           '<div>' +
-            '<p class="svs__eyebrow"><span class="svs__heart">' + HEART + '</span>Open source</p>' +
             '<h2 class="svs__title" id="svs-title">Help keep SceneView going</h2>' +
           '</div>' +
           '<button class="svs__close" type="button" aria-label="Close">' + X + '</button>' +
         '</div>' +
-        '<p class="svs__text">Free, built by volunteers, funded by the people who use it. If it saves you time, chip in.</p>' +
-        '<div class="svs__freq" role="group" aria-label="How often">' +
-          '<button type="button" data-interval="oneTime" aria-pressed="true">Once</button>' +
-          '<button type="button" data-interval="month" aria-pressed="false">Monthly</button>' +
+        '<p class="svs__text">SceneView is free and open source. Donations pay for its fixes and releases.</p>' +
+        '<div class="svs__seg svs__seg--freq" role="group" aria-label="How often">' +
+          seg('data-interval', 'oneTime', 'Once') + seg('data-interval', 'month', 'Monthly') +
         '</div>' +
-        '<div class="svs__amts">' + amounts + '</div>' +
+        '<div class="svs__seg svs__seg--amt" role="group" aria-label="Amount in US dollars">' + amounts + '</div>' +
+        '<a class="svs__give" target="_blank" rel="noopener">' + HEART + 'Donate on Open Collective</a>' +
         '<div class="svs__foot">' +
           '<button class="svs__never" type="button">Don’t ask again</button>' +
           '<a class="svs__alt" href="' + GH + '" target="_blank" rel="noopener">or GitHub Sponsors</a>' +
@@ -170,14 +175,17 @@
       if (t.hasAttribute('data-interval')) {
         interval = t.getAttribute('data-interval');
         refreshLinks();
+      } else if (t.hasAttribute('data-amount')) {
+        amount = +t.getAttribute('data-amount') || 0;
+        refreshLinks();
       } else if (t.classList.contains('svs__close')) {
         close(false);
       } else if (t.classList.contains('svs__never')) {
         close(true);
-      } else if (t.hasAttribute('data-amount') || t.classList.contains('svs__alt')) {
-        var isOc = t.hasAttribute('data-amount');
+      } else if (t.classList.contains('svs__give') || t.classList.contains('svs__alt')) {
+        var isOc = t.classList.contains('svs__give');
         track('support_prompt_click', {
-          amount: isOc ? (+t.getAttribute('data-amount') || 'other') : 'github_sponsors',
+          amount: isOc ? (amount || 'other') : 'github_sponsors',
           interval: isOc ? interval : 'n/a',
           link_url: t.href,
           link_domain: t.hostname,
@@ -219,6 +227,7 @@
       }
     }
     card.setAttribute('data-state', 'leave');
+    document.documentElement.classList.remove('svs-open');
     setTimeout(function () { if (card && card.parentNode) card.parentNode.removeChild(card); }, 400);
   }
 
@@ -238,6 +247,8 @@
       // background tab that comes back to the front would show a half-faded card.
       void card.offsetWidth;
       card.setAttribute('data-state', 'in');
+      // The page reads this to keep the card's Donate the only filled button on screen.
+      document.documentElement.classList.add('svs-open');
       document.addEventListener('keydown', onKey, true);
       if (!preview) { state.shown = Date.now(); persist(); }
       track('support_prompt_view', { trigger: trigger, page_views: preview ? 0 : state.pv });

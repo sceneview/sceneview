@@ -2883,6 +2883,14 @@ public final class io/github/sceneview/managers/TransformManagerKt {
 	public static final fun setTransform (Lcom/google/android/filament/TransformManager;ILdev/romainguy/kotlin/math/Mat4;)V
 }
 
+public final class io/github/sceneview/material/EmissiveScale {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/material/EmissiveScale;
+	public final fun apply (Ljava/lang/Iterable;F)V
+	public final fun forget (Lcom/google/android/filament/gltfio/FilamentAsset;)V
+	public final fun record (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/util/Map;)V
+}
+
 public final class io/github/sceneview/material/MaterialInstanceKt {
 	public static final field kMaterialDefaultMetallic F
 	public static final field kMaterialDefaultReflectance F
@@ -3034,6 +3042,7 @@ public final class io/github/sceneview/model/ModelKt {
 	public static final fun getCollisionShape (Lcom/google/android/filament/gltfio/FilamentAsset;)Lio/github/sceneview/collision/Box;
 	public static final fun getRenderableByName (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;)Ljava/lang/Integer;
 	public static final fun getRenderableNames (Lcom/google/android/filament/gltfio/FilamentAsset;)Ljava/util/List;
+	public static final fun getRestPoseBoundingBox (Lcom/google/android/filament/gltfio/FilamentAsset;)Lcom/google/android/filament/Box;
 	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentAsset;)Z
 }
 
