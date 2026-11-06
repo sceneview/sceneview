@@ -14,10 +14,12 @@ struct HomeHero: View {
     let height: CGFloat
     let onTap: () -> Void
 
-    /// The helmet flying beside the camera on the hero stage: the Model
+    /// The phoenix flying beside the camera on the hero stage: the Model
     /// Viewer's own first-run model, so the band shows what the tap opens.
+    /// Phoenix Bird by NORBERTO-3D, CC-BY 4.0 (it replaced the Damaged
+    /// Helmet, whose CC-BY-NC source cannot ship in a store build).
     /// Guarded by `ViewerAssetTests.testHomeHeroModelShipsItsUSDZ`.
-    static let heroAssetName = "khronos_damaged_helmet"
+    static let heroAssetName = "phoenix_bird"
 
     /// Android's window page title — the demo it opens.
     private static let title = "Model Viewer"

@@ -40,7 +40,7 @@ This mirrors the Android [3D with Compose codelab](codelab-3d-compose.md), built
 https://github.com/sceneview/sceneview.git
 ```
 
-3. Set the version rule to **Up to Next Major** from `4.65.0`.
+3. Set the version rule to **Up to Next Major** from `4.66.0`.
 4. Click **Add Package** and add `SceneViewSwift` to your app target.
 
 ---
@@ -204,7 +204,7 @@ var body: some View {
         Text(tapped ? "Tapped!" : "Tap the model")
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
+            .background(Color(.secondarySystemBackground), in: Capsule())
             .padding(.bottom, 32)
     }
 }
@@ -245,7 +245,7 @@ struct ContentView: View {
             Text(tapped ? "Tapped!" : "Tap the model")
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background(Color(.secondarySystemBackground), in: Capsule())
                 .padding(.bottom, 32)
         }
     }

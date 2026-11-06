@@ -60,12 +60,17 @@ English caption.
 The listing text sells AR and no capture can show it: the simulator has no
 camera. `01-ar.png` in each class is an **AI-generated marketing visual**
 (Gemini `gemini-3.1-flash-image`, image-to-image, cropped to the class's exact
-pixel spec) — the `khronos_damaged_helmet.glb` helmet anchored in a real
-photographed room, per DESIGN.md's "Preview Image Art Direction" (real camera
+pixel spec), per DESIGN.md's "Preview images" (real camera
 background, no text/UI/device frame/people). It is the same art the #3461
 `00-ar.png` carried, recomposited under its caption; the prompts live in
 `tools/demo-previews/store.json` (`ar-phone`, `ar-tablet`). Replace it with a
 real device capture whenever an authorized device session produces one.
+
+> ⚠️ **Must be regenerated.** The committed `01-ar.png` (the #3461 `00-ar.png`
+> art) still shows the old Damaged Helmet, which left the app because its
+> source licence is CC-BY-NC. The AR placement now shows the CC-BY 4.0
+> `phoenix_bird` (NORBERTO-3D). Regenerate both classes, and update the
+> `ar-phone` / `ar-tablet` prompts, before the next listing upload.
 
 ## Background — issue #917
 
@@ -113,9 +118,11 @@ not empty or loading AR scenes:
    It carries the caption "Nearly forty demos"; there are 36 `@sceneId`
    scenes today, so the caption stays true as the catalog grows and does not
    need re-editing on every added demo.
-4. `03-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI
-   sky, its metal and rough-dielectric regions carrying the time-of-day
-   light. Same subject Android's Lighting Lab shows for this id (#3003).
+4. `03-dynamic-sky` — the Lighting Lab hero under a live HDRI sky, carrying
+   the time-of-day light. The hero is now the CC0 `khronos_lantern`; the
+   committed PNGs still show the CC-BY-NC helmet it replaced, so they must be
+   recaptured too. Android's Lighting Lab still shows the helmet for this id
+   (#3003) until its own licence pass.
 5. `04-materials` — the material sphere grid. Since #2874 the id opens on a
    bundled subject with a reproducible backdrop, so what the frame shows is
    what a **keyless** user gets, which is the whole point of putting it on a
@@ -134,10 +141,11 @@ Connect). Until that happens, do not describe the two stores as in sync.
 
 ⛔ **Do not re-add it by symmetry with the Android phone set.** An App Store
 capture build has no Sketchfab key, so `SketchfabAssetResolver` substitutes the
-registered bundled stand-ins (`SampleAssets.swift` — bench → `retro_piano.usdz`,
+registered bundled stand-ins (`SampleAssets.swift` — bench → `fantasy_book.usdz`,
 dog → `animated_butterfly.usdz`, bird → `phoenix_bird.usdz`). The captured frame
 is therefore *not* the park diorama the demo documents: measured on the 6.9"
-simulator (`-demo multi-model -qa_mode 1`), it renders an upright wooden piano
+simulator (`-demo multi-model -qa_mode 1`) before the bench stand-in moved from
+a CC-BY-NC piano to the book, it rendered an upright wooden piano
 with a blossoming-tree diorama growing through it and a brightly-coloured bird
 mid-frame — the tree slot's stand-in supplies both the trees and the ground
 they stand on, so it dominates the composition rather than reading as one slot

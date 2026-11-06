@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.65.0)
+  Source of truth: /llms.txt  (SceneView 4.66.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.65.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.66.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -81,7 +81,7 @@ fun SceneView(
     fillLightNode: LightNode? = rememberFillLightNode(engine),  // dual-light default — soft opposite fill
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
-    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = remember { createDefaultCameraManipulator(eyePosition = cameraNode.worldPosition) },  // starts at cameraNode's position, read once, never rebuilt
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
@@ -1384,6 +1384,18 @@ SceneView {
     cameraPosition: Position = Position(0f, 0f, 0f)
 )
 ```
+Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` from `onFrame`
+(`cameraNode.worldPosition`). All probes of a scene are resolved together on every change:
+- among the probes whose zone holds the camera, the highest `priority` wins; on a tie, the probe
+  added most recently wins (one that leaves the composition and comes back counts as new);
+- with no active probe (camera outside every local zone, or the last probe removed), the scene
+  shows its `SceneView(environment = …)` light again — the current one, even if it changed
+  meanwhile;
+- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+  overrides an active probe; a destroyed light is never handed back.
+- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
+  estimation's) directly, so in AR a new environment can replace an active probe until the next
+  probe change (see #4928).
 
 ---
 
@@ -4185,6 +4197,21 @@ class MaterialLoader(engine: Engine, context: Context) {
 }
 ```
 
+**Read an instance's `Material` with `materialOrNull`, never `.material`.** Since Filament 1.77,
+`MaterialInstance.getMaterial()` returns `null` for every instance read back from a native pointer
+(a model's `getMaterialInstances()`, `getMaterialInstanceAt`, the glTF ubershader instances), so
+`materialInstance.material.hasParameter(...)` throws a `NullPointerException`.
+`io.github.sceneview.material.materialOrNull` answers for every instance `ModelLoader` and
+`MaterialLoader` create, and returns `null` for one made elsewhere or already destroyed:
+
+```kotlin
+import io.github.sceneview.material.materialOrNull
+
+modelInstance.getMaterialInstances()
+    .filter { it.materialOrNull?.hasParameter("emissiveStrength") == true }
+    .forEach { it.setParameter("emissiveStrength", 4f) }
+```
+
 ### EnvironmentLoader
 ```kotlin
 class EnvironmentLoader(engine: Engine, context: Context) {
@@ -4271,8 +4298,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius` and `targetPosition`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
+| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?, key?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius`, `targetPosition` and `key`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Change `key` to reset the view (rebuild at the starting framing, camera glides back). Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?, inertia?, key?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Keyed on `orbitHomePosition`, `targetPosition` (by value) and `key`, like the `orbitRadius` overload; never pass a live value such as `cameraNode.worldPosition`. `creator` is not a key — change `key` to apply a new one. Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
@@ -4319,6 +4346,18 @@ SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
 ))
+
+// Both overloads are keyed on their inputs: a new radius, eye or target rebuilds the
+// manipulator and SceneView glides the camera there (~0.6 s). `key` rebuilds it on demand —
+// "double-tap to reset the view", no `key { }` block needed. Double-tap also zooms in by
+// default (#3608): turn that off on the manipulator, or the zoom starts before the reset glide.
+var resets by remember { mutableIntStateOf(0) }
+SceneView(
+    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f, key = resets).apply {
+        (this as? CameraGestureDetector.DefaultCameraManipulator)?.isDoubleTapZoomEnabled = false
+    },
+    onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
+)
 
 // Custom camera position
 SceneView(cameraNode = rememberCameraNode(engine) {
@@ -4433,9 +4472,11 @@ they all target the origin (#2873).
 - `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
   does **not** set the distance.
 - **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
-  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
-  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
-  default `CameraNode`.
+  own default manipulator (the `cameraManipulator` argument left out) starts at the camera node's
+  position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the default `CameraNode` — and reads it once.
+  Don't pass `orbitHomePosition = cameraNode.worldPosition` yourself: the manipulator is keyed on
+  `orbitHomePosition`, that value changes on every orbit, and each recomposition would rebuild the
+  manipulator under the user's finger (#4838).
 - Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
   bounding-box centre lands on the **world origin**. So the distance the subject is framed from
   is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
@@ -4465,8 +4506,12 @@ SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulat
 ))
 ```
 
-There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
-plain callback `SceneView` forwards to your code, never wired to the camera.
+There is no built-in gesture that returns the camera to `orbitHomePosition` — the built-in
+double-tap *zooms in* (see "Camera gestures" below). Wire a reset with `key`:
+`rememberCameraManipulator(orbitHomePosition = …, key = resets)` and `resets++` in `onDoubleTap`
+(or a button) rebuild the manipulator at that eye, and the camera glides back (#4838). On a
+double-tap, set `isDoubleTapZoomEnabled = false` on the `DefaultCameraManipulator` first, as in
+the example above, so the zoom and the reset do not fight.
 
 ### Auto-fit camera framing
 
@@ -5198,7 +5243,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.65.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.66.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -5403,7 +5448,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.65.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.66.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -6038,7 +6083,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.65.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.66.0")
 ```
 
 Import: `import SceneViewSwift`

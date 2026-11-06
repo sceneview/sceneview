@@ -11,7 +11,8 @@ import io.github.sceneview.demo.R
  */
 object ModelThumbnails {
     private val resources: Map<String, Int> = mapOf(
-        "khronos_damaged_helmet" to R.drawable.model_thumb_khronos_damaged_helmet,
+        "phoenix_bird" to R.drawable.model_thumb_phoenix_bird,
+        "moto_helmet_v2" to R.drawable.model_thumb_hd_moto_helmet_v2,
         "khronos_flight_helmet" to R.drawable.model_thumb_khronos_flight_helmet,
         "khronos_fox" to R.drawable.model_thumb_khronos_fox,
         "khronos_glam_velvet_sofa" to R.drawable.model_thumb_khronos_glam_velvet_sofa,

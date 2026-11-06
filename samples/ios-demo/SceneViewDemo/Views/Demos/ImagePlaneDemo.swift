@@ -12,9 +12,10 @@ import SceneViewSwift
 /// transparent 5:4 `model_thumb_*` cards would stretch and show black corners.
 struct ImageDemo: View {
     /// Asset-catalog image and caption for each frame, left to right, top row first.
+    /// Five frames: the former helmet portrait left with its CC-BY-NC model, and
+    /// no other bundled model has a square portrait yet.
     static let pictures: [(asset: String, caption: String)] = [
         ("image_plane_khronos_fox", "Fox"),
-        ("image_plane_khronos_damaged_helmet", "Helmet"),
         ("image_plane_khronos_lantern", "Lantern"),
         ("image_plane_khronos_toy_car", "Toy Car"),
         ("image_plane_shiba", "Shiba"),
@@ -34,9 +35,11 @@ struct ImageDemo: View {
                 for (index, frame) in frames.enumerated() {
                     let row = index / Self.columns
                     let column = index % Self.columns
+                    // A short last row (five frames: three, then two) is centred too.
+                    let inRow = min(Self.columns, frames.count - row * Self.columns)
                     // Spread each row around the middle of the wall, every plane
                     // turned to face the centre of the curve.
-                    let angle = (Float(column) - Float(Self.columns - 1) / 2) * 0.36
+                    let angle = (Float(column) - Float(inRow - 1) / 2) * 0.36
                     let y = (Float(rows - 1) / 2 - Float(row)) * 0.72
                     let picture = frame.node
                         .position([sin(angle) * wallRadius, y, (1 - cos(angle)) * wallRadius])
@@ -63,7 +66,7 @@ struct ImageDemo: View {
             .contentID(frames.count)
             .task { await loadFrames() }
         } accessory: {
-            DemoHint("Six pictures hung on a curved wall — drag to orbit")
+            DemoHint("Pictures hung on a curved wall — drag to orbit")
         }
     }
 

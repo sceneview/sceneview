@@ -32,7 +32,7 @@ kinds:
 | *(default)* | caption band + the capture as a card |
 | `split` | caption band + the `snippet` code panel + the frame that code renders |
 | `ar` | the app's real AR chrome, lifted off a black-surface capture, over a generated room |
-| `banner` | Play feature graphic: `gradient-hero`, promise left, art right |
+| `banner` | Play feature graphic: promise left, art right (still drawn on the retired `gradient-hero` — to flatten, see Colours) |
 
 `kind: ar` exists because an AR frame cannot be captured on hardware without a
 camera, and a generated room photo alone shows no app. `merge_ar` composites the
@@ -47,9 +47,14 @@ Play graphics README for the full recipe and for what is deliberately absent
 
 ## Colours
 
-Only DESIGN.md tokens, dark column: `surface` `#0d1117`, `surface-dim`
-`#161B22`, `on-surface` `#f3f4f6`, `primary` `#a4c1ff`, the `syntax-*` set for
-the code panel and `gradient-hero` (`#005bc1` → `#6446cd`) for the banner.
+Only the DESIGN.md role table, dark column: `surface` `#11131A`,
+`surface-container` `#1D2026`, `on-surface` `#E1E2EB`, `on-surface-variant`
+`#C2C6D5`, `primary` `#ADC6FF`. No gradient, no shadowed card (DESIGN.md
+§ *Forbidden*).
+
+Follow-up: `compose.py` still hard-codes the retired values (`#0d1117`,
+`#161B22`, the `syntax-*` set and the `gradient-hero` banner) and its rounded
+card. Migrating it is a code change outside the DESIGN.md rewrite.
 
 ## `raw/` is not committed
 

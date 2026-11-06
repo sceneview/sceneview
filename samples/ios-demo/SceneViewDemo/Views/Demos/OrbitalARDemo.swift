@@ -16,7 +16,7 @@ import SceneViewSwift
 /// `SampleAssets` category — butterfly, hummingbird, bee, fish — plus the bundled
 /// `phoenix_bird`) face the orbit tangent so they "fly the orbit" naturally —
 /// their own animation does the wing flap / locomotion. Static models (red_car,
-/// nintendo_switch, retro_piano) keep a local Y spin (between 0.5 and 2.0 rad/s)
+/// game_boy_classic, ps5_dualsense) keep a local Y spin (between 0.5 and 2.0 rad/s)
 /// so they don't look frozen.
 ///
 /// The user stays fixed in AR — turning the phone reveals each model as it
@@ -107,8 +107,8 @@ struct OrbitalARDemo: View {
             Planet(bundledAsset: "phoenix_bird",    scale: 0.15, initialAngle: .pi * 2 / 8 * 4, orbitSpeed: 0.05, spinSpeed: 0,   height:  0.2, hasBakedAnimation: true),
             // Slot 5 — streamed bee, baked anim.
             Planet(streamedSlug: bee,               scale: 0.10, initialAngle: .pi * 2 / 8 * 5, orbitSpeed: 0.25, spinSpeed: 0,   height: -0.5, hasBakedAnimation: true),
-            // Slot 6 — bundled nintendo switch, static spinning.
-            Planet(bundledAsset: "nintendo_switch", scale: 0.18, initialAngle: .pi * 2 / 8 * 6, orbitSpeed: 0.10, spinSpeed: 2.0, height:  0.5, hasBakedAnimation: false),
+            // Slot 6 — bundled PS5 DualSense (CC-BY 4.0), static spinning.
+            Planet(bundledAsset: "ps5_dualsense",   scale: 0.18, initialAngle: .pi * 2 / 8 * 6, orbitSpeed: 0.10, spinSpeed: 2.0, height:  0.5, hasBakedAnimation: false),
             // Slot 7 — streamed koi fish, baked anim (closes the ring).
             Planet(streamedSlug: koi,               scale: 0.25, initialAngle: .pi * 2 / 8 * 7, orbitSpeed: 0.30, spinSpeed: 0,   height:  0.3, hasBakedAnimation: true),
         ]

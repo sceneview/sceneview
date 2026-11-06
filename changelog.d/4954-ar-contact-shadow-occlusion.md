@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **AR depth occlusion no longer cuts a placed model's contact shadow or selection ring.** Around an `AutoPlacementModel`, measured depth up to 10 cm nearer than the surface it stands on now counts as that surface, so the floor's depth noise no longer cuts a pale tongue into the shadow or breaks the ring. A real object in front, such as a chair leg 30 cm closer, still hides the model, its shadow and its ring. Non-AR scenes are unchanged.

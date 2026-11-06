@@ -42,6 +42,7 @@ import io.github.sceneview.ar.node.DepthHitResultNode as DepthHitResultNodeImpl
 import io.github.sceneview.ar.node.DepthMeshNode as DepthMeshNodeImpl
 import io.github.sceneview.ar.node.DepthMeshSnapshot
 import io.github.sceneview.ar.physics.DepthCollider
+import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
 import io.github.sceneview.ar.node.PlaneNode as PlaneNodeImpl
 import io.github.sceneview.ar.node.PointCloudNode as PointCloudNodeImpl
@@ -108,7 +109,13 @@ class ARSceneScope internal constructor(
     // runs, so a MaterialInstance is never destroyed while its Renderable entity
     // is still registered. Without this the AR scope re-introduces the crash
     // class fixed in PR #851/#852 for any AR demo that disposes nodes.
-    nodeRemover: ((NodeImpl) -> Unit)? = null
+    nodeRemover: ((NodeImpl) -> Unit)? = null,
+    /**
+     * Where placed objects register their contact with the surface, so the depth occlusion
+     * never cuts their contact shadow or placement ring on the floor's own depth noise
+     * (rule 4 in `camera_stream_depth.mat`). Owned by the hosting `ARSceneView`.
+     */
+    internal val groundContacts: GroundContacts = GroundContacts(),
 ) : SceneScope(
     engine = engine,
     modelLoader = modelLoader,
