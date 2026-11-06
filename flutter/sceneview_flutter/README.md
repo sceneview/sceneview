@@ -158,7 +158,7 @@ SceneView(
   controller: controller,
   onViewCreated: () {
     controller.setEnvironment('environments/studio_small.hdr');
-    controller.loadModel(const ModelNode(modelPath: 'models/damaged_helmet.glb'));
+    controller.loadModel(const ModelNode(modelPath: 'models/moto_helmet.glb'));
   },
 )
 ```

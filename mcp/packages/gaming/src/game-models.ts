@@ -30,18 +30,20 @@ export const GAME_MODEL_CATEGORIES: GameModelCategory[] = [
 ];
 
 export const GAME_MODELS: Record<string, GameModel> = {
-  // ── Khronos glTF Sample Models ────────────────────────────────────────────
-  "khronos-damaged-helmet": {
-    id: "khronos-damaged-helmet",
-    name: "Damaged Helmet",
-    category: "prop",
-    source: "Khronos glTF Sample Models",
-    sourceUrl: "https://github.com/KhronosGroup/glTF-Sample-Models",
-    format: "GLB",
+  // ── Hosted by SceneView (CC BY 4.0) ───────────────────────────────────────
+  "sf-phoenix-bird": {
+    id: "sf-phoenix-bird",
+    name: "Phoenix Bird",
+    category: "creature",
+    source: "Sketchfab — NORBERTO-3D (CC BY)",
+    sourceUrl: "https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042",
+    format: "GLB (https://sceneview.github.io/web-demo/models/phoenix_bird.glb)",
     license: "CC BY 4.0",
-    description: "Sci-fi damaged helmet with PBR materials — metallic, roughness, normal, emissive maps. Ideal for testing SceneView rendering.",
-    tags: ["helmet", "sci-fi", "pbr", "sample", "metallic"],
+    description: "Animated phoenix with a flying loop and PBR feathers. Ideal for testing SceneView rendering and animation. Credit NORBERTO-3D.",
+    tags: ["phoenix", "bird", "creature", "animated", "fantasy", "pbr"],
   },
+
+  // ── Khronos glTF Sample Models ────────────────────────────────────────────
   "khronos-avocado": {
     id: "khronos-avocado",
     name: "Avocado",

@@ -951,8 +951,9 @@ function EnvironmentTab() {
   const env = ENVIRONMENTS[envIndex];
 
   // A neutral model so the environment lighting is what reads visually.
+  // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
   const modelNode: ModelNode = {
-    src: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb',
+    src: 'https://sceneview.github.io/models/platforms/moto_helmet_v2.glb',
     scale: 1.0,
     position: [0, 0, -2.5],
   };

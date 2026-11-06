@@ -128,7 +128,7 @@ import { SceneView } from '@sceneview-sdk/react-native';
 <SceneView
   style={{ flex: 1 }}
   environment="environments/studio_small.hdr"
-  modelNodes={[{ src: 'models/damaged_helmet.glb', position: [0, 0, -2] }]}
+  modelNodes={[{ src: 'models/moto_helmet.glb', position: [0, 0, -2] }]}
   cameraControlMode="orbit"
 />
 ```

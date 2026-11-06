@@ -685,7 +685,7 @@ class SceneViewController {
 /// SceneView(
 ///   controller: controller,
 ///   onViewCreated: () => controller.loadModel(
-///     ModelNode(modelPath: 'models/damaged_helmet.glb'),
+///     ModelNode(modelPath: 'models/moto_helmet.glb'),
 ///   ),
 /// )
 /// ```

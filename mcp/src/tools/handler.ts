@@ -583,7 +583,7 @@ export async function dispatchTool(
               `                directional()`,
               `                intensity(100_000.0)`,
               `            }`,
-              `            model("models/DamagedHelmet.glb")`,
+              `            model("https://sceneview.github.io/models/platforms/moto_helmet_v2.glb") // Motorcycle Helmet by sayedgamal655, CC-BY 4.0`,
               `            autoRotate()`,
               `        },`,
               `        onReady = { sceneView ->`,

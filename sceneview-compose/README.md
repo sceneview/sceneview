@@ -4,7 +4,7 @@ SceneView from `commonMain`, in a Compose Multiplatform project.
 
 ```kotlin
 SceneViewer(
-    model = ModelSource.Asset("models/damaged_helmet.glb"),
+    model = ModelSource.Asset("models/moto_helmet.glb"),
     modifier = Modifier.fillMaxSize(),
 )
 ```

@@ -6550,7 +6550,7 @@ fun TextLabels() {
 
     SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
         model?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
-        TextNode(text = "Damaged Helmet", position = Position(y = 0.8f))
+        TextNode(text = "Motorcycle Helmet", position = Position(y = 0.8f))
     }
 }
 ```

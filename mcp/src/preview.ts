@@ -7,8 +7,9 @@
 
 const PREVIEW_BASE = "https://sceneview.github.io/preview";
 
+// Motorcycle Helmet by sayedgamal655, CC-BY 4.0, served from the SceneView website.
 const DEFAULT_MODEL_URL =
-  "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb";
+  "https://sceneview.github.io/models/platforms/moto_helmet_v2.glb";
 
 export interface PreviewOptions {
   /** Public HTTPS URL to a .glb or .gltf model */

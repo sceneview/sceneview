@@ -72,8 +72,17 @@ export interface ArtifactResult {
 // snapshotted at build time — never a hand-copied version (#3173).
 const FILAMENT_CDN = `https://cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_VERSION}/filament.js`;
 
+// Motorcycle Helmet by sayedgamal655, CC-BY 4.0, served from the SceneView website.
+// Its licence needs the credit line below on any page that shows it (#4951).
 const DEFAULT_MODEL =
-  "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb";
+  "https://sceneview.github.io/models/platforms/moto_helmet_v2.glb";
+
+const DEFAULT_MODEL_CREDIT = `<div style="position:absolute;bottom:26px;right:12px;font-size:11px;color:#888;font-family:system-ui,sans-serif;z-index:10"><a href="https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac" target="_blank" rel="noopener" style="color:inherit">Motorcycle Helmet</a> by sayedgamal655, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:inherit">CC BY 4.0</a></div>`;
+
+/** The credit line a page needs when it shows the default model, or nothing. */
+function modelCredit(model: string): string {
+  return model === DEFAULT_MODEL ? DEFAULT_MODEL_CREDIT : "";
+}
 
 const DEFAULT_COLORS = [
   "#4285F4",
@@ -259,6 +268,19 @@ Filament.init(['${modelUrl}'], function() {
       asset.loadResources();
       scene.addEntity(asset.getRoot());
       scene.addEntities(asset.getRenderableEntities());
+
+      // Centre the model on the orbit target and scale its longest side to 2 units,
+      // so a model authored in metres, centimetres or anything else fills the frame.
+      var box = asset.getBoundingBox();
+      var size = Math.max(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]);
+      if (size > 0 && isFinite(size)) {
+        var k = 2 / size;
+        var tcm = engine.getTransformManager();
+        var rootInst = tcm.getInstance(asset.getRoot());
+        tcm.setTransform(rootInst, [k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0,
+          -k * (box.min[0] + box.max[0]) / 2, -k * (box.min[1] + box.max[1]) / 2, -k * (box.min[2] + box.max[2]) / 2, 1]);
+        rootInst.delete();
+      }
     }
 
     // Orbit controls
@@ -331,6 +353,7 @@ canvas:active{cursor:grabbing}
 <div id="status">Loading Filament.js WASM...</div>
 <canvas id="viewer"></canvas>
 ${BRANDING}
+${modelCredit(model)}
 ${filamentRendererScript({ modelUrl: model, bgColor: hexToBgColor(bg), autoRotate })}`;
 
   return {
@@ -423,6 +446,7 @@ canvas:active{cursor:grabbing}
 <canvas id="viewer"></canvas>
 <div class="controls-hint">Drag to orbit &bull; Scroll to zoom &bull; Two-finger to pan</div>
 ${BRANDING}
+${modelCredit(model)}
 ${filamentRendererScript({ modelUrl: model, bgColor: hexToBgColor(bg), autoRotate, sunIntensity: 120000, fillIntensity: 35000, orbitRadius: 4.0, orbitHeight: 1.0 })}`;
 
   return {
@@ -490,6 +514,7 @@ canvas:active{cursor:grabbing}
 ${hotspotHtml}
 <div class="rotate-hint">360&deg; interactive view</div>
 ${BRANDING}
+${modelCredit(model)}
 ${filamentRendererScript({ modelUrl: model, bgColor: hexToBgColor(bg), autoRotate })}`;
 
   return {
