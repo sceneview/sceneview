@@ -344,6 +344,39 @@
     </div>
   </section>
 
+  <!-- 2b · 3D SCAN — the demo app's scanner, shown as two real screen recordings (Pixel 9, sped up).
+       Videos play only in view, never under reduced motion or reduced data; the button pauses both. -->
+  <section class="section" id="scan" aria-labelledby="scan-title">
+    <div class="container">
+      <div class="scan">
+        <div class="scan__copy reveal">
+          <h2 class="h2" id="scan-title">Scan a room or an object with your phone</h2>
+          <p class="lead">The 3D Scan demo fuses ARCore depth into a coloured 3D model as you walk around. Turn it, cut the room open as a dollhouse, then place it in AR at its real size. Everything runs on the phone: no upload, no cloud.</p>
+          <div class="scan__ctas">
+            <a class="btn btn--filled btn--lg" href="/open?demo=ar-rerun">Open the 3D Scan demo</a>
+            <a class="btn btn--outlined btn--lg" href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Get it on Google Play</a>
+          </div>
+          <p class="scan__note">Screen recordings from a Pixel 9, sped up. Android; the detailed model needs ARCore Depth.</p>
+        </div>
+        <div class="scan__media reveal" style="--i:1" data-scan>
+          <button class="scan__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the scan videos"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+          <figure class="phone">
+            <video class="phone__screen" muted loop playsinline preload="none" poster="assets/demos/scan-object.webp" width="540" height="1212" aria-labelledby="scan-cap-object">
+              <source src="assets/demos/scan-object.mp4" type="video/mp4">
+            </video>
+            <figcaption id="scan-cap-object">A cabinet, from point cloud to textured model, then in AR</figcaption>
+          </figure>
+          <figure class="phone">
+            <video class="phone__screen" muted loop playsinline preload="none" poster="assets/demos/scan-room-poster.webp" width="360" height="774" aria-labelledby="scan-cap-room">
+              <source src="assets/demos/scan-room.mp4" type="video/mp4">
+            </video>
+            <figcaption id="scan-cap-room">A whole room, scanned in one walk</figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- 3 · WHAT YOU CAN BUILD — every tile opens a demo or its docs.
        The empty span keeps /#features alive: the other pages, the README and the docs link to it. -->
   <section class="section" id="build" aria-labelledby="build-title">

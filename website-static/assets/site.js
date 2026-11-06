@@ -508,6 +508,38 @@
       ac.signal.addEventListener('abort', function () { io.disconnect(); });
     }
 
+    /* 3D Scan videos: play only while in view; reduced motion or reduced data keeps the
+       posters and offers native controls instead. The button pauses both. */
+    var scan = $('[data-scan]');
+    if (scan) {
+      var vids = $$('video', scan), sp = $('.scan__pause', scan), held = false, seen = false;
+      var playAll = function (go) {
+        vids.forEach(function (v) {
+          if (go) { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); } else v.pause();
+        });
+      };
+      if (caps.reduced || caps.reducedData || !('IntersectionObserver' in window)) {
+        vids.forEach(function (v) { v.controls = true; v.preload = 'metadata'; });
+        if (sp) sp.hidden = true;
+      } else {
+        var vio = new IntersectionObserver(function (es) {
+          seen = es.some(function (e) { return e.isIntersecting; });
+          if (!held) playAll(seen);
+        }, { threshold: 0.25 });
+        vio.observe(scan);
+        on(sp, 'click', function () {
+          held = !held;
+          sp.setAttribute('aria-pressed', String(held));
+          sp.setAttribute('aria-label', held ? 'Play the scan videos' : 'Pause the scan videos');
+          playAll(!held && seen);
+        });
+        ac.signal.addEventListener('abort', function () {
+          vio.disconnect(); playAll(false); held = false;
+          if (sp) { sp.setAttribute('aria-pressed', 'false'); sp.setAttribute('aria-label', 'Pause the scan videos'); }
+        });
+      }
+    }
+
     /* Stages. Starting an engine (WASM compile, a GLB, an environment) costs main-thread
        time in 100 ms slices: an automatic start waits until the page has stopped scrolling,
        so it never lands in the middle of a scroll. A tap on "View in 3D" starts at once. */

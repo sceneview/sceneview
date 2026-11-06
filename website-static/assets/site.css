@@ -325,6 +325,22 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
   .fund { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); }   /* same grid as MCP and Adoption */
 }
 
+/* ── 3D Scan: copy + two phone-framed screen recordings ───── */
+.scan { display: grid; gap: var(--s-7); align-items: center; }
+.scan__copy { display: grid; gap: var(--s-4); align-content: start; }
+.scan__ctas { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-2); }
+.scan__note { margin: 0; font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
+.scan__media { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); max-width: 560px; width: 100%; margin-inline: auto; }
+.phone { margin: 0; display: grid; gap: var(--s-3); }
+.phone__screen { display: block; width: 100%; height: auto; aspect-ratio: 9 / 20; object-fit: cover; border: var(--s-2) solid var(--md-sys-color-surface-container-highest); border-radius: var(--md-sys-shape-corner-extra-large); background: var(--md-sys-color-surface-container-high); }
+.phone figcaption { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); text-align: center; text-wrap: balance; }
+.phone + .phone { margin-top: var(--s-7); }
+.scan__pause { position: absolute; right: 0; top: 0; transform: translate(25%, -25%); background: var(--md-sys-color-surface-container-highest); }
+.scan__pause .i-play, .scan__pause[aria-pressed="true"] .i-pause, .scan__pause[hidden] { display: none; }
+.scan__pause[aria-pressed="true"] .i-play { display: block; }
+@media (max-width: 599px) { .scan__ctas .btn { flex: 1 1 100%; } .scan__pause { transform: none; } }
+@media (min-width: 960px) { .scan { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); } }
+
 /* ── Code ↔ scene ─────────────────────────────────────────── */
 .cs { display: grid; gap: var(--s-4); }
 .codecard { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); }
