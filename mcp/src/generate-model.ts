@@ -1,5 +1,12 @@
 /**
- * generate_3d_model — Tripo BYOK text/image→GLB generation tool.
+ * generate_3d_model — BYOK text/image→GLB generation tool (Tripo or TRELLIS.2).
+ *
+ * Two providers, both bring-your-own-key:
+ *   - Tripo (`TRIPO_API_KEY`) — documented below.
+ *   - TRELLIS.2 on Runware (`RUNWARE_API_KEY`) — roughly 10× cheaper per
+ *     model; see `generate-model-runware.ts`.
+ * `provider` picks one explicitly; otherwise Tripo is used when its key is
+ * set (unchanged behaviour), then TRELLIS.2 when only the Runware key is.
  *
  * `search_models` finds assets that already exist; this tool closes the other
  * half of the agentic asset loop: when no existing model fits, the assistant
@@ -37,6 +44,8 @@
  * render a clear message without crashing the server.
  */
 
+import { generateWithTrellis, RUNWARE_KEYS_URL, TRELLIS_TIERS } from "./generate-model-runware.js";
+
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const TRIPO_TASK_ENDPOINT = "https://api.tripo3d.ai/v2/openapi/task";
@@ -73,6 +82,9 @@ const ATTRIBUTION = "Tripo AI (https://www.tripo3d.ai)";
 
 export type GenerateQuality = keyof typeof QUALITY_TIERS;
 
+/** `"tripo"` = Tripo AI; `"trellis"` = TRELLIS.2 on Runware. */
+export type GenerateProvider = "tripo" | "trellis";
+
 export interface GenerateModelOptions {
   /** Text prompt for text→3D. Exactly one of `prompt` / `imageUrl` is required. */
   prompt?: string;
@@ -84,6 +96,11 @@ export interface GenerateModelOptions {
    * textures — slower and pricier.
    */
   quality?: GenerateQuality;
+  /**
+   * Generation provider. Omitted → Tripo when `TRIPO_API_KEY` is set,
+   * otherwise TRELLIS.2 when `RUNWARE_API_KEY` is set.
+   */
+  provider?: GenerateProvider;
   /** Test/tuning hook — poll cadence. Not exposed in the MCP schema. */
   pollIntervalMs?: number;
   /** Test/tuning hook — overall deadline. Not exposed in the MCP schema. */
@@ -103,6 +120,9 @@ export interface GeneratedModel {
   input: string;
   /** Tripo credits consumed, when reported by the API. */
   creditsConsumed: number | null;
+  /** Cost in USD, when the provider reports it (Runware does). */
+  costUsd: number | null;
+  provider: GenerateProvider;
   license: string;
   attribution: string;
 }
@@ -163,15 +183,35 @@ const FAILED_STATUSES = new Set(["failed", "banned", "expired", "cancelled", "un
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function missingKeyError(): GenerateModelError {
+function missingKeyError(provider?: GenerateProvider): GenerateModelError {
+  const envName = provider === "tripo" ? "TRIPO_API_KEY" : "RUNWARE_API_KEY";
+  const intro =
+    provider === "tripo"
+      ? [
+          "generate_3d_model needs a Tripo API key (BYOK — generations are billed to YOUR Tripo account, nothing is charged by SceneView).",
+          "",
+          `1. Create an API key at ${API_KEYS_URL} (new accounts get free trial credits)`,
+        ]
+      : provider === "trellis"
+        ? [
+            'generate_3d_model with provider "trellis" needs a Runware API key (BYOK — generations are billed to YOUR Runware account, a few US cents per model; nothing is charged by SceneView).',
+            "",
+            `1. Create an API key at ${RUNWARE_KEYS_URL}`,
+          ]
+        : [
+            "generate_3d_model needs an API key from one of two providers (BYOK — generations are billed to YOUR account, nothing is charged by SceneView):",
+            "",
+            `- TRELLIS.2 on Runware (RUNWARE_API_KEY, ${RUNWARE_KEYS_URL}) — a few US cents per model, image-faithful.`,
+            `- Tripo AI (TRIPO_API_KEY, ${API_KEYS_URL}) — $0.10-0.41 per model, low-poly or quad topology.`,
+            "",
+            "1. Create a key with either provider",
+          ];
   return {
     ok: false,
     code: "missing_key",
     message: [
-      "generate_3d_model needs a Tripo API key (BYOK — generations are billed to YOUR Tripo account, nothing is charged by SceneView).",
-      "",
-      `1. Create an API key at ${API_KEYS_URL} (new accounts get free trial credits)`,
-      "2. Set the TRIPO_API_KEY environment variable in your MCP client config:",
+      ...intro,
+      `2. Set the ${envName} environment variable in your MCP client config:`,
       "",
       "   Claude Desktop / Cursor / Windsurf:",
       "   {",
@@ -179,7 +219,7 @@ function missingKeyError(): GenerateModelError {
       '       "sceneview": {',
       '         "command": "npx",',
       '         "args": ["-y", "sceneview-mcp"],',
-      '         "env": { "TRIPO_API_KEY": "YOUR_KEY_HERE" }',
+      `         "env": { "${envName}": "YOUR_KEY_HERE" }`,
       "       }",
       "     }",
       "   }",
@@ -321,9 +361,28 @@ export async function generateModel(options: GenerateModelOptions): Promise<Gene
   const quality: GenerateQuality = options.quality === "hd" ? "hd" : "fast"; // default + unknown values → fast
   const tier = QUALITY_TIERS[quality];
 
-  const apiKey = process.env.TRIPO_API_KEY;
-  if (!apiKey || apiKey.trim().length === 0) {
-    return missingKeyError();
+  const tripoKey = process.env.TRIPO_API_KEY?.trim() ?? "";
+  const runwareKey = process.env.RUNWARE_API_KEY?.trim() ?? "";
+  const requested: GenerateProvider | undefined =
+    options.provider === "tripo" || options.provider === "trellis" ? options.provider : undefined;
+  const provider: GenerateProvider | undefined =
+    requested ?? (tripoKey ? "tripo" : runwareKey ? "trellis" : undefined);
+
+  if (provider === "trellis") {
+    if (!runwareKey) return missingKeyError("trellis");
+    return generateWithTrellis({
+      apiKey: runwareKey,
+      prompt: hasPrompt ? prompt : undefined,
+      imageUrl: hasImage ? imageUrl : undefined,
+      quality,
+      pollIntervalMs: options.pollIntervalMs,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  const apiKey = tripoKey;
+  if (!apiKey) {
+    return missingKeyError(requested);
   }
 
   const headers = {
@@ -451,6 +510,8 @@ export async function generateModel(options: GenerateModelOptions): Promise<Gene
               input: hasPrompt ? prompt : (imageUrl as string),
               creditsConsumed:
                 typeof task?.consumed_credit === "number" ? task.consumed_credit : null,
+              costUsd: null,
+              provider: "tripo",
               license: LICENSE_NOTE,
               attribution: ATTRIBUTION,
             },
@@ -501,17 +562,25 @@ export function formatGenerateResult(result: GenerateModelResult): string {
   }
 
   const m = result.model;
+  const trellis = m.provider === "trellis";
   const sourceLabel = m.mode === "text" ? "Prompt" : "Source image";
+  const tierLabel = trellis ? TRELLIS_TIERS[m.quality].label : QUALITY_TIERS[m.quality].label;
+  const expiry = trellis
+    ? "the download link is temporary — download the file NOW and self-host it"
+    : "the download link expires ~5 minutes after generation — download the file NOW and self-host it";
   const lines: string[] = [
-    `## Generated 3D model (${QUALITY_TIERS[m.quality].label})`,
+    `## Generated 3D model (${tierLabel})`,
     "",
     `- **GLB download:** ${m.modelUrl}`,
-    `- **⚠️ URL expiry:** the download link expires ~5 minutes after generation — download the file NOW and self-host it (e.g. copy it into your app's \`assets/models/\`).`,
-    ...(m.previewImageUrl ? [`- **Preview:** ${m.previewImageUrl}`] : []),
+    `- **⚠️ URL expiry:** ${expiry} (e.g. copy it into your app's \`assets/models/\`).`,
+    ...(m.previewImageUrl
+      ? [`- **${trellis ? "Concept image" : "Preview"}:** ${m.previewImageUrl}`]
+      : []),
     `- **${sourceLabel}:** ${m.input}`,
     `- **Model version:** ${m.modelVersion}`,
     `- **Task ID:** \`${m.taskId}\``,
     ...(m.creditsConsumed !== null ? [`- **Tripo credits consumed:** ${m.creditsConsumed}`] : []),
+    ...(m.costUsd !== null ? [`- **Cost:** US$${m.costUsd} (billed to your Runware account)`] : []),
     `- **License:** ${m.license}`,
     `- **Generator:** ${m.attribution}`,
     "",

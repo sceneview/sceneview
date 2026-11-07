@@ -52,10 +52,13 @@ const POLL_SUCCESS = {
 // ─── Environment management ─────────────────────────────────────────────────
 
 let originalKey: string | undefined;
+let originalRunwareKey: string | undefined;
 
 beforeEach(() => {
   originalKey = process.env[API_KEY_ENV];
+  originalRunwareKey = process.env.RUNWARE_API_KEY;
   delete process.env[API_KEY_ENV];
+  delete process.env.RUNWARE_API_KEY;
 });
 
 afterEach(() => {
@@ -65,6 +68,11 @@ afterEach(() => {
     delete process.env[API_KEY_ENV];
   } else {
     process.env[API_KEY_ENV] = originalKey;
+  }
+  if (originalRunwareKey === undefined) {
+    delete process.env.RUNWARE_API_KEY;
+  } else {
+    process.env.RUNWARE_API_KEY = originalRunwareKey;
   }
 });
 
@@ -505,6 +513,8 @@ describe("formatGenerateResult", () => {
         mode: "text",
         input: "a low-poly wooden chair",
         creditsConsumed: 40,
+        costUsd: null,
+        provider: "tripo",
         license: "Generated with your own Tripo API key.",
         attribution: "Tripo AI (https://www.tripo3d.ai)",
       },
@@ -531,6 +541,8 @@ describe("formatGenerateResult", () => {
         mode: "image",
         input: "https://example.com/chair.jpg",
         creditsConsumed: null,
+        costUsd: null,
+        provider: "tripo",
         license: "x",
         attribution: "y",
       },

@@ -54,5 +54,15 @@ credentials:
     docs_url: https://platform.tripo3d.ai/api-keys
     mapping:
       env: TRIPO_API_KEY
+  - name: RUNWARE_API_KEY
+    required: false
+    description: >-
+      Optional. Bring-your-own Runware API key to enable `generate_3d_model`
+      with Microsoft TRELLIS.2 (text/image -> GLB, a few US cents per model,
+      billed to your own Runware account). Without it (and without
+      TRIPO_API_KEY), that single tool is disabled; everything else works.
+    docs_url: https://my.runware.ai/keys
+    mapping:
+      env: RUNWARE_API_KEY
 
 credentials_mode: per_user
