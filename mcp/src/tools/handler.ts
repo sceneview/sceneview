@@ -44,7 +44,12 @@ import {
   MODEL_OPTIMIZATION_GUIDE,
   WEB_RENDERING_GUIDE,
 } from "../extra-guides.js";
-import { formatGenerateResult, type GenerateQuality, generateModel } from "../generate-model.js";
+import {
+  formatGenerateResult,
+  type GenerateProvider,
+  type GenerateQuality,
+  generateModel,
+} from "../generate-model.js";
 import { formatGeneratedScene, generateScene } from "../generate-scene.js";
 import { LLMS_TXT } from "../generated/llms-txt.js";
 import { IOS_NODE_TYPE_COUNT, LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
@@ -934,6 +939,7 @@ export async function dispatchTool(
         prompt: args?.prompt as string | undefined,
         imageUrl: args?.imageUrl as string | undefined,
         quality: args?.quality as GenerateQuality | undefined,
+        provider: args?.provider as GenerateProvider | undefined,
       });
       const genText = formatGenerateResult(genResult);
       return {

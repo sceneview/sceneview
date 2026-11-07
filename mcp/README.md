@@ -215,7 +215,7 @@ open-world rather than read-only.
 
 **Prefer it local?** `npx -y sceneview-mcp` runs the exact same server over stdio. The local
 route is the one that reads your project from disk (`analyze_project`) and the one that accepts
-your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous,
+your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `RUNWARE_API_KEY`; the hosted connector, being shared and anonymous,
 cannot.
 
 ### Remote server (Streamable HTTP)
@@ -236,7 +236,7 @@ npx sceneview-mcp --http
 | `GET /.well-known/openai-apps-challenge` | OpenAI domain verification — returns `OPENAI_APPS_CHALLENGE_TOKEN` as `text/plain`, `404` when unset |
 | anything else | `404` |
 
-Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
+Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `RUNWARE_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
 
 **Everything is free, but not everything is remote.** Three generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 32.
 
@@ -318,7 +318,7 @@ Six tools carry most of what assistants actually do with SceneView. If you read 
 | Tool | What it does |
 |---|---|
 | `search_models` | Searches Sketchfab for free 3D models (BYOK — set `SKETCHFAB_API_KEY`) |
-| `generate_3d_model` | Generates a brand-new GLB from a text prompt or image via Tripo AI (BYOK — set `TRIPO_API_KEY`) |
+| `generate_3d_model` | Generates a brand-new GLB from a text prompt or image via TRELLIS.2 on Runware or Tripo AI (BYOK — set `RUNWARE_API_KEY` or `TRIPO_API_KEY`) |
 | `analyze_project` | Scans a local SceneView project on disk — detects platform, extracts version, flags outdated deps and known anti-patterns |
 | `search_android_docs` | Searches Google's stock Android docs knowledge base (needs the `android` CLI on PATH) |
 | `fetch_android_doc` | Fetches a full Android docs entry by its `kb://...` URI (needs the `android` CLI on PATH) |
@@ -367,19 +367,28 @@ Call it like `search_models({ query: "red sports car", category: "cars-vehicles"
 
 ## `generate_3d_model` — create brand-new 3D assets from the AI
 
-When no existing model fits, `generate_3d_model` closes the other half of the asset loop: it generates a fresh GLB from a **text prompt** (text→3D) or a **source image** (image→3D) via the [Tripo AI](https://www.tripo3d.ai) API, then returns a direct GLB download URL plus license/attribution metadata — ready for `rememberModelInstance(modelLoader, ...)` and AR placement.
+When no existing model fits, `generate_3d_model` closes the other half of the asset loop: it generates a fresh GLB from a **text prompt** (text→3D) or a **source image** (image→3D), then returns a direct GLB download URL plus license/attribution metadata — ready for `rememberModelInstance(modelLoader, ...)` and AR placement.
 
-Two quality tiers:
+Two providers, both bring-your-own-key:
+
+| `provider` | Key | Model | Approx. cost per model |
+|---|---|---|---|
+| `"trellis"` | `RUNWARE_API_KEY` ([my.runware.ai/keys](https://my.runware.ai/keys)) | Microsoft [TRELLIS.2](https://github.com/microsoft/TRELLIS.2) (MIT weights) on [Runware](https://runware.ai) — `fast` = 1024³, `hd` = 1536³ | ~$0.01–0.03, billed by compute time (November 2026) |
+| `"tripo"` | `TRIPO_API_KEY` ([platform.tripo3d.ai/api-keys](https://platform.tripo3d.ai/api-keys)) | [Tripo AI](https://www.tripo3d.ai) P1 / H3.1 | ~$0.10–0.41 (July 2026) |
+
+Without `provider`, the tool uses Tripo when `TRIPO_API_KEY` is set, otherwise TRELLIS.2 when `RUNWARE_API_KEY` is set. TRELLIS.2 is image→3D only, so a text prompt first renders a single-object concept image with FLUX.1 [schnell] on the same Runware key (the result links it, and reports the total cost).
+
+Tripo's two quality tiers:
 
 | `quality` | Tripo model | Topology | Latency | Approx. cost (July 2026) |
 |---|---|---|---|---|
 | `"fast"` (default) | P1 (`P1-20260311`) | low-poly, AR-ready | ~25–30 s | ~$0.10–0.25 of your credits |
 | `"hd"` | H3.1 (`v3.1-20260211`) | quad mesh, detailed geometry + textures | up to ~100 s | ~$0.41 of your credits |
 
-**Bring your own key (BYOK).** Exactly like `search_models`: SceneView never proxies the request or holds your key — generations are billed to **your** Tripo account. To set it up:
+**Bring your own key (BYOK).** Exactly like `search_models`: SceneView never proxies the request or holds your key — generations are billed to **your** Runware or Tripo account. To set it up:
 
-1. Create an API key at [platform.tripo3d.ai/api-keys](https://platform.tripo3d.ai/api-keys) (new accounts get free trial credits)
-2. Set `TRIPO_API_KEY` in your MCP client config:
+1. Create an API key at [my.runware.ai/keys](https://my.runware.ai/keys) (TRELLIS.2) or [platform.tripo3d.ai/api-keys](https://platform.tripo3d.ai/api-keys) (Tripo, new accounts get free trial credits)
+2. Set `RUNWARE_API_KEY` or `TRIPO_API_KEY` in your MCP client config:
 
 ```json
 {
@@ -387,15 +396,15 @@ Two quality tiers:
     "sceneview": {
       "command": "npx",
       "args": ["-y", "sceneview-mcp"],
-      "env": { "TRIPO_API_KEY": "YOUR_KEY_HERE" }
+      "env": { "RUNWARE_API_KEY": "YOUR_KEY_HERE" }
     }
   }
 }
 ```
 
-Call it like `generate_3d_model({ prompt: "a low-poly cactus in a striped pot" })` or `generate_3d_model({ imageUrl: "https://example.com/chair.jpg", quality: "hd" })`. Provide exactly one of `prompt` / `imageUrl`.
+Call it like `generate_3d_model({ prompt: "a low-poly cactus in a striped pot" })` or `generate_3d_model({ imageUrl: "https://example.com/chair.jpg", quality: "hd", provider: "trellis" })`. Provide exactly one of `prompt` / `imageUrl`.
 
-**⚠️ The GLB download URL expires ~5 minutes after generation** — download the file immediately and self-host it (e.g. copy it into your app's `assets/models/`). The tool result repeats this warning. Missing key, task failures, rate limits, and poll timeouts (2 min fast / 4 min hd cap) all return clear, actionable messages instead of hanging or crashing.
+**⚠️ The GLB download URL is temporary (Tripo: ~5 minutes)** — download the file immediately and self-host it (e.g. copy it into your app's `assets/models/`). The tool result repeats this warning. Missing key, task failures, rate limits, and poll timeouts (2 min fast / 4 min hd cap) all return clear, actionable messages instead of hanging or crashing.
 
 ## `analyze_project` — local project scan
 
@@ -490,7 +499,7 @@ Install Node.js from [nodejs.org](https://nodejs.org/) (LTS recommended). npm an
 
 ### Firewall or proxy issues
 
-The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called), and the anonymous telemetry endpoint (off with `SCENEVIEW_TELEMETRY=0`). Everything else works offline.
+The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), Tripo AI or Runware (when `TRIPO_API_KEY` / `RUNWARE_API_KEY` is set and `generate_3d_model` is called), and the anonymous telemetry endpoint (off with `SCENEVIEW_TELEMETRY=0`). Everything else works offline.
 
 ```json
 {

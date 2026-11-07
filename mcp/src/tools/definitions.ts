@@ -734,7 +734,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "generate_3d_model",
     description:
-      'Generates a brand-new 3D model (GLB) from a text prompt OR a source image using the Tripo AI API — use this when `search_models` finds no suitable existing asset and the user needs a custom one ("a low-poly cactus in a striped pot"). Returns a direct GLB download URL (expires ~5 minutes — download it immediately and self-host it) plus license/attribution metadata, ready for `rememberModelInstance(modelLoader, ...)` and AR placement. Quality tiers: "fast" (default, Tripo P1 low-poly — AR-ready, ~25-30 s) or "hd" (Tripo H3.1 quad topology with detailed geometry/textures — up to ~100 s, pricier). Requires a `TRIPO_API_KEY` environment variable (BYOK — generations are billed to the USER\'S Tripo account, roughly $0.10-0.25 per fast generation and ~$0.41 per hd generation as of July 2026; nothing is charged by SceneView). If the key is missing, the tool returns setup instructions for platform.tripo3d.ai/api-keys.',
+      'Generates a brand-new 3D model (GLB) from a text prompt OR a source image, with TRELLIS.2 on Runware or with Tripo AI — use this when `search_models` finds no suitable existing asset and the user needs a custom one ("a low-poly cactus in a striped pot"). Returns a direct GLB download URL (expires ~5 minutes — download it immediately and self-host it) plus license/attribution metadata, ready for `rememberModelInstance(modelLoader, ...)` and AR placement. Providers (BYOK — billed to the USER\'S own account, nothing is charged by SceneView): "trellis" = Microsoft TRELLIS.2 on Runware, needs `RUNWARE_API_KEY` (my.runware.ai/keys), roughly $0.01-0.03 per model as of November 2026, ~40-90 s, text→3D renders a FLUX concept image first; "tripo" = Tripo AI, needs `TRIPO_API_KEY` (platform.tripo3d.ai/api-keys), roughly $0.10-0.25 per fast and ~$0.41 per hd generation as of July 2026. Without `provider`, Tripo is used when `TRIPO_API_KEY` is set, otherwise TRELLIS.2 when `RUNWARE_API_KEY` is set. Quality tiers: "fast" (default — Tripo P1 low-poly, or TRELLIS.2 at 1024³) or "hd" (Tripo H3.1 quad topology, or TRELLIS.2 at 1536³ — slower, pricier). If no key is set, the tool returns setup instructions for both providers.',
     inputSchema: {
       type: "object",
       properties: {
@@ -752,7 +752,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           enum: ["fast", "hd"],
           description:
-            '"fast" (default): Tripo P1 low-poly — cheap, AR-ready, ~25-30 s. "hd": Tripo H3.1 quad topology + detailed geometry/textures — up to ~100 s, higher credit cost.',
+            '"fast" (default): Tripo P1 low-poly (~25-30 s) or TRELLIS.2 1024³ — cheap, AR-ready. "hd": Tripo H3.1 quad topology (up to ~100 s) or TRELLIS.2 1536³ — more detail, higher cost.',
+        },
+        provider: {
+          type: "string",
+          enum: ["trellis", "tripo"],
+          description:
+            '"trellis": Microsoft TRELLIS.2 on Runware (`RUNWARE_API_KEY`, a few US cents per model, image-faithful PBR mesh). "tripo": Tripo AI (`TRIPO_API_KEY`). Omit to pick whichever key is configured (Tripo first).',
         },
       },
       required: [],
