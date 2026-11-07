@@ -468,12 +468,7 @@ open class ModelNode(
         set(value) = renderableNodes.forEach { it.isShadowReceiver = value }
 
     init {
-        nodes.forEach { node ->
-            node.parent = when (val parentEntity = node.parentEntity) {
-                this.entity -> this
-                else -> nodes.firstOrNull { it.entity == parentEntity } ?: this
-            }
-        }
+        attachToParents(this, nodes)
         // Sanitize renderable entities with empty AABBs to prevent Filament crash.
         // Filament 1.70+ enforces: "AABB can't be empty, unless culling is disabled
         // and the object is not a shadow caster/receiver".
@@ -938,6 +933,29 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
+
+/**
+ * Parents each of [nodes] to the node of [nodes] whose entity is its glTF parent, or to [root].
+ *
+ * One map lookup per node and one [Node.childNodes] write per parent. A linear search per node
+ * and one copy-on-write `Set` per child cost O(n²) on the main thread, inside composition: a
+ * Sketchfab model with a few thousand nodes froze it for seconds, an ANR in the field.
+ */
+internal fun attachToParents(
+    root: Node,
+    nodes: List<Node>,
+    parentEntityOf: (Node) -> Entity? = { it.parentEntity },
+) {
+    val byEntity = HashMap<Entity, Node>(nodes.size * 2)
+    nodes.forEach { byEntity.putIfAbsent(it.entity, it) }
+    val childrenOf = LinkedHashMap<Node, MutableList<Node>>()
+    nodes.forEach { node ->
+        val parentEntity = parentEntityOf(node)
+        val parent = if (parentEntity == root.entity) root else byEntity[parentEntity] ?: root
+        childrenOf.getOrPut(parent) { ArrayList() } += node
+    }
+    childrenOf.forEach { (parent, children) -> parent.childNodes = parent.childNodes + children }
 }
 
 /**
