@@ -31,7 +31,7 @@ object FileLoader {
      * The file location can be:
      * - A relative asset file location *models/mymodel.glb*
      * - An android resource from the res folder *context.getResourceUri(R.raw.mymodel)*
-     * - A File path *Uri.fromFile(myModelFile).path*
+     * - A file path, bare or as a URI: *myModelFile.absolutePath* or *Uri.fromFile(myModelFile).toString()*
      * - An http or https url *https://mydomain.com/mymodel.glb*
      */
     suspend fun loadFileBuffer(context: Context, fileLocation: String): ByteBuffer? =
@@ -73,7 +73,7 @@ object FileLoader {
      * The file location can be:
      * - A relative asset file location *models/mymodel.glb*
      * - An android resource from the res folder *context.getResourceUri(R.raw.mymodel)*
-     * - A File path *Uri.fromFile(myModelFile).path*
+     * - A file path, bare or as a URI: *myModelFile.absolutePath* or *Uri.fromFile(myModelFile).toString()*
      * - An http or https url *https://mydomain.com/mymodel.glb*
      */
     fun readFileBuffer(context: Context, fileLocation: String): ByteBuffer? =
@@ -83,13 +83,7 @@ object FileLoader {
     internal fun readFileBuffer(context: Context, fileLocation: String, onProgress: ((Float) -> Unit)?): ByteBuffer? {
         val uri = Uri.parse(fileLocation)
         val stream = when (uri.scheme) {
-            ContentResolver.SCHEME_FILE -> if (uri.firstPathSegment == ASSET_FILE_PATH_ROOT) {
-                context.assets.open(
-                    uri.pathSegments.drop(1).joinToString("/")
-                )
-            } else {
-                File(uri.path ?: throw IllegalArgumentException("Invalid file URI: $uri")).inputStream()
-            }
+            ContentResolver.SCHEME_FILE -> localFileStream(context, uri)
 
             ContentResolver.SCHEME_CONTENT -> {
                 context.contentResolver.openInputStream(uri)
@@ -100,12 +94,24 @@ object FileLoader {
                 context.resources.openRawResource(uri.pathSegments.lastOrNull()?.toIntOrNull() ?: throw IllegalArgumentException("Invalid resource URI: $uri"))
             }
 
+            // A bare absolute path is a file (`File.absolutePath`), as `SplatNode` already reads it;
+            // anything else without a scheme is a path inside the APK's assets.
+            null -> if (fileLocation.startsWith("/")) localFileStream(context, uri) else context.assets.open(fileLocation)
+
             else -> context.assets.open(fileLocation)
         }
         return stream?.use { it.readFully(onProgress = onProgress) }?.let { byteArray ->
             ByteBuffer.wrap(byteArray)
         }
     }
+
+    /** A `file://` URI or a bare absolute path: a file on disk, or an APK asset under `/android_asset/`. */
+    private fun localFileStream(context: Context, uri: Uri): InputStream =
+        if (uri.firstPathSegment == ASSET_FILE_PATH_ROOT) {
+            context.assets.open(uri.pathSegments.drop(1).joinToString("/"))
+        } else {
+            File(uri.path ?: throw IllegalArgumentException("Invalid file URI: $uri")).inputStream()
+        }
 
     @JvmStatic
     private val Uri.firstPathSegment: String?
