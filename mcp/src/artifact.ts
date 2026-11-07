@@ -74,8 +74,7 @@ const FILAMENT_CDN = `https://cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_V
 
 // Motorcycle Helmet by sayedgamal655, CC-BY 4.0, served from the SceneView website.
 // Its licence needs the credit line below on any page that shows it (#4951).
-const DEFAULT_MODEL =
-  "https://sceneview.github.io/models/platforms/moto_helmet_v2.glb";
+const DEFAULT_MODEL = "https://sceneview.github.io/models/platforms/moto_helmet_v2.glb";
 
 const DEFAULT_MODEL_CREDIT = `<div style="position:absolute;bottom:26px;right:12px;font-size:11px;color:#888;font-family:system-ui,sans-serif;z-index:10"><a href="https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac" target="_blank" rel="noopener" style="color:inherit">Motorcycle Helmet</a> by sayedgamal655, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:inherit">CC BY 4.0</a></div>`;
 
