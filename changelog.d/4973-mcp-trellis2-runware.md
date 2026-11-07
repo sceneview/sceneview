@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **`generate_3d_model` can run Microsoft TRELLIS.2 on Runware ([#4973](https://github.com/sceneview/sceneview/pull/4973)).** Set your own `RUNWARE_API_KEY` to generate a GLB for roughly $0.01–0.03 per model, from a text prompt or an image; the new optional `provider` argument picks `"trellis"` or `"tripo"`, and Tripo stays the default when `TRIPO_API_KEY` is set. Ships in `sceneview-mcp` 4.2.0.
