@@ -13,12 +13,16 @@ import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.GuideSpeech
 import io.github.sceneview.demo.demos.internal.LiveWallMotion
 import io.github.sceneview.demo.demos.internal.LiveWallSnapshot
 import io.github.sceneview.demo.demos.internal.LiveWallSource
 import io.github.sceneview.demo.demos.internal.PlaneWallSource
+import io.github.sceneview.demo.demos.internal.ScanGuidance
 import io.github.sceneview.demo.demos.internal.ScanGuide
-import io.github.sceneview.demo.demos.internal.ScanTurn
+import io.github.sceneview.demo.demos.internal.ScanGuideHint
+import io.github.sceneview.demo.demos.internal.ScanRibbon
+import io.github.sceneview.demo.demos.internal.ScanTarget
 import io.github.sceneview.demo.demos.internal.WallExtent
 import io.github.sceneview.demo.demos.internal.WallMesh
 import io.github.sceneview.demo.demos.internal.lostBetween
@@ -26,6 +30,7 @@ import io.github.sceneview.demo.demos.internal.openFloorEdges
 import io.github.sceneview.demo.demos.internal.update
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.loaders.MaterialLoader
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -33,10 +38,15 @@ import kotlin.math.sqrt
  * The walls 3D Scan recognises while it scans a room (#4540 live walls), fed frame by frame from
  * the live view's `observe` after [ScanCoverageState]: the [source]'s walls, eased by [motion], the
  * floor edges no wall stands on yet, and what the HUD reads off them — [wallCount], the
- * [completion] gauge, [done], and the [turn] to the next gap. Compose state changes only when its
- * value does; the rest is read by [ScanWallLayer] on the render thread's frame.
+ * [completion] gauge, [done], and the [guidance] to the next gap, or to the part Fix now is
+ * filling in ([fixTarget]): its [hint], its arrow ([headingDegrees], [arrowShown]), its tick
+ * ([alignedTicks]) and its floor ribbon. Compose state changes only when its value does; the rest
+ * is read by [ScanWallLayer] on the render thread's frame. [clock] is in milliseconds.
  */
-internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSource()) {
+internal class ScanWallsState(
+    private val source: LiveWallSource = PlaneWallSource(),
+    private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MS },
+) {
     val motion = LiveWallMotion()
 
     /** The walls as drawn: the [source]'s, each cut back to the points seen on it ([WallExtent.clip]). */
@@ -71,7 +81,40 @@ internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSour
     var done by mutableStateOf(false)
         private set
 
-    var turn by mutableStateOf<ScanTurn?>(null)
+    /** Where the scan goes next, frame by frame: the target, the heading to it, the ribbon. */
+    val guidance = ScanGuidance()
+
+    /** The part Fix now is filling in, `[x, z]` on the floor: the guide leads there instead of the next gap. */
+    var fixTarget: FloatArray? = null
+
+    /** Whether the guide shows at all: not while the view has left the phone (the review's flight, the save). */
+    var guiding = true
+
+    /** Whether the ribbon's chevrons flow towards the target: not under reduced motion. */
+    var ribbonFlows = true
+
+    /** What the coaching line says of the guide ([io.github.sceneview.demo.demos.internal.ScanCopy.guideHint]), `null` without a target. */
+    var hint by mutableStateOf<ScanGuideHint?>(null)
+        private set
+
+    /** The arrow's heading to the target, degrees clockwise from where the phone faces. */
+    var headingDegrees by mutableFloatStateOf(0f)
+        private set
+
+    /**
+     * What a screen reader says of the guide ([GuideSpeech]): [hint], its distance said at most
+     * every 3 s. The coaching line is a polite live region on it.
+     */
+    var spokenHint by mutableStateOf<ScanGuideHint?>(null)
+        private set
+    private val speech = GuideSpeech()
+
+    /** The arrow shows while there is a target not reached that the phone is not lined up with. */
+    var arrowShown by mutableStateOf(false)
+        private set
+
+    /** How many times the phone has lined up with its target ([io.github.sceneview.demo.demos.internal.AlignTick]): each one is a tick. */
+    var alignedTicks by mutableIntStateOf(0)
         private set
 
     /**
@@ -140,9 +183,23 @@ internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSour
             val finished = closed || completion >= 1f
             if (finished != done) done = finished
         }
-        val cue = if (done) null else ScanGuide.cue(pose, openEdges)
+        val cue = if (done) null else ScanGuide.cue(pose, openEdges, cueEdge)
         cueEdge = cue?.edge
-        if (cue?.turn != turn) turn = cue?.turn
+        val fix = fixTarget
+        val target = when {
+            !guiding -> null
+            fix != null -> ScanTarget(fix[0], fix[1], fix = true)
+            cue != null -> ScanTarget(cue.x, cue.z)
+            else -> null
+        }
+        if (guidance.update(pose, target, clock()) != null) alignedTicks++
+        val nextHint = guidance.hint
+        if (nextHint != hint) hint = nextHint
+        val spoken = speech.update(nextHint, clock())
+        if (spoken != spokenHint) spokenHint = spoken
+        val arrow = guidance.arrow
+        if (arrow != arrowShown) arrowShown = arrow
+        guidance.heading?.let { if (it.degrees != headingDegrees) headingDegrees = it.degrees }
     }
 
     fun reset() {
@@ -163,10 +220,15 @@ internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSour
         wallCount = 0
         completion = 0f
         done = false
-        turn = null
+        guidance.clear()
+        hint = null
+        spokenHint = speech.update(null, clock())
+        arrowShown = false
     }
 
     companion object {
+        private const val NANOS_PER_MS = 1_000_000L
+
         /**
          * What the cut reads of [layer], the depth map's live snapshot: the map's even stride
          * ([ReplayDenseLayer.whole]), thinned evenly to one read of the cut ([WallExtent.MAX_READ]),
@@ -192,7 +254,9 @@ internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSour
  * Draws a [ScanWallsState] in the live view: its walls through the shared [LiveWallLayer] (the
  * same walls Measure shows while it measures, #4732), and the floor edges no wall stands on yet
  * dashed in `accentGuidance` with a low ghost wall, the one the cue points at standing a little
- * taller. The layers go under the points, so the points stay on top.
+ * taller; and the guide's floor ribbon ([ScanRibbon]) from the phone's feet to its target, in the
+ * same colour, its chevrons flowing towards the target unless motion is reduced. The layers go
+ * under the points, so the points stay on top.
  */
 internal class ScanWallLayer(engine: Engine, private val materialLoader: MaterialLoader) {
     private val walls = LiveWallLayer(engine, materialLoader)
@@ -201,25 +265,33 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
 
     private val open = DebugLayerNode(engine, openMaterial, priority = LiveWallLayer.LINE_PRIORITY)
     private val ghost = DebugLayerNode(engine, ghostMaterial, priority = LiveWallLayer.FILL_PRIORITY)
+    private val ribbon = DebugLayerNode(engine, openMaterial, priority = LiveWallLayer.LINE_PRIORITY)
 
-    val nodes = listOf(ghost) + walls.nodes + open
+    val nodes = listOf(ghost) + walls.nodes + open + ribbon
 
     private val openMesh = DebugMesh()
     private val ghostMesh = DebugMesh()
     private var openFor: List<FloatArray>? = null
     private var cueFor: FloatArray? = null
     private var openFloorY = Float.NaN
+    private val ribbonMesh = DebugMesh()
+    /** The ribbon drawn, copied: the guide hands the same array frame after frame. */
+    private val ribbonFor = FloatArray(RIBBON_FLOATS)
+    private var ribbonDrawn = false
+    private var ribbonFloorY = Float.NaN
+    private var ribbonPhase = 0f
 
     /**
      * Eases the walls [dt] seconds on and re-uploads what moved, or hides them all while not
      * [shown] — the save's orbit shows the cloud alone. On the main thread.
      */
     fun sync(state: ScanWallsState, dt: Float, shown: Boolean = true) {
-        listOf(ghost, open).forEach { if (it.isVisible != shown) it.isVisible = shown }
+        listOf(ghost, open, ribbon).forEach { if (it.isVisible != shown) it.isVisible = shown }
         walls.sync(state.motion, state.snapshot, dt, shown)
         if (!shown) return
         val motion = state.motion
         val floorY = motion.floorY
+        syncRibbon(state, if (motion.height > 0f) floorY else Float.NaN, dt)
         if (state.openEdges !== openFor || state.cueEdge !== cueFor || floorY != openFloorY) {
             openFor = state.openEdges
             cueFor = state.cueEdge
@@ -242,11 +314,41 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
         }
     }
 
+    /**
+     * The guide's ribbon ([ScanGuidance.ribbon]) on the floor at [floorY]: rebuilt each frame while
+     * its chevrons flow ([ScanWallsState.ribbonFlows]), else only once it moved — a few dozen
+     * vertices, from the target and the phone's feet. Gone without a target, once there, or before
+     * the floor is known (`NaN` [floorY]).
+     */
+    private fun syncRibbon(state: ScanWallsState, floorY: Float, dt: Float) {
+        val line = state.guidance.ribbon?.takeIf { !floorY.isNaN() }
+        if (line == null) {
+            if (ribbonDrawn) {
+                ribbonDrawn = false
+                ribbonMesh.clear()
+                ribbon.upload(ribbonMesh)
+            }
+            return
+        }
+        val flows = state.ribbonFlows
+        ribbonPhase = if (flows) (ribbonPhase + dt * ScanRibbon.FLOW_M_PER_S) % ScanRibbon.PERIOD_M else 0f
+        var moved = !ribbonDrawn || floorY != ribbonFloorY
+        for (k in 0 until RIBBON_FLOATS) if (abs(line[k] - ribbonFor[k]) > RIBBON_MOVE_M) moved = true
+        if (!flows && !moved) return
+        line.copyInto(ribbonFor)
+        ribbonDrawn = true
+        ribbonFloorY = floorY
+        ribbonMesh.clear()
+        ScanRibbon.chevrons(ribbonMesh, line, floorY + RIBBON_LIFT_M, ribbonPhase)
+        ribbon.upload(ribbonMesh)
+    }
+
     /** On the main thread, after [nodes] left the scene. */
     fun destroy() {
         walls.destroy()
         open.destroy()
         ghost.destroy()
+        ribbon.destroy()
         listOf(openMaterial, ghostMaterial).forEach { materialLoader.destroyMaterialInstance(it) }
     }
 
@@ -263,6 +365,13 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
         const val GHOST_M = 0.35f
         const val CUE_GHOST_M = 0.9f
         const val GHOST_ALPHA = 0.18f
+
+        /** The ribbon, over the dashes: the floor's points stay under it. */
+        const val RIBBON_LIFT_M = 0.015f
+        const val RIBBON_FLOATS = 4
+
+        /** Still, the ribbon is rebuilt once an end moved this far, metres. */
+        const val RIBBON_MOVE_M = 0.02f
 
         /** The open [edge] dashed on the floor at [y], each dash a flat ribbon. */
         fun dashes(mesh: DebugMesh, edge: FloatArray, y: Float) {

@@ -7,10 +7,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.UTurnLeft
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.SideEffect
+import io.github.sceneview.demo.demos.internal.scanPathLength
+import io.github.sceneview.demo.theme.LocalMotionEnabled
+import io.github.sceneview.demo.theme.motionDuration
+import io.github.sceneview.haptic.rememberHapticFeedback
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import io.github.sceneview.demo.demos.internal.CaptureChrome
 import io.github.sceneview.demo.demos.internal.CaptureCue
@@ -33,6 +39,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.R
@@ -207,47 +214,69 @@ internal fun ScanRoomGauge(share: Float, complete: Boolean) {
 }
 
 /**
- * The turn to the next gap of a room's scan (#4540, "arrows to say turn this way"): a glass disc at
- * the screen's edge on that side, an arrow in `accent-guidance`, the colour of the dashed gap in
- * the room. Behind the phone, it sits in the middle with a turning arrow; ahead, the gap is in
- * view and the dashes speak for it. [turn] is held by the caller ([rememberHeld]), once for the
- * arrow and the coaching line.
+ * The guide's arrow (#4540, QA-24): a glass card at the screen's edge on the target's side — in
+ * the middle when it is ahead or behind — with an arrow in `accent-guidance`, the colour of the
+ * floor ribbon and the dashed gap, turned to the target's heading as the phone turns, and the
+ * distance to it under it while it is not reached. It goes once the phone lines up with the
+ * target, with one tick ([ScanWallsState.alignedTicks], at most once a second); the ribbon on the
+ * floor stays. Said as the coaching line says it. Under reduced motion it appears and goes without a fade.
  */
 @Composable
-internal fun BoxScope.ScanTurnArrow(turn: ScanTurn?) {
-    val shown = turn?.takeIf { it != ScanTurn.Ahead }
+internal fun BoxScope.ScanGuideArrow(walls: ScanWallsState) {
+    val hint = walls.hint
+    val shown = walls.arrowShown && hint != null
     // Kept through the fade-out, so the arrow leaves from where it was.
-    var last by remember { mutableStateOf(ScanTurn.Left) }
-    if (shown != null) last = shown
+    var last by remember { mutableStateOf(hint) }
+    if (shown) last = hint
+    val haptic = rememberHapticFeedback()
+    // One tick per line-up felt here: none for those counted while the arrow was off screen.
+    val ticks = walls.alignedTicks
+    var felt by remember { mutableIntStateOf(ticks) }
+    LaunchedEffect(ticks) {
+        if (ticks > felt) haptic.selection()
+        felt = ticks
+    }
     // Left and right are the room's, not the reading direction's: the same side in RTL.
-    val alignment = when (last) {
+    val alignment = when (last?.turn) {
         ScanTurn.Left -> AbsoluteAlignment.CenterLeft
         ScanTurn.Right -> AbsoluteAlignment.CenterRight
         else -> Alignment.Center
     }
+    val fade = motionDuration(SceneViewTokens.Duration.mediumMillis)
+    val locale = LocalConfiguration.current.locales[0]
     AnimatedVisibility(
-        visible = shown != null,
-        enter = fadeIn(tween(SceneViewTokens.Duration.mediumMillis)),
-        exit = fadeOut(tween(SceneViewTokens.Duration.mediumMillis)),
+        visible = shown,
+        enter = fadeIn(tween(fade)),
+        exit = fadeOut(tween(fade)),
         modifier = Modifier.align(alignment).padding(Space.md).testTag(SCAN_TURN_TAG),
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
+        val said = last
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .size(SceneViewTokens.Layout.touchTarget + Space.md)
-                .background(LocalStageChrome.current.card, CircleShape),
+                .widthIn(min = SceneViewTokens.Layout.touchTarget + Space.md)
+                .background(LocalStageChrome.current.card, RoundedCornerShape(SceneViewTokens.Radius.lg))
+                .padding(Space.sm)
+                // One description, not the arrow's line then the distance again.
+                .clearAndSetSemantics {
+                    contentDescription = said?.let { ScanCopy.guideHint(it, locale) }.orEmpty()
+                },
         ) {
-            // Drawn left to right whatever the locale: a mirrored arrow would point at the wrong wall.
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Icon(
-                    imageVector = when (last) {
-                        ScanTurn.Left -> Icons.AutoMirrored.Rounded.ArrowBack
-                        ScanTurn.Right -> Icons.AutoMirrored.Rounded.ArrowForward
-                        else -> Icons.Rounded.UTurnLeft
-                    },
-                    contentDescription = ScanCopy.turnHint(last),
-                    tint = ArOverlay.accentGuidance,
-                    modifier = Modifier.size(SceneViewTokens.Layout.touchTarget - Space.sm),
+            Icon(
+                imageVector = Icons.Rounded.ArrowUpward,
+                contentDescription = null,
+                tint = ArOverlay.accentGuidance,
+                // Read in the layer: the heading moves every frame, the card does not recompose.
+                modifier = Modifier
+                    .size(SceneViewTokens.Layout.touchTarget - Space.sm)
+                    .graphicsLayer { rotationZ = walls.headingDegrees },
+            )
+            said?.metres?.let { metres ->
+                Text(
+                    text = scanPathLength(metres, locale),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = LocalStageChrome.current.onCard,
+                    maxLines = 1,
                 )
             }
         }
@@ -657,8 +686,10 @@ internal fun ScanDiscardDialog(onCancel: () -> Unit, onDiscard: () -> Unit) {
  * stop tap is the camera's view of the frame before, eased from there onto the orbit.
  *
  * [walls] (#4540), a room's scan only: the walls recognised so far rise in the room, on the
- * camera, and the floor edges still open are dashed where the next wall should be; an arrow points
- * to the next one's [turn], as held by the caller.
+ * camera, and the floor edges still open are dashed where the next wall should be; a ribbon on the
+ * floor leads from the phone's feet to the next one — or to the part Fix now is filling in — and
+ * an arrow turns to it until the phone lines up ([ScanGuideArrow]). Neither shows while the view
+ * has left the phone; the ribbon's chevrons stand still under reduced motion.
  */
 @Composable
 @Suppress("LongParameterList") // the demo's shared engine, handed down once
@@ -674,7 +705,6 @@ internal fun ScanLiveView(
     livePose: (traced: DebugPose?) -> DebugPose? = { it },
     saving: Boolean = false,
     walls: ScanWallsState? = null,
-    turn: ScanTurn? = walls?.turn,
     reviewing: Boolean = false,
     reviewPose: (() -> OrbitPose?)? = null,
 ) {
@@ -716,6 +746,11 @@ internal fun ScanLiveView(
         } ?: media
     }
     val observed = remember(coverage, walls) { ScanObserveGate() }
+    val motion = LocalMotionEnabled.current
+    SideEffect {
+        walls?.guiding = !saving && !flying
+        walls?.ribbonFlows = motion
+    }
     Box(modifier = Modifier.fillMaxSize().testTag(SCAN_STAGE_TAG)) {
         // Only the camera is dimmed: the cloud is drawn by its own view, above the veil.
         Box(Modifier.fillMaxSize().background(veil))
@@ -757,7 +792,7 @@ internal fun ScanLiveView(
             // the view's own motion and gets the display's full rate back.
             maxFps = if (saving || flying) null else SCAN_LIVE_FPS,
         )
-        if (walls != null && !saving && !flying) ScanTurnArrow(turn)
+        if (walls != null && !saving && !flying) ScanGuideArrow(walls)
     }
 }
 

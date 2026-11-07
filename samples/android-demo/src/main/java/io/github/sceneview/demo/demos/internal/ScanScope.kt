@@ -229,8 +229,9 @@ object ScanScopeCopy {
      * The capture's coaching [line] ([ScanCopy.coaching]) in [scope]'s words: its two guidance
      * lines follow what is scanned, and a home paused before room [nextRoom] says how to get there.
      * A room's scan given the [walls] it recognised guides from wall to wall instead: [done] once
-     * they close the room, else the [turn] to the next gap ([ScanGuide.cue]); and when nothing new
-     * comes while a wall is missing, it says how to catch a plain wall — or, the phone looking at
+     * they close the room, else the [guide]'s turn and distance to the next gap ([ScanGuide.cue]),
+     * or to the part Fix now is filling in; and when nothing new comes while a wall is missing, it
+     * says how to catch a plain wall — or, the phone looking at
      * the floor or the ceiling (not [facingWall]), to raise it to the walls (#4540 live walls).
      * Facing a wall seen only in part ([wallToFinish]), it asks to walk along it first.
      * Every other line — tracking lost, the photo cap, the detail — says the same in every scope.
@@ -241,7 +242,7 @@ object ScanScopeCopy {
         line: String?,
         nextRoom: Int? = null,
         walls: Int? = null,
-        turn: ScanTurn? = null,
+        guide: ScanGuideHint? = null,
         done: Boolean = false,
         facingWall: Boolean = true,
         wallToFinish: Boolean = false,
@@ -251,10 +252,12 @@ object ScanScopeCopy {
         val rooms = found >= 0 && scope.hasFloorPlan
         return when {
             nextRoom != null && nextRoom > 1 && line == ScanCopy.COACH_PAUSED -> between(nextRoom - 1, nextRoom)
+            // Fix now leads to its part, whatever the walls say (the room may be closed already).
+            line == ScanCopy.COACH_SCANNING && guide?.fix == true -> ScanCopy.guideHint(guide)
             // Walls closed over a floor the map still hatches: the floor is what is left (QA-11).
             rooms && done && line in DONE_OVER -> if (floorLeft) ScanCopy.FLOOR_LEFT else ScanCopy.ROOM_DONE
             line == ScanCopy.COACH_SCANNING && rooms && wallToFinish -> ScanCopy.WALL_TO_FINISH
-            line == ScanCopy.COACH_SCANNING && rooms && turn != null && found >= 1 -> ScanCopy.turnHint(turn)
+            line == ScanCopy.COACH_SCANNING && rooms && guide != null && found >= 1 -> ScanCopy.guideHint(guide)
             line == ScanCopy.COACH_SCANNING && rooms -> ScanCopy.wallGuide(found)
             line == ScanCopy.COACH_SCANNING -> scanning(scope)
             line == ScanCopy.COACH_NOTHING_NEW && rooms && found < ScanGuide.ROOM_WALLS ->
