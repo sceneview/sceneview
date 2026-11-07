@@ -90,8 +90,9 @@ class _ModelViewerPageState extends State<ModelViewerPage> {
   }
 
   void _loadHelmet() {
+    // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
     _controller.loadModel(const ModelNode(
-      modelPath: 'models/damaged_helmet.glb',
+      modelPath: 'https://sceneview.github.io/models/platforms/moto_helmet_v2.glb',
     ));
   }
 

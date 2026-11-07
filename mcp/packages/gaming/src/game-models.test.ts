@@ -90,9 +90,9 @@ describe("GAME_MODELS database", () => {
 
 describe("getGameModel", () => {
   it("returns model by valid ID", () => {
-    const model = getGameModel("khronos-damaged-helmet");
+    const model = getGameModel("sf-phoenix-bird");
     expect(model).toBeDefined();
-    expect(model!.name).toBe("Damaged Helmet");
+    expect(model!.name).toBe("Phoenix Bird");
   });
 
   it("returns undefined for unknown ID", () => {
@@ -146,10 +146,10 @@ describe("formatModelList", () => {
   });
 
   it("includes model details in output", () => {
-    const models = [getGameModel("khronos-damaged-helmet")!];
+    const models = [getGameModel("sf-phoenix-bird")!];
     const text = formatModelList(models);
-    expect(text).toContain("Damaged Helmet");
-    expect(text).toContain("Khronos");
+    expect(text).toContain("Phoenix Bird");
+    expect(text).toContain("NORBERTO-3D");
     expect(text).toContain("CC BY");
   });
 

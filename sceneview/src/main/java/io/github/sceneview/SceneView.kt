@@ -103,7 +103,7 @@ import io.github.sceneview.node.reflectionProbes
  * ### Minimal usage
  * ```kotlin
  * SceneView(modifier = Modifier.fillMaxSize()) {
- *     rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+ *     rememberModelInstance(modelLoader, "models/moto_helmet.glb")?.let { instance ->
  *         ModelNode(modelInstance = instance, scaleToUnits = 0.5f)
  *     }
  * }

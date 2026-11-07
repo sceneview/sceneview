@@ -2285,7 +2285,7 @@ fun main() {
                 intensity(100_000.0)
                 direction(0.0f, -1.0f, -0.5f)
             }
-            model("models/DamagedHelmet.glb")
+            model("https://sceneview.github.io/models/platforms/moto_helmet_v2.glb") // Motorcycle Helmet by sayedgamal655, CC-BY 4.0
         },
         onReady = { sceneView ->
             sceneView.startRendering()
@@ -2331,7 +2331,7 @@ fun main() {
                 iblUrl = "environments/pillars_2k_ibl.ktx",
                 skyboxUrl = "environments/pillars_2k_skybox.ktx"
             )
-            model("models/DamagedHelmet.glb")
+            model("https://sceneview.github.io/models/platforms/moto_helmet_v2.glb") // Motorcycle Helmet by sayedgamal655, CC-BY 4.0
         },
         onReady = { sceneView ->
             sceneView.startRendering()

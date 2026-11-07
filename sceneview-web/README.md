@@ -23,7 +23,7 @@ SceneView.create(
             eye(0.0, 1.5, 5.0)
             target(0.0, 0.0, 0.0)
         }
-        model("models/DamagedHelmet.glb")
+        model("https://sceneview.github.io/models/platforms/moto_helmet_v2.glb") // Motorcycle Helmet by sayedgamal655, CC-BY 4.0
     },
     onReady = { it.startRendering() }
 )

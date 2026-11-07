@@ -110,7 +110,14 @@ describe("generateArtifact — model-viewer (Filament.js)", () => {
 
   it("uses default model when none provided", () => {
     const result = generateArtifact({ type: "model-viewer" });
-    expect(result.html).toContain("DamagedHelmet.glb");
+    expect(result.html).toContain("moto_helmet_v2.glb");
+    expect(result.html).not.toContain("DamagedHelmet");
+  });
+
+  it("credits the default model's author under CC BY 4.0 (#4951)", () => {
+    const result = generateArtifact({ type: "model-viewer" });
+    expect(result.html).toContain("by sayedgamal655");
+    expect(result.html).toContain("creativecommons.org/licenses/by/4.0/");
   });
 
   it("uses custom model URL", () => {
@@ -119,6 +126,7 @@ describe("generateArtifact — model-viewer (Filament.js)", () => {
       modelUrl: "https://example.com/car.glb",
     });
     expect(result.html).toContain("https://example.com/car.glb");
+    expect(result.html).not.toContain("sayedgamal655");
   });
 
   it("uses custom title", () => {

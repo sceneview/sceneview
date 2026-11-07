@@ -41,7 +41,7 @@ import org.w3c.dom.HTMLCanvasElement
  *         directional()
  *         intensity(10_000.0)
  *     }
- *     model("models/damaged_helmet.glb")
+ *     model("models/moto_helmet.glb")
  * }
  * ```
  */

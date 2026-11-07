@@ -318,8 +318,9 @@ class _EnvironmentDemoState extends State<_EnvironmentDemo> {
   bool _autoCenter = true;
   int _envIndex = 0;
 
+  // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
   static const _helmetUrl =
-      'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb';
+      'https://sceneview.github.io/models/platforms/moto_helmet_v2.glb';
 
   /// Two visually distinct HDRs (bright studio ↔ dark rooftop night), so the
   /// toggle is unmistakable on a device and drives the keyed-swap path (#2361).
@@ -430,8 +431,9 @@ class _CameraModesDemoState extends State<_CameraModesDemo> {
   bool _ready = false;
   CameraControlMode _mode = CameraControlMode.orbit;
 
+  // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
   static const _helmetUrl =
-      'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb';
+      'https://sceneview.github.io/models/platforms/moto_helmet_v2.glb';
 
   static const _modes = [
     (CameraControlMode.orbit, 'Orbit'),
