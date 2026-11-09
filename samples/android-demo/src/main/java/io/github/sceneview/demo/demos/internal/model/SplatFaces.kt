@@ -48,7 +48,7 @@ internal class SplatFaces private constructor(
      * [visible] from the faces [was] drawn the frame before: a face comes or goes only once the eye
      * is [HYSTERESIS_M] past its plane, so an eye that hovers on a plane (an orbit at the ceiling's
      * height, a finger resting mid-drag) does not swap the splats back and forth every frame —
-     * each swap is a new cloud and a new node (#4896).
+     * each swap is a new sort with a new filter (#4896).
      */
     fun visible(x: Float, y: Float, z: Float, was: Int): Int {
         val now = visible(x, y, z)
@@ -68,6 +68,15 @@ internal class SplatFaces private constructor(
             if (kotlin.math.abs(at - planes[f]) < HYSTERESIS_M) mask = (mask and bit.inv()) or (was and bit)
         }
         return mask
+    }
+
+    /**
+     * Which of [all]'s splats are in the faces of [mask], as `SplatNode.shownSplats` reads it;
+     * `null` when every splat is. O(splats), off the main thread.
+     */
+    fun shown(mask: Int): BooleanArray? {
+        val shown = BooleanArray(all.count) { mask and (1 shl face[it].toInt()) != 0 }
+        return if (shown.all { it }) null else shown
     }
 
     /** [all]'s splats in the faces of [mask], in their order; [all] itself when every face is in. */

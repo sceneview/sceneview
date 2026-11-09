@@ -138,7 +138,7 @@ class SurfelSplatsTest {
     @Test
     fun `the cap is exact, the last splat is a kept surfel, never an empty slot`() {
         // Sizes where a floating-point share loses the last one (22 for 15, 262 672 for 250 000).
-        for ((coloured, cap) in listOf(22 to 15, 23 to 13, 39 to 31, 262_672 to 65_535)) {
+        for ((coloured, cap) in listOf(22 to 15, 23 to 13, 39 to 31, 262_672 to SurfelSplats.MAX_SPLATS)) {
             val positions = FloatArray(coloured * 3) { if (it % 3 == 0) (it / 3 + 1).toFloat() else 0f }
             val cloud = DenseCloud(positions, IntArray(coloured) { 0xFF808080.toInt() })
             val splats = SurfelSplats.of(cloud, maxSplats = cap)
@@ -184,8 +184,8 @@ class SurfelSplatsTest {
         println("synthetic room: ${cloud.count} surfels -> ${splats.count} splats in $ms ms")
 
         assertTrue("a room's worth of splats: ${splats.count}", splats.count > 1_000)
-        // No cap left on a room (#4896): every coloured surfel is a splat.
-        assertEquals((0 until cloud.count).count { cloud.colors[it] != 0 }, splats.count)
+        // Every coloured surfel, up to the cap (#4896).
+        assertEquals(minOf((0 until cloud.count).count { cloud.colors[it] != 0 }, SurfelSplats.MAX_SPLATS), splats.count)
         for (i in 0 until splats.count) {
             val q = splats.rotations.copyOfRange(i * 4, i * 4 + 4)
             assertEquals(1f, sqrt(q.sumOf { (it * it).toDouble() }).toFloat(), 1e-4f)

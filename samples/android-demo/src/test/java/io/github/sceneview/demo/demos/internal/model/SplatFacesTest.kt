@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal.model
 
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlin.math.cos
@@ -31,6 +32,20 @@ class SplatFacesTest {
         val drawn = faces.cloud(faces.visible(ex, 6f, ez))
         val kept = room.kinds.indices.filter { contains(drawn, room.cloud.positions, it) }.map { room.kinds[it] }.toSet()
         assertEquals(Kind.entries.toSet() - Kind.Ceiling, kept)
+    }
+
+    @Test
+    fun `the filter the node sorts with keeps the splats of the cut, in place`() {
+        val room = room(30f)
+        val faces = SplatFaces.of(SurfelSplats.of(room.cloud))
+        val (ex, ez) = toWorld(30f, -3f, -3f)
+        val mask = faces.visible(ex, 4f, ez)
+        val shown = requireNotNull(faces.shown(mask))
+        val cut = faces.cloud(mask)
+        assertEquals(cut.count, shown.count { it })
+        val kept = faces.all.positions.toList().chunked(3).filterIndexed { i, _ -> shown[i] }.flatten()
+        assertEquals(cut.positions.toList(), kept)
+        assertNull(faces.shown(SplatFaces.ALL))
     }
 
     @Test

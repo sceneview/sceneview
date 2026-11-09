@@ -120,6 +120,23 @@ class SplatBuffersTest {
         }
     }
 
+    @Test
+    fun sortOfTheShownSplatsKeepsTheirBackToFrontOrder() {
+        val positions = FloatArray(3 * 500) { i -> ((i * 7919) % 1000) / 100f - 5f }
+        val shown = BooleanArray(500) { it % 3 != 0 }
+        val keys = LongArray(500)
+        val order = IntArray(500) { -1 }
+        val all = SplatBuffers.sortBackToFront(positions, 500, 9f, -2f, 4f)
+        val n = SplatBuffers.sortBackToFront(positions, 500, 9f, -2f, 4f, keys, order, shown)
+        assertEquals(shown.count { it }, n)
+        // The full order with the hidden splats taken out, nothing else moved.
+        assertArrayEquals(all.filter { shown[it] }.toIntArray(), order.copyOf(n))
+        assertEquals(0, SplatBuffers.sortBackToFront(positions, 500, 0f, 0f, 0f, keys, order, BooleanArray(500)))
+        assertThrows(IllegalArgumentException::class.java) {
+            SplatBuffers.sortBackToFront(positions, 500, 0f, 0f, 0f, keys, order, BooleanArray(10))
+        }
+    }
+
     // ── visibleInBatch (splatCount LOD cut) ───────────────────────────────────────────────────
 
     @Test
@@ -370,6 +387,15 @@ class SplatBuffersTest {
         assertEquals(listOf(2, 0, 1, 0), (0 until 4).map { packed.get(it) })
         assertThrows(IllegalArgumentException::class.java) {
             SplatBuffers.packOrder(IntArray(5), 2)
+        }
+    }
+
+    @Test
+    fun packOrderOfTheFirstSlotsLeavesTheRestZero() {
+        val packed = SplatBuffers.packOrder(intArrayOf(2, 0, 1, 3), 2, SplatBuffers.textureSize(4))
+        assertEquals(listOf(2, 0, 0, 0), (0 until 4).map { packed.get(it) })
+        assertThrows(IllegalArgumentException::class.java) {
+            SplatBuffers.packOrder(IntArray(2), 3, 2)
         }
     }
 

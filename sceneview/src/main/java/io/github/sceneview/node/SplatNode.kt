@@ -33,6 +33,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * A node that renders a 3D Gaussian Splatting ([SplatCloud]) scene — the radiance-field capture
@@ -184,28 +185,64 @@ open class SplatNode(
             val clamped = value.coerceIn(0, splatCloud.count)
             if (field == clamped) return
             field = clamped
-            batches.forEachIndexed { index, range ->
-                val visible = SplatBuffers.visibleInBatch(clamped, range)
-                if (visible == batchVisibleCounts[index]) return@forEachIndexed
-                val entity = batchEntities[index]
-                val renderableManager = engine.renderableManager
-                if (visible == 0) {
-                    // Instanced draws need >= 1 instance — hide the whole batch instead.
-                    renderableManager.setLayerMask(renderableManager.getInstance(entity), 0xff, 0x00)
-                } else {
-                    if (visible != batchBuiltCounts[index]) {
-                        // Instance count is baked at build time (still no runtime setter in
-                        // Filament 1.72.1 — RenderableManager only exposes getInstanceCount) —
-                        // rebuild the renderable in place on the same entity. The
-                        // rebuild resets the layer mask, so re-assert visibility below.
-                        buildBatchRenderable(entity, index, visible)
-                        batchBuiltCounts[index] = visible
-                    }
-                    renderableManager.setLayerMask(renderableManager.getInstance(entity), 0xff, 0xff)
-                }
-                batchVisibleCounts[index] = visible
-            }
+            showDrawSlots(min(clamped, sortedCount))
         }
+
+    /**
+     * Which splats are drawn: splat `i` is left out while `shownSplats[i]` is `false`; `null`
+     * (the default) draws them all. The array must hold one entry per splat of [splatCloud].
+     *
+     * Use it to hide part of a cloud that changes often (back faces, a clipping box, a selection)
+     * without building a new node — a new `SplatNode` re-packs and re-uploads every texture on
+     * the main thread. The filter is applied by the next back-to-front sort, off the main thread,
+     * so the change shows a frame or two later. Assign a new array to change it: the node does
+     * not see writes into the array it holds. [splatCount] still caps the splats drawn, counted
+     * among the shown ones. Main thread only.
+     */
+    var shownSplats: BooleanArray? = null
+        @MainThread set(value) {
+            if (field === value) return
+            require(value == null || value.size >= splatCloud.count) {
+                "shownSplats must hold one entry per splat: expected ${splatCloud.count}, was ${value?.size}"
+            }
+            field = value
+            // Re-sort on the next frame, whatever the camera did.
+            lastSortCameraPosition = null
+            requestRender()
+        }
+
+    /** Draw slots the last uploaded order fills: every splat, or the [shownSplats] ones. */
+    private var sortedCount: Int = splatCloud.count
+
+    /**
+     * Draws the first [count] slots of the current order. Batches that become empty are hidden;
+     * partially filled batches are rebuilt in place with the reduced instance count (the entity —
+     * and therefore the scene registration — never changes).
+     */
+    @MainThread
+    private fun showDrawSlots(count: Int) {
+        batches.forEachIndexed { index, range ->
+            val visible = SplatBuffers.visibleInBatch(count, range)
+            if (visible == batchVisibleCounts[index]) return@forEachIndexed
+            val entity = batchEntities[index]
+            val renderableManager = engine.renderableManager
+            if (visible == 0) {
+                // Instanced draws need >= 1 instance — hide the whole batch instead.
+                renderableManager.setLayerMask(renderableManager.getInstance(entity), 0xff, 0x00)
+            } else {
+                if (visible != batchBuiltCounts[index]) {
+                    // Instance count is baked at build time (still no runtime setter in
+                    // Filament 1.72.1 — RenderableManager only exposes getInstanceCount) —
+                    // rebuild the renderable in place on the same entity. The
+                    // rebuild resets the layer mask, so re-assert visibility below.
+                    buildBatchRenderable(entity, index, visible)
+                    batchBuiltCounts[index] = visible
+                }
+                renderableManager.setLayerMask(renderableManager.getInstance(entity), 0xff, 0xff)
+            }
+            batchVisibleCounts[index] = visible
+        }
+    }
 
     init {
         // The attribute textures are written once, in cloud order; only the draw order changes
@@ -373,17 +410,22 @@ open class SplatNode(
             if (dx * dx + dy * dy + dz * dz < threshold * threshold) return
         }
         lastSortCameraPosition = cameraLocal
+        val shown = shownSplats
         sortJob = coroutineScope.launch {
-            val order = SplatBuffers.sortBackToFront(
+            val sorted = SplatBuffers.sortBackToFront(
                 splatCloud.positions, splatCloud.count,
                 cameraLocal.x, cameraLocal.y, cameraLocal.z,
-                sortKeys, sortOrder
+                sortKeys, sortOrder, shown
             )
             // A fresh buffer per sort: Filament owns an upload buffer asynchronously until the
             // GPU copy completes, so re-using one would race. 4 bytes per splat.
-            val packedOrder = SplatBuffers.packOrder(order, textureSize)
+            val packedOrder = SplatBuffers.packOrder(sortOrder, sorted, textureSize)
             withContext(Dispatchers.Main) {
-                if (!isSplatDestroyed) uploadOrder(packedOrder)
+                if (isSplatDestroyed) return@withContext
+                // The order first, then the slots it fills: no slot is drawn before it is written.
+                uploadOrder(packedOrder)
+                sortedCount = sorted
+                showDrawSlots(min(splatCount, sorted))
             }
         }
     }

@@ -36,13 +36,13 @@ import kotlin.math.sqrt
  */
 internal object SurfelSplats {
     /**
-     * The most splats the preview draws: every surfel a scan can hold ([DenseFusion.MAX_POINTS]),
-     * so in practice none is left out. It was 65 535 until #4896, while `SplatNode` lost the back
-     * half of every draw batch to Filament's silent 32 767-instance clamp, which showed as gaps
-     * along the batch seams of any bigger cloud. Fewer splats are each widened to cover the same
-     * surface (`widen` in [of]), so the cap trades detail, not coverage.
+     * The most splats the preview draws. A phone fills every pixel of a splat several times over,
+     * and each splat costs four vertices that read four textures: on the Pixel 4a a whole home at
+     * [DenseFusion.MAX_POINTS] (~300k drawn) orbits at ~16 fps, half the model's rate (#4896).
+     * Fewer splats are each widened to cover the same surface (`widen` in [of]), so the cap trades
+     * detail, not coverage. Two `SplatNode` draw batches, now both drawn whole (#4896).
      */
-    const val MAX_SPLATS = DenseFusion.MAX_POINTS
+    const val MAX_SPLATS = 65_535
 
     /** A level-0 splat's standard deviation on its two tangent axes, in voxels. */
     const val SIGMA_VOXELS = 0.6f

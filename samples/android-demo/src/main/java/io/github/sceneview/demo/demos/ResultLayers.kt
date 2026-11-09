@@ -110,20 +110,21 @@ internal class ResultLayers(val offered: Boolean) {
         if (mask != seen) seen = mask
     }
 
-    /** The last clouds cut out of [faces], by face mask, newest last: an orbit back reuses them. */
-    private val cut = LinkedHashMap<Int, SplatCloud>()
+    /** The last filters read off [faces], by face mask, newest last: an orbit back reuses them. */
+    private val shown = LinkedHashMap<Int, BooleanArray?>()
 
     /**
-     * [faces]' splats in the faces of [mask]: cut once (O(splats)), then kept for the next time
-     * the eye comes back to them. Called off the main thread, one call at a time.
+     * Which of [faces]' splats are in the faces of [mask] ([SplatFaces.shown]): read once
+     * (O(splats)), then kept for the next time the eye comes back to them. Called off the main
+     * thread, one call at a time.
      */
     @Synchronized
-    internal fun cloudOf(faces: SplatFaces, mask: Int): SplatCloud {
-        cut.remove(mask)?.let { cut[mask] = it; return it }
-        val cloud = faces.cloud(mask)
-        cut[mask] = cloud
-        while (cut.size > CUT_CLOUDS) cut.remove(cut.keys.first())
-        return cloud
+    internal fun shownOf(faces: SplatFaces, mask: Int): BooleanArray? {
+        if (shown.containsKey(mask)) return shown.remove(mask).also { shown[mask] = it }
+        val filter = faces.shown(mask)
+        shown[mask] = filter
+        while (shown.size > SHOWN_FILTERS) shown.remove(shown.keys.first())
+        return filter
     }
 
     /** Whether the building found nothing to draw: Photo then stays on the model. */
@@ -325,24 +326,28 @@ internal fun SceneScope.ResultPhotoLayer(layers: ResultLayers, instance: ModelIn
     val faces = layers.faces?.takeIf { layers.photoShown }
     val seen = layers.seen
     // The faces turned away from the eye left out, as the model's single-sided surfaces are; a new
-    // set only when the eye crosses a wall's plane, so the node is rebuilt a few times an orbit.
-    // The set is cut off the main thread (a copy of every splat kept, #4896), and the splats
-    // drawn so far stay until it is ready, so a crossing never stalls the frame it happens in.
-    var splats by remember(faces) { mutableStateOf<SplatCloud?>(null) }
+    // set only when the eye crosses a wall's plane. One node draws the whole cloud and the set is a
+    // filter its next sort applies, off the main thread (#4896): a crossing re-packs no texture and
+    // builds no node, and the splats drawn so far stay until the filter is ready.
+    var shownSplats by remember(faces) { mutableStateOf<BooleanArray?>(null) }
+    var filtered by remember(faces) { mutableStateOf(false) }
     LaunchedEffect(faces, seen) {
         val from = faces ?: return@LaunchedEffect
         val started = System.nanoTime()
-        val next = withContext(Dispatchers.Default) { layers.cloudOf(from, seen) }
-        if (next !== splats) {
-            Log.i(LAYERS_TAG, "photo faces ${seen.toString(2)}: ${next.count} splats cut in ${(System.nanoTime() - started) / NS_PER_MS} ms")
-            splats = next
+        val next = withContext(Dispatchers.Default) { layers.shownOf(from, seen) }
+        if (!filtered || next !== shownSplats) {
+            Log.i(LAYERS_TAG, "photo faces ${seen.toString(2)}: ${next?.count { it } ?: from.all.count} splats shown in ${(System.nanoTime() - started) / NS_PER_MS} ms")
+            shownSplats = next
+            filtered = true
         }
     }
-    splats?.let { cloud ->
+    // Built once the first filter is read, so the faces turned away are never drawn, even under the veil.
+    faces?.takeIf { filtered }?.let { from ->
         val building = System.nanoTime()
         SplatNode(
-            splatCloud = cloud,
-            apply = { Log.i(LAYERS_TAG, "photo node: ${cloud.count} splats built in ${(System.nanoTime() - building) / NS_PER_MS} ms") },
+            splatCloud = from.all,
+            shownSplats = shownSplats,
+            apply = { Log.i(LAYERS_TAG, "photo node: ${from.all.count} splats built in ${(System.nanoTime() - building) / NS_PER_MS} ms") },
         )
     }
     val photo = faces != null
@@ -376,8 +381,8 @@ internal const val RESULT_LAYERS_TAG = "result-layers"
 /** How far the stage colour comes up at the swap: the room stays faintly seen through it. */
 internal const val VEIL_PEAK = 0.9f
 
-/** Face sets [ResultLayers.cloudOf] keeps: the one drawn and the one an orbit back returns to. */
-private const val CUT_CLOUDS = 2
+/** Face filters [ResultLayers.shownOf] keeps: the one drawn and the one an orbit back returns to. */
+private const val SHOWN_FILTERS = 2
 
 /** Frames (~0.1 s) the swap waits under the veil for the splats' first sort. */
 private const val SORT_FRAMES = 6

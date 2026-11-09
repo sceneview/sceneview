@@ -206,12 +206,16 @@ object SplatBuffers {
      *
      * @return a direct, native-ordered buffer of `textureSize²` ints, positioned at 0.
      */
-    fun packOrder(order: IntArray, textureSize: Int): IntBuffer {
-        require(textureSize * textureSize >= order.size) {
-            "textureSize $textureSize (${textureSize * textureSize} texels) < count ${order.size}"
+    fun packOrder(order: IntArray, textureSize: Int): IntBuffer = packOrder(order, order.size, textureSize)
+
+    /** [packOrder] of the first [count] entries of [order]; the texels past them stay 0. */
+    internal fun packOrder(order: IntArray, count: Int, textureSize: Int): IntBuffer {
+        require(count in 0..order.size) { "count $count outside 0..${order.size}" }
+        require(textureSize * textureSize >= count) {
+            "textureSize $textureSize (${textureSize * textureSize} texels) < count $count"
         }
         val buffer = allocateUintTexels(textureSize, 1)
-        buffer.put(order)
+        buffer.put(order, 0, count)
         buffer.rewind()
         return buffer
     }
@@ -296,23 +300,44 @@ object SplatBuffers {
         keys: LongArray,
         order: IntArray,
     ): IntArray {
+        sortBackToFront(positions, count, camX, camY, camZ, keys, order, null)
+        return order
+    }
+
+    /**
+     * [sortBackToFront] of the splats [shown] keeps (`shown[i] == false` leaves splat `i` out;
+     * `null` keeps them all) into [order]'s first entries, whose number it returns.
+     */
+    internal fun sortBackToFront(
+        positions: FloatArray,
+        count: Int,
+        camX: Float,
+        camY: Float,
+        camZ: Float,
+        keys: LongArray,
+        order: IntArray,
+        shown: BooleanArray?,
+    ): Int {
         require(positions.size >= 3 * count) {
             "positions must hold 3 floats per splat: expected >= ${3 * count}, was ${positions.size}"
         }
         require(keys.size >= count && order.size >= count) { "scratch must hold $count splats" }
+        require(shown == null || shown.size >= count) { "shown must hold $count splats, was ${shown?.size}" }
+        var n = 0
         for (i in 0 until count) {
+            if (shown != null && !shown[i]) continue
             val dx = positions[i * 3] - camX
             val dy = positions[i * 3 + 1] - camY
             val dz = positions[i * 3 + 2] - camZ
             val d2 = dx * dx + dy * dy + dz * dz
             // d2 >= 0 ⇒ raw IEEE-754 bits sort in numeric order as a (positive) int.
-            keys[i] = (java.lang.Float.floatToRawIntBits(d2).toLong() shl 32) or i.toLong()
+            keys[n++] = (java.lang.Float.floatToRawIntBits(d2).toLong() shl 32) or i.toLong()
         }
-        keys.sort(0, count) // ascending distance = front-to-back
-        for (i in 0 until count) {
-            order[i] = (keys[count - 1 - i] and 0xFFFFFFFFL).toInt() // reversed = back-to-front
+        keys.sort(0, n) // ascending distance = front-to-back
+        for (i in 0 until n) {
+            order[i] = (keys[n - 1 - i] and 0xFFFFFFFFL).toInt() // reversed = back-to-front
         }
-        return order
+        return n
     }
 
     /**
