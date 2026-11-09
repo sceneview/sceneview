@@ -4,19 +4,20 @@ Browser-based 3D viewer using SceneView.js (Filament.js WASM engine).
 
 ## Features
 
-The demo has eight tabs in the top tab bar:
+The demo opens on a showpiece model in a photo studio and has ten tabs: a
+navigation rail on desktop, a chip row above a bottom sheet on phones.
 
 - **Models** — a source-agnostic catalog picker (#2722, the web leg of the
-  Android #2685 / iOS #2721 `ModelSource` trio): **SceneView** (12 curated,
-  self-hosted models across 5 categories — bundled in the distribution, not a
-  third-party CDN, issue #1573), **Icosa Gallery** and **Poly Haven** (keyless
+  Android #2685 / iOS #2721 `ModelSource` trio): **SceneView** (15 curated,
+  self-hosted models across 4 categories, each with a thumbnail and a
+  credit — served from the demo itself, not a third-party CDN, issue #1573), **Icosa Gallery** and **Poly Haven** (keyless
   CC catalogs — browse, search, and render in-app), plus **Sketchfab** when an
   API key is configured (hidden otherwise). Switching sources resets browse +
   search state; the selection persists in `localStorage`; one degraded source
   never blanks the tab.
 - **Geometry** — create cubes, spheres, cylinders, and planes with color
   pickers, size sliders, and a per-shape `KHR_materials_unlit` toggle.
-- **Lighting** — add and remove directional, point, and spot lights via
+- **Lights** — add and remove directional, point, and spot lights via
   `addLight()` / `removeNode()`, with per-type color and intensity controls.
   Web counterpart of Android's `LightNode` demos.
 - **Animation** — load an animated glTF model and drive its keyframe/skinning
@@ -30,8 +31,11 @@ The demo has eight tabs in the top tab bar:
 - **Physics** — a chaotic **Double Pendulum** simulation whose integrator math
   mirrors the shared `DoublePendulum` in `sceneview-core` (KMP). Sliders tune
   the upper/lower link lengths and gravity; **Reset & drop** re-seeds the run.
-- **Settings** — rendering quality (low/medium/high), bloom toggle, auto-rotate
-  toggle, and background color.
+- **Audio** — spatial audio sources attached to the scene.
+- **Settings** — photo studio (seamless backdrop and contact shadow that follow
+  light and dark mode), rendering quality (low/medium/high), bloom toggle,
+  auto-rotate toggle, and background color (which turns the studio off).
+- **Credits** — the author and licence of every bundled model.
 
 Also:
 
@@ -40,7 +44,11 @@ Also:
 - **Deep linking** — a `#double-pendulum` (or `#physics`) URL fragment opens
   the Physics tab directly, mirroring the `sceneview://demo/double-pendulum`
   deep link the Android and iOS demos honour.
-- **Responsive dark theme** — works on desktop and mobile.
+- **Material 3, light and dark** — system font, M3 colour roles from one
+  source colour, following `prefers-color-scheme`; mobile-first at 412 px.
+- **Analytics** — loads the site's `/assets/analytics.js` and sends
+  `model_select`, `tab_click`, `ar_enter` and `cta_click` ("Use it in your
+  app") events; a no-op where `gtag` is absent (local runs, tests).
 - **Update snackbar** — surfaces a "Reload to update" prompt when
   `sceneview.github.io/version.json` reports a newer build.
 
@@ -50,6 +58,7 @@ This demo is a **plain static site** — no Gradle or compilation. From
 `samples/web-demo`, stage the shared viewer before serving the folder:
 
 ```bash
+bash ../../tools/fetch-assets.sh --scope web-demo   # the curated GLBs
 cp ../../website-static/js/sceneview.js site/js/sceneview.js
 npx http-server site -p 8080
 ```
@@ -81,8 +90,11 @@ source under `/web-demo/js/sceneview.js` when deploying.
   legacy Poly-era `web.archive.org` mirrors are deprioritized — they 404
   without CORS) · Poly Haven `api.polyhaven.com` (keyless, single-flight
   TTL index). All JSON reads are size-capped and streamed.
-- Curated models: self-hosted GLBs under `site/models/`, loaded from the
-  relative `models/` path. The `site/` folder plus the shared viewer are copied to the
+- Curated models: GLBs under `site/models/`, loaded from the relative
+  `models/` path. They are not committed: `assets/manifest.json` lists them
+  under the `web-demo` scope and `tools/fetch-assets.sh` fetches them from the
+  `assets-v1` release (CI and the docs deploy run it). Thumbnails are small
+  WebP renders under `site/thumbs/`, made with the demo's own photo studio. The `site/` folder plus the shared viewer are copied to the
   deployed `/web-demo/` route by `docs.yml` and served by the Playwright dev
   server, so the demo never depends on a third-party CDN for its assets.
   jsDelivr's gh-proxy returns HTTP 403 for large GLB blobs under `assets/`,

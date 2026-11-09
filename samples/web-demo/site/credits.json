@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView web demo",
   "artefact": "the sceneview.github.io/web-demo deploy",
   "source": "assets/catalog.json",
-  "total": 15,
+  "total": 20,
   "sections": [
     {
       "title": "3D models",
@@ -30,63 +30,63 @@
           "note": ""
         },
         {
-          "file": "models/chronograph_watch.glb",
-          "name": "Chronograph Watch (web demo)",
-          "author": "Darmstadt Graphics Group GmbH (Eric Chadwick)",
+          "file": "models/canon_eos_rp_v2.glb",
+          "name": "Canon EOS RP Mirrorless Camera",
+          "author": "fahadratul",
           "license": "CC-BY-4.0",
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
-          "size": 7446368,
+          "sourceUrl": "https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1",
+          "size": 8257272,
           "note": ""
         },
         {
-          "file": "models/cyberpunk_character.glb",
-          "name": "Cyberpunk Character",
-          "author": "Esk",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51",
-          "size": 7685048,
-          "note": ""
-        },
-        {
-          "file": "models/ferrari_f40.glb",
-          "name": "Ferrari F40",
-          "author": "Black Snow",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70",
-          "size": 8058920,
-          "note": ""
-        },
-        {
-          "file": "models/game_boy_classic.glb",
-          "name": "Game Boy Classic",
-          "author": "JonhyOliver",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f",
-          "size": 2866976,
-          "note": ""
-        },
-        {
-          "file": "models/khronos_toy_car.glb",
-          "name": "Toy Car",
-          "author": "Guido Odendahl (model); Eric Chadwick (extensions and scene composition)",
+          "file": "models/chess_set.glb",
+          "name": "Chess set",
+          "author": "Riley Queen",
           "license": "CC0-1.0",
           "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
-          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar",
-          "size": 2152460,
+          "sourceUrl": "https://polyhaven.com/a/chess_set",
+          "size": 6959336,
           "note": ""
         },
         {
-          "file": "models/nintendo_switch_oled.glb",
-          "name": "Nintendo Switch OLED",
-          "author": "rtql8d",
+          "file": "models/dji_mavic_3_v2.glb",
+          "name": "DJI Mavic 3 Cine",
+          "author": "aurumjuda747",
           "license": "CC-BY-4.0",
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-oled-model-9b8721e10a4f4a689fc4f72cdcee4b01",
-          "size": 2634880,
+          "sourceUrl": "https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b",
+          "size": 6422152,
+          "note": ""
+        },
+        {
+          "file": "models/kitchenaid_stand_mixer.glb",
+          "name": "KitchenAid stand mixer",
+          "author": "MelissaVerdonck",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/kitchenaid-stand-mixer-716dfa11eb8f4020833584a3c3d09d5d",
+          "size": 2802612,
+          "note": "Modified derivative (CC-BY-4.0 indicate-changes): the hosted copy removes the power cord trailing on the counter, its plug and the strain relief hanging on it (#4614), so the bounds are the mixer's own (23 x 36 x 39 cm instead of 32 x 36 x 53 cm), and re-centres the footprint on the origin. The cord's entry on the motor head, every other mesh and every material are untouched."
+        },
+        {
+          "file": "models/moto_helmet_v2.glb",
+          "name": "Motorcycle Helmet",
+          "author": "sayedgamal655",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
+          "size": 3134276,
+          "note": ""
+        },
+        {
+          "file": "models/perseverance_rover.glb",
+          "name": "Perseverance Mars rover",
+          "author": "NASA/JPL-Caltech",
+          "license": "NASA Media Usage Guidelines (no endorsement implied; insignia removed)",
+          "licenseUrl": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+          "sourceUrl": "https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Mars%202020%20Perseverance%20Rover",
+          "size": 6961068,
           "note": ""
         },
         {
@@ -100,13 +100,33 @@
           "note": ""
         },
         {
-          "file": "models/sheen_chair.glb",
-          "name": "Sheen Chair (web demo)",
-          "author": "Wayfair, LLC (Eric Chadwick)",
-          "license": "CC0-1.0",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
-          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
-          "size": 4125648,
+          "file": "models/rivet_aiden_armchair.glb",
+          "name": "Rivet Aiden armchair",
+          "author": "Amazon.com",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X2WN27.glb",
+          "size": 2621284,
+          "note": ""
+        },
+        {
+          "file": "models/smeg_toaster.glb",
+          "name": "SMEG toaster",
+          "author": "The Fresh Lab",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1",
+          "size": 3032820,
+          "note": ""
+        },
+        {
+          "file": "models/sony_mdr_7506.glb",
+          "name": "Sony MDR-7506 headphones",
+          "author": "AndreiVNK",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/sony-mdr-7506-headphones-05735b74d3524f00b648231138122a28",
+          "size": 1153892,
           "note": ""
         },
         {
@@ -118,6 +138,36 @@
           "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
           "size": 448451,
           "note": "Generated procedurally by `tools/generate-splat-sphere.py`"
+        },
+        {
+          "file": "models/triceratops_skeleton.glb",
+          "name": "Triceratops skeleton",
+          "author": "Smithsonian National Museum of Natural History",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "http://n2t.net/ark:/65665/305d36697-5158-4947-8d0b-521db04bae9b",
+          "size": 7750584,
+          "note": ""
+        },
+        {
+          "file": "models/vespa_et3.glb",
+          "name": "Vespa Primavera ET3",
+          "author": "Nadia Ribitis",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/old-scooter-5e9b5072b2224ba982366490ad5f31d9",
+          "size": 2611440,
+          "note": ""
+        },
+        {
+          "file": "models/vintage_camera.glb",
+          "name": "Vintage camera",
+          "author": "Rajil Jose Macatangay",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/Camera_01",
+          "size": 6184160,
+          "note": ""
         }
       ]
     },

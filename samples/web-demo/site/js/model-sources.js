@@ -358,7 +358,7 @@
    * divergence is deliberate and documented (#2722).
    */
   function createCuratedSource(curatedModels, modelBase) {
-    var CATEGORY_ORDER = ['Showcase', 'Vehicles', 'Animated', 'Characters', 'Objects'];
+    var CATEGORY_ORDER = ['Products', 'Design', 'Vehicles & science', 'Animated'];
     return {
       id: SourceId.SCENEVIEW,
       displayName: SOURCE_DISPLAY_NAMES[SourceId.SCENEVIEW],
@@ -380,6 +380,8 @@
             name: m.name,
             tags: [m.category],
             localUrl: modelBase + m.file,
+            // An optional square preview rendered from the demo itself (`thumb`).
+            thumbnails: m.thumb ? [{ url: m.thumb, width: 320, height: 320 }] : [],
             attribution: { license: null, authorName: null }
           }));
         });
