@@ -591,7 +591,7 @@ public class io/github/sceneview/SceneScope {
 	public final fun SecondaryCamera (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun ShapeNode (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;Lcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun SphereNode (FLdev/romainguy/kotlin/math/Float3;IILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
-	public final fun SplatNode (Lio/github/sceneview/core/splat/SplatCloud;Lkotlin/jvm/functions/Function0;ILdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun SplatNode (Lio/github/sceneview/core/splat/SplatCloud;Lkotlin/jvm/functions/Function0;I[ZLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun TextNode (Ljava/lang/String;FIILandroid/graphics/Typeface;FFLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun TorusNode (FFLdev/romainguy/kotlin/math/Float3;IILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun TubeNode (Ljava/util/List;FIZZLcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
@@ -3971,11 +3971,13 @@ public class io/github/sceneview/node/SplatNode : io/github/sceneview/node/Node 
 	public final fun getOrderTexture ()Lcom/google/android/filament/Texture;
 	public final fun getPositionScaleTexture ()Lcom/google/android/filament/Texture;
 	public final fun getRotationScaleTexture ()Lcom/google/android/filament/Texture;
+	public final fun getShownSplats ()[Z
 	public final fun getSplatCloud ()Lio/github/sceneview/core/splat/SplatCloud;
 	public final fun getSplatCount ()I
 	public final fun getTextureSize ()I
 	public fun onFrame (J)V
 	public final fun setCameraPositionProvider (Lkotlin/jvm/functions/Function0;)V
+	public final fun setShownSplats ([Z)V
 	public final fun setSplatCount (I)V
 }
 

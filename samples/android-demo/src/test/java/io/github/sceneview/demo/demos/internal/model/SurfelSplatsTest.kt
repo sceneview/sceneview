@@ -184,7 +184,8 @@ class SurfelSplatsTest {
         println("synthetic room: ${cloud.count} surfels -> ${splats.count} splats in $ms ms")
 
         assertTrue("a room's worth of splats: ${splats.count}", splats.count > 1_000)
-        assertTrue(splats.count <= SurfelSplats.MAX_SPLATS)
+        // Every coloured surfel, up to the cap (#4896).
+        assertEquals(minOf((0 until cloud.count).count { cloud.colors[it] != 0 }, SurfelSplats.MAX_SPLATS), splats.count)
         for (i in 0 until splats.count) {
             val q = splats.rotations.copyOfRange(i * 4, i * 4 + 4)
             assertEquals(1f, sqrt(q.sumOf { (it * it).toDouble() }).toFloat(), 1e-4f)

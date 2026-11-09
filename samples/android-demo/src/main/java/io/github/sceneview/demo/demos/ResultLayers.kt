@@ -99,11 +99,32 @@ internal class ResultLayers(val offered: Boolean) {
     var seen by mutableIntStateOf(SplatFaces.ALL)
         private set
 
-    /** Reads the faces seen from the eye at [eye], each frame; the scene redraws only when they change. */
+    /**
+     * Reads the faces seen from the eye at [eye], each frame; the scene redraws only when they
+     * change, and they change only once the eye is clearly past a wall's plane
+     * ([SplatFaces.HYSTERESIS_M]).
+     */
     fun look(eye: Position) {
         val faces = faces ?: return
-        val mask = faces.visible(eye.x, eye.y, eye.z)
+        val mask = faces.visible(eye.x, eye.y, eye.z, seen)
         if (mask != seen) seen = mask
+    }
+
+    /** The last filters read off [faces], by face mask, newest last: an orbit back reuses them. */
+    private val shown = LinkedHashMap<Int, BooleanArray?>()
+
+    /**
+     * Which of [faces]' splats are in the faces of [mask] ([SplatFaces.shown]): read once
+     * (O(splats)), then kept for the next time the eye comes back to them. Called off the main
+     * thread, one call at a time.
+     */
+    @Synchronized
+    internal fun shownOf(faces: SplatFaces, mask: Int): BooleanArray? {
+        if (shown.containsKey(mask)) return shown.remove(mask).also { shown[mask] = it }
+        val filter = faces.shown(mask)
+        shown[mask] = filter
+        while (shown.size > SHOWN_FILTERS) shown.remove(shown.keys.first())
+        return filter
     }
 
     /** Whether the building found nothing to draw: Photo then stays on the model. */
@@ -128,17 +149,26 @@ internal class ResultLayers(val offered: Boolean) {
 /**
  * The layers of the result of [source], kept while [key] (the model it is framed by) stays. The
  * splats are built off the main thread once the model is [settled], never beside its build.
+ *
+ * [surfels] are the scan's own, read with its recording: the splats come from them when there is
+ * no [source], as when the model is read back from the scan's cache rather than built again
+ * (#4896). The splats need the surfels only, never the reconstruction.
  */
 @Composable
-internal fun rememberResultLayers(source: RerunModelSource?, key: Any?, settled: Boolean): ResultLayers {
+internal fun rememberResultLayers(
+    source: RerunModelSource?,
+    surfels: DenseCloud?,
+    key: Any?,
+    settled: Boolean,
+): ResultLayers {
     // Debug builds only until it is measured on a device: QA mode can be switched on in the store app.
-    val offered = BuildConfig.DEBUG && DemoSettings.qaMode && source != null
-    val layers = remember(source, key, offered) { ResultLayers(offered) }
+    val offered = BuildConfig.DEBUG && DemoSettings.qaMode && photoOffered(source, surfels)
+    val layers = remember(source, surfels, key, offered) { ResultLayers(offered) }
     LaunchedEffect(layers, settled) {
         if (!layers.offered || !settled || layers.splats != null || layers.unavailable) return@LaunchedEffect
         val started = System.nanoTime()
         val built = withContext(Dispatchers.Default) {
-            runCatching { photoCloudOf(source)?.let { SplatFaces.of(SurfelSplats.of(it)) } }
+            runCatching { photoCloudOf(source, surfels)?.let { SplatFaces.of(SurfelSplats.of(it)) } }
                 .onFailure { if (it is CancellationException) throw it }
                 .onFailure { Log.w(LAYERS_TAG, "photo layer not built", it) }
                 .getOrNull()
@@ -176,14 +206,21 @@ internal suspend fun ResultLayers.swapUnderVeil() {
     }
 }
 
-/** The surfels the Photo layer is drawn from: the scan's, or the QA room's, textured as its model is. */
-private fun photoCloudOf(source: RerunModelSource?): DenseCloud? = when (source) {
-    is RerunModelSource.Live -> source.cloud
+/** Whether there is anything to draw the Photo layer from: a model's [source] or the scan's [surfels]. */
+internal fun photoOffered(source: RerunModelSource?, surfels: DenseCloud?): Boolean =
+    source != null || (surfels?.count ?: 0) > 0
+
+/**
+ * The surfels the Photo layer is drawn from: the scan's, or the QA room's, textured as its model
+ * is; the scan's own [surfels] when its model was read back with no [source] to build it from.
+ */
+internal fun photoCloudOf(source: RerunModelSource?, surfels: DenseCloud?): DenseCloud? = when (source) {
+    is RerunModelSource.Live -> source.cloud ?: surfels
     is RerunModelSource.Surfels -> source.cloud
     is RerunModelSource.Synthetic -> DenseFusion().apply {
         TexturedSyntheticRoom.frames().forEach { add(DepthBackProjection.project(it)) }
     }.cloud(minViews = DenseFusion.MIN_VIEWS)
-    null -> null
+    null -> surfels
 }?.takeIf { it.count > 0 }
 
 /**
@@ -289,9 +326,30 @@ internal fun SceneScope.ResultPhotoLayer(layers: ResultLayers, instance: ModelIn
     val faces = layers.faces?.takeIf { layers.photoShown }
     val seen = layers.seen
     // The faces turned away from the eye left out, as the model's single-sided surfaces are; a new
-    // set only when the eye crosses a wall's plane, so the node is rebuilt a few times an orbit.
-    val splats = remember(faces, seen) { faces?.cloud(seen) }
-    splats?.let { SplatNode(splatCloud = it) }
+    // set only when the eye crosses a wall's plane. One node draws the whole cloud and the set is a
+    // filter its next sort applies, off the main thread (#4896): a crossing re-packs no texture and
+    // builds no node, and the splats drawn so far stay until the filter is ready.
+    var shownSplats by remember(faces) { mutableStateOf<BooleanArray?>(null) }
+    var filtered by remember(faces) { mutableStateOf(false) }
+    LaunchedEffect(faces, seen) {
+        val from = faces ?: return@LaunchedEffect
+        val started = System.nanoTime()
+        val next = withContext(Dispatchers.Default) { layers.shownOf(from, seen) }
+        if (!filtered || next !== shownSplats) {
+            Log.i(LAYERS_TAG, "photo faces ${seen.toString(2)}: ${next?.count { it } ?: from.all.count} splats shown in ${(System.nanoTime() - started) / NS_PER_MS} ms")
+            shownSplats = next
+            filtered = true
+        }
+    }
+    // Built once the first filter is read, so the faces turned away are never drawn, even under the veil.
+    faces?.takeIf { filtered }?.let { from ->
+        val building = System.nanoTime()
+        SplatNode(
+            splatCloud = from.all,
+            shownSplats = shownSplats,
+            apply = { Log.i(LAYERS_TAG, "photo node: ${from.all.count} splats built in ${(System.nanoTime() - building) / NS_PER_MS} ms") },
+        )
+    }
     val photo = faces != null
     // Keyed on the instance too: a finished model that takes a raw surface's place is hidden as well.
     DisposableEffect(instance, photo) {
@@ -322,6 +380,9 @@ internal const val RESULT_LAYERS_TAG = "result-layers"
 
 /** How far the stage colour comes up at the swap: the room stays faintly seen through it. */
 internal const val VEIL_PEAK = 0.9f
+
+/** Face filters [ResultLayers.shownOf] keeps: the one drawn and the one an orbit back returns to. */
+private const val SHOWN_FILTERS = 2
 
 /** Frames (~0.1 s) the swap waits under the veil for the splats' first sort. */
 private const val SORT_FRAMES = 6

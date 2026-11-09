@@ -4,6 +4,7 @@ import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
+import io.github.sceneview.splat.SplatBuffers
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -36,13 +37,14 @@ import kotlin.math.sqrt
  */
 internal object SurfelSplats {
     /**
-     * The most splats the preview draws. A phone fills every pixel of a splat several times over;
-     * a whole home at [DenseFusion.MAX_POINTS] would draw several times this for little more detail.
-     * It is also one `SplatNode` draw batch ([io.github.sceneview.splat.SplatBuffers.MAX_INSTANCES_PER_BATCH]):
-     * past it the node splits the cloud into batches, and on emulator-5554 a 250k cloud drawn in four
-     * batches showed straight-edged gaps along view-depth slices that a single batch does not.
+     * The most splats the preview draws: one `SplatNode` draw batch
+     * ([SplatBuffers.MAX_INSTANCES_PER_BATCH]). Each splat costs four vertices that read four
+     * textures, and the Pixel 4a is GPU-bound on them: a whole home (~300k) orbits at ~16 fps, and
+     * 65 535 still drops it below the model's rate (#4896). Main drew as many until #4896, the back
+     * half of its 65 535 lost to Filament's instance clamp. Fewer splats are each widened to cover
+     * the same surface (`widen` in [of]), so the cap trades detail, not coverage.
      */
-    const val MAX_SPLATS = 65_535
+    const val MAX_SPLATS = SplatBuffers.MAX_INSTANCES_PER_BATCH
 
     /** A level-0 splat's standard deviation on its two tangent axes, in voxels. */
     const val SIGMA_VOXELS = 0.6f
