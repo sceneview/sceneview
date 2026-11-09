@@ -361,6 +361,10 @@ When the user asks for a SceneView feature:
    An AR Required app overrides the `<meta-data>` with
    `tools:replace="android:value"` (see `llms.txt` § *Setup*); without it the
    manifest merger fails.
-7. **If the user pastes 2.x / 3.x code**, point them at
+7. **Never write the SceneView 2.x API from memory** — it does not compile on
+   4.x: `Scene(childNodes = …)` is `SceneView { … }`, `ARScene(childNodes = …)`
+   is `ARSceneView { … }`, and `rememberNodes` / `childNodes = listOf(…)` become
+   `ModelNode(…)` declared inside the block. **If the user pastes 2.x / 3.x code**,
+   point them at
    [`docs/docs/migration.md`](https://github.com/sceneview/sceneview/blob/main/docs/docs/migration.md)
    and the local [`references/migration.md`](./references/migration.md).

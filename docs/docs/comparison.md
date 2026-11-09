@@ -13,7 +13,7 @@ An honest comparison for developers evaluating 3D and AR options.
 
 | Library | Approach | Status |
 |---|---|---|
-| **SceneView** | Jetpack Compose composables, Filament + ARCore | Active, v4.0.0 |
+| **SceneView** | Jetpack Compose composables, Filament + ARCore | Active, monthly releases |
 | **Google Sceneform** | View-based, custom renderer, ARCore | Abandoned (archived 2021) |
 | **Raw ARCore SDK** | Low-level session/frame API, bring your own renderer | Active but no UI layer |
 | **Unity** | Full game engine embedded via `UnityPlayerActivity` | Active, heavy |
@@ -168,12 +168,12 @@ An honest comparison for developers evaluating 3D and AR options.
 
 | Sceneform | SceneView |
 |---|---|
-| `ArFragment` | `ARScene { }` composable |
+| `ArFragment` | `ARSceneView { }` composable, or `PlacementScene` for tap-to-place |
 | `ModelRenderable.builder()` | `rememberModelInstance(modelLoader, path)` |
 | `AnchorNode(anchor).setParent(scene)` | `AnchorNode(anchor = a) { ... }` |
-| `TransformableNode` | `ModelNode` with gesture parameters |
+| `TransformableNode` | `ModelNode(…, isEditable = true)` |
 | `.sfb` model format | `.glb` / `.gltf` (standard glTF) |
 | `onResume` / `onPause` / `onDestroy` | Automatic (Compose lifecycle) |
 | `node.setParent(null); node.destroy()` | Remove from composition |
 
-[:octicons-arrow-right-24: Full migration guide](migration.md)
+[:octicons-arrow-right-24: Sceneform replacement guide](sceneform-replacement.md) · [Full migration guide](migration.md)

@@ -1,8 +1,8 @@
 # SceneView — Compact API Reference for AI Systems
 
-> Open-source 3D & AR SDK for Android and iOS. Compose-native on Android (Filament + ARCore), SwiftUI-native on iOS (RealityKit + ARKit), shared core via Kotlin Multiplatform.
+> Open-source 3D & AR SDK for Android, Apple platforms and the web. Compose-native on Android (Filament + ARCore), SwiftUI-native on iOS, macOS and visionOS (RealityKit + ARKit), a `commonMain` viewer for Kotlin / Compose Multiplatform (`sceneview-compose`), and Filament.js + WebXR in the browser (`sceneview-web`).
 
-This file is the short one: about 13 kB, sized to fit a small context window.
+This file is the short one: about 15 kB, sized to fit a small context window.
 The complete reference — every composable, every node type, every recipe — is
 `https://sceneview.github.io/llms.txt`, and it also carries an index of the
 documentation. The two file names are the reverse of the llmstxt.org
@@ -30,6 +30,10 @@ When generating code for Android 3D or AR:
 - Declare nodes as composables inside the content block, not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — it returns `null` while loading
 - All Filament JNI calls must run on the main thread
+- From Android Views / XML / Fragments: host `SceneView { }` in a `ComposeView` — there is no separate View API
+- Kotlin / Compose Multiplatform: `io.github.sceneview:sceneview-compose:4.67.0`, `SceneViewer(model = ModelSource.Asset("models/file.glb"))` in `commonMain` (viewer only, `.usdz` on iOS)
+- SwiftUI: Swift Package `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`, `SceneView { root in … }` / `ARSceneView(…)`
+- Never emit the SceneView 2.x API — it does not compile on 4.x: `Scene(childNodes = …)` → `SceneView { … }`, `ARScene(childNodes = …)` → `ARSceneView { … }`, `rememberNodes` / `childNodes = listOf(…)` → declare `ModelNode(…)` inside the block
 
 ---
 

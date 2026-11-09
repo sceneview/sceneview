@@ -1,0 +1,35 @@
+{#-
+  Structured data for every docs page: the SDK as a SoftwareSourceCode, and the page itself as
+  a TechArticle about it. Search engines and AI retrieval read JSON-LD to tell a library's
+  documentation from a page that merely mentions it. No version number here on purpose: it
+  would drift from the release; the version lives in llms.txt and the quickstarts.
+-#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {%- set sv_code = {
+    "@type": "SoftwareSourceCode",
+    "@id": "https://github.com/sceneview/sceneview#code",
+    "name": "SceneView",
+    "description": config.site_description,
+    "url": "https://sceneview.github.io/",
+    "codeRepository": "https://github.com/sceneview/sceneview",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "programmingLanguage": ["Kotlin", "Swift", "JavaScript"],
+    "runtimePlatform": ["Android", "Jetpack Compose", "Kotlin Multiplatform", "Compose Multiplatform", "iOS", "macOS", "visionOS", "SwiftUI", "Web"],
+    "keywords": "3D, AR, augmented reality, Jetpack Compose, Compose Multiplatform, SwiftUI, ARCore, ARKit, Filament, RealityKit, glTF, GLB, USDZ, Sceneform replacement"
+  } -%}
+  {%- set sv_graph = [sv_code] -%}
+  {%- if page and page.title -%}
+    {%- set _ = sv_graph.append({
+      "@type": "TechArticle",
+      "headline": (page.meta.title if page.meta and page.meta.title else page.title),
+      "description": (page.meta.description if page.meta and page.meta.description else config.site_description),
+      "url": page.canonical_url,
+      "inLanguage": "en",
+      "about": {"@id": "https://github.com/sceneview/sceneview#code"}
+    }) -%}
+  {%- endif %}
+  <script type="application/ld+json">{{ {"@context": "https://schema.org", "@graph": sv_graph} | tojson }}</script>
+{% endblock %}

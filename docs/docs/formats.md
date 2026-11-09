@@ -1,3 +1,8 @@
+---
+title: 3D model formats in SceneView — glTF, GLB, USDZ, OBJ, STL, PLY, 3MF
+description: "Which 3D model formats SceneView opens on each platform: glTF / GLB, USDZ on Apple, and OBJ, STL, PLY and 3MF on Android and Apple, with how the format is detected."
+---
+
 # Model Formats
 
 SceneView loads a model from a path, a URI or a byte buffer. **The format is detected from

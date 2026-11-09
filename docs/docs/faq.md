@@ -33,7 +33,27 @@ No. SceneView bundles pre-compiled native libraries. No NDK or CMake setup requi
 
 ### Can I use it without Compose?
 
-SceneView 3.x is Compose-only. If you need a View-based API, use SceneView 2.x (legacy, no longer actively developed).
+Yes, from any View-based screen. The API is composables, and a composable runs inside a Fragment or an XML layout through a `ComposeView`; the app module needs the Compose build feature, not a Compose rewrite:
+
+```kotlin
+container.addView(
+    ComposeView(context).apply {
+        setContent {
+            SceneView(modifier = Modifier.fillMaxSize()) {
+                rememberModelInstance(modelLoader, "models/helmet.glb")?.let {
+                    ModelNode(modelInstance = it, scaleToUnits = 1.0f)
+                }
+            }
+        }
+    }
+)
+```
+
+Do not use SceneView 2.x for this: it is no longer maintained, and code written for its API (`Scene(childNodes = …)`, `ARScene`, `rememberNodes`) does not compile on 4.x. See [Code written for SceneView 2.x](sceneform-replacement.md#code-written-for-sceneview-2x).
+
+### Does it work with Kotlin Multiplatform / Compose Multiplatform?
+
+Yes. `io.github.sceneview:sceneview-compose` gives `commonMain` code a `SceneViewer(model = ModelSource.Asset("models/helmet.glb"))` composable that renders with Filament on Android and desktop (glTF / GLB) and RealityKit on iOS (`.usdz`). It is a viewer (load, orbit, light, tap), not AR. See [Compose Multiplatform](compose-multiplatform.md).
 
 ### What model formats are supported?
 

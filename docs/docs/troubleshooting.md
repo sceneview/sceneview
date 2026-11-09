@@ -1,3 +1,8 @@
+---
+title: Troubleshooting SceneView — build errors, models not loading, AR and performance
+description: "Fixes for common SceneView problems: build errors, a model that does not load or a null ModelInstance, runtime errors, performance, and the usual mistakes."
+---
+
 # Troubleshooting
 
 Common issues and fixes when working with SceneView.
