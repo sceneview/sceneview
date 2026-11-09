@@ -133,6 +133,7 @@ import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugLogPlayer
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
@@ -2029,6 +2030,9 @@ private fun RerunLiveScreen(
                     ScanRoomMiniature(
                         state = scanCoverage,
                         walls = scanWalls,
+                        weakCells = {
+                            scanMedia.liveDense?.invoke()?.weakCells?.takeIf { LiveCoverageGround.SHOW_WEAK_CELLS }
+                        },
                         modifier = Modifier
                             .align(Alignment.Start)
                             .padding(horizontal = Space.md),

@@ -40,18 +40,25 @@ import kotlin.math.roundToInt
 /**
  * The Live Room's small model of the room: the floor seen from above, north up — it never turns —
  * the walls recognised so far, the gaps still open dashed, the floor covered filled over the floor
- * still to scan, and the phone where it really stands, its arrow the way it faces. Not a control:
+ * still to scan, the floor to scan again in red ([weakCells], as the live map paints it), and the
+ * phone where it really stands, its arrow the way it faces. Not a control:
  * nothing to tap, nothing to drag; the room is scanned on the camera, this only says where in it
  * the phone is.
  */
 @Composable
-internal fun ScanRoomMiniature(state: ScanCoverageState, walls: ScanWallsState?, modifier: Modifier = Modifier) {
+internal fun ScanRoomMiniature(
+    state: ScanCoverageState,
+    walls: ScanWallsState?,
+    modifier: Modifier = Modifier,
+    weakCells: () -> LongArray? = { null },
+) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < LUMINANCE_MID
     val scrim = if (dark) ArOverlay.scrimDark else ArOverlay.scrimLight
     val shape = RoundedCornerShape(SceneViewTokens.Radius.md)
     val area by remember(state) { derivedStateOf { ScanAreaCopy.area(state.coveredSquareMetres) } }
     val label = stringResource(R.string.scan_coverage_label, area)
     val ease = remember(state) { MiniatureEase() }
+    val weak = remember(state) { WeakCellsPath() }
     Canvas(
         modifier
             .size(MiniatureSize)
@@ -61,7 +68,7 @@ internal fun ScanRoomMiniature(state: ScanCoverageState, walls: ScanWallsState?,
             .semantics { contentDescription = label }
             .testTag(SCAN_ROOM_MINIATURE_TAG),
     ) {
-        drawMiniature(state, walls, ease, MiniatureMargin.toPx(), MiniatureEdge.toPx())
+        drawMiniature(state, walls, ease, weak.of(weakCells(), state.grid.cellMetres), MiniatureMargin.toPx(), MiniatureEdge.toPx())
     }
 }
 
@@ -90,11 +97,33 @@ private class MiniatureEase {
     }
 }
 
-@Suppress("LongMethod") // one plan, drawn in its layers
+/** The floor cells to scan again as one path, in world metres: rebuilt only for a new set. */
+private class WeakCellsPath {
+    private var from: LongArray? = null
+    private var path: Path? = null
+
+    fun of(cells: LongArray?, cellMetres: Float): Path? {
+        if (cells == null || cells.isEmpty()) return null
+        if (cells !== from) {
+            from = cells
+            path = Path().apply {
+                cells.forEach { key ->
+                    val x = CoverageGrid.cxOf(key) * cellMetres
+                    val z = CoverageGrid.czOf(key) * cellMetres
+                    addRect(androidx.compose.ui.geometry.Rect(x, z, x + cellMetres, z + cellMetres))
+                }
+            }
+        }
+        return path
+    }
+}
+
+@Suppress("LongMethod", "LongParameterList") // one plan, drawn in its layers
 private fun DrawScope.drawMiniature(
     state: ScanCoverageState,
     walls: ScanWallsState?,
     ease: MiniatureEase,
+    weak: Path?,
     margin: Float,
     edge: Float,
 ) {
@@ -128,6 +157,8 @@ private fun DrawScope.drawMiniature(
                 }
                 val (cells, _) = state.paths()
                 drawPath(cells, ArOverlay.accentProgress.copy(alpha = COVERED_ALPHA))
+                // Covered, but the floor did not stick: walk it again, slower.
+                weak?.let { drawPath(it, ArOverlay.accentBlocked.copy(alpha = WEAK_ALPHA)) }
                 walls?.openEdges?.forEach { open ->
                     drawLine(
                         ArOverlay.accentGuidance,
@@ -189,6 +220,9 @@ private const val MARKER_RADIUS = 6f
 private const val HATCH_ALPHA = 0.3f
 private const val MAJOR_ALPHA = 0.6f
 private const val COVERED_ALPHA = 0.6f
+
+/** The floor to scan again, over the covered floor: as plain as the live map's soft red. */
+private const val WEAK_ALPHA = 0.85f
 private const val LUMINANCE_MID = 0.5f
 private const val ARROW_TIP = 0.62f
 private const val ARROW_BASE = 0.5f
