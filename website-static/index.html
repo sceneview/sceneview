@@ -539,10 +539,18 @@
            the nav (its data-metric anchor) is the one value rewritten weekly by
            .claude/scripts/update-site-metrics.sh. "Used in" names only apps whose Google Play binary
            was checked to contain SceneView classes, open-source apps whose public build files declare it,
-           and SDKs whose Maven Central POM depends on it (all checked November 9, 2026), as plain text:
-           no logo until a company agrees. Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
+           and SDKs whose Maven Central POM depends on it (all checked November 9, 2026). Play apps show
+           each company's official logo (medal.tv/brand kit, ikea.com header SVG), unmodified, in
+           assets/brand/used-in/. Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
       <p class="numbers reveal">SceneView has <a href="https://github.com/sceneview/sceneview">more than 1,300 stars on GitHub</a>, and <a href="/companies.html">over 500 public repositories</a> declare it as a dependency.</p>
-      <p class="numbers reveal">Used in <a href="https://play.google.com/store/apps/details?id=tv.medal.recorder">Medal</a> and <a href="https://play.google.com/store/apps/details?id=com.ingka.ikea.app">IKEA (Kreativ)</a> on Google Play, and in the open-source apps <a href="https://github.com/proto-at-block/bitkey">Bitkey</a> by Block and <a href="https://github.com/willowtreeapps/vocable-android">Vocable</a> by WillowTree.</p>
+      <div class="used-in reveal">
+        <p class="numbers">Used in these apps on Google Play:</p>
+        <ul class="used-in__logos">
+          <li><a href="https://play.google.com/store/apps/details?id=tv.medal.recorder" aria-label="Medal on Google Play"><img class="used-in__logo used-in__logo--on-light" src="assets/brand/used-in/medal-logo-black.svg" alt="Medal" width="134" height="32"><img class="used-in__logo used-in__logo--on-dark" src="assets/brand/used-in/medal-logo-white.svg" alt="Medal" width="134" height="32"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.ingka.ikea.app" aria-label="IKEA (Kreativ) on Google Play"><img class="used-in__logo" src="assets/brand/used-in/ikea-logo.svg" alt="IKEA" width="79" height="32"><span>Kreativ</span></a></li>
+        </ul>
+      </div>
+      <p class="numbers reveal">Also in the open-source apps <a href="https://github.com/proto-at-block/bitkey">Bitkey</a> by Block and <a href="https://github.com/willowtreeapps/vocable-android">Vocable</a> by WillowTree.</p>
       <p class="numbers reveal">Shipped inside the <a href="https://central.sonatype.com/artifact/com.genexus.android/AugmentedReality">GeneXus Augmented Reality module</a> and the <a href="https://central.sonatype.com/artifact/com.truvideo.com/sdk-camera">TruVideo camera SDK</a> on Maven Central.</p>
       <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Star count from the GitHub repository page. Apps checked in their Google Play builds, open-source apps in their public build files and SDKs in their Maven Central POMs, on November 9, 2026.</p>
       </div>
