@@ -1,48 +1,5014 @@
-<!DOCTYPE html>
-<!--
-  Redirect stub for the stale `/migration/` URL, which README.md and
-  MIGRATION.md published for a long time and which returned HTTP 404. The guide
-  is served by MkDocs at `/docs/migration/`.
 
-  NOT the #925 failure mode. That was `website-static/docs/index.html`, which
-  pre-seeded `site/docs/` and shadowed the real MkDocs output — docs.yml still
-  carries an `rm -rf site/docs` guard against its return. This file is at
-  `/migration/`, a route MkDocs does not own and does not emit: its nav maps
-  `migration.md` to `/docs/migration/`. So there is nothing here to shadow, and
-  the guard is untouched.
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 3.5.x to 3.6.0 API simplification, and 2.x to 3.x full rewrite.">
+      
+      
+      
+        <link rel="canonical" href="https://sceneview.github.io/docs/migration/">
+      
+      
+        <link rel="prev" href="../changelog/">
+      
+      
+        <link rel="next" href="../upgrading-from-2-3/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Migration Guide - SceneView</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
 
-  `noindex, follow` + a canonical link so search engines consolidate on the real
-  page rather than indexing this one.
--->
-<html lang="en">
-<head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Migration Guide — SceneView</title>
-  <meta name="description" content="The SceneView migration guide has moved to /docs/migration/.">
-  <meta name="robots" content="noindex, follow">
-  <link rel="canonical" href="https://sceneview.github.io/docs/migration/">
-  <meta http-equiv="refresh" content="0; url=/docs/migration/">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <style>
-    :root { color-scheme: dark light; }
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: #0D2137; color: #f0f4f8;
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      padding: 16px; text-align: center; line-height: 1.6;
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-HX1JWGSMTH"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-HX1JWGSMTH",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-HX1JWGSMTH",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@id": "https://github.com/sceneview/sceneview#code", "@type": "SoftwareSourceCode", "codeRepository": "https://github.com/sceneview/sceneview", "description": "SceneView: open-source 3D and AR SDK for Jetpack Compose and Android (Filament, ARCore), Kotlin and Compose Multiplatform, SwiftUI on iOS, macOS and visionOS (RealityKit, ARKit), and the web (Filament.js, WebXR). The maintained successor to Google Sceneform.", "keywords": "3D, AR, augmented reality, Jetpack Compose, Compose Multiplatform, SwiftUI, ARCore, ARKit, Filament, RealityKit, glTF, GLB, USDZ, Sceneform replacement", "license": "https://www.apache.org/licenses/LICENSE-2.0", "name": "SceneView", "programmingLanguage": ["Kotlin", "Swift", "JavaScript"], "runtimePlatform": ["Android", "Jetpack Compose", "Kotlin Multiplatform", "Compose Multiplatform", "iOS", "macOS", "visionOS", "SwiftUI", "Web"], "url": "https://sceneview.github.io/"}, {"@type": "TechArticle", "about": {"@id": "https://github.com/sceneview/sceneview#code"}, "description": "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 3.5.x to 3.6.0 API simplification, and 2.x to 3.x full rewrite.", "headline": "Migration Guide", "inLanguage": "en", "url": "https://sceneview.github.io/docs/migration/"}]}</script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migration-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="https://sceneview.github.io/" title="SceneView" class="md-header__button md-logo" aria-label="SceneView" data-md-component="logo">
+      
+  <img src="../assets/images/logo-sceneview.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SceneView
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migration Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/sceneview/sceneview" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    sceneview/sceneview
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../3d-ar-library/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Get Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../showcase/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Features
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../codelabs/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Codelabs
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="https://github.com/sceneview/sceneview/tree/main/sceneview" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../samples/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Samples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="https://sceneview.github.io/" title="SceneView" class="md-nav__button md-logo" aria-label="SceneView" data-md-component="logo">
+      
+  <img src="../assets/images/logo-sceneview.svg" alt="logo">
+
+    </a>
+    SceneView
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/sceneview/sceneview" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    sceneview/sceneview
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../3d-ar-library/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which 3D & AR library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart-ios/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (Apple)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (Web)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart-tv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (TV)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart-flutter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (Flutter)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart-react-native/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart (React Native)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sceneform-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sceneform replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheatsheet-ios/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Cheatsheet (Apple)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nodes Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_14" id="__nav_2_14_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/blender-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blender asset pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/ios-visual-polish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    iOS visual polish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/sketchfab-streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sketchfab streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/demo-settings-sheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Demo settings sheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/measure-ar-funnel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measure your AR funnel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compose-multiplatform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compose Multiplatform
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../android-xr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android XR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visionos-spatial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    visionOS Spatial Computing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ar-recording/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AR Recording & Playback
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../showcase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why SceneView
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../use-cases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI-Assisted Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use SceneView with AI Assistants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    vs. Alternatives
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../codelabs/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Codelabs
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Codelabs
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/codelab-3d-compose/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3D with Compose
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/codelab-ar-compose/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AR with Compose
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/codelab-3d-swiftui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3D with SwiftUI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/codelab-ar-swiftui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AR with SwiftUI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/guide-dynamic-sky/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic Sky
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/guide-lines-text/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lines & Text
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/guide-physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Physics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codelabs/guide-reflection-probes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection Probes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/sceneview/sceneview/tree/main/sceneview" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API (3D — sceneview)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/sceneview/sceneview/tree/main/arsceneview" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API (AR — arsceneview)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://sceneview.github.io/llms.txt" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    llms.txt (AI-first reference)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Samples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Samples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../samples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Samples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../samples-ios/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Samples (Apple)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../try/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try the Demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contribute
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-453x-to-4540-android-remembermediaplayer-returns-a-mediaplayerstate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.53.x to 4.54.0 (Android) — rememberMediaPlayer returns a MediaPlayerState
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.53.x to 4.54.0 (Android) — rememberMediaPlayer returns a MediaPlayerState">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-video-player-is-prepared-off-the-main-thread-and-says-when-it-fails-4388" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The video player is prepared off the main thread, and says when it fails (#4388)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodeworldrotation-reads-the-same-euler-angles-as-noderotation-3745" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node.worldRotation reads the same Euler angles as Node.rotation (#3745)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-437x-to-4380-android-isrendering-replaced-by-frameratepolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.37.x to 4.38.0 (Android) — isRendering replaced by frameRatePolicy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.37.x to 4.38.0 (Android) — isRendering replaced by frameRatePolicy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sceneviewisrendering-is-removed-render-on-demand-is-the-default-3108" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView(isRendering:) is removed; render-on-demand is the default (#3108)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-the-line-is-sdk-mutators-invalidate-raw-filament-objects-do-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the line is: SDK mutators invalidate, raw Filament objects do not
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-your-app-for-heuristics-that-read-the-frame-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check your app for heuristics that read the frame rate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#onframe-cannot-be-what-keeps-your-loop-awake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        onFrame cannot be what keeps your loop awake
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodeonframe-holds-the-loop-open-sceneviewonframe-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node.onFrame holds the loop open; SceneView(onFrame = …) does not
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-414x-to-4151-ios-native-apple-camera-modes-added-to-cameracontrolmode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to CameraControlMode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to CameraControlMode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-new-cameracontrolmode-cases-none-tilt-dolly-1049" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three new CameraControlMode cases — .none, .tilt, .dolly (#1049)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-410x-to-4110-android-cloudanchornodehost-returns-hostcloudanchorfuture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.10.x to 4.11.0 (Android) — CloudAnchorNode.host() returns HostCloudAnchorFuture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.10.x to 4.11.0 (Android) — CloudAnchorNode.host() returns HostCloudAnchorFuture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cloudanchornodehost-now-returns-the-underlying-arcore-hostcloudanchorfuture-1768" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CloudAnchorNode.host() now returns the underlying ARCore HostCloudAnchorFuture (#1768)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-43x-to-440-ios-true-camera-motion-skybox-renders-mirror-retired" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.3.x to 4.4.0 (iOS) — true camera motion + skybox renders + mirror retired
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.3.x to 4.4.0 (iOS) — true camera motion + skybox renders + mirror retired">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#environmentshowskybox-true-now-actually-paints-the-hdr-as-background-pr-1215" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment.showSkybox = true now actually paints the HDR as background (PR #1215)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orbit-pan-modes-now-physically-move-the-perspective-camera-pr-1215" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Orbit + pan modes now physically move the perspective camera (PR #1215)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cameracontrols-defaults-changed-breaking-for-direct-constructors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CameraControls defaults changed (BREAKING for direct constructors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fov-no-longer-bleeds-from-firstperson-pinch-into-orbit-pan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FOV no longer bleeds from firstPerson pinch into orbit / pan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#swift-package-manager-url-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Swift Package Manager URL changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-42x-to-430-ios-silent-stub-modes-now-active" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.2.x to 4.3.0 (iOS) — silent-stub modes now active
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.2.x to 4.3.0 (iOS) — silent-stub modes now active">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cameracontrolspan-and-cameracontrolsfirstperson-no-longer-silently-orbit-1034" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        .cameraControls(.pan) and .cameraControls(.firstPerson) no longer silently orbit (#1034)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#library-level-auto-center-is-on-by-default-1026" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Library-level auto-center is on by default (#1026)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-36x-to-400-release-candidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 3.6.x to 4.0.0 (Release Candidate)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 3.6.x to 4.0.0 (Release Candidate)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-new-ar-debug-rerunio-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. New: AR Debug — Rerun.io integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-new-arsceneviewonframe-hook-on-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. New: ARSceneView.onFrame hook on iOS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-version-bump-just-the-number" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Version bump — just the number
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-sceneview-mcp-moved-to-the-4x-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. sceneview-mcp moved to the 4.x line
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-35x-to-360" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 3.5.x to 3.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 3.5.x to 3.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-scene-composable-renamed-to-sceneview-arscene-to-arsceneview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Scene composable renamed to SceneView, ARScene to ARSceneView
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-cameranode-composable-renamed-to-secondarycamera" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. CameraNode composable renamed to SecondaryCamera
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-all-geometry-nodes-now-have-uniform-transform-params" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. All geometry nodes now have uniform transform params
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-lightnode-explicit-params-instead-of-dual-lambdas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. LightNode — explicit params instead of dual lambdas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-videonode-convenience-overload-with-asset-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. VideoNode — convenience overload with asset path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-new-composables-shapenode-and-physicsnode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. New composables: ShapeNode and PhysicsNode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-swift-declarative-sceneview-with-nodebuilder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Swift: Declarative SceneView with @NodeBuilder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-swift-nodegesture-automatic-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Swift: NodeGesture automatic cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-2x-to-3x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 2.x to 3.x
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-dependency-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Dependency version
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-sceneview-nodes-move-into-the-content-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. SceneView — nodes move into the content block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-node-hierarchy-nodescope-replaces-addchildnode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Node hierarchy — NodeScope replaces addChildNode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-arsceneview-ar-nodes-move-into-the-content-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. ARSceneView — AR nodes move into the content block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-model-loading-remembermodelinstance-replaces-synchronous-creation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Model loading — rememberModelInstance replaces synchronous creation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-surfacetype-replaces-boolean-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. SurfaceType — replaces boolean flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-viewnode-compose-ui-as-a-3d-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. ViewNode — Compose UI as a 3D surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-activity-fragment-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Activity / Fragment structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-sceneform-legacy-java-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Sceneform / legacy Java classes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading-from-2-3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading from 2.3.x
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-453x-to-4540-android-remembermediaplayer-returns-a-mediaplayerstate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.53.x to 4.54.0 (Android) — rememberMediaPlayer returns a MediaPlayerState
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.53.x to 4.54.0 (Android) — rememberMediaPlayer returns a MediaPlayerState">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-video-player-is-prepared-off-the-main-thread-and-says-when-it-fails-4388" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The video player is prepared off the main thread, and says when it fails (#4388)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodeworldrotation-reads-the-same-euler-angles-as-noderotation-3745" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node.worldRotation reads the same Euler angles as Node.rotation (#3745)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-437x-to-4380-android-isrendering-replaced-by-frameratepolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.37.x to 4.38.0 (Android) — isRendering replaced by frameRatePolicy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.37.x to 4.38.0 (Android) — isRendering replaced by frameRatePolicy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sceneviewisrendering-is-removed-render-on-demand-is-the-default-3108" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView(isRendering:) is removed; render-on-demand is the default (#3108)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-the-line-is-sdk-mutators-invalidate-raw-filament-objects-do-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the line is: SDK mutators invalidate, raw Filament objects do not
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-your-app-for-heuristics-that-read-the-frame-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check your app for heuristics that read the frame rate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#onframe-cannot-be-what-keeps-your-loop-awake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        onFrame cannot be what keeps your loop awake
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodeonframe-holds-the-loop-open-sceneviewonframe-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node.onFrame holds the loop open; SceneView(onFrame = …) does not
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-414x-to-4151-ios-native-apple-camera-modes-added-to-cameracontrolmode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to CameraControlMode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to CameraControlMode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-new-cameracontrolmode-cases-none-tilt-dolly-1049" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three new CameraControlMode cases — .none, .tilt, .dolly (#1049)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-410x-to-4110-android-cloudanchornodehost-returns-hostcloudanchorfuture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.10.x to 4.11.0 (Android) — CloudAnchorNode.host() returns HostCloudAnchorFuture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.10.x to 4.11.0 (Android) — CloudAnchorNode.host() returns HostCloudAnchorFuture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cloudanchornodehost-now-returns-the-underlying-arcore-hostcloudanchorfuture-1768" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CloudAnchorNode.host() now returns the underlying ARCore HostCloudAnchorFuture (#1768)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-43x-to-440-ios-true-camera-motion-skybox-renders-mirror-retired" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.3.x to 4.4.0 (iOS) — true camera motion + skybox renders + mirror retired
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.3.x to 4.4.0 (iOS) — true camera motion + skybox renders + mirror retired">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#environmentshowskybox-true-now-actually-paints-the-hdr-as-background-pr-1215" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment.showSkybox = true now actually paints the HDR as background (PR #1215)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orbit-pan-modes-now-physically-move-the-perspective-camera-pr-1215" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Orbit + pan modes now physically move the perspective camera (PR #1215)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cameracontrols-defaults-changed-breaking-for-direct-constructors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CameraControls defaults changed (BREAKING for direct constructors)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fov-no-longer-bleeds-from-firstperson-pinch-into-orbit-pan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FOV no longer bleeds from firstPerson pinch into orbit / pan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#swift-package-manager-url-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Swift Package Manager URL changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-42x-to-430-ios-silent-stub-modes-now-active" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 4.2.x to 4.3.0 (iOS) — silent-stub modes now active
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 4.2.x to 4.3.0 (iOS) — silent-stub modes now active">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cameracontrolspan-and-cameracontrolsfirstperson-no-longer-silently-orbit-1034" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        .cameraControls(.pan) and .cameraControls(.firstPerson) no longer silently orbit (#1034)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#library-level-auto-center-is-on-by-default-1026" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Library-level auto-center is on by default (#1026)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-36x-to-400-release-candidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 3.6.x to 4.0.0 (Release Candidate)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 3.6.x to 4.0.0 (Release Candidate)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-new-ar-debug-rerunio-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. New: AR Debug — Rerun.io integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-new-arsceneviewonframe-hook-on-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. New: ARSceneView.onFrame hook on iOS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-version-bump-just-the-number" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Version bump — just the number
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-sceneview-mcp-moved-to-the-4x-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. sceneview-mcp moved to the 4.x line
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-35x-to-360" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 3.5.x to 3.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SceneView 3.5.x to 3.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-scene-composable-renamed-to-sceneview-arscene-to-arsceneview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Scene composable renamed to SceneView, ARScene to ARSceneView
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-cameranode-composable-renamed-to-secondarycamera" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. CameraNode composable renamed to SecondaryCamera
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-all-geometry-nodes-now-have-uniform-transform-params" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. All geometry nodes now have uniform transform params
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-lightnode-explicit-params-instead-of-dual-lambdas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. LightNode — explicit params instead of dual lambdas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-videonode-convenience-overload-with-asset-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. VideoNode — convenience overload with asset path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-new-composables-shapenode-and-physicsnode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. New composables: ShapeNode and PhysicsNode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-swift-declarative-sceneview-with-nodebuilder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Swift: Declarative SceneView with @NodeBuilder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-swift-nodegesture-automatic-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Swift: NodeGesture automatic cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sceneview-2x-to-3x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SceneView 2.x to 3.x
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-dependency-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Dependency version
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-sceneview-nodes-move-into-the-content-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. SceneView — nodes move into the content block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-node-hierarchy-nodescope-replaces-addchildnode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Node hierarchy — NodeScope replaces addChildNode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-arsceneview-ar-nodes-move-into-the-content-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. ARSceneView — AR nodes move into the content block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-model-loading-remembermodelinstance-replaces-synchronous-creation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Model loading — rememberModelInstance replaces synchronous creation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-surfacetype-replaces-boolean-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. SurfaceType — replaces boolean flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-viewnode-compose-ui-as-a-3d-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. ViewNode — Compose UI as a 3D surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-activity-fragment-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Activity / Fragment structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-sceneform-legacy-java-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Sceneform / legacy Java classes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/sceneview/sceneview/edit/main/docs/docs/migration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="migration-guide">Migration Guide<a class="headerlink" href="#migration-guide" title="Permanent link">&para;</a></h1>
+<p>Sections run from the newest release down to the oldest. <strong>Coming from SceneView 2.x?</strong> Start at
+<a href="#sceneview-2x-to-3x">SceneView 2.x to 3.x</a>, then read the newer sections above it for anything
+your app uses.
+For a shorter path from 2.3.0–2.3.4, with the Filament and ARCore updates and the
+<code>Engine.nDestroyEngine</code> ANR, see <a href="../upgrading-from-2-3/">Upgrading from 2.3.x</a>.</p>
+<p>SceneView is open source and maintained by its community. If your app ships with it, you can
+support the project on <a href="https://opencollective.com/sceneview">Open Collective</a>.</p>
+<hr />
+<h2 id="sceneview-453x-to-4540-android-remembermediaplayer-returns-a-mediaplayerstate">SceneView 4.53.x to 4.54.0 (Android) — <code>rememberMediaPlayer</code> returns a <code>MediaPlayerState</code><a class="headerlink" href="#sceneview-453x-to-4540-android-remembermediaplayer-returns-a-mediaplayerstate" title="Permanent link">&para;</a></h2>
+<h3 id="the-video-player-is-prepared-off-the-main-thread-and-says-when-it-fails-4388">The video player is prepared off the main thread, and says when it fails (<a href="https://github.com/sceneview/sceneview/issues/4388">#4388</a>)<a class="headerlink" href="#the-video-player-is-prepared-off-the-main-thread-and-says-when-it-fails-4388" title="Permanent link">&para;</a></h3>
+<p><code>rememberMediaPlayer</code> used to call the blocking <code>MediaPlayer.prepare()</code> during composition — a
+frozen frame for a long clip, an ANR for a slow one — and turned every failure into <code>null</code>, which
+was also what it returned for nothing at all: a missing asset and an unsupported codec looked the
+same as a video that was fine, and <code>VideoNode(videoPath = …)</code> then rendered nothing without a word.</p>
+<p>It now prepares the player with <code>prepareAsync()</code> and returns where it stands:</p>
+<pre class="language-kotlin"><code>sealed interface MediaPlayerState {
+    data object Preparing : MediaPlayerState
+    class Ready(val player: MediaPlayer) : MediaPlayerState
+    class Failed(val cause: Exception) : MediaPlayerState
+}</code></pre>
+<pre class="language-kotlin"><code>// Before
+val context = LocalContext.current
+val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4", autoStart = true)
+SceneView {
+    player?.let { VideoNode(player = it, position = Position(z = -2f)) }
+}
+
+// After
+SceneView {
+    when (val video = rememberMediaPlayer("videos/promo.mp4", autoPlay = true)) {
+        is MediaPlayerState.Ready -&gt; VideoNode(player = video.player, position = Position(z = -2f))
+        is MediaPlayerState.Failed -&gt; Unit // video.cause says why: show your own fallback
+        MediaPlayerState.Preparing -&gt; Unit // not ready yet: show your own placeholder
     }
-    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
-    p { color: #b8c7d9; font-size: 0.95rem; }
-    a { color: #8ab4f8; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>The migration guide has moved</h1>
-    <p>It now lives at <a href="/docs/migration/">sceneview.github.io/docs/migration/</a>.</p>
-  </main>
-</body>
+}</code></pre>
+<p><code>VideoNode(videoPath = …)</code> keeps its shape and gains <code>onError</code>:</p>
+<pre class="language-kotlin"><code>SceneView {
+    VideoNode(
+        videoPath = "videos/promo.mp4",
+        position = Position(z = -2f),
+        onError = { cause -&gt; videoError = cause }
+    )
+}</code></pre>
+<p><strong>Key differences:</strong></p>
+<ul>
+<li><strong><code>rememberMediaPlayer(context, assetFileLocation, isLooping, autoStart): MediaPlayer?</code> is
+  removed outright — there is no deprecated overload.</strong> Both video APIs are
+  <code>@ExperimentalSceneViewApi</code>, and a nullable player cannot tell "not ready yet" from "never will
+  be". The parameters are now <code>(fileLocation, isLooping, autoPlay)</code>: no <code>context</code> (it is read from
+  the composition), <code>assetFileLocation</code> → <code>fileLocation</code>, <code>autoStart</code> → <code>autoPlay</code> (the name
+  <code>VideoNode(videoPath, autoPlay)</code> already used).</li>
+<li><strong>The first composition never has a player.</strong> Code that read <code>player.videoWidth</code> or called
+  <code>player.seekTo(…)</code> right after <code>rememberMediaPlayer</code> must move under the
+  <code>is MediaPlayerState.Ready</code> branch.</li>
+<li><strong><code>fileLocation</code> and <code>videoPath</code> accept a URL.</strong> A location with a scheme (<code>https://</code>, <code>file://</code>,
+  <code>content://</code>, <code>android.resource://</code>) is streamed or read from there; a location without one is
+  still a path under <code>assets/</code>. A streamed URL needs the <code>android.permission.INTERNET</code> permission.</li>
+<li><strong><code>isLooping</code> and <code>autoPlay</code> are reactive.</strong> They were read once; they are now applied each time
+  they change, so <code>autoPlay = isPlaying</code> is a play/pause button. If you start and pause the player
+  yourself, pass <code>autoPlay = false</code> and leave it there.</li>
+<li><strong>A failure reaches you, once.</strong> <code>MediaPlayerState.Failed.cause</code> (or <code>onError</code>) is the exception
+  thrown while opening the source — a <code>FileNotFoundException</code> for a missing asset — or a
+  <code>MediaPlayerException(what, extra)</code> with the codes the player reported. It is also logged once,
+  at warning level, under the <code>MediaPlayerState</code> tag.</li>
+<li><strong>Do not release the player.</strong> It is released when the location changes and when the call leaves
+  the composition, as before. The asset descriptor, which used to leak, is now closed as soon as
+  the player has its source.</li>
+<li><strong>Your own <code>MediaPlayer</code></strong> still goes to <code>VideoNode(player = …)</code>. Prepare it with
+  <code>prepareAsync()</code> and hand it over from <code>setOnPreparedListener</code>; <code>MediaPlayer.create(…)</code> and
+  <code>prepare()</code> inside <code>remember { }</code> block the main thread exactly as the old helper did.</li>
+</ul>
+<h3 id="nodeworldrotation-reads-the-same-euler-angles-as-noderotation-3745"><code>Node.worldRotation</code> reads the same Euler angles as <code>Node.rotation</code> (<a href="https://github.com/sceneview/sceneview/issues/3745">#3745</a>)<a class="headerlink" href="#nodeworldrotation-reads-the-same-euler-angles-as-noderotation-3745" title="Permanent link">&para;</a></h3>
+<p>Through 4.53.0 the two getters used two conventions. <code>rotation</code> is ZYX and reads back what was
+written; the <code>worldRotation</code> getter returned kotlin-math's <code>Mat4.rotation</code>, which is YXZ with the
+yaw sign negated. Its setter was ZYX all along, so <code>node.worldRotation = node.worldRotation</code>
+turned any node that had yaw.</p>
+<table>
+<thead>
+<tr>
+<th>Written <code>rotation</code> (no parent)</th>
+<th><code>worldRotation</code> through 4.53.0</th>
+<th><code>worldRotation</code> now</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>(0, 30, 0)</code></td>
+<td><code>(0, -30, 0)</code></td>
+<td><code>(0, 30, 0)</code></td>
+</tr>
+<tr>
+<td><code>(20, 30, 15)</code></td>
+<td><code>(12.05, -33.68, 13.25)</code></td>
+<td><code>(20, 30, 15)</code></td>
+</tr>
+<tr>
+<td><code>(0, 120, 0)</code></td>
+<td><code>(0, -120, 0)</code></td>
+<td><code>(180, 60, 180)</code></td>
+</tr>
+<tr>
+<td><code>(20, 0, 0)</code>, <code>(0, 0, 15)</code></td>
+<td>unchanged</td>
+<td>unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>Only the <strong><code>worldRotation</code> getter</strong> changes. <code>rotation</code>, <code>worldQuaternion</code>, <code>worldTransform</code>,
+both setters and what is drawn on screen are untouched.</p>
+<ul>
+<li><strong>If you negated <code>worldRotation.y</code></strong> to line it up with <code>rotation.y</code>, drop the negation.</li>
+<li><strong>If you read a heading from <code>worldRotation.y</code></strong>, read it from <code>worldQuaternion</code> instead. Y is
+  now the middle angle of a ZYX triple and stays within ±90°: past a quarter turn the same
+  orientation reads as <code>(180, 60, 180)</code>, exactly as <code>rotation</code> has always done.</li>
+<li><strong>If you rebuilt the orientation</strong> with
+  <code>Quaternion.fromEuler(Rotation(x, -y, z), RotationsOrder.YXZ)</code>, use
+  <code>Quaternion.fromEuler(node.worldRotation)</code> — or <code>node.worldQuaternion</code> directly.</li>
+</ul>
+<hr />
+<h2 id="sceneview-437x-to-4380-android-isrendering-replaced-by-frameratepolicy">SceneView 4.37.x to 4.38.0 (Android) — <code>isRendering</code> replaced by <code>frameRatePolicy</code><a class="headerlink" href="#sceneview-437x-to-4380-android-isrendering-replaced-by-frameratepolicy" title="Permanent link">&para;</a></h2>
+<h3 id="sceneviewisrendering-is-removed-render-on-demand-is-the-default-3108"><code>SceneView(isRendering:)</code> is removed; render-on-demand is the default (<a href="https://github.com/sceneview/sceneview/issues/3108">#3108</a>)<a class="headerlink" href="#sceneviewisrendering-is-removed-render-on-demand-is-the-default-3108" title="Permanent link">&para;</a></h3>
+<p>A <code>SceneView</code> no longer renders every vsync for as long as it is composed. The new
+<code>frameRatePolicy</code> parameter defaults to <code>FrameRatePolicy.OnDemand()</code>: the library tracks what makes
+the picture change, holds the display's full cadence while anything is happening, then draws a
+short tail of settle frames and parks the loop.</p>
+<p><code>isRendering: Boolean</code> is <strong>removed outright — there is no deprecated overload.</strong> Keeping one
+would have meant two parameters that can disagree about the same thing, and the boolean's whole
+contract ("you work out when the scene is dirty") is precisely what the new default replaces.</p>
+<pre class="language-kotlin"><code>// Before — you computed "is anything dirty" yourself and fed it in
+var isDirty by remember { mutableStateOf(true) }
+LaunchedEffect(dirtyToken) {
+    isDirty = true
+    delay(200)
+    isDirty = false
+}
+SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+
+// After — that is the library's job now
+SceneView { /* … */ }</code></pre>
+<p><strong>Key differences:</strong></p>
+<ul>
+<li><code>isRendering = true</code> (or omitting the parameter) becomes
+  <code>frameRatePolicy = FrameRatePolicy.Continuous()</code> if you genuinely want a frame every vsync. If you
+  never passed the parameter at all, the honest migration is usually to change <strong>nothing</strong> and take
+  the new default.</li>
+<li>The <code>isDirty</code> state, the <code>dirtyToken</code>, the <code>LaunchedEffect { delay(200) }</code> window — <strong>delete
+  them, do not translate them.</strong> Every source they were standing in for (touch, camera coast,
+  animation, smooth transform, video, <code>ViewNode</code>, splat sort, async load, mirrorer, auto-fit, node
+  added/moved/removed, visibility, geometry, material swap, surface resize, lifecycle resume) is
+  now tracked by the library.</li>
+<li><strong>Never invalidate from a recomposition, and never write Compose state from <code>onFrame</code>.</strong> The
+  library asks for a frame from the thing that changed, never from the fact that a recomposition
+  happened — and your screen should do the same. A counter that writes snapshot state on every
+  presented frame recomposes its host on every presented frame; if any of that feeds back into the
+  scene, the screen is measuring its own loop rather than the scene's. <code>DebugStats</code> holds plain
+  fields and <code>DebugOverlay</code> reads them on a 250 ms tick, which is the pattern to copy.</li>
+<li><strong>A <code>ViewNode</code> keeps the scene awake while its view is drawing, and only then.</strong> The hosted
+  Android <code>View</code> animates on its own schedule — a ripple, a spinner, a cursor, an inner fling, a
+  recomposition of hosted Compose content — and
+  the library cannot see inside it, so the node reports itself active from the one thing that is
+  observable: every buffer the view hierarchy queues onto its <code>SurfaceTexture</code>. An animating view
+  therefore holds the full cadence for as long as it animates, and a view that has finished drawing
+  parks with the rest of the scene. A <code>VideoNode</code> answers the same way, plus a direct read of
+  <code>player.isPlaying</code>.</li>
+<li>Pre-compiled consumers must recompile. A caller passing nine or more <strong>positional</strong> arguments
+  gets a type error at slot 9 rather than a silent behaviour change — the slot went from <code>Boolean</code>
+  to <code>FrameRatePolicy</code>.</li>
+<li><code>maxFps</code> is new, and it is an argument of both modes rather than a policy of its own:
+  <code>OnDemand(maxFps = 30)</code> renders on demand and, when it does render, never faster than 30 fps;
+  <code>Continuous(maxFps = 30)</code> is a steady 30 fps. Either way the display is voted <code>maxFps</code> rather
+  than the panel maximum. <code>null</code> (the default) means the display's own cadence.</li>
+<li><strong>Direct Filament edits are the one thing the default cannot see.</strong> Anything written below the
+  scene graph leaves nothing to invalidate on. The full list, and it is a list rather than an
+  example, because the cost of missing one is a frozen image:</li>
+<li>a <code>MaterialInstance</code> parameter (<code>setParameter</code>) on an instance you already hold;</li>
+<li>a light property written through <code>LightManager</code> rather than through the node;</li>
+<li>a <code>Skybox</code> or <code>IndirectLight</code> assigned straight onto the Filament <code>Scene</code>;</li>
+<li>morph-target weights and bone transforms written through <code>RenderableManager</code>;</li>
+<li>an external <code>Stream</code> — a camera or video surface — pushing new content;</li>
+<li><code>View</code> options changed at runtime (bloom, ambient occlusion, dynamic resolution, blend mode)
+    on a <code>View</code> you own.</li>
+</ul>
+<p>For all of them: call <code>node.requestRender()</code> on a node you hold, or take the new
+  <code>renderInvalidator</code> parameter with <code>rememberRenderInvalidator()</code> and call
+  <code>invalidator.requestRender()</code> after the edit. Call it on the main thread — post to it from a
+  background upload rather than calling across. Before a <code>PixelCopy</code> or a screenshot, request a
+  frame and then <strong>wait for your next <code>onFrame</code></strong>: the request is fire-and-forget, and there is no
+  "await one frame" API.
+- <strong><code>ARSceneView</code> does not take this parameter, and its loop never parks.</strong> A live camera feed is
+  never idle, so there is no idle frame to skip. What it does do is skip the <em>GPU submit</em> on a
+  vsync where ARCore hands back a duplicate <code>Frame.timestamp</code> and nothing in the scene changed —
+  <code>session.update()</code> still runs every vsync, so tracking, anchors and plane detection are
+  unaffected.</p>
+<p><strong>Action:</strong> delete the <code>isRendering</code> argument and the dirty-tracking behind it. Pass
+<code>frameRatePolicy = FrameRatePolicy.Continuous()</code> only if your scene is driven by something the
+library cannot observe — an external simulation writing into Filament each frame, a custom
+<code>Renderer</code> hook, a texture updated off-thread.</p>
+<h3 id="where-the-line-is-sdk-mutators-invalidate-raw-filament-objects-do-not">Where the line is: SDK mutators invalidate, raw Filament objects do not<a class="headerlink" href="#where-the-line-is-sdk-mutators-invalidate-raw-filament-objects-do-not" title="Permanent link">&para;</a></h3>
+<p>This is the one rule to carry out of the migration, and it is the adoption risk the whole default
+turns on — a missed invalidation does not crash, log or fail a test. It shows the previous frame,
+forever, and reads as "the slider is broken".</p>
+<p><strong>Anything you change through a SceneView type asks for its own frame.</strong> Setting
+<code>lightNode.intensity</code>, <code>lightNode.color</code>, <code>lightNode.lightDirection</code>, <code>cameraNode.setExposure(…)</code>,
+a projection, <code>focusDistance</code>, a node's transform, <code>materialInstance</code> / <code>setMaterialInstanceAt</code>,
+<code>setGeometry</code>, <code>setLayerVisible</code>, morph weights or bone matrices <em>through the node</em>, shadow flags,
+priority, culling, blend order — all of these invalidate on their own. You do not call
+<code>requestRender()</code> after them, and you do not need <code>Continuous()</code> to make them show.</p>
+<p><strong>Anything you change on a raw Filament object does not.</strong> The SDK hands these out and never sees
+them again, so nothing is left to observe the write:</p>
+<pre class="language-kotlin"><code>// Raw Filament object → the SDK cannot see this. Ask for the frame yourself.
+indirectLight.intensity = 30_000f
+indirectLight.setRotation(rotation)
+materialInstance.setParameter("baseColorFactor", color)
+view.ambientOcclusionOptions = options
+scene.skybox = skybox
+lightManager.setIntensity(instance, lux)   // through the manager, not the node
+
+renderInvalidator.requestRender()          // ← the missing line</code></pre>
+<p>Take the invalidator with <code>rememberRenderInvalidator()</code> and pass it as
+<code>SceneView(renderInvalidator = …)</code>, or call <code>requestRender()</code> on any node you hold. The rule of
+thumb that costs nothing to apply: <strong>if the type you are writing to came from <code>com.google.android
+.filament</code>, ask for a frame.</strong></p>
+<p>Measured, so it is not hypothetical: a demo screen dragging <em>Environment rotation</em> from 302° to
+100° and <em>Exposure</em> from 1.00 to 2.72 on a parked scene produced <strong>0</strong> frames and a viewport still
+lit the old way. Both writes went into an <code>IndirectLight</code>.</p>
+<h3 id="check-your-app-for-heuristics-that-read-the-frame-rate">Check your app for heuristics that read the frame rate<a class="headerlink" href="#check-your-app-for-heuristics-that-read-the-frame-rate" title="Permanent link">&para;</a></h3>
+<p>This is the failure mode that survives the mechanical migration, because it compiles, it is in
+<em>your</em> code, and it looks like it is measuring something else.</p>
+<p><strong>Any heuristic built on a run of closely spaced frames breaks under <code>OnDemand</code>.</strong> The pattern is
+always some form of "I will believe the scene is up once I have seen N frames within M
+milliseconds of each other" — a loading cover, a splash dismissal, a warm-up probe, an "is the GPU
+keeping up" check. It worked because every <code>SceneView</code> drew every vsync forever, so frames were a
+clock you could count on. They are not a clock any more. A finished scene presents a short settle
+tail and parks: our own demo app measured <strong>3 frames in 10 s</strong> on a fully drawn model, and its
+loading cover — which wanted 8 frames within 250 ms of each other — never lifted. At 12 s the
+scaffold replaced the spinner with a "Still loading…" card, over a scene that had been complete
+for ten seconds. Nudging the camera restarted the loop, satisfied the streak and dismissed the
+card, which is the tell: the signal was reading the frame rate and reporting it as progress.</p>
+<p><strong>A readiness signal must never depend on cadence — a parked scene is a ready scene.</strong> Rewrite the
+rule to count frames without looking at the intervals between them, and if what you actually need
+is "has the GPU finished", ask the GPU: <code>Engine.flushAndWait()</code> blocks until the backend has
+executed the queued work, which is the fact the timing was being used to guess. Two presented
+frames are enough to start that question, because Filament refuses a new frame while the driver is
+behind — a second accepted submission is itself the evidence that the first was drained.</p>
+<p>Do <strong>not</strong> fix this by holding the loop awake to feed the heuristic. That re-creates exactly the
+drain this release exists to remove, and hides the bug instead of closing it.</p>
+<h3 id="onframe-cannot-be-what-keeps-your-loop-awake"><code>onFrame</code> cannot be what keeps your loop awake<a class="headerlink" href="#onframe-cannot-be-what-keeps-your-loop-awake" title="Permanent link">&para;</a></h3>
+<p>The same shape, one level down, and it is the one that costs you a screen rather than a cover.</p>
+<p><code>onFrame</code> fires <strong>once per presented frame, right after that frame reached the surface</strong>. Under
+<code>Continuous</code> that was indistinguishable from "every vsync, forever", so it became the natural home
+for anything per-frame: advancing an animation clock, stepping a physics simulation, driving a
+turntable, syncing an audio listener pose. Under <code>OnDemand</code> it closes on itself. Nothing else
+invalidates the scene, so the loop settles and parks; parked means no presented frame; no presented
+frame means no <code>onFrame</code>; and the clock that was going to ask for the next frame is the one that
+just stopped running. The screen does not stutter — it freezes on open, with a fully drawn, entirely
+correct first frame, which is why it reads as "the animation is broken" and not as "the loop
+stopped".</p>
+<p>Two things to check in every per-frame callback you own:</p>
+<ul>
+<li><strong>Does it drive motion?</strong> Then say so: <code>frameRatePolicy = FrameRatePolicy.Continuous()</code> while it
+  runs, and back to <code>OnDemand()</code> when the user pauses it. This is what the mode is for, and it also
+  lets the cadence vote tell the display. A <code>RenderInvalidator.requestRender()</code> called from inside
+  <code>onFrame</code> works too — each rendered frame buys the next — but it says "one more frame" sixty times
+  a second to mean "keep going", and nothing tells the panel.</li>
+<li><strong>Does it apply a change the user just made?</strong> Then apply it <strong>outside</strong> <code>onFrame</code> and request the
+  frame after: <code>onFrame</code> runs after presentation, so a pose written there lands in the <em>next</em> frame.
+  One <code>requestRender()</code> would draw the old pose, then park one frame behind, permanently.</li>
+</ul>
+<p>The state that decides — <code>isPlaying</code>, <code>isReplaying</code>, "is this band on screen" — also needs a rising
+edge. Going from paused to playing while the loop is parked changes a flag no one is reading;
+request one frame from a <code>LaunchedEffect</code> on that flag, and the callback takes it from there.</p>
+<p>And it must follow the motion, not a flag only a gesture clears. A <code>Continuous()</code> held by
+<code>isReplaying</code>, where <code>isReplaying</code> goes false only when the user presses Reset, is the same lie as a
+loader that never resolves: the spheres stop bouncing, the flag stays true, and the screen renders a
+frozen picture at 57 fps until someone touches it. Tie the declaration to the thing that is actually
+moving.</p>
+<h3 id="nodeonframe-holds-the-loop-open-sceneviewonframe-does-not"><code>Node.onFrame</code> holds the loop open; <code>SceneView(onFrame = …)</code> does not<a class="headerlink" href="#nodeonframe-holds-the-loop-open-sceneviewonframe-does-not" title="Permanent link">&para;</a></h3>
+<p>They share a name and nothing else, and the asymmetry is deliberate:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>when it runs</th>
+<th>effect on the loop</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SceneView(onFrame = …)</code></td>
+<td>after its frame was presented</td>
+<td><strong>none</strong> — it is an observer</td>
+</tr>
+<tr>
+<td><code>node.onFrame = { … }</code></td>
+<td>before the frame is drawn</td>
+<td><strong>pins</strong> — a non-null slot asks for a frame every tick</td>
+</tr>
+</tbody>
+</table>
+<p><code>Node.onFrame</code> is a <em>driver</em>: <code>PhysicsNode</code> steps its simulation there, and a driver that only runs
+when a frame happens could never produce the first one. So setting it is read as "keep rendering",
+and <code>node.onFrame = null</code> is how you stop asking. A transform written there is on screen in the same
+frame — it runs ahead of the GPU submit, not after it.</p>
+<p>Two consequences worth knowing before you go looking for a leak:</p>
+<ul>
+<li><strong>A node you hand an <code>onFrame</code> to will not let its scene park.</strong> That is the safe default, and it
+  is under your control. If the callback only <em>observes</em>, hold the value in Compose state instead.</li>
+<li><strong>The library's own per-frame work does not go through that slot</strong> and does not pin anything.
+  <code>BillboardNode</code> (and <code>TextNode</code>, which is one) re-orients only when the camera has actually moved;
+  a settled <code>PhysicsNode</code> reports itself idle; <code>rememberModelAnimationState</code> observes without
+  costing you a frame. Before 4.37 every one of them quietly held its scene at full cadence — a
+  screen with two <code>TextNode</code>s on it ran at 57 fps on a still picture. None of this needs a change in
+  your code.</li>
+</ul>
+<hr />
+<h2 id="sceneview-414x-to-4151-ios-native-apple-camera-modes-added-to-cameracontrolmode">SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to <code>CameraControlMode</code><a class="headerlink" href="#sceneview-414x-to-4151-ios-native-apple-camera-modes-added-to-cameracontrolmode" title="Permanent link">&para;</a></h2>
+<h3 id="three-new-cameracontrolmode-cases-none-tilt-dolly-1049">Three new <code>CameraControlMode</code> cases — <code>.none</code>, <code>.tilt</code>, <code>.dolly</code> (<a href="https://github.com/sceneview/sceneview/issues/1049">#1049</a>)<a class="headerlink" href="#three-new-cameracontrolmode-cases-none-tilt-dolly-1049" title="Permanent link">&para;</a></h3>
+<p><code>CameraControlMode</code> now exposes three <strong>native Apple</strong> cases that delegate to
+<code>realityViewCameraControls(_:)</code> introduced in iOS 18 / macOS 15:</p>
+<table>
+<thead>
+<tr>
+<th>New case</th>
+<th>Behaviour</th>
+<th>SDK requirement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.none</code></td>
+<td>Disables all gesture interaction</td>
+<td>iOS 18+, macOS 15+</td>
+</tr>
+<tr>
+<td><code>.tilt</code></td>
+<td>Tilt camera up/down about horizontal axis</td>
+<td>iOS 18+, macOS 15+</td>
+</tr>
+<tr>
+<td><code>.dolly</code></td>
+<td>Move camera forward/back along look direction</td>
+<td>iOS 18+, macOS 15+</td>
+</tr>
+</tbody>
+</table>
+<p><strong>This is additive.</strong> Existing code using <code>.orbit</code>, <code>.pan</code>, or <code>.firstPerson</code>
+compiles and runs unchanged.</p>
+<p><strong>visionOS note.</strong> <code>realityViewCameraControls(_:)</code> is <code>@available(visionOS, unavailable)</code>.
+On visionOS, <code>SceneView</code> automatically falls back to its custom gesture handlers.
+No <code>#if os()</code> guards are required in app code.</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">// Before v4.15.1 — only 3 modes</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="n">orbit</span><span class="p">)</span><span class="w">    </span><span class="c1">// .orbit | .pan | .firstPerson</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1">// v4.15.1+ — 6 modes; native Apple modes available on iOS 18+ / macOS 15+</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="n">orbit</span><span class="p">)</span><span class="w">    </span><span class="c1">// existing modes unchanged</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="kr">none</span><span class="p">)</span><span class="w">     </span><span class="c1">// lock all camera gestures (iOS 18+ / macOS 15+)</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="n">tilt</span><span class="p">)</span><span class="w">     </span><span class="c1">// native tilt — Apple's realityViewCameraControls (iOS 18+ / macOS 15+)</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="n">dolly</span><span class="p">)</span><span class="w">    </span><span class="c1">// native dolly — Apple's realityViewCameraControls (iOS 18+ / macOS 15+)</span>
+</span></code></pre></div>
+<p><strong>Action:</strong> no migration required. If you previously worked around the absence of
+a "no gestures" mode by disabling the modifier entirely, you can now use
+<code>.cameraControls(.none)</code>.</p>
+<hr />
+<h2 id="sceneview-410x-to-4110-android-cloudanchornodehost-returns-hostcloudanchorfuture">SceneView 4.10.x to 4.11.0 (Android) — <code>CloudAnchorNode.host()</code> returns <code>HostCloudAnchorFuture</code><a class="headerlink" href="#sceneview-410x-to-4110-android-cloudanchornodehost-returns-hostcloudanchorfuture" title="Permanent link">&para;</a></h2>
+<h3 id="cloudanchornodehost-now-returns-the-underlying-arcore-hostcloudanchorfuture-1768"><code>CloudAnchorNode.host()</code> now returns the underlying ARCore <code>HostCloudAnchorFuture</code> (<a href="https://github.com/sceneview/sceneview/pull/1768">#1768</a>)<a class="headerlink" href="#cloudanchornodehost-now-returns-the-underlying-arcore-hostcloudanchorfuture-1768" title="Permanent link">&para;</a></h3>
+<p>Pre-v4.11.0, <code>CloudAnchorNode.host(session, ttlDays, onCompleted)</code> returned <code>Unit</code>
+and stored the in-flight future privately — apps had no way to cancel a pending
+host request when the UI scope was leaving. The network round-trip ran to
+completion regardless, accruing a Google Cloud billing event whether or not the
+caller was still listening.</p>
+<p>v4.11.0 surfaces the underlying ARCore <a href="https://developers.google.com/ar/reference/java/com/google/ar/core/HostCloudAnchorFuture"><code>HostCloudAnchorFuture</code></a>
+as the return value so callers can cancel via <code>future.cancel()</code> — typically from
+<code>DisposableEffect.onDispose { future?.cancel() }</code>. The same change applies to
+<code>CloudAnchorNode.resolve(...)</code>, <code>TerrainAnchorNode.resolve(...)</code>, and
+<code>RooftopAnchorNode.resolve(...)</code>.</p>
+<p><strong>Billing rationale.</strong> Each pending host/resolve future is <strong>one Google Cloud
+ARCore API request</strong>. Without explicit cancellation, the request runs to
+completion (a few seconds, sometimes longer for cross-continent resolves) and
+the billing event lands on your Google Cloud project even after the user has
+navigated away from the screen that started it. For apps that surface a "Place
+anchor" CTA inside a navigable hierarchy (Compose / Fragment / Activity stack)
+this is a measurable cost on cancelled user flows — see
+<a href="https://developers.google.com/ar/develop/cloud-anchors">Google's ARCore Cloud Anchors documentation</a>.
+Cancellation does <strong>not</strong> invoke the <code>onCompleted</code> callback (matches ARCore
+semantics), so observers stay clean.</p>
+<p><strong>Action — source compatibility.</strong> Most call sites are unaffected — the new
+return type is purely additive. The only break is for callers that wrote
+<code>val unused: Unit = node.host(...)</code> or any test that asserts the return type is
+<code>Unit</code>. Adjust the local binding and (recommended) cancel the future on dispose:</p>
+<pre class="language-kotlin"><code>// pre-v4.11.0
+DisposableEffect(anchorNode) {
+    anchorNode.host(session, ttlDays = 7) { id, state -&gt; /* ... */ }
+    onDispose { /* nothing to cancel — the future was internal */ }
+}
+
+// v4.11.0 — capture the future, cancel on dispose to free the billing event
+DisposableEffect(anchorNode) {
+    val future = anchorNode.host(session, ttlDays = 7) { id, state -&gt; /* ... */ }
+    onDispose { future.cancel() }
+}</code></pre>
+<p>The same pattern applies to <code>CloudAnchorNode.resolve(engine, session, id) { ... }</code>,
+<code>TerrainAnchorNode.resolve(...)</code>, and <code>RooftopAnchorNode.resolve(...)</code>. The
+node's own <code>destroy()</code> lifecycle still calls <code>cancelHost()</code> internally, so an
+app that doesn't cancel explicitly still cleans up on scene disposal — but it
+pays the round-trip until destroy fires.</p>
+<hr />
+<h2 id="sceneview-43x-to-440-ios-true-camera-motion-skybox-renders-mirror-retired">SceneView 4.3.x to 4.4.0 (iOS) — true camera motion + skybox renders + mirror retired<a class="headerlink" href="#sceneview-43x-to-440-ios-true-camera-motion-skybox-renders-mirror-retired" title="Permanent link">&para;</a></h2>
+<h3 id="environmentshowskybox-true-now-actually-paints-the-hdr-as-background-pr-1215"><code>Environment.showSkybox = true</code> now actually paints the HDR as background (<a href="https://github.com/sceneview/sceneview/pull/1215">PR #1215</a>)<a class="headerlink" href="#environmentshowskybox-true-now-actually-paints-the-hdr-as-background-pr-1215" title="Permanent link">&para;</a></h3>
+<p>Pre-v4.4.0 the flag set up IBL lighting from the HDR but never rendered the HDR
+as the scene background — the void stayed neutral. v4.4.0 wires the HDR resource
+through <code>RealityViewContent.environment = .skybox(...)</code>.</p>
+<p><strong>Action</strong>:</p>
+<ul>
+<li>If your app set <code>showSkybox: false</code> to <em>explicitly</em> hide a background that was
+  already invisible, you can leave the code as-is — <code>false</code> continues to render
+  the neutral default.</li>
+<li>If your app set <code>showSkybox: true</code> and was depending on the void-background
+  bug (e.g. compositing the scene over a custom SwiftUI background), explicitly
+  flip to <code>showSkybox: false</code>. The IBL still lights your scene.</li>
+</ul>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1">// pre-v4.4.0 (the bug)</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="p">.</span><span class="n">environment</span><span class="p">(.</span><span class="n">custom</span><span class="p">(</span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s">"city"</span><span class="p">,</span><span class="w"> </span><span class="n">hdrFile</span><span class="p">:</span><span class="w"> </span><span class="s">"city.hdr"</span><span class="p">,</span><span class="w"> </span><span class="n">showSkybox</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">))</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1">//                                                       ^^^^ silently ignored</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1">// v4.4.0 (intended behaviour)</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">.</span><span class="n">environment</span><span class="p">(.</span><span class="n">custom</span><span class="p">(</span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s">"city"</span><span class="p">,</span><span class="w"> </span><span class="n">hdrFile</span><span class="p">:</span><span class="w"> </span><span class="s">"city.hdr"</span><span class="p">,</span><span class="w"> </span><span class="n">showSkybox</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">))</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1">//                                                       ^^^^ now renders HDR as background</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">.</span><span class="n">environment</span><span class="p">(.</span><span class="n">custom</span><span class="p">(</span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s">"city"</span><span class="p">,</span><span class="w"> </span><span class="n">hdrFile</span><span class="p">:</span><span class="w"> </span><span class="s">"city.hdr"</span><span class="p">,</span><span class="w"> </span><span class="n">showSkybox</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">))</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1">//                                                       ^^^^ neutral background, IBL still applies</span>
+</span></code></pre></div>
+<h3 id="orbit-pan-modes-now-physically-move-the-perspective-camera-pr-1215">Orbit + pan modes now physically move the perspective camera (<a href="https://github.com/sceneview/sceneview/pull/1215">PR #1215</a>)<a class="headerlink" href="#orbit-pan-modes-now-physically-move-the-perspective-camera-pr-1215" title="Permanent link">&para;</a></h3>
+<p>Pre-v4.4.0 <code>applyCamera()</code> rotated + scaled the scene root while the perspective
+camera stayed pinned at <code>[0, 0.3, 2]</code>. v4.4.0 positions the camera in world-space
+via <code>CameraControls.cameraPosition()</code> so the skybox correctly wraps around the
+camera as it orbits.</p>
+<p><strong>Action</strong>:</p>
+<ul>
+<li>Most apps need no code change — the apparent on-screen framing of existing
+  scenes is preserved at the new defaults (the SceneView's internal <code>CameraControls</code>
+  default <code>orbitRadius</code> was bumped from <code>5.0</code> to <code>2.0</code> to match the old camera
+  distance, so a 1m model fills the same fraction of viewport).</li>
+<li>If your code reads <code>entities.root.scale</code> / <code>.orientation</code> via reflection,
+  debug-overlay, or a custom modifier, those now stay at identity in orbit / pan
+  modes. Migrate to <code>CameraControls.cameraTransform()</code> to recover the camera
+  matrix.</li>
+</ul>
+<h3 id="cameracontrols-defaults-changed-breaking-for-direct-constructors"><code>CameraControls</code> defaults changed (BREAKING for direct constructors)<a class="headerlink" href="#cameracontrols-defaults-changed-breaking-for-direct-constructors" title="Permanent link">&para;</a></h3>
+<p>If your app constructs <code>CameraControls()</code> directly (rather than using the
+<code>.cameraControls(_:)</code> modifier):</p>
+<ul>
+<li><code>orbitRadius</code> default: <code>5.0</code> → <code>2.0</code> (camera-to-target distance, was unreachable
+  through any public modifier before so this aligns with the SceneView's
+  internal default)</li>
+<li><code>minRadius</code> default: <code>0.5</code> → <code>1.0</code> (pinch-in floor — <code>0.5</code> clipped into 1m-extent
+  models under the new true-camera path; <code>1.0</code> matches typical bundled demo content)</li>
+</ul>
+<p><strong>Action</strong>:</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">// pre-v4.4.0 implicit defaults</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kd">var</span><span class="w"> </span><span class="nv">controls</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">CameraControls</span><span class="p">()</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1">// controls.orbitRadius == 5.0, controls.minRadius == 0.5</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1">// v4.4.0 — bump explicitly if you want the pre-v4.4.0 framing for non-bundled content</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="kd">var</span><span class="w"> </span><span class="nv">controls</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">CameraControls</span><span class="p">()</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">controls</span><span class="p">.</span><span class="n">orbitRadius</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">5.0</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">controls</span><span class="p">.</span><span class="n">minRadius</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">0.5</span>
+</span></code></pre></div>
+<h3 id="fov-no-longer-bleeds-from-firstperson-pinch-into-orbit-pan">FOV no longer bleeds from <code>firstPerson</code> pinch into <code>orbit</code> / <code>pan</code><a class="headerlink" href="#fov-no-longer-bleeds-from-firstperson-pinch-into-orbit-pan" title="Permanent link">&para;</a></h3>
+<p>Pre-v4.4.0, pinching FOV down to e.g. 30° in <code>.firstPerson</code> then switching to
+<code>.orbit</code> kept the 30° pinched FOV on the perspective camera (visible as a stuck
+zoom-in). v4.4.0 writes the baseline <code>60°</code> FOV in orbit/pan regardless, and
+mirrors <code>camera.fov</code> only in <code>.firstPerson</code>. On <code>.firstPerson</code> exit, <code>camera.fov</code>
+itself is reset to <code>60</code> so the next entry starts fresh.</p>
+<p><strong>Action</strong>: no code change required — the previous behaviour was a bug.</p>
+<h3 id="swift-package-manager-url-changed">Swift Package Manager URL changed<a class="headerlink" href="#swift-package-manager-url-changed" title="Permanent link">&para;</a></h3>
+<p>The <code>sceneview/sceneview-swift</code> mirror has been archived read-only. SPM consumers
+should re-add the package in Xcode pointing at the monorepo directly:</p>
+<div class="language-diff highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="gd">- .package(url: "https://github.com/sceneview/sceneview-swift.git", from: "4.0.0")</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="gi">+ .package(url: "https://github.com/sceneview/sceneview.git", from: "4.4.0")</span>
+</span></code></pre></div>
+<p>The frozen <code>v4.0.0</code> tag on the mirror still resolves for any consumer that hasn't
+migrated, but no further releases will be cut there. The root <code>Package.swift</code> in
+the monorepo (added in <a href="https://github.com/sceneview/sceneview/pull/920">#920</a>)
+declares the <code>SceneViewSwift</code> product, so the import statement
+(<code>import SceneViewSwift</code>) is unchanged.</p>
+<h3 id="attribution">Attribution<a class="headerlink" href="#attribution" title="Permanent link">&para;</a></h3>
+<p>The skybox-renders + true-orbit camera fixes were ported with <code>Co-authored-by</code>
+credit from <a href="https://github.com/radcli14">@radcli14</a>'s
+<a href="https://github.com/sceneview/sceneview-swift/pull/1">sceneview-swift PR #1</a>.</p>
+<hr />
+<h2 id="sceneview-42x-to-430-ios-silent-stub-modes-now-active">SceneView 4.2.x to 4.3.0 (iOS) — silent-stub modes now active<a class="headerlink" href="#sceneview-42x-to-430-ios-silent-stub-modes-now-active" title="Permanent link">&para;</a></h2>
+<h3 id="cameracontrolspan-and-cameracontrolsfirstperson-no-longer-silently-orbit-1034"><code>.cameraControls(.pan)</code> and <code>.cameraControls(.firstPerson)</code> no longer silently orbit (<a href="https://github.com/sceneview/sceneview/issues/1034">#1034</a>)<a class="headerlink" href="#cameracontrolspan-and-cameracontrolsfirstperson-no-longer-silently-orbit-1034" title="Permanent link">&para;</a></h3>
+<p>In v4.2.0 these two modes existed in the enum but <code>applyCamera()</code> ignored
+them — they produced orbit behaviour at runtime. v4.3.0 wires them to
+real per-mode handlers.</p>
+<p><strong>Action</strong>:</p>
+<ul>
+<li>Apps that called <code>.cameraControls(.pan)</code> <em>expecting</em> orbit behaviour
+  should switch to <code>.cameraControls(.orbit)</code> (or drop the modifier
+  entirely — orbit is the default).</li>
+<li>Apps that called <code>.cameraControls(.firstPerson)</code> get FOV-zoom pinch
+  instead of dolly. To keep the v4.2.0 orbit-with-dolly behaviour,
+  switch to <code>.orbit</code>.</li>
+</ul>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1">// v4.2.0 (silent stub)</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">SceneView</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="n">pan</span><span class="p">)</span><span class="w">   </span><span class="c1">// actually orbited</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">// v4.3.0 (wired)</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">SceneView</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="p">.</span><span class="n">cameraControls</span><span class="p">(.</span><span class="n">pan</span><span class="p">)</span><span class="w">   </span><span class="c1">// now translates target; drop modifier for orbit</span>
+</span></code></pre></div>
+<h3 id="library-level-auto-center-is-on-by-default-1026">Library-level auto-center is on by default (<a href="https://github.com/sceneview/sceneview/issues/1026">#1026</a>)<a class="headerlink" href="#library-level-auto-center-is-on-by-default-1026" title="Permanent link">&para;</a></h3>
+<p>iOS v4.3.0 introduces an intermediate <code>contentRoot</code> Entity and translates
+it on the first frame the scene's <code>visualBounds</code> is non-empty so the
+centroid lands on the world origin. Most demos benefit; scenes that rely
+on intentional off-centre placement (carousels, dioramas, story-mode)
+will see content re-centre.</p>
+<p><strong>Action</strong>: append <code>.autoCenterContent(false)</code> for off-centre-by-design
+scenes.</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// v4.2.0 — manual per-demo centring</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">SceneView</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="k">in</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nv">model</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">ModelNode</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="s">"hero.usdz"</span><span class="p">)</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="n">model</span><span class="p">.</span><span class="n">entity</span><span class="p">.</span><span class="n">position</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">.</span><span class="kd">init</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="n">z</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mi">2</span><span class="p">)</span><span class="w">  </span><span class="c1">// intentional offset</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="n">root</span><span class="p">.</span><span class="n">addChild</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="n">entity</span><span class="p">)</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">}</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1">// v4.3.0 — opt out of library centring to keep the offset</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="n">SceneView</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="k">in</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nv">model</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">ModelNode</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="s">"hero.usdz"</span><span class="p">)</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">    </span><span class="n">model</span><span class="p">.</span><span class="n">entity</span><span class="p">.</span><span class="n">position</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">.</span><span class="kd">init</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="n">z</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mi">2</span><span class="p">)</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">    </span><span class="n">root</span><span class="p">.</span><span class="n">addChild</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="n">entity</span><span class="p">)</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="p">}</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="p">.</span><span class="n">autoCenterContent</span><span class="p">(</span><span class="kc">false</span><span class="p">)</span><span class="w">   </span><span class="c1">// ← restore strict v4.2.0 placement</span>
+</span></code></pre></div>
+<hr />
+<h2 id="sceneview-36x-to-400-release-candidate">SceneView 3.6.x to 4.0.0 (Release Candidate)<a class="headerlink" href="#sceneview-36x-to-400-release-candidate" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> <code>v4.0.0</code> is live as a release candidate. Maven Central and Swift Package Manager artifacts are <strong>not</strong> built from the RC tag — pin to the tag manually to test, or wait for the <code>v4.0.0</code> stable tag.</p>
+<p>4.0.0 is a <strong>strictly additive</strong> release for the SDK side. Existing 3.6.x code compiles and runs unchanged. The version bump reflects two new capabilities, not breaking changes.</p>
+<h3 id="1-new-ar-debug-rerunio-integration">1. New: AR Debug — Rerun.io integration<a class="headerlink" href="#1-new-ar-debug-rerunio-integration" title="Permanent link">&para;</a></h3>
+<p>SceneView can now stream an ARCore / ARKit session to the <a href="https://rerun.io">Rerun</a> viewer for scrub-and-replay debugging. See the full guide in the <a href="https://github.com/sceneview/sceneview/blob/main/llms.txt">llms.txt reference</a> or the <a href="https://sceneview.github.io/playground.html">AR Debug (Rerun)</a> example in the playground.</p>
+<p>Quick wire-up on Android:</p>
+<pre class="language-kotlin"><code>import io.github.sceneview.ar.rerun.rememberRerunBridge
+
+@Composable
+fun MyARScreen() {
+    val bridge = rememberRerunBridge(enabled = BuildConfig.DEBUG)
+    ARSceneView(
+        modifier = Modifier.fillMaxSize(),
+        onSessionUpdated = { session, frame -&gt;
+            bridge.logFrame(session, frame)
+        }
+    )
+}</code></pre>
+<p>And on iOS:</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kd">import</span><span class="w"> </span><span class="nc">SceneViewSwift</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kd">struct</span><span class="w"> </span><span class="nc">MyARView</span><span class="p">:</span><span class="w"> </span><span class="n">View</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p">@</span><span class="n">StateObject</span><span class="w"> </span><span class="kd">private</span><span class="w"> </span><span class="kd">var</span><span class="w"> </span><span class="nv">bridge</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">RerunBridge</span><span class="p">(</span><span class="n">host</span><span class="p">:</span><span class="w"> </span><span class="s">"192.168.1.42"</span><span class="p">)</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nv">body</span><span class="p">:</span><span class="w"> </span><span class="n">some</span><span class="w"> </span><span class="n">View</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">        </span><span class="n">ARSceneView</span><span class="p">()</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">            </span><span class="p">.</span><span class="n">onFrame</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">frame</span><span class="p">,</span><span class="w"> </span><span class="kc">_</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">bridge</span><span class="p">.</span><span class="n">logFrame</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">            </span><span class="p">.</span><span class="n">onAppear</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">bridge</span><span class="p">.</span><span class="n">connect</span><span class="p">()</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">            </span><span class="p">.</span><span class="n">onDisappear</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">bridge</span><span class="p">.</span><span class="n">disconnect</span><span class="p">()</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>No breaking changes — this is a new <code>io.github.sceneview.ar.rerun</code> package on Android and a new <code>SceneViewSwift.RerunBridge</code> type on iOS. Nothing existing was touched.</p>
+<h3 id="2-new-arsceneviewonframe-hook-on-ios">2. New: <code>ARSceneView.onFrame</code> hook on iOS<a class="headerlink" href="#2-new-arsceneviewonframe-hook-on-ios" title="Permanent link">&para;</a></h3>
+<p><code>SceneViewSwift.ARSceneView</code> gained a new <code>onFrame(_ handler:)</code> modifier mirroring Android's <code>onSessionUpdated</code> callback. Fires from the existing <code>ARSessionDelegate.session(_:didUpdate:)</code> without adding a second delegate. Used by the Rerun bridge, but useful for any per-frame custom logic (pose streaming, custom tracking analytics, etc.).</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">ARSceneView</span><span class="p">()</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="p">.</span><span class="n">onFrame</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">frame</span><span class="p">,</span><span class="w"> </span><span class="n">arView</span><span class="w"> </span><span class="k">in</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">        </span><span class="c1">// runs on the ARKit delegate queue — do NOT block</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="3-version-bump-just-the-number">3. Version bump — just the number<a class="headerlink" href="#3-version-bump-just-the-number" title="Permanent link">&para;</a></h3>
+<p>Update your Gradle / SPM / pubspec / package.json references:</p>
+<pre class="language-kotlin"><code>// Before
+implementation("io.github.sceneview:sceneview:4.67.0")
+implementation("io.github.sceneview:arsceneview:4.67.0")
+
+// After (4.0.0)
+implementation("io.github.sceneview:sceneview:4.67.0")
+implementation("io.github.sceneview:arsceneview:4.67.0")</code></pre>
+<p><code>4.0.0</code> and every later 4.x release are on Maven Central — use the current version shown above.</p>
+<h3 id="4-sceneview-mcp-moved-to-the-4x-line">4. <code>sceneview-mcp</code> moved to the 4.x line<a class="headerlink" href="#4-sceneview-mcp-moved-to-the-4x-line" title="Permanent link">&para;</a></h3>
+<p>During the 4.0.0 release candidate, the 4.x line of the <a href="https://www.npmjs.com/package/sceneview-mcp"><code>sceneview-mcp</code></a> npm package shipped under the <code>@next</code> tag while <code>@latest</code> stayed on <code>3.6.4</code>. That is over: <code>@latest</code> is now on the 4.x line (with the Rerun integration docs), so the plain package name is all you need:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">"sceneview"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"npx"</span><span class="p">,</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">"args"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"-y"</span><span class="p">,</span><span class="w"> </span><span class="s2">"sceneview-mcp"</span><span class="p">]</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>There is also a <strong>new</strong> <a href="https://www.npmjs.com/package/rerun-3d-mcp"><code>rerun-3d-mcp</code></a> package (<code>@latest = 1.0.0</code>) that generates the Rerun integration boilerplate on demand:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>npx<span class="w"> </span>rerun-3d-mcp
+</span></code></pre></div>
+<hr />
+<h2 id="sceneview-35x-to-360">SceneView 3.5.x to 3.6.0<a class="headerlink" href="#sceneview-35x-to-360" title="Permanent link">&para;</a></h2>
+<p>SceneView 3.6.0 simplifies the API surface so that AI assistants and developers can write correct
+code on the first try. All changes use <code>@Deprecated(replaceWith = ...)</code> — the Kotlin compiler will
+auto-suggest fixes via IDE quick actions.</p>
+<h3 id="1-scene-composable-renamed-to-sceneview-arscene-to-arsceneview">1. <code>Scene</code> composable renamed to <code>SceneView</code>, <code>ARScene</code> to <code>ARSceneView</code><a class="headerlink" href="#1-scene-composable-renamed-to-sceneview-arscene-to-arsceneview" title="Permanent link">&para;</a></h3>
+<p>The <code>Scene { }</code> composable is renamed to <code>SceneView { }</code> and <code>ARScene { }</code> is renamed to
+<code>ARSceneView { }</code>. This aligns Android naming with Apple (SwiftUI already uses <code>SceneView</code> and
+<code>ARSceneView</code>) and avoids confusion with Filament's internal <code>Scene</code> class.</p>
+<pre class="language-kotlin"><code>// Before
+Scene(modifier = Modifier.fillMaxSize()) { /* nodes */ }
+ARScene(modifier = Modifier.fillMaxSize()) { /* AR nodes */ }
+
+// After (3.6.0)
+SceneView(modifier = Modifier.fillMaxSize()) { /* nodes */ }
+ARSceneView(modifier = Modifier.fillMaxSize()) { /* AR nodes */ }</code></pre>
+<p><code>SceneScope</code> and <code>ARSceneScope</code> are <strong>unchanged</strong> — only the top-level composable names changed.</p>
+<h3 id="2-cameranode-composable-renamed-to-secondarycamera">2. <code>CameraNode</code> composable renamed to <code>SecondaryCamera</code><a class="headerlink" href="#2-cameranode-composable-renamed-to-secondarycamera" title="Permanent link">&para;</a></h3>
+<p>The <code>CameraNode { }</code> composable inside <code>SceneView { }</code> creates a non-active camera — it does NOT
+become the scene's rendering camera. The name was misleading, so it's renamed to <code>SecondaryCamera</code>.</p>
+<pre class="language-kotlin"><code>// Before
+SceneView(cameraNode = rememberCameraNode(engine)) {
+    CameraNode { /* secondary camera — name was confusing */ }
+}
+
+// After (3.6.0)
+SceneView(cameraNode = rememberCameraNode(engine)) {
+    SecondaryCamera { /* clearly named as non-primary */ }
+}</code></pre>
+<p>The scene's active camera is still set via <code>SceneView(cameraNode = rememberCameraNode(engine))</code> —
+this has NOT changed.</p>
+<h3 id="3-all-geometry-nodes-now-have-uniform-transform-params">3. All geometry nodes now have uniform transform params<a class="headerlink" href="#3-all-geometry-nodes-now-have-uniform-transform-params" title="Permanent link">&para;</a></h3>
+<p>Every geometry composable (<code>CubeNode</code>, <code>SphereNode</code>, <code>CylinderNode</code>, <code>PlaneNode</code>, <code>LineNode</code>,
+<code>PathNode</code>) now accepts the same <code>position</code>, <code>rotation</code>, <code>scale</code> trio. Previously, some were missing.</p>
+<pre class="language-kotlin"><code>// Before — SphereNode had no rotation or scale
+SphereNode(radius = 0.2f, materialInstance = mat)
+
+// After (3.6.0) — all geometry nodes have the full trio
+SphereNode(
+    radius = 0.2f,
+    materialInstance = mat,
+    position = Position(x = 1f),
+    rotation = Rotation(y = 45f),
+    scale = Scale(2f)
+)</code></pre>
+<h3 id="4-lightnode-explicit-params-instead-of-dual-lambdas">4. <code>LightNode</code> — explicit params instead of dual lambdas<a class="headerlink" href="#4-lightnode-explicit-params-instead-of-dual-lambdas" title="Permanent link">&para;</a></h3>
+<p><code>LightNode</code> now exposes <code>intensity</code>, <code>direction</code>, and <code>position</code> as direct parameters instead of
+requiring two separate <code>apply</code> / <code>nodeApply</code> lambdas.</p>
+<pre class="language-kotlin"><code>// Before
+LightNode(
+    type = LightManager.Type.DIRECTIONAL,
+    apply = { intensity(100_000f); direction(0f, -1f, 0f) },
+    nodeApply = { position = Position(0f, 5f, 0f) }
+)
+
+// After (3.6.0)
+LightNode(
+    type = LightManager.Type.DIRECTIONAL,
+    intensity = 100_000f,
+    direction = Direction(0f, -1f, 0f),
+    position = Position(0f, 5f, 0f)
+)</code></pre>
+<h3 id="5-videonode-convenience-overload-with-asset-path">5. <code>VideoNode</code> — convenience overload with asset path<a class="headerlink" href="#5-videonode-convenience-overload-with-asset-path" title="Permanent link">&para;</a></h3>
+<p>New overload that handles <code>MediaPlayer</code> lifecycle automatically:</p>
+<pre class="language-kotlin"><code>// Before — manual MediaPlayer setup
+val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")
+SceneView {
+    player?.let { VideoNode(player = it, position = Position(z = -2f)) }
+}
+
+// After (3.6.0) — one-liner
+SceneView {
+    VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
+}</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Changed in 4.54.0</p>
+<p>The "Before" lines are the 3.5 API. <code>rememberMediaPlayer</code> no longer takes a <code>context</code> nor
+returns a nullable player: see
+<a href="#sceneview-453x-to-4540-android-remembermediaplayer-returns-a-mediaplayerstate"><code>rememberMediaPlayer</code> returns a <code>MediaPlayerState</code></a>.</p>
+</div>
+<h3 id="6-new-composables-shapenode-and-physicsnode">6. New composables: <code>ShapeNode</code> and <code>PhysicsNode</code><a class="headerlink" href="#6-new-composables-shapenode-and-physicsnode" title="Permanent link">&para;</a></h3>
+<p>Both are now available directly in the <code>SceneView { }</code> DSL:</p>
+<pre class="language-kotlin"><code>SceneView {
+    ShapeNode(
+        polygonPath = listOf(Position2(0f, 0f), Position2(1f, 0f), Position2(0.5f, 1f)),
+        color = Color(0xFF2196F3.toInt())
+    )
+    PhysicsNode(gravity = -9.81f, floorY = 0f) {
+        SphereNode(radius = 0.1f, materialInstance = mat)
+    }
+}</code></pre>
+<h3 id="7-swift-declarative-sceneview-with-nodebuilder">7. Swift: Declarative <code>SceneView</code> with <code>@NodeBuilder</code><a class="headerlink" href="#7-swift-declarative-sceneview-with-nodebuilder" title="Permanent link">&para;</a></h3>
+<p>SwiftUI <code>SceneView</code> now supports a declarative builder matching Android's <code>SceneView { }</code>:</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1">// Before — imperative</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">SceneView</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="k">in</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="n">root</span><span class="p">.</span><span class="n">addChild</span><span class="p">(</span><span class="n">cube</span><span class="p">.</span><span class="n">entity</span><span class="p">)</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="n">root</span><span class="p">.</span><span class="n">addChild</span><span class="p">(</span><span class="n">sphere</span><span class="p">.</span><span class="n">entity</span><span class="p">)</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">}</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1">// After (3.6.0) — declarative</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">SceneView</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="n">GeometryNode</span><span class="p">.</span><span class="n">cube</span><span class="p">(</span><span class="n">size</span><span class="p">:</span><span class="w"> </span><span class="mf">0.3</span><span class="p">,</span><span class="w"> </span><span class="n">color</span><span class="p">:</span><span class="w"> </span><span class="p">.</span><span class="n">red</span><span class="p">)</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">        </span><span class="p">.</span><span class="n">position</span><span class="p">(.</span><span class="kd">init</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">z</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mi">2</span><span class="p">))</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="n">GeometryNode</span><span class="p">.</span><span class="n">sphere</span><span class="p">(</span><span class="n">radius</span><span class="p">:</span><span class="w"> </span><span class="mf">0.2</span><span class="p">,</span><span class="w"> </span><span class="n">color</span><span class="p">:</span><span class="w"> </span><span class="p">.</span><span class="n">blue</span><span class="p">)</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">        </span><span class="p">.</span><span class="n">position</span><span class="p">(.</span><span class="kd">init</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">z</span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mi">2</span><span class="p">))</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="8-swift-nodegesture-automatic-cleanup">8. Swift: <code>NodeGesture</code> automatic cleanup<a class="headerlink" href="#8-swift-nodegesture-automatic-cleanup" title="Permanent link">&para;</a></h3>
+<p><code>NodeGesture</code> now tracks entities with weak references and automatically purges stale handlers.
+Entity fluent extensions are available for cleaner syntax:</p>
+<div class="language-swift highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1">// Before — static calls only</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">NodeGesture</span><span class="p">.</span><span class="n">onTap</span><span class="p">(</span><span class="n">entity</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="bp">print</span><span class="p">(</span><span class="s">"Tapped!"</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1">// After (3.6.0) — fluent chaining</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">entity</span><span class="p">.</span><span class="n">onTap</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="bp">print</span><span class="p">(</span><span class="s">"Tapped!"</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">       </span><span class="p">.</span><span class="n">onDrag</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">translation</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">entity</span><span class="p">.</span><span class="n">position</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">translation</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<hr />
+<h2 id="sceneview-2x-to-3x">SceneView 2.x to 3.x<a class="headerlink" href="#sceneview-2x-to-3x" title="Permanent link">&para;</a></h2>
+<p>SceneView 3.0 is a ground-up rewrite around Jetpack Compose. The core concepts are the same
+(Filament engine, ARCore session, node graph), but the API is fully Compose-native. This guide
+walks through every breaking change with before/after examples.</p>
+<hr />
+<h2 id="1-dependency-version">1. Dependency version<a class="headerlink" href="#1-dependency-version" title="Permanent link">&para;</a></h2>
+<pre class="language-kotlin"><code>// Before
+implementation("io.github.sceneview:sceneview:2.3.0")
+implementation("io.github.sceneview:arsceneview:2.3.0")
+
+// After
+implementation("io.github.sceneview:sceneview:4.67.0")
+implementation("io.github.sceneview:arsceneview:4.67.0")</code></pre>
+<hr />
+<h2 id="2-sceneview-nodes-move-into-the-content-block">2. <code>SceneView</code> — nodes move into the content block<a class="headerlink" href="#2-sceneview-nodes-move-into-the-content-block" title="Permanent link">&para;</a></h2>
+<p>The <code>childNodes</code> parameter is gone. Declare nodes directly inside the <code>SceneView { }</code> trailing lambda.</p>
+<pre class="language-kotlin"><code>// Before — nodes passed as a list
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    engine = engine,
+    modelLoader = modelLoader,
+    childNodes = rememberNodes {
+        add(
+            ModelNode(
+                modelInstance = modelLoader.createModelInstance("models/helmet.glb"),
+                scaleToUnits = 1.0f
+            )
+        )
+        add(CylinderNode(engine = engine, radius = 0.1f, height = 1.0f))
+    },
+    cameraManipulator = rememberCameraManipulator()
+)
+
+// After — nodes declared as composables in the DSL
+val modelInstance = rememberModelInstance(modelLoader, "models/helmet.glb")
+
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    cameraManipulator = rememberCameraManipulator()
+) {
+    modelInstance?.let { instance -&gt;
+        ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
+    }
+    CylinderNode(radius = 0.1f, height = 1.0f)
+}</code></pre>
+<p>Key differences:
+- <code>engine</code> and <code>modelLoader</code> parameters have sensible defaults — you only need to provide them
+  explicitly if you're sharing resources across multiple scenes.
+- <code>rememberModelInstance</code> is async and returns <code>null</code> while loading. Use <code>?.let { }</code> to show the
+  node only when ready. It triggers recomposition automatically.
+- No more <code>add()</code> calls. The Compose runtime manages the node lifecycle.</p>
+<hr />
+<h2 id="3-node-hierarchy-nodescope-replaces-addchildnode">3. Node hierarchy — <code>NodeScope</code> replaces <code>addChildNode</code><a class="headerlink" href="#3-node-hierarchy-nodescope-replaces-addchildnode" title="Permanent link">&para;</a></h2>
+<pre class="language-kotlin"><code>// Before — imperative parent/child wiring
+val parentNode = Node(engine).apply {
+    addChildNode(
+        ModelNode(modelInstance = helmet).apply {
+            position = Position(y = 0.1f)
+        }
+    )
+}
+
+// After — declarative nesting via NodeScope
+Node(position = Position(y = 0.0f)) {   // trailing lambda opens a NodeScope
+    ModelNode(modelInstance = helmet, position = Position(y = 0.1f))
+}</code></pre>
+<p>Every node composable in <code>SceneScope</code> accepts an optional <code>content</code> trailing lambda. Nodes
+declared inside that lambda are automatically parented to the enclosing node.</p>
+<hr />
+<h2 id="4-arsceneview-ar-nodes-move-into-the-content-block">4. <code>ARSceneView</code> — AR nodes move into the content block<a class="headerlink" href="#4-arsceneview-ar-nodes-move-into-the-content-block" title="Permanent link">&para;</a></h2>
+<pre class="language-kotlin"><code>// Before
+var anchor: Anchor? = null
+
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    childNodes = rememberNodes { /* populated imperatively in onSessionUpdated */ },
+    onSessionUpdated = { session, frame -&gt;
+        if (anchor == null) {
+            anchor = frame.hitTest(centerX, centerY)
+                .firstOrNull { it.trackable is Plane }
+                ?.createAnchor()
+                ?.also { a -&gt;
+                    childNodes.add(AnchorNode(engine, a).apply {
+                        addChildNode(ModelNode(modelInstance = helmet))
+                    })
+                }
+        }
+    }
+)
+
+// After — state drives composition
+var anchor by remember { mutableStateOf&lt;Anchor?&gt;(null) }
+
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    onSessionUpdated = { _, frame -&gt;
+        if (anchor == null) {
+            anchor = frame.getUpdatedPlanes()
+                .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
+                ?.let { it.createAnchorOrNull(it.centerPose) }
+        }
+    }
+) {
+    anchor?.let { a -&gt;
+        AnchorNode(anchor = a) {
+            ModelNode(modelInstance = helmet, scaleToUnits = 0.5f)
+        }
+    }
+}</code></pre>
+<p>The anchor state variable drives everything. When <code>anchor</code> becomes non-null, <code>AnchorNode</code> enters
+the composition. When it is cleared, the node is removed and destroyed automatically.</p>
+<hr />
+<h2 id="5-model-loading-remembermodelinstance-replaces-synchronous-creation">5. Model loading — <code>rememberModelInstance</code> replaces synchronous creation<a class="headerlink" href="#5-model-loading-remembermodelinstance-replaces-synchronous-creation" title="Permanent link">&para;</a></h2>
+<pre class="language-kotlin"><code>// Before — blocking, called inside rememberNodes or init
+val instance = modelLoader.createModelInstance("models/helmet.glb")
+
+// After — async, null while loading
+val instance = rememberModelInstance(modelLoader, "models/helmet.glb")
+// instance is null until the file is loaded, then recomposition fires</code></pre>
+<p><code>rememberModelInstance</code> reads the file on <code>Dispatchers.IO</code> and creates the Filament asset on the
+main thread, so it is both non-blocking and thread-safe.</p>
+<hr />
+<h2 id="6-surfacetype-replaces-boolean-flags">6. <code>SurfaceType</code> — replaces boolean flags<a class="headerlink" href="#6-surfacetype-replaces-boolean-flags" title="Permanent link">&para;</a></h2>
+<pre class="language-kotlin"><code>// Before (if the flag existed in your version)
+SceneView(isOpaque = false)
+
+// After — explicit enum
+SceneView(surfaceType = SurfaceType.TextureSurface)  // TextureView, supports alpha blending
+SceneView(surfaceType = SurfaceType.Surface)          // SurfaceView, best performance (default)</code></pre>
+<hr />
+<h2 id="7-viewnode-compose-ui-as-a-3d-surface">7. <code>ViewNode</code> — Compose UI as a 3D surface<a class="headerlink" href="#7-viewnode-compose-ui-as-a-3d-surface" title="Permanent link">&para;</a></h2>
+<p><code>ViewNode</code> is now a first-class composable in <code>SceneScope</code>. It requires a <code>WindowManager</code>
+obtained with <code>rememberViewNodeManager()</code>.</p>
+<pre class="language-kotlin"><code>// After
+val windowManager = rememberViewNodeManager()
+
+SceneView {
+    ViewNode(windowManager = windowManager) {
+        Card { Text("Hello from 3D!") }
+    }
+}</code></pre>
+<hr />
+<h2 id="8-activity-fragment-structure">8. Activity / Fragment structure<a class="headerlink" href="#8-activity-fragment-structure" title="Permanent link">&para;</a></h2>
+<p>All samples (and the recommended app structure) have moved from Fragment + XML layout to a single
+<code>ComponentActivity</code> with <code>setContent { }</code>. There is no Fragment API in 3.0.</p>
+<pre class="language-kotlin"><code>// Before — Fragment with layout inflation
+class MainFragment : Fragment() {
+    override fun onCreateView(...) = layoutInflater.inflate(R.layout.fragment_main, ...)
+    override fun onViewCreated(view: View, ...) {
+        val sceneView = view.findViewById&lt;ARSceneView&gt;(R.id.sceneView)
+        sceneView.onSessionUpdated = { ... }
+    }
+}
+
+// After — Activity with Compose
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            ARSceneView(modifier = Modifier.fillMaxSize()) {
+                // AR content here
+            }
+        }
+    }
+}</code></pre>
+<hr />
+<h2 id="9-sceneform-legacy-java-classes">9. Sceneform / legacy Java classes<a class="headerlink" href="#9-sceneform-legacy-java-classes" title="Permanent link">&para;</a></h2>
+<p>All classes that were still present under <code>com.google.ar.sceneform.*</code> and
+<code>io.github.sceneview.collision.*</code> as Java files have been converted to Kotlin. The class names
+and package paths are unchanged — only the file extension changes from <code>.java</code> to <code>.kt</code>.</p>
+<p>If you were importing these classes directly (e.g. <code>com.google.ar.sceneform.rendering.Color</code>),
+the imports continue to work. No action required.</p>
+<hr />
+<h2 id="summary-checklist">Summary checklist<a class="headerlink" href="#summary-checklist" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bump dependency to <code>4.0.0</code></td>
+<td>Update <code>build.gradle</code></td>
+</tr>
+<tr>
+<td>Remove <code>childNodes = rememberNodes { }</code></td>
+<td>Move node declarations into <code>SceneView { }</code></td>
+</tr>
+<tr>
+<td>Replace <code>add(ModelNode(...))</code></td>
+<td>Use <code>ModelNode(...)</code> composable directly</td>
+</tr>
+<tr>
+<td>Replace <code>addChildNode(...)</code></td>
+<td>Use nested <code>NodeScope</code> content lambda</td>
+</tr>
+<tr>
+<td>Replace <code>modelLoader.createModelInstance(...)</code></td>
+<td>Use <code>rememberModelInstance(modelLoader, path)</code></td>
+</tr>
+<tr>
+<td>Replace <code>isOpaque = false</code></td>
+<td>Use <code>surfaceType = SurfaceType.TextureSurface</code></td>
+</tr>
+<tr>
+<td>Replace Fragment + XML layout</td>
+<td>Use <code>ComponentActivity</code> + <code>setContent { }</code></td>
+</tr>
+<tr>
+<td>Replace imperative <code>anchor</code> node wiring</td>
+<td>Drive with <code>mutableStateOf&lt;Anchor?&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="v31x-v32x">v3.1.x → v3.2.x<a class="headerlink" href="#v31x-v32x" title="Permanent link">&para;</a></h1>
+<h2 id="new-node-types-non-breaking">New node types (non-breaking)<a class="headerlink" href="#new-node-types-non-breaking" title="Permanent link">&para;</a></h2>
+<p>v3.2.0 adds 8 new node composables in <code>SceneScope</code>. No migration required — these are additive.</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PhysicsNode</code></td>
+<td>Rigid body simulation (gravity, floor collision, sleep)</td>
+</tr>
+<tr>
+<td><code>DynamicSkyNode</code></td>
+<td>Time-of-day sun positioning and coloring</td>
+</tr>
+<tr>
+<td><code>FogNode</code></td>
+<td>Atmospheric fog (density, height, color)</td>
+</tr>
+<tr>
+<td><code>ReflectionProbeNode</code></td>
+<td>Local/global IBL override zones</td>
+</tr>
+<tr>
+<td><code>LineNode</code></td>
+<td>Single line segment between two points</td>
+</tr>
+<tr>
+<td><code>PathNode</code></td>
+<td>Polyline through ordered points</td>
+</tr>
+<tr>
+<td><code>BillboardNode</code></td>
+<td>Camera-facing image quad</td>
+</tr>
+<tr>
+<td><code>TextNode</code></td>
+<td>Camera-facing text label</td>
+</tr>
+</tbody>
+</table>
+<h2 id="dependency-management-change">Dependency management change<a class="headerlink" href="#dependency-management-change" title="Permanent link">&para;</a></h2>
+<p>Sample apps now use the Gradle version catalog (<code>libs.*</code>) instead of hardcoded versions.
+If you copied a sample <code>build.gradle</code> as a starting point, update your dependencies:</p>
+<pre class="language-kotlin"><code>// Before (hardcoded)
+implementation "androidx.compose.ui:ui:1.10.5"
+implementation "androidx.compose.material3:material3:1.3.2"
+
+// After (version catalog)
+implementation libs.androidx.compose.ui
+implementation libs.androidx.compose.material3</code></pre>
+<p>Or if you're not using a version catalog, bump to the latest versions listed in
+<code>gradle/libs.versions.toml</code>.</p>
+<h2 id="edge-to-edge">Edge-to-edge<a class="headerlink" href="#edge-to-edge" title="Permanent link">&para;</a></h2>
+<p>All sample activities now call <code>enableEdgeToEdge()</code> before <code>setContent {}</code>. If you're
+building on a sample, add it to your <code>onCreate</code>:</p>
+<pre class="language-kotlin"><code>override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
+    setContent { /* ... */ }
+}</code></pre>
+<h2 id="16-kb-page-size-alignment-api-35-required-for-play-store">16 KB page-size alignment (API 35+, required for Play Store)<a class="headerlink" href="#16-kb-page-size-alignment-api-35-required-for-play-store" title="Permanent link">&para;</a></h2>
+<p>Google Play has enforced 16 KB ELF page-size alignment for all APKs targeting Android 15+
+(API 35) since January 2026. SceneView adds the AGP flag to its own library modules; your
+<strong>app-level</strong> <code>build.gradle</code> / <code>build.gradle.kts</code> must also opt in:</p>
+<div class="language-groovy highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1">// app/build.gradle (Groovy DSL)</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">android</span><span class="w"> </span><span class="o">{</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="n">experimentalProperties</span><span class="o">[</span><span class="s2">"android.nativeLibraryAlignmentPageSize"</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"16k"</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="c1">// …</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="o">}</span>
+</span></code></pre></div>
+<pre class="language-kotlin"><code>// app/build.gradle.kts (Kotlin DSL)
+android {
+    experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
+    // …
+}</code></pre>
+<p>This rewrites ELF <code>PT_LOAD</code> alignment headers for <strong>all</strong> native <code>.so</code> files packaged
+into the APK/AAB at build time, including the Filament and ARCore prebuilt libraries.
+Without this flag, Play Store will reject the upload with:
+<code>Artifact does not support 16KB page size</code>.</p>
+
+
+
+
+
+
+
+  
+  
+
+
+
+  
+
+
+
+  <form class="md-feedback" name="feedback" hidden>
+    <fieldset>
+      <legend class="md-feedback__title">
+        Was this page helpful?
+      </legend>
+      <div class="md-feedback__inner">
+        <div class="md-feedback__list">
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page was helpful" data-md-value="1">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8 8 8 0 0 0 8-8m2 0a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10M10 9.5c0 .8-.7 1.5-1.5 1.5S7 10.3 7 9.5 7.7 8 8.5 8s1.5.7 1.5 1.5m7 0c0 .8-.7 1.5-1.5 1.5S14 10.3 14 9.5 14.7 8 15.5 8s1.5.7 1.5 1.5m-5 7.73c-1.75 0-3.29-.73-4.19-1.81L9.23 14c.45.72 1.52 1.23 2.77 1.23s2.32-.51 2.77-1.23l1.42 1.42c-.9 1.08-2.44 1.81-4.19 1.81"/></svg>
+            </button>
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page could be improved" data-md-value="0">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8 8 8 0 0 0 8-8m2 0a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10m-6.5-4c.8 0 1.5.7 1.5 1.5s-.7 1.5-1.5 1.5-1.5-.7-1.5-1.5.7-1.5 1.5-1.5M10 9.5c0 .8-.7 1.5-1.5 1.5S7 10.3 7 9.5 7.7 8 8.5 8s1.5.7 1.5 1.5m2 4.5c1.75 0 3.29.72 4.19 1.81l-1.42 1.42C14.32 16.5 13.25 16 12 16s-2.32.5-2.77 1.23l-1.42-1.42C8.71 14.72 10.25 14 12 14"/></svg>
+            </button>
+          
+        </div>
+        <div class="md-feedback__note">
+          
+            <div data-md-value="1" hidden>
+              
+              
+                
+              
+              
+              
+                
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+            <div data-md-value="0" hidden>
+              
+              
+                
+              
+              
+              
+                
+                
+              
+              Thanks, we'll work on improving this page.
+            </div>
+          
+        </div>
+      </div>
+    </fieldset>
+  </form>
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2021-2026 Thomas Gorisse — Apache 2.0 License
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener" title="SceneView on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener" title="SceneView Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://www.npmjs.com/package/sceneview-mcp" target="_blank" rel="noopener" title="SceneView MCP on npm" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M288 288h-32v-64h32zm288-128v192H288v32H160v-32H0V160zm-416 32H32v128h64v-96h32v96h32zm160 0H192v160h64v-32h64zm224 0H352v128h64v-96h32v96h32v-96h32v96h32z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "navigation.indexes", "navigation.instant", "navigation.instant.progress", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link", "content.action.edit", "toc.follow", "announce.dismiss"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
 </html>

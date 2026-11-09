@@ -55,8 +55,8 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <link rel="preload" as="image" href="assets/home/hero-phoenix-sq-960.webp" imagesrcset="assets/home/hero-phoenix-sq-640.webp 640w, assets/home/hero-phoenix-sq-960.webp 960w" imagesizes="44vw" media="(min-width: 960px) and (min-height: 600px)" fetchpriority="high">
-  <link rel="preload" as="image" href="assets/home/hero-phoenix-wide-960.webp" imagesrcset="assets/home/hero-phoenix-wide-640.webp 640w, assets/home/hero-phoenix-wide-960.webp 960w" imagesizes="100vw" media="not ((min-width: 960px) and (min-height: 600px))" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/hero-smeg-toaster-sq-960.webp" imagesrcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" imagesizes="44vw" media="(min-width: 960px) and (min-height: 600px)" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/hero-smeg-toaster-wide-960.webp" imagesrcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w" imagesizes="100vw" media="not ((min-width: 960px) and (min-height: 600px))" fetchpriority="high">
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/fit.js" defer></script>
@@ -137,7 +137,7 @@
       <a href="/docs/">Docs</a>
       <a href="/docs/samples/">Samples</a>
       <a href="/docs/showcase/">Showcase</a>
-      <a href="/playground.html">Playground</a>
+      <a href="/web-demo/">Web demo</a>
     </nav>
     <div class="nav__end">
       <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars data-metric="stars">1.3K</span></a>
@@ -159,7 +159,7 @@
       <li><a href="/docs/">Docs <span>quickstarts, API</span></a></li>
       <li><a href="/docs/samples/">Samples <span>Android, Apple, web</span></a></li>
       <li><a href="/docs/showcase/">Showcase</a></li>
-      <li><a href="/playground.html">Playground <span>in the browser</span></a></li>
+      <li><a href="/web-demo/">Web demo <span>in the browser</span></a></li>
       <li><a href="https://github.com/sceneview/sceneview">GitHub <span data-stars data-stars-prefix="★ "></span></a></li>
       <li><a href="https://discord.gg/UbNDDBTNqb">Discord <span>community</span></a></li>
     </ul>
@@ -179,22 +179,22 @@
        title first, then the picture (site.css, hero). The fit (data-bbox …) is assets/fit.js. -->
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero__pin">
-      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/web-demo/models/phoenix_bird.glb" data-anim="0"
-           data-bbox="-730,-370,-536,238,610,528" data-hull="ellipse" data-elev="0.15" data-angle="0.6" data-fill="0.86" data-top="0.8" data-bottom="-1.12"
+      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/models/platforms/smeg_toaster.glb"
+           data-bbox="-0.155,0,-0.0925,0.155,0.2021,0.0925" data-hull="box" data-elev="0.22" data-angle="0.55" data-fill="0.8" data-top="0.55" data-bottom="-0.62"
            data-autoload="idle" data-mobile="tap">
         <div class="stage__box">
           <div class="stage__frame">
             <picture>
-              <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-phoenix-sq-640.webp 640w, assets/home/hero-phoenix-sq-960.webp 960w" sizes="44vw" width="960" height="960">
-              <img class="stage__poster" src="assets/home/hero-phoenix-wide-960.webp" srcset="assets/home/hero-phoenix-wide-640.webp 640w, assets/home/hero-phoenix-wide-960.webp 960w"
+              <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" sizes="44vw" width="960" height="960">
+              <img class="stage__poster" src="assets/home/hero-smeg-toaster-wide-960.webp" srcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w"
                    sizes="100vw" width="960" height="600" fetchpriority="high"
-                   alt="A phoenix in flight, its long tail feathers in orange and blue, rendered by SceneView Web.">
+                   alt="A pastel green SMEG two-slice toaster with a chrome base and lever, rendered by SceneView Web.">
             </picture>
-            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a phoenix in flight. Drag sideways to turn it."></canvas>
+            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a SMEG toaster. Drag sideways to turn it."></canvas>
           </div>
         </div>
         <div class="stage__bar">
-          <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042">Phoenix Bird</a> by NORBERTO-3D, CC&nbsp;BY&nbsp;4.0</p>
+          <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1">SMEG toaster</a> by The Fresh Lab, CC&nbsp;BY&nbsp;4.0</p>
           <button class="stage__load btn btn--text" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
           <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
         </div>
@@ -206,7 +206,7 @@
           <p class="lead">SceneView renders 3D models and AR scenes inside Jetpack Compose, SwiftUI and web apps. Scenes are declared in code, like the rest of the UI.</p>
           <div class="hero__ctas">
             <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
-            <a class="btn btn--outlined btn--lg" href="/playground.html">Try it in the browser</a>
+            <a class="btn btn--outlined btn--lg" href="/web-demo/">Try in browser</a>
           </div>
           <ul class="hero__meta">
             <li>Open source under Apache 2.0</li>
@@ -235,7 +235,7 @@
 
         <ol class="hero__specs" aria-label="What the page uses">
           <li><b>A transparent canvas on the page</b><code>SceneView.create(canvas, { transparent: true })</code></li>
-          <li><b>The model's own animation</b><code>playAnimation(0, true)</code></li>
+          <li><b>A turntable rotation</b><code>setAutoRotate(true)</code></li>
           <li><b>Image-based lighting</b><code>iblUrl, iblIntensity</code></li>
         </ol>
       </div>
@@ -600,11 +600,11 @@
       <div class="finale reveal">
         <div class="finale__text">
           <h2 class="h2" id="start-title">Getting started</h2>
-          <p class="lead">Each platform has a quickstart of about ten lines, and the playground edits a live scene in the browser.</p>
+          <p class="lead">Each platform has a quickstart of about ten lines, and the web demo runs SceneView in the browser, with nothing to install.</p>
         </div>
         <div class="finale__ctas">
           <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
-          <a class="btn btn--outlined btn--lg" href="/playground.html">Open the playground</a>
+          <a class="btn btn--outlined btn--lg" href="/web-demo/">Open the web demo</a>
         </div>
       </div>
     </div>
@@ -620,7 +620,7 @@
       </div>
       <div><h2 class="footer__h">Product</h2><ul>
         <li><a href="/docs/">Docs</a></li><li><a href="/docs/samples/">Samples</a></li>
-        <li><a href="/docs/showcase/">Showcase</a></li><li><a href="/playground.html">Playground</a></li>
+        <li><a href="/docs/showcase/">Showcase</a></li><li><a href="/web-demo/">Web demo</a></li>
         <li><a href="/use-cases.html">3D scan use cases</a></li>
         <li><a href="/api/sceneview/latest/sceneview/">API reference</a></li></ul></div>
       <div><h2 class="footer__h">Platforms</h2><ul>

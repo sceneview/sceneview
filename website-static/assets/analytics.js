@@ -103,15 +103,18 @@
   }
 
   onReady(function () {
-    // Tab switches on the landing page / playground.
+    // Tab switches on the landing page.
     each('[data-tab]', function (tab) {
       tab.addEventListener('click', function () {
         gtag('event', 'tab_click', { tab_name: this.dataset.tab });
       });
     });
 
-    // Adoption CTAs: repo, MCP install links, Discord, npm.
-    each('a[href*="github.com/sceneview"], a[href*="cursor://"], a[href*="vscode:mcp"], a[href*="discord"], a[href*="npmjs"]',
+    // Adoption CTAs: repo, MCP install links, Discord, npm, and the web demo (the site's
+    // "try it in the browser" destination since the playground was retired; an internal
+    // link, so GA4's outbound-click measurement never sees it).
+    each('a[href*="github.com/sceneview"], a[href*="cursor://"], a[href*="vscode:mcp"], a[href*="discord"], a[href*="npmjs"], ' +
+         'a[href^="/web-demo/"], a[href^="https://sceneview.github.io/web-demo/"]',
       function (link) {
         link.addEventListener('click', function () {
           gtag('event', 'cta_click', {
