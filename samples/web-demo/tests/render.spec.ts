@@ -213,7 +213,10 @@ test.describe('SceneView Web Demo Rendering', () => {
 
     // Check logo text
     const logoText = page.locator('.logo-text');
-    await expect(logoText).toHaveText('SceneView Web Demo');
+    await expect(logoText).toHaveText('SceneView');
+    await expect(page.locator('.page-title')).toContainText('Web demo');
+    // The way into the docs, from the top bar.
+    await expect(page.locator('#use-in-app')).toHaveAttribute('href', '/docs/quickstart-web/');
 
     // Check version badge
     const version = page.locator('.logo-version');

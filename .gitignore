@@ -351,6 +351,9 @@ device-qa-report.json
 /samples/ios-demo/SceneViewDemo/Environments/*.hdr
 /website-static/models/platforms/*.glb
 /samples/web-demo/site/kotlin-bundle/*.spz
+# The web demo's catalog models. animated_*.glb and phoenix_bird.glb predate the
+# manifest and stay committed (tracked files are not affected by this pattern).
+/samples/web-demo/site/models/*.glb
 
 # Local web-demo viewer staged from the canonical website source (#4316).
 /samples/web-demo/site/js/sceneview.js

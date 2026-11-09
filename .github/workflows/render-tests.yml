@@ -433,6 +433,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The web demo's catalog models are not in git (assets/manifest.json).
+      - name: Fetch binary assets (web-demo)
+        uses: ./.github/actions/fetch-assets
+        with:
+          scopes: web-demo
+
       - uses: actions/setup-node@v7
         with:
           node-version: 20

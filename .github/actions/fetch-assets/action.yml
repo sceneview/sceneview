@@ -11,7 +11,7 @@ description: |
 
 inputs:
   scopes:
-    description: Space-separated scopes to materialise — any of android, ios, tv, web, web-test.
+    description: Space-separated scopes to materialise — any of android, ios, tv, web, web-demo, web-test.
     required: true
 
 runs:

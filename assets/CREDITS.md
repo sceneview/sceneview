@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **140** (plus 6 pending metadata, 9 pending license review).
+Total models: **142** (plus 6 pending metadata, 9 pending license review).
 
 ---
 
@@ -140,12 +140,14 @@ Total models: **140** (plus 6 pending metadata, 9 pending license review).
 
 ## Poly Haven
 
+- **[Chess set](https://polyhaven.com/a/chess_set)** by Riley Queen — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Rooftop Night](https://polyhaven.com/a/rooftop_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Studio](https://polyhaven.com/a/christmas_photo_studio_07)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Studio Warm](https://polyhaven.com/a/studio_small_08)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[The Sky Is On Fire](https://polyhaven.com/a/the_sky_is_on_fire)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Vintage camera](https://polyhaven.com/a/Camera_01)** by Rajil Jose Macatangay — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Fab
 

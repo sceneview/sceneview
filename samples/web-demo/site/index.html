@@ -2,12 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SceneView Web Demo — 3D Viewer, Sketchfab Search, Geometry &amp; Physics Showcase</title>
-    <meta name="description" content="SceneView Web Demo: 3D model viewer with Sketchfab search, geometry showcase, a Double Pendulum physics demo, HDR environments, and WebXR AR/VR — powered by Filament.js (WASM).">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- GA4, the site's one loader (website-static/assets/analytics.js). Synchronous on
+         purpose: it only defines the gtag() shim, the library itself loads async. It is
+         served from the site root, so a local run gets a harmless 404. -->
+    <script src="/assets/analytics.js"></script>
+    <title>SceneView web demo: 3D in your browser</title>
+    <meta name="description" content="Try SceneView in the browser: realistic 3D models in a photo studio, procedural geometry, lights, animation, 3D text, a physics demo and spatial audio, rendered by Filament (WebGL2 and WebAssembly).">
+    <meta name="theme-color" content="#F9F9FF" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#11131A" media="(prefers-color-scheme: dark)">
     <!-- Open Graph / Twitter — shared-link unfurls (#3688) -->
-    <meta property="og:title" content="SceneView Web Demo — 3D Viewer, Geometry &amp; Physics Showcase">
-    <meta property="og:description" content="3D model viewer with Sketchfab search, procedural geometry, a physics demo, HDR environments and WebXR AR/VR — in the browser, powered by Filament.js (WASM).">
+    <meta property="og:title" content="SceneView web demo: 3D in your browser">
+    <meta property="og:description" content="Realistic 3D models in a photo studio, geometry, lights, animation, physics and spatial audio, in the browser. The same SceneView API ships on Android, iOS and the web.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://sceneview.github.io/web-demo/">
     <meta property="og:site_name" content="SceneView">
@@ -15,14 +21,15 @@
     <meta property="og:image" content="https://sceneview.github.io/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="SceneView Web Demo — 3D in the browser">
+    <meta property="og:image:alt" content="SceneView web demo: 3D in the browser">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SceneView Web Demo — 3D Viewer, Geometry &amp; Physics Showcase">
-    <meta name="twitter:description" content="3D model viewer with Sketchfab search, procedural geometry, a physics demo, HDR environments and WebXR AR/VR — in the browser, powered by Filament.js (WASM).">
+    <meta name="twitter:title" content="SceneView web demo: 3D in your browser">
+    <meta name="twitter:description" content="Realistic 3D models in a photo studio, geometry, lights, animation, physics and spatial audio, in the browser.">
     <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+    <!-- The opening model starts downloading with the page, not after the engine boots. -->
+    <link rel="preload" href="models/kitchenaid_stand_mixer.glb" as="fetch" crossorigin>
 
     <!-- Filament.js WASM engine — self-hosted (never an external CDN, see issue #1586).
          filament.js resolves filament.wasm relative to its own directory (js/filament/). -->
@@ -33,1066 +40,1107 @@
     <script src="js/model-sources.js"></script>
 
     <style>
+        /* ---- Design tokens --------------------------------------------------------
+           The Material 3 roles of website-static/assets/tokens.css (source colour
+           #005BC1), copied because this page is also served on its own (Playwright,
+           device QA) where /assets/ does not exist. Keep the two in step. */
         :root {
-            --sv-blue: #005bc1;
-            --sv-blue-light: #a4c1ff;
-            --sv-purple: #6446cd;
-            --sv-purple-light: #d2a8ff;
-            --sv-green: #00b894;
-            --sv-green-light: #55efc4;
-            --sv-dark: #0D1117;
-            --sv-dark-surface: #161B22;
-            --sv-dark-card: #2b323d;
-            --sv-dark-overlay: rgba(13, 17, 23, 0.88);
-            --sv-text: #f3f4f6;
-            --sv-text-dim: #9ca3af;
-            /* Overlay UI sits on top of an arbitrary 3D scene, so the panels have to
-               carry their own background: faint text was 3.3-3.9:1 and the panels were
-               75%-opaque over the canvas, which made them read as part of the scene. */
-            --sv-text-faint: #8b949e;
-            --sv-border: rgba(255,255,255,0.14);
-            --sv-border-hover: rgba(255,255,255,0.28);
-            --sv-radius-sm: 8px;
-            --sv-radius: 12px;
-            --sv-radius-lg: 16px;
-            --sv-radius-pill: 28px;
-            --sv-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            --sv-glass: rgba(38, 44, 54, 0.90);
-            --sv-glass-border: rgba(255,255,255,0.14);
+            color-scheme: light;
+            --md-sys-color-primary: #004494;
+            --md-sys-color-on-primary: #FFFFFF;
+            --md-sys-color-primary-container: #005BC1;
+            --md-sys-color-on-primary-container: #C9D9FF;
+            --md-sys-color-secondary-container: #BBCFFD;
+            --md-sys-color-on-secondary-container: #44587F;
+            --md-sys-color-error: #BA1A1A;
+            --md-sys-color-surface: #F9F9FF;
+            --md-sys-color-surface-container-lowest: #FFFFFF;
+            --md-sys-color-surface-container-low: #F2F3FC;
+            --md-sys-color-surface-container: #ECEDF6;
+            --md-sys-color-surface-container-high: #E7E7F1;
+            --md-sys-color-surface-container-highest: #E1E2EB;
+            --md-sys-color-on-surface: #191B22;
+            --md-sys-color-on-surface-variant: #424753;
+            --md-sys-color-outline: #727784;
+            --md-sys-color-outline-variant: #C2C6D5;
+            --md-sys-color-inverse-surface: #2E3037;
+            --md-sys-color-inverse-on-surface: #EFF0F9;
+            --md-sys-color-inverse-primary: #ADC6FF;
+            --md-sys-color-scrim: #000000;
+            /* The photo studio's horizon (sceneview.js _STUDIO_THEMES), so the stage
+               never flashes another colour before the first frame. */
+            --stage-color: #E7EAEF;
+
+            --font-sans: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+            --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            --md-sys-typescale-title-large: 400 1.375rem/1.75rem var(--font-sans);
+            --md-sys-typescale-title-medium: 500 1rem/1.5rem var(--font-sans);
+            --md-sys-typescale-title-small: 500 .875rem/1.25rem var(--font-sans);
+            --md-sys-typescale-body-large: 400 1rem/1.5rem var(--font-sans);
+            --md-sys-typescale-body-medium: 400 .875rem/1.25rem var(--font-sans);
+            --md-sys-typescale-body-small: 400 .75rem/1rem var(--font-sans);
+            --md-sys-typescale-label-large: 500 .875rem/1.25rem var(--font-sans);
+            --md-sys-typescale-label-medium: 500 .75rem/1rem var(--font-sans);
+            --md-sys-typescale-label-small: 500 .6875rem/1rem var(--font-sans);
+
+            --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+            --md-sys-shape-corner-extra-small: 4px;
+            --md-sys-shape-corner-small: 8px;
+            --md-sys-shape-corner-medium: 12px;
+            --md-sys-shape-corner-large: 16px;
+            --md-sys-shape-corner-extra-large: 28px;
+            --md-sys-shape-corner-full: 9999px;
+            --md-sys-motion-easing-standard: cubic-bezier(.2, 0, 0, 1);
+            --d-fast: 100ms; --d-base: 200ms; --d-slow: 300ms;
+            --md-sys-state-hover-opacity: 8%;
+            --md-sys-state-pressed-opacity: 10%;
+            --md-sys-elevation-1: 0 1px 2px rgba(0, 0, 0, .3), 0 1px 3px 1px rgba(0, 0, 0, .15);
+            --md-sys-elevation-3: 0 1px 3px rgba(0, 0, 0, .3), 0 4px 8px 3px rgba(0, 0, 0, .15);
+
+            --bar-h: 64px;
+            --rail-w: 88px;
+            --sheet-w: 360px;
+            --target: 48px;
+            --icon: 24px;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                color-scheme: dark;
+                --md-sys-color-primary: #ADC6FF;
+                --md-sys-color-on-primary: #002E69;
+                --md-sys-color-primary-container: #005BC1;
+                --md-sys-color-on-primary-container: #C9D9FF;
+                --md-sys-color-secondary-container: #33466D;
+                --md-sys-color-on-secondary-container: #A1B5E2;
+                --md-sys-color-error: #FFB4AB;
+                --md-sys-color-surface: #11131A;
+                --md-sys-color-surface-container-lowest: #0C0E14;
+                --md-sys-color-surface-container-low: #191B22;
+                --md-sys-color-surface-container: #1D2026;
+                --md-sys-color-surface-container-high: #272A31;
+                --md-sys-color-surface-container-highest: #32353C;
+                --md-sys-color-on-surface: #E1E2EB;
+                --md-sys-color-on-surface-variant: #C2C6D5;
+                --md-sys-color-outline: #8C909E;
+                --md-sys-color-outline-variant: #424753;
+                --md-sys-color-inverse-surface: #E1E2EB;
+                --md-sys-color-inverse-on-surface: #2E3037;
+                --md-sys-color-inverse-primary: #005BC0;
+                --stage-color: #222833;
+            }
+        }
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --md-sys-color-primary: #ADC6FF;
+            --md-sys-color-on-primary: #002E69;
+            --md-sys-color-primary-container: #005BC1;
+            --md-sys-color-on-primary-container: #C9D9FF;
+            --md-sys-color-secondary-container: #33466D;
+            --md-sys-color-on-secondary-container: #A1B5E2;
+            --md-sys-color-error: #FFB4AB;
+            --md-sys-color-surface: #11131A;
+            --md-sys-color-surface-container-lowest: #0C0E14;
+            --md-sys-color-surface-container-low: #191B22;
+            --md-sys-color-surface-container: #1D2026;
+            --md-sys-color-surface-container-high: #272A31;
+            --md-sys-color-surface-container-highest: #32353C;
+            --md-sys-color-on-surface: #E1E2EB;
+            --md-sys-color-on-surface-variant: #C2C6D5;
+            --md-sys-color-outline: #8C909E;
+            --md-sys-color-outline-variant: #424753;
+            --md-sys-color-inverse-surface: #E1E2EB;
+            --md-sys-color-inverse-on-surface: #2E3037;
+            --md-sys-color-inverse-primary: #005BC0;
+            --stage-color: #222833;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body {
-            width: 100%; height: 100%; overflow: hidden;
-            background: var(--sv-dark);
-            font-family: var(--sv-font);
-            color: var(--sv-text);
-        }
-
-        /* ---- Canvas ---- */
-        #scene-canvas {
-            width: 100%; height: 100%; display: block;
-            position: absolute; top: 0; left: 0; z-index: 0;
-        }
-
-        /* ---- Top bar ---- */
-        .top-bar {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 30;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 20px; gap: 12px;
-            background: linear-gradient(180deg, var(--sv-dark-overlay) 60%, transparent 100%);
-            pointer-events: none;
-        }
-        .top-bar > * { pointer-events: auto; }
-
-        .logo {
-            display: flex; align-items: center; gap: 10px;
-            text-decoration: none; color: var(--sv-text);
-            flex-shrink: 0;
-        }
-        .logo-icon {
-            width: 32px; height: 32px;
-            background: linear-gradient(135deg, var(--sv-blue), var(--sv-purple));
-            border-radius: var(--sv-radius-sm);
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 16px; color: white;
-        }
-        .logo-text { font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
-        .logo-version {
-            font-size: 11px; font-weight: 500;
-            color: var(--sv-blue-light);
-            background: rgba(0, 91, 193, 0.15);
-            padding: 2px 8px; border-radius: 6px;
-        }
-
-        .top-right {
-            display: flex; align-items: center; gap: 8px;
-            flex-shrink: 0;
-        }
-        .icon-btn {
-            width: 36px; height: 36px;
-            border: 1px solid var(--sv-border);
-            border-radius: 10px;
-            background: rgba(255,255,255,0.04);
-            color: var(--sv-text-dim);
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s, border-color 0.15s, color 0.15s;
-            font-size: 16px; text-decoration: none;
-        }
-        .icon-btn:hover {
-            background: rgba(255,255,255,0.1);
-            border-color: var(--sv-border-hover);
-            color: var(--sv-text);
-        }
-
-        /* ---- Tab bar ---- */
-        .tab-bar {
-            position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
-            z-index: 25;
-            display: flex; gap: 4px;
-            background: var(--sv-glass);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--sv-glass-border);
-            border-radius: var(--sv-radius-pill);
-            padding: 4px;
-        }
-        .tab-btn {
-            padding: 8px 18px;
-            border: none; border-radius: 24px;
-            background: transparent;
-            color: var(--sv-text-dim);
-            font-size: 13px; font-weight: 600; font-family: var(--sv-font);
-            cursor: pointer; white-space: nowrap;
-            transition: all 0.2s;
-        }
-        .tab-btn:hover { color: var(--sv-text); background: rgba(255,255,255,0.06); }
-        .tab-btn.active {
-            background: var(--sv-blue);
-            color: white;
-        }
-
-        /* ---- Panels ---- */
-        .panel {
-            position: fixed; z-index: 20;
-            display: none;
-        }
-        .panel.active { display: flex; }
-
-        /* Search panel (Models tab) */
-        .search-panel {
-            left: 20px; top: 110px; bottom: 80px;
-            width: 340px;
-            flex-direction: column; gap: 10px;
-        }
-
-        /* Source picker chips (SceneView | Icosa | Poly Haven | Sketchfab) */
-        .source-picker {
-            display: flex; flex-wrap: wrap; gap: 6px;
-        }
-        .source-chip {
-            padding: 7px 12px;
-            border-radius: 999px;
-            border: 1px solid var(--sv-border);
-            background: var(--sv-glass);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            color: var(--sv-text-dim);
-            font-size: 12px; font-weight: 600; font-family: var(--sv-font);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .source-chip.active {
-            background: rgba(0, 91, 193, 0.25);
-            color: var(--sv-blue-light);
-            border-color: var(--sv-blue);
-        }
-        .source-chip:hover:not(.active) {
-            background: rgba(255,255,255,0.04);
-            color: var(--sv-text);
-        }
-
-        /* Feed / category section heading within the results list */
-        .result-section-label {
-            font-size: 11px; font-weight: 700;
-            color: var(--sv-text-faint);
-            text-transform: uppercase; letter-spacing: 0.06em;
-            padding: 8px 4px 2px;
-        }
-        .result-section-label.failed { color: #f0a35e; }
-
-        .search-box {
-            display: flex; gap: 0;
-            border-radius: var(--sv-radius);
+        /* ---- Base ---- */
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
             overflow: hidden;
-            border: 1px solid var(--sv-border);
-            background: var(--sv-glass);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            font: var(--md-sys-typescale-body-medium);
+            -webkit-font-smoothing: antialiased;
+            -webkit-tap-highlight-color: transparent;
         }
-        .search-input {
-            flex: 1;
-            padding: 12px 14px;
-            border: none; outline: none;
-            background: transparent;
-            color: var(--sv-text);
-            font-size: 14px; font-family: var(--sv-font);
+        a { color: var(--md-sys-color-primary); }
+        code { font-family: var(--font-mono); font-size: .92em; }
+        button, input, select { font: inherit; color: inherit; }
+        :focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+        .icon { width: var(--icon); height: var(--icon); flex: none; fill: currentColor; }
+        .visually-hidden {
+            position: absolute; width: 1px; height: 1px; overflow: hidden;
+            clip: rect(0 0 0 0); white-space: nowrap;
         }
-        .search-input::placeholder { color: var(--sv-text-faint); }
-        .search-btn {
-            padding: 12px 16px;
-            border: none;
-            background: var(--sv-blue);
-            color: white;
-            font-size: 14px; font-weight: 600; font-family: var(--sv-font);
-            cursor: pointer;
-            transition: background 0.15s;
+        /* State layer: hover/press tint from the element's own content colour. */
+        .state { position: relative; overflow: hidden; }
+        .state::after {
+            content: ""; position: absolute; inset: 0; border-radius: inherit;
+            background: currentColor; opacity: 0; pointer-events: none;
+            transition: opacity var(--d-fast) var(--md-sys-motion-easing-standard);
         }
-        .search-btn:hover { background: #0050aa; }
+        .state:hover::after { opacity: var(--md-sys-state-hover-opacity); }
+        .state:active::after { opacity: var(--md-sys-state-pressed-opacity); }
 
-        .model-results {
-            flex: 1;
-            overflow-y: auto;
-            display: flex; flex-direction: column; gap: 8px;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.1) transparent;
+        /* ---- Layout: app bar / rail + sheet / stage ---- */
+        .app {
+            display: grid;
+            height: 100vh;
+            height: 100dvh;
+            grid-template-columns: var(--rail-w) var(--sheet-w) minmax(0, 1fr);
+            grid-template-rows: var(--bar-h) minmax(0, 1fr);
+            grid-template-areas:
+                "bar  bar   bar"
+                "rail sheet stage";
         }
-        .model-results::-webkit-scrollbar { width: 4px; }
-        .model-results::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        .top-bar { grid-area: bar; }
+        .tab-bar { grid-area: rail; }
+        .sheet { grid-area: sheet; }
+        .stage { grid-area: stage; }
 
-        .result-card {
-            display: flex; gap: 10px; align-items: center;
-            padding: 10px;
-            background: var(--sv-glass);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius);
-            cursor: pointer;
-            transition: all 0.2s;
+        /* ---- Top app bar ---- */
+        .top-bar {
+            display: flex; align-items: center; gap: var(--s-2);
+            padding: 0 var(--s-4) 0 var(--s-5);
+            background: var(--md-sys-color-surface);
+            border-bottom: 1px solid var(--md-sys-color-outline-variant);
+            min-width: 0;
         }
-        .result-card:hover {
-            border-color: var(--sv-blue);
-            background: rgba(0, 91, 193, 0.12);
+        .logo {
+            display: flex; align-items: center; gap: var(--s-3);
+            min-height: var(--target);
+            color: var(--md-sys-color-on-surface); text-decoration: none;
+            border-radius: var(--md-sys-shape-corner-small);
         }
-        .result-card.active {
-            border-color: var(--sv-blue);
-            background: rgba(0, 91, 193, 0.2);
+        .logo-icon { width: 32px; height: 32px; color: var(--md-sys-color-on-surface); }
+        .logo-text { font: var(--md-sys-typescale-title-large); white-space: nowrap; }
+        .page-title {
+            display: flex; align-items: center; gap: var(--s-2);
+            padding-left: var(--s-3); margin-left: var(--s-1);
+            border-left: 1px solid var(--md-sys-color-outline-variant);
+            font: var(--md-sys-typescale-title-medium);
+            color: var(--md-sys-color-on-surface-variant);
+            white-space: nowrap;
         }
-        .result-thumb {
-            width: 56px; height: 56px;
-            border-radius: var(--sv-radius-sm);
-            object-fit: cover;
-            background: var(--sv-dark-surface);
-            flex-shrink: 0;
+        .logo-version {
+            font: var(--md-sys-typescale-label-medium);
+            color: var(--md-sys-color-on-surface-variant);
+            padding: 2px var(--s-2);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-small);
         }
-        .result-info { flex: 1; min-width: 0; }
-        .result-name {
-            font-size: 13px; font-weight: 600;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        .top-right { margin-left: auto; display: flex; align-items: center; gap: var(--s-1); }
+        .icon-btn {
+            width: 40px; height: 40px; margin: 4px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border: 0; border-radius: var(--md-sys-shape-corner-full);
+            background: transparent; color: var(--md-sys-color-on-surface-variant);
+            cursor: pointer; text-decoration: none;
         }
-        .result-author {
-            font-size: 11px; color: var(--sv-text-faint);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            margin-top: 2px;
+        /* Toggle icon button (M3): selected = filled tonal. */
+        .auto-rotate-btn.active {
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
         }
-        .result-badge {
-            font-size: 10px; color: var(--sv-text-faint);
-            margin-top: 2px;
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+            height: 40px; padding: 0 var(--s-5);
+            border: 0; border-radius: var(--md-sys-shape-corner-full);
+            font: var(--md-sys-typescale-label-large);
+            text-decoration: none; white-space: nowrap; cursor: pointer;
         }
+        .btn .icon { width: 18px; height: 18px; }
+        .btn-filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+        .btn-tonal { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+        .btn-outlined {
+            background: transparent; color: var(--md-sys-color-primary);
+            border: 1px solid var(--md-sys-color-outline);
+        }
+        .btn-text { background: transparent; color: var(--md-sys-color-primary); padding: 0 var(--s-3); }
+        .top-bar .btn-filled { margin-left: var(--s-2); }
 
-        .search-status {
+        /* ---- Navigation rail (desktop) / chip row (compact) ---- */
+        .tab-bar {
+            display: flex; flex-direction: column; align-items: stretch; gap: var(--s-1);
+            padding: var(--s-3) 0;
+            background: var(--md-sys-color-surface);
+            overflow-y: auto; scrollbar-width: none;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
+            min-height: 56px; padding: 0 var(--s-1);
+            border: 0; background: transparent; cursor: pointer;
+            color: var(--md-sys-color-on-surface-variant);
+            font: var(--md-sys-typescale-label-medium);
             text-align: center;
-            padding: 20px;
-            color: var(--sv-text-faint);
-            font-size: 13px;
         }
-        .search-status.error { color: #f87171; }
+        .tab-ind {
+            display: flex; align-items: center; justify-content: center;
+            width: 56px; height: 32px; flex: none;
+            border-radius: var(--md-sys-shape-corner-full);
+            position: relative; overflow: hidden;
+        }
+        .tab-ind::after {
+            content: ""; position: absolute; inset: 0; background: currentColor; opacity: 0;
+            transition: opacity var(--d-fast) var(--md-sys-motion-easing-standard);
+        }
+        .tab-btn:hover .tab-ind::after { opacity: var(--md-sys-state-hover-opacity); }
+        .tab-btn.active { color: var(--md-sys-color-on-surface); }
+        .tab-btn.active .tab-ind {
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+        }
+        .tab-btn:focus-visible { outline: none; }
+        .tab-btn:focus-visible .tab-ind { outline: 2px solid var(--md-sys-color-primary); }
 
-        /* Geometry panel */
-        .geometry-panel {
-            left: 20px; top: 110px; bottom: 80px;
-            width: 340px;
-            flex-direction: column; gap: 10px;
-            overflow-y: auto;
+        /* ---- Side sheet (desktop) / bottom sheet (compact) ---- */
+        .sheet {
+            display: flex; flex-direction: column; min-height: 0;
+            background: var(--md-sys-color-surface-container-low);
+            border-radius: var(--md-sys-shape-corner-large) 0 0 0;
         }
-        .geo-card {
-            background: var(--sv-glass);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius);
-            padding: 14px;
-            display: flex; flex-direction: column; gap: 10px;
+        .sheet-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s-5) var(--s-4) var(--s-4); }
+        .panel { display: none; }
+        .panel.active { display: flex; flex-direction: column; gap: var(--s-3); }
+        .panel-head { padding: 0 var(--s-1) var(--s-1); }
+        .panel-title { margin: 0; font: var(--md-sys-typescale-title-large); color: var(--md-sys-color-on-surface); }
+        .panel-sub { margin: var(--s-1) 0 0; color: var(--md-sys-color-on-surface-variant); }
+        .panel-note {
+            margin: var(--s-1) 0 0; padding: 0 var(--s-1);
+            font: var(--md-sys-typescale-body-small);
+            color: var(--md-sys-color-on-surface-variant);
         }
-        .geo-card-header {
-            display: flex; align-items: center; justify-content: space-between;
+        .bottom-bar {
+            padding: var(--s-3) var(--s-5) var(--s-4);
+            border-top: 1px solid var(--md-sys-color-outline-variant);
+            font: var(--md-sys-typescale-body-small);
+            color: var(--md-sys-color-on-surface-variant);
         }
-        .geo-card-title {
-            font-size: 14px; font-weight: 600;
-        }
-        .geo-card-icon {
-            font-size: 18px; margin-right: 8px;
-        }
-        .geo-add-btn {
-            padding: 6px 14px;
-            border: none; border-radius: 20px;
-            background: var(--sv-blue);
-            color: white;
-            font-size: 12px; font-weight: 600; font-family: var(--sv-font);
-            cursor: pointer;
-            transition: background 0.15s, transform 0.1s;
-        }
-        .geo-add-btn:hover { background: #0050aa; }
-        .geo-add-btn:active { transform: scale(0.95); }
+        .powered-by a { color: inherit; }
 
-        .geo-controls {
-            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        /* ---- Cards and controls ---- */
+        .geo-card, .env-card {
+            display: flex; flex-direction: column; gap: var(--s-3);
+            padding: var(--s-4);
+            background: var(--md-sys-color-surface-container-lowest);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-medium);
         }
-        .geo-controls label {
-            font-size: 12px; color: var(--sv-text-dim);
-            display: flex; align-items: center; gap: 6px;
+        .geo-card-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+        .geo-card-title, .env-card-title { font: var(--md-sys-typescale-title-medium); }
+        .geo-controls { display: flex; flex-direction: column; gap: var(--s-2); }
+        .geo-controls.row { flex-direction: row; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+        .field-row {
+            display: flex; align-items: center; gap: var(--s-3);
+            min-height: var(--target);
+            color: var(--md-sys-color-on-surface);
         }
-        .color-picker {
-            width: 28px; height: 28px;
-            border: 2px solid var(--sv-border);
-            border-radius: 6px;
-            cursor: pointer;
-            background: none;
-            padding: 0;
-        }
-        .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
-        .color-picker::-webkit-color-swatch { border: none; border-radius: 4px; }
-        .color-picker::-moz-color-swatch { border: none; border-radius: 4px; }
-
-        .geo-slider {
-            width: 80px; height: 4px;
-            -webkit-appearance: none; appearance: none;
-            background: rgba(255,255,255,0.1);
-            border-radius: 2px;
-            outline: none;
-        }
-        .geo-slider::-webkit-slider-thumb {
-            -webkit-appearance: none; appearance: none;
-            width: 14px; height: 14px;
-            background: var(--sv-blue);
-            border-radius: 50%;
-            cursor: pointer;
-        }
-        .geo-slider::-moz-range-thumb {
-            width: 14px; height: 14px;
-            background: var(--sv-blue);
-            border: none; border-radius: 50%;
-            cursor: pointer;
+        .field-row > .field-label { flex: none; width: 72px; color: var(--md-sys-color-on-surface-variant); }
+        .field-row > input[type="range"] { flex: 1; min-width: 0; }
+        .field-stack { display: flex; flex-direction: column; gap: var(--s-1); color: var(--md-sys-color-on-surface-variant); }
+        .check-row {
+            display: flex; align-items: center; gap: var(--s-3);
+            min-height: var(--target); cursor: pointer;
         }
         .slider-value {
-            font-size: 11px; color: var(--sv-text-faint);
-            min-width: 24px; text-align: right;
+            min-width: 64px; text-align: right;
+            font: var(--md-sys-typescale-label-large);
+            color: var(--md-sys-color-on-surface-variant);
+            font-variant-numeric: tabular-nums;
         }
-
+        input[type="range"] { accent-color: var(--md-sys-color-primary); height: var(--target); margin: 0; cursor: pointer; }
+        input[type="checkbox"] { accent-color: var(--md-sys-color-primary); width: 18px; height: 18px; margin: 0; cursor: pointer; }
+        .color-picker {
+            width: 40px; height: 40px; padding: 0; flex: none;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: var(--md-sys-shape-corner-full);
+            background: transparent; cursor: pointer; overflow: hidden;
+        }
+        .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+        .color-picker::-webkit-color-swatch { border: 0; border-radius: var(--md-sys-shape-corner-full); }
+        .color-picker::-moz-color-swatch { border: 0; border-radius: var(--md-sys-shape-corner-full); }
+        .quality-select, .text-field, .search-input {
+            width: 100%; height: 48px; padding: 0 var(--s-4);
+            background: transparent; color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: var(--md-sys-shape-corner-extra-small);
+            font: var(--md-sys-typescale-body-large);
+        }
+        .quality-select { cursor: pointer; }
+        .quality-select option { background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); }
+        .quality-select:focus, .text-field:focus, .search-input:focus {
+            outline: none; border: 2px solid var(--md-sys-color-primary); padding: 0 calc(var(--s-4) - 1px);
+        }
+        .geo-add-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+            height: 40px; padding: 0 var(--s-5); flex: none;
+            border: 0; border-radius: var(--md-sys-shape-corner-full);
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            font: var(--md-sys-typescale-label-large); cursor: pointer;
+        }
+        .geo-add-btn.btn-outlined {
+            background: transparent; color: var(--md-sys-color-primary);
+            border: 1px solid var(--md-sys-color-outline);
+        }
         .geo-clear-btn {
-            padding: 8px 16px;
-            border: 1px solid var(--sv-border);
-            border-radius: 20px;
-            background: transparent;
-            color: var(--sv-text-dim);
-            font-size: 12px; font-weight: 500; font-family: var(--sv-font);
-            cursor: pointer;
-            transition: all 0.15s;
-            align-self: center;
+            height: 40px; padding: 0 var(--s-5);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: var(--md-sys-shape-corner-full);
+            background: transparent; color: var(--md-sys-color-primary);
+            font: var(--md-sys-typescale-label-large); cursor: pointer;
         }
-        .geo-clear-btn:hover {
-            border-color: #f87171;
-            color: #f87171;
-            background: rgba(248, 113, 113, 0.08);
-        }
+        .btn-row { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
+        .btn-row > .grow { flex: 1; }
+        .status-line { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
 
-        /* Environment panel */
-        .env-panel {
-            right: 20px; top: 110px;
-            width: 260px;
-            flex-direction: column; gap: 10px;
-        }
-        .env-card {
-            background: var(--sv-glass);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius);
-            padding: 14px;
-            display: flex; flex-direction: column; gap: 10px;
-        }
-        .env-card-title {
-            font-size: 13px; font-weight: 600;
-        }
-        .env-select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius-sm);
-            background: var(--sv-dark-surface);
-            color: var(--sv-text);
-            font-size: 13px; font-family: var(--sv-font);
-            cursor: pointer;
-            outline: none;
-        }
-        .env-select option { background: var(--sv-dark-surface); color: var(--sv-text); }
-        .bg-color-row {
-            display: flex; align-items: center; gap: 8px;
-        }
-        .bg-color-row label {
-            font-size: 12px; color: var(--sv-text-dim);
-        }
-        .quality-select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius-sm);
-            background: var(--sv-dark-surface);
-            color: var(--sv-text);
-            font-size: 13px; font-family: var(--sv-font);
-            cursor: pointer;
-            outline: none;
-        }
-        .quality-select option { background: var(--sv-dark-surface); color: var(--sv-text); }
-
-        /* Plain text field used inside Geometry-style cards (e.g. Text panel) */
-        .text-field {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius-sm);
-            background: var(--sv-dark-surface);
-            color: var(--sv-text);
-            font-size: 13px; font-family: var(--sv-font);
-            outline: none;
-        }
-        .text-field:focus { border-color: var(--sv-blue); }
-
-        .toggle-row {
-            display: flex; align-items: center; justify-content: space-between;
-        }
-        .toggle-label {
-            font-size: 12px; color: var(--sv-text-dim);
-        }
+        /* M3 switch, on the existing div toggles. */
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); min-height: var(--target); }
+        .toggle-label { color: var(--md-sys-color-on-surface); }
+        .toggle-text { display: flex; flex-direction: column; }
+        .toggle-text small { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
         .toggle-switch {
-            position: relative;
-            width: 36px; height: 20px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            cursor: pointer;
-            transition: background 0.2s;
+            position: relative; flex: none; width: 52px; height: 32px; cursor: pointer;
+            border-radius: var(--md-sys-shape-corner-full);
+            background: var(--md-sys-color-surface-container-highest);
+            border: 2px solid var(--md-sys-color-outline);
+            transition: background var(--d-base) var(--md-sys-motion-easing-standard), border-color var(--d-base) var(--md-sys-motion-easing-standard);
         }
-        .toggle-switch.active { background: var(--sv-blue); }
         .toggle-switch::after {
-            content: '';
-            position: absolute; top: 2px; left: 2px;
-            width: 16px; height: 16px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.2s;
+            content: ""; position: absolute; top: 50%; left: 6px;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: var(--md-sys-color-outline);
+            transform: translateY(-50%);
+            transition: left var(--d-base) var(--md-sys-motion-easing-standard), width var(--d-base) var(--md-sys-motion-easing-standard), height var(--d-base) var(--md-sys-motion-easing-standard), background var(--d-base) var(--md-sys-motion-easing-standard);
         }
-        .toggle-switch.active::after { transform: translateX(16px); }
+        .toggle-switch.active { background: var(--md-sys-color-primary); border-color: var(--md-sys-color-primary); }
+        .toggle-switch.active::after { left: 22px; width: 24px; height: 24px; background: var(--md-sys-color-on-primary); }
 
-        /* ---- Controls info ---- */
+        /* ---- Models panel ---- */
+        .source-picker { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+        .source-chip {
+            height: 32px; padding: 0 var(--s-4);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-small);
+            background: transparent; color: var(--md-sys-color-on-surface-variant);
+            font: var(--md-sys-typescale-label-large); cursor: pointer;
+            position: relative;
+        }
+        .source-chip:hover { background: var(--md-sys-color-surface-container-high); }
+        .source-chip.active {
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            border-color: transparent;
+        }
+        .search-box { display: flex; gap: var(--s-2); align-items: center; }
+        .search-input { flex: 1; min-width: 0; border-radius: var(--md-sys-shape-corner-full); padding: 0 var(--s-5); height: 48px; }
+        .search-input:focus { padding: 0 calc(var(--s-5) - 1px); }
+        .search-btn {
+            height: 40px; padding: 0 var(--s-5); flex: none;
+            border: 0; border-radius: var(--md-sys-shape-corner-full);
+            background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+            font: var(--md-sys-typescale-label-large); cursor: pointer;
+        }
+        .model-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+        .result-section-label {
+            grid-column: 1 / -1;
+            padding: var(--s-3) var(--s-1) var(--s-1);
+            font: var(--md-sys-typescale-title-small);
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .result-section-label:first-child { padding-top: 0; }
+        .result-section-label.failed { color: var(--md-sys-color-error); }
+        .search-status { grid-column: 1 / -1; padding: var(--s-4) var(--s-1); color: var(--md-sys-color-on-surface-variant); }
+        .search-status.error { color: var(--md-sys-color-error); }
+        .result-card {
+            display: flex; flex-direction: column; min-width: 0;
+            background: var(--md-sys-color-surface-container-lowest);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-medium);
+            overflow: hidden; cursor: pointer; position: relative;
+            transition: border-color var(--d-base) var(--md-sys-motion-easing-standard);
+        }
+        .result-card::after {
+            content: ""; position: absolute; inset: 0; background: var(--md-sys-color-on-surface); opacity: 0;
+            transition: opacity var(--d-fast) var(--md-sys-motion-easing-standard); pointer-events: none;
+        }
+        .result-card:hover::after { opacity: var(--md-sys-state-hover-opacity); }
+        .result-card.active { border: 2px solid var(--md-sys-color-primary); }
+        .result-thumb, .result-thumb-placeholder {
+            display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .result-thumb-placeholder {
+            display: flex; align-items: center; justify-content: center;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .result-thumb-placeholder .icon { width: 40px; height: 40px; opacity: .6; }
+        .result-info { padding: var(--s-2) var(--s-3) var(--s-3); min-width: 0; }
+        .result-name {
+            font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .result-author, .result-badge {
+            font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        /* ---- Credits panel ---- */
+        .credits-intro { padding: 0 var(--s-1); color: var(--md-sys-color-on-surface-variant); }
+        #credits-list { display: flex; flex-direction: column; gap: var(--s-2); }
+        .credits-section-title {
+            padding: var(--s-3) var(--s-1) 0;
+            font: var(--md-sys-typescale-title-small); color: var(--md-sys-color-on-surface-variant);
+        }
+        .credit-card {
+            display: flex; gap: var(--s-3); align-items: flex-start;
+            padding: var(--s-3) var(--s-4);
+            background: var(--md-sys-color-surface-container-lowest);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-medium);
+            color: var(--md-sys-color-on-surface); text-decoration: none;
+        }
+        a.credit-card:hover { background: var(--md-sys-color-surface-container); }
+        .credit-icon { flex: none; width: 24px; text-align: center; color: var(--md-sys-color-on-surface-variant); }
+        .credit-body { min-width: 0; flex: 1; }
+        .credit-title { font: var(--md-sys-typescale-title-small); overflow-wrap: anywhere; }
+        .credit-meta { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); overflow-wrap: anywhere; }
+        .credit-license { color: var(--md-sys-color-primary); }
+        .credit-ext { color: var(--md-sys-color-on-surface-variant); }
+
+        /* ---- Stage: the 3D view and what floats on it ---- */
+        .stage { position: relative; min-width: 0; min-height: 0; background: var(--stage-color); overflow: hidden; }
+        #scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+        .model-caption {
+            position: absolute; left: var(--s-4); top: var(--s-4); z-index: 5;
+            max-width: calc(100% - 2 * var(--s-4));
+            padding: var(--s-2) var(--s-4);
+            background: var(--md-sys-color-surface-container-lowest);
+            color: var(--md-sys-color-on-surface);
+            border-radius: var(--md-sys-shape-corner-medium);
+            box-shadow: var(--md-sys-elevation-1);
+            pointer-events: none;
+            transition: opacity var(--d-base) var(--md-sys-motion-easing-standard);
+        }
+        .model-caption[hidden] { display: block; opacity: 0; }
+        .model-caption-name { font: var(--md-sys-typescale-title-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .model-caption-credit { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .controls-info {
-            position: fixed; bottom: 20px; left: 20px; z-index: 15;
-            display: flex; flex-direction: column; gap: 4px;
-            font-size: 12px; color: var(--sv-text-faint);
-            pointer-events: none;
-            transition: left 0.3s;
-        }
-        .controls-info .row { display: flex; align-items: center; gap: 6px; }
-        .controls-info kbd {
-            display: inline-block; padding: 1px 6px;
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 4px;
-            font-family: var(--sv-font); font-size: 11px;
-            background: rgba(255,255,255,0.04);
-            color: var(--sv-text-faint);
-        }
-
-        /* ---- Bottom bar ---- */
-        .bottom-bar {
-            position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 20px;
-            background: linear-gradient(0deg, var(--sv-dark-overlay) 60%, transparent 100%);
+            position: absolute; left: var(--s-4); bottom: var(--s-4); z-index: 5;
+            display: flex; gap: var(--s-4);
+            padding: var(--s-2) var(--s-4);
+            background: var(--md-sys-color-surface-container-lowest);
+            color: var(--md-sys-color-on-surface-variant);
+            border-radius: var(--md-sys-shape-corner-full);
+            box-shadow: var(--md-sys-elevation-1);
+            font: var(--md-sys-typescale-body-small);
             pointer-events: none;
         }
-        .bottom-bar > * { pointer-events: auto; }
-
-        .powered-by { font-size: 12px; color: var(--sv-text-faint); }
-        .powered-by a {
-            color: var(--sv-blue-light); text-decoration: none; font-weight: 500;
+        .controls-info kbd { font: var(--md-sys-typescale-label-medium); color: var(--md-sys-color-on-surface); }
+        .controls-info .touch { display: none; }
+        @media (pointer: coarse) {
+            .controls-info .mouse { display: none; }
+            .controls-info .touch { display: inline; }
         }
-        .powered-by a:hover { text-decoration: underline; }
-
-        .xr-buttons { display: flex; gap: 8px; }
+        .xr-buttons {
+            position: absolute; right: var(--s-4); bottom: var(--s-4); z-index: 6;
+            display: flex; gap: var(--s-3);
+        }
+        /* M3 extended FAB. Shown only where AR / VR can actually start. */
         .xr-btn {
-            display: none;
-            padding: 10px 20px;
-            border: none; border-radius: var(--sv-radius-pill);
-            font-family: var(--sv-font);
-            font-size: 13px; font-weight: 600;
-            cursor: pointer; letter-spacing: 0.01em;
-            transition: transform 0.15s, box-shadow 0.15s;
+            display: none; align-items: center; gap: var(--s-3);
+            height: 56px; padding: 0 var(--s-5) 0 var(--s-4);
+            border: 0; border-radius: var(--md-sys-shape-corner-large);
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+            box-shadow: var(--md-sys-elevation-3);
+            font: var(--md-sys-typescale-label-large); cursor: pointer;
         }
-        .xr-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-        }
-        .xr-btn:active { transform: translateY(0); }
-        #enter-ar {
-            background: linear-gradient(135deg, #6446cd, #d2a8ff);
-            color: white;
-        }
-        #enter-vr {
-            background: linear-gradient(135deg, #00b894, #55efc4);
-            color: var(--sv-dark);
-        }
+        .xr-btn.available { display: inline-flex; }
 
-        /* ---- Loading overlay ---- */
+        /* Loading: an opaque surface over the stage only, so the rest of the page
+           is usable from the first paint. */
         .loading-overlay {
-            position: fixed; inset: 0; z-index: 100;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            background: var(--sv-dark);
-            transition: opacity 0.5s ease;
+            position: absolute; inset: 0; z-index: 20;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3);
+            background: var(--stage-color);
+            color: var(--md-sys-color-on-surface-variant);
+            transition: opacity var(--d-slow) var(--md-sys-motion-easing-standard);
         }
         .loading-overlay.hidden { opacity: 0; pointer-events: none; }
-
-        .loading-spinner {
-            width: 48px; height: 48px;
-            border: 3px solid rgba(0, 91, 193, 0.2);
-            border-top-color: var(--sv-blue);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+        .loading-text { font: var(--md-sys-typescale-body-medium); }
+        .loading-model-name { font: var(--md-sys-typescale-title-medium); color: var(--md-sys-color-on-surface); }
+        .loading-bar-track {
+            width: 160px; height: 4px; overflow: hidden;
+            border-radius: var(--md-sys-shape-corner-full);
+            background: var(--md-sys-color-secondary-container);
+        }
+        .loading-bar-fill {
+            width: 40%; height: 100%;
+            border-radius: var(--md-sys-shape-corner-full);
+            background: var(--md-sys-color-primary);
+            animation: indeterminate 1.4s var(--md-sys-motion-easing-standard) infinite;
+        }
+        @keyframes indeterminate { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+        .loading-chip {
+            position: absolute; top: var(--s-4); left: 50%; z-index: 10;
+            transform: translateX(-50%);
+            display: none; align-items: center; gap: var(--s-3);
+            height: 40px; padding: 0 var(--s-4);
+            background: var(--md-sys-color-inverse-surface);
+            color: var(--md-sys-color-inverse-on-surface);
+            border-radius: var(--md-sys-shape-corner-full);
+            box-shadow: var(--md-sys-elevation-1);
+            font: var(--md-sys-typescale-label-large);
+            white-space: nowrap;
+        }
+        .loading-chip.visible { display: flex; }
+        .mini-spinner {
+            width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid var(--md-sys-color-inverse-primary); border-right-color: transparent;
+            animation: spin .8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .loading-text {
-            margin-top: 16px; font-size: 14px; font-weight: 500;
-            color: var(--sv-text-dim);
-        }
-        .loading-model-name {
-            margin-top: 6px; font-size: 12px;
-            color: var(--sv-text-faint);
-        }
-        .loading-bar-track {
-            width: 200px; height: 3px; margin-top: 20px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 2px; overflow: hidden;
-        }
-        .loading-bar-fill {
-            width: 0%; height: 100%;
-            background: var(--sv-blue);
-            border-radius: 2px;
-            animation: loading-progress 2s ease-in-out infinite;
-        }
-        @keyframes loading-progress {
-            0% { width: 0%; } 50% { width: 60%; } 100% { width: 100%; }
-        }
-
-        /* Inline loading chip */
-        .loading-chip {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 50; display: none;
-            padding: 10px 20px;
-            background: var(--sv-glass);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--sv-glass-border);
-            border-radius: var(--sv-radius-pill);
-            font-size: 13px; font-weight: 500;
-            color: var(--sv-text-dim);
-            gap: 10px; align-items: center;
-        }
-        .loading-chip.visible { display: flex; }
-        .loading-chip .mini-spinner {
-            width: 16px; height: 16px;
-            border: 2px solid rgba(0, 91, 193, 0.2);
-            border-top-color: var(--sv-blue);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        /* ---- Update snackbar ---- */
+        /* M3 snackbar */
         .update-snackbar {
-            position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%) translateY(140%);
-            z-index: 60;
-            display: flex; align-items: center; gap: 12px;
-            min-width: 280px; max-width: 90vw;
-            padding: 12px 16px;
-            background: var(--sv-glass);
-            backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-            border: 1px solid var(--sv-glass-border);
-            border-radius: var(--sv-radius-pill);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-            color: var(--sv-text);
-            font-size: 13px; font-weight: 500;
-            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s;
-            opacity: 0; pointer-events: none;
+            position: absolute; left: 50%; bottom: var(--s-4); z-index: 30;
+            transform: translate(-50%, calc(100% + var(--s-6)));
+            display: flex; align-items: center; gap: var(--s-2);
+            width: min(560px, calc(100% - 2 * var(--s-4)));
+            min-height: 48px; padding: var(--s-1) var(--s-1) var(--s-1) var(--s-4);
+            background: var(--md-sys-color-inverse-surface);
+            color: var(--md-sys-color-inverse-on-surface);
+            border-radius: var(--md-sys-shape-corner-extra-small);
+            box-shadow: var(--md-sys-elevation-3);
+            visibility: hidden;
+            transition: transform var(--d-slow) var(--md-sys-motion-easing-standard), visibility 0s linear var(--d-slow);
         }
-        .update-snackbar.visible {
-            transform: translateX(-50%) translateY(0);
-            opacity: 1; pointer-events: auto;
-        }
-        .update-snackbar-icon {
-            width: 20px; height: 20px;
-            color: var(--sv-blue-light);
-            flex-shrink: 0;
-        }
-        .update-snackbar-text { flex: 1; }
-        .update-snackbar-title {
-            font-weight: 600; font-size: 13px;
-        }
-        .update-snackbar-version {
-            font-size: 11px; color: var(--sv-text-faint);
-        }
+        .update-snackbar.visible { transform: translate(-50%, 0); visibility: visible; transition-delay: 0s; }
+        .update-snackbar-icon { display: none; }
+        .update-snackbar-text { flex: 1; min-width: 0; padding: var(--s-2) 0; }
+        .update-snackbar-title { font: var(--md-sys-typescale-body-medium); }
+        .update-snackbar-version { font: var(--md-sys-typescale-body-small); opacity: .8; }
         .update-snackbar-btn {
-            padding: 6px 14px;
-            border: none; border-radius: 20px;
-            background: var(--sv-blue);
-            color: white;
-            font-size: 12px; font-weight: 600; font-family: var(--sv-font);
-            cursor: pointer;
-            transition: background 0.15s;
+            height: 40px; padding: 0 var(--s-3); border: 0; background: transparent; cursor: pointer;
+            color: var(--md-sys-color-inverse-primary); font: var(--md-sys-typescale-label-large);
+            border-radius: var(--md-sys-shape-corner-full);
         }
-        .update-snackbar-btn:hover { background: #0050aa; }
         .update-snackbar-dismiss {
-            width: 24px; height: 24px;
-            border: none; border-radius: 50%;
-            background: transparent;
-            color: var(--sv-text-faint);
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14px;
-        }
-        .update-snackbar-dismiss:hover { background: rgba(255,255,255,0.08); color: var(--sv-text); }
-
-        /* Auto-rotate toggle */
-        .auto-rotate-btn {
-            padding: 8px 14px;
-            border: 1px solid var(--sv-border);
-            border-radius: 10px;
-            background: rgba(255,255,255,0.04);
-            color: var(--sv-text-dim);
-            font-size: 12px; font-weight: 500; font-family: var(--sv-font);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .auto-rotate-btn:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: var(--sv-border-hover);
-        }
-        .auto-rotate-btn.active {
-            background: rgba(0, 91, 193, 0.2);
-            border-color: var(--sv-blue);
-            color: var(--sv-blue-light);
+            width: 40px; height: 40px; border: 0; background: transparent; cursor: pointer;
+            color: var(--md-sys-color-inverse-on-surface); font-size: 20px; border-radius: var(--md-sys-shape-corner-full);
         }
 
-        /* Credits panel (#3214) — rendered from credits.json, generated from assets/catalog.json */
-        .credits-panel {
-            left: 20px; top: 110px; bottom: 80px;
-            width: 360px;
-            flex-direction: column; gap: 10px;
-            overflow-y: auto;
+        /* ---- Medium widths: the rail stays, the sheet narrows ---- */
+        @media (max-width: 1100px) {
+            :root { --sheet-w: 320px; }
+            .page-title .logo-version { display: none; }
         }
-        .credits-intro {
-            font-size: 12px; line-height: 1.5;
-            color: var(--sv-text-dim);
-            background: var(--sv-glass);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius);
-            padding: 12px 14px;
-        }
-        .credits-intro a { color: var(--sv-blue-light); text-decoration: none; font-weight: 500; }
-        .credits-intro a:hover { text-decoration: underline; }
-        .credits-section-title {
-            font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-            color: var(--sv-text-faint);
-            margin: 6px 4px 0;
-        }
-        .credit-card {
-            display: flex; align-items: center; gap: 12px;
-            background: var(--sv-glass);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--sv-border);
-            border-radius: var(--sv-radius);
-            padding: 10px 12px;
-            color: inherit; text-decoration: none;
-            transition: border-color 0.2s;
-        }
-        a.credit-card:hover { border-color: var(--sv-border-hover); }
-        .credit-icon {
-            flex: 0 0 36px; height: 36px;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: var(--sv-radius-sm);
-            background: rgba(0, 91, 193, 0.2);
-            color: var(--sv-blue-light);
-            font-size: 16px;
-        }
-        .credit-body { min-width: 0; flex: 1; }
-        .credit-title { font-size: 13px; font-weight: 600; color: var(--sv-text); }
-        .credit-meta { font-size: 11.5px; color: var(--sv-text-dim); margin-top: 2px; }
-        .credit-meta .credit-license { color: var(--sv-green-light); }
-        .credit-ext { color: var(--sv-text-faint); font-size: 12px; flex: 0 0 auto; }
 
-        /* ---- Responsive ---- */
-        @media (max-width: 768px) {
-            .search-panel, .geometry-panel, .credits-panel {
-                left: 10px; right: 10px; top: auto; bottom: 70px;
-                width: auto; max-height: 45vh;
+        /* ---- Compact (phones, small tablets): the 3D view first, a bottom sheet under it ---- */
+        @media (max-width: 839px) {
+            :root { --bar-h: 56px; }
+            body { overflow: hidden; }
+            .app {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: var(--bar-h) minmax(240px, 52dvh) auto minmax(0, 1fr);
+                grid-template-areas: "bar" "stage" "rail" "sheet";
             }
-            .env-panel {
-                right: 10px; top: auto; bottom: 70px;
-                width: calc(100% - 20px); left: 10px;
-                max-height: 35vh;
+            .top-bar { padding: 0 var(--s-1) 0 var(--s-4); border-bottom: 0; }
+            .logo-icon { width: 28px; height: 28px; }
+            .page-title { display: none; }
+            .top-bar .github-link { display: none; }
+            .top-bar .btn-filled { padding: 0 var(--s-4); margin-left: var(--s-1); }
+            .tab-bar {
+                flex-direction: row; align-items: center; gap: var(--s-2);
+                padding: var(--s-5) var(--s-4) var(--s-3);
+                margin-top: calc(-1 * var(--md-sys-shape-corner-extra-large));
+                position: relative; z-index: 8;
+                background: var(--md-sys-color-surface-container-low);
+                border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+                overflow-x: auto; overflow-y: hidden;
             }
-            .tab-bar { top: 52px; }
-            .top-bar { padding: 10px 14px; }
-            .logo-text { font-size: 16px; }
-            .logo-version { font-size: 10px; }
-            .bottom-bar { padding: 10px 14px; }
+            /* Drag handle: the bottom sheet's affordance. */
+            .tab-bar::before {
+                content: ""; position: absolute; top: var(--s-2); left: 50%;
+                width: 32px; height: 4px; margin-left: -16px;
+                border-radius: var(--md-sys-shape-corner-full);
+                background: var(--md-sys-color-outline-variant);
+            }
+            .tab-btn {
+                flex-direction: row; flex: none; gap: var(--s-2);
+                min-height: 32px; height: 32px; padding: 0 var(--s-4) 0 var(--s-2);
+                border: 1px solid var(--md-sys-color-outline-variant);
+                border-radius: var(--md-sys-shape-corner-small);
+                font: var(--md-sys-typescale-label-large);
+                white-space: nowrap;
+            }
+            .tab-ind { width: 18px; height: 18px; background: transparent !important; overflow: visible; }
+            .tab-ind .icon { width: 18px; height: 18px; }
+            .tab-ind::after { display: none; }
+            .tab-btn.active {
+                background: var(--md-sys-color-secondary-container);
+                color: var(--md-sys-color-on-secondary-container);
+                border-color: transparent;
+            }
+            .tab-btn:focus-visible { outline: 2px solid var(--md-sys-color-primary); }
+            .sheet { border-radius: 0; }
+            .sheet-scroll { padding: var(--s-2) var(--s-4) var(--s-4); }
+            .panel-title { font: var(--md-sys-typescale-title-medium); }
+            .model-results { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            .stage { margin-bottom: 0; }
+            .xr-buttons { bottom: calc(var(--md-sys-shape-corner-extra-large) + var(--s-3)); }
             .controls-info { display: none; }
-            .xr-btn { padding: 8px 16px; font-size: 12px; }
-            .tab-btn { padding: 6px 14px; font-size: 12px; }
+            .model-caption { top: var(--s-3); left: var(--s-3); }
+            .loading-chip { top: auto; bottom: calc(var(--md-sys-shape-corner-extra-large) + var(--s-3)); }
+            .update-snackbar { bottom: calc(var(--md-sys-shape-corner-extra-large) + var(--s-3)); }
+            /* The catalog needs the height on a phone; the Credits tab carries the attribution. */
+            .bottom-bar { display: none; }
+            .sheet-scroll { padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom)); }
+        }
+        @media (max-width: 380px) {
+            .top-bar .btn-filled .label-long { display: none; }
+        }
+        @media (min-width: 381px) {
+            .top-bar .btn-filled .label-short { display: none; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
         }
     </style>
 </head>
 <body>
-    <!-- Loading overlay -->
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Initializing Filament engine...</div>
-        <div id="loading-model-name" class="loading-model-name"></div>
-        <div class="loading-bar-track"><div class="loading-bar-fill"></div></div>
-    </div>
+    <!-- Icons: Material Symbols Outlined (from website-static/assets/icons.svg) and the SceneView mark. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="i-logo" viewBox="0 0 32 32">
+            <polygon points="16,18 7,13 7,22 16,27" fill="#0B4FA8"/>
+            <polygon points="16,18 25,13 25,22 16,27" fill="#2F7BEA"/>
+            <polygon points="16,9 25,14 16,19 7,14" fill="#8AB4FF"/>
+            <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+                <polyline points="4,8 4,4 8,4"/><polyline points="28,8 28,4 24,4"/><polyline points="4,24 4,28 8,28"/><polyline points="28,24 28,28 24,28"/>
+            </g>
+        </symbol>
+        <symbol id="i-gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.7 5.38-5.27 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></symbol>
+        <symbol id="ms-deployed_code" viewBox="0 -960 960 960"><path d="M440-183v-274L200-596v274l240 139Zm80 0 240-139v-274L520-457v274Zm-40-343 237-137-237-137-237 137 237 137ZM160-252q-19-11-29.5-29T120-321v-318q0-22 10.5-40t29.5-29l280-161q19-11 40-11t40 11l280 161q19 11 29.5 29t10.5 40v318q0 22-10.5 40T800-252L520-91q-19 11-40 11t-40-11L160-252Zm320-228Z"/></symbol>
+        <symbol id="ms-category" viewBox="0 -960 960 960"><path d="m260-520 220-360 220 360H260ZM700-80q-75 0-127.5-52.5T520-260q0-75 52.5-127.5T700-440q75 0 127.5 52.5T880-260q0 75-52.5 127.5T700-80Zm-580-20v-320h320v320H120Zm580-60q42 0 71-29t29-71q0-42-29-71t-71-29q-42 0-71 29t-29 71q0 42 29 71t71 29Zm-500-20h160v-160H200v160Zm202-420h156l-78-126-78 126Zm78 0ZM360-340Zm340 80Z"/></symbol>
+        <symbol id="ms-brightness_high" viewBox="0 -960 960 960"><path d="M480-28 346-160H160v-186L28-480l132-134v-186h186l134-132 134 132h186v186l132 134-132 134v186H614L480-28Zm0-252q83 0 141.5-58.5T680-480q0-83-58.5-141.5T480-680q-83 0-141.5 58.5T280-480q0 83 58.5 141.5T480-280Zm0-200Zm0 340 100-100h140v-140l100-100-100-100v-140H580L480-820 380-720H240v140L140-480l100 100v140h140l100 100Zm0-340Z"/></symbol>
+        <symbol id="ms-animation" viewBox="0 -960 960 960"><path d="M360-80q-58 0-109-22t-89-60q-38-38-60-89T80-360q0-81 42-148t110-102q20-39 49.5-68.5T350-728q33-68 101-110t149-42q58 0 109 22t89 60q38 38 60 89t22 109q0 85-42 150T728-350q-20 39-49.5 68.5T610-232q-35 68-102 110T360-80Zm0-80q33 0 63.5-10t56.5-30q-58 0-109-22t-89-60q-38-38-60-89t-22-109q-20 26-30 56.5T160-360q0 42 16 78t43 63q27 27 63 43t78 16Zm120-120q33 0 64.5-10t57.5-30q-59 0-110-22.5T403-403q-38-38-60.5-89T320-602q-20 26-30 57.5T280-480q0 42 15.5 78t43.5 63q27 28 63 43.5t78 15.5Zm120-120q18 0 34.5-3t33.5-9q22-60 6.5-115.5T621-621q-38-38-93.5-53.5T412-668q-6 17-9 33.5t-3 34.5q0 42 15.5 78t43.5 63q27 28 63 43.5t78 15.5Zm160-78q20-26 30-57.5t10-64.5q0-42-15.5-78T741-741q-27-28-63-43.5T600-800q-35 0-65.5 10T478-760q59 0 110 22.5t89 60.5q38 38 60.5 89T760-478Z"/></symbol>
+        <symbol id="ms-title" viewBox="0 -960 960 960"><path d="M420-160v-520H200v-120h560v120H540v520H420Z"/></symbol>
+        <symbol id="ms-landscape" viewBox="0 -960 960 960"><path d="m40-240 240-320 180 240h300L560-586 460-454l-50-66 150-200 360 480H40Zm521-80Zm-361 0h160l-80-107-80 107Zm0 0h160-160Z"/></symbol>
+        <symbol id="ms-speed" viewBox="0 -960 960 960"><path d="M418-340q24 24 62 23.5t56-27.5l224-336-336 224q-27 18-28.5 55t22.5 61Zm62-460q59 0 113.5 16.5T696-734l-76 48q-33-17-68.5-25.5T480-720q-133 0-226.5 93.5T160-400q0 42 11.5 83t32.5 77h552q23-38 33.5-79t10.5-85q0-36-8.5-70T766-540l48-76q30 47 47.5 100T880-406q1 57-13 109t-41 99q-11 18-30 28t-40 10H204q-21 0-40-10t-30-28q-26-45-40-95.5T80-400q0-83 31.5-155.5t86-127Q252-737 325-768.5T480-800Zm7 313Z"/></symbol>
+        <symbol id="ms-headphones" viewBox="0 -960 960 960"><path d="M360-120H200q-33 0-56.5-23.5T120-200v-280q0-75 28.5-140.5t77-114q48.5-48.5 114-77T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480v280q0 33-23.5 56.5T760-120H600v-320h160v-40q0-117-81.5-198.5T480-760q-117 0-198.5 81.5T200-480v40h160v320Zm-80-240h-80v160h80v-160Zm400 0v160h80v-160h-80Zm-400 0h-80 80Zm400 0h80-80Z"/></symbol>
+        <symbol id="ms-tune" viewBox="0 -960 960 960"><path d="M440-120v-240h80v80h320v80H520v80h-80Zm-320-80v-80h240v80H120Zm160-160v-80H120v-80h160v-80h80v240h-80Zm160-80v-80h400v80H440Zm160-160v-240h80v80h160v80H680v80h-80Zm-480-80v-80h400v80H120Z"/></symbol>
+        <symbol id="ms-info" viewBox="0 -960 960 960"><path d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></symbol>
+        <symbol id="ms-360" viewBox="0 -960 960 960"><path d="m360-160-56-56 70-72q-128-17-211-70T80-480q0-83 115.5-141.5T480-680q169 0 284.5 58.5T880-480q0 62-66.5 111T640-296v-82q77-20 118.5-49.5T800-480q0-32-85.5-76T480-600q-149 0-234.5 44T160-480q0 24 51 57.5T356-372l-52-52 56-56 160 160-160 160Z"/></symbol>
+        <symbol id="ms-view_in_ar" viewBox="0 -960 960 960"><path d="M440-181 240-296q-19-11-29.5-29T200-365v-230q0-22 10.5-40t29.5-29l200-115q19-11 40-11t40 11l200 115q19 11 29.5 29t10.5 40v230q0 22-10.5 40T720-296L520-181q-19 11-40 11t-40-11Zm0-92v-184l-160-93v185l160 92Zm80 0 160-92v-185l-160 93v184ZM80-680v-120q0-33 23.5-56.5T160-880h120v80H160v120H80ZM280-80H160q-33 0-56.5-23.5T80-160v-120h80v120h120v80Zm400 0v-80h120v-120h80v120q0 33-23.5 56.5T800-80H680Zm120-600v-120H680v-80h120q33 0 56.5 23.5T880-800v120h-80ZM480-526l158-93-158-91-158 91 158 93Zm0 45Zm0-45Zm40 69Zm-80 0Z"/></symbol>
+        <symbol id="ms-vrpano" viewBox="0 -960 960 960"><path d="M220-344q65-8 129.5-12t130.5-4q66 0 130.5 4T740-344L560-560 446-424l-80-96-146 176ZM120-160q-17 0-28.5-11.5T80-200v-560q0-17 11.5-28.5T120-800q8 0 35.5 9.5T229-770q46 11 108.5 20.5T480-740q80 0 142.5-9.5T731-770q46-11 73.5-20.5T840-800q17 0 28.5 11.5T880-760v560q0 17-11.5 28.5T840-160q-8 0-35.5-9.5T731-190q-46-11-108.5-20.5T480-220q-80 0-142.5 9.5T229-190q-46 11-73.5 20.5T120-160Zm40-94q78-23 158.5-34.5T480-300q81 0 161.5 11.5T800-254v-451q-78 23-158.5 34T480-660q-81 0-161.5-11T160-705v451Zm320-226Z"/></symbol>
+        <symbol id="ms-code" viewBox="0 -960 960 960"><path d="M320-240 80-480l240-240 57 57-184 184 183 183-56 56Zm320 0-57-57 184-184-183-183 56-56 240 240-240 240Z"/></symbol>
+    </svg>
 
-    <!-- Loading chip for model switching -->
-    <div id="loading-chip" class="loading-chip">
-        <div class="mini-spinner"></div>
-        <span id="loading-chip-text">Loading model...</span>
-    </div>
-
-    <!-- Canvas -->
-    <canvas id="scene-canvas"></canvas>
-
-    <!-- Top bar -->
-    <header class="top-bar">
-        <a href="https://sceneview.github.io" target="_blank" class="logo" title="SceneView — 3D and AR for Compose and SwiftUI">
-            <div class="logo-icon">S</div>
-            <span class="logo-text">SceneView Web Demo</span>
-            <span class="logo-version">v4.67.0</span>
-        </a>
-        <div class="top-right">
-            <button id="auto-rotate-toggle" class="auto-rotate-btn active" title="Toggle auto-rotation">Auto-rotate</button>
-            <a href="https://github.com/sceneview/sceneview" target="_blank" class="icon-btn" title="View on GitHub">
-                <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <div class="app">
+        <!-- Top app bar -->
+        <header class="top-bar">
+            <a href="/" class="logo" title="SceneView — 3D and AR for Compose, SwiftUI and the web">
+                <svg class="logo-icon" aria-hidden="true" focusable="false"><use href="#i-logo"/></svg>
+                <span class="logo-text">SceneView</span>
             </a>
-        </div>
-    </header>
+            <span class="page-title">Web demo <span class="logo-version">v4.67.0</span></span>
+            <div class="top-right">
+                <button id="auto-rotate-toggle" class="icon-btn auto-rotate-btn active state" title="Auto-rotate" aria-label="Auto-rotate" aria-pressed="true">
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#ms-360"/></svg>
+                </button>
+                <a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener" class="icon-btn github-link state" title="SceneView on GitHub" aria-label="SceneView on GitHub">
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gh"/></svg>
+                </a>
+                <a id="use-in-app" href="/docs/quickstart-web/" class="btn btn-filled state">
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#ms-code"/></svg>
+                    <span class="label-long">Use it in your app</span><span class="label-short">Use it</span>
+                </a>
+            </div>
+        </header>
 
-    <!-- Tab bar -->
-    <nav class="tab-bar">
-        <button class="tab-btn active" data-tab="models">Models</button>
-        <button class="tab-btn" data-tab="geometry">Geometry</button>
-        <button class="tab-btn" data-tab="lighting">Lighting</button>
-        <button class="tab-btn" data-tab="animation">Animation</button>
-        <button class="tab-btn" data-tab="text">Text</button>
-        <button class="tab-btn" data-tab="environment">Environment</button>
-        <button class="tab-btn" data-tab="physics">Physics</button>
-        <button class="tab-btn" data-tab="audio">Spatial Audio</button>
-        <button class="tab-btn" data-tab="settings">Settings</button>
-        <button class="tab-btn" data-tab="credits">Credits</button>
-    </nav>
+        <!-- Navigation rail (wide) / chip row of the bottom sheet (compact) -->
+        <nav class="tab-bar" aria-label="Demo sections">
+            <button class="tab-btn active" data-tab="models"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-deployed_code"/></svg></span>Models</button>
+            <button class="tab-btn" data-tab="geometry"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-category"/></svg></span>Geometry</button>
+            <button class="tab-btn" data-tab="lighting"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-brightness_high"/></svg></span>Lights</button>
+            <button class="tab-btn" data-tab="animation"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-animation"/></svg></span>Animation</button>
+            <button class="tab-btn" data-tab="text"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-title"/></svg></span>Text</button>
+            <button class="tab-btn" data-tab="environment"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-landscape"/></svg></span>Environment</button>
+            <button class="tab-btn" data-tab="physics"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-speed"/></svg></span>Physics</button>
+            <button class="tab-btn" data-tab="audio"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-headphones"/></svg></span>Audio</button>
+            <button class="tab-btn" data-tab="settings"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-tune"/></svg></span>Settings</button>
+            <button class="tab-btn" data-tab="credits"><span class="tab-ind"><svg class="icon" aria-hidden="true"><use href="#ms-info"/></svg></span>Credits</button>
+        </nav>
 
-    <!-- Models panel -->
-    <div id="panel-models" class="panel search-panel active">
-        <div id="source-picker" class="source-picker"></div>
-        <div id="search-box" class="search-box" style="display:none">
-            <input id="search-input" class="search-input" type="text" placeholder="Search models..." autocomplete="off">
-            <button id="search-btn" class="search-btn">Search</button>
-        </div>
-        <div id="model-results" class="model-results"></div>
+        <!-- Side sheet (wide) / bottom sheet (compact): one panel per section -->
+        <aside class="sheet">
+            <div class="sheet-scroll">
+
+            <!-- Models panel -->
+            <section id="panel-models" class="panel search-panel active">
+                <div class="panel-head">
+                    <h2 class="panel-title">Models</h2>
+                    <p class="panel-sub">Real products in a photo studio. Drag to look around.</p>
+                </div>
+                <div id="source-picker" class="source-picker"></div>
+                <div id="search-box" class="search-box" style="display:none">
+                    <input id="search-input" class="search-input" type="search" placeholder="Search models" autocomplete="off" aria-label="Search models">
+                    <button id="search-btn" class="search-btn state">Search</button>
+                </div>
+                <div id="model-results" class="model-results"></div>
+            </section>
+
+            <!-- Geometry panel -->
+            <section id="panel-geometry" class="panel geometry-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Geometry</h2>
+                    <p class="panel-sub">Procedural shapes with PBR materials, built at runtime.</p>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Cube</span>
+                        <button class="geo-add-btn state" data-geo="cube">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-geo-color="cube" value="#4488ff"></label>
+                        <label class="field-row"><span class="field-label">Size</span> <input type="range" class="geo-slider" data-geo-size="cube" min="0.2" max="3" step="0.1" value="1"> <span class="slider-value">1.0</span></label>
+                        <label class="check-row"><input type="checkbox" class="geo-unlit" data-geo-unlit="cube"> Unlit (KHR_materials_unlit)</label>
+                    </div>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Sphere</span>
+                        <button class="geo-add-btn state" data-geo="sphere">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-geo-color="sphere" value="#ff4488"></label>
+                        <label class="field-row"><span class="field-label">Radius</span> <input type="range" class="geo-slider" data-geo-size="sphere" min="0.2" max="2" step="0.1" value="0.5"> <span class="slider-value">0.5</span></label>
+                        <label class="check-row"><input type="checkbox" class="geo-unlit" data-geo-unlit="sphere"> Unlit (KHR_materials_unlit)</label>
+                    </div>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Cylinder</span>
+                        <button class="geo-add-btn state" data-geo="cylinder">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-geo-color="cylinder" value="#44ff88"></label>
+                        <label class="field-row"><span class="field-label">Radius</span> <input type="range" class="geo-slider" data-geo-size="cylinder" min="0.2" max="2" step="0.1" value="0.5"> <span class="slider-value">0.5</span></label>
+                        <label class="check-row"><input type="checkbox" class="geo-unlit" data-geo-unlit="cylinder"> Unlit (KHR_materials_unlit)</label>
+                    </div>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Plane</span>
+                        <button class="geo-add-btn state" data-geo="plane">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-geo-color="plane" value="#ffaa44"></label>
+                        <label class="field-row"><span class="field-label">Size</span> <input type="range" class="geo-slider" data-geo-size="plane" min="0.5" max="5" step="0.5" value="2"> <span class="slider-value">2.0</span></label>
+                        <label class="check-row"><input type="checkbox" class="geo-unlit" data-geo-unlit="plane"> Unlit (KHR_materials_unlit)</label>
+                    </div>
+                </div>
+                <button id="geo-clear" class="geo-clear-btn state">Clear all geometry</button>
+            </section>
+
+            <!-- Lighting panel — addLight / removeNode -->
+            <section id="panel-lighting" class="panel geometry-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Lights</h2>
+                    <p class="panel-sub">Directional, point and spot lights with <code>addLight()</code>.</p>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Directional light</span>
+                        <button class="geo-add-btn state" data-light="directional">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-light-color="directional" value="#fff4e0"></label>
+                        <label class="field-row"><span class="field-label">Intensity</span> <input type="range" class="geo-slider" data-light-intensity="directional" min="10000" max="150000" step="5000" value="80000"> <span class="slider-value">80k</span></label>
+                    </div>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Point light</span>
+                        <button class="geo-add-btn state" data-light="point">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-light-color="point" value="#4488ff"></label>
+                        <label class="field-row"><span class="field-label">Intensity</span> <input type="range" class="geo-slider" data-light-intensity="point" min="10000" max="150000" step="5000" value="60000"> <span class="slider-value">60k</span></label>
+                    </div>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-card-header">
+                        <span class="geo-card-title">Spot light</span>
+                        <button class="geo-add-btn state" data-light="spot">Add</button>
+                    </div>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" data-light-color="spot" value="#ff66aa"></label>
+                        <label class="field-row"><span class="field-label">Intensity</span> <input type="range" class="geo-slider" data-light-intensity="spot" min="10000" max="150000" step="5000" value="70000"> <span class="slider-value">70k</span></label>
+                    </div>
+                </div>
+                <button id="light-clear" class="geo-clear-btn state">Remove added lights</button>
+                <p class="panel-note">
+                    The web counterpart of Android's <code>LightNode</code> demos. Each added light is
+                    tracked so <code>removeNode()</code> can clear it.
+                </p>
+            </section>
+
+            <!-- Animation panel — playAnimation / stopAnimation -->
+            <section id="panel-animation" class="panel geometry-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Animation</h2>
+                    <p class="panel-sub">glTF keyframe and skinned animation with <code>playAnimation()</code>.</p>
+                </div>
+                <div class="geo-card">
+                    <label class="field-stack">Model
+                        <select id="anim-model-select" class="quality-select">
+                            <option value="animated_dragon.glb">Animated dragon</option>
+                            <option value="animated_butterfly.glb">Animated butterfly</option>
+                            <option value="phoenix_bird.glb">Phoenix</option>
+                        </select>
+                    </label>
+                    <div class="btn-row">
+                        <button id="anim-play" class="geo-add-btn state">
+                            <svg class="icon" aria-hidden="true"><use href="#ms-animation"/></svg>Play
+                        </button>
+                        <button id="anim-stop" class="geo-add-btn btn-outlined state">Stop</button>
+                        <label class="check-row"><input type="checkbox" id="anim-loop" checked> Loop</label>
+                    </div>
+                    <div id="anim-status" class="status-line" role="status">Select a model and press Play.</div>
+                </div>
+            </section>
+
+            <!-- Text panel — createText -->
+            <section id="panel-text" class="panel geometry-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">3D text</h2>
+                    <p class="panel-sub">Text rendered on a textured quad with <code>createText()</code>.</p>
+                </div>
+                <div class="geo-card">
+                    <label class="field-stack">Text
+                        <input type="text" id="text-input" class="text-field" value="SceneView">
+                    </label>
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Color</span> <input type="color" class="color-picker" id="text-color" value="#ffffff"></label>
+                        <label class="field-row"><span class="field-label">Size</span> <input type="range" class="geo-slider" id="text-size" min="0.5" max="3" step="0.1" value="1.2"> <span class="slider-value">1.2</span></label>
+                        <label class="check-row"><input type="checkbox" id="text-billboard" checked> Always face the camera</label>
+                    </div>
+                    <div class="btn-row"><button id="text-add" class="geo-add-btn state">Add text</button></div>
+                </div>
+                <button id="text-clear" class="geo-clear-btn state">Remove added text</button>
+            </section>
+
+            <!-- Environment panel — setEnvironmentSH / setBackgroundColor / setBloom -->
+            <section id="panel-environment" class="panel env-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Environment</h2>
+                    <p class="panel-sub">Image-based lighting, background and bloom.</p>
+                </div>
+                <div class="env-card">
+                    <div class="env-card-title">Lighting</div>
+                    <label class="field-stack">Preset
+                        <select id="env-preset" class="quality-select">
+                            <option value="warm">Warm studio</option>
+                            <option value="cool">Cool daylight</option>
+                            <option value="dramatic">Dramatic</option>
+                        </select>
+                    </label>
+                    <label class="field-row"><span class="field-label">Intensity</span>
+                        <input type="range" id="env-intensity" class="geo-slider" min="15000" max="80000" step="5000" value="45000">
+                    </label>
+                </div>
+                <div class="env-card">
+                    <div class="env-card-title">Background</div>
+                    <label class="field-row"><span class="field-label">Color</span>
+                        <input type="color" id="env-bg-color" class="color-picker" value="#222833">
+                    </label>
+                    <p class="panel-note">A background colour replaces the photo studio. Turn it back on in Settings.</p>
+                </div>
+                <div class="env-card">
+                    <div class="toggle-row">
+                        <span class="env-card-title">Bloom</span>
+                        <div id="env-bloom-toggle" class="toggle-switch" role="switch" aria-checked="false" aria-label="Bloom" tabindex="0"></div>
+                    </div>
+                    <label class="field-row"><span class="field-label">Strength</span>
+                        <input type="range" id="env-bloom-strength" class="geo-slider" min="0.05" max="0.6" step="0.05" value="0.15">
+                    </label>
+                </div>
+            </section>
+
+            <!-- Physics panel — Double Pendulum -->
+            <section id="panel-physics" class="panel geometry-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Physics</h2>
+                    <p class="panel-sub">A chaotic double pendulum, the same simulation as on Android and iOS.</p>
+                </div>
+                <div class="geo-card">
+                    <div class="geo-controls">
+                        <label class="field-row"><span class="field-label">Upper link</span>
+                            <input type="range" id="dp-length1" min="0.2" max="0.6" step="0.01" value="0.45">
+                            <span class="slider-value" id="dp-length1-value">0.45 m</span>
+                        </label>
+                        <label class="field-row"><span class="field-label">Lower link</span>
+                            <input type="range" id="dp-length2" min="0.2" max="0.6" step="0.01" value="0.40">
+                            <span class="slider-value" id="dp-length2-value">0.40 m</span>
+                        </label>
+                        <label class="field-row"><span class="field-label">Gravity</span>
+                            <input type="range" id="dp-gravity" min="1.6" max="20" step="0.1" value="9.8">
+                            <span class="slider-value" id="dp-gravity-value">9.8 m/s&sup2;</span>
+                        </label>
+                    </div>
+                    <div class="btn-row"><button id="dp-reset" class="geo-add-btn state">Reset and drop</button></div>
+                </div>
+                <p class="panel-note">
+                    The integrator mirrors the shared <code>DoublePendulum</code> simulation in
+                    <code>sceneview-core</code> (Kotlin Multiplatform). Adapted from
+                    <a href="https://github.com/radcli14/twolinks" target="_blank" rel="noopener">radcli14's twolinks</a>.
+                </p>
+            </section>
+
+            <!-- Spatial Audio panel — Web Audio PannerNode HRTF -->
+            <section id="panel-audio" class="panel geometry-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Spatial audio</h2>
+                    <p class="panel-sub">A bell orbits the scene. Headphones recommended.</p>
+                </div>
+                <div class="geo-card">
+                    <label class="field-stack">Falloff
+                        <select id="audio-falloff" class="quality-select">
+                            <option value="inverse" selected>Inverse (realistic)</option>
+                            <option value="linear">Linear (silent at max)</option>
+                            <option value="none">None (no attenuation)</option>
+                        </select>
+                    </label>
+                    <div class="btn-row">
+                        <button id="audio-play" class="geo-add-btn grow state">Play</button>
+                        <button id="audio-stop" class="geo-clear-btn grow state">Stop</button>
+                    </div>
+                </div>
+                <p class="panel-note">
+                    A looping bell plays as a <code>SpatialAudioNode</code>: it pans between your ears and
+                    fades with distance, through a Web Audio <code>PannerNode</code> in HRTF mode. The
+                    listener follows the orbit camera, as in the Android and iOS demos.
+                </p>
+            </section>
+
+            <!-- Settings panel -->
+            <section id="panel-settings" class="panel env-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Settings</h2>
+                    <p class="panel-sub">Rendering quality and the stage.</p>
+                </div>
+                <div class="env-card">
+                    <div class="toggle-row">
+                        <span class="toggle-text"><span class="toggle-label">Photo studio</span><small>Seamless backdrop, contact shadow, follows light and dark mode</small></span>
+                        <div id="studio-toggle" class="toggle-switch active" role="switch" aria-checked="true" aria-label="Photo studio" tabindex="0"></div>
+                    </div>
+                    <div class="toggle-row">
+                        <span class="toggle-label">Auto-rotate</span>
+                        <div id="rotate-toggle" class="toggle-switch active" role="switch" aria-checked="true" aria-label="Auto-rotate" tabindex="0"></div>
+                    </div>
+                    <div class="toggle-row">
+                        <span class="toggle-label">Bloom</span>
+                        <div id="bloom-toggle" class="toggle-switch" role="switch" aria-checked="false" aria-label="Bloom" tabindex="0"></div>
+                    </div>
+                </div>
+                <div class="env-card">
+                    <label class="field-stack">Quality
+                        <select id="quality-select" class="quality-select">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </label>
+                    <label class="field-row"><span class="field-label">Background</span>
+                        <input type="color" id="bg-color" class="color-picker" value="#222833">
+                    </label>
+                </div>
+            </section>
+
+            <!-- Credits panel (#3214) — every bundled third-party asset with its author
+                 and license. Rendered at runtime from `credits.json`, which is GENERATED
+                 from `assets/catalog.json` by `.claude/scripts/generate-credits.py`. -->
+            <section id="panel-credits" class="panel credits-panel">
+                <div class="panel-head">
+                    <h2 class="panel-title">Credits</h2>
+                </div>
+                <div class="credits-intro">
+                    SceneView is Apache 2.0. The models, environments and sounds in this demo keep the
+                    licence their authors granted. Open a card to see the original.
+                    <a href="https://github.com/sceneview/sceneview/blob/main/assets/catalog.json" target="_blank" rel="noopener">Generated from assets/catalog.json</a>.
+                </div>
+                <div id="credits-list"></div>
+            </section>
+
+            </div>
+            <footer class="bottom-bar">
+                <div class="powered-by">
+                    Rendered by <a href="/" >SceneView</a> for the web and
+                    <a href="https://github.com/google/filament" target="_blank" rel="noopener">Filament</a> (WebGL2, WebAssembly).
+                </div>
+            </footer>
+        </aside>
+
+        <!-- Stage: the 3D view -->
+        <main class="stage">
+            <canvas id="scene-canvas" aria-label="3D view. Drag to orbit, scroll or pinch to zoom."></canvas>
+
+            <div id="model-caption" class="model-caption" hidden>
+                <div id="model-caption-name" class="model-caption-name"></div>
+                <div id="model-caption-credit" class="model-caption-credit"></div>
+            </div>
+
+            <!-- Loading overlay -->
+            <div id="loading-overlay" class="loading-overlay">
+                <div class="loading-text">Starting the 3D engine</div>
+                <div id="loading-model-name" class="loading-model-name"></div>
+                <div class="loading-bar-track"><div class="loading-bar-fill"></div></div>
+            </div>
+
+            <!-- Loading chip for model switching -->
+            <div id="loading-chip" class="loading-chip" role="status">
+                <div class="mini-spinner"></div>
+                <span id="loading-chip-text">Loading model</span>
+            </div>
+
+            <!-- Camera controls hint -->
+            <div id="controls-info" class="controls-info">
+                <span class="mouse"><kbd>Drag</kbd> to orbit</span>
+                <span class="mouse"><kbd>Scroll</kbd> to zoom</span>
+                <span class="mouse"><kbd>Right-drag</kbd> to pan</span>
+                <span class="touch"><kbd>Drag</kbd> to orbit</span>
+                <span class="touch"><kbd>Pinch</kbd> to zoom</span>
+            </div>
+
+            <div class="xr-buttons">
+                <button id="enter-ar" class="xr-btn state">
+                    <svg class="icon" aria-hidden="true"><use href="#ms-view_in_ar"/></svg>View in your space
+                </button>
+                <button id="enter-vr" class="xr-btn state">
+                    <svg class="icon" aria-hidden="true"><use href="#ms-vrpano"/></svg>Enter VR
+                </button>
+            </div>
+
+            <!-- Update snackbar — shown when sceneview.github.io/version.json reports
+                 a newer build than the one stamped at compile time. -->
+            <div id="update-snackbar" class="update-snackbar" role="status" aria-live="polite">
+                <svg class="update-snackbar-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z" transform="rotate(180 12 12)"/></svg>
+                <div class="update-snackbar-text">
+                    <div class="update-snackbar-title">A new version is available</div>
+                    <div class="update-snackbar-version" id="update-snackbar-version">Reload to get it</div>
+                </div>
+                <button id="update-snackbar-btn" class="update-snackbar-btn state">Reload</button>
+                <button id="update-snackbar-dismiss" class="update-snackbar-dismiss state" aria-label="Dismiss">&times;</button>
+            </div>
+        </main>
     </div>
-
-    <!-- Geometry panel -->
-    <div id="panel-geometry" class="panel geometry-panel">
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Cube</span>
-                <button class="geo-add-btn" data-geo="cube">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-geo-color="cube" value="#4488ff"></label>
-                <label>Size <input type="range" class="geo-slider" data-geo-size="cube" min="0.2" max="3" step="0.1" value="1"> <span class="slider-value">1.0</span></label>
-                <label><input type="checkbox" class="geo-unlit" data-geo-unlit="cube"> Unlit (KHR_materials_unlit)</label>
-            </div>
-        </div>
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Sphere</span>
-                <button class="geo-add-btn" data-geo="sphere">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-geo-color="sphere" value="#ff4488"></label>
-                <label>Radius <input type="range" class="geo-slider" data-geo-size="sphere" min="0.2" max="2" step="0.1" value="0.5"> <span class="slider-value">0.5</span></label>
-                <label><input type="checkbox" class="geo-unlit" data-geo-unlit="sphere"> Unlit (KHR_materials_unlit)</label>
-            </div>
-        </div>
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Cylinder</span>
-                <button class="geo-add-btn" data-geo="cylinder">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-geo-color="cylinder" value="#44ff88"></label>
-                <label>Radius <input type="range" class="geo-slider" data-geo-size="cylinder" min="0.2" max="2" step="0.1" value="0.5"> <span class="slider-value">0.5</span></label>
-                <label><input type="checkbox" class="geo-unlit" data-geo-unlit="cylinder"> Unlit (KHR_materials_unlit)</label>
-            </div>
-        </div>
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Plane</span>
-                <button class="geo-add-btn" data-geo="plane">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-geo-color="plane" value="#ffaa44"></label>
-                <label>Size <input type="range" class="geo-slider" data-geo-size="plane" min="0.5" max="5" step="0.5" value="2"> <span class="slider-value">2.0</span></label>
-                <label><input type="checkbox" class="geo-unlit" data-geo-unlit="plane"> Unlit (KHR_materials_unlit)</label>
-            </div>
-        </div>
-        <button id="geo-clear" class="geo-clear-btn">Clear All Geometry</button>
-    </div>
-
-    <!-- Lighting panel — addLight / removeNode -->
-    <div id="panel-lighting" class="panel geometry-panel">
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Directional Light</span>
-                <button class="geo-add-btn" data-light="directional">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-light-color="directional" value="#fff4e0"></label>
-                <label>Intensity <input type="range" class="geo-slider" data-light-intensity="directional" min="10000" max="150000" step="5000" value="80000"> <span class="slider-value">80k</span></label>
-            </div>
-        </div>
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Point Light</span>
-                <button class="geo-add-btn" data-light="point">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-light-color="point" value="#4488ff"></label>
-                <label>Intensity <input type="range" class="geo-slider" data-light-intensity="point" min="10000" max="150000" step="5000" value="60000"> <span class="slider-value">60k</span></label>
-            </div>
-        </div>
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Spot Light</span>
-                <button class="geo-add-btn" data-light="spot">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" data-light-color="spot" value="#ff66aa"></label>
-                <label>Intensity <input type="range" class="geo-slider" data-light-intensity="spot" min="10000" max="150000" step="5000" value="70000"> <span class="slider-value">70k</span></label>
-            </div>
-        </div>
-        <button id="light-clear" class="geo-clear-btn">Remove Added Lights</button>
-        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
-            Adds Filament lights via <code>addLight()</code> — directional, point, and spot.
-            Mirrors Android's <code>LightNode</code> demos. Each added light is tracked so
-            <code>removeNode()</code> can clear it.
-        </p>
-    </div>
-
-    <!-- Animation panel — playAnimation / stopAnimation -->
-    <div id="panel-animation" class="panel geometry-panel">
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Animated Model</span>
-            </div>
-            <div class="geo-controls">
-                <label style="width:100%">Model
-                    <select id="anim-model-select" class="quality-select" style="margin-top:4px">
-                        <option value="animated_dragon.glb">Animated Dragon</option>
-                        <option value="animated_butterfly.glb">Animated Butterfly</option>
-                        <option value="phoenix_bird.glb">Phoenix Bird</option>
-                    </select>
-                </label>
-            </div>
-            <div class="geo-controls">
-                <button id="anim-play" class="geo-add-btn">Play</button>
-                <button id="anim-stop" class="geo-add-btn" style="background:rgba(255,255,255,0.12)">Stop</button>
-                <label><input type="checkbox" id="anim-loop" checked> Loop</label>
-            </div>
-            <div id="anim-status" style="font-size:12px;color:var(--sv-text-faint)">Select a model and press Play.</div>
-        </div>
-        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
-            Drives glTF keyframe &amp; skinning animation via <code>playAnimation()</code> /
-            <code>stopAnimation()</code> — the web counterpart of Android's Animation demos.
-        </p>
-    </div>
-
-    <!-- Text panel — createText -->
-    <div id="panel-text" class="panel geometry-panel">
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">3D Text Node</span>
-                <button id="text-add" class="geo-add-btn">Add</button>
-            </div>
-            <div class="geo-controls">
-                <label style="width:100%">Text
-                    <input type="text" id="text-input" class="text-field" value="SceneView" style="margin-top:4px">
-                </label>
-            </div>
-            <div class="geo-controls">
-                <label>Color <input type="color" class="color-picker" id="text-color" value="#ffffff"></label>
-                <label>Size <input type="range" class="geo-slider" id="text-size" min="0.5" max="3" step="0.1" value="1.2"> <span class="slider-value">1.2</span></label>
-                <label><input type="checkbox" id="text-billboard" checked> Billboard</label>
-            </div>
-        </div>
-        <button id="text-clear" class="geo-clear-btn">Remove Added Text</button>
-        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
-            Renders text as a textured quad via <code>createText()</code> — the web face of
-            Android's Text demo. Optionally billboards to always face the camera.
-        </p>
-    </div>
-
-    <!-- Environment panel — setEnvironmentSH / setBackgroundColor / setBloom -->
-    <div id="panel-environment" class="panel env-panel">
-        <div class="env-card">
-            <div class="env-card-title">IBL Environment</div>
-            <label style="font-size:12px;color:var(--sv-text-dim)">Lighting preset</label>
-            <select id="env-preset" class="quality-select">
-                <option value="warm">Warm Studio</option>
-                <option value="cool">Cool Daylight</option>
-                <option value="dramatic">Dramatic</option>
-            </select>
-            <label style="font-size:12px;color:var(--sv-text-dim)">Intensity</label>
-            <input type="range" id="env-intensity" class="geo-slider" style="width:100%" min="15000" max="80000" step="5000" value="45000">
-        </div>
-        <div class="env-card">
-            <div class="env-card-title">Background</div>
-            <div class="bg-color-row">
-                <label>Color</label>
-                <input type="color" id="env-bg-color" class="color-picker" value="#333C57">
-            </div>
-        </div>
-        <div class="env-card">
-            <div class="env-card-title">Bloom</div>
-            <div class="toggle-row">
-                <span class="toggle-label">Enabled</span>
-                <div id="env-bloom-toggle" class="toggle-switch"></div>
-            </div>
-            <label style="font-size:12px;color:var(--sv-text-dim)">Strength</label>
-            <input type="range" id="env-bloom-strength" class="geo-slider" style="width:100%" min="0.05" max="0.6" step="0.05" value="0.15">
-        </div>
-    </div>
-
-    <!-- Physics panel — Double Pendulum -->
-    <div id="panel-physics" class="panel geometry-panel">
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Double Pendulum</span>
-            </div>
-            <div class="geo-controls">
-                <label>Upper link
-                    <input type="range" id="dp-length1" min="0.2" max="0.6" step="0.01" value="0.45">
-                    <span class="slider-value" id="dp-length1-value">0.45 m</span>
-                </label>
-                <label>Lower link
-                    <input type="range" id="dp-length2" min="0.2" max="0.6" step="0.01" value="0.40">
-                    <span class="slider-value" id="dp-length2-value">0.40 m</span>
-                </label>
-                <label>Gravity
-                    <input type="range" id="dp-gravity" min="1.6" max="20" step="0.1" value="9.8">
-                    <span class="slider-value" id="dp-gravity-value">9.8 m/s&sup2;</span>
-                </label>
-            </div>
-            <button id="dp-reset" class="geo-clear-btn" style="margin-top:8px">Reset &amp; drop</button>
-        </div>
-        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
-            A chaotic two-link pendulum. The integrator math mirrors the shared
-            <code>DoublePendulum</code> simulation in <code>sceneview-core</code> (KMP) — the
-            same physics drives the Android and iOS demos. Adapted from
-            <a href="https://github.com/radcli14/twolinks" target="_blank">&#64;radcli14's twolinks</a>.
-        </p>
-    </div>
-
-    <!-- Spatial Audio panel — Web Audio PannerNode HRTF -->
-    <div id="panel-audio" class="panel geometry-panel">
-        <div class="geo-card">
-            <div class="geo-card-header">
-                <span class="geo-card-title">Orbiting Bell</span>
-            </div>
-            <div class="geo-controls">
-                <label>Falloff
-                    <select id="audio-falloff" class="quality-select">
-                        <option value="inverse" selected>Inverse (realistic)</option>
-                        <option value="linear">Linear (silent at max)</option>
-                        <option value="none">None (no attenuation)</option>
-                    </select>
-                </label>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:8px">
-                <button id="audio-play" class="geo-add-btn" style="flex:1">Play</button>
-                <button id="audio-stop" class="geo-clear-btn" style="flex:1;margin:0">Stop</button>
-            </div>
-        </div>
-        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
-            A looping bell tone orbits the scene as a <code>SpatialAudioNode</code>.
-            The sound pans between your ears and fades with distance — driven by a
-            Web Audio <code>PannerNode</code> in <code>HRTF</code> mode. The audio
-            listener tracks the orbit camera, so the same code maps 1:1 onto the
-            Android and iOS Spatial Audio demos. Headphones recommended.
-        </p>
-    </div>
-
-    <!-- Credits panel (#3214) — every bundled third-party asset with its author
-         and license. Rendered at runtime from `credits.json`, which is GENERATED
-         from `assets/catalog.json` by `.claude/scripts/generate-credits.py`. -->
-    <div id="panel-credits" class="panel credits-panel">
-        <div class="credits-intro">
-            SceneView is Apache 2.0. The 3D models, environments and media bundled in this
-            demo keep the license granted by their authors — click a card to open the
-            original page. <a href="https://github.com/sceneview/sceneview/blob/main/assets/catalog.json" target="_blank" rel="noopener">Generated from assets/catalog.json</a>.
-        </div>
-        <div id="credits-list"></div>
-    </div>
-
-    <!-- Settings panel -->
-    <div id="panel-settings" class="panel env-panel">
-        <div class="env-card">
-            <div class="env-card-title">Rendering</div>
-            <label style="font-size:12px;color:var(--sv-text-dim)">Quality</label>
-            <select id="quality-select" class="quality-select">
-                <option value="low">Low</option>
-                <option value="medium" selected>Medium</option>
-                <option value="high">High</option>
-            </select>
-            <div class="toggle-row">
-                <span class="toggle-label">Bloom</span>
-                <div id="bloom-toggle" class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row">
-                <span class="toggle-label">Auto-rotate</span>
-                <div id="rotate-toggle" class="toggle-switch active"></div>
-            </div>
-        </div>
-        <div class="env-card">
-            <div class="env-card-title">Background</div>
-            <div class="bg-color-row">
-                <label>Color</label>
-                <input type="color" id="bg-color" class="color-picker" value="#333C57">
-            </div>
-        </div>
-    </div>
-
-    <!-- Camera controls info -->
-    <div id="controls-info" class="controls-info">
-        <div class="row"><kbd>Drag</kbd> Orbit</div>
-        <div class="row"><kbd>Scroll</kbd> Zoom</div>
-        <div class="row"><kbd>Right-drag</kbd> Pan</div>
-    </div>
-
-    <!-- Update snackbar — shown when sceneview.github.io/version.json reports
-         a newer build than the one stamped at compile time. -->
-    <div id="update-snackbar" class="update-snackbar" role="status" aria-live="polite">
-        <svg class="update-snackbar-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z" transform="rotate(180 12 12)"/></svg>
-        <div class="update-snackbar-text">
-            <div class="update-snackbar-title">New version available</div>
-            <div class="update-snackbar-version" id="update-snackbar-version">Reload to load it</div>
-        </div>
-        <button id="update-snackbar-btn" class="update-snackbar-btn">Reload</button>
-        <button id="update-snackbar-dismiss" class="update-snackbar-dismiss" aria-label="Dismiss">&times;</button>
-    </div>
-
-    <!-- Bottom bar -->
-    <footer class="bottom-bar">
-        <div class="powered-by">
-            Powered by <a href="https://sceneview.github.io" target="_blank">SceneView</a> + <a href="https://github.com/google/filament" target="_blank">Filament.js</a> (WASM)
-        </div>
-        <div class="xr-buttons">
-            <button id="enter-ar" class="xr-btn">Enter AR</button>
-            <button id="enter-vr" class="xr-btn">Enter VR</button>
-        </div>
-    </footer>
 
     <script>
     (function() {
@@ -1117,23 +1165,37 @@
 
       // Curated, self-hosted model catalog. Every `file` MUST exist under
       // `samples/web-demo/site/models/` — `validate-demo-assets.sh` enforces
-      // this. Kept lean (10 GLBs), CC-BY or CC0 only (no NC model on a demo surface) so the demo distribution stays
-      // small; the network catalog sources (Icosa, Poly Haven, Sketchfab)
-      // cover the wider catalogs. A `frontYaw` (degrees from glTF's +Z, as on /view's
-      // tiles, #4575) opens the camera on the model's front three-quarter; without one,
-      // a pick keeps the angle the previous model's turntable had reached.
-      var CDN_MODELS = [
-        { name: 'Sheen Chair', file: 'sheen_chair.glb', category: 'Showcase' },
-        { name: 'Toy Car', file: 'khronos_toy_car.glb', category: 'Showcase' },
-        { name: 'Chronograph Watch', file: 'chronograph_watch.glb', category: 'Showcase' },
-        { name: 'Ferrari F40', file: 'ferrari_f40.glb', category: 'Vehicles' },
-        { name: 'Animated Butterfly', file: 'animated_butterfly.glb', category: 'Animated' },
-        { name: 'Animated Dragon', file: 'animated_dragon.glb', category: 'Animated' },
-        { name: 'Phoenix Bird', file: 'phoenix_bird.glb', category: 'Animated' },
-        { name: 'Cyberpunk Character', file: 'cyberpunk_character.glb', category: 'Characters' },
-        { name: 'Game Boy Classic', file: 'game_boy_classic.glb', category: 'Objects' },
-        { name: 'Nintendo Switch OLED', file: 'nintendo_switch_oled.glb', category: 'Objects', frontYaw: 0 }
-      ];
+      // this. The GLBs are not in git: they are listed in assets/manifest.json
+      // (scope `web-demo`) and fetched from the `assets-v1` release by
+      // tools/fetch-assets.sh. Realistic, scanned or photogrammetry-grade models
+      // only, each under ~10 MB, CC-BY or CC0 (no NC model on a demo surface).
+      // `author` and `license` feed the caption on the 3D view; credits.json
+      // (generated from assets/catalog.json) stays the source of truth.
+      // A `frontYaw` (degrees from glTF's +Z, as on /view's tiles, #4575) opens the
+      // camera on the model's front three-quarter.
+      // Each card shows `thumbs/<file>.webp`, a 320 px square rendered from this page's
+      // photo studio (light theme), so the previews match what a pick shows.
+      var DEFAULT_MODEL = { name: 'KitchenAid stand mixer', file: 'kitchenaid_stand_mixer.glb' };
+      var CDN_MODELS = ([
+        { name: 'KitchenAid stand mixer', file: 'kitchenaid_stand_mixer.glb', category: 'Products', author: 'MelissaVerdonck', license: 'CC BY 4.0' },
+        { name: 'Canon EOS RP', file: 'canon_eos_rp_v2.glb', category: 'Products', author: 'fahadratul', license: 'CC BY 4.0' },
+        { name: 'Sony MDR-7506 headphones', file: 'sony_mdr_7506.glb', category: 'Products', author: 'AndreiVNK', license: 'CC BY 4.0' },
+        { name: 'SMEG toaster', file: 'smeg_toaster.glb', category: 'Products', author: 'The Fresh Lab', license: 'CC BY 4.0' },
+        { name: 'DJI Mavic 3 Cine', file: 'dji_mavic_3_v2.glb', category: 'Products', author: 'aurumjuda747', license: 'CC BY 4.0' },
+        { name: 'Vintage camera', file: 'vintage_camera.glb', category: 'Products', author: 'Rajil Jose Macatangay', license: 'CC0' },
+        { name: 'Rivet Aiden armchair', file: 'rivet_aiden_armchair.glb', category: 'Design', author: 'Amazon.com', license: 'CC BY 4.0' },
+        { name: 'Chess set', file: 'chess_set.glb', category: 'Design', author: 'Riley Queen', license: 'CC0' },
+        { name: 'Motorcycle helmet', file: 'moto_helmet_v2.glb', category: 'Design', author: 'sayedgamal655', license: 'CC BY 4.0' },
+        { name: 'Vespa Primavera ET3', file: 'vespa_et3.glb', category: 'Vehicles & science', author: 'Nadia Ribitis', license: 'CC BY 4.0' },
+        { name: 'Perseverance Mars rover', file: 'perseverance_rover.glb', category: 'Vehicles & science', author: 'NASA/JPL-Caltech', license: 'NASA media guidelines' },
+        { name: 'Triceratops skeleton', file: 'triceratops_skeleton.glb', category: 'Vehicles & science', author: 'Smithsonian NMNH', license: 'CC0' },
+        { name: 'Animated dragon', file: 'animated_dragon.glb', category: 'Animated', author: 'LasquetiSpice', license: 'CC BY 4.0' },
+        { name: 'Animated butterfly', file: 'animated_butterfly.glb', category: 'Animated', author: 'LasquetiSpice', license: 'CC BY 4.0' },
+        { name: 'Phoenix', file: 'phoenix_bird.glb', category: 'Animated', author: 'NORBERTO-3D', license: 'CC BY 4.0' }
+      ]).map(function(m) {
+        m.thumb = 'thumbs/' + m.file.replace(/\.glb$/, '.webp');
+        return m;
+      });
 
       // ---- State ----
       var sceneViewInstance = null;
@@ -1166,17 +1228,66 @@
       var searchBox = document.getElementById('search-box');
       var modelResults = document.getElementById('model-results');
       var sourcePicker = document.getElementById('source-picker');
-      var controlsInfo = document.getElementById('controls-info');
+      var modelCaption = document.getElementById('model-caption');
+      var modelCaptionName = document.getElementById('model-caption-name');
+      var modelCaptionCredit = document.getElementById('model-caption-credit');
+      var studioToggle = document.getElementById('studio-toggle');
+
+      // ---- Analytics ----
+      // GA4 through the site's /assets/analytics.js, which defines window.gtag (and
+      // already reports every `[data-tab]` click as `tab_click`). It is absent on a
+      // local run and when the visitor opted out (DNT / GPC): then this is a no-op.
+      function track(name, params) {
+        try {
+          if (typeof window.gtag === 'function') window.gtag('event', name, params || {});
+        } catch (e) { /* analytics never breaks the demo */ }
+      }
+
+      // ---- Photo studio ----
+      // The models open in sceneview.js's photo studio (setStudio): a seamless
+      // backdrop with a contact shadow that follows the system light / dark theme.
+      // Picking a background colour leaves it; the Settings switch brings it back.
+      // The physics and audio scenes build their own stage, so the studio steps
+      // aside while they are open and comes back after.
+      var studioOn = true;
+      var studioSuspended = false;
+      var darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+      function currentTheme() {
+        var forced = document.documentElement.getAttribute('data-theme');
+        if (forced === 'light' || forced === 'dark') return forced;
+        return darkQuery && darkQuery.matches ? 'dark' : 'light';
+      }
+
+      function applyStudio() {
+        if (!sceneViewInstance) return;
+        sceneViewInstance.setStudio(studioOn && !studioSuspended ? currentTheme() : false);
+      }
+
+      function setStudioOn(on) {
+        studioOn = !!on;
+        if (studioToggle) {
+          studioToggle.classList.toggle('active', studioOn);
+          studioToggle.setAttribute('aria-checked', String(studioOn));
+        }
+        applyStudio();
+      }
+
+      if (darkQuery) {
+        var onThemeChange = function() { if (studioOn && !studioSuspended) applyStudio(); };
+        if (darkQuery.addEventListener) darkQuery.addEventListener('change', onThemeChange);
+        else if (darkQuery.addListener) darkQuery.addListener(onThemeChange);
+      }
 
       // ---- Initialization ----
 
       function init() {
         setupCanvas();
-        // Opening model: the Sheen Chair (CC0). It renders ~4x faster than the
-        // Toy Car on software WebGL (SwiftShader: ~17 fps vs ~4 fps at 1280x720,
-        // the Toy Car pays for transmission + clearcoat over 109k triangles),
-        // so the first frame and every tab switch stay responsive without a GPU.
-        initSceneView('sheen_chair.glb', 'Sheen Chair');
+        setupSwitches();
+        // Opening model: the KitchenAid stand mixer, a ~2.8 MB product scan that
+        // reads instantly as "a real product", and is light enough to show its
+        // first frame quickly on software WebGL. It is preloaded from <head>.
+        initSceneView(DEFAULT_MODEL.file, DEFAULT_MODEL.name);
         setupTabs();
         setupExplore();
         setupSearch();
@@ -1223,6 +1334,37 @@
         switchTab(tab);
       }
 
+      // The `.toggle-switch` divs act as M3 switches: Space / Enter flip them like a
+      // click, and aria-checked follows the `active` class whoever sets it.
+      function setupSwitches() {
+        var switches = document.querySelectorAll('.toggle-switch');
+        for (var i = 0; i < switches.length; i++) {
+          (function(sw) {
+            sw.addEventListener('keydown', function(e) {
+              if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); sw.click(); }
+            });
+            var sync = function() { sw.setAttribute('aria-checked', String(sw.classList.contains('active'))); };
+            sync();
+            if (window.MutationObserver) new MutationObserver(sync).observe(sw, { attributes: true, attributeFilter: ['class'] });
+          })(switches[i]);
+        }
+        if (studioToggle) {
+          studioToggle.addEventListener('click', function() { setStudioOn(!studioOn); });
+        }
+        var autoRotateBtn = document.getElementById('auto-rotate-toggle');
+        if (autoRotateBtn && window.MutationObserver) {
+          new MutationObserver(function() {
+            autoRotateBtn.setAttribute('aria-pressed', String(autoRotateBtn.classList.contains('active')));
+          }).observe(autoRotateBtn, { attributes: true, attributeFilter: ['class'] });
+        }
+        var useInApp = document.getElementById('use-in-app');
+        if (useInApp) {
+          useInApp.addEventListener('click', function() {
+            track('cta_click', { link_url: useInApp.href, link_text: 'Use it in your app', cta_location: 'web_demo_top_bar' });
+          });
+        }
+      }
+
       function setupCanvas() {
         canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
         canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1);
@@ -1243,7 +1385,8 @@
         // once filament.js/sceneview.js are self-hosted — so init the engine
         // first, clear the overlay, THEN load the default model as a
         // non-fatal, best-effort step.
-        SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx' })
+        // `studio`: the photo studio from the very first frame, in the visitor's theme.
+        SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx', studio: currentTheme() })
           .then(function(instance) {
             sceneViewInstance = instance;
             // Test hook: the Playwright suite (tests/shadow-options.spec.ts)
@@ -1285,14 +1428,40 @@
         return undefined;
       }
 
-      function loadModel(url, name) {
+      /** The curated entry for a model URL, or null. */
+      function curatedEntry(url) {
+        for (var i = 0; i < CDN_MODELS.length; i++) {
+          if (MODEL_BASE + CDN_MODELS[i].file === url) return CDN_MODELS[i];
+        }
+        return null;
+      }
+
+      // The model on screen, for "View in your space" (Scene Viewer takes a URL).
+      var currentModelUrl = null;
+      var currentModelName = null;
+
+      /** Name and credit on the 3D view. `credit` may be empty. */
+      function setCaption(name, credit) {
+        if (!modelCaption) return;
+        modelCaptionName.textContent = name || '';
+        modelCaptionCredit.textContent = credit || '';
+        modelCaptionCredit.style.display = credit ? '' : 'none';
+        modelCaption.hidden = !name;
+      }
+
+      function loadModel(url, name, credit) {
         if (!sceneViewInstance) return;
         showChip('Loading ' + (name || 'model') + '...');
         var frontYaw = curatedFrontYaw(url);
+        var entry = curatedEntry(url);
+        if (credit === undefined && entry) credit = entry.author + ' · ' + entry.license;
         sceneViewInstance.loadModel(url, frontYaw !== undefined ? { frontYaw: frontYaw } : undefined)
           .then(function() {
             hideChip();
             sceneViewInstance.setAutoRotate(autoRotate);
+            currentModelUrl = /^(https?:|blob:|data:)/.test(url) ? url : new URL(url, location.href).href;
+            currentModelName = name || '';
+            setCaption(name, credit);
             console.log('Model loaded: ' + name);
           })
           .catch(function(err) {
@@ -1431,11 +1600,6 @@
             }
           }
         });
-        // Adjust controls-info position — left-anchored panels push it right.
-        var sidePanel = (tab === 'models' || tab === 'geometry' || tab === 'physics' ||
-                         tab === 'lighting' || tab === 'animation' || tab === 'text' ||
-                         tab === 'audio' || tab === 'credits');
-        controlsInfo.style.left = sidePanel ? '380px' : '20px';
         if (tab === 'credits') loadCredits();
         // The Double Pendulum runs its own physics scene; entering or leaving
         // the Physics tab swaps the scene in/out so it never lingers behind
@@ -1660,6 +1824,18 @@
           img.setAttribute('loading', 'lazy');
           img.addEventListener('error', function() { img.style.display = 'none'; });
           card.appendChild(img);
+        } else {
+          var ph = document.createElement('div');
+          ph.className = 'result-thumb-placeholder';
+          ph.setAttribute('aria-hidden', 'true');
+          var svgNS = 'http://www.w3.org/2000/svg';
+          var svg = document.createElementNS(svgNS, 'svg');
+          svg.setAttribute('class', 'icon');
+          var use = document.createElementNS(svgNS, 'use');
+          use.setAttribute('href', '#ms-deployed_code');
+          svg.appendChild(use);
+          ph.appendChild(svg);
+          card.appendChild(ph);
         }
 
         var info = document.createElement('div');
@@ -1671,12 +1847,12 @@
         nameDiv.textContent = model.name;
         info.appendChild(nameDiv);
 
-        // Curated bundled models carry no attribution line — show the file format
-        // badge instead, matching the pre-#2722 look.
+        // Curated bundled models: their author and licence, from CDN_MODELS.
         if (selectedSource.curated) {
+          var entry = curatedEntry(MODEL_BASE + model.id);
           var badge = document.createElement('div');
           badge.className = 'result-badge';
-          badge.textContent = model.id.split('.').pop().toUpperCase();
+          badge.textContent = entry ? entry.author + ' \u00B7 ' + entry.license : model.id.split('.').pop().toUpperCase();
           info.appendChild(badge);
         } else {
           var attrDiv = document.createElement('div');
@@ -1709,6 +1885,14 @@
           if (model.externalUrl) window.open(model.externalUrl, '_blank', 'noopener');
           return;
         }
+        track('model_select', {
+          model_id: String(model.id || model.cardKey || ''),
+          model_name: String(model.name || ''),
+          model_source: selectedSource.id
+        });
+        // Network catalogs: the attribution goes on the caption (curated models
+        // resolve theirs from CDN_MODELS in loadModel).
+        var credit = selectedSource.curated ? undefined : window.SceneViewSources.attributionLine(model);
         showChip('Loading ' + model.name + '...');
         var onProgress = function(bytesRead, totalBytes) {
           if (totalBytes > 0) {
@@ -1728,13 +1912,13 @@
                 // curated switch kept the previous gallery model's bytes alive
                 // until the NEXT blob-based load (#2751 review).
                 revokeActiveObjectUrls();
-                loadModel(descriptor.url, model.name);
+                loadModel(descriptor.url, model.name, credit);
                 break;
               case 'glb':
-                loadModelBytes(descriptor.bytes, model.name);
+                loadModelBytes(descriptor.bytes, model.name, credit);
                 break;
               case 'gltf':
-                loadGltfBundle(descriptor, model.name);
+                loadGltfBundle(descriptor, model.name, credit);
                 break;
               default:
                 throw new Error('Unknown render descriptor: ' + descriptor.type);
@@ -1764,11 +1948,11 @@
       }
 
       /** Render a self-contained GLB from its already-streamed bytes. */
-      function loadModelBytes(bytes, name) {
+      function loadModelBytes(bytes, name, credit) {
         revokeActiveObjectUrls();
         var url = URL.createObjectURL(new Blob([bytes], { type: 'model/gltf-binary' }));
         activeObjectUrls.push(url);
-        loadModel(url, name);
+        loadModel(url, name, credit);
       }
 
       /**
@@ -1787,7 +1971,7 @@
        * (#2751 review). This is why the CC catalogs render in-app on web
        * where iOS defers them.
        */
-      function loadGltfBundle(descriptor, name) {
+      function loadGltfBundle(descriptor, name, credit) {
         revokeActiveObjectUrls();
         window.Filament = window.Filament || {};
         window.Filament.assets = window.Filament.assets || {};
@@ -1802,7 +1986,7 @@
         });
         var rootUrl = URL.createObjectURL(new Blob([descriptor.rootBytes], { type: 'model/gltf+json' }));
         activeObjectUrls.push(rootUrl);
-        loadModel(rootUrl, name);
+        loadModel(rootUrl, name, credit);
       }
 
       // ---- Geometry Showcase ----
@@ -1961,6 +2145,10 @@
           status.textContent = 'Loading ' + modelSelect.options[modelSelect.selectedIndex].text + '...';
           sceneViewInstance.loadModel(MODEL_BASE + file)
             .then(function() {
+              var entry = curatedEntry(MODEL_BASE + file);
+              currentModelUrl = new URL(MODEL_BASE + file, location.href).href;
+              currentModelName = entry ? entry.name : file;
+              setCaption(currentModelName, entry ? entry.author + ' · ' + entry.license : '');
               sceneViewInstance.playAnimation(0, loop);
               status.textContent = 'Playing — clip 0' + (loop ? ' (looping)' : '');
             })
@@ -2072,6 +2260,8 @@
         document.getElementById('env-bg-color').addEventListener('input', function() {
           if (!sceneViewInstance) return;
           var rgb = hexToRgb(document.getElementById('env-bg-color').value);
+          // A plain colour replaces the photo studio (its backdrop is the background).
+          if (studioOn) setStudioOn(false);
           sceneViewInstance.setBackgroundColor(rgb[0], rgb[1], rgb[2], 1.0);
           // Keep the Settings-tab background picker in sync.
           var bgColor = document.getElementById('bg-color');
@@ -2275,8 +2465,17 @@
       // Build the two metallic links + pivot marker and start the loop.
       function startDoublePendulum() {
         if (!sceneViewInstance || dpRunning) return;
+        // The pendulum hangs in the plain scene: the studio would frame it as a product.
+        studioSuspended = true;
+        applyStudio();
+        setCaption('');
         sceneViewInstance.clearScene();
         geometryCount = 0;
+        // The camera is still framed on the last model (a tabletop product, through the
+        // studio's long lens): pull back so the whole swing, about 1.7 m wide, fits.
+        if (typeof sceneViewInstance.setCameraOrbit === 'function') {
+          sceneViewInstance.setCameraOrbit({ target: [0, 0.05, 0], radius: 2.6, height: 0.35, fov: 45 });
+        }
         dpState = dpSeedState();
         // Thin unit-tall boxes — the frame loop stretches/orients them.
         // Metallic grey for the links, brass-toned marker for the pivot.
@@ -2302,8 +2501,10 @@
         if (sceneViewInstance) {
           sceneViewInstance.clearScene();
           geometryCount = 0;
-          // Restore the default model so leaving the tab isn't a black screen.
-          loadModel(MODEL_BASE + 'sheen_chair.glb', 'Sheen Chair');
+          studioSuspended = false;
+          applyStudio();
+          // Restore the default model so leaving the tab isn't an empty stage.
+          loadModel(MODEL_BASE + DEFAULT_MODEL.file, DEFAULT_MODEL.name);
         }
       }
 
@@ -2593,6 +2794,7 @@
         bgColor.addEventListener('input', function() {
           if (sceneViewInstance) {
             var rgb = hexToRgb(bgColor.value);
+            if (studioOn) setStudioOn(false);
             sceneViewInstance.setBackgroundColor(rgb[0], rgb[1], rgb[2], 1.0);
           }
           // Keep the Environment-tab background picker in sync.
@@ -2603,26 +2805,47 @@
 
       // ---- WebXR ----
 
+      // "View in your space": on Android, Google's Scene Viewer places the model on
+      // screen in the room (ARCore), with no WebXR needed. Elsewhere, a browser
+      // with WebXR immersive-ar (Chrome on Android, Quest) starts a session.
+      var isAndroid = /Android/i.test(navigator.userAgent || '');
+
+      function sceneViewerIntent(fileUrl, title) {
+        var fallback = location.href.split('#')[0];
+        return 'intent://arvr.google.com/scene-viewer/1.0' +
+          '?file=' + encodeURIComponent(fileUrl) +
+          '&mode=ar_preferred' +
+          (title ? '&title=' + encodeURIComponent(title) : '') +
+          '#Intent;scheme=https;package=com.google.android.googlequicksearchbox;' +
+          'action=android.intent.action.VIEW;' +
+          'S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end;';
+      }
+
       function setupXR() {
-        // Check AR support
+        var arBtn = document.getElementById('enter-ar');
+        var vrBtn = document.getElementById('enter-vr');
+        if (isAndroid) arBtn.classList.add('available');
         if (navigator.xr) {
           navigator.xr.isSessionSupported('immersive-ar').then(function(supported) {
-            if (supported) {
-              document.getElementById('enter-ar').style.display = 'inline-block';
-            }
+            if (supported) arBtn.classList.add('available');
           }).catch(function() {});
 
           navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
-            if (supported) {
-              document.getElementById('enter-vr').style.display = 'inline-block';
-            }
+            if (supported) vrBtn.classList.add('available');
           }).catch(function() {});
         }
 
-        document.getElementById('enter-ar').addEventListener('click', function() {
+        arBtn.addEventListener('click', function() {
+          // Scene Viewer needs a model it can fetch over http(s).
+          if (isAndroid && currentModelUrl && /^https?:/.test(currentModelUrl)) {
+            track('ar_enter', { xr_mode: 'scene-viewer', model_name: currentModelName || '' });
+            location.href = sceneViewerIntent(currentModelUrl, currentModelName);
+            return;
+          }
           if (navigator.xr) {
             navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] })
               .then(function(session) {
+                track('ar_enter', { xr_mode: 'webxr-ar', model_name: currentModelName || '' });
                 console.log('AR session started');
                 session.addEventListener('end', function() {
                   console.log('AR session ended');
@@ -2634,10 +2857,11 @@
           }
         });
 
-        document.getElementById('enter-vr').addEventListener('click', function() {
+        vrBtn.addEventListener('click', function() {
           if (navigator.xr) {
             navigator.xr.requestSession('immersive-vr')
               .then(function(session) {
+                track('ar_enter', { xr_mode: 'webxr-vr', model_name: currentModelName || '' });
                 console.log('VR session started');
                 session.addEventListener('end', function() {
                   console.log('VR session ended');
