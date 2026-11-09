@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Camera path demo: a keyframed orbit played around an animated subject. -->
+<!-- Camera path demo: a keyframed orbit played around a car. -->
 <resources>
     <string name="demo_camera_path_title">Camera Path</string>
     <string name="demo_camera_path_subtitle">Play, pause and scrub a keyframed camera orbit</string>

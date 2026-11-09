@@ -165,6 +165,24 @@
       "author": "Poly Haven"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/air_jordan_1.glb",
+      "scope": "android",
+      "sha256": "3537837022a6e852e21e1408e4d8684b056c486d909e23e18204026bda9ce53e",
+      "size": 3516852,
+      "source": "https://sketchfab.com/3d-models/air-jordan-1-a4b434181fbb48008ad460722fd53725",
+      "license": "CC-BY-4.0",
+      "author": "makoto"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/canon_at1.glb",
+      "scope": "android",
+      "sha256": "634d1f5184dbc8d9b1537351a2546cedd55e2c5235145c359323337bd07aa95b",
+      "size": 3117736,
+      "source": "https://sketchfab.com/3d-models/canon-at-1-retro-camera-9de66868d0f240e985da00c9480bfc82",
+      "license": "CC-BY-4.0",
+      "author": "AleixoAlonso"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/khronos_fox.glb",
       "scope": "android",
       "sha256": "d4dda1047f1ae22a8c6a69457396300d1c36d9aceb79432938880e7f734daee2",
@@ -219,6 +237,15 @@
       "author": "Guido Odendahl (model); Eric Chadwick (extensions and scene composition)"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/kitchenaid_stand_mixer.glb",
+      "scope": "android",
+      "sha256": "9ac5502d10abdd6418cb57efdb913212a62e3eeaec16a621ac3b1daac72cc460",
+      "size": 2802612,
+      "source": "https://sketchfab.com/3d-models/kitchenaid-stand-mixer-716dfa11eb8f4020833584a3c3d09d5d",
+      "license": "CC-BY-4.0",
+      "author": "MelissaVerdonck"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/moto_helmet_v2.glb",
       "scope": "android",
       "sha256": "77c3ab5042092f9762394a496646ff66b98789f8a6694c96c4cb14760356ae08",
@@ -235,6 +262,15 @@
       "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
       "license": "CC-BY-4.0",
       "author": "Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/peugeot_2008.glb",
+      "scope": "android",
+      "sha256": "53d4e2e3455103746a07e2f366d5616fe26bab292ed74ef1fa41b8e92e935025",
+      "size": 10128808,
+      "source": "https://sketchfab.com/3d-models/2020-peugeot-2008-93efd164d3374295a8ac04c36e329429",
+      "license": "CC-BY-4.0",
+      "author": "David_Holiday"
     },
     {
       "path": "samples/android-demo/src/main/assets/models/phoenix_bird.glb",
@@ -255,6 +291,33 @@
       "author": "Quaternius"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/rivet_aiden_armchair.glb",
+      "scope": "android",
+      "sha256": "d96687f7f13126d16d152ce711bbab67543c2b451e729d314165db831c5f82b3",
+      "size": 2621284,
+      "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X2WN27.glb",
+      "license": "CC-BY-4.0",
+      "author": "Amazon.com"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/rivet_arc_floor_lamp.glb",
+      "scope": "android",
+      "sha256": "b4454ea0337324fa21e90dc8bc8455b108de9d6d6c8d6d0a61b392e23f40f296",
+      "size": 3150512,
+      "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B073772DH1.glb",
+      "license": "CC-BY-4.0",
+      "author": "Amazon.com"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/rivet_sloane_sofa.glb",
+      "scope": "android",
+      "sha256": "1a16989c040a944a706ff1b76e565dd3929a7828f310403ac408fafadfb62d72",
+      "size": 2945016,
+      "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B072PZC1KS.glb",
+      "license": "CC-BY-4.0",
+      "author": "Amazon.com"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/shiba.glb",
       "scope": "android",
       "sha256": "21215a951c2d8b171b4c9500369bf01a60aeaa346a1e89091213396768bffed3",
@@ -262,6 +325,33 @@
       "source": "https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c",
       "license": "CC-BY-4.0",
       "author": "zixisun51"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/smeg_toaster.glb",
+      "scope": "android",
+      "sha256": "5213ffded7d6c154c039eb83ee1bdd798d044fb9a581235eb94138db528058e0",
+      "size": 3032820,
+      "source": "https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1",
+      "license": "CC-BY-4.0",
+      "author": "The Fresh Lab"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/vespa_et3.glb",
+      "scope": "android",
+      "sha256": "f2b879519ef823449cd982b06b95d30e7fed4a08a3b60ba46c088da76415746c",
+      "size": 2611440,
+      "source": "https://sketchfab.com/3d-models/old-scooter-5e9b5072b2224ba982366490ad5f31d9",
+      "license": "CC-BY-4.0",
+      "author": "Nadia Ribitis"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/wishbone_chair.glb",
+      "scope": "android",
+      "sha256": "0cc48b68637280cc06c73c44643aabf79e1cc9c941033f9726f77432ce334b5e",
+      "size": 2257568,
+      "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07QJ1X2QB.glb",
+      "license": "CC-BY-4.0",
+      "author": "Amazon.com"
     },
     {
       "path": "samples/android-demo/src/main/assets/splats/raccoon_family.spz",

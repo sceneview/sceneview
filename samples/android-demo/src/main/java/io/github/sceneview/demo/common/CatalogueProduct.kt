@@ -25,6 +25,7 @@ import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.restPoseBoundingBox
+import io.github.sceneview.rememberModelInstance
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -45,6 +46,21 @@ object CatalogueProducts {
 
     /** A countertop appliance that automatic placement can set on a table or a floor alike. */
     const val KITCHENAID_STAND_MIXER = "kitchenaid-stand-mixer"
+
+    /**
+     * The products whose HD pack file also ships in the APK (2026-11-09), byte for byte, at
+     * [bundledAssetPath]: the Model Viewer's own list and the AR picker show them, so a demo
+     * that places one opens it at once instead of downloading the same bytes again.
+     */
+    val BUNDLED: Set<String> = setOf(
+        "peugeot-2008", "vespa-et3", "rivet-aiden-armchair", "rivet-sloane-sofa",
+        "rivet-arc-floor-lamp", "wishbone-chair", SMEG_TOASTER, KITCHENAID_STAND_MIXER,
+        AIR_JORDAN_1, "canon-at1",
+    )
+
+    /** `assets/`-relative path of a [BUNDLED] product (`models/<id with underscores>.glb`), else `null`. */
+    fun bundledAssetPath(assetId: String): String? =
+        if (assetId in BUNDLED) "models/${assetId.replace('-', '_')}.glb" else null
 }
 
 /**
@@ -73,16 +89,21 @@ class CatalogueProduct internal constructor(
 }
 
 /**
- * Loads the catalogue product [assetId] from the HD pack. Its file is not in the APK: if it is
- * not on the device yet, it is fetched on Wi-Fi the way the Model Viewer fetches a picked
- * catalogue model ([HdPack.fetchOnWifi]); on mobile data [CatalogueProductPill] offers
+ * Loads the catalogue product [assetId]: from the APK when it is one of
+ * [CatalogueProducts.BUNDLED], else from the HD pack — if its file is not on the device yet,
+ * it is fetched on Wi-Fi the way the Model Viewer fetches a picked catalogue model ([HdPack.fetchOnWifi]); on mobile data [CatalogueProductPill] offers
  * "download 3 MB", size first.
  */
 @Composable
 fun rememberCatalogueProduct(modelLoader: ModelLoader, assetId: String): CatalogueProduct {
-    val context = LocalContext.current
     val store = rememberHdPackStore()
     val asset = remember(store, assetId) { store?.manifest?.asset(assetId) }
+    // A bundled product reads the APK's copy: no fetch, no pill beyond "loading".
+    CatalogueProducts.bundledAssetPath(assetId)?.let { path ->
+        val instance = rememberModelInstance(modelLoader, path)
+        return CatalogueProduct(asset, instance, HdPackStatus.Ready, fileOnDevice = true)
+    }
+    val context = LocalContext.current
     val readyIds by remember(store) { store?.readyIds ?: MutableStateFlow(emptySet<String>()) }
         .collectAsState()
     val status by rememberHdAssetStatus(store, assetId)

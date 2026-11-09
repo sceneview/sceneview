@@ -96,6 +96,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
+import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
@@ -266,20 +267,13 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  * The models the viewer ships in its APK, in picker order — one list for the Models sheet of all
  * three sections.
  *
- * #3324 — the two untextured low-poly rows (Fox, Shiba) are out: in a full-screen PBR viewer they
- * are the two models that make the SDK look worse than it is. The three that take their place each
- * exercise a different material extension (sheen, sheen + specular, iridescence + transmission +
- * volume). Both GLBs stay bundled — `SampleAssets` fallbacks and `ARGeospatialAnchorsDemo` still
- * load them.
+ * 2026-11-09 — real products only. The Khronos sample assets (Toy Car, Lantern, Velvet Sofa,
+ * Sheen Chair, Olive Dish), the Quaternius Ranger and the Phoenix Bird read as a conformance
+ * suite or a game, not as things people own. They gave way to ten catalogue products whose HD
+ * pack files now also ship in the APK, so they open at once, offline, at their real size. Every
+ * old GLB stays bundled: the TV demo, `SampleAssets` fallbacks and the AR demos still load them.
  */
 private val BUNDLED_VIEWER_MODELS = listOf(
-    // Phoenix Bird by NORBERTO-3D, CC-BY 4.0: the hero since the Damaged Helmet left (its
-    // original is CC-BY-NC, which a store screenshot or a demo card cannot show).
-    // Authored ~960 units long: shown with a ~1.9 m wingspan, inside the viewer camera's range.
-    BundledViewerModel(
-        "models/phoenix_bird.glb", "Phoenix Bird", R.string.demo_model_desc_phoenix_bird,
-        scale = PHOENIX_BIRD_SCALE,
-    ),
     // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
     // Its stand-in is the bundled motorcycle helmet — the nearest thing the APK ships, another
     // helmet — shown instantly while the HD file downloads or loads.
@@ -290,15 +284,33 @@ private val BUNDLED_VIEWER_MODELS = listOf(
         hdAssetId = "flight-helmet",
         thumbnailStem = "khronos_flight_helmet",
     ),
-    BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa", R.string.demo_model_desc_velvet_sofa),
-    BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair", R.string.demo_model_desc_sheen_chair),
-    BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish", R.string.demo_model_desc_olive_dish),
-    BundledViewerModel("models/khronos_lantern.glb", "Lantern", R.string.demo_model_desc_lantern),
-    BundledViewerModel("models/khronos_toy_car.glb", "Toy Car", R.string.demo_model_desc_toy_car),
-    // Quaternius Ranger, CC0 (#4586): it replaced the three.js Soldier, a Mixamo character. It is
-    // authored facing +Z, toward the viewer's camera, so it needs no frontYaw (the Soldier faced -Z
-    // and needed 180°, #3828).
-    BundledViewerModel("models/quaternius_ranger.glb", "Ranger", R.string.demo_model_desc_ranger),
+    bundledProduct("peugeot-2008", "Peugeot 2008", R.string.demo_model_desc_hd_peugeot_2008),
+    bundledProduct("rivet-aiden-armchair", "Rivet Aiden armchair", R.string.demo_model_desc_hd_rivet_aiden_armchair),
+    bundledProduct("smeg-toaster", "SMEG toaster", R.string.demo_model_desc_hd_smeg_toaster),
+    bundledProduct("air-jordan-1", "Nike Air Jordan 1", R.string.demo_model_desc_hd_air_jordan_1),
+    bundledProduct("kitchenaid-stand-mixer", "KitchenAid stand mixer", R.string.demo_model_desc_hd_kitchenaid_stand_mixer),
+    bundledProduct("canon-at1", "Canon AT-1 (1977)", R.string.demo_model_desc_hd_canon_at1),
+    bundledProduct("vespa-et3", "Vespa Primavera ET3", R.string.demo_model_desc_hd_vespa_et3),
+    bundledProduct("rivet-sloane-sofa", "Rivet Sloane sofa", R.string.demo_model_desc_hd_rivet_sloane_sofa),
+    bundledProduct("wishbone-chair", "Wishbone dining chair", R.string.demo_model_desc_hd_wishbone_chair),
+    bundledProduct("rivet-arc-floor-lamp", "Rivet arc floor lamp", R.string.demo_model_desc_hd_rivet_arc_floor_lamp),
+)
+
+/**
+ * A catalogue product that ships in the APK ([CatalogueProducts.BUNDLED]): its bundled file,
+ * opened three-quarter like an [hdOnly] entry, with the HD pack's render of the same bytes as
+ * its card. No `hdAssetId` — the APK's copy IS the HD file, there is nothing to download.
+ */
+private fun bundledProduct(
+    id: String,
+    title: String,
+    @StringRes description: Int,
+) = BundledViewerModel(
+    assetPath = requireNotNull(CatalogueProducts.bundledAssetPath(id)) { "$id is not bundled" },
+    displayName = title,
+    description = description,
+    frontYaw = CATALOGUE_FRONT_YAW,
+    thumbnailStem = "hd_" + id.replace('-', '_'),
 )
 
 /**
@@ -387,10 +399,6 @@ private val MUSEUM_VIEWER_MODELS = listOf(
             R.string.demo_model_desc_hd_fangyi_bronze,
         ),
         hdOnly(
-            "canon-at1", "Canon AT-1 (1977)",
-            R.string.demo_model_desc_hd_canon_at1,
-        ),
-        hdOnly(
             "citroen-h-van", "Citroën H-style van",
             R.string.demo_model_desc_hd_citroen_h_van,
             facesMinusZ = true,
@@ -406,7 +414,9 @@ private val MUSEUM_VIEWER_MODELS = listOf(
  * furniture, cars, bikes, appliances, tech, sneakers — each at its real size, one shelf per
  * category, everyday first. Like Museum & Space they come from the HD pack, one download per
  * model on its pill's tap: 60 files and ~230 MB is not something the APK can carry. The same
- * GLBs back the website's catalogue on `/view` (`assets/catalog.json`).
+ * GLBs back the website's catalogue on `/view` (`assets/catalog.json`). The ten products the APK
+ * does carry ([CatalogueProducts.BUNDLED]) are in the bundled list instead, not here: every card
+ * on these shelves downloads before it opens.
  */
 private val CATALOGUE_SHELVES = listOf(
     CatalogueShelf(R.string.demo_model_picker_cat_furniture, listOf(
@@ -427,24 +437,8 @@ private val CATALOGUE_SHELVES = listOf(
             R.string.demo_model_desc_hd_ikea_trensum_mirror,
         ),
         hdOnly(
-            "rivet-sloane-sofa", "Rivet Sloane sofa",
-            R.string.demo_model_desc_hd_rivet_sloane_sofa,
-        ),
-        hdOnly(
             "stone-beam-dalton-sofa", "Stone & Beam Dalton sofa",
             R.string.demo_model_desc_hd_stone_beam_dalton_sofa,
-        ),
-        hdOnly(
-            "rivet-aiden-armchair", "Rivet Aiden armchair",
-            R.string.demo_model_desc_hd_rivet_aiden_armchair,
-        ),
-        hdOnly(
-            "wishbone-chair", "Wishbone dining chair",
-            R.string.demo_model_desc_hd_wishbone_chair,
-        ),
-        hdOnly(
-            "rivet-arc-floor-lamp", "Rivet arc floor lamp",
-            R.string.demo_model_desc_hd_rivet_arc_floor_lamp,
         ),
         hdOnly(
             "rivet-anne-desk", "Rivet Anne desk",
@@ -459,10 +453,6 @@ private val CATALOGUE_SHELVES = listOf(
         hdOnly(
             "tesla-model-3", "Tesla Model 3",
             R.string.demo_model_desc_hd_tesla_model_3,
-        ),
-        hdOnly(
-            "peugeot-2008", "Peugeot 2008",
-            R.string.demo_model_desc_hd_peugeot_2008,
         ),
         hdOnly(
             "mini-cooper-s", "MINI Cooper S",
@@ -484,23 +474,11 @@ private val CATALOGUE_SHELVES = listOf(
             R.string.demo_model_desc_hd_tier_escooter,
         ),
         hdOnly(
-            "vespa-et3", "Vespa Primavera ET3",
-            R.string.demo_model_desc_hd_vespa_et3,
-        ),
-        hdOnly(
             "city-bike", "City bike",
             R.string.demo_model_desc_hd_city_bike,
         ),
     )),
     CatalogueShelf(R.string.demo_model_picker_cat_home, listOf(
-        hdOnly(
-            "kitchenaid-stand-mixer", "KitchenAid stand mixer",
-            R.string.demo_model_desc_hd_kitchenaid_stand_mixer,
-        ),
-        hdOnly(
-            "smeg-toaster", "SMEG toaster",
-            R.string.demo_model_desc_hd_smeg_toaster,
-        ),
         hdOnly(
             "dyson-hot-cool-fan", "Dyson Hot+Cool fan",
             R.string.demo_model_desc_hd_dyson_hot_cool_fan,
@@ -596,10 +574,6 @@ private val CATALOGUE_SHELVES = listOf(
         ),
     )),
     CatalogueShelf(R.string.demo_model_picker_cat_fashion, listOf(
-        hdOnly(
-            "air-jordan-1", "Nike Air Jordan 1",
-            R.string.demo_model_desc_hd_air_jordan_1,
-        ),
         hdOnly(
             "nike-pegasus-36", "Nike Air Zoom Pegasus 36",
             R.string.demo_model_desc_hd_nike_pegasus_36,
@@ -781,11 +755,10 @@ private fun ModeSelector(
 // ─── Single Model section ─────────────────────────────────────────────────────
 // The original `model-viewer` demo — the flagship full-screen 3D model viewer.
 //
-// **Default state.** Loads the bundled `phoenix_bird.glb` (CC-BY 4.0) so the demo
-// renders identically with or without a Sketchfab API key — the very first
-// frame the user sees is the same hero shot the screenshots and store assets
-// promise. The CAMERA orbits the bird so lights, reflections and IBL hit the
-// same surface every frame.
+// **Default state.** Opens the first bundled entry, the Flight Helmet: its bundled
+// stand-in (`moto_helmet_v2.glb`, CC-BY 4.0) renders at once, with or without a
+// Sketchfab API key, and the HD file replaces it when it is on disk. The CAMERA
+// orbits the model so lights, reflections and IBL hit the same surface every frame.
 //
 // **"Surprise me" button.** When the user taps the extended FAB at the
 // bottom-start, the demo searches the Sketchfab API for a downloadable model
@@ -955,7 +928,7 @@ private fun SingleModelSection(
         if (surpriseStage == SurpriseStage.Decoding) surpriseStage = null
     }
     val streamedModelInstance = streamedModel?.instance
-    // The bundled hero — assets/models/phoenix_bird.glb. Loaded
+    // The selected bundled model (the Flight Helmet's stand-in at launch). Loaded
     // eagerly so the first frame after launch shows the hero shot.
     // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
     // Called unconditionally, for the reason above (#1464): a null path is a value, not a
@@ -1372,7 +1345,7 @@ private fun SingleModelSection(
     // #3822 — swapping to a bundled model (e.g. "Soldier") from the Models sheet is not a
     // navigation the back stack knows about either: it is the same screen with different
     // content. Without this, back from a swapped-in model skipped straight past the demo's
-    // own default (the Phoenix Bird) to the Showcase home. One level at a time: revert to
+    // own default (the Flight Helmet) to the Showcase home. One level at a time: revert to
     // the default model first, exit only from there. Scoped to the bundled-model swap only —
     // an opened external file still on stage (`openedFile`, the "Open with SceneView" handoff) is
     // a different, narrower flow this issue does not report on.
@@ -2999,6 +2972,3 @@ internal fun viewerHomeFraming(
  * default bulged a car's bonnet towards the lens.
  */
 internal const val VIEWER_FOCAL_LENGTH_MM = 40.0
-
-/** Metres per unit of `phoenix_bird.glb`, authored ~960 units long: a ~1.9 m wingspan. */
-internal const val PHOENIX_BIRD_SCALE = 0.002f
