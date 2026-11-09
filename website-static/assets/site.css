@@ -486,18 +486,18 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .numbers { margin: 0; max-width: 46rem; font: var(--md-sys-typescale-body-large); color: var(--md-sys-color-on-surface); }
 .numbers a { color: var(--md-sys-color-primary); text-decoration: underline; text-underline-offset: 3px; }
 .numbers__source { margin-top: var(--s-4); max-width: 46rem; }
-/* "Used in": the official logos, at one height. Medal ships black and white
-   monochrome variants (medal.tv/brand), shown by theme; the IKEA logo keeps its colours,
-   which read on both. */
-.used-in__logos { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-6); }
-.used-in__logos a { display: inline-flex; align-items: center; gap: var(--s-3); min-height: 48px; color: var(--md-sys-color-on-surface); text-decoration: none; font: var(--md-sys-typescale-title-medium); }
-.used-in__logo { display: block; height: 32px; width: auto; }
-.used-in__logo--on-dark { display: none; }
-:root[data-theme="dark"] .used-in__logo--on-light { display: none; }
-:root[data-theme="dark"] .used-in__logo--on-dark { display: block; }
+/* "Used in": one wall of official logos, each sized by its width and height
+   attributes to the same optical weight, rendered as one-colour silhouettes
+   (black on light, white on dark) so nine brand palettes read as one row; the IKEA logo keeps
+   its own colours, since its silhouette would be a filled rectangle. */
+.used-in__logos { list-style: none; margin: var(--s-4) 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s-7); row-gap: var(--s-4); }
+.used-in__logos a { display: inline-flex; align-items: center; min-height: 48px; border-radius: var(--s-1); }
+.used-in__logo { display: block; }
+.used-in__logo--mono { filter: brightness(0); opacity: 0.72; transition: opacity 150ms; }
+.used-in__logos a:hover .used-in__logo--mono, .used-in__logos a:focus-visible .used-in__logo--mono { opacity: 1; }
+:root[data-theme="dark"] .used-in__logo--mono { filter: brightness(0) invert(1); opacity: 0.8; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .used-in__logo--on-light { display: none; }
-  :root:not([data-theme="light"]) .used-in__logo--on-dark { display: block; }
+  :root:not([data-theme="light"]) .used-in__logo--mono { filter: brightness(0) invert(1); opacity: 0.8; }
 }
 /* Adoption is one sentence: it continues the AI band instead of opening a new one, on
    its two columns, with no padding of its own: the sections around it keep the page's
