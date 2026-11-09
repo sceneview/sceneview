@@ -1,3 +1,8 @@
+---
+title: Web Quickstart — show a 3D model in the browser with SceneView
+description: "Show a glTF / GLB model in a web page with sceneview-web (Filament.js, WebGL2/WASM): npm install or two script tags, then SceneView.modelViewer, from plain JavaScript or Kotlin/JS."
+---
+
 # Web Quickstart
 
 SceneView Web uses **Filament.js** — the same Filament rendering engine as SceneView Android, compiled to WebAssembly for browsers (WebGL2).

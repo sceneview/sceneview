@@ -590,7 +590,7 @@ fun TextLabels() {
 
     SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
         model?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
-        TextNode(text = "Damaged Helmet", position = Position(y = 0.8f))
+        TextNode(text = "Motorcycle Helmet", position = Position(y = 0.8f))
     }
 }
 ```
@@ -661,12 +661,13 @@ fun ARFaceTracking() {
 }
 ```
 
-### Generate a 3D model with AI (Tripo) and place it in AR
+### Generate a 3D model with AI (TRELLIS.2 or Tripo) and place it in AR
 
 When no existing asset fits, generate one. The `sceneview-mcp` server's `generate_3d_model` tool
-creates a GLB from a text prompt or a source image via the Tripo AI API (BYOK — set `TRIPO_API_KEY`
-in the MCP client config; `quality: "fast"` = P1 low-poly AR-ready ~25–30 s, `quality: "hd"` = H3.1
-quad topology up to ~100 s). Full flow: generate → download → `rememberModelInstance` → place in AR.
+creates a GLB from a text prompt or a source image (BYOK). `provider: "trellis"` = Microsoft TRELLIS.2
+on Runware (set `RUNWARE_API_KEY`, ~$0.01–0.03 per model); `provider: "tripo"` = Tripo AI (set
+`TRIPO_API_KEY`; `quality: "fast"` = P1 low-poly AR-ready ~25–30 s, `quality: "hd"` = H3.1 quad
+topology up to ~100 s). Without `provider`, whichever key is configured is used (Tripo first). Full flow: generate → download → `rememberModelInstance` → place in AR.
 
 ```
 1. MCP: generate_3d_model({ prompt: "a low-poly cactus in a striped pot" })

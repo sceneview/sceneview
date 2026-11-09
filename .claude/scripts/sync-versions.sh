@@ -797,6 +797,7 @@ SPM_FILES=(
     docs/docs/platforms.md
     docs/docs/samples-ios.md
     docs/docs/quickstart-ios.md
+    docs/docs/3d-ar-library.md
     docs/docs/faq.md
     # iOS codelabs ship an SPM "version rule … from `X.Y.Z`" instruction in
     # prose-backtick form; #1693 found them 6 minors stale after v4.10.0.
@@ -901,7 +902,8 @@ fi
 
 # Extra docs-site pages carrying Maven artifact refs that section 5 misses.
 for docfile in docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-tv.md \
-               docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md; do
+               docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
+               docs/docs/3d-ar-library.md docs/docs/sceneform-replacement.md; do
     F="$REPO_ROOT/$docfile"
     if [ -f "$F" ]; then
         V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
@@ -910,6 +912,15 @@ for docfile in docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-t
         fi
     fi
 done
+
+# The Compose Multiplatform page carries only the sceneview-compose coordinate.
+CMP_DOC="$REPO_ROOT/docs/docs/compose-multiplatform.md"
+if [ -f "$CMP_DOC" ]; then
+    V=$(grep -m1 'io\.github\.sceneview:sceneview-compose:' "$CMP_DOC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "docs/docs/compose-multiplatform.md" "$V"
+    fi
+fi
 
 # Website static pages carrying Maven artifact refs (index.html, web.html,
 # geometry-demo.html, playground.html).
@@ -935,7 +946,7 @@ fi
 
 # Web CDN refs — `cdn.jsdelivr.net/gh/sceneview/sceneview@vX.Y.Z` and
 # `cdn.jsdelivr.net/npm/sceneview-web@X.Y.Z` pinned in README + docs.
-for cdnfile in README.md docs/docs/index.md website-static/index.html website-static/web.html; do
+for cdnfile in README.md docs/docs/index.md docs/docs/3d-ar-library.md website-static/index.html website-static/web.html; do
     F="$REPO_ROOT/$cdnfile"
     if [ -f "$F" ]; then
         V=$(grep -oE 'sceneview(-web)?@v?[0-9]+\.[0-9]+\.[0-9]+' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
@@ -1667,6 +1678,8 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
         for f in docs/docs/ai-context.md docs/docs/android-xr-emulator.md \
                  docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-tv.md \
                  docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
+                 docs/docs/3d-ar-library.md docs/docs/sceneform-replacement.md \
+                 docs/docs/compose-multiplatform.md \
                  website-static/index.html website-static/web.html \
                  website-static/geometry-demo.html website-static/playground.html; do
             F="$REPO_ROOT/$f"
@@ -1676,7 +1689,7 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
             fi
         done
         # README + docs badge URLs and CDN @version pins.
-        for f in README.md docs/docs/index.md website-static/web.html; do
+        for f in README.md docs/docs/index.md docs/docs/3d-ar-library.md website-static/web.html; do
             F="$REPO_ROOT/$f"
             [ -f "$F" ] || continue
             if grep -qE "(badge/(Flutter|React%20Native)-v$OLD_V_RE|sceneview(-web)?@v?$OLD_V_RE|sceneview\.js\?v=$OLD_V_RE)" "$F" 2>/dev/null; then

@@ -1,4 +1,34 @@
+---
+title: 3D model viewer for Kotlin and Compose Multiplatform (Android, iOS, desktop)
+description: "Show a 3D model from commonMain in a Kotlin / Compose Multiplatform app with SceneView's sceneview-compose: the Gradle dependency, the SceneViewer composable, the one-time iOS setup, and what the viewer covers."
+---
+
 # SceneView on Compose Multiplatform — scope & decision
+
+## Use it
+
+```kotlin
+// shared module, commonMain dependencies
+implementation("io.github.sceneview:sceneview-compose:4.67.0")
+```
+
+```kotlin
+// commonMain
+@Composable
+fun ModelScreen() {
+    SceneViewer(
+        model = ModelSource.Asset("models/helmet.glb"),   // a .usdz on iOS
+        modifier = Modifier.fillMaxSize(),
+        onError = { error -> println("load failed: ${error.message}") },
+    )
+}
+```
+
+Android and desktop render glTF / GLB with Filament; iOS renders `.usdz` with RealityKit, after
+the app registers `SceneViewerBridge.factory` once in `iosMain`
+([iOS integration](https://github.com/sceneview/sceneview/blob/main/sceneview-compose/README.md#ios-integration-one-time-per-app)).
+`SceneViewer` is a viewer — load, orbit, light, tap — not AR: for AR use `arsceneview` on
+Android and `ARSceneView` in SwiftUI ([which library for which platform](3d-ar-library.md)).
 
 Decision record for `sceneview-compose`, a Compose Multiplatform façade over the
 existing per-platform renderers.
