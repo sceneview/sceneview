@@ -206,6 +206,12 @@ open class SplatNode(
                 "shownSplats must hold one entry per splat: expected ${splatCloud.count}, was ${value?.size}"
             }
             field = value
+            // The order uploaded at construction holds every splat: until a filtered sort lands,
+            // draw none rather than the hidden ones.
+            if (value != null && !hasSortLanded) {
+                sortedCount = 0
+                showDrawSlots(0)
+            }
             // Re-sort on the next frame, whatever the camera did.
             lastSortCameraPosition = null
             requestRender()
@@ -213,6 +219,9 @@ open class SplatNode(
 
     /** Draw slots the last uploaded order fills: every splat, or the [shownSplats] ones. */
     private var sortedCount: Int = splatCloud.count
+
+    /** Whether a background sort has uploaded its order yet. */
+    private var hasSortLanded = false
 
     /**
      * Draws the first [count] slots of the current order. Batches that become empty are hidden;
@@ -425,6 +434,7 @@ open class SplatNode(
                 // The order first, then the slots it fills: no slot is drawn before it is written.
                 uploadOrder(packedOrder)
                 sortedCount = sorted
+                hasSortLanded = true
                 showDrawSlots(min(splatCount, sorted))
             }
         }

@@ -1010,12 +1010,13 @@ One parameter, one meaning on the three: `cameraPositionProvider: (() -> Positio
 ### SplatNode — 3D Gaussian Splatting (radiance-field captures) (#2646)
 Renders a `SplatCloud` (the KMP data model: flat `positions`/`scales`/`rotations`/`colors`/`opacities`
 arrays) as camera-facing gaussian discs — instanced quads, per-splat data in RGBA16F textures,
-premultiplied-alpha blending. Clouds above 65535 splats are split into multiple draws internally.
+premultiplied-alpha blending. Clouds above 32767 splats (Filament's instance cap) are split into multiple draws internally.
 ```kotlin
 @Composable fun SplatNode(
     splatCloud: SplatCloud,          // io.github.sceneview.core.splat.SplatCloud (must be non-empty)
     cameraPositionProvider: (() -> Position)? = null,  // null = sort for the scene camera (default)
     splatCount: Int = splatCloud.count,  // render only the first N texels — LOD / reveal hook
+    shownSplats: BooleanArray? = null,   // false = splat hidden, without rebuilding the node; pass a new array, applied at the next sort
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),
