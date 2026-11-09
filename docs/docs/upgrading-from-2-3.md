@@ -8,9 +8,11 @@ description: "Move an Android app from SceneView 2.3.0 or 2.3.1 to 2.3.4, then t
 If your Android app still ships SceneView 2.3.x, this page takes it forward in two steps:
 
 1. **2.3.0 / 2.3.1 → 2.3.4.** Same API family: a dependency bump, newer build floors and a few
-   small edits. It
-   brings the newer Filament and ARCore, fixes a crash on a failed ARCore update, and removes the
-   `Engine.nDestroyEngine` ANR for views that create their own engine.
+   small edits. It brings the newer Filament and ARCore, fixes a crash on a failed ARCore update,
+   and stops the main thread from waiting on Filament's teardown, the cause of the
+   `Engine.nDestroyEngine` ANR, in views that create their own engine. Coming from 2.3.2 or 2.3.3,
+   only the version number changes: Filament 1.68.2 and ARCore 1.52.0 are already the ones 2.3.4
+   ships, and sections 1.2 to 1.6 do not apply.
 2. **2.3.4 → 4.x.** The Compose-only API. More work, covered here in summary and in detail in the
    [Migration Guide](migration.md#sceneview-2x-to-3x).
 
