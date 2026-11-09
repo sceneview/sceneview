@@ -325,16 +325,25 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
   .fund { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: var(--s-8); }   /* same grid as MCP and Adoption */
 }
 
-/* ── 3D Scan: copy + two phone-framed screen recordings ───── */
+/* ── 3D Scan: copy + two real-time renders of real scans ──────
+   Each card holds a light and a dark render, the stage filled with surface-container-low
+   so the card and the video are one flat surface; site.js plays only the shown one. */
 .scan { display: grid; gap: var(--s-7); align-items: center; }
 .scan__copy { display: grid; gap: var(--s-4); align-content: start; }
 .scan__ctas { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-2); }
 .scan__note { margin: 0; font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); }
-.scan__media { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); max-width: 560px; width: 100%; margin-inline: auto; }
-.phone { margin: 0; display: grid; gap: var(--s-3); }
-.phone__screen { display: block; width: 100%; height: auto; aspect-ratio: 9 / 20; object-fit: cover; border: var(--s-2) solid var(--md-sys-color-surface-container-highest); border-radius: var(--md-sys-shape-corner-extra-large); background: var(--md-sys-color-surface-container-high); }
-.phone figcaption { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); text-align: center; text-wrap: balance; }
-.phone + .phone { margin-top: var(--s-7); }
+.scan__media { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-5); max-width: 400px; width: 100%; margin-inline: auto; }
+.scan-card { margin: 0; display: grid; gap: var(--s-3); }
+.scan-card__video { display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--md-sys-shape-corner-extra-large); background: var(--md-sys-color-surface-container-low); }
+.scan-card__video--dark { display: none; }
+:root[data-theme="dark"] .scan-card__video--light { display: none; }
+:root[data-theme="dark"] .scan-card__video--dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .scan-card__video--light { display: none; }
+  :root:not([data-theme="light"]) .scan-card__video--dark { display: block; }
+}
+.scan-card figcaption { font: var(--md-sys-typescale-body-small); color: var(--md-sys-color-on-surface-variant); text-align: center; text-wrap: balance; }
+@media (min-width: 600px) { .scan__media { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); max-width: 680px; } }
 .scan__pause { position: absolute; right: 0; top: 0; transform: translate(25%, -25%); background: var(--md-sys-color-surface-container-highest); }
 .scan__pause .i-play, .scan__pause[aria-pressed="true"] .i-pause, .scan__pause[hidden] { display: none; }
 .scan__pause[aria-pressed="true"] .i-play { display: block; }
