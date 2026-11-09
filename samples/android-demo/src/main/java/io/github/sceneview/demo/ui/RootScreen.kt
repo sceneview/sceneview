@@ -40,7 +40,6 @@ import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.PlayCircleOutline
-import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -100,7 +99,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import io.github.sceneview.demo.ALL_DEMOS
-import io.github.sceneview.demo.rememberLabsDemos
 import io.github.sceneview.demo.rememberListedDemos
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
@@ -108,14 +106,10 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.hdpack.HdPackSettingsRow
 import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.feedback.CurrentRootScreen
-import io.github.sceneview.demo.labs.Labs
-import io.github.sceneview.demo.labs.LabsAccess
-import io.github.sceneview.demo.labs.LabsHomeCard
 import io.github.sceneview.demo.support.SupportPrompt
 import io.github.sceneview.demo.support.SupportSheet
 import io.github.sceneview.demo.support.SupportSheetMode
 import kotlinx.coroutines.delay
-import io.github.sceneview.demo.telemetry.SettingsSwitchRow
 import io.github.sceneview.demo.telemetry.AnalyticsEvent
 import io.github.sceneview.demo.telemetry.NotificationsSettingsRow
 import io.github.sceneview.demo.telemetry.OpenSource
@@ -243,10 +237,6 @@ fun RootScreen(
     // moment of value once the user is back here — never on the AR View tab, never over a
     // live AR session or another sheet. The short wait lets the screen settle first, so the
     // sheet does not ride in on the back transition from the sample.
-    var showLabsSupportSheet by rememberSaveable { mutableStateOf(false) }
-    if (showLabsSupportSheet) {
-        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showLabsSupportSheet = false })
-    }
     val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive && !whatsNewSinceSheet.isShown
     LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
         if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
@@ -431,20 +421,6 @@ fun RootScreen(
                         onBrowseOnlineClick = { galleryOpen = true },
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
                         onWhatsNewSinceClick = { whatsNewSinceSheet.open() },
-                        labsCard = { cardModifier ->
-                            LabsHomeCard(
-                                access = Labs.access,
-                                labsDemos = rememberLabsDemos(),
-                                onJoinClick = { FeedbackOpenRequest.request() },
-                                onEnabledChange = Labs::setEnabled,
-                                onDemoClick = { demo ->
-                                    Telemetry.nextOpenSource = OpenSource.Home
-                                    onDemoClick(demo.id)
-                                },
-                                onSupportClick = { showLabsSupportSheet = true },
-                                modifier = cardModifier,
-                            )
-                        },
                     )
                 }
                 RootTab.ArView -> ArViewTabContent(
@@ -635,17 +611,6 @@ private fun AboutTabContent(statusBand: Dp = 0.dp) {
                 onClick = { FeedbackOpenRequest.request() },
             )
             AboutRowDivider()
-            // The place to turn Labs off, once joined: before that there is nothing to switch.
-            if (Labs.access != LabsAccess.NotJoined) {
-                SettingsSwitchRow(
-                    icon = Icons.Outlined.Science,
-                    title = stringResource(R.string.labs_title),
-                    supporting = stringResource(R.string.labs_about_supporting),
-                    checked = Labs.enabled,
-                    onCheckedChange = Labs::setEnabled,
-                )
-                AboutRowDivider()
-            }
             AboutActionRow(
                 icon = Icons.Outlined.History,
                 title = stringResource(R.string.about_release_notes),

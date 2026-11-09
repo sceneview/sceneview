@@ -361,7 +361,7 @@ private fun mentionedDemos(
 private fun mentions(haystack: String, title: String): Boolean =
     Regex("\\b${Regex.escape(title)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(haystack)
 
-/** Titles of the demos this device lists (Labs ones only while Labs is on), for [mentionedDemos]. */
+/** Titles of the demos this device lists, for [mentionedDemos]. */
 @Composable
 private fun rememberDemoTitles(): List<Pair<DemoEntry, String>> =
     rememberListedDemos().map { it to stringResource(it.titleRes) }

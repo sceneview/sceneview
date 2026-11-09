@@ -1091,7 +1091,7 @@ demos:
     ios: []
     iosFiles: []
     contract: >-
-      SceneView Labs demo since #4649 (listed only with Labs on): an
+      Listed AR demo since #4649: an
       auto-placed helmet; Turn stabilization on/off toggles ARCore EIS on the
       camera feed to compare motion. The card says the difference is subtle.
     parity: not-feasible-on-ios

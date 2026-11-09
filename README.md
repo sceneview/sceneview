@@ -53,7 +53,6 @@ The demo apps are built from [`samples/`](samples/). Any demo opens straight fro
 Install the Android demo, record your screen while you use a demo, and tell us what breaks or
 confuses you: [open an issue](https://github.com/sceneview/sceneview/issues/new?labels=user-feedback)
 with the recording attached, or send it from the app (any demo, Settings, then Send feedback).
-Your first report unlocks **SceneView Labs**, early access to the experimental demos, straight away.
 
 ---
 

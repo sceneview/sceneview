@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings for the `ar-image-stabilization` demo (registered by
-     `ArImageStabilizationFragment.kt`), a SceneView Labs demo since #4649. Android's resource
+     `ArImageStabilizationFragment.kt`), since #4649. Android's resource
      merger fans every `res/values/*.xml` file in, so `R.string.demo_ar_image_stabilization_title`
      etc. remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
