@@ -111,6 +111,7 @@ nav:
     - Contribute: contributing.md
     - Changelog: changelog.md
     - Migration Guide: migration.md
+    - Upgrading from 2.3.x: upgrading-from-2-3.md
 
 # ONE `extra:` mapping — never two. YAML is last-key-wins: this file used to declare
 # `extra:` twice (analytics + feedback here, social/generator/version further down), so
