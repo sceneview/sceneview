@@ -771,7 +771,12 @@ open class Node protected constructor(
                     }
                     onChildAdded.forEach { it(child) }
                 }
-                onTransformChanged()
+                // A node being destroyed loses its children one by one (each child's destroy()
+                // detaches it). Its own transform did not change, and re-walking the children it
+                // still holds after every detach made a destroy quadratic in the subtree size: an
+                // ANR when a model with many nodes left the composition. A frame request is all
+                // the picture needs.
+                if (isDestroyed) requestRender() else onTransformChanged()
             }
         }
 
