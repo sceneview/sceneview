@@ -1,6 +1,6 @@
 # 3D Asset Credits
 
-SceneView's sample apps, documentation and website playground use a catalogue of
+SceneView's sample apps, documentation and website use a catalogue of
 3D models authored by third parties and distributed under open licenses. This
 file lists every model that ships with a public release of the repository, in
 compliance with the attribution clause of each license.

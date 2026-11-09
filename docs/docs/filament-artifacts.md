@@ -88,7 +88,7 @@ The `filament` npm package exists but has practical limitations for artifacts:
 1. Host Filament WASM on SceneView CDN (`cdn.sceneview.dev/filament/`)
 2. Create a thin wrapper that inlines the WASM as base64 (for small scenes)
 3. Or use the Phase 1 WebGL renderer for artifacts and Filament.js for the full
-   website/playground experience
+   website and web demo experience
 
 ### Phase 3: sceneview-web npm Package (Future)
 

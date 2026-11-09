@@ -593,7 +593,7 @@ SceneView { root in
 
 ### 1. New: AR Debug — Rerun.io integration
 
-SceneView can now stream an ARCore / ARKit session to the [Rerun](https://rerun.io) viewer for scrub-and-replay debugging. See the full guide in the [llms.txt reference](https://github.com/sceneview/sceneview/blob/main/llms.txt) or the [AR Debug (Rerun)](https://sceneview.github.io/playground.html) example in the playground.
+SceneView can now stream an ARCore / ARKit session to the [Rerun](https://rerun.io) viewer for scrub-and-replay debugging. See the full guide in the [llms.txt reference](https://github.com/sceneview/sceneview/blob/main/llms.txt).
 
 Quick wire-up on Android:
 

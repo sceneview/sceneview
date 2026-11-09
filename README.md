@@ -34,7 +34,7 @@ API or the doc gets fixed.
 <p>
   <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo"><img src="website-static/assets/brand/stores/google-play-badge-trimmed.png" alt="Get it on Google Play" height="56"></a>&nbsp;
   <a href="https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763"><img src="website-static/assets/brand/stores/app-store.svg" alt="Download on the App Store" height="56"></a>&nbsp;
-  <a href="https://sceneview.github.io/playground.html"><img src="website-static/assets/brand/stores/web-playground.svg" alt="Open the Web Playground" height="56"></a>
+  <a href="https://sceneview.github.io/web-demo/"><img src="website-static/assets/brand/stores/web-demo.svg" alt="Open the web demo" height="56"></a>
 </p>
 
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
@@ -523,7 +523,7 @@ helpers. A Kotlin Multiplatform project that only needs the shared core (collisi
 geometry, animation, physics — no renderer) uses
 `implementation("io.github.sceneview:sceneview-core-js:4.67.0")`.
 
-[Landing page](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [npm](https://www.npmjs.com/package/sceneview-web)
+[Landing page](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [npm](https://www.npmjs.com/package/sceneview-web)
 
 ---
 
@@ -602,7 +602,7 @@ sceneview-core (Kotlin Multiplatform)
 
 ## Links
 
-- [Website](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [Documentation](https://sceneview.github.io/docs/)
+- [Website](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [Documentation](https://sceneview.github.io/docs/)
 - [Discord](https://discord.gg/UbNDDBTNqb) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Migration v2 → v3](MIGRATION.md)
 
 ## Sponsors
