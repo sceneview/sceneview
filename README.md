@@ -21,9 +21,9 @@ Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `A
 [3D and AR library, per platform](https://sceneview.github.io/docs/3d-ar-library/).
 
 **Used in production.** More than 1,300 stars on GitHub, and over 500 public repositories declare
-SceneView as a dependency. It ships in Medal and IKEA (Kreativ) on Google Play, is declared by the
+SceneView as a dependency. It ships in Medal, IKEA, Lenskart and Safie on Google Play, is declared by the
 open-source apps Bitkey (Block) and Vocable (WillowTree), and is a dependency of the GeneXus
-Augmented Reality module and the TruVideo camera SDK.
+Augmented Reality module and the TruVideo camera SDK. The Niantic Spatial SDK samples use it for AR.
 
 **AI-first** means one thing here: an assistant that reads [`llms.txt`](./llms.txt) or
 [the MCP server](./mcp/) writes SceneView code that works on the first try. When it doesn't, the

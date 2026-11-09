@@ -52,8 +52,8 @@ to emit the 2.x API; use the 4.x names instead:
 | `io.github.sceneview.model.ModelNode`, `io.github.sceneview.node.ModelNode` used as a composable | `ModelNode` is a member of the `SceneView { }` scope — no import |
 
 **Used in production:** SceneView has more than 1,300 stars on GitHub and over 500 public
-repositories declare it as a dependency. It ships in apps on Google Play such as Medal and IKEA
-(Kreativ); it is declared by the open-source apps Bitkey (Block) and Vocable (WillowTree), and it
+repositories declare it as a dependency. It ships in apps on Google Play such as Medal, IKEA, Lenskart
+and Safie; it is declared by the open-source apps Bitkey (Block) and Vocable (WillowTree), and it
 is a dependency of the GeneXus Augmented Reality module and the TruVideo camera SDK.
 
 **API reference (Dokka):** browse the full generated API docs at
