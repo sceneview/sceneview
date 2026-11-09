@@ -80,43 +80,191 @@ class LiveCoverageGroundTest {
         assertEquals(result.slab.triangleCount, live.slab.triangleCount)
     }
 
-    /** [perCell] dense points at the centre of each (column, row) cell of [cell] metres. */
-    private fun points(cells: List<Pair<Int, Int>>, perCell: (Int, Int) -> Int): FloatArray {
-        val out = ArrayList<Float>()
-        for ((c, r) in cells) repeat(perCell(c, r)) {
-            out += (c + 0.5f) * cell
-            out += 0f
-            out += (r + 0.5f) * cell
+    private val voxel = DenseFusion.VOXEL_M
+
+    /** Surfels of a full floor cell at [voxel]: (0.25 / 0.02)². */
+    private val fullCell = 156
+
+    /**
+     * A dense cloud over the 5 × 5 cells from the origin: [floorPerCell] floor surfels in each, at
+     * [floorY], [level]-coarse, and [extra] (x, y, z, level) on top.
+     */
+    private fun cloud(
+        floorY: Float = 0f,
+        extra: List<FloatArray> = emptyList(),
+        floorPerCell: (Int, Int) -> Pair<Int, Int> = { _, _ -> fullCell to 0 },
+    ): DenseCloud {
+        val points = ArrayList<FloatArray>()
+        for (c in 0 until 5) for (r in 0 until 5) {
+            val (n, level) = floorPerCell(c, r)
+            repeat(n) { i -> points += floatArrayOf((c + (i % 12 + 0.5f) / 12f) * cell, floorY, (r + (i / 12 % 12 + 0.5f) / 12f) * cell, level.toFloat()) }
         }
-        return out.toFloatArray()
+        points += extra
+        return DenseCloud(
+            FloatArray(points.size * 3) { points[it / 3][it % 3] },
+            IntArray(points.size),
+            levels = ByteArray(points.size) { points[it][3].toInt().toByte() },
+        )
     }
 
-    private val threeByThree = (0 until 9).map { it % 3 to it / 3 }
+    private val fiveByFive = LongArray(25) { CoverageGrid.key(it % 5, it / 5) }
+
+    private fun weak(cloud: DenseCloud, floorY: Float = 0f, covered: LongArray = fiveByFive) =
+        LiveCoverageGround.weakCells(cloud, voxel, covered, cell, floorY).toList()
 
     @Test
-    fun aCoveredCellWithFewPointsIsToRedo() {
-        val covered = threeByThree.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
-        val cloud = points(threeByThree) { c, r -> if (c == 1 && r == 1) 2 else 20 }
-        val weak = LiveCoverageGround.weakCells(cloud, covered, cell)
-        assertEquals(listOf(CoverageGrid.key(1, 1)), weak.toList())
+    fun aCoveredCellWithLittleFloorIsToRedo() {
+        val thin = cloud { c, r -> (if (c == 2 && r == 2) 30 else fullCell) to 0 }
+        assertEquals(listOf(CoverageGrid.key(2, 2)), weak(thin))
     }
 
     @Test
     fun anEvenScanHasNothingToRedo() {
-        val covered = threeByThree.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
-        val cloud = points(threeByThree) { _, _ -> 12 }
-        assertEquals(0, LiveCoverageGround.weakCells(cloud, covered, cell).size)
+        assertEquals(emptyList<Long>(), weak(cloud()))
+    }
+
+    @Test
+    fun aFarCellsMergedSurfelsCountForTheFloorTheyStandFor() {
+        // 9 surfels 8 cm wide cover the cell as 156 of 2 cm do: a point count called it weak.
+        val merged = List(9) { floatArrayOf((2 + 0.16f + 0.32f * (it % 3)) * cell, 0f, (2 + 0.16f + 0.32f * (it / 3)) * cell, 2f) }
+        val far = cloud(extra = merged) { c, r -> (if (c == 2 && r == 2) 0 else fullCell) to 0 }
+        assertEquals(emptyList<Long>(), weak(far))
+        // One 16 cm surfel is 0.41 of a cell, whole or not: too coarse to judge.
+        val coarse = cloud(extra = listOf(floatArrayOf(2.5f * cell, 0f, 2.5f * cell, 3f))) { c, r -> (if (c == 2 && r == 2) 0 else fullCell) to 0 }
+        assertEquals(emptyList<Long>(), weak(coarse))
+    }
+
+    @Test
+    fun theWallsAboveAThinFloorDoNotHideIt() {
+        // A shelf's foot: what stands in a cell is not its floor, and the floor is not judged.
+        val shelf = List(400) { floatArrayOf(2.5f * cell, 0.3f + it * 0.004f, 2.5f * cell, 0f) }
+        val thin = cloud(extra = shelf) { c, r -> (if (c == 2 && r == 2) 30 else fullCell) to 0 }
+        assertEquals(emptyList<Long>(), weak(thin))
+        // The ceiling is not something standing: a thin floor under it is still to redo.
+        val ceiling = List(400) { floatArrayOf(2.5f * cell, 2.5f, 2.5f * cell, 0f) }
+        val under = cloud(extra = ceiling) { c, r -> (if (c == 2 && r == 2) 30 else fullCell) to 0 }
+        assertEquals(listOf(CoverageGrid.key(2, 2)), weak(under))
+    }
+
+    @Test
+    fun theScansEdgeIsNotJudged() {
+        val edge = cloud { c, r -> (if (c == 0 && r == 2) 10 else fullCell) to 0 }
+        assertEquals(emptyList<Long>(), weak(edge))
+    }
+
+    @Test
+    fun theFloorIsFoundNearWhereItIsThought() {
+        // A floor plane's guess 12 cm off: the band follows the floor the cloud holds.
+        val low = cloud(floorY = -1.32f) { c, r -> (if (c == 2 && r == 2) 30 else fullCell) to 0 }
+        assertEquals(-1.32f, LiveCoverageGround.floorOf(low, voxel, -1.2f), voxel)
+        assertEquals(listOf(CoverageGrid.key(2, 2)), weak(low, floorY = -1.2f))
+    }
+
+    /**
+     * Full-detail floor surfels, one per voxel square, over [columns] × [rows] cells from the
+     * origin at the height [y] gives, [share] of each cell's squares kept (by row), plus [extra].
+     */
+    private fun floor(
+        columns: Int,
+        rows: Int,
+        y: (Float, Float) -> Float = { _, _ -> 0f },
+        extra: List<FloatArray> = emptyList(),
+        share: (Int, Int) -> Float = { _, _ -> 1f },
+    ): DenseCloud {
+        val points = ArrayList<FloatArray>()
+        val per = 12
+        for (c in 0 until columns) for (r in 0 until rows) {
+            val keep = (share(c, r) * per).toInt()
+            for (a in 0 until per) for (b in 0 until keep) {
+                val x = (c + (a + 0.5f) / per) * cell
+                val z = (r + (b + 0.5f) / per) * cell
+                points += floatArrayOf(x, y(x, z), z, 0f)
+            }
+        }
+        points += extra
+        return DenseCloud(
+            FloatArray(points.size * 3) { points[it / 3][it % 3] },
+            IntArray(points.size),
+            levels = ByteArray(points.size) { points[it][3].toInt().toByte() },
+        )
+    }
+
+    private fun keys(columns: Int, rows: Int) = LongArray(columns * rows) { CoverageGrid.key(it % columns, it / columns) }
+
+    @Test
+    fun aWideLowSeatIsNotTheFloor() {
+        // A sofa's seat at 42 cm wider than the floor seen round it: the floor is the lowest wide
+        // flat thing, so the floor stays judged and whole.
+        val seat = List(6000) { floatArrayOf(3f + (it % 80) * 0.02f, 0.42f, (it / 80) * 0.02f, 0f) }
+        val room = floor(5, 5, extra = seat)
+        assertEquals(0f, LiveCoverageGround.floorOf(room, voxel, 0.2f), voxel)
+        assertEquals(emptyList<Long>(), weak(room, floorY = 0.2f))
+    }
+
+    @Test
+    fun aLowBedIsNotTheFloor() {
+        // A 25 cm bed over three quarters of a 1 m tile, the floor seen only along its foot, one
+        // cell of it thin: the bed holds four times the floor's area, and the floor stays the floor.
+        val bed = ArrayList<FloatArray>()
+        for (a in 0 until 50) for (b in 0 until 37) bed += floatArrayOf((a + 0.5f) * 0.02f, 0.25f, (b + 0.5f) * 0.02f, 0f)
+        val room = floor(8, 6, extra = bed) { c, r -> if (c < 4 && r < 3) 0f else if (c == 2 && r == 3) 0.2f else 1f }
+        assertEquals(listOf(CoverageGrid.key(2, 3)), LiveCoverageGround.weakCells(room, voxel, keys(8, 6), cell, 0f).toList())
+    }
+
+    @Test
+    fun aPhoneRaisedOverTheHeadKeepsTheFloor() {
+        // A sofa's seat at 42 cm beside a room with one thin cell. The phone held up at 1.9 m:
+        // 1.3 m under it lies the seat, and the whole floor turned red; under the scan's first pose
+        // (1.4 m) or on ARCore's floor plane, the thin cell alone is.
+        val seat = List(6000) { floatArrayOf(3f + (it % 80) * 0.02f, 0.42f, (it / 80) * 0.02f, 0f) }
+        val room = floor(5, 5, extra = seat) { c, r -> if (c == 2 && r == 2) 0.2f else 1f }
+        val thin = listOf(CoverageGrid.key(2, 2))
+        val underThePhone = weak(room, floorY = 1.9f - LiveCoverageGround.PHONE_HEIGHT_M)
+        assertEquals(9, underThePhone.size)
+        assertEquals(thin, weak(room, floorY = LiveCoverageGround.floorHint(null, firstEyeY = 1.4f)))
+        assertEquals(thin, weak(room, floorY = LiveCoverageGround.floorHint(0f, firstEyeY = 1.4f)))
+    }
+
+    @Test
+    fun aDeskSeenBeforeTheFloorIsNotTheFloor() {
+        // ARCore's first upward plane is a desk at 75 cm, the floor not found yet: taken for the
+        // floor, it put the band on the desk and the floor round it all turned red.
+        val desk = List(2500) { floatArrayOf(3f + (it % 50) * 0.02f, 0.75f, (it / 50) * 0.02f, 0f) }
+        val room = floor(5, 5, extra = desk) { c, r -> if (c == 2 && r == 2) 0.2f else 1f }
+        assertEquals(9, weak(room, floorY = 0.75f).size)
+        val hint = LiveCoverageGround.floorHint(0.75f, firstEyeY = 1.4f)
+        assertEquals(1.4f - LiveCoverageGround.PHONE_HEIGHT_M, hint, 1e-6f)
+        assertEquals(listOf(CoverageGrid.key(2, 2)), weak(room, floorY = hint))
+        // Once the floor's plane comes, the lowest, it is taken.
+        assertEquals(0f, LiveCoverageGround.floorHint(0f, firstEyeY = 1.4f), 0f)
+    }
+
+    @Test
+    fun aPhoneAtTheKneesStillJudges() {
+        // The phone lowered to 0.7 m: 1.3 m under it is under the floor, and nothing was judged.
+        val room = floor(5, 5) { c, r -> if (c == 2 && r == 2) 0.2f else 1f }
+        assertEquals(emptyList<Long>(), weak(room, floorY = 0.7f - LiveCoverageGround.PHONE_HEIGHT_M))
+        assertEquals(listOf(CoverageGrid.key(2, 2)), weak(room, floorY = LiveCoverageGround.floorHint(null, firstEyeY = 1.4f)))
+    }
+
+    @Test
+    fun aSlopeKeepsItsFloorBand() {
+        // 6 m at 3 %: 18 cm from one end to the other, past one band; one thin cell at the top.
+        val ramp = floor(24, 3, y = { x, _ -> 0.03f * x }) { c, r -> if (c == 21 && r == 1) 0.2f else 1f }
+        assertEquals(listOf(CoverageGrid.key(21, 1)), LiveCoverageGround.weakCells(ramp, voxel, keys(24, 3), cell, 0f).toList())
+    }
+
+    @Test
+    fun aStepDownKeepsBothFloors() {
+        // A sunken half 20 cm down, its floor seen whole but one thin cell, the step's own cells left alone.
+        val step = floor(16, 3, y = { x, _ -> if (x < 2f) 0f else -0.2f }) { c, r -> if (c == 13 && r == 1) 0.2f else 1f }
+        assertEquals(listOf(CoverageGrid.key(13, 1)), LiveCoverageGround.weakCells(step, voxel, keys(16, 3), cell, 0f).toList())
     }
 
     @Test
     fun tooLittleScannedToJudge() {
-        // Two cells, or a sparse cloud: nothing is called weak on so little.
-        val two = listOf(0 to 0, 1 to 0)
-        val covered = two.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
-        assertEquals(0, LiveCoverageGround.weakCells(points(two) { c, _ -> if (c == 0) 1 else 30 }, covered, cell).size)
-        val all = threeByThree.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
-        val sparse = points(threeByThree) { c, _ -> if (c == 0) 0 else 2 }
-        assertEquals(0, LiveCoverageGround.weakCells(sparse, all, cell).size)
+        val three = LongArray(3) { CoverageGrid.key(it, 0) }
+        assertEquals(emptyList<Long>(), weak(cloud { _, _ -> 1 to 0 }, covered = three))
     }
 
     @Test

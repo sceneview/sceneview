@@ -27,7 +27,7 @@ struct CameraPathDemo: View {
     @StateObject private var player = CameraPathPlayer(timeline: CameraPathStage.placeholder)
     @State private var stage = CameraPathStage()
     @State private var shot: CameraPathShot = .orbit
-    @State private var subject: CameraPathSubject = .helmet
+    @State private var subject: CameraPathSubject = .gameBoy
     @State private var aspect: Float = CameraPathStage.fallbackAspect
 
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
@@ -106,9 +106,9 @@ struct CameraPathDemo: View {
     }
 
     private func reset() {
-        let unchanged = shot == .orbit && subject == .helmet
+        let unchanged = shot == .orbit && subject == .gameBoy
         shot = .orbit
-        subject = .helmet
+        subject = .gameBoy
         // Nothing changed, so the key will not fire: start again from 0 by hand.
         if unchanged { rebuildTimeline() }
     }
@@ -136,7 +136,7 @@ struct CameraPathDemo: View {
                 ForEach(CameraPathSubject.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text("Damaged Helmet, Toy Car and Lantern: Khronos glTF Sample Assets · CC BY 4.0.")
+            Text("Game Boy Classic by JonhyOliver · CC BY 4.0. Toy Car and Lantern: Khronos glTF Sample Assets · CC0 1.0.")
                 .font(SceneViewTokens.TypeScale.captionRegular)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
         }
@@ -168,13 +168,13 @@ enum CameraPathShot: String, CaseIterable, Identifiable {
 }
 
 enum CameraPathSubject: String, CaseIterable, Identifiable {
-    case helmet, car, lantern
+    case gameBoy, car, lantern
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .helmet: return "Helmet"
+        case .gameBoy: return "Game Boy"
         case .car: return "Toy Car"
         case .lantern: return "Lantern"
         }
@@ -182,7 +182,7 @@ enum CameraPathSubject: String, CaseIterable, Identifiable {
 
     var assetName: String {
         switch self {
-        case .helmet: return "khronos_damaged_helmet"
+        case .gameBoy: return "game_boy_classic"
         case .car: return "khronos_toy_car"
         case .lantern: return "khronos_lantern"
         }
@@ -308,7 +308,7 @@ final class CameraPathStage {
     private let floor: ModelEntity
     @ObservationIgnored private var pivots: [CameraPathSubject: Entity] = [:]
     @ObservationIgnored private var loading: Set<CameraPathSubject> = []
-    @ObservationIgnored private var shown: CameraPathSubject = .helmet
+    @ObservationIgnored private var shown: CameraPathSubject = .gameBoy
     @ObservationIgnored private var dark: Bool?
 
     // Android's constants, value for value.

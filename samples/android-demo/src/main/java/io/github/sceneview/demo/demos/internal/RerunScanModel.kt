@@ -60,6 +60,12 @@ class RerunScanModel(
      * when it reads ([retriesFinish]); not saved over as this app's ([keptWithScan]).
      */
     val earlierFormat: Boolean = false,
+    /**
+     * The finish pipeline that built it ([PIPELINE]): one an earlier app's finish built is shown
+     * at once and built again behind it with this app's ([stalePipeline]), so the scans kept
+     * before a better cleanup show it too.
+     */
+    val pipeline: Int = PIPELINE,
 ) {
     init {
         require(bounds.size == BOUNDS) { "six bounds" }
@@ -67,6 +73,13 @@ class RerunScanModel(
         require(outOfMemoryAttempts >= 1) { "at least one attempt" }
         require(!earlierFormat || !finished) { "an earlier app's model is its raw surface" }
     }
+
+    /**
+     * A finished model an earlier finish pipeline built ([pipeline]): shown at once when its scan
+     * reopens, then built again from the scan — never from this model's own surface, already
+     * cleaned the earlier way — and kept in its place. With no scan to build from, it stays.
+     */
+    val stalePipeline: Boolean get() = finished && pipeline != PIPELINE
 
     /** Kept with its scan ([RerunSessionStore.saveModel]): the finished model, or the raw surface left by [outOfMemoryInHeap]. */
     val keptWithScan: Boolean get() = finished || outOfMemoryInHeap != null
@@ -135,6 +148,7 @@ class RerunScanModel(
         JsonObject.serializer(),
         buildJsonObject {
             put("version", VERSION)
+            put("pipeline", pipeline)
             put("kind", kind.wireName)
             putJsonArray("bounds") { bounds.forEach { add(JsonPrimitive(it)) } }
             put("triangles", triangles)
@@ -154,6 +168,16 @@ class RerunScanModel(
          * opens on it and finishes it again.
          */
         const val VERSION = 2
+
+        /**
+         * The finish pipeline's version, kept in `model.json` as the `.glb` cache's key: bumped
+         * whenever the finish makes a different model of the same scan, so the models kept by an
+         * earlier one are built again ([stalePipeline]). 2: cut to the scan's box. 3: the pieces
+         * standing apart from it dropped (ScanTidy). A `model.json` without one is 1.
+         */
+        const val PIPELINE = 3
+
+        private const val EARLIER_PIPELINE = 1
 
         /**
          * The finishes a scan runs before running out of memory is final: the first, and two
@@ -203,6 +227,7 @@ class RerunScanModel(
                 // Before attempts were counted, a model.json held one finish.
                 outOfMemoryAttempts = number("outOfMemoryAttempts")?.intOrNull?.takeIf { it >= 1 } ?: 1,
                 earlierFormat = earlier,
+                pipeline = number("pipeline")?.intOrNull ?: EARLIER_PIPELINE,
             )
         }
 
@@ -343,7 +368,7 @@ object RerunResultView {
             elevationDegrees = ELEVATION,
             verticalFovDegrees = verticalFovDegrees,
             aspect = aspect,
-            insets = area(aspect, insets),
+            insets = area(insets),
         )
 
     /**
@@ -357,31 +382,22 @@ object RerunResultView {
         RerunPointsMesh.framingBounds(mesh, FRAMING_TAIL, 1f - FRAMING_TAIL)
 
     /**
-     * Where a result opens on a view of [aspect] (width / height) whose chrome covers [insets]:
-     * [NARROW_FILL] of the view's narrower side, and as much of its longer side as [EDGE] leaves,
-     * both centred on what the chrome leaves free.
-     *
-     * Fitted between the chrome alone, a room opened at half the width of a phone held upright and
-     * a small scan at a sixth of it: the band between the bar and the sheet is short, and a box
-     * seen from above at an angle is about as tall as it is wide. Here the narrower side sets the
-     * size, and the longer side only stops a model too tall for it at the view's edge; one that
-     * fits between the chrome at that size stays there, centred.
+     * Where a result opens on a view whose chrome covers [insets]: [ZONE_FILL] of the zone the
+     * chrome leaves — between the name at the top and the bar at the bottom, between the safe
+     * sides — on each axis, centred in it. The camera's distance is then the least at which the
+     * box, projected, is whole in that area ([ArDebugFraming.fit]): it fills [ZONE_FILL] of the
+     * zone on the axis that sets the distance, never of the whole screen.
      */
-    fun area(aspect: Float, insets: FramingInsets): FramingInsets {
+    fun area(insets: FramingInsets): FramingInsets {
         val free = insets.bounded()
-        val upright = aspect <= 1f
-        val (narrowLow, narrowHigh) = if (upright) free.left to free.right else free.top to free.bottom
-        val (longLow, longHigh) = if (upright) free.top to free.bottom else free.left to free.right
-        val narrowCentre = ((narrowLow + 1f - narrowHigh) / 2f).coerceIn(NARROW_FILL / 2f, 1f - NARROW_FILL / 2f)
-        val narrow = narrowCentre - NARROW_FILL / 2f to 1f - narrowCentre - NARROW_FILL / 2f
-        val longCentre = (longLow + 1f - longHigh) / 2f
-        val longHalf = maxOf(minOf(longCentre - EDGE, 1f - EDGE - longCentre), (1f - longLow - longHigh) / 2f)
-        val long = longCentre - longHalf to 1f - longCentre - longHalf
-        return if (upright) {
-            FramingInsets(left = narrow.first, top = long.first, right = narrow.second, bottom = long.second)
-        } else {
-            FramingInsets(left = long.first, top = narrow.first, right = long.second, bottom = narrow.second)
+        fun shrunk(low: Float, high: Float): Pair<Float, Float> {
+            val span = (1f - low - high).coerceAtLeast(0f)
+            val margin = span * (1f - ZONE_FILL) / 2f
+            return low + margin to high + margin
         }
+        val (left, right) = shrunk(free.left, free.right)
+        val (top, bottom) = shrunk(free.top, free.bottom)
+        return FramingInsets(left = left, top = top, right = right, bottom = bottom)
     }
 
     /** [model] drawn square, [size] pixels a side, from the screen's view; `null` for an unreadable `.glb`. */
@@ -399,14 +415,11 @@ object RerunResultView {
         return RerunModelThumbnail.render(mesh, pose, verticalFovDegrees, size, size)
     }
 
-    /** The share of the view's narrower side a result opens across ([area]). */
-    const val NARROW_FILL = 0.8f
+    /** The share of the chrome's free zone a result opens across, on its fuller axis ([area]). */
+    const val ZONE_FILL = 0.8f
 
     /** The share of a mesh's vertices [framingBounds] leaves out past each end of each axis. */
     const val FRAMING_TAIL = 0.02f
-
-    /** The least room [area] leaves at the ends of the view's longer side, a share of it. */
-    const val EDGE = 0.04f
 
     /** The thumbnail's breathing room on each side, a share of its width. */
     const val THUMBNAIL_MARGIN = 0.06f

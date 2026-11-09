@@ -70,6 +70,7 @@ public final class io/github/sceneview/CameraFramingKt {
 }
 
 public final class io/github/sceneview/CameraManipulatorKt {
+	public static final fun rememberCameraManipulator (FLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Ljava/lang/Object;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraManipulator (FLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final synthetic fun rememberCameraManipulator (FLdev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 }
@@ -182,6 +183,7 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun destroyRenderable (Lcom/google/android/filament/Engine;I)V
 	public static final fun destroyTransformable (Lcom/google/android/filament/Engine;I)V
 	public static final fun drainFramePipeline (Lcom/google/android/filament/Engine;)V
+	public static final fun isValid (Lcom/google/android/filament/Engine;)Z
 	public static final fun renderableGeneration (Lcom/google/android/filament/Engine;)I
 	public static final fun safeDestroy (Lcom/google/android/filament/Engine;)Ljava/lang/Object;
 	public static final fun safeDestroyCamera (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Camera;)Ljava/lang/Object;
@@ -215,6 +217,20 @@ public final class io/github/sceneview/EngineRenderInvalidators {
 	public final fun register (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
 	public final fun requestRender (Lcom/google/android/filament/Engine;)V
 	public final fun unregister (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
+}
+
+public final class io/github/sceneview/EngineWarmUp {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/EngineWarmUp;
+	public static final fun start ()V
+}
+
+public final class io/github/sceneview/EngineWarmUpInitializer : androidx/startup/Initializer {
+	public static final field $stable I
+	public fun <init> ()V
+	public synthetic fun create (Landroid/content/Context;)Ljava/lang/Object;
+	public fun create (Landroid/content/Context;)V
+	public fun dependencies ()Ljava/util/List;
 }
 
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
@@ -478,6 +494,7 @@ public final class io/github/sceneview/SceneKt {
 	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLandroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
 	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLandroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIII)V
 	public static final fun rememberARView (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/View;
+	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Ljava/lang/Object;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final synthetic fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/CameraNode;
@@ -2296,10 +2313,12 @@ public class io/github/sceneview/gesture/GestureDetector {
 	public fun <init> (Landroid/content/Context;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;)V
 	public final fun advanceInertia (F)V
 	public final fun getListener ()Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;
+	public final fun getMoveCoastSpace ()Lio/github/sceneview/gesture/MoveCoastSpace;
 	public final fun getTouchedNode ()Lio/github/sceneview/node/Node;
 	public final fun isCoasting ()Z
 	public final fun onTouchEvent (Landroid/view/MotionEvent;Lio/github/sceneview/collision/HitResult;)V
 	public final fun setListener (Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;)V
+	public final fun setMoveCoastSpace (Lio/github/sceneview/gesture/MoveCoastSpace;)V
 	public final fun setTouchedNode (Lio/github/sceneview/node/Node;)V
 }
 
@@ -2352,6 +2371,19 @@ public class io/github/sceneview/gesture/GestureDetector$SimpleOnGestureListener
 public final class io/github/sceneview/gesture/HandedBackDownKt {
 	public static final fun replayHandedBackDown (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;Z)V
 	public static synthetic fun replayHandedBackDown$default (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;ZILjava/lang/Object;)V
+}
+
+public abstract interface class io/github/sceneview/gesture/MoveCoastSpace {
+	public abstract fun release (Lio/github/sceneview/node/Node;FF)Lio/github/sceneview/gesture/MoveCoastSpace$Surface;
+	public abstract fun toScreen (Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float2;
+}
+
+public final class io/github/sceneview/gesture/MoveCoastSpace$Surface {
+	public static final field $stable I
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public final fun getOrigin ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPerPixelX ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPerPixelY ()Ldev/romainguy/kotlin/math/Float3;
 }
 
 public class io/github/sceneview/gesture/MoveGestureDetector {
@@ -2851,6 +2883,14 @@ public final class io/github/sceneview/managers/TransformManagerKt {
 	public static final fun setTransform (Lcom/google/android/filament/TransformManager;ILdev/romainguy/kotlin/math/Mat4;)V
 }
 
+public final class io/github/sceneview/material/EmissiveScale {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/material/EmissiveScale;
+	public final fun apply (Ljava/lang/Iterable;F)V
+	public final fun forget (Lcom/google/android/filament/gltfio/FilamentAsset;)V
+	public final fun record (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/util/Map;)V
+}
+
 public final class io/github/sceneview/material/MaterialInstanceKt {
 	public static final field kMaterialDefaultMetallic F
 	public static final field kMaterialDefaultReflectance F
@@ -2886,6 +2926,10 @@ public final class io/github/sceneview/material/MaterialInstanceKt {
 	public static final fun setTexture (Lcom/google/android/filament/MaterialInstance;Ljava/lang/String;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;)V
 	public static synthetic fun setTexture$default (Lcom/google/android/filament/MaterialInstance;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;ILjava/lang/Object;)V
 	public static synthetic fun setTexture$default (Lcom/google/android/filament/MaterialInstance;Ljava/lang/String;Lcom/google/android/filament/Texture;Lcom/google/android/filament/TextureSampler;ILjava/lang/Object;)V
+}
+
+public final class io/github/sceneview/material/MaterialRegistryKt {
+	public static final fun getMaterialOrNull (Lcom/google/android/filament/MaterialInstance;)Lcom/google/android/filament/Material;
 }
 
 public final class io/github/sceneview/material/UbershaderInstanceKt {
@@ -2998,6 +3042,7 @@ public final class io/github/sceneview/model/ModelKt {
 	public static final fun getCollisionShape (Lcom/google/android/filament/gltfio/FilamentAsset;)Lio/github/sceneview/collision/Box;
 	public static final fun getRenderableByName (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;)Ljava/lang/Integer;
 	public static final fun getRenderableNames (Lcom/google/android/filament/gltfio/FilamentAsset;)Ljava/util/List;
+	public static final fun getRestPoseBoundingBox (Lcom/google/android/filament/gltfio/FilamentAsset;)Lcom/google/android/filament/Box;
 	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentAsset;)Z
 }
 

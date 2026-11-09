@@ -304,13 +304,14 @@ internal object StudioBackdrop {
             .build(engine)
         val buffer = ByteBuffer.allocateDirect(faces.size * 4).order(ByteOrder.nativeOrder())
         buffer.asFloatBuffer().put(faces)
-        val faceBytes = size * size * 3 * 4
-        @Suppress("DEPRECATION")
+        // The six faces sit back to back in `buffer`: Filament uploads a cubemap as a 2D array
+        // of six layers (1.77 removed the per-face-offsets overload).
         texture.setImage(
             engine,
             0,
+            0, 0, 0,
+            size, size, 6,
             Texture.PixelBufferDescriptor(buffer, Texture.Format.RGB, Texture.Type.FLOAT),
-            IntArray(6) { it * faceBytes },
         )
         val skybox = Skybox.Builder().environment(texture).build(engine)
         return Backdrop(skybox, texture)

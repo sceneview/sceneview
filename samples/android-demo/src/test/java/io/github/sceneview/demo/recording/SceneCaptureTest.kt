@@ -1,9 +1,11 @@
 package io.github.sceneview.demo.recording
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.RectF
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,19 +15,23 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.core.content.IntentCompat
 import io.github.sceneview.capture.SceneRecorder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoScaffoldTestTags
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
 
 /** The demo side of the SDK's `SceneRecorder`: the elapsed label, the watermark, the sheet rows. */
 @RunWith(RobolectricTestRunner::class)
@@ -97,6 +103,31 @@ class SceneCaptureTest {
 
         composeRule.onNodeWithTag(DemoScaffoldTestTags.PHOTO_ACTION).assertIsDisplayed()
         composeRule.onNodeWithTag(DemoScaffoldTestTags.RECORD_ACTION).assertIsDisplayed()
+    }
+
+    @Test
+    fun sharePreview_readsTheUriFromTheClip() {
+        // Without the URI in the clip, the sheet's thumbnail read threw a SecurityException
+        // (Pixel 4a QA 2026-11-02): the grant on EXTRA_STREAM alone never reaches the sheet.
+        val context = composeRule.activity
+        val file = File(context.filesDir, "captures/probe.jpg").apply {
+            parentFile!!.mkdirs()
+            writeBytes(byteArrayOf(1))
+        }
+        val started = shadowOf(context.application)
+        while (started.peekNextStartedActivity() != null) started.nextStartedActivity
+
+        assertTrue(shareCapture(context, file, "image/jpeg"))
+
+        val sheet = started.nextStartedActivity
+        assertEquals(Intent.ACTION_CHOOSER, sheet.action)
+        val send = IntentCompat.getParcelableExtra(sheet, Intent.EXTRA_INTENT, Intent::class.java)!!
+        val stream = IntentCompat.getParcelableExtra(send, Intent.EXTRA_STREAM, Uri::class.java)
+        assertNotNull("the share carries no file", stream)
+        val clip = send.clipData
+        assertNotNull("the share sheet gets no grant for its preview", clip)
+        assertEquals(stream, clip!!.getItemAt(0).uri)
+        assertTrue(send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
     }
 
     private fun Bitmap.hasInk(left: Int, top: Int, right: Int, bottom: Int): Boolean {

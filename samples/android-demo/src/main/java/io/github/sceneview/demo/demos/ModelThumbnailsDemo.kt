@@ -77,7 +77,8 @@ private const val TAG = "ModelThumbnailsDemo"
  * night circuit is left out: it is a whole set, with quantized positions (see [ModelSnapshot]).
  */
 private val THUMBNAIL_MODELS = listOf(
-    "models/khronos_damaged_helmet.glb" to "Damaged Helmet",
+    "models/phoenix_bird.glb" to "Phoenix Bird",
+    "models/moto_helmet_v2.glb" to "Motorcycle Helmet",
     "models/khronos_glam_velvet_sofa.glb" to "Velvet Sofa",
     "models/khronos_sheen_chair.glb" to "Sheen Chair",
     "models/khronos_iridescent_dish.glb" to "Olive Dish",

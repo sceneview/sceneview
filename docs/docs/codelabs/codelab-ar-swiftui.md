@@ -29,7 +29,7 @@ If you have not already added SceneViewSwift, follow the same SPM steps from the
 
 1. **File > Add Package Dependencies**
 2. URL: `https://github.com/sceneview/sceneview.git`
-3. Version: from `4.65.0`
+3. Version: from `4.67.0`
 
 ### Camera permission
 
@@ -204,14 +204,14 @@ struct ARContentView: View {
                 if model == nil {
                     ProgressView("Loading model...")
                         .padding()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 } else {
                     Text(placedCount == 0
                         ? "Tap on a surface to place"
                         : "Placed \(placedCount) object\(placedCount == 1 ? "" : "s")")
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color(.secondarySystemBackground), in: Capsule())
                 }
             }
             .padding(.bottom, 32)
@@ -256,14 +256,14 @@ struct ARContentView: View {
                 if model == nil {
                     ProgressView("Loading model...")
                         .padding()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 } else {
                     Text(placedCount == 0
                         ? "Tap on a surface to place"
                         : "Placed \(placedCount) object\(placedCount == 1 ? "" : "s")")
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color(.secondarySystemBackground), in: Capsule())
                 }
             }
             .padding(.bottom, 32)

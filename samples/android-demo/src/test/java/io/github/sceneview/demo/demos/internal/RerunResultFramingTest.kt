@@ -20,7 +20,7 @@ import kotlin.math.min
 import kotlin.math.tan
 
 /**
- * The result opens a room at most of the screen's narrower side ([RerunResultView.NARROW_FILL]),
+ * The result opens a room at four fifths of the zone the chrome leaves ([RerunResultView.ZONE_FILL]),
  * the pieces depth leaves beyond its walls — through a window, in a mirror — or not. A big scan's
  * raw surface still has them when it is shown, and the finished model that replaces it is shown
  * in its framing. Robolectric for the build's `Log` lines.
@@ -112,8 +112,8 @@ class RerunResultFramingTest {
         /** The bar above and the sheet below, at rest. */
         val CHROME = FramingInsets(left = 0.04f, top = 0.14f, right = 0.04f, bottom = 0.22f)
 
-        /** Most of [RerunResultView.NARROW_FILL]: the room, not the pieces around it, sets the size. */
-        const val MIN_ACROSS = 0.72f
+        /** Most of [RerunResultView.ZONE_FILL] of the zone's 0.92 of the width: the room, not its pieces, sets the size. */
+        const val MIN_ACROSS = 0.68f
 
         const val SLACK = 0.02f
     }

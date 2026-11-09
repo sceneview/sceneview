@@ -100,7 +100,7 @@ SceneView(
 ### How zone priority works
 
 When the camera is inside multiple probe zones, the one with the highest `priority` wins.
-If priorities are equal, the last one in composition order wins.
+If priorities are equal, the probe added most recently wins.
 
 ---
 

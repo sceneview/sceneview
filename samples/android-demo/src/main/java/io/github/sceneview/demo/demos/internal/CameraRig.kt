@@ -116,8 +116,8 @@ enum class RigSubject(
     val yawDegrees: Float,
 ) {
     Helmet(
-        label = "Damaged Helmet",
-        assetPath = "models/khronos_damaged_helmet.glb",
+        label = "Motorcycle Helmet",
+        assetPath = "models/moto_helmet_v2.glb",
         groundX = 0f,
         groundZ = 0f,
         extent = 0.58f,

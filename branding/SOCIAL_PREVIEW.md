@@ -3,77 +3,58 @@
 **Size**: 1280x640 PNG (2:1 ratio, required by GitHub)
 **Location**: Repo Settings > General > Social preview
 
-## Design Specification
+The rules are those of [`DESIGN.md`](../DESIGN.md): flat colour from the M3 role table,
+the system font, nothing from its Forbidden list (no gradient, no glass, no decorative
+pills, no shadow).
 
-### Layout
+## Layout
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                                                                │
-│  ┌──┐                                                          │
-│  │  │   Background: linear-gradient(135deg, #0D2137, #132D4F)  │
-│  └──┘                                                          │
+│   Background: solid surface (dark scheme) #11131A              │
 │                                                                │
-│         ┌─┐                                                    │
-│         │ ╲   3D isometric cube (from logo.svg)                │
-│         │  │   centered horizontally, upper-third vertically   │
-│         └──┘   ~200x200px                                      │
+│         Flat cube (DESIGN.md § Logo), ~200x200px,              │
+│         centred horizontally, upper third                      │
 │                                                                │
 │            SceneView                                           │
-│            Inter Bold, 64px, #FFFFFF                           │
+│            system font, bold, 64px, on-surface #E1E2EB         │
 │                                                                │
 │            3D & AR for Compose — Android, iOS, Web             │
-│            Inter Regular, 28px, #8AB4F8                        │
+│            system font, regular, 28px, on-surface-variant      │
+│            #C2C6D5                                             │
 │                                                                │
-│   ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
-│   │ Android │ │  iOS    │ │  Web    │ │ visionOS│            │
-│   └─────────┘ └─────────┘ └─────────┘ └─────────┘            │
-│   Platform pills: 12px Inter Medium, #FFFFFF bg, 8px padding  │
-│   Pill bg: rgba(255,255,255,0.1), border: rgba(255,255,255,0.2)│
+│            Android · iOS · Web · visionOS                      │
+│            plain text, 20px, on-surface-variant #C2C6D5        │
 │                                                                │
-│                                     github.com/SceneView       │
-│                                     Inter Regular, 16px, #5A8DBF│
+│                                     github.com/sceneview       │
+│                                     16px, on-surface-variant   │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-### Colors
+A light variant, if one is needed, uses the light roles: `surface` #F9F9FF,
+`on-surface` #191B22, `on-surface-variant` #424753 (title line, tagline and URL).
 
-| Element | Color |
-|---|---|
-| Background gradient start | `#0D2137` |
-| Background gradient end | `#132D4F` |
-| Cube faces | Same as `logo-dark.svg` gradients |
-| Title text | `#FFFFFF` |
-| Tagline text | `#8AB4F8` |
-| Platform pill background | `rgba(255,255,255,0.1)` |
-| Platform pill border | `rgba(255,255,255,0.2)` |
-| Platform pill text | `#FFFFFF` |
-| URL text | `#5A8DBF` |
+## Colours
 
-### Export instructions
+| Element | Role (dark scheme) | Hex |
+|---|---|---|
+| Background | `surface` | `#11131A` |
+| Title | `on-surface` | `#E1E2EB` |
+| Tagline, platform line | `on-surface-variant` | `#C2C6D5` |
+| URL | `on-surface-variant` | `#C2C6D5` |
+| Cube | primary palette tones, flat | see `DESIGN.md` § *Logo* |
 
-Using Figma, Sketch, or ImageMagick:
+## Export
 
-```bash
-# Quick generation with ImageMagick (if available)
-# For best results, use Figma with the layout above
+Draw it in Figma (or any vector tool) with the system font of the machine
+(SF Pro on macOS, Roboto on Android-made exports) and export a PNG at exactly 1280x640.
 
-convert -size 1280x640 \
-  gradient:'#0D2137-#132D4F' \
-  -gravity center \
-  -font Inter-Bold -pointsize 64 -fill white \
-  -annotate +0-40 'SceneView' \
-  -font Inter -pointsize 28 -fill '#8AB4F8' \
-  -annotate +0+30 '3D & AR for Compose — Android, iOS, Web' \
-  branding/social-preview.png
-```
-
-### Checklist
+## Checklist
 
 - [ ] Export at exactly 1280x640px
 - [ ] Upload at: github.com/sceneview/sceneview > Settings > Social preview
 - [ ] Verify preview on: https://www.opengraph.xyz/
-- [ ] Looks good on Twitter/X card preview
-- [ ] Looks good on Slack/Discord link preview
 - [ ] Text is legible at thumbnail sizes (~600px wide)
+- [ ] Passes the `DESIGN.md` review test on the exported image

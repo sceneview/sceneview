@@ -49,7 +49,6 @@ import io.github.sceneview.demo.ui.GlassSurface
 import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -210,9 +209,9 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
             engine = engine,
             materialLoader = materialLoader,
             cameraNode = cameraNode,
-            cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = cameraNode.worldPosition,
-            ),
+            // The default manipulator starts from `cameraNode` without being keyed on its live
+            // position: passing `cameraNode.worldPosition` here would rebuild it on every
+            // recomposition once the user has orbited.
             onFrame = { nanos ->
                 firstFrame.onFrame(nanos)
                 // Drive the audio listener pose from the camera every frame —

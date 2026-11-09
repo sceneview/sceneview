@@ -45,6 +45,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import io.github.sceneview.material.EmissiveScale
 import io.github.sceneview.utils.readBuffer
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
@@ -83,6 +84,7 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.ar.node.AnchorNode
@@ -90,6 +92,7 @@ import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.node.TrackableNode
+import io.github.sceneview.ar.replay.LocalARSessionProbe
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.ar.scene.SceneUnderstanding
@@ -253,6 +256,11 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 `null` — the [ARDefaultCameraNode] default (f/12, 1/200 s, ISO 200 ≈
  *                                 EV 11.6) is correct for both back- and front-camera sessions after
  *                                 the #1088 + #1067 + #1063 / #1075 realignment.
+ * @param emissiveFollowsLightEstimate Whether the glow of glTF emissive materials follows the room's
+ *                                 brightness under `ENVIRONMENTAL_HDR` light estimation (default
+ *                                 `true`, #4950): proportional to it, never above the authored
+ *                                 `KHR_materials_emissive_strength`, down to a fifth in a dark room.
+ *                                 Pass `false` when the app sets `emissiveStrength` itself.
  * @param collisionSystem          Hit-testing and collision system. Use [rememberCollisionSystem].
  * @param viewNodeWindowManager    Off-screen window manager required for [SceneScope.ViewNode].
  * @param onSessionCreated         Called once when the ARCore [Session] is ready.
@@ -672,6 +680,20 @@ fun ARSceneView(
      */
     cameraExposure: Float? = null,
     /**
+     * Whether the glow of glTF emissive materials follows the room's brightness under
+     * `ENVIRONMENTAL_HDR` light estimation (#4950).
+     *
+     * Filament adds emissive after lighting, so the estimate that darkens a model in a dim room
+     * never reached its glow, which then shone as if in the dark. With this on, each emissive
+     * material's `emissiveStrength` is its authored `KHR_materials_emissive_strength` times a
+     * share of the room's ambient luminance: full in a daylit room, down to a fifth in a dark
+     * one, never brighter than authored. 3D scenes are never touched.
+     *
+     * Pass `false` when the app sets `emissiveStrength` itself: this would overwrite it every
+     * time the room's light changes. Turning it off puts the authored glow back.
+     */
+    emissiveFollowsLightEstimate: Boolean = true,
+    /**
      * Physics system to handle collision between nodes, hit testing on nodes, etc.
      */
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
@@ -933,6 +955,10 @@ fun ARSceneView(
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
     val isFrontFaceWindingInvertedRef = remember { AtomicBoolean(false) }
+    // Read by the frame loop; `emissiveScaledRef` remembers that it scaled a glow, so turning
+    // the option off puts the authored glow back once (#4950).
+    val emissiveFollowsLightEstimateRef = remember { AtomicBoolean(emissiveFollowsLightEstimate) }
+    val emissiveScaledRef = remember { AtomicBoolean(false) }
 
     // Tracks the per-frame [IndirectLight] this composable builds from
     // light-estimation updates so the previous one can be destroyed
@@ -1007,6 +1033,10 @@ fun ARSceneView(
         "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
             "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
+    // QA replay hook (null for every normal launch): see [ARSessionProbe].
+    val sessionProbe = LocalARSessionProbe.current
+    val sessionProbeRef = remember { AtomicReference(sessionProbe) }
+    sessionProbeRef.set(sessionProbe)
 
     // Camera permission denial (#3308): `null` while granted or not yet answered, otherwise
     // whether the system has stopped asking. Cleared when a session finally comes up.
@@ -1020,7 +1050,10 @@ fun ARSceneView(
         // built and ignore later recompositions that mutate it — toggling between live/playback
         // at runtime requires the caller to recreate the ARSceneView (typically via
         // `key(playbackDataset) { ARSceneView(...) }`).
+        // A QA probe above this view (LocalARSessionProbe) supplies the dataset when the call
+        // site passes none — one injection point for a whole app's replay run.
         val initialPlaybackDataset = playbackDataset
+            ?: sessionProbe?.playbackDataset?.takeIf { playbackDatasetUri == null }
         val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
@@ -1380,6 +1413,7 @@ fun ARSceneView(
         cameraNode.collisionSystem = collisionSystem
         cameraNode.setView(view)
         cameraExposure?.let { cameraNode.setExposure(it) }
+        emissiveFollowsLightEstimateRef.set(emissiveFollowsLightEstimate)
     }
 
     // ── Main light node ───────────────────────────────────────────────────────────────────────────
@@ -1445,12 +1479,16 @@ fun ARSceneView(
     // even if it was recreated by a recomposition.
     val cameraStreamRef = remember { AtomicReference<ARCameraStream?>(cameraStream) }
     val prevCameraStreamRef = remember { AtomicReference<ARCameraStream?>(null) }
+    // Placed objects' contacts, registered through the scope and grounding the occlusion around
+    // them; handed to whichever camera stream is current.
+    val groundContacts = remember { GroundContacts() }
     SideEffect {
         cameraStreamRef.set(cameraStream)
+        cameraStream?.groundContacts = groundContacts
         val prev = prevCameraStreamRef.get()
         if (prev != cameraStream) {
             prev?.let {
-                scene.removeEntity(it.entity)
+                scene.remove(it.entity)
                 // Registration is now tracked on the stream so its `destroy()` can recycle the
                 // entity id safely (#2877).
                 it.attachedScene = null
@@ -1520,6 +1558,10 @@ fun ARSceneView(
     // main looper. The guard logs and drops that gesture instead of crashing the app.
     val safeGestureListener = remember(onGestureListener) { onGestureListener?.arSessionSafe() }
     SideEffect { gestureDetector.listener = safeGestureListener }
+    // A drag released mid-flick coasts along its surface, not across the screen: the phone turning
+    // mid-coast must not carry the object with the camera.
+    val moveCoastSpace = remember(view) { ARMoveCoastSpace(view) }
+    SideEffect { gestureDetector.moveCoastSpace = moveCoastSpace }
 
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }
@@ -1713,6 +1755,9 @@ fun ARSceneView(
                                     baselineMainLightColorRef = baselineMainLightColorRef,
                                     baselineMainLightIntensityRef = baselineMainLightIntensityRef,
                                     builtIndirectLightRef = builtIndirectLightRef,
+                                    emissiveFollowsLightEstimate =
+                                        emissiveFollowsLightEstimateRef.get(),
+                                    emissiveScaledRef = emissiveScaledRef,
                                     session = session,
                                     frame = frame
                                 )
@@ -1724,6 +1769,13 @@ fun ARSceneView(
                                     frame = frame,
                                     trackingFailureReason = trackingFailureReason
                                 )
+                                sessionProbeRef.get()?.let { probe ->
+                                    try {
+                                        probe.onSessionFrame(session, frame, childNodes)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("SceneView", "ARSessionProbe threw", e)
+                                    }
+                                }
                             }
                         } catch (e: Exception) {
                             android.util.Log.e(
@@ -1837,7 +1889,8 @@ fun ARSceneView(
                 environmentLoader = environmentLoader,
                 _nodes = scopeChildNodes,
                 // Synchronous detach — see ARSceneScope KDoc on `nodeRemover`.
-                nodeRemover = nodeManager::removeNode
+                nodeRemover = nodeManager::removeNode,
+                groundContacts = groundContacts,
             )
         }
         scope.content()
@@ -1866,13 +1919,28 @@ private fun onARFrame(
     baselineMainLightColorRef: AtomicReference<io.github.sceneview.math.Color?>,
     baselineMainLightIntensityRef: AtomicReference<Float?>,
     builtIndirectLightRef: AtomicReference<IndirectLight?>,
+    emissiveFollowsLightEstimate: Boolean,
+    emissiveScaledRef: AtomicBoolean,
     session: Session,
     frame: Frame
 ) {
     cameraStream?.update(session, frame)
     cameraNode.update(session, frame)
 
+    // The option was turned off after it scaled a glow: put every authored glow back, once.
+    if (!emissiveFollowsLightEstimate && emissiveScaledRef.getAndSet(false)) {
+        EmissiveScale.apply(childNodes, 1f)
+    }
+
     lightEstimator?.update(session, frame, cameraNode.camera)?.let { estimation ->
+        // Emissive is added after lighting: scale it with the room, as the lights below are
+        // (#4950). Nodes already at this scale are skipped, so a steady room costs no call.
+        if (emissiveFollowsLightEstimate) {
+            estimation.emissiveScale?.let { scale ->
+                EmissiveScale.apply(childNodes, scale)
+                emissiveScaledRef.set(true)
+            }
+        }
         mainLightNode?.let { light ->
             // Capture the baseline light color + intensity on the first frame the
             // estimator produces a value, so subsequent frames multiply
@@ -1972,6 +2040,9 @@ private fun onARFrame(
         is DepthMeshNode -> n.update(session, frame)
         is PointCloudNode -> n.update(session, frame)
     }
+
+    // Last: the placed objects' contacts are read from the anchors moved just above.
+    cameraStream?.updateGroundContact(frame)
 }
 
 /**

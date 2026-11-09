@@ -164,7 +164,7 @@ open class SplatNode(
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sortJob: Job? = null
     private var lastSortCameraPosition: Position? = null
-    private val cameraPositionScratch = FloatArray(3)
+    private val cameraPositionScratch = DoubleArray(3)
 
     /** The sort's two arrays, reused: at most one sort is in flight ([sortJob]). */
     private val sortKeys = LongArray(splatCloud.count)
@@ -268,7 +268,7 @@ open class SplatNode(
         batchEntities = batches.indices.map { index ->
             EntityManager.get().create().also { entity ->
                 // null local transform = identity; parent = this node's transform component.
-                transformManager.create(entity, transformInstance, null as FloatArray?)
+                transformManager.create(entity, transformInstance)
                 buildBatchRenderable(entity, index, batches[index].count())
             }
         }
@@ -398,7 +398,7 @@ open class SplatNode(
         cameraPositionProvider?.let { return it() }
         val camera = collisionSystem?.view?.camera ?: return null
         val p = camera.getPosition(cameraPositionScratch)
-        return Position(p[0], p[1], p[2])
+        return Position(p[0].toFloat(), p[1].toFloat(), p[2].toFloat())
     }
 
     private fun buildDataTexture(format: Texture.InternalFormat): Texture = Texture.Builder()

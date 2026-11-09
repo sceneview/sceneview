@@ -33,11 +33,8 @@ class RerunScanModelTest {
     private val fov = 46.4
 
     private companion object {
-        /** The share of the screen's narrower side the model's bounds span. */
-        val NARROW_FILL = 0.78f..0.82f
-
-        /** A model this close to the screen's edge along its long side fills that side. */
-        const val LONG_EDGE = 0.06f
+        /** The share of the chrome's free zone the model's box spans on the axis that sets the distance. */
+        val ZONE_FILL = 0.79f..0.81f
     }
 
     // ── Kept with the scan ────────────────────────────────────────────────────
@@ -341,7 +338,7 @@ class RerunScanModelTest {
     // ── The view ──────────────────────────────────────────────────────────────
 
     @Test
-    fun `the result frames the geometry to most of the screen's narrower side, where it is`() {
+    fun `the result frames the geometry to four fifths of the zone between the name and the bar, where it is`() {
         // A scan's world is wherever ARCore started: rooms far from the origin, long and short,
         // a desk's corner, and a shelf scanned on its own.
         val rooms = listOf(
@@ -350,7 +347,7 @@ class RerunScanModelTest {
             floatArrayOf(0.3f, 0.7f, 0.2f, 0.9f, 1.1f, 0.6f),
             floatArrayOf(1f, 0.8f, -2f, 1.4f, 1.1f, -1.7f),
         )
-        // The bar above and the sheet below it, raised or at rest over most of a phone's height.
+        // The name above and the bar below it, or the sheet raised over most of a phone's height.
         val chromes = listOf(
             FramingInsets(left = 0.04f, top = 0.14f, right = 0.04f, bottom = 0.22f),
             FramingInsets(left = 0.04f, top = 0.12f, right = 0.04f, bottom = 0.62f),
@@ -364,25 +361,41 @@ class RerunScanModelTest {
                     assertEquals(RerunResultView.ELEVATION, pose.elevationDegrees, 1e-3f)
                     val seen = projected(bounds, pose, aspect)
                     val where = "bounds ${bounds.toList()}, $chrome, aspect $aspect: seen ${seen.toList()}"
-                    assertTrue("$where: off the screen", seen.all { it in -1f - slack..1f + slack })
-                    // The narrower side: across a portrait screen, up a landscape one.
-                    val across = aspect <= 1f
-                    val narrow = if (across) (seen[2] - seen[0]) / 2f else (seen[3] - seen[1]) / 2f
-                    val longLo = if (across) seen[1] else seen[0]
-                    val longHi = if (across) seen[3] else seen[2]
-                    // Taller than the screen lets it be at that size: it fills its long side instead.
-                    val longFull = longLo <= -1f + 2f * LONG_EDGE || longHi >= 1f - 2f * LONG_EDGE
-                    assertTrue("$where: fills $narrow of the narrower side", narrow <= NARROW_FILL.endInclusive)
-                    assertTrue("$where: fills $narrow of the narrower side", longFull || narrow in NARROW_FILL)
-                    // Within the chrome along the long side whenever it fits there.
-                    val bandLo = if (across) -1f + 2f * chrome.bottom else -1f + 2f * chrome.left
-                    val bandHi = if (across) 1f - 2f * chrome.top else 1f - 2f * chrome.right
-                    if (longHi - longLo <= bandHi - bandLo) {
-                        assertTrue("$where: under the chrome", longLo >= bandLo - slack && longHi <= bandHi + slack)
-                    }
+                    // The zone the chrome leaves, -1..1 across the screen, not the whole screen.
+                    val free = chrome.bounded()
+                    val zone = floatArrayOf(
+                        -1f + 2f * free.left,
+                        -1f + 2f * free.bottom,
+                        1f - 2f * free.right,
+                        1f - 2f * free.top,
+                    )
+                    assertTrue("$where: past the zone", (0 until 2).all { seen[it] >= zone[it] - slack })
+                    assertTrue("$where: past the zone", (2 until 4).all { seen[it] <= zone[it] + slack })
+                    val across = (seen[2] - seen[0]) / (zone[2] - zone[0])
+                    val up = (seen[3] - seen[1]) / (zone[3] - zone[1])
+                    // The axis that sets the distance spans four fifths of the zone; the other, no more.
+                    assertTrue("$where: fills $across across, $up up", max(across, up) in ZONE_FILL)
+                    // Centred in the zone on that axis.
+                    val (lo, hi) = if (across >= up) 0 to 2 else 1 to 3
+                    assertEquals("$where: centred", zone[lo] + zone[hi], seen[lo] + seen[hi], 1e-2f)
                 }
             }
         }
+    }
+
+    @Test
+    fun `the zone's four fifths set the camera's distance, not the whole screen`() {
+        // A room 4 m by 3 m, 2.5 m high, on a phone held upright: its width sets the distance.
+        val bounds = floatArrayOf(0f, 0f, 0f, 4f, 2.5f, 3f)
+        val chrome = FramingInsets(left = 0.04f, top = 0.14f, right = 0.04f, bottom = 0.22f)
+        val zoneWidth = 1f - chrome.left - chrome.right
+        val pose = RerunResultView.home(bounds, fov, 0.46f, chrome)
+        val bare = RerunResultView.home(bounds, fov, 0.46f, FramingInsets.None)
+        // Four fifths of 0.92 of the width against four fifths of all of it: the camera stands
+        // 1/0.92 as far, the room at the same share of the zone it would take of a bare screen.
+        assertEquals(1f / zoneWidth, pose.distance / bare.distance, 0.03f)
+        val seen = projected(bounds, bare, 0.46f)
+        assertEquals("a bare screen", 0.8f, (seen[2] - seen[0]) / 2f, 0.01f)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

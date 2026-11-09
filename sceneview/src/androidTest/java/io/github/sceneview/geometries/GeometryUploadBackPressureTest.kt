@@ -190,8 +190,10 @@ class GeometryUploadBackPressureTest {
                 tube.primitivesIndices.getOffsets(),
                 tube.primitivesOffsets,
             )
-            assertTrue(engine.isValidVertexBuffer(tube.vertexBuffer))
-            assertTrue(engine.isValidIndexBuffer(tube.indexBuffer))
+            // Filament 1.77 dropped Engine.isValidVertexBuffer/isValidIndexBuffer; a buffer
+            // destroyed through the engine has its wrapper cleared, and reading it throws.
+            assertTrue(runCatching { tube.vertexBuffer.nativeObject }.isSuccess)
+            assertTrue(runCatching { tube.indexBuffer.nativeObject }.isSuccess)
             engine.destroyGeometry(tube)
         }
     }

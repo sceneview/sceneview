@@ -5,7 +5,6 @@ import android.opengl.EGLContext
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Colors
 import com.google.android.filament.Engine
-import com.google.android.filament.Filament
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
@@ -14,9 +13,7 @@ import com.google.android.filament.Skybox
 import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
-import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.KTX1Loader
-import com.google.android.filament.utils.Utils
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
@@ -28,18 +25,16 @@ import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toColor
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.VideoNode
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.utils.OpenGL
 import io.github.sceneview.utils.readBuffer
 
-// Initialize Filament once (triggered when this file's class is first loaded)
-private val filamentInit: Unit = run {
-    Gltfio.init()
-    Filament.init()
-    Utils.init()
-}
+// Initialize Filament once (triggered when this file's class is first loaded). When
+// [EngineWarmUp] already loaded the libraries on its own thread, this returns at once.
+private val filamentInit: Unit = loadFilamentLibraries()
 
 const val DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE = 6_500.0f
 
@@ -53,7 +48,7 @@ const val DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE = 6_500.0f
  * setup out of the box. See audit `project_plan_v1_hybrid_2026-05-10`.
  */
 const val DEFAULT_MAIN_LIGHT_COLOR_INTENSITY = 10_000.0f
-val DEFAULT_MAIN_LIGHT_COLOR = Colors.cct(DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE).toColor()
+val DEFAULT_MAIN_LIGHT_COLOR = Colors.cct(DEFAULT_MAIN_LIGHT_COLOR_TEMPERATURE, null).toColor()
 val DEFAULT_MAIN_LIGHT_INTENSITY = DEFAULT_MAIN_LIGHT_COLOR_INTENSITY
 
 /**
@@ -64,7 +59,7 @@ val DEFAULT_MAIN_LIGHT_INTENSITY = DEFAULT_MAIN_LIGHT_COLOR_INTENSITY
  */
 const val DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE = 6_500.0f
 const val DEFAULT_FILL_LIGHT_COLOR_INTENSITY = 3_000.0f
-val DEFAULT_FILL_LIGHT_COLOR = Colors.cct(DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE).toColor()
+val DEFAULT_FILL_LIGHT_COLOR = Colors.cct(DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE, null).toColor()
 val DEFAULT_FILL_LIGHT_INTENSITY = DEFAULT_FILL_LIGHT_COLOR_INTENSITY
 
 /**
@@ -98,9 +93,16 @@ val DEFAULT_OBJECT_POSITION = Position(0.0f, 0.0f, -4.0f)
  */
 const val DEFAULT_IBL_INTENSITY = 10_000.0f
 
+/**
+ * Creates the EGL context a Filament [Engine][com.google.android.filament.Engine] shares, current on
+ * the calling thread on a 1×1 pbuffer.
+ *
+ * When the app started [EngineWarmUp] and it prepared one, this hands that one over instead,
+ * waiting at most 300 ms for a warm-up still under way, and only makes it current here.
+ */
 fun createEglContext(): EGLContext {
     filamentInit  // ensure init
-    return OpenGL.createEglContext()
+    return EngineWarmUp.takeEglContext() ?: OpenGL.createEglContext()
 }
 
 /**
@@ -146,7 +148,7 @@ fun createView(engine: Engine): View = engine.createView().apply {
     // SplatNode and the demo's ViewerBackdrop invert this exact curve: change the tone mapper,
     // update them too.
     colorGrading = ColorGrading.Builder()
-        .toneMapper(ToneMapper.PBRNeutralToneMapper())
+        .toneMapper(ToneMapper.PBRNeutral())
         .build(engine)
 }
 
@@ -232,7 +234,7 @@ internal fun Node.matchToneMapInverse(view: View?) {
 }
 
 internal fun MaterialInstance.matchToneMapInverse(view: View?) {
-    if (view == null || !material.hasParameter("inverseFilmic")) return
+    if (view == null || materialOrNull?.hasParameter("inverseFilmic") != true) return
     setParameter("inverseFilmic", view in filmicViews)
 }
 

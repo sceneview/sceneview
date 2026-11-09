@@ -435,7 +435,7 @@ class PlaneVisualizer(
 
     private fun removePlaneFromScene() {
         if (isPlaneAddedToScene) {
-            scene.removeEntity(entity)
+            scene.remove(entity)
             isPlaneAddedToScene = false
         }
     }

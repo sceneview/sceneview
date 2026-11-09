@@ -381,4 +381,38 @@ class LightEstimatorTest {
         // by the cap.
         assertEquals(1.0f, color!!.r, 1e-6f)
     }
+
+    // ── Emissive follows the room (#4950) ─────────────────────────────────────────────────────
+
+    @Test
+    fun `the room luminance is the Rec 709 luminance of the constant SH term`() {
+        val sh = FloatArray(27).apply { this[0] = 1f; this[1] = 1f; this[2] = 1f; this[3] = 9f }
+
+        assertEquals(1f, LightEstimator.ambientLuminance(sh), 1e-5f)
+        assertTrue(LightEstimator.ambientLuminance(FloatArray(2)).isNaN())
+    }
+
+    @Test
+    fun `a daylit room halves the glow, a dark one leaves a fifth, none is brighter than authored`() {
+        assertEquals(0.5f, LightEstimator.emissiveScale(0.8f)!!, 1e-6f)
+        assertEquals(LightEstimator.EMISSIVE_MIN_SCALE, LightEstimator.emissiveScale(0.01f)!!, 1e-6f)
+        assertEquals(LightEstimator.EMISSIVE_MIN_SCALE, LightEstimator.emissiveScale(-1f)!!, 1e-6f)
+        assertEquals(1f, LightEstimator.emissiveScale(LightEstimator.EMISSIVE_ROOM_REFERENCE)!!, 1e-6f)
+        assertEquals(1f, LightEstimator.emissiveScale(20f)!!, 1e-6f)
+    }
+
+    @Test
+    fun `a reading that is not a number leaves the glow alone`() {
+        assertNull(LightEstimator.emissiveScale(Float.NaN))
+        assertNull(LightEstimator.emissiveScale(Float.POSITIVE_INFINITY))
+    }
+
+    @Test
+    fun `clear drops the emissive scale of the previous frame`() {
+        val estimation = LightEstimator.Estimation(emissiveScale = 0.4f)
+
+        estimation.clear()
+
+        assertNull(estimation.emissiveScale)
+    }
 }

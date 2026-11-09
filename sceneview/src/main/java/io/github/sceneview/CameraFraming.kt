@@ -71,7 +71,7 @@ fun verticalFovDegreesForFocalLength(focalLength: Double): Double {
  * half-extent [Aabb] the framing math operates on.
  *
  * Use this to compute a fit distance directly from a freshly loaded model's intrinsic bounds
- * (`modelInstance.model.boundingBox.toAabb()`) without first attaching it to the scene graph.
+ * (`modelInstance.model.restPoseBoundingBox.toAabb()`) without first attaching it to the scene graph.
  */
 fun Box.toAabb(): Aabb = Aabb(
     center = center.toPosition(),

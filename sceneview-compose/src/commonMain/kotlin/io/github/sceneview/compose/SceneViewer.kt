@@ -38,7 +38,7 @@ import androidx.compose.ui.Modifier
  *
  * ```kotlin
  * SceneViewer(
- *     model = ModelSource.Asset("models/damaged_helmet.glb"),
+ *     model = ModelSource.Asset("models/moto_helmet.glb"),
  *     modifier = Modifier.fillMaxSize(),
  *     onTap = { hit -> if (hit != null) println("hit at ${hit.position}") },
  * )

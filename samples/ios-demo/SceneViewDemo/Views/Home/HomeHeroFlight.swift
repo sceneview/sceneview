@@ -187,9 +187,9 @@ struct HeroFlightPose: Equatable, Sendable {
     var eye: SIMD3<Float>
     var target: SIMD3<Float>
     var rollDegrees: Float
-    var helmet: SIMD3<Float>
-    var helmetYawDegrees: Float
-    var helmetEntrance: Float
+    var heroModel: SIMD3<Float>
+    var heroModelYawDegrees: Float
+    var heroModelEntrance: Float
     var terrainRise: Float
 
     /// The camera's up vector, rolled about the view axis.
@@ -204,18 +204,18 @@ enum HeroFlight {
     static let speed: Float = 5.5
     /// Seconds for one full side-to-side sway.
     static let swayPeriod: Float = 27
-    static let helmetDegreesPerSecond: Float = 9
+    static let heroModelDegreesPerSecond: Float = 9
     static let entranceSeconds: Double = 0.9
     static let terrainRiseSeconds: Double = 1.1
     static let eyeHeight: Float = 2.3
     /// How far the terrain starts below its rest height before it rises in.
     static let terrainRiseUnits: Float = 2.5
-    /// The helmet's longest side, in metres (Android `scaleToUnits`).
-    static let helmetUnits: Float = 0.8
+    /// The hero model's longest side, in metres (Android `scaleToUnits`).
+    static let heroModelUnits: Float = 0.8
 
     /// The pose at `seconds` of flight. `tilt` leans the camera a touch with the
     /// phone; `entranceStart` / `terrainStart` are the clock readings at which
-    /// the helmet and the terrain first appeared (nil: not yet). With `motion`
+    /// the hero model and the terrain first appeared (nil: not yet). With `motion`
     /// off the flight holds its first frame and both entrances are complete.
     static func pose(seconds: Double, period: Float, tilt: SIMD2<Float> = .zero,
                      entranceStart: Double? = nil, terrainStart: Double? = nil,
@@ -240,9 +240,9 @@ enum HeroFlight {
             eye: SIMD3(eyeX, eyeY, 0),
             target: SIMD3(eyeX + yaw * 10, eyeY + pitch * 10, -10),
             rollDegrees: roll,
-            helmet: SIMD3(eyeX + 0.85, eyeY - 0.2 + sin(t * 0.8 + 1) * 0.05, -4.2),
-            helmetYawDegrees: -28 + t * helmetDegreesPerSecond,
-            helmetEntrance: eased(since: entranceStart, over: entranceSeconds),
+            heroModel: SIMD3(eyeX + 0.85, eyeY - 0.2 + sin(t * 0.8 + 1) * 0.05, -4.2),
+            heroModelYawDegrees: -28 + t * heroModelDegreesPerSecond,
+            heroModelEntrance: eased(since: entranceStart, over: entranceSeconds),
             terrainRise: eased(since: terrainStart, over: terrainRiseSeconds)
         )
     }

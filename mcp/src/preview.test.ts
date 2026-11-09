@@ -20,7 +20,7 @@ describe("buildPreviewUrl", () => {
       codeSnippet: "SceneView(engine = engine) { ModelNode(...) }",
     });
     expect(result.previewUrl).toContain("model=");
-    expect(result.previewUrl).toContain("DamagedHelmet.glb");
+    expect(result.previewUrl).toContain("moto_helmet_v2.glb");
     expect(result.previewUrl).toContain("code=");
     expect(result.hasCode).toBe(true);
     expect(result.title).toBe("SceneView Code Preview");

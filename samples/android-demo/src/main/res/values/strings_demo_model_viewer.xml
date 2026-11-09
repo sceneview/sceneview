@@ -33,7 +33,7 @@
     <string name="demo_model_picker_models">Single models</string>
     <string name="demo_model_picker_park_desc">Four models in one scene</string>
     <!-- One line under each bundled model's name: what the model shows off. -->
-    <string name="demo_model_desc_damaged_helmet">Scuffed metal and glass</string>
+    <string name="demo_model_desc_phoenix_bird">Animated wings and vivid plumage</string>
     <string name="demo_model_desc_velvet_sofa">Velvet fabric sheen</string>
     <string name="demo_model_desc_sheen_chair">Tufted fabric sheen</string>
     <string name="demo_model_desc_olive_dish">Olives under a glass lid</string>

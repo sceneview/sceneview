@@ -37,9 +37,11 @@ import io.github.sceneview.DefaultCameraNode
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.createView
 import io.github.sceneview.destroyRendererWhenBackendIdle
+import io.github.sceneview.isValid
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.Model
+import io.github.sceneview.model.restPoseBoundingBox
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.safeDestroyCamera
 import io.github.sceneview.safeDestroyIndirectLight
@@ -492,7 +494,7 @@ class ModelSnapshot @MainThread constructor(
     /** Aims the camera and the light rig at [model]; `false` when its box cannot be framed. */
     @MainThread
     private fun frame(model: Model, key: SnapshotKey): Boolean {
-        val box = model.boundingBox
+        val box = model.restPoseBoundingBox
         if (!isFramable(box.center, box.halfExtent)) return false
         val options = key.options
         val aspect = key.width.toFloat() / key.height
@@ -663,7 +665,7 @@ class ModelSnapshot @MainThread constructor(
         ibl.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
         ibl.cubemap?.let { engine.safeDestroyTexture(it) }
         for (light in intArrayOf(keyLight, fillLight)) {
-            scene.removeEntity(light)
+            scene.remove(light)
             engine.safeDestroyLight(light)
             EntityManager.get().destroy(light)
         }
@@ -689,7 +691,7 @@ class ModelSnapshot @MainThread constructor(
     @MainThread
     private fun destroyPartlyBuilt() {
         for (light in intArrayOf(fillLight, keyLight)) {
-            scene.removeEntity(light)
+            scene.remove(light)
             engine.safeDestroyLight(light)
             EntityManager.get().destroy(light)
         }

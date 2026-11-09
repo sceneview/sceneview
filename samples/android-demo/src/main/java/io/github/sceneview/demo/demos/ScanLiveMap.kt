@@ -151,9 +151,7 @@ internal fun ScanLiveMap(
                 val floorY = stageFloorY(trace.frameAt(trace.duration))
                 val cell = grid.cellMetres
                 val built = withContext(Dispatchers.Default) {
-                    val weak = dense?.takeIf { LiveCoverageGround.SHOW_WEAK_CELLS }
-                        ?.let { LiveCoverageGround.weakCells(it.cloud.positions, keys, cell) }
-                        ?: LongArray(0)
+                    val weak = dense?.takeIf { LiveCoverageGround.SHOW_WEAK_CELLS }?.weakCells ?: LongArray(0)
                     LiveCoverageGround.of(keys, cell, outline, floorY, weak)?.let {
                         ScanGroundMeshes.of(it, hatchMissing = true) to ScanLiveMapFraming.zonesOf(it)
                     }
@@ -264,7 +262,10 @@ private fun MapLegend(
             horizontalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
             Canvas(Modifier.size(SwatchSize)) { drawRect(groundColors.seen) }
-            if (LiveCoverageGround.SHOW_WEAK_CELLS) Canvas(Modifier.size(SwatchSize)) { drawRect(groundColors.weak) }
+            if (LiveCoverageGround.SHOW_WEAK_CELLS) {
+                val redo = stringResource(R.string.scan_map_legend_redo)
+                Canvas(Modifier.size(SwatchSize).semantics { contentDescription = redo }) { drawRect(groundColors.weak) }
+            }
             // Clipped: its diagonals run past the swatch, and drew over the area's first digit.
             Canvas(Modifier.size(SwatchSize).clipToBounds()) {
                 drawRect(groundColors.missing)

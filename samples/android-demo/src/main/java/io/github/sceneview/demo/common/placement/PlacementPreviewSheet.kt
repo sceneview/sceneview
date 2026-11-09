@@ -35,6 +35,7 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
+import io.github.sceneview.model.restPoseBoundingBox
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEnvironmentLoader
 
@@ -61,7 +62,7 @@ internal fun scaledToUnitsExtent(halfExtent: FloatArray, units: Float): Size {
 
 /** [scaledToUnitsExtent] for a loaded model. */
 internal fun ModelInstance.extentScaledTo(units: Float): Size =
-    scaledToUnitsExtent(model.boundingBox.halfExtent, units)
+    scaledToUnitsExtent(model.restPoseBoundingBox.halfExtent, units)
 
 /**
  * "View in 3D": the object a placement demo places, shown without AR in a studio room and

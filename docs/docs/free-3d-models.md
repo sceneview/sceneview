@@ -203,7 +203,8 @@ These models are currently bundled or referenced in the sample apps:
 
 | Model | Used in | Source |
 |---|---|---|
-| DamagedHelmet | android-demo, flutter-demo | Khronos glTF Sample Assets. **CC-BY-NC-4.0: non-commercial use only.** The website replaced it with ToyCar. |
+| [Motorcycle Helmet](https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac) | android-demo, flutter-demo, react-native-demo, website, MCP | sayedgamal655, CC-BY-4.0. Replaced the Khronos DamagedHelmet, whose sculpt is CC-BY-NC. |
+| [Phoenix Bird](https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042) | android-demo, ios-demo, web-demo, website | NORBERTO-3D, CC-BY-4.0. Animated. |
 | Fox | android-tv-demo | Khronos glTF Sample Assets |
 | space_helmet.glb | android-demo (effects) | Custom |
 | toy_car.glb | android-demo (showcase), web-demo, website | Khronos (ToyCar), CC0-1.0 |
@@ -239,7 +240,7 @@ Priority models to add to SceneView sample apps for maximum business impact:
 
 ---
 
-## Quick Copy URLs (Khronos — No Auth Required)
+## Quick Copy URLs (No Auth Required)
 
 ```
 # Architecture & Furniture
@@ -270,8 +271,11 @@ https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Fl
 https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Lantern/glTF-Binary/Lantern.glb
 https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Avocado/glTF-Binary/Avocado.glb
 
-# Non-commercial only (CC-BY-NC-4.0): fine for a test, not for an app you sell
-https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb
+# Hosted by SceneView, CC-BY-4.0: credit the author
+# Motorcycle Helmet by sayedgamal655
+https://sceneview.github.io/models/platforms/moto_helmet_v2.glb
+# Phoenix Bird by NORBERTO-3D (animated)
+https://sceneview.github.io/web-demo/models/phoenix_bird.glb
 ```
 
 ---

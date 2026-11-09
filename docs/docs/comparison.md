@@ -7,10 +7,6 @@ description: "Side-by-side comparison of SceneView with Unity, Google Sceneform,
 
 An honest comparison for developers evaluating 3D and AR options.
 
-<div style="text-align: center; margin: 1.5rem 0;">
-<img src="assets/images/comparison-chart.svg" alt="Lines of code comparison: SceneView vs alternatives" style="width: 100%; max-width: 800px; border-radius: 24px;">
-</div>
-
 ---
 
 ## The landscape
@@ -31,7 +27,7 @@ An honest comparison for developers evaluating 3D and AR options.
 
     ```kotlin
     // build.gradle
-    implementation("io.github.sceneview:sceneview:4.65.0")
+    implementation("io.github.sceneview:sceneview:4.67.0")
 
     // One composable
     @Composable

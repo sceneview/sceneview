@@ -2,7 +2,7 @@
 //
 // The geometry behind the Secondary Camera (PiP) demo: the preset poses sit on
 // Android's lines of sight, a tap ray leaves the camera it was made through, and
-// the floor / helmet tests resolve the edit the way Android's do.
+// the floor / lantern tests resolve the edit the way Android's do.
 
 import XCTest
 import CoreGraphics
@@ -78,7 +78,7 @@ final class SecondaryCameraMathTests: XCTestCase {
         XCTAssertNil(SecondaryCameraMath.floorHit(up))
     }
 
-    func testHelmetPickNeedsTheRayWithinItsRadiusAndInFront() {
+    func testModelPickNeedsTheRayWithinItsRadiusAndInFront() {
         let centre = SIMD3<Float>(0, 0.25, 0)
         let through = SecondaryCameraMath.Ray(origin: SIMD3(0, 0.25, 2), direction: SIMD3(0, 0, -1))
         XCTAssertTrue(SecondaryCameraMath.passes(through, within: 0.2, of: centre))
@@ -94,9 +94,9 @@ final class SecondaryCameraMathTests: XCTestCase {
         XCTAssertEqual(pose.elevation, 24 * .pi / 180, accuracy: accuracy)
         XCTAssertEqual(pose.azimuth, 0, accuracy: accuracy)
         // The stage's front corners land inside the band and the screen.
-        let half = SecondaryCameraMath.stageHalfExtent + SecondaryCameraMath.helmetSize / 2
+        let half = SecondaryCameraMath.stageHalfExtent + SecondaryCameraMath.modelSize / 2
         for corner in [SIMD3<Float>(-half, 0, half), SIMD3(half, 0, half),
-                       SIMD3(-half, SecondaryCameraMath.helmetSize, -half)] {
+                       SIMD3(-half, SecondaryCameraMath.modelSize, -half)] {
             let screen = try XCTUnwrap(project(corner, pose: pose, size: size))
             XCTAssertGreaterThanOrEqual(screen.x, 0)
             XCTAssertLessThanOrEqual(screen.x, size.width)

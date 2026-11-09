@@ -43,6 +43,9 @@ import io.github.sceneview.demo.demos.internal.RescanReference
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.RescanRegistrar
 import io.github.sceneview.demo.demos.internal.RescanZone
+import io.github.sceneview.demo.demos.internal.ScanFixWatch
+import io.github.sceneview.demo.demos.internal.ScanReview
+import io.github.sceneview.demo.demos.internal.ScanReviewResult
 import io.github.sceneview.demo.demos.internal.ScanLens
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -75,6 +78,64 @@ internal sealed interface RescanStatus {
     class Refused(val why: RescanRefusal?) : RescanStatus
 }
 
+/**
+ * What [RescanGuide] follows: a part to fill in ([zone]), where the live capture stands against it
+ * ([status], written off the main thread), and [follow], which reads the live cloud again.
+ */
+internal interface RescanFollower {
+    val zone: RescanZone
+    val status: RescanStatus
+
+    /** Reads the live capture [live] against the part. Off the main thread. */
+    fun follow(live: DenseCloud)
+}
+
+/**
+ * "Fix now" at the review (Review before you leave): [watch]'s part, filled in by the same capture
+ * that missed it. Same session, same ARCore frame: the part is lined up from the first frame
+ * ([RescanPose] identity), nothing to line up nor merge, and [follow] only measures the fill —
+ * as the review that found the part measured it ([review], [ScanReview.fillOf]).
+ */
+@Stable
+internal class SessionFix(
+    val watch: ScanFixWatch,
+    private val review: ScanReviewResult? = null,
+    private val nanoTime: () -> Long = System::nanoTime,
+) : RescanFollower {
+    override val zone: RescanZone get() = watch.zone
+
+    override var status: RescanStatus by mutableStateOf(RescanStatus.Lined(SAME_FRAME, watch.baseline))
+        private set
+
+    /** The part's fill on [live], the capture as it stands. Off the main thread. */
+    override fun follow(live: DenseCloud) {
+        status = RescanStatus.Lined(SAME_FRAME, ScanReview.fillOf(zone, live, review))
+    }
+
+    /** Whether [fill] is enough for the review to come back now: the only time the guide says Covered. */
+    fun done(fill: Float): Boolean = watch.done(fill, nanoTime())
+
+    companion object {
+        /** The capture's own frame: the part stands where the review found it. */
+        val SAME_FRAME = RescanPose(0f, 0f, 0f, 0f)
+
+        /**
+         * A fix of [zone], found by [review], [live] the capture as it stands when Fix now is
+         * tapped at [nowNanos]: one pass over the drawn surfels, cheap enough for the tap itself.
+         */
+        fun start(
+            zone: RescanZone,
+            live: DenseCloud?,
+            nowNanos: Long,
+            review: ScanReviewResult? = null,
+            nanoTime: () -> Long = System::nanoTime,
+        ): SessionFix {
+            val baseline = live?.takeIf { it.count > 0 }?.let { ScanReview.fillOf(zone, it, review) } ?: 0f
+            return SessionFix(ScanFixWatch(zone, baseline, nowNanos), review, nanoTime)
+        }
+    }
+}
+
 /** What saving a re-scan came to. */
 internal sealed interface RescanSave {
     /** [pack]: the scan's capture with the re-scan's points added, to keep as a new scan. */
@@ -95,14 +156,16 @@ internal class RescanTarget(
     val pack: RerunCapturePack,
     val mergedTitle: String,
     val partTitle: String = mergedTitle,
-) {
+) : RescanFollower {
+    override val zone: RescanZone get() = pick.zone
+
     private val reference: RescanReference? by lazy { RescanReference.of(pick.cloud) }
 
     /** The parts the re-scan may fill in: its points there say nothing against the scan. */
     private val open: List<FloatArray> = pick.zones.map { it.box }
 
     /** Where the live re-scan stands; written off the main thread, read by the guide. */
-    var status: RescanStatus by mutableStateOf(RescanStatus.LiningUp)
+    override var status: RescanStatus by mutableStateOf(RescanStatus.LiningUp)
         private set
 
     /**
@@ -110,7 +173,7 @@ internal class RescanTarget(
      * that does not line up keeps the last pose: one AR session moves rigidly against the scan.
      * Off the main thread.
      */
-    fun follow(live: DenseCloud) {
+    override fun follow(live: DenseCloud) {
         val scan = reference ?: return
         val pose = when (val found = RescanRegistrar.register(scan, live, open)) {
             is RescanAlignment.Lined -> found.pose
@@ -150,14 +213,14 @@ internal class RescanTarget(
 }
 
 /**
- * Over the live view of a re-scan (#4736): the part to fill in, framed in amber on the camera
- * where it stands once the re-scan is lined up, and a line saying how far along it is. [live]
- * is the live cloud, read on the main thread every [FOLLOW_MS]; [lens] the phone's eye, drawn
- * from while [drawn] (the live view follows the phone).
+ * Over the live view of a re-scan (#4736), or of a part fixed at the review ([SessionFix]): the
+ * part to fill in, framed in amber on the camera where it stands once the re-scan is lined up,
+ * and a line saying how far along it is. [live] is the live cloud, read on the main thread every
+ * [FOLLOW_MS]; [lens] the phone's eye, drawn from while [drawn] (the live view follows the phone).
  */
 @Composable
 internal fun RescanGuide(
-    target: RescanTarget,
+    target: RescanFollower,
     live: () -> DenseCloud?,
     lens: ScanLens,
     drawn: Boolean,
@@ -180,7 +243,7 @@ internal fun RescanGuide(
     Box(modifier.fillMaxSize()) {
         val lined = status as? RescanStatus.Lined
         if (lined != null && drawn) {
-            val corners = remember(lined.pose, target) { lined.pose.inverse().corners(target.pick.zone.box) }
+            val corners = remember(lined.pose, target) { lined.pose.inverse().corners(target.zone.box) }
             Canvas(Modifier.fillMaxSize().testTag(RESCAN_GUIDE_FRAME_TAG)) {
                 if (eye == 0L || !lens.ready) return@Canvas
                 val edges = RescanGuidance.outline(corners, lens.cameraToWorld, lens.projection, size.width, size.height)
@@ -194,7 +257,8 @@ internal fun RescanGuide(
             text = when {
                 status is RescanStatus.Refused -> stringResource(R.string.scan_rescan_refused)
                 lined == null -> stringResource(R.string.scan_rescan_lining_up)
-                RescanGuidance.covered(lined.fill) -> stringResource(R.string.scan_rescan_covered)
+                target is SessionFix && target.done(lined.fill) -> stringResource(R.string.scan_fix_covered)
+                target !is SessionFix && RescanGuidance.covered(lined.fill) -> stringResource(R.string.scan_rescan_covered)
                 else -> stringResource(R.string.scan_rescan_fill, (lined.fill * PERCENT).roundToInt())
             },
             modifier = Modifier.align(BiasAlignment(0f, LINE_BIAS)),

@@ -291,6 +291,8 @@ mcp-strategy-report.md
 # Treat each MP4 like the device screenshots from the 2026-05-07 incident:
 # fully audit content before promoting to a tracked file.
 samples/android-demo/src/androidTest/assets/ar-recordings/*.mp4
+# Real ARCore replay corpus (phone recordings): never committed, pushed by ar-replay-qa.sh.
+samples/android-demo/ar-corpus/
 samples/screenshots/qa_log*.txt
 # qa_android_demos.py output
 samples/screenshots/android/

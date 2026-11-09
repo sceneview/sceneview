@@ -6,7 +6,7 @@ import io.github.sceneview.web.bindings.FilamentAsset
  * Model configuration for SceneView web.
  *
  * ```kotlin
- * model("models/damaged_helmet.glb") {
+ * model("models/moto_helmet.glb") {
  *     onLoaded { asset ->
  *         println("Model loaded: ${asset.getEntities()}")
  *     }

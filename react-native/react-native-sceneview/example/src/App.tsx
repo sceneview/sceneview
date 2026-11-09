@@ -27,9 +27,10 @@ interface ModelEntry {
 
 const MODELS: ModelEntry[] = [
   {
-    label: "Damaged Helmet",
+    // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
+    label: "Motorcycle Helmet",
     node: {
-      src: "models/damaged_helmet.glb",
+      src: "https://sceneview.github.io/models/platforms/moto_helmet_v2.glb",
       position: [0, 0, -2],
       scale: [1, 1, 1],
     },

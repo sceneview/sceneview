@@ -197,6 +197,7 @@ import com.google.ar.core.ArCoreApk
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.animation.core.Animatable
+import io.github.sceneview.model.restPoseBoundingBox
 
 /**
  * Unified "Models" demo — consolidates the retired `multi-model` and
@@ -272,12 +273,18 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  * load them.
  */
 private val BUNDLED_VIEWER_MODELS = listOf(
-    BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet", R.string.demo_model_desc_damaged_helmet),
-    // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
-    // Its stand-in is the bundled Damaged Helmet — the nearest thing the APK ships, another
-    // helmet at the same scale — shown instantly while the HD file downloads or loads.
+    // Phoenix Bird by NORBERTO-3D, CC-BY 4.0: the hero since the Damaged Helmet left (its
+    // original is CC-BY-NC, which a store screenshot or a demo card cannot show).
+    // Authored ~960 units long: shown with a ~1.9 m wingspan, inside the viewer camera's range.
     BundledViewerModel(
-        "models/khronos_damaged_helmet.glb",
+        "models/phoenix_bird.glb", "Phoenix Bird", R.string.demo_model_desc_phoenix_bird,
+        scale = PHOENIX_BIRD_SCALE,
+    ),
+    // HD pack (2026-09-29): the full-resolution Khronos Flight Helmet, downloaded after install.
+    // Its stand-in is the bundled motorcycle helmet — the nearest thing the APK ships, another
+    // helmet — shown instantly while the HD file downloads or loads.
+    BundledViewerModel(
+        "models/moto_helmet_v2.glb",
         "Flight Helmet",
         R.string.demo_model_desc_flight_helmet,
         hdAssetId = "flight-helmet",
@@ -774,10 +781,10 @@ private fun ModeSelector(
 // ─── Single Model section ─────────────────────────────────────────────────────
 // The original `model-viewer` demo — the flagship full-screen 3D model viewer.
 //
-// **Default state.** Loads the bundled `khronos_damaged_helmet.glb` so the demo
+// **Default state.** Loads the bundled `phoenix_bird.glb` (CC-BY 4.0) so the demo
 // renders identically with or without a Sketchfab API key — the very first
 // frame the user sees is the same hero shot the screenshots and store assets
-// promise. The CAMERA orbits the helmet so lights, reflections and IBL hit the
+// promise. The CAMERA orbits the bird so lights, reflections and IBL hit the
 // same surface every frame.
 //
 // **"Surprise me" button.** When the user taps the extended FAB at the
@@ -948,7 +955,7 @@ private fun SingleModelSection(
         if (surpriseStage == SurpriseStage.Decoding) surpriseStage = null
     }
     val streamedModelInstance = streamedModel?.instance
-    // The bundled hero — assets/models/khronos_damaged_helmet.glb. Loaded
+    // The bundled hero — assets/models/phoenix_bird.glb. Loaded
     // eagerly so the first frame after launch shows the hero shot.
     // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
     // Called unconditionally, for the reason above (#1464): a null path is a value, not a
@@ -1028,9 +1035,6 @@ private fun SingleModelSection(
     // where the garden's canopy tinted them green). A lighting the user picked stays. One default
     // for every model also retires the per-model switch of #4171 and its "yellow flash".
     val requestedEnvironment = userEnvironment ?: viewerEnvironments.first()
-    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
-    // Apollo 11 scans) is shown at its real size.
-    val modelScale = hdAssetOnStage?.scale ?: 1f
     // Whether the instance on stage is the one the current selection asked for, rather than the
     // previous model kept up while the next one loads.
     val stageShowsSelection = when {
@@ -1144,17 +1148,20 @@ private fun SingleModelSection(
     // Read from the entry that owns the instance on stage, not from the pick: the model still up
     // while the next one loads keeps its own turn instead of taking the next model's (the helmet
     // spun 180° for Soldier's sake between a Surprise model and Soldier).
-    val frontYaw = remember(activeModelInstance, hdAssetOnStage) {
-        val owner = when {
+    val stageOwner = remember(activeModelInstance, hdAssetOnStage) {
+        when {
             activeModelInstance == null || streamedModelInstance != null -> null
             hdAssetOnStage != null -> ALL_VIEWER_MODELS.firstOrNull { it.hdAssetId == hdAssetOnStage.id }
             else -> ALL_VIEWER_MODELS.firstOrNull { it.assetPath == bundledModel?.assetPath }
         }
-        owner?.frontYaw ?: 0f
     }
+    val frontYaw = stageOwner?.frontYaw ?: 0f
+    // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
+    // Apollo 11 scans) is shown at its real size, a bundled one by its entry's `scale`.
+    val modelScale = hdAssetOnStage?.scale ?: stageOwner?.scale ?: 1f
     val bounds = remember(activeModelInstance, modelScale, frontYaw) {
         val instance = activeModelInstance ?: return@remember null
-        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+        runCatching { instance.model.restPoseBoundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
             ?.let { box ->
                 val half = box.halfExtent * modelScale
                 val yawRadians = Math.toRadians(frontYaw.toDouble())
@@ -1171,7 +1178,7 @@ private fun SingleModelSection(
     // UNTURNED footprint (the shadow quads turn with the model), every size in its radius.
     val footprint = remember(activeModelInstance, modelScale) {
         val instance = activeModelInstance ?: return@remember null
-        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+        runCatching { instance.model.restPoseBoundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
             ?.let { it.halfExtent * modelScale }
     }
     val stageFloorY = bounds?.let { it.center.y - it.halfExtent.y } ?: 0f
@@ -1365,7 +1372,7 @@ private fun SingleModelSection(
     // #3822 — swapping to a bundled model (e.g. "Soldier") from the Models sheet is not a
     // navigation the back stack knows about either: it is the same screen with different
     // content. Without this, back from a swapped-in model skipped straight past the demo's
-    // own default (the Damaged Helmet) to the Showcase home. One level at a time: revert to
+    // own default (the Phoenix Bird) to the Showcase home. One level at a time: revert to
     // the default model first, exit only from there. Scoped to the bundled-model swap only —
     // an opened external file still on stage (`openedFile`, the "Open with SceneView" handoff) is
     // a different, narrower flow this issue does not report on.
@@ -1628,7 +1635,7 @@ private fun SingleModelSection(
             DemoSettings.openedModelDisplayName = openedFile?.displayName
             // #3493 — whatever the viewer is showing must be what AR opens on, never a picker.
             // `selectedModel.assetPath` covers every bundled row, including ones the AR
-            // placement catalogue itself doesn't curate (the Damaged Helmet, #2023) — its name
+            // placement catalogue itself doesn't curate (the Phoenix Bird, cf. #2023) — its name
             // has to ride along too, for AR to label a row the catalogue has no entry for. Set
             // unconditionally: a match against the curated catalogue uses ITS OWN name instead,
             // and this value is consumed once then cleared.
@@ -2288,7 +2295,7 @@ private class StreamedModel(val location: String, val instance: io.github.scenev
 
 /** Whether the model measures a finite, non-empty box the viewer can frame. */
 private fun io.github.sceneview.model.ModelInstance.hasFramableBounds(): Boolean = runCatching {
-    val box = model.boundingBox
+    val box = model.restPoseBoundingBox
     val half = box.halfExtent
     val center = box.center
     (half + center).all { it.isFinite() } && half.any { it > 0f }
@@ -2992,3 +2999,6 @@ internal fun viewerHomeFraming(
  * default bulged a car's bonnet towards the lens.
  */
 internal const val VIEWER_FOCAL_LENGTH_MM = 40.0
+
+/** Metres per unit of `phoenix_bird.glb`, authored ~960 units long: a ~1.9 m wingspan. */
+internal const val PHOENIX_BIRD_SCALE = 0.002f

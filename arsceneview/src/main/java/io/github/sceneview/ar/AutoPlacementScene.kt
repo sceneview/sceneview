@@ -706,6 +706,29 @@ private fun ARSceneScope.PlacedModelContent(
             }
             SelectionRing.footprint(grounded)
         }
+        // The shadow and the ring lie on the surface: register the disc they cover so the depth
+        // occlusion never cuts them on the floor's own depth noise, while a real object in front
+        // still hides them (rule 4 in camera_stream_depth.mat). Read every frame, in world space.
+        val groundRadius = remember(model, footprint) {
+            PlacementGroundContact.radius(
+                footprint,
+                PlacementContactShadow.quad(model.groundedCorners()),
+            )
+        }
+        val groundContacts = this@PlacedModelContent.groundContacts
+        DisposableEffect(model, footprint, groundRadius, groundContacts) {
+            val unregister = groundContacts.register {
+                val placed = state.phase == PlacementPhase.PLACED ||
+                    state.phase == PlacementPhase.ADJUSTING
+                val surface = model.parent?.takeIf { placed && !model.isDestroyed }
+                surface?.let {
+                    PlacementGroundContact.world(
+                        it.worldTransform, footprint.centerX, footprint.centerZ, groundRadius,
+                    )
+                }
+            }
+            onDispose { unregister() }
+        }
         // Opaque glTF materials cannot fade, so the model grows into place and shrinks away
         // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
         Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {

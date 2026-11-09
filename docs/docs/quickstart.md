@@ -24,7 +24,7 @@ SceneView 4.63.0 sets these floors on the app that depends on it.
 |---|---|---|
 | `compileSdk` | **37** | The published AARs declare `minCompileSdk=37`; `checkDebugAarMetadata` fails below it. |
 | `minSdk` | **24** or higher | The SDK's own `minSdk`. |
-| Android Gradle Plugin | **9.4.0** or newer | The first AGP that officially supports `compileSdk 37`. SceneView itself builds with AGP 9.4.1. |
+| Android Gradle Plugin | **9.4.0** or newer | The first AGP that officially supports `compileSdk 37`. SceneView itself builds with AGP 9.5.0. |
 | Kotlin | **2.4** | SceneView is compiled with Kotlin 2.4.21 and depends on `kotlin-stdlib` 2.4.21. |
 | JVM target (Java and Kotlin) | **21** | SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions. Any `Position`/`Float3` arithmetic inlines them, and Kotlin refuses to inline JVM 21 bytecode into a lower target. |
 | JDK | **21** or newer | Needed to compile Java at target 21. JVM unit tests that load SceneView classes also need a JDK 21 runtime. |
@@ -122,7 +122,7 @@ Open your **app-level** `build.gradle.kts` and add SceneView:
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.65.0")
+    implementation("io.github.sceneview:sceneview:4.67.0")
 }
 ```
 

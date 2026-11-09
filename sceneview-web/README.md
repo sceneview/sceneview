@@ -23,7 +23,7 @@ SceneView.create(
             eye(0.0, 1.5, 5.0)
             target(0.0, 0.0, 0.0)
         }
-        model("models/DamagedHelmet.glb")
+        model("https://sceneview.github.io/models/platforms/moto_helmet_v2.glb") // Motorcycle Helmet by sayedgamal655, CC-BY 4.0
     },
     onReady = { it.startRendering() }
 )
@@ -35,7 +35,7 @@ For browser usage without Kotlin, load the `sceneview-web.js` bundle and use the
 global `sceneview` object it registers on `window`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.65.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.67.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer("scene-canvas", "model.glb").then((viewer) => {
     viewer.setBackgroundColor(0.05, 0.05, 0.08, 1);

@@ -161,6 +161,18 @@ object DemoSettings {
     var arPendingPlaybackFile: String? by mutableStateOf(null)
 
     /**
+     * The replay QA probe for the current launch, or `null` for every normal launch.
+     *
+     * Set by [MainActivity] — debug builds only — when a launch carries a valid
+     * `--es ar_playback_file <path>`, and provided once at the root of the composition through
+     * [io.github.sceneview.ar.replay.LocalARSessionProbe]. Every `ARSceneView` of every demo then
+     * replays that recording, with no per-demo wiring, and the probe measures the run for
+     * `ARReplayHarnessTest` (frames, first plane, anchors, model screen coverage). Replaced on
+     * each new launch intent, so one demo's measures never leak into the next.
+     */
+    var arReplayProbe: io.github.sceneview.ar.replay.ARReplayProbe? by mutableStateOf(null)
+
+    /**
      * Monotonic count of ARCore session frames the AR Record & Playback demo has
      * consumed since the current [io.github.sceneview.ar.ARSceneView] mounted.
      * Incremented once per `onSessionUpdated` callback (one ARCore frame each).

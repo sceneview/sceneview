@@ -729,8 +729,10 @@ open class Node protected constructor(
             if (field != value) {
                 val oldParent = field
                 field = value
-                oldParent?.let { it.childNodes = it.childNodes - this }
-                value?.let { it.childNodes = it.childNodes + this }
+                // Skip a write that would leave the set as it is: each one copies it, and a
+                // parent that set this node through `childNodes` already holds it.
+                oldParent?.let { if (this in it.childNodes) it.childNodes = it.childNodes - this }
+                value?.let { if (this !in it.childNodes) it.childNodes = it.childNodes + this }
                 parentEntity = value?.entity
                 // `isVisible` is a COMPUTED property that walks up the parent chain, but the
                 // Filament layer mask that actually decides rendering is only pushed from

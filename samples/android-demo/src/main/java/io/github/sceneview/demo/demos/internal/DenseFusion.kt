@@ -226,6 +226,25 @@ class DenseFusion(
     }
 
     /**
+     * The map's surfels [minViews] depth frames saw, read in place: what the live map's "to redo"
+     * cells are judged on ([LiveCoverageGround.weakCells]), every snapshot, without copying the
+     * map. Valid until the next [add]; on the thread that adds.
+     */
+    internal fun surfels(minViews: Int = MIN_VIEWS): LiveCoverageGround.Surfels = object : LiveCoverageGround.Surfels {
+        override val count get() = this@DenseFusion.count
+
+        override fun kept(i: Int) = views[i] >= minViews
+
+        override fun x(i: Int) = px[i]
+
+        override fun y(i: Int) = py[i]
+
+        override fun z(i: Int) = pz[i]
+
+        override fun level(i: Int) = levelOf(voxelKeys[i])
+    }
+
+    /**
      * The map as a live view draws it from ([eyeX], [eyeY], [eyeZ]) (#4743): the voxels at least
      * [minViews] depth frames saw, those nearer than [LIVE_FIRST_LEVEL_M] as they are and farther
      * ones merged on the map's own grid, one level coarser each time the distance doubles, up to
