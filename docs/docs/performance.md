@@ -336,6 +336,57 @@ SceneView(engine = engine, modelLoader = modelLoader, /* ... */) { }
     Creating multiple `Engine` instances wastes GPU memory and can cause crashes
     on devices with limited resources. Create one at the top level and pass it down.
 
+### The first 3D frame
+
+Part of what the first `rememberEngine()` and `rememberModelLoader()` do inside their
+composition can run on a background thread instead: loading Filament's native
+libraries, initialising the GPU driver, creating the shared EGL context, and building
+the Basis Universal tables gltfio's texture loader needs. `EngineWarmUp` does it;
+`rememberEngine()` then takes the prepared context. The `Engine` itself is still built
+on the main thread: Filament ties an engine to the thread that creates it. To build the
+tables, the warm-up creates a short-lived engine of its own on its thread (no-op
+backend) and destroys it there. On a Pixel 7a this took a 3D board's first frame from
+238 to 184 ms.
+
+It is **opt-in**, because every launch that runs it pays for it — about 60–80 ms of
+background CPU, the GPU driver loaded, one small EGL context held — even a launch that
+never shows 3D. Start it where a 3D screen is likely to follow, from any thread:
+
+```kotlin
+EngineWarmUp.start()   // when the user heads for the 3D screen, or in Application.onCreate()
+```
+
+or at app startup without code, by listing its initializer in your manifest:
+
+```xml
+<provider
+    android:name="androidx.startup.InitializationProvider"
+    android:authorities="${applicationId}.androidx-startup"
+    android:exported="false"
+    tools:node="merge">
+    <meta-data
+        android:name="io.github.sceneview.EngineWarmUpInitializer"
+        android:value="androidx.startup" />
+</provider>
+```
+
+Started at app startup, the warm-up competes with your app's own startup. With a 3D
+first screen, measured over 14 cold starts each on a Pixel 10 Pro XL, the 3D frame fell
+from 194 to 151 ms but time to first frame rose from 134 to 149 ms. On a Pixel 7a,
+the 3D frame went from 238 to 184 ms and time to first frame from 140 to 145 ms, within
+noise. If the 3D screen is not the first one, start the warm-up once the first frame is
+drawn rather than in `Application.onCreate()`.
+
+A prepared context that no engine takes within 5 seconds is released; the libraries
+and tables stay loaded.
+
+`rememberModelLoader(engine)` costs nothing until its first model: gltfio's material
+provider is built then. Creating a model synchronously in the screen's first
+composition (`createModel*` or `createInstancedModel` inside `remember { }`) brings
+both that build and the glTF parse back into the first frame; load it with
+`rememberModelInstance`, or the `suspend` `loadModelInstance` / `loadInstancedModel`,
+and the first frame shows the scene while the model follows.
+
 ### Lazy loading
 
 Load models on-demand rather than all at startup:

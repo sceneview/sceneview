@@ -118,13 +118,15 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.65.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.67.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // The key MUST NEVER be committed — see the resolution block above.
         manifestPlaceholders["arcoreApiKey"] = arcoreApiKey
         buildConfigField "String", "SKETCHFAB_API_KEY", "\"${sketchfabApiKey}\""
+        // The home hero keys a rung that crashed in a driver to the Filament that failed there.
+        buildConfigField "String", "FILAMENT_VERSION", "\"${libs.versions.filament.get()}\""
     }
 
     signingConfigs {

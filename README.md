@@ -42,6 +42,12 @@ The demo apps are built from [`samples/`](samples/). Any demo opens straight fro
 [Cosmos](https://sceneview.github.io/open?demo=cosmos), the galaxy the catalogue opens on, or
 [3D Scan](https://sceneview.github.io/open?demo=ar-rerun), a space scanned with ARCore and rebuilt in 3D.
 
+<p align="center">
+  <a href="https://sceneview.github.io/open?demo=ar-rerun"><img src="website-static/assets/demos/scan-room.webp" alt="3D Scan on a Pixel 9: a living room is scanned wall by wall, then rebuilt as a 3D model you can turn" width="300"></a>
+  <br>
+  <sub>A living room scanned in 3D Scan on a Pixel 9, then rebuilt as a model (sped up).</sub>
+</p>
+
 ### Help test the demos
 
 Install the Android demo, record your screen while you use a demo, and tell us what breaks or
@@ -60,7 +66,7 @@ One minimal, working example per platform. The full reference for each is in
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.65.0")
+implementation("io.github.sceneview:sceneview:4.67.0")
 ```
 
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.4 and JVM
@@ -87,7 +93,7 @@ coroutine: Filament calls must run on the main thread, and `rememberModelInstanc
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.65.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.67.0")   // includes the 3D module
 ```
 
 ```kotlin
@@ -156,8 +162,8 @@ that finishes loading after the scene appears is never added.
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.65.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.65.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.67.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.67.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
@@ -165,7 +171,7 @@ that finishes loading after the scene appears is never added.
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.65.0")
+implementation("io.github.sceneview:sceneview-compose:4.67.0")
 ```
 
 ```kotlin
@@ -178,7 +184,7 @@ A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iO
 ### Flutter
 
 ```dart
-// pubspec.yaml → flutter_sceneview: ^4.65.0
+// pubspec.yaml → flutter_sceneview: ^4.67.0
 final controller = SceneViewController();
 
 SceneView(
@@ -252,10 +258,10 @@ The other platforms in the table below join this section once a capture backs th
 
 | Platform | Coordinate |
 |---|---|
-| Android 3D | `io.github.sceneview:sceneview:4.65.0` |
-| Android AR | `io.github.sceneview:arsceneview:4.65.0` |
-| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.65.0` |
-| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.65.0` |
+| Android 3D | `io.github.sceneview:sceneview:4.67.0` |
+| Android AR | `io.github.sceneview:arsceneview:4.67.0` |
+| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.67.0` |
+| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.67.0` |
 | Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.63.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
@@ -515,7 +521,7 @@ npm install sceneview-web
 The package expects a `Filament` global and does not include the `SceneView.modelViewer` script
 helpers. A Kotlin Multiplatform project that only needs the shared core (collision, math,
 geometry, animation, physics — no renderer) uses
-`implementation("io.github.sceneview:sceneview-core-js:4.65.0")`.
+`implementation("io.github.sceneview:sceneview-core-js:4.67.0")`.
 
 [Landing page](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [npm](https://www.npmjs.com/package/sceneview-web)
 

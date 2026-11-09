@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView web demo",
   "artefact": "the sceneview.github.io/web-demo deploy",
   "source": "assets/catalog.json",
-  "total": 18,
+  "total": 15,
   "sections": [
     {
       "title": "3D models",
@@ -27,16 +27,6 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/animated-dragon-three-motion-loops-eca98cf6cd084c1596cecf716e110c29",
           "size": 8377076,
-          "note": ""
-        },
-        {
-          "file": "models/bmw_m3_e30.glb",
-          "name": "BMW M3 Coupe (E30) 1986",
-          "author": "Lexyc16",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91",
-          "size": 10306960,
           "note": ""
         },
         {
@@ -90,16 +80,6 @@
           "note": ""
         },
         {
-          "file": "models/nintendo_switch.glb",
-          "name": "Nintendo Switch Diorama",
-          "author": "Mikkel Garde Blaase",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
-          "size": 769040,
-          "note": ""
-        },
-        {
           "file": "models/nintendo_switch_oled.glb",
           "name": "Nintendo Switch OLED",
           "author": "rtql8d",
@@ -117,16 +97,6 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042",
           "size": 1630364,
-          "note": ""
-        },
-        {
-          "file": "models/retro_piano.glb",
-          "name": "Retro Piano",
-          "author": "DailyArt",
-          "license": "CC-BY-NC-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
-          "sourceUrl": "https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185",
-          "size": 4184316,
           "note": ""
         },
         {

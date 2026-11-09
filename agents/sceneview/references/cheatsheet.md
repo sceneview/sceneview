@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.65.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.65.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.67.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.67.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -103,7 +103,7 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `rememberModelInstance(modelLoader, "asset.glb")` | `ModelInstance?` | **Nullable while loading**. Takes `.glb`, `.gltf` or `.3mf` — asset path, URL, or a `file://` / `content://` URI shared in from another app |
 | `rememberMainLightNode(engine) { … }` | `LightNode` | Default key light (use `null` to disable) |
 | `rememberFillLightNode(engine) { … }` | `LightNode` | Default fill (use `null` to disable) |
-| `rememberCameraManipulator(orbitRadius = 2.5f)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller, camera `orbitRadius` m from the target; `null` to lock. `orbitHomePosition = Position(…)` for an explicit eye (no "home" gesture exists despite the name) |
+| `rememberCameraManipulator(orbitRadius = 2.5f)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller, camera `orbitRadius` m from the target; `null` to lock. `orbitHomePosition = Position(…)` for an explicit eye (no built-in "home" gesture: `key = resets` rebuilds it there, see llms.txt) |
 | `rememberOnGestureListener(onSingleTapConfirmed = …)` | `GestureDetector.OnGestureListener` | Wire AR taps |
 | `rememberARRecorder()` | `ARRecorder` | Record/replay AR sessions — ARCore **dataset** for deterministic replay (no args) |
 | `rememberSceneRecorder()` | `SceneRecorder` | **Photo** (`savePhoto()`, full-res JPEG/PNG) and **MP4** (`startRecording(settings = VideoSettings(…))` / `stopRecording()`, 1080p30, optional mic, time limit, `overlay` watermark) of the rendered scene, in-app (no MediaProjection). Pass `recorder.surfaceMirrorer` to `SceneView`/`ARSceneView` |

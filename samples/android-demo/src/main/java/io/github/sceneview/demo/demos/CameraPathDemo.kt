@@ -69,6 +69,7 @@ import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import kotlinx.coroutines.flow.first
 import java.util.Locale
+import io.github.sceneview.model.restPoseBoundingBox
 
 /**
  * **Camera path** — a keyframed camera move played around an animated subject.
@@ -129,7 +130,7 @@ fun CameraPathDemo(onBack: () -> Unit) {
     // The subject's world bounds: grounded on y = 0, centred on the vertical axis, and scaled so
     // its largest side is SUBJECT_UNITS — the glTF box scaled by that same factor.
     val bounds = remember(instance) {
-        val extents = instance?.let { runCatching { it.model.boundingBox.toAabb() }.getOrNull() }
+        val extents = instance?.let { runCatching { it.model.restPoseBoundingBox.toAabb() }.getOrNull() }
             ?.takeUnless { it.isEmpty }?.extents
         val largest = extents?.let { maxOf(it.x, it.y, it.z) } ?: 0f
         val size = if (extents != null && largest > 0f) {

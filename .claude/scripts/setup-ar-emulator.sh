@@ -12,8 +12,9 @@
 #      now pixel_8 (see DEVICE_PROFILE_PREFS below).
 #   2. Builds it to an ANR-resistant QA spec: 6 CPU cores, 1 GB VM heap, a
 #      free-disk-adaptive data partition, host-sized RAM (see below),
-#      virtualscene back camera, emulated front camera (front cam is needed for
-#      Augmented Faces demos), host GPU mode.
+#      emulated back + front cameras (`-camera-back emulated` at boot, see
+#      boot_new_emulator; the front cam is needed for Augmented Faces demos),
+#      host GPU mode.
 #   3. Boots the emulator headless by default — RAM-budgeted adaptive pool
 #      (#1647 → #1654): leases a free already-running emulator, or — if the live
 #      RAM-budgeted pool cap has room and free RAM clears the hard safety gate —
@@ -65,7 +66,7 @@
 #                    state + pool state (running emulator count, RAM-budgeted
 #                    cap, free RAM, active leases) + golden-snapshot presence
 #                    + camera-id topology of the running emulator (#2754 —
-#                    no HAL id 0 means ARCore live-camera AR cannot start).
+#                    no HAL id 0 means ARCore cannot start at all).
 #                    No mutation.
 #   --clean          Wipe the AVD's userdata and recreate config from scratch.
 #                    Also drops the golden `qa-clean` snapshot — re-seed it with
@@ -421,8 +422,8 @@ fi
 # --- step 4: patch config.ini for ARCore --------------------------------------
 # Pinned values: host-sized RAM / 1 GB heap / 6 cores / free-disk-adaptive data
 # partition ([4G,8G], see detect_target_data_gb) — ANR-resistant QA —
-# virtualscene back camera (ARCore can drive it), emulated front (Augmented
-# Faces), host GPU mode.
+# emulated back camera (the only back camera that exposes HAL id 0, see
+# boot_new_emulator), emulated front (Augmented Faces), host GPU mode.
 patch_kv() {
   local key="$1"
   local value="$2"
@@ -440,7 +441,7 @@ patch_kv() {
 apply_ar_config() {
   log "patching $AVD_CONFIG for ARCore + ANR-resistant QA"
   patch_kv "PlayStore.enabled" "yes" "$AVD_CONFIG"
-  patch_kv "hw.camera.back"   "virtualscene" "$AVD_CONFIG"
+  patch_kv "hw.camera.back"   "emulated"     "$AVD_CONFIG"
   patch_kv "hw.camera.front"  "emulated"     "$AVD_CONFIG"
   patch_kv "hw.gpu.enabled"   "yes"          "$AVD_CONFIG"
   patch_kv "hw.gpu.mode"      "host"         "$AVD_CONFIG"
@@ -518,11 +519,13 @@ bounded_adb() {
   return "$rc"
 }
 
-# Camera-id topology of a RUNNING emulator (#2754). ARCore's device APK hard-requires
-# the back camera at id "0"; arm64 AVDs enumerate back="10"/front="1" (never "0"), and
-# ARCore ships no arm64 emulator build (its emulator APK has no arm64 libs) — so
-# live-camera AR sessions can NEVER start on an arm64 AVD. Surfacing the topology here
-# keeps that failure loud instead of masked behind a black viewport.
+# Camera-id topology of a RUNNING emulator (#2754). ARCore hard-requires the back
+# camera at id "0" ("No default camera 0 found" otherwise). With the old
+# `virtualscene` back camera — no longer a valid `-camera-back` value on emulator
+# 37.x — an arm64 AVD enumerates back="10"/front="1" and ARCore cannot start at
+# all; `-camera-back emulated` exposes ids 0 and 1, which is what lets recorded-
+# session playback reach TRACKING (#1645). Surfacing the topology here keeps a
+# missing id 0 loud instead of masked behind a black viewport.
 show_camera_topology() {
   # Optional $1: probe THIS serial. Default: the first running emulator.
   local serial="${1:-}"
@@ -543,12 +546,11 @@ show_camera_topology() {
   fi
   log "camera topology on $serial: HAL ids = ${ids% }"
   if printf '%s' " $ids " | grep -q ' 0 '; then
-    log "  back camera at id 0 present — ARCore live-camera sessions can start"
+    log "  back camera at id 0 present — ARCore recorded-session playback can run"
+    log "    (live-camera AR still aborts inside ARCore on arm64: physical device only)"
   else
-    log "  ⚠ NO camera id 0 — ARCore live-camera AR CANNOT start on this AVD (#2754)."
-    log "    arm64 AVDs never expose id 0 and ARCore has no arm64 emulator build."
-    log "    Camera-frame demos need the qa_mode fallback (PR #2753 pattern);"
-    log "    real camera AR needs a physical device."
+    log "  ⚠ NO camera id 0 — ARCore cannot start on this AVD (#2754)."
+    log "    Boot it with \`-camera-back emulated\` (boot_new_emulator does)."
   fi
 }
 
@@ -634,6 +636,8 @@ boot_new_emulator() {
     -port "$port" \
     "${snapshot_args[@]}" \
     -gpu host \
+    -camera-back emulated \
+    -camera-front emulated \
     -memory "$mem" \
     $window_arg \
     -no-audio \
@@ -653,6 +657,8 @@ select_or_boot_emulator() {
     if emu_lease_acquire "$free_serial" "$ADB_BIN"; then
       log "leased already-running emulator $free_serial — no boot"
       EMU_SERIAL="$free_serial"
+      # An emulator booted before #1645 may still run without camera id 0.
+      show_camera_topology "$EMU_SERIAL"
       return 0
     fi
     # Lost the lease race — fall through and re-evaluate.
@@ -891,15 +897,16 @@ if [[ -n "$serial" ]]; then
       fi
     fi
   fi
-  # Honest arm64 limitation notice (#2754): the device APK installed above runs, but
-  # it requires the back camera at HAL id "0", which arm64 AVDs never expose — and
-  # ARCore ships no arm64 emulator build. Say it loudly here instead of letting AR
-  # demos fail later with a silent black viewport and no tracking.
+  # Honest arm64 limitation notice (#2754): with `-camera-back emulated` the AVD
+  # exposes HAL id "0" and recorded-session playback works, but live-camera
+  # sessions still abort inside ARCore (ARCore ships no arm64 emulator build).
+  # Say it loudly here instead of letting AR demos fail later with a silent
+  # black viewport and no tracking.
   if [[ "$IMG_ARCH" == "arm64-v8a" ]]; then
-    log "⚠ arm64 AVD: live-camera AR sessions CANNOT start (ARCore has no arm64"
-    log "  emulator build — #2754). 3D demos, UI/state QA and dataset-replay QA are"
-    log "  fine; camera-frame demos rely on their qa_mode fallback (PR #2753 pattern)."
-    log "  Real camera AR needs a physical device."
+    log "⚠ arm64 AVD: live-camera AR sessions abort inside ARCore a moment after"
+    log "  they open (#2754). 3D demos, UI/state QA and recorded-session replay QA"
+    log "  are fine; camera-frame demos rely on their qa_mode fallback (PR #2753"
+    log "  pattern). Real camera AR needs a physical device."
   fi
 else
   log "(no emulator running — skipped ARCore check)"

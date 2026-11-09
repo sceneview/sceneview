@@ -18,7 +18,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
   target Java 17 (`flutter/sceneview_flutter/android/build.gradle`,
   `react-native/react-native-sceneview/android/build.gradle.kts`); CI builds the Flutter
   job with JDK 17.
-- **Android Studio** with an Android Gradle Plugin 9.4 release (the build uses AGP 9.4.1,
+- **Android Studio** with an Android Gradle Plugin 9.5 release (the build uses AGP 9.5.0,
   `gradle/libs.versions.toml`)
 - **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor).
   CI builds with Xcode 26, falling back to the runner's default `Xcode.app`

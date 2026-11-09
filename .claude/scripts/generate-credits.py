@@ -234,6 +234,12 @@ BUNDLED_SCOPES = [
         "ignore_suffixes": (".md", ".json"),
         "format": "html",
         "thumbnails": "models/platforms/thumbnails",
+        # Models the site serves from another scope's tree: the home hero loads
+        # `/web-demo/models/phoenix_bird.glb`, which the docs deploy copies from
+        # the web demo. Served path -> repo path; credited on this page as well.
+        "served": {
+            "web-demo/models/phoenix_bird.glb": "samples/web-demo/site/models/phoenix_bird.glb",
+        },
     },
 ]
 
@@ -840,7 +846,11 @@ def bundle_rel(scope: dict, p: Path) -> str:
     try:
         return p.relative_to(base).as_posix()
     except ValueError:
-        return pbxproj_external_resources(scope)[p]
+        pass
+    served = {ROOT / src: rel for rel, src in scope.get("served", {}).items()}
+    if p in served:
+        return served[p]
+    return pbxproj_external_resources(scope)[p]
 
 
 def scan_bundled(scope: dict) -> list[Path]:
@@ -875,6 +885,9 @@ def scan_bundled(scope: dict) -> list[Path]:
         if p.suffix in scope["ignore_suffixes"]:
             continue
         out.append(p)
+    for src in scope.get("served", {}).values():
+        if (ROOT / src).is_file() or src in manifest_sizes():
+            out.append(ROOT / src)
     for p, rel in pbxproj_external_resources(scope).items():
         if any(part.startswith(".") for part in rel.split("/")):
             continue

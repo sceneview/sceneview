@@ -40,16 +40,16 @@ export const CAR_MODELS: Record<string, CarModel> = {
     description: "Official Khronos glTF sample model — stylized toy car with PBR materials (clearcoat, metallic paint). Perfect for testing SceneView car rendering and material capabilities.",
     tags: ["toy", "sample", "pbr", "clearcoat", "khronos", "test"],
   },
-  "khronos-damaged-helmet": {
-    id: "khronos-damaged-helmet",
-    name: "Damaged Helmet (Vehicle Reference)",
+  "sf-moto-helmet": {
+    id: "sf-moto-helmet",
+    name: "Motorcycle Helmet",
     category: "test-model",
-    source: "Khronos glTF Sample Models",
-    sourceUrl: "https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/Models/DamagedHelmet",
-    format: "GLB (ready for SceneView)",
+    source: "Sketchfab — sayedgamal655 (CC BY)",
+    sourceUrl: "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
+    format: "GLB (ready for SceneView: https://sceneview.github.io/models/platforms/moto_helmet_v2.glb)",
     license: "CC BY 4.0",
-    description: "Sci-fi helmet model — useful as a PBR material reference for automotive surfaces (metallic, roughness, normal maps). Standard glTF compliance test.",
-    tags: ["helmet", "pbr", "reference", "material-test", "khronos"],
+    description: "Motorcycle helmet with glossy shell paint and a tinted visor — a PBR material reference for automotive surfaces (metallic, roughness, normal maps). Credit sayedgamal655.",
+    tags: ["helmet", "motorcycle", "pbr", "reference", "material-test"],
   },
 
   // ── Sketchfab Free Cars (CC-licensed) ───────────────────────────────────────

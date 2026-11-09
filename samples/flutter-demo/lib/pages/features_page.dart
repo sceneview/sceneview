@@ -595,8 +595,9 @@ class _LiveLightDemoState extends State<_LiveLightDemo> {
 
   void _loadSampleModel() {
     if (!_ready || _modelLoaded) return;
+    // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
     _controller.loadModel(const ModelNode(
-      modelPath: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb',
+      modelPath: 'https://sceneview.github.io/models/platforms/moto_helmet_v2.glb',
     ));
     _modelLoaded = true;
     _applyLight();

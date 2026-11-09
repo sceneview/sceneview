@@ -34,7 +34,7 @@
 #   maestro test .maestro/android/ar.yaml
 #
 # AR demos need the ARCore-friendly emulator from
-# `.claude/scripts/setup-ar-emulator.sh` (virtualscene back camera, host GPU,
+# `.claude/scripts/setup-ar-emulator.sh` (emulated back camera, host GPU,
 # Google Play Services for AR installed). They launch a live `ARSceneView`;
 # the deep-link flow still exercises tap + drag on the camera surface and
 # asserts the process stays alive — AR tracking quality itself is covered by

@@ -430,10 +430,10 @@ final class DemoRegistryGuardTests: XCTestCase {
     }
 
     /// The Featured shelf is the one list both apps share (samples audit, § 5):
-    /// cosmos as the hero, then placement, models, the Rerun replay, materials.
+    /// 3D Scan first, then cosmos (the hero), placement, models, materials.
     func testFeaturedShelfIsTheCommonList() {
         XCTAssertEqual(HomeCatalogue.featuredIds,
-                       ["cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials"])
+                       ["ar-rerun", "cosmos", "ar-placement", "model-viewer", "materials"])
     }
 
     /// A hidden id must still resolve: hiding takes a demo off the home, never

@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **50**.
+Assets bundled: **51**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -34,15 +34,16 @@ Assets bundled: **50**.
 
 ## 3D models
 
-- `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0) — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) (3.5 MB)
 - `models/khronos_fox.glb` — **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (96 KB)
 - `models/khronos_glam_velvet_sofa.glb` — **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
 - `models/khronos_iridescent_dish.glb` — **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (5.7 MB)
 - `models/khronos_lantern.glb` — **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (9.0 MB)
 - `models/khronos_sheen_chair.glb` — **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (4.1 MB)
 - `models/khronos_toy_car.glb` — **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by Guido Odendahl (model); Eric Chadwick (extensions and scene composition) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (2.2 MB)
+- `models/moto_helmet_v2.glb` — **[Motorcycle Helmet](https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac)** by sayedgamal655 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
 - `models/night_circuit.glb` — **[Night circuit (Khronos Car Concept on a SceneView set)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept)** by Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (4.2 MB)  
   The Car Concept on the night circuit built by `tools/scenes/circuit/build.sh`, the android-demo home hero (#3948)
+- `models/phoenix_bird.glb` — **[Phoenix Bird](https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042)** by NORBERTO-3D — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (1.6 MB)
 - `models/quaternius_ranger.glb` — **[Ranger](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html)** by Quaternius — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (5.7 MB)
 - `models/shiba.glb` — **[Shiba](https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c)** by zixisun51 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (669 KB)
 - `splats/rainbow_sphere.ply` — **[rainbow_sphere.ply](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (448 KB)  
@@ -73,43 +74,43 @@ Assets bundled: **50**.
   Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`
 - `augmented_images/qrcode.png` — **[qrcode.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (2 KB)  
   QR-like reference pattern drawn for `ARImageDemo`
-- `materials/ar_mesh_tint.filamat` — **[ar_mesh_tint.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (49 KB)  
+- `materials/ar_mesh_tint.filamat` — **[ar_mesh_tint.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (65 KB)  
   Compiled from `samples/android-demo/src/main/materials/ar_mesh_tint.mat` (AR overlays that tint the camera image, #4623)
-- `materials/cosmos_dust.filamat` — **[cosmos_dust.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (40 KB)  
+- `materials/cosmos_dust.filamat` — **[cosmos_dust.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (59 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_dust.mat` (Cosmos demo, #4152)
-- `materials/cosmos_planet.filamat` — **[cosmos_planet.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (57 KB)  
+- `materials/cosmos_planet.filamat` — **[cosmos_planet.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (78 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_planet.mat` (Cosmos ringed world, #4192)
-- `materials/cosmos_plasma.filamat` — **[cosmos_plasma.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (56 KB)  
+- `materials/cosmos_plasma.filamat` — **[cosmos_plasma.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (77 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_plasma.mat` (Cosmos demo, #4152)
-- `materials/cosmos_ribbon.filamat` — **[cosmos_ribbon.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (47 KB)  
+- `materials/cosmos_ribbon.filamat` — **[cosmos_ribbon.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (70 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_ribbon.mat` (Cosmos demo, #4152)
-- `materials/cosmos_ring.filamat` — **[cosmos_ring.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (44 KB)  
+- `materials/cosmos_ring.filamat` — **[cosmos_ring.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (64 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_ring.mat` (Cosmos ringed world, #4192)
-- `materials/cosmos_spacetime.filamat` — **[cosmos_spacetime.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (54 KB)  
+- `materials/cosmos_spacetime.filamat` — **[cosmos_spacetime.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (77 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_spacetime.mat` (Cosmos Spacetime view)
-- `materials/cosmos_sprite.filamat` — **[cosmos_sprite.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (43 KB)  
+- `materials/cosmos_sprite.filamat` — **[cosmos_sprite.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (66 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_sprite.mat` (Cosmos demo, #4152)
-- `materials/pool_coping.filamat` — **[pool_coping.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (627 KB)  
+- `materials/pool_coping.filamat` — **[pool_coping.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (332 KB)  
   Compiled from `samples/android-demo/src/main/materials/pool_coping.mat` (Pool in the garden)
-- `materials/pool_liner.filamat` — **[pool_liner.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (742 KB)  
+- `materials/pool_liner.filamat` — **[pool_liner.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (360 KB)  
   Compiled from `samples/android-demo/src/main/materials/pool_liner.mat` (Pool in the garden)
-- `materials/pool_night_veil.filamat` — **[pool_night_veil.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (45 KB)  
+- `materials/pool_night_veil.filamat` — **[pool_night_veil.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (63 KB)  
   Compiled from `samples/android-demo/src/main/materials/pool_night_veil.mat` (Pool in the garden)
-- `materials/pool_water.filamat` — **[pool_water.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (582 KB)  
+- `materials/pool_water.filamat` — **[pool_water.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (313 KB)  
   Compiled from `samples/android-demo/src/main/materials/pool_water.mat` (Pool in the garden)
-- `materials/replay_grid.filamat` — **[replay_grid.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (38 KB)  
+- `materials/replay_grid.filamat` — **[replay_grid.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (57 KB)  
   Compiled from `samples/android-demo/src/main/materials/replay_grid.mat` (3D Scan replay floor grid, #4040)
-- `materials/scan_surfel.filamat` — **[scan_surfel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (41 KB)  
+- `materials/scan_surfel.filamat` — **[scan_surfel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (63 KB)  
   Compiled from `samples/android-demo/src/main/materials/scan_surfel.mat` (3D Scan surfels, #4741)
-- `materials/showroom_floor.filamat` — **[showroom_floor.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (631 KB)  
+- `materials/showroom_floor.filamat` — **[showroom_floor.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (325 KB)  
   Compiled from `samples/android-demo/src/main/materials/showroom_floor.mat` (Model Viewer showroom floor)
-- `materials/studio_glass.filamat` — **[studio_glass.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (536 KB)  
+- `materials/studio_glass.filamat` — **[studio_glass.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (292 KB)  
   Compiled from `samples/android-demo/src/main/materials/studio_glass.mat`
-- `materials/studio_pbr.filamat` — **[studio_pbr.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (676 KB)  
+- `materials/studio_pbr.filamat` — **[studio_pbr.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (344 KB)  
   Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`
-- `materials/tray_wood.filamat` — **[tray_wood.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (733 KB)  
+- `materials/tray_wood.filamat` — **[tray_wood.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (359 KB)  
   Compiled from `samples/android-demo/src/main/materials/tray_wood.mat` (Rolling Balls board)
-- `materials/viewer_grid.filamat` — **[viewer_grid.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (46 KB)  
+- `materials/viewer_grid.filamat` — **[viewer_grid.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (67 KB)  
   Compiled from `samples/android-demo/src/main/materials/viewer_grid.mat` (3D viewers' ground grid, #4651)
 - `mediapipe/pose_landmarker_lite.task` — **[MediaPipe Pose Landmarker (lite)](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)** by Google LLC — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (5.8 MB)  
   On-device pose model bundle used by `ARBodyTrackerDemo`

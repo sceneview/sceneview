@@ -87,6 +87,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.node.findActivity
+import io.github.sceneview.node.reflectionProbes
 
 /**
  * A Filament 3D scene declared as Compose UI.
@@ -102,7 +103,7 @@ import io.github.sceneview.node.findActivity
  * ### Minimal usage
  * ```kotlin
  * SceneView(modifier = Modifier.fillMaxSize()) {
- *     rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+ *     rememberModelInstance(modelLoader, "models/moto_helmet.glb")?.let { instance ->
  *         ModelNode(modelInstance = instance, scaleToUnits = 0.5f)
  *     }
  * }
@@ -421,8 +422,8 @@ fun SceneView(
     /**
      * Helper that enables camera interaction similar to sketchfab or Google Maps.
      */
-    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        orbitHomePosition = cameraNode.worldPosition
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
     ),
     /**
      * Used for [SceneScope.ViewNode] composables — manages the off-screen window attachment.
@@ -548,7 +549,9 @@ fun SceneView(
     // after the caller's, so its `onDispose` runs first: the scene is already empty-handed when
     // the old environment dies, and the swap completes before any frame can be drawn.
     DisposableEffect(scene, environment) {
-        scene.indirectLight = environment.indirectLight
+        // Through the scene's probe registry: an active `ReflectionProbeNode` keeps the scene's
+        // light, and this one comes back when the last probe lets go (#4928).
+        scene.reflectionProbes.setEnvironmentLight(environment.indirectLight)
         scene.skybox = environment.skybox
         // The first frozen image anyone would have hit: a dark/light toggle that swaps the
         // environment while the scene is parked. The IBL and skybox are replaced in Filament and
@@ -559,7 +562,7 @@ fun SceneView(
             // Only what this effect put there: a `ReflectionProbeNode`, or the caller, may have
             // given the scene another light since.
             if (scene.skybox === environment.skybox) scene.skybox = null
-            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+            scene.reflectionProbes.releaseEnvironmentLight(environment.indirectLight)
         }
     }
     LaunchedEffect(view, scene) {
@@ -1531,6 +1534,10 @@ private suspend fun ModelLoader.loadModelInstanceOrNull(
  * Only one engine per process is typically needed. Pass it explicitly to all `remember*` helpers
  * if you want to share Filament resources across multiple `SceneView` composables.
  *
+ * To keep most of that work out of the composition, start [EngineWarmUp] before the 3D screen: it
+ * prepares the EGL context on a background thread, the default [eglContextCreator] takes it, and the
+ * composition only builds the [Engine] itself, which Filament ties to the main thread.
+ *
  * @param eglContextCreator Factory for the EGL context. Override for custom EGL configurations.
  * @param engineCreator     Factory for the [Engine]. Override to customise engine flags. A custom
  * creator should keep the feature flag the default sets, without which destroying a renderer joins
@@ -1703,6 +1710,11 @@ fun rememberRenderer(
  * loading via `updateLoad()`, which is called automatically every frame inside `SceneView`.
  *
  * Use [rememberModelInstance] to load a specific model file.
+ *
+ * Cheap to create: gltfio's material provider, whose archive takes tens of milliseconds to
+ * decompress, is built by the first model the loader creates, not here. The Basis Universal
+ * tables its texture loader needs are built here once per process, unless [EngineWarmUp] already
+ * built them off the main thread.
  *
  * @param engine  The Filament [Engine] that owns the loaded assets.
  * @param context Android context used to open asset files. Defaults to [LocalContext].
@@ -2153,9 +2165,9 @@ fun rememberOnGestureListener(
  *
  * Pass `null` to `SceneView(cameraManipulator = null)` to disable camera interaction entirely.
  *
- * `orbitHomePosition` is the camera's **eye position** — not a "home" it returns to: no built-in
- * gesture does that, `onDoubleTap` is a plain callback `SceneView` forwards to your code and
- * never wires to the camera. For the common case of framing a subject from a known distance,
+ * `orbitHomePosition` is the camera's **eye position** — not a "home" it returns to on its own:
+ * no built-in gesture does that, the built-in double-tap zooms in (see "Going back to the start"
+ * below for the one-line way to reset). For the common case of framing a subject from a known distance,
  * prefer [rememberCameraManipulator] with `orbitRadius` instead — it sidesteps the vector-length
  * reasoning below entirely.
  *
@@ -2197,22 +2209,95 @@ fun rememberOnGestureListener(
  * `|orbitHomePosition − contentCentre|`. The `orbitRadius` overload sidesteps all of this for the
  * common case: with the default (origin) target its value *is* the subject distance (#2932).
  *
+ * ### Changing the inputs
+ *
+ * The manipulator is keyed on [orbitHomePosition], [targetPosition] and [key], compared by value:
+ * pass a new eye or target (a framing computed once the model has loaded, a viewpoint picker)
+ * and a fresh manipulator is built from it, and `SceneView` glides the camera from the pose on
+ * screen to the new one over ~0.6 s instead of cutting. Passing an equal value again — a
+ * `Position(…)` literal re-created on every recomposition — changes nothing. A rebuild starts a
+ * new orbit, so whatever the user did to the camera is replaced: derive the eye once from what
+ * it depends on, don't animate it frame by frame.
+ *
+ * Never pass a *live* value such as `cameraNode.worldPosition`: the camera node follows the
+ * manipulator, so that value changes on every orbit and each recomposition would rebuild the
+ * manipulator under the user's finger. To start from the camera node's position, leave the
+ * `cameraManipulator` argument out — `SceneView`'s default does exactly that, without rebuilding.
+ *
+ * [creator] is not a key: a lambda is a new instance whenever it captures a value that is
+ * re-created on recomposition, which would rebuild the camera on every recomposition. A different
+ * [creator] is picked up the next time the manipulator is rebuilt — change [key] to make that
+ * happen now. [inertia] never rebuilds: it is written onto the live manipulator.
+ *
+ * ### Going back to the start
+ *
+ * Change [key] to rebuild the manipulator at its starting pose: `SceneView` glides the camera
+ * back over ~0.6 s. The classic "double-tap to reset the view", with no `key { }` block around
+ * the call — the built-in double-tap zoom is turned off so it does not start before the glide:
+ *
+ * ```kotlin
+ * var resets by remember { mutableIntStateOf(0) }
+ * SceneView(
+ *     cameraManipulator = rememberCameraManipulator(
+ *         orbitHomePosition = Position(x = 0f, y = 0.5f, z = 2.45f),
+ *         key = resets,
+ *     ).apply {
+ *         (this as? CameraGestureDetector.DefaultCameraManipulator)?.isDoubleTapZoomEnabled = false
+ *     },
+ *     onGestureListener = rememberOnGestureListener(onDoubleTap = { _, _ -> resets++ }),
+ * )
+ * ```
+ *
  * @param orbitHomePosition Camera's initial eye position in **world space** (optional). Its
  *                          *length* is the framing distance under the default
  *                          `autoCenterContent = true` — see above. Omitting it does **not** give
  *                          you Filament's `(0, 0, 1)`: `SceneView`'s own default manipulator
  *                          passes `cameraNode.worldPosition`, i.e. `(0, 0.4, 2.75)` ≈ 2.78 m for
  *                          the default [CameraNode]. No built-in gesture returns the camera to
- *                          this position either; `onDoubleTap` is a plain callback that
- *                          `SceneView` forwards to your code and never wires to the camera.
+ *                          this position either; change [key] to do it. A new value rebuilds
+ *                          the manipulator (compared by value).
  * @param targetPosition    Point in world space the camera orbits around and initially looks at
  *                          (optional; defaults to the origin). Does not affect the distance.
+ *                          A new value rebuilds the manipulator (compared by value).
  * @param inertia           How orbit, pan and pinch coast after the finger lifts.
  *                          [Inertia.Default] (the default) coasts like a native fling;
  *                          [Inertia.None] stops the camera dead on release. Applied to the
  *                          manipulator [creator] returns when it is a
- *                          [CameraGestureDetector.DefaultCameraManipulator].
+ *                          [CameraGestureDetector.DefaultCameraManipulator]. Never rebuilds it.
+ * @param key               Any value, like the key of `remember(key) { }`: when it changes, the
+ *                          manipulator is rebuilt by [creator] at its starting pose and the camera
+ *                          glides back there. Use it to reset the view, or to make a new [creator]
+ *                          take effect. `null` (the default) never triggers a rebuild on its own.
  * @param creator           Factory for the manipulator. Override to set a custom orbit speed, etc.
+ *                          Called again whenever [orbitHomePosition], [targetPosition] or [key]
+ *                          changes — not when only the lambda instance changes.
+ */
+@Composable
+fun rememberCameraManipulator(
+    orbitHomePosition: Position? = null,
+    targetPosition: Position? = null,
+    inertia: Inertia = Inertia.Default,
+    key: Any? = null,
+    creator: () -> CameraGestureDetector.CameraManipulator = {
+        createDefaultCameraManipulator(orbitHomePosition, targetPosition)
+    }
+): CameraGestureDetector.CameraManipulator =
+    // Keyed on what the caller passes (#4838): the keyless `remember(creator)` this replaces built
+    // the manipulator once and ignored every later eye, target and creator. SceneView's own
+    // default, which passes the camera's live position, goes through the keyless
+    // `rememberDefaultCameraManipulator` instead.
+    remember(orbitHomePosition, targetPosition, key) { creator() }.also { it.applyInertia(inertia) }
+
+/**
+ * [rememberCameraManipulator] without a `key`: same manipulator, same keys on
+ * [orbitHomePosition] and [targetPosition], never rebuilt on demand. See the overload that
+ * takes `key` for the full documentation.
+ *
+ * Kept visible on purpose, not only for binary compatibility. `key` sits before the trailing
+ * [creator] lambda, so without this overload a positional call such as
+ * `rememberCameraManipulator(eye, target, Inertia.None, factory)` would still compile but
+ * silently pass `factory` as the key. With it, Kotlin resolves that call (and every call that
+ * does not name `key`) here, where the fourth argument is the [creator] it always was.
  */
 @Composable
 fun rememberCameraManipulator(
@@ -2222,7 +2307,13 @@ fun rememberCameraManipulator(
     creator: () -> CameraGestureDetector.CameraManipulator = {
         createDefaultCameraManipulator(orbitHomePosition, targetPosition)
     }
-): CameraGestureDetector.CameraManipulator = remember(creator).also { it.applyInertia(inertia) }
+): CameraGestureDetector.CameraManipulator = rememberCameraManipulator(
+    orbitHomePosition = orbitHomePosition,
+    targetPosition = targetPosition,
+    inertia = inertia,
+    key = null,
+    creator = creator,
+)
 
 /**
  * Binary-compatibility shim for the pre-`inertia` descriptor of [rememberCameraManipulator]. The
@@ -2380,8 +2471,8 @@ fun Scene(
     fillLightNode: LightNode? = rememberFillLightNode(engine),
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
-    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        orbitHomePosition = cameraNode.worldPosition
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
     ),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),

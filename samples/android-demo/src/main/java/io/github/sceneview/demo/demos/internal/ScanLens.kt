@@ -70,10 +70,11 @@ class ScanLens {
          * Whether the live view should see through the phone in [phase]: whenever ARCore tracks,
          * paused included — the frames keep coming, so the cloud stays put in the room and
          * resuming does not move the view — except while saving, when the saving orbit round the
-         * whole cloud (#4719) owns the view.
+         * whole cloud (#4719) owns the view, and while the review flies the view to the parts still
+         * to fix ([reviewing]).
          */
-        fun seesThroughPhone(tracking: Boolean, phase: ScanPhase): Boolean =
-            tracking && phase != ScanPhase.Saving
+        fun seesThroughPhone(tracking: Boolean, phase: ScanPhase, reviewing: Boolean = false): Boolean =
+            tracking && phase != ScanPhase.Saving && !reviewing
 
         /** [pose] as a column-major model matrix, the layout `Pose.toMatrix` writes, into [out]. */
         fun poseMatrix(pose: DebugPose, out: FloatArray) {

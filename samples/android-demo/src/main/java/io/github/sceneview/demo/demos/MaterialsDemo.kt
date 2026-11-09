@@ -1305,7 +1305,7 @@ private fun OcclusionSection(
     val environmentLoader = rememberEnvironmentLoader(engine)
 
     // Hoisted so the helmet loads once — re-toggling the occluder never re-parses the GLB.
-    val helmetInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val helmetInstance = rememberModelInstance(modelLoader, "models/moto_helmet_v2.glb")
 
     val occlusionMaterial = rememberOcclusionMaterialInstance(materialLoader)
     // Ground truth, not the feature: a translucent slate plate that shows WHERE the plane is.

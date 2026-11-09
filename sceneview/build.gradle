@@ -122,6 +122,10 @@ dependencies {
     // Android KTX
     implementation libs.androidx.fragment.ktx
 
+    // App Startup — EngineWarmUpInitializer is public, and an app opts in to it through its own
+    // manifest, so the Initializer type has to be on the app's classpath.
+    api libs.androidx.startup.runtime
+
     // Compose
     implementation libs.androidx.compose.ui
     implementation libs.androidx.compose.foundation

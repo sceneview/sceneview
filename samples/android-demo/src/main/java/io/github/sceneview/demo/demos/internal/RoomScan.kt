@@ -568,6 +568,35 @@ object ScanCopy {
     }
 
     /**
+     * The guide's line ([ScanGuidance.hint]): the turn to the target and how far it is, in the
+     * floor plan's units under [locale] ([scanPathLength]) — the gap no wall stands on yet
+     * ([turnHint] once there), or the part Fix now is filling in ([FIX_AHEAD] once there). The
+     * line shows each stride ([ScanGuide.STEP_M]); a screen reader hears it through the coaching
+     * line's live region at [GuideSpeech]'s pace — a new side at once, a new distance every 3 s at most.
+     */
+    fun guideHint(hint: ScanGuideHint, locale: Locale = Locale.getDefault()): String {
+        val away = hint.metres?.let { scanPathLength(it, locale) }
+        if (!hint.fix) {
+            return when {
+                away == null -> turnHint(hint.turn)
+                hint.turn == ScanTurn.Ahead -> "Walk $away ahead — no wall yet at the dashed line"
+                hint.turn == ScanTurn.Behind -> "Turn around — no wall seen behind you yet, $away away"
+                else -> "${turnWord(hint.turn)} — no wall yet at the dashed line, $away away"
+            }
+        }
+        return when (hint.turn) {
+            ScanTurn.Ahead -> if (away == null) FIX_AHEAD else "Walk $away ahead to the part to fix"
+            ScanTurn.Behind -> "Turn around — the part to fix is behind you" + (away?.let { ", $it away" } ?: "")
+            else -> if (away == null) "${turnWord(hint.turn)} to the part to fix" else "${turnWord(hint.turn)} — the part to fix is $away away"
+        }
+    }
+
+    private fun turnWord(turn: ScanTurn) = if (turn == ScanTurn.Left) "Turn left" else "Turn right"
+
+    /** At the part to fix, facing it: its amber frame says the rest. */
+    const val FIX_AHEAD = "The part to fix is ahead — fill the amber frame"
+
+    /**
      * The phone faces a wall drawn only where the scan saw it ([io.github.sceneview.demo.demos.internal.WallExtent]):
      * walking along it is what finishes it (QA 2026-10-22, remark 3).
      */

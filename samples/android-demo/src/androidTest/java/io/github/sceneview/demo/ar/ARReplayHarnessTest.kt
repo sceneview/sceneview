@@ -2,16 +2,25 @@ package io.github.sceneview.demo.ar
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import io.github.sceneview.ar.replay.ARReplayCheck
+import io.github.sceneview.ar.replay.ARReplayCheckResult
+import io.github.sceneview.ar.replay.ARReplayMetrics
+import io.github.sceneview.ar.replay.ARReplayObservation
+import io.github.sceneview.ar.replay.ARReplayProbe
+import io.github.sceneview.ar.replay.ScreenRect
+import io.github.sceneview.ar.replay.evaluateReplay
 import io.github.sceneview.demo.ALL_DEMOS
-import io.github.sceneview.demo.DemoCategory
-import io.github.sceneview.demo.isArDemo
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.demoPackage
+import io.github.sceneview.demo.isArDemo
+import io.github.sceneview.demo.labs.Labs
+import io.github.sceneview.demo.labs.LabsStore
 import io.github.sceneview.demo.mainActivityComponent
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,90 +32,59 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * **Autonomous AR replay harness** — slice 4 of the device-QA umbrella
- * ([#1560](https://github.com/sceneview/sceneview/issues/1560), this slice
- * [#1565](https://github.com/sceneview/sceneview/issues/1565)).
+ * **AR replay harness**: every AR demo replays a recorded ARCore session on an emulator, and each
+ * one is graded on what it shows, not only on surviving the launch (umbrella
+ * [#1560](https://github.com/sceneview/sceneview/issues/1560), first slice #1565).
  *
- * This is the headless, emulator-runnable entrypoint the orchestrator runner
- * ([#1566](https://github.com/sceneview/sceneview/issues/1566)) drives via
- * `.claude/scripts/ar-replay-qa.sh`. It exercises **every AR demo** against a
- * recorded ARCore session — no physical device, no live camera, no IMU — and
- * emits a machine-readable pass/fail-per-demo result.
+ * ## How every demo replays
  *
- * ## What it does
+ * Each demo is deep-linked with `--es ar_playback_file <path>`. On a debug build that puts an
+ * [ARReplayProbe] at the root of the composition ([DemoSettings.arReplayProbe], provided through
+ * `LocalARSessionProbe`), and every `ARSceneView` below it replays the recording: one injection
+ * point, no per-demo wiring. The same probe counts the frames each demo consumed and measures it.
  *
- * For each AR demo (see [ALL_DEMOS] and [isArDemo]) it:
+ * ## What is checked, per demo ([checksFor])
  *
- * 1. Deploys the bundled ARCore recording into the app's external files dir.
- * 2. Deep-links the demo with `--es ar_playback_file <path>` so any demo that
- *    honours [DemoSettings.arPendingPlaybackFile] auto-enters replay.
- * 3. Leaves it running for a fixed window and asserts the process stayed
- *    alive (catches ARCore session-init exceptions, missing manifest entries,
- *    Filament JNI failures — the catastrophic class of regression).
- * 4. For `ar-record-playback` — the one demo that genuinely consumes
- *    [DemoSettings.arPendingPlaybackFile] today — it additionally asserts the
- *    ARCore frame counter advanced, i.e. the dataset really replayed frames
- *    rather than just not crashing.
+ * - [ARReplayCheck.REPLAYED]: the recording advanced at least a few frames (every demo);
+ * - [ARReplayCheck.SCENE_BRIGHTNESS]: the middle of the screen is not dark (every demo) — the
+ *   "dark render" defect;
+ * - [ARReplayCheck.PLANE]: a plane tracked within N frames (plane and placement demos);
+ * - [ARReplayCheck.ANCHOR]: an anchor is tracking (placement demos);
+ * - [ARReplayCheck.MODEL_COVERAGE]: the visible models' projected bounds cover a sane share of
+ *   the screen — neither nothing (hidden, culled, off screen) nor everything (the camera inside
+ *   a model scaled far too large: the "giant invisible model" defect);
+ * - [ARReplayCheck.MODEL_BRIGHTNESS]: the screen area the models cover is not dark.
  *
- * The per-demo verdict is collected into `ar-qa-summary.json` on the device
- * (see [writeSummary]) so the slice-5 orchestrator can pull one file instead
- * of scraping instrumentation stdout.
+ * The arithmetic lives in `arsceneview` (`io.github.sceneview.ar.replay`), unit-tested on the JVM
+ * and reusable by any app that provides the same probe.
  *
- * ## Honest reporting of `replayedFrames == 0` ([#1645](https://github.com/sceneview/sceneview/issues/1645))
+ * ## Recordings: the real corpus, or the bundled clip
  *
- * ARCore dataset playback (`Session.setPlaybackDataset`) needs camera-stream
- * capabilities the x86 software-GPU CI emulator does not provide — on that
- * host the recorded session never advances a frame. That is an *environment*
- * limitation, not a product regression, so the replay demo must NOT be graded
- * a green `alive` (which the device-QA orchestrator counts as a pass): a pass
- * would falsely claim "the recorded ARCore session replayed".
+ * Clips found on the device in [DEFAULT_CORPUS_DIR] (`/sdcard/Download/SceneView/ar-corpus/`,
+ * override with `-e ar_corpus_dir <dir>`) are each replayed through every demo — that is where a
+ * real corpus filmed on a phone goes; it is never committed. With no corpus, the harness falls
+ * back to the bundled `bundled-pixel9-sample.mp4` (debug sourceSet).
  *
- * The harness therefore distinguishes:
+ * ## Instrumentation arguments
  *
- * - `ar-record-playback` with `replayedFrames == 0` -> [VERDICT_SKIPPED] with
- *   a `reason` ("ARCore dataset playback not supported on this emulator").
- *   `ar-replay-qa.sh` reads the summary's `skipped` count, surfaces it as a
- *   dedicated exit code, and the device-QA AR leg records `skipped`, never
- *   `passed`.
- * - any live-only demo with `replayedFrames == 0` -> [VERDICT_ALIVE]: those
- *   demos build a live `ARSceneView` and never consume `playbackDataset`, so
- *   surviving the launch IS their contract — that stays a pass.
+ * - `-e ar_shard_index <i> -e ar_shard_count <n>`: run one shard of the sweep (#2643);
+ * - `-e ar_demos id1,id2`: replay only these demo launch ids;
+ * - `-e ar_hide_models true`: hide every model — the deliberate failure that must make
+ *   [ARReplayCheck.MODEL_COVERAGE] fail on the placement demos;
+ * - `-e ar_corpus_dir <dir>`: where to look for real clips.
  *
- * ## Relationship to the sibling AR tests
+ * ## Verdicts (`ar-qa-summary.json`, `Download/SceneView/`)
  *
- * - [ARDemoPlaybackSmokeTest] — sweeps `androidTest/assets/ar-recordings/`
- *   fixtures (currently README-only; populated by #1442) through the single
- *   `ar-record-playback` demo with a per-fixture golden.
- * - **This test** — breadth: every AR demo, crash-survival + (where the demo
- *   supports it) real frame-advance, with a machine-readable summary.
+ * - `replayed`: frames advanced and every check of the demo passed;
+ * - `failed`: frames advanced but a check failed — a product regression, with the measured value;
+ * - `skipped`: no frame advanced. ARCore dataset playback does not run on every emulator
+ *   (#1645, #2620), so this is reported as an environment limitation, never as a pass;
+ * - `alive`: the demo opens no AR session on its first screen ([NO_SESSION_ON_ENTRY]), so there is
+ *   nothing to replay; it survived the launch;
+ * - `crashed`: the process died.
  *
- * The two are complementary: depth (golden frames) on the replay demo,
- * breadth (all AR demos) here.
- *
- * ## Why most demos get a crash-survival check, not a golden
- *
- * Only `ar-record-playback` reads [DemoSettings.arPendingPlaybackFile] and
- * mounts `ARSceneView(playbackDataset = file)`. The other AR demos build a
- * **live** `ARSceneView`. Driving them through a recorded session still has
- * real value — ARCore session creation, demo composition, the Filament
- * engine, model loading and the AR overlay all execute on the emulator, which
- * is exactly the layer that breaks silently between releases. As demos opt
- * into `playbackDataset` (tracked as a follow-up to #1565) this harness picks
- * them up automatically and the verdict graduates from `alive` to
- * `replayed`.
- *
- * ## Requirements
- *
- * - The bundled recording ships in the `debug` sourceSet
- *   (`src/debug/assets/ar-recordings/bundled-pixel9-sample.mp4`) — run against
- *   a debug build, or `git sparse-checkout add` that path.
- * - Google Play Services for AR installed (the ARCore runtime drives playback
- *   even for recorded sessions). `.claude/scripts/setup-ar-emulator.sh`
- *   provisions an emulator with it.
- *
- * The test is `assumeTrue`-skipped — never failed — when the bundled
- * recording is absent, so a sparse checkout that excludes the MP4 stays
- * green.
+ * A downscaled screenshot of each demo, taken at grading time, is saved to
+ * `Download/SceneView/ar-replay/<key>.png` so the verdict can be checked by eye.
  */
 @RunWith(AndroidJUnit4::class)
 class ARReplayHarnessTest {
@@ -114,425 +92,439 @@ class ARReplayHarnessTest {
     private lateinit var context: Context
     private lateinit var device: UiDevice
 
-    /**
-     * Shard selection, parsed from instrumentation args
-     * `-e ar_shard_index <i> -e ar_shard_count <n>` (see [resolveShard]).
-     *
-     * `ar-replay-qa.sh` splits the AR sweep into [shardCount] separate
-     * `am instrument` invocations — with an `am force-stop` between them — so no
-     * single instrumentation process replays all ~32 AR demos back-to-back. On
-     * the software-GPU CI emulator a single ~4-minute sweep sustains enough
-     * CPU/RAM pressure to sever the `am instrument -w` adb connection mid-run
-     * (rc=255, no verdict recovered — [#2643](https://github.com/sceneview/sceneview/issues/2643)).
-     * Bounding each process to a handful of demos keeps every shard short enough
-     * to complete, and a severed shard costs only its own demos, not the whole
-     * sweep. Default (no args): one shard, every AR demo — the old behaviour.
-     */
+    /** See the class doc: `ar_shard_index` / `ar_shard_count` (#2643). */
     private var shardIndex: Int = 0
     private var shardCount: Int = 1
+    private var demoFilter: Set<String>? = null
+    private var hideModels: Boolean = false
+    private var corpusDir: String = DEFAULT_CORPUS_DIR
 
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        resolveShard()
+        resolveArguments()
         // Pre-grant runtime permissions: AGP reinstalls the demo APK before each
         // test class, wiping any prior `pm grant`. Without CAMERA the AR demos
         // block at the permission prompt instead of mounting the ARSceneView.
         device.executeShellCommand("pm grant $demoPackage android.permission.CAMERA")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
-    }
-
-    @Test
-    fun everyArDemo_replaysRecordedSession_withoutCrash() {
-        val recording = locateBundledRecording()
-        assumeTrue(
-            "Bundled ARCore recording not found in the demo APK assets " +
-                "($BUNDLED_RECORDING). It ships in the `debug` sourceSet " +
-                "(samples/android-demo/src/debug/assets/ar-recordings/) — run the " +
-                "test against a debug build, or `git sparse-checkout add` that path.",
-            recording != null,
-        )
-        val deployed = deployFixtureToAppPrivateDir(recording!!)
-
-        val allArDemos = ALL_DEMOS.filter { it.isArDemo }
-        assertTrue(
-            "Expected at least one Augmented Reality demo in ALL_DEMOS",
-            allArDemos.isNotEmpty(),
-        )
-        // Replay only this shard's slice (round-robin over the registry order, so
-        // heavy demos spread across shards). Default shardCount==1 → every demo.
-        val arDemos = allArDemos.filterIndexed { idx, _ -> idx % shardCount == shardIndex }
-        // `plannedDemos` records every demo this shard INTENDS to replay, written
-        // into the summary before the sweep starts. If the process is severed
-        // mid-shard, the recovered summary still enumerates the whole shard, so
-        // `ar-replay-qa.sh` can mark the demos never reached as `skipped`
-        // (environmental) rather than losing them silently (#2643).
-        // Samples step 0 folded `ar-record-playback` into `ar-rerun` as its Session MP4
-        // mode. The card is listed once, but the sweep launches both modes: the plain id
-        // opens the Rerun mode, and the retired id (still a live deep-link alias) opens
-        // the Session MP4 mode, the one that consumes the recording.
-        val plannedDemos = arDemos.flatMap { REPLAY_MODE_LAUNCHES[it.id] ?: listOf(it.id) }
-
-        // Persist the verdict INCREMENTALLY, not just once after the loop. Every
-        // AR demo is deep-linked into MainActivity's process — which is ALSO the
-        // instrumentation host (the manifest declares no `android:process`) — so a
-        // native crash (Filament/GL on a software-GPU emulator) or an lmkd
-        // OOM-kill of that RAM-heavy process takes THIS test process down with it.
-        // When that happens `am instrument` exits non-zero with no JUnit output,
-        // and a trailing-only `writeSummary` would never run: the whole sweep
-        // vanishes with no machine-readable verdict at all
-        // ([#2620](https://github.com/sceneview/sceneview/issues/2620) — the CI
-        // x86_64 / swiftshader AR leg failed exactly this way, rc=1 and no summary,
-        // silently for over a week). Writing the summary before each launch and
-        // tagging the about-to-run demo in `inProgress` guarantees a mid-sweep
-        // process death still leaves an honest PARTIAL verdict on disk that names
-        // the culprit. On a healthy host the final write below clears `inProgress`
-        // and the summary is identical to the old behaviour.
-        val results = ArrayList<DemoResult>(arDemos.size)
-        try {
-            for (demoId in plannedDemos) {
-                writeSummary(results, inProgress = demoId, plannedDemos = plannedDemos)
-                results += replayDemo(demoId, deployed)
-                // Land on the demo list between demos so onNewIntent fires cleanly
-                // for the next deep-link.
-                device.pressHome()
-            }
-        } finally {
-            deployed.delete()
-        }
-
-        val summaryPath = writeSummary(results, inProgress = null, plannedDemos = plannedDemos)
-
-        // The harness fails if ANY demo crashed during replay. Demos that the
-        // recording could not advance (live-only demos that ignore the playback
-        // extra) are reported as `alive`, not failed — surviving a recorded
-        // session is the contract for those.
-        val crashed = results.filter { it.verdict == VERDICT_CRASHED }
-        assertTrue(
-            "AR replay harness: ${crashed.size}/${results.size} demo(s) crashed " +
-                "during recorded-session replay — ${crashed.joinToString { it.demoId }}. " +
-                "Full machine-readable verdict: $summaryPath",
-            crashed.isEmpty(),
-        )
-
-        // Honesty gate (#1645): `ar-record-playback` is the one demo that MUST
-        // actually replay the recorded ARCore dataset. If it advanced 0 frames
-        // the harness is `skipped`, not `passed` — ARCore dataset playback is
-        // unsupported on this (CI software-GPU) emulator. `assumeTrue` makes
-        // JUnit/instrumentation report the test as skipped rather than green;
-        // `ar-replay-qa.sh` reads the summary's `skipped` count to surface the
-        // same verdict to the device-QA orchestrator.
-        val replayDemo = results.firstOrNull { it.demoId == REPLAY_DEMO_ID }
-        if (replayDemo != null) {
-            assumeTrue(
-                "AR replay harness SKIPPED: `$REPLAY_DEMO_ID` replayed " +
-                    "${replayDemo.replayedFrames} ARCore frame(s) (need " +
-                    "$MIN_REPLAYED_FRAMES) — $REASON_PLAYBACK_UNSUPPORTED. " +
-                    "This is an environment limitation, not a product bug; the " +
-                    "AR leg cannot be graded a pass. Full verdict: $summaryPath",
-                replayDemo.verdict != VERDICT_SKIPPED,
+        // Labs demos (ar-pool, ar-image-stabilization…) otherwise open on the Labs explainer
+        // and never start a session. Open Labs for this process only: an in-memory store,
+        // nothing written to the app's preferences.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            Labs.attach(
+                object : LabsStore {
+                    override var joined: Boolean = true
+                    override var enabled: Boolean = true
+                },
             )
         }
     }
 
+    @Test
+    fun everyArDemo_replaysRecordedSession_andPassesItsChecks() {
+        val recordings = resolveRecordings()
+        assumeTrue(
+            "No ARCore recording: no clip in $corpusDir and the bundled $BUNDLED_RECORDING is " +
+                "not in the APK assets. It ships in the `debug` sourceSet " +
+                "(samples/android-demo/src/debug/assets/ar-recordings/) — run the test against " +
+                "a debug build, or `git sparse-checkout add` that path.",
+            recordings.isNotEmpty(),
+        )
+
+        val allArDemos = ALL_DEMOS.filter { it.isArDemo }
+        assertTrue("Expected at least one Augmented Reality demo in ALL_DEMOS", allArDemos.isNotEmpty())
+        // Samples step 0 folded `ar-record-playback` into `ar-rerun` as its Session MP4 mode.
+        // The card is listed once, but the sweep launches both modes.
+        val launchIds = allArDemos.flatMap { REPLAY_MODE_LAUNCHES[it.id] ?: listOf(it.id) }
+            .filter { demoFilter == null || it in demoFilter!! }
+        val items = recordings.flatMap { rec -> launchIds.map { ReplayItem(it, rec) } }
+            // Round-robin over (recording, demo), so heavy demos spread across shards.
+            .filterIndexed { idx, _ -> idx % shardCount == shardIndex }
+        // Written into the summary before the sweep starts: if the process is severed
+        // mid-shard, `ar-replay-qa.sh` can still mark the items never reached (#2643).
+        val planned = items.map { it.key }
+
+        // Persisted after every demo, not only at the end: the demos run in the
+        // instrumentation's own process, so a native crash or an OOM kill takes the test
+        // down with it, and the partial summary (with `inProgress`) is all that is left
+        // to name the culprit (#2620).
+        val results = ArrayList<DemoResult>(items.size)
+        try {
+            for (item in items) {
+                writeSummary(results, inProgress = item.key, plannedDemos = planned, recordings)
+                results += replayDemo(item)
+                // Land on the launcher between demos so onNewIntent fires cleanly next time.
+                device.pressHome()
+            }
+        } finally {
+            recordings.filter { it.deployed }.forEach { it.file.delete() }
+        }
+
+        val summaryPath = writeSummary(results, inProgress = null, plannedDemos = planned, recordings)
+
+        val crashed = results.filter { it.verdict == VERDICT_CRASHED }
+        assertTrue(
+            "AR replay harness: ${crashed.size}/${results.size} demo(s) crashed during replay — " +
+                "${crashed.joinToString { it.key }}. Full verdict: $summaryPath",
+            crashed.isEmpty(),
+        )
+        val failed = results.filter { it.verdict == VERDICT_FAILED }
+        assertTrue(
+            "AR replay harness: ${failed.size}/${results.size} demo(s) failed a check — " +
+                failed.joinToString("; ") { r ->
+                    r.key + ": " + r.checks.filterNot { it.passed }
+                        .joinToString { "${it.check} ${it.measured} (want ${it.expected})" }
+                } + ". Full verdict: $summaryPath",
+            failed.isEmpty(),
+        )
+        // Honesty gate (#1645): if not a single frame replayed anywhere, the AR leg cannot be
+        // graded a pass. Reported as skipped, with the reason in the summary.
+        val skipped = results.filter { it.verdict == VERDICT_SKIPPED }
+        assumeTrue(
+            "AR replay harness SKIPPED: ${skipped.size}/${results.size} demo(s) replayed 0 " +
+                "frames — $REASON_NO_FRAMES. Full verdict: $summaryPath",
+            skipped.isEmpty(),
+        )
+    }
+
     // ── Per-demo replay ─────────────────────────────────────────────────────
 
-    /**
-     * Replays [demoId] against the deployed [recording]. Returns the verdict:
-     *
-     * - [VERDICT_REPLAYED] — the demo consumed recorded ARCore frames (the
-     *   frame counter advanced past [MIN_REPLAYED_FRAMES]).
-     * - [VERDICT_ALIVE] — a live-only AR demo (one that does NOT consume
-     *   `playbackDataset`) whose process stayed alive for the replay window.
-     *   Surviving a recorded-session launch IS the contract for these, so
-     *   this is a pass.
-     * - [VERDICT_SKIPPED] — the replay demo ([REPLAY_DEMO_ID]) survived but
-     *   advanced 0 frames: ARCore dataset playback is unsupported on this
-     *   emulator (#1645). An environment limitation, reported honestly with a
-     *   `reason` — never a misleading green.
-     * - [VERDICT_CRASHED] — the demo's process died during replay.
-     */
-    private fun replayDemo(demoId: String, recording: File): DemoResult {
-        // Reset the cross-thread frame counter so a stale value from the
-        // previous demo cannot be mistaken for this demo's progress.
-        DemoSettings.arPlaybackFrameCount = 0
+    private fun replayDemo(item: ReplayItem): DemoResult {
+        val previousProbe = DemoSettings.arReplayProbe
+        launchDemo(item.demoId, item.recording.file.absolutePath)
+        val probe = awaitNewProbe(previousProbe)
+        val checks = checksFor(item.demoId)
 
-        launchDemo(demoId, recording.absolutePath)
-        // Give the activity time to boot, ARCore to init, and the recorded
-        // session to advance a few frames.
-        SystemClock.sleep(REPLAY_WINDOW_MILLIS)
+        // Poll until the demo shows what it is graded on, or the window closes.
+        val start = SystemClock.uptimeMillis()
+        var observation = probe?.observe() ?: ARReplayObservation(frames = 0)
+        while (true) {
+            val elapsed = SystemClock.uptimeMillis() - start
+            if (elapsed >= MAX_WINDOW_MILLIS) break
+            if (elapsed >= MIN_WINDOW_MILLIS && isSettled(observation, checks)) break
+            if (!isDemoProcessAlive()) break
+            SystemClock.sleep(POLL_MILLIS)
+            observation = probe?.observe() ?: observation
+        }
 
-        val frames = DemoSettings.arPlaybackFrameCount
-        val alive = isDemoProcessAlive()
-        // Only `ar-record-playback` mounts `ARSceneView(playbackDataset = …)`,
-        // so it is the only demo for which a 0-frame run is a problem rather
-        // than expected live-only behaviour.
-        val isReplayDemo = demoId == REPLAY_DEMO_ID
-
+        if (!isDemoProcessAlive()) {
+            return DemoResult(item, VERDICT_CRASHED, observation, emptyList(), "process died")
+        }
+        // Brightness needs the screen's own pixels.
+        val shot = takeScreenshot()
+        if (shot != null) {
+            val (pixels, w, h) = shot
+            val modelRect = observation.coverage?.rect
+            observation = observation.copy(
+                sceneLuminance = ARReplayMetrics.meanLuminance(pixels, w, h, ScreenRect.CENTRE, stride = 2),
+                modelLuminance = modelRect?.let { ARReplayMetrics.meanLuminance(pixels, w, h, it) },
+            )
+        }
+        val results = evaluateReplay(observation, checks)
         val verdict = when {
-            !alive -> VERDICT_CRASHED
-            frames >= MIN_REPLAYED_FRAMES -> VERDICT_REPLAYED
-            isReplayDemo -> VERDICT_SKIPPED
-            else -> VERDICT_ALIVE
+            observation.frames >= MIN_REPLAYED_FRAMES ->
+                if (results.all { it.passed }) VERDICT_REPLAYED else VERDICT_FAILED
+            item.demoId in NO_SESSION_ON_ENTRY -> VERDICT_ALIVE
+            else -> VERDICT_SKIPPED
         }
-        val reason = if (verdict == VERDICT_SKIPPED) REASON_PLAYBACK_UNSUPPORTED else null
-        return DemoResult(demoId, verdict, frames, reason)
-    }
-
-    /**
-     * `true` when the demo process is still running. Uses `pidof` over the
-     * app's package name — a crashed Activity tears down the process, so an
-     * empty `pidof` is an unambiguous crash signal.
-     */
-    private fun isDemoProcessAlive(): Boolean {
-        val out = device.executeShellCommand("pidof $demoPackage")
-        return out.trim().isNotEmpty()
-    }
-
-    // ── Machine-readable summary ────────────────────────────────────────────
-
-    /**
-     * Writes a machine-readable verdict file to
-     * `/sdcard/Download/SceneView/ar-qa-summary.json` — a path that survives
-     * AGP's post-test app uninstall so `.claude/scripts/ar-replay-qa.sh` can
-     * `adb pull` it.
-     *
-     * The shape mirrors the device-QA harness convention (umbrella #1560): a
-     * top-level `harness` / `passed` / `skipped` / `failed` / `total` header
-     * plus a `demos` array of `{ id, verdict, replayedFrames, reason? }`.
-     * Slice #1564's `web-qa-summary.json` follows the same
-     * `{ harness, passed, total, <items> }` skeleton so the slice-5
-     * orchestrator can merge platform reports without special-casing each.
-     *
-     * Called after **every** demo (not just once at the end) so a mid-sweep
-     * process death still leaves a partial verdict on disk — see the call site.
-     * [inProgress], when non-null, records the demo currently being replayed as a
-     * top-level `inProgress` field: if the shared MainActivity/instrumentation
-     * process dies replaying it, that field names the exact culprit for
-     * `ar-replay-qa.sh` to surface ([#2620](https://github.com/sceneview/sceneview/issues/2620)).
-     * The final post-loop write passes `null`, clearing it.
-     *
-     * `passed` counts only genuine passes — `replayed` and live-only `alive`.
-     * A `skipped` demo (#1645: replay demo that advanced 0 frames because the
-     * emulator cannot do ARCore dataset playback) is reported in its own
-     * `skipped` count and is NOT folded into `passed`, so a green AR leg
-     * genuinely means the recorded session replayed.
-     */
-    private fun writeSummary(
-        results: List<DemoResult>,
-        inProgress: String?,
-        plannedDemos: List<String>,
-    ): String {
-        val demos = JSONArray()
-        for (r in results) {
-            val obj = JSONObject()
-                .put("id", r.demoId)
-                .put("verdict", r.verdict)
-                .put("replayedFrames", r.replayedFrames)
-            if (r.reason != null) obj.put("reason", r.reason)
-            demos.put(obj)
+        val reason = when (verdict) {
+            VERDICT_SKIPPED -> if (probe == null) REASON_NO_PROBE else REASON_NO_FRAMES
+            VERDICT_ALIVE -> REASON_NO_SESSION
+            else -> null
         }
-        val passed = results.count { it.verdict == VERDICT_REPLAYED || it.verdict == VERDICT_ALIVE }
-        val skipped = results.count { it.verdict == VERDICT_SKIPPED }
-        val failed = results.count { it.verdict == VERDICT_CRASHED }
-        val root = JSONObject()
-            .put("harness", "ar-replay")
-            .put("recording", BUNDLED_RECORDING)
-            .put("passed", passed)
-            .put("skipped", skipped)
-            .put("failed", failed)
-            .put("total", results.size)
-            .put("shardIndex", shardIndex)
-            .put("shardCount", shardCount)
-        // The demos this shard set out to replay. If the shared process is
-        // severed mid-sweep, the recovered summary still names every planned
-        // demo — `ar-replay-qa.sh` marks the ones with no verdict `skipped`
-        // (environmental), so no demo is lost silently (#2643).
-        root.put("plannedDemos", JSONArray(plannedDemos))
-        // Non-null only between launching a demo and its verdict landing in
-        // `results`. If the shared process dies in that window this is the last
-        // thing written, so it pinpoints the crashing demo (#2620).
-        if (inProgress != null) root.put("inProgress", inProgress)
-        root.put("demos", demos)
+        return DemoResult(item, verdict, observation, results, reason)
+    }
 
-        return writeSummaryFile(root.toString(2))
+    /** Every frame-count-independent signal a check waits for has arrived. */
+    private fun isSettled(o: ARReplayObservation, checks: Set<ARReplayCheck>): Boolean {
+        if (o.frames < MIN_REPLAYED_FRAMES) return false
+        if (ARReplayCheck.PLANE in checks && o.firstPlaneFrame == null) return false
+        if (ARReplayCheck.ANCHOR in checks && o.trackedAnchors == 0) return false
+        if (ARReplayCheck.MODEL_COVERAGE in checks && (o.coverage?.rect == null)) return false
+        return true
     }
 
     /**
-     * Persists the summary JSON to `Download/SceneView/ar-qa-summary.json` via
-     * the **MediaStore** API and returns that public path.
-     *
-     * A raw `java.io.File` write to `/sdcard/Download/…` is silently swallowed by
-     * scoped storage for a third-party app on `targetSdk >= 30` — it never lands
-     * where `adb pull` (shell view) can see it, which is why #2620's incremental
-     * summary was never recovered on the CI emulator and the OOM-killed leg could
-     * not name the in-flight demo ([#2643](https://github.com/sceneview/sceneview/issues/2643)).
-     * MediaStore is the one location a permission-less app can publish to the
-     * shared `Download/` collection — the same pattern `DemoInteractionTest`
-     * uses for its QA screenshots. Delete-then-insert keeps the incremental
-     * rewrites idempotent (no orphaned rows across the ~per-demo calls).
+     * The probe the new launch installed — the app's own marker that it took the intent — or
+     * `null` if none arrived within [PROBE_WAIT_MILLIS] (release build, rejected path, process
+     * gone). A cold start of the debug demo on a slow device can take well over 5 s, so the
+     * wait returns as soon as the marker appears rather than after a fixed delay.
      */
-    private fun writeSummaryFile(json: String): String {
-        val resolver = context.contentResolver
-        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        val relativePath = "Download/SceneView/"
-        val displayName = "ar-qa-summary.json"
-
-        val selection = "${MediaStore.Downloads.RELATIVE_PATH}=? AND " +
-            "${MediaStore.Downloads.DISPLAY_NAME}=?"
-        val args = arrayOf(relativePath, displayName)
-        resolver.query(collection, arrayOf(MediaStore.Downloads._ID), selection, args, null)
-            ?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(0)
-                    val oldUri = android.content.ContentUris.withAppendedId(collection, id)
-                    resolver.delete(oldUri, null, null)
-                }
-            }
-
-        val pending = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, displayName)
-            put(MediaStore.Downloads.MIME_TYPE, "application/json")
-            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
-            put(MediaStore.Downloads.IS_PENDING, 1)
+    private fun awaitNewProbe(previous: ARReplayProbe?): ARReplayProbe? {
+        val deadline = SystemClock.uptimeMillis() + PROBE_WAIT_MILLIS
+        while (SystemClock.uptimeMillis() < deadline) {
+            val current = DemoSettings.arReplayProbe
+            if (current != null && current !== previous) return current
+            if (!isDemoProcessAlive()) return null
+            SystemClock.sleep(POLL_MILLIS)
         }
-        val uri = resolver.insert(collection, pending)
-            ?: error("MediaStore insert returned null for ar-qa-summary.json")
-        resolver.openOutputStream(uri)?.use { out ->
-            out.write(json.toByteArray())
-        } ?: error("MediaStore openOutputStream returned null for ar-qa-summary.json")
-        resolver.update(
-            uri,
-            ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
-            null,
-            null,
-        )
-        return "/sdcard/$relativePath$displayName"
+        return null
+    }
+
+    private fun isDemoProcessAlive(): Boolean =
+        device.executeShellCommand("pidof $demoPackage").trim().isNotEmpty()
+
+    /** The screen, downscaled, as ARGB pixels — and saved for the reviewer. */
+    private fun takeScreenshot(): Triple<IntArray, Int, Int>? {
+        val full = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+            ?: return null
+        val w = SHOT_WIDTH
+        val h = (full.height.toFloat() / full.width * w).toInt().coerceAtLeast(1)
+        val small = Bitmap.createScaledBitmap(full, w, h, true)
+            .copy(Bitmap.Config.ARGB_8888, false)
+        full.recycle()
+        val pixels = IntArray(w * h)
+        small.getPixels(pixels, 0, w, 0, 0, w, h)
+        lastShot = small
+        return Triple(pixels, w, h)
+    }
+
+    private var lastShot: Bitmap? = null
+
+    // ── Recordings ──────────────────────────────────────────────────────────
+
+    private data class Recording(val name: String, val file: File, val deployed: Boolean)
+
+    private data class ReplayItem(val demoId: String, val recording: Recording) {
+        /** The demo id for the bundled clip, `id@clip` for a corpus clip. */
+        val key: String
+            get() = if (recording.name == BUNDLED_RECORDING) demoId else "$demoId@${recording.name}"
     }
 
     /**
-     * Parses the `-e ar_shard_index <i> -e ar_shard_count <n>` instrumentation
-     * args into [shardIndex] / [shardCount]. Absent or malformed args fall back
-     * to the whole sweep (index 0, count 1). `count` is clamped to `>= 1` and
-     * `index` to `0 <= index < count` so a bad invocation can never drop demos.
+     * The clips to replay: every `.mp4` of [corpusDir] on the device, copied into the app's
+     * `ar-recordings/` (the only place `ar_playback_file` is accepted from); the bundled clip
+     * when there is none.
      */
-    private fun resolveShard() {
-        val arguments = InstrumentationRegistry.getArguments()
-        val count = arguments.getString("ar_shard_count")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
-        val index = (arguments.getString("ar_shard_index")?.toIntOrNull() ?: 0)
-            .coerceIn(0, count - 1)
-        shardCount = count
-        shardIndex = index
-    }
-
-    private data class DemoResult(
-        val demoId: String,
-        val verdict: String,
-        val replayedFrames: Int,
-        /** Human-readable reason — set only for [VERDICT_SKIPPED]. */
-        val reason: String? = null,
-    )
-
-    // ── Fixture plumbing ────────────────────────────────────────────────────
-
-    /**
-     * Locates the bundled ARCore recording in the demo APK's assets. It ships
-     * in the `debug` sourceSet (`src/debug/assets/ar-recordings/`), so it is
-     * read through the *target* app's asset manager. Returns `null` if absent
-     * (release build, or a sparse checkout that excluded the MP4).
-     */
-    private fun locateBundledRecording(): String? = runCatching {
-        context.assets.list("ar-recordings")
-            ?.firstOrNull { it == BUNDLED_RECORDING }
-    }.getOrNull()
-
-    /**
-     * Copies the bundled recording from the demo APK's assets into the app's
-     * external-files `ar-recordings/` directory — the path the demo's
-     * Recordings list scans and that the `--es ar_playback_file` security
-     * guard in `MainActivity` allows.
-     */
-    private fun deployFixtureToAppPrivateDir(fixtureName: String): File {
-        val targetDir = context.getExternalFilesDir("ar-recordings")!!
-        targetDir.mkdirs()
-        val targetFile = File(targetDir, fixtureName)
-        context.assets.open("ar-recordings/$fixtureName").use { input ->
-            targetFile.outputStream().use { output -> input.copyTo(output) }
+    private fun resolveRecordings(): List<Recording> {
+        val targetDir = context.getExternalFilesDir("ar-recordings")!!.apply { mkdirs() }
+        val corpus = device.executeShellCommand("ls $corpusDir").lines()
+            .map { it.trim() }
+            .filter { it.endsWith(".mp4", ignoreCase = true) && !it.contains(' ') }
+        val fromCorpus = corpus.mapNotNull { name ->
+            val target = File(targetDir, "corpus-$name")
+            device.executeShellCommand("cp $corpusDir/$name ${target.absolutePath}")
+            target.takeIf { it.isFile && it.length() > 0 }?.let { Recording(name, it, deployed = true) }
         }
-        return targetFile
+        if (fromCorpus.isNotEmpty()) return fromCorpus
+
+        val bundled = runCatching {
+            context.assets.list("ar-recordings")?.firstOrNull { it == BUNDLED_RECORDING }
+        }.getOrNull() ?: return emptyList()
+        val target = File(targetDir, bundled)
+        context.assets.open("ar-recordings/$bundled").use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+        return listOf(Recording(bundled, target, deployed = true))
     }
 
-    /**
-     * Deep-links a demo via `am start --es demo <slug>` with the recorded
-     * session attached via `--es ar_playback_file <path>` — the same path
-     * `ARDemoPlaybackSmokeTest` uses. Demos that honour
-     * [DemoSettings.arPendingPlaybackFile] auto-enter replay; the others
-     * launch live and the extra is harmlessly ignored.
-     */
     private fun launchDemo(demoSlug: String, playbackFile: String) {
         device.executeShellCommand(
             "am start -n $mainActivityComponent " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK so onNewIntent fires on re-launch
                 "--es demo $demoSlug " +
-                "--es ar_playback_file $playbackFile",
+                "--es ar_playback_file $playbackFile" +
+                if (hideModels) " --ez ar_qa_hide_models true" else "",
         )
     }
 
+    private fun resolveArguments() {
+        val arguments = InstrumentationRegistry.getArguments()
+        val count = arguments.getString("ar_shard_count")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val index = (arguments.getString("ar_shard_index")?.toIntOrNull() ?: 0).coerceIn(0, count - 1)
+        shardCount = count
+        shardIndex = index
+        demoFilter = arguments.getString("ar_demos")
+            ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet()
+            ?.takeIf { it.isNotEmpty() }
+        hideModels = arguments.getString("ar_hide_models") == "true"
+        corpusDir = arguments.getString("ar_corpus_dir")?.takeIf { it.isNotBlank() } ?: DEFAULT_CORPUS_DIR
+    }
+
+    // ── Machine-readable summary ────────────────────────────────────────────
+
+    private data class DemoResult(
+        val item: ReplayItem,
+        val verdict: String,
+        val observation: ARReplayObservation,
+        val checks: List<ARReplayCheckResult>,
+        val reason: String? = null,
+    ) {
+        val key: String get() = item.key
+    }
+
+    /**
+     * Writes `Download/SceneView/ar-qa-summary.json` through MediaStore — the one shared
+     * location a permission-less app can publish to and `adb pull` can read after the app is
+     * gone (#2643). Shape: `{ harness, passed, skipped, failed, total, plannedDemos,
+     * inProgress?, demos: [{ id, key, recording, verdict, replayedFrames, reason?, metrics,
+     * checks }] }`. `passed` counts `replayed` and `alive`; `failed` counts `crashed` and
+     * `failed`.
+     */
+    private fun writeSummary(
+        results: List<DemoResult>,
+        inProgress: String?,
+        plannedDemos: List<String>,
+        recordings: List<Recording>,
+    ): String {
+        val demos = JSONArray()
+        for (r in results) {
+            val o = r.observation
+            val metrics = JSONObject()
+                .put("firstPlaneFrame", o.firstPlaneFrame ?: JSONObject.NULL)
+                .put("trackedAnchors", o.trackedAnchors)
+                .put("visibleModels", o.visibleModels)
+                .put("coverage", o.coverage?.fraction?.toDouble() ?: JSONObject.NULL)
+                .put("cameraInsideModel", o.coverage?.cameraInside ?: false)
+                .put("sceneLuminance", o.sceneLuminance?.toDouble() ?: JSONObject.NULL)
+                .put("modelLuminance", o.modelLuminance?.toDouble() ?: JSONObject.NULL)
+            val checks = JSONArray()
+            r.checks.forEach { c ->
+                checks.put(
+                    JSONObject().put("check", c.check.name).put("passed", c.passed)
+                        .put("measured", c.measured).put("expected", c.expected),
+                )
+            }
+            val obj = JSONObject()
+                .put("id", r.item.demoId)
+                .put("key", r.key)
+                .put("recording", r.item.recording.name)
+                .put("verdict", r.verdict)
+                .put("replayedFrames", o.frames)
+                .put("metrics", metrics)
+                .put("checks", checks)
+            if (r.reason != null) obj.put("reason", r.reason)
+            demos.put(obj)
+        }
+        // Save the screenshot of the demo just graded next to the summary.
+        results.lastOrNull()?.let { r -> lastShot?.let { saveScreenshot(r.key, it) } }
+        lastShot = null
+
+        val root = JSONObject()
+            .put("harness", "ar-replay")
+            .put("recording", recordings.joinToString(",") { it.name })
+            .put("hideModels", hideModels)
+            .put("passed", results.count { it.verdict == VERDICT_REPLAYED || it.verdict == VERDICT_ALIVE })
+            .put("replayed", results.count { it.verdict == VERDICT_REPLAYED })
+            .put("skipped", results.count { it.verdict == VERDICT_SKIPPED })
+            .put("failed", results.count { it.verdict == VERDICT_CRASHED || it.verdict == VERDICT_FAILED })
+            .put("total", results.size)
+            .put("shardIndex", shardIndex)
+            .put("shardCount", shardCount)
+            .put("plannedDemos", JSONArray(plannedDemos))
+        if (inProgress != null) root.put("inProgress", inProgress)
+        root.put("demos", demos)
+        return publish("Download/SceneView/", "ar-qa-summary.json", "application/json") { out ->
+            out.write(root.toString(2).toByteArray())
+        }
+    }
+
+    private fun saveScreenshot(key: String, bitmap: Bitmap) {
+        val safe = key.replace(Regex("[^A-Za-z0-9._@-]"), "_")
+        runCatching {
+            publish("Download/SceneView/ar-replay/", "$safe.png", "image/png") { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+        }
+        bitmap.recycle()
+    }
+
+    /** Delete-then-insert through MediaStore, so incremental rewrites stay idempotent. */
+    private fun publish(
+        relativePath: String,
+        displayName: String,
+        mime: String,
+        write: (java.io.OutputStream) -> Unit,
+    ): String {
+        val resolver = context.contentResolver
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val selection = "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.DISPLAY_NAME}=?"
+        resolver.query(
+            collection, arrayOf(MediaStore.Downloads._ID), selection,
+            arrayOf(relativePath, displayName), null,
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                resolver.delete(android.content.ContentUris.withAppendedId(collection, cursor.getLong(0)), null, null)
+            }
+        }
+        val pending = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+            put(MediaStore.Downloads.MIME_TYPE, mime)
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, pending) ?: error("MediaStore insert returned null for $displayName")
+        resolver.openOutputStream(uri)?.use(write) ?: error("MediaStore openOutputStream returned null for $displayName")
+        resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+        return "/sdcard/$relativePath$displayName"
+    }
+
     private companion object {
-        /** Bundled recording filename — matches `src/debug/assets/ar-recordings/`. */
         const val BUNDLED_RECORDING = "bundled-pixel9-sample.mp4"
+        const val DEFAULT_CORPUS_DIR = "/sdcard/Download/SceneView/ar-corpus"
 
-        /**
-         * Time to leave each demo running before reading its verdict. Long
-         * enough for ARCore session init + a few replayed frames (~5 s on a
-         * Pixel 7a emulator), short enough that a whole shard of the AR sweep
-         * stays well under the instrumentation timeout (the sweep is split into
-         * shards on CI so no one process replays every AR demo — see
-         * [shardCount]).
-         */
-        const val REPLAY_WINDOW_MILLIS = 7_000L
+        /** Every demo gets at least this long before it is graded. */
+        const val MIN_WINDOW_MILLIS = 7_000L
 
-        /**
-         * Minimum ARCore frames a demo must consume to be graded `replayed`
-         * rather than merely `alive`. A handful of frames proves the recorded
-         * dataset actually drove the session.
-         */
+        /** A demo still waiting for a plane, an anchor or a model is graded at this point. */
+        const val MAX_WINDOW_MILLIS = 25_000L
+        const val POLL_MILLIS = 250L
+        /** Cap on waiting for the app to take the launch intent (see [awaitNewProbe]). */
+        const val PROBE_WAIT_MILLIS = 120_000L
+        const val SHOT_WIDTH = 360
         const val MIN_REPLAYED_FRAMES = 5
 
         const val VERDICT_REPLAYED = "replayed"
+        const val VERDICT_FAILED = "failed"
         const val VERDICT_ALIVE = "alive"
         const val VERDICT_SKIPPED = "skipped"
         const val VERDICT_CRASHED = "crashed"
 
-        /**
-         * The one demo that mounts `ARSceneView(playbackDataset = …)` and so
-         * MUST advance the recorded ARCore frame counter. Since samples step 0 it is
-         * the Session MP4 mode of `ar-rerun`, and this retired slug is the deep-link
-         * alias that opens that mode ([REPLAY_MODE_LAUNCHES]). Live-only AR demos never consume the playback
-         * dataset and are graded `alive`, not `skipped`.
-         */
+        /** Session MP4 mode of `ar-rerun`, reached through this retired deep-link alias. */
         const val REPLAY_DEMO_ID = "ar-record-playback"
 
-        /**
-         * Cards whose modes are swept separately, by the launch id of each mode. Since
-         * samples step 0 [REPLAY_DEMO_ID] is the Session MP4 mode of `ar-rerun`, reached
-         * through its deep-link alias.
-         */
         val REPLAY_MODE_LAUNCHES: Map<String, List<String>> =
             mapOf("ar-rerun" to listOf("ar-rerun", REPLAY_DEMO_ID))
 
         /**
-         * Reason surfaced for a [VERDICT_SKIPPED] replay demo: the recorded
-         * ARCore dataset (`Session.setPlaybackDataset`) advanced 0 frames. This
-         * reproduces on BOTH the software-GPU CI emulator (no replayable camera
-         * stream) AND host-GPU local emulators, so the message must not
-         * over-specify "software-GPU CI emulator" ([#2620](https://github.com/sceneview/sceneview/issues/2620)).
+         * Demos whose first screen opens no AR session (a chooser, a dollhouse, reference
+         * poses): nothing replays until the user acts, so they are graded on surviving.
          */
-        const val REASON_PLAYBACK_UNSUPPORTED =
-            "ARCore dataset playback not supported on this emulator configuration " +
-                "(0 replayable frames — reproduces on both software-GPU CI and " +
-                "host-GPU local emulators)"
+        val NO_SESSION_ON_ENTRY = setOf("ar-placement", "ar-splat-room", "ar-xr")
+
+        private val BASE = setOf(ARReplayCheck.REPLAYED, ARReplayCheck.SCENE_BRIGHTNESS)
+        private val PLANES = BASE + ARReplayCheck.PLANE
+        private val PLACEMENT = PLANES + setOf(
+            ARReplayCheck.ANCHOR, ARReplayCheck.MODEL_COVERAGE, ARReplayCheck.MODEL_BRIGHTNESS,
+        )
+
+        /**
+         * Placement demos (`FeaturePlacementScene` places the model on the first good plane, no
+         * tap needed) are graded on plane, anchor and model; plane demos on the plane; the rest
+         * on frames and brightness. Metrics are recorded for every demo either way, so a demo
+         * can be promoted here once its numbers are known.
+         */
+        val CHECKS: Map<String, Set<ARReplayCheck>> = buildMap {
+            listOf(
+                "ar-cloud-anchor", "ar-depth-occlusion",
+                "ar-people-occlusion", "ar-image-stabilization",
+            ).forEach { put(it, PLACEMENT) }
+            // The pool is procedural geometry anchored on the plane, not a ModelNode: model
+            // coverage cannot see it, so it is graded on the anchor it places.
+            put("ar-pool", PLANES + ARReplayCheck.ANCHOR)
+            listOf("ar-plane-node", "ar-surfaces", "ar-measure").forEach { put(it, PLANES) }
+        }
+
+        fun checksFor(demoId: String): Set<ARReplayCheck> = CHECKS[demoId] ?: BASE
+
+        const val REASON_NO_FRAMES =
+            "ARCore dataset playback advanced 0 frames — not supported on this emulator " +
+                "configuration (#1645, #2620); environment limitation, not graded a pass"
+        const val REASON_NO_PROBE =
+            "no replay probe reached the app (release build, or the recording path was rejected)"
+        const val REASON_NO_SESSION = "opens no AR session on its first screen; survived the launch"
     }
 }

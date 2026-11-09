@@ -9,7 +9,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.65.0` and `io.github.sceneview:arsceneview:4.65.0`.
+Artifact versions: `io.github.sceneview:sceneview:4.67.0` and `io.github.sceneview:arsceneview:4.67.0`.
 
 ---
 
@@ -890,6 +890,8 @@ The same on `BillboardNode`, `TextNode` and [ViewNode](#viewnode), which all tak
 ## ReflectionProbeNode
 
 Overrides the scene's indirect light (IBL) with a baked `Environment` inside a spherical zone. With `radius = 0f` (the default) the probe is global and always active; otherwise it applies only while `cameraPosition` is within `radius` metres of `position`.
+
+When several zones hold the camera, the highest `priority` wins (on a tie, the probe added most recently). When none does, the scene goes back to its `SceneView` environment — the current one, so a dark/light toggle made while a probe was active is honoured, and a new `SceneView` environment never overrides an active probe. In `ARSceneView` the environment's light is still written directly, so that last guarantee does not hold in AR yet (see #4928).
 
 ```kotlin
 val scene = rememberScene(engine)

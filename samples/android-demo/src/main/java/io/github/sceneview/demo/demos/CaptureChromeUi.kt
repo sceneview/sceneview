@@ -32,6 +32,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -127,7 +129,8 @@ internal fun ScanStepRow(step: ScanStep, modifier: Modifier = Modifier) {
 
 /**
  * The capture's one message: a blocker as a banner, its cause then its way out, announced as it
- * shows; otherwise `Next: …`, where to go and why. Never both.
+ * shows; otherwise `Next: …`, where to go and why — announced too when it is the guide's line
+ * ([CaptureCue.Next.spoken]). Never both.
  */
 @Composable
 internal fun ScanCueLine(cue: CaptureCue, modifier: Modifier = Modifier) {
@@ -173,7 +176,16 @@ internal fun ScanCueLine(cue: CaptureCue, modifier: Modifier = Modifier) {
                 .widthIn(max = ArOverlay.maxWidth)
                 .heightIn(min = SceneViewTokens.Layout.touchTarget)
                 .testTag(SCAN_HINT_TAG)
-                .semantics(mergeDescendants = true) {},
+                .then(
+                    // The guide's line is read out as it changes, at its own pace ([GuideSpeech]);
+                    // the others are read when reached.
+                    cue.spoken?.let { spoken ->
+                        Modifier.clearAndSetSemantics {
+                            contentDescription = CaptureChrome.nextLine(spoken)
+                            liveRegion = LiveRegionMode.Polite
+                        }
+                    } ?: Modifier.semantics(mergeDescendants = true) {},
+                ),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

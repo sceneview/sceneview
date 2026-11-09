@@ -20,6 +20,7 @@ shadow-only material — the quad writes just the shadow, never a visible surfac
 ```kotlin
 import com.google.android.filament.Box as FilamentBox
 import com.google.android.filament.LightManager
+import io.github.sceneview.model.restPoseBoundingBox
 
 @Composable
 fun GroundShadowViewer() {
@@ -49,7 +50,7 @@ fun GroundShadowViewer() {
         cameraManipulator = rememberCameraManipulator(),
     ) {
         model?.let { instance ->
-            val he = instance.model.boundingBox.halfExtent   // [x, y, z] half-extents
+            val he = instance.model.restPoseBoundingBox.halfExtent   // [x, y, z] half-extents
             val groundY = -he[1]                             // model's bottom
             val planeSize = (maxOf(he[0], he[2]) * 6f).coerceAtLeast(1f)
 

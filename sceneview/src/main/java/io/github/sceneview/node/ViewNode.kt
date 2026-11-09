@@ -36,6 +36,7 @@ import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene
 import com.google.android.filament.Stream
+import com.google.android.filament.android.StreamHelper
 import com.google.android.filament.Texture
 import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.collision.HitResult
@@ -219,8 +220,7 @@ class ViewNode(
      */
     private val frameSignal = SurfaceFrameSignal(::requestRender)
 
-    val stream: Stream = Stream.Builder()
-        .stream(surfaceTexture)
+    val stream: Stream = StreamHelper.setStreamSource(Stream.Builder(), surfaceTexture)
         .build(engine)
 
     val texture: Texture = Texture.Builder()

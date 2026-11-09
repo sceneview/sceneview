@@ -16,18 +16,23 @@ import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
 import com.google.android.filament.gltfio.isReleased
 import com.google.android.filament.gltfio.releaseSourceDataIfAlive
+import io.github.sceneview.BuildConfig
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.GltfioTextureTables
 import io.github.sceneview.freshFenceProbe
 import io.github.sceneview.isAsyncLoadPending
+import io.github.sceneview.isValid
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
+import io.github.sceneview.material.EmissiveScale
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.FileLoader
 import io.github.sceneview.utils.loadFileBuffer
@@ -103,8 +108,59 @@ class ModelLoader(
         coroutineScope.coroutineContext + SupervisorJob(coroutineScope.coroutineContext[Job])
     )
 
-    val materialProvider = UbershaderProvider(engine)
-    val assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
+    // gltfio's material provider and asset loader, created by the first model, on the main thread
+    // like every model. Building the UbershaderProvider decompresses gltfio's whole material
+    // archive, tens of milliseconds, and a loader that never creates a model — `SceneView {}` makes
+    // one by default — never needs it. Out of `rememberModelLoader`, it no longer lands in the
+    // composition a 3D screen opens with.
+    private val gltfLoaders = lazy {
+        // A JNI call into the engine, like every model: a first read on another thread would race
+        // the main thread's Filament calls.
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "ModelLoader creates gltfio's material provider on first use, on the main thread: read " +
+                "materialProvider or assetLoader there first, or create a model first"
+        }
+        lifecycle.checkCanCreate("create gltfio's material provider")
+        val provider = UbershaderProvider(engine)
+        recordingProvider.attach(provider)
+        provider to AssetLoader(engine, recordingProvider, EntityManager.get())
+    }
+
+    // gltfio gets the ubershader through a recorder of each instance's Material, which Filament
+    // 1.77 no longer keeps (see `materialOrNull`). It exists before the ubershader so that release
+    // paths can use its ownership records without creating gltfio's loaders.
+    private val recordingProvider = RecordingMaterialProvider()
+
+    /**
+     * gltfio's ubershader material provider, shared by every model of this loader. Created on first
+     * use — by the first model, or by reading this — which must happen on the main thread: a first
+     * read anywhere else throws an [IllegalStateException].
+     */
+    val materialProvider: UbershaderProvider get() = gltfLoaders.value.first
+
+    /** gltfio's asset loader. Created with [materialProvider], on first use. */
+    val assetLoader: AssetLoader get() = gltfLoaders.value.second
+
+    /** Whether [materialProvider] and [assetLoader] exist yet. */
+    internal val hasGltfLoaders: Boolean get() = gltfLoaders.isInitialized()
+
+    // gltfio keeps the JNIEnv of the thread that first created its material provider and calls
+    // back into Java through it (AssetLoader.cpp), so a model created on another thread aborts
+    // natively with no message. Fail loudly in debug instead; dead code in release.
+    private fun checkMainThread(call: String) {
+        if (BuildConfig.DEBUG) {
+            check(Looper.myLooper() == Looper.getMainLooper()) {
+                "ModelLoader.$call must be called on the main thread (Filament JNI is main-thread-only)."
+            }
+        }
+    }
+
+    // Not `assetLoader::createAsset`: a bound reference reads `assetLoader` where it is written, on
+    // the suspend load's own thread, and the first read creates the material provider.
+    private fun createAsset(buffer: Buffer): Model? = assetLoader.createAsset(buffer)
+
+    // Never while EngineWarmUp builds Basis's tables on its own thread: see GltfioTextureTables.
+    private fun newResourceLoader() = GltfioTextureTables.creating { ResourceLoader(engine, true) }
 
     /**
      * The gltfio loader that finalises every model's textures, pumped by [updateLoad].
@@ -113,7 +169,7 @@ class ModelLoader(
      * model's load has to be cancelled before its textures finished decoding, this property moves
      * to a fresh loader (see [destroyModel]). The previous one stays valid until [destroy].
      */
-    var resourceLoader = ResourceLoader(engine, true)
+    var resourceLoader = newResourceLoader()
 
     // Loaders swapped out by an interrupted cancel (see `asyncLoad`), kept alive until `destroy()`:
     // gltfio's Java `ResourceLoader.destroy()` does not zero its native handle, so any caller still
@@ -183,7 +239,7 @@ class ModelLoader(
             if (interrupted) {
                 resourceLoader.evictResourceData()
                 retiredResourceLoaders += resourceLoader
-                resourceLoader = ResourceLoader(engine, true)
+                resourceLoader = newResourceLoader()
             }
             asyncLoadStarted = false
             readProgress()
@@ -195,7 +251,7 @@ class ModelLoader(
             // effect, dropping the asset pointer before the asset is freed, comes from retiring
             // this loader instead: nothing of it is left to finalise, and a fresh one takes over.
             retiredResourceLoaders += resourceLoader
-            resourceLoader = ResourceLoader(engine, true)
+            resourceLoader = newResourceLoader()
             asyncLoadStarted = false
             readProgress()
         },
@@ -265,9 +321,11 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): Model {
         lifecycle.checkCanCreate("create a model")
+        checkMainThread("createModel")
         val source = buffer.toFilamentModelSource()
         val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
         val model = assetLoader.createAsset(source.buffer)
+            .also { recordingProvider.ownership.claim(it) }
             ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
         loadResources(model, source, gltf, resourceResolver)
@@ -335,7 +393,7 @@ class ModelLoader(
     suspend fun loadModel(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): Model? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { it }
+    ): Model? = loadModelThen(fileLocation, resourceResolver, ::createAsset) { it }
 
     /**
      * Shared body of every suspend load: reads and converts the file off the main thread, creates
@@ -405,7 +463,7 @@ class ModelLoader(
         val model = createOrDestroyOnCancel(::destroyModel) {
             // A plain `loadModel` runs in its caller's scope, which `destroy()` does not cancel.
             if (!lifecycle.canCreate) return@createOrDestroyOnCancel null
-            create(source.buffer)?.also { models += it }
+            create(source.buffer).also { recordingProvider.ownership.claim(it) }?.also { models += it }
         } ?: run {
             if (lifecycle.canCreate) {
                 Log.w(TAG, "Could not parse $fileLocation")
@@ -448,6 +506,8 @@ class ModelLoader(
                     throw UnloadableModelException("Could not load $fileLocation without ${missing.joinToString()}")
                 }
                 val cgltfKeys = withContext(Dispatchers.Default) { cgltfKeys(source.buffer, uris) }
+                // Every vertex of a skinned mesh is moved by its joints: off the main thread.
+                val restPose = withContext(Dispatchers.Default) { gltf.restPoseBounds(resources.toMap()::get) }
                 if (resources.isNotEmpty()) {
                     // The converted bytes (a PNG for an external WebP image), as gltfio gets them.
                     val loaded = resources.toMap()
@@ -484,6 +544,9 @@ class ModelLoader(
                                 "(its meshopt-compressed data could not be decoded)",
                         )
                     }
+                    // The authored glow AR scales from (#4950): Filament cannot read it back.
+                    EmissiveScale.record(model, gltf.emissiveStrengths())
+                    RestPoseBounds.record(model, restPose)
                     onLoadBegun(model)
                 }
             }
@@ -621,7 +684,7 @@ class ModelLoader(
     suspend fun loadModelInstance(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { model ->
+    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, ::createAsset) { model ->
         releasedInstance(model)
     }
 
@@ -706,7 +769,7 @@ class ModelLoader(
                     loadModelThen(
                         fileLocation,
                         resourceResolver,
-                        assetLoader::createAsset,
+                        ::createAsset,
                         onProgress = { steps.value = it },
                         onDestroyedMeanwhile = { throw IllegalStateException("$fileLocation was destroyed while it loaded") },
                         // The only load that throws it: the others keep their `null`-and-log contract.
@@ -821,6 +884,7 @@ class ModelLoader(
             val source = buffer.toFilamentModelSource()
             val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
             (assetLoader.createInstancedAsset(source.buffer, this)
+                .also { recordingProvider.ownership.claim(it) }
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, source, gltf, resourceResolver)
@@ -999,12 +1063,14 @@ class ModelLoader(
     @MainThread
     fun createInstance(model: Model): ModelInstance? {
         lifecycle.checkCanCreate("create an instance")
+        checkMainThread("createInstance")
         // gltfio reads the asset's native pointer without checking it: 0 once the asset is freed.
         // A model of another ModelLoader is fine, as it always was; one destroyed (by any loader),
         // or this loader's model whose destroy waits for its textures to decode, is not.
         val beingDestroyed = asyncLoad.inFlight === model && model !in models
         check(!model.isReleased && !beingDestroyed) { "Cannot create an instance of a destroyed model" }
         return assetLoader.createInstance(model)
+            .also { recordingProvider.ownership.claim(if (it != null) model else null) }
     }
 
     /**
@@ -1032,10 +1098,12 @@ class ModelLoader(
      * registry.
      */
     fun destroyModel(model: Model) {
+        // Its material instances are forgotten only where the model is actually claimed: a model
+        // this loader does not own (or already destroyed) keeps its owner's records intact.
         // The engine went first, or this loader is released: the model's natives went with them,
         // and every gltfio call below would reach into freed memory. Forget the model, nothing else.
         if (!lifecycle.canTouchNatives) {
-            claimAndDestroy(models, model) {}
+            claimAndDestroy(models, model) { recordingProvider.ownership.release(it) }
             return
         }
         destroyAfterCancellingLoad(
@@ -1050,10 +1118,17 @@ class ModelLoader(
                     isInFlight = { asyncLoad.inFlight === inFlight },
                     pumpedProgress = ::pumpedProgress,
                     // The engine may be gone by the time the load settles: then so is the model.
-                    destroy = { if (lifecycle.canTouchNatives) cancelThenDestroy() },
+                    destroy = {
+                        if (lifecycle.canTouchNatives) cancelThenDestroy()
+                        else recordingProvider.ownership.release(model)
+                    },
                 )
             },
         ) {
+            // Its material instances go with it, whether or not there are natives left to free.
+            recordingProvider.ownership.release(it)
+            EmissiveScale.forget(it)
+            RestPoseBounds.forget(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
@@ -1113,9 +1188,13 @@ class ModelLoader(
             // loaders: freeing the material provider's materials would call into the dead engine,
             // so they are all left to leak (a few small objects) rather than freed.
             if (!lifecycle.release()) return@afterAll
-            assetLoader.destroy()
-            materialProvider.destroyMaterials()
-            materialProvider.destroy()
+            if (gltfLoaders.isInitialized()) {
+                val (provider, loader) = gltfLoaders.value
+                loader.destroy()
+                provider.destroyMaterials()
+                provider.destroy()
+            }
+            recordingProvider.detach()
             resourceLoader.destroy()
             retiredResourceLoaders.forEach { it.destroy() }
             retiredResourceLoaders.clear()
@@ -1324,6 +1403,10 @@ class ModelLoader(
             Log.w(TAG, "${failure.message}; the model was destroyed", failure.cause)
             throw failure
         }
+        // The authored glow AR scales from (#4950): Filament cannot read a parameter back.
+        EmissiveScale.record(model, gltf.emissiveStrengths())
+        // Read before `releaseSourceData`, while the external buffers are at hand.
+        RestPoseBounds.record(model, gltf.restPoseBounds(resolved::get))
     }
 
     companion object {

@@ -13,7 +13,12 @@ import com.google.android.filament.utils.IBLPrefilterContext
 class IBLPrefilter(engine: Engine) {
 
     // Kept as named delegates so destroy() can tell what was actually created (#3885).
-    private val contextDelegate = lazy { IBLPrefilterContext(engine) }
+    private val contextDelegate = lazy {
+        // No-op when SceneView already initialised Filament; covers an engine created without it.
+        PrefilterEntitySlots.reserve()
+        PrefilterEntitySlots.contextCreated()
+        IBLPrefilterContext(engine)
+    }
     private val equirectangularToCubemapDelegate = lazy {
         IBLPrefilterContext.EquirectangularToCubemap(context)
     }

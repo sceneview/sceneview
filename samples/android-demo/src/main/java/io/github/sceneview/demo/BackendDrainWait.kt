@@ -7,6 +7,7 @@ import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.remember
 import com.google.android.filament.Engine
 import com.google.android.filament.Fence
+import io.github.sceneview.isValid
 
 /**
  * "Has Filament's backend executed everything queued so far?", asked **without blocking the

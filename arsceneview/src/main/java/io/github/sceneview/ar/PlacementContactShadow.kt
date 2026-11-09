@@ -2,9 +2,13 @@ package io.github.sceneview.ar
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.length
 import io.github.sceneview.NodeScope
+import io.github.sceneview.ar.depth.GroundContact
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.Transform
 import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.node.ContactShadowNode
 import io.github.sceneview.node.ModelNode
@@ -46,7 +50,7 @@ internal fun NodeScope.PlacementContactShadowNode(
 }
 
 /** The model's eight bounds corners in its parent's frame: rotated, scaled and grounded. */
-private fun ModelNode.groundedCorners(): List<Position> = buildList {
+internal fun ModelNode.groundedCorners(): List<Position> = buildList {
     for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
         val corner = center + Position(x * halfExtent.x, y * halfExtent.y, z * halfExtent.z)
         add(quaternion * (corner * scale) + position)
@@ -102,5 +106,41 @@ internal object PlacementContactShadow {
             sizeX = halfX * CORE_FRACTION / context.radiusU,
             sizeZ = halfZ * CORE_FRACTION / context.radiusV,
         )
+    }
+}
+
+/**
+ * The contact a placed model registers with the scene's
+ * [GroundContacts][io.github.sceneview.ar.depth.GroundContacts]: the disc its contact shadow and
+ * selection ring cover on the surface, inside which the depth occlusion counts the floor's depth
+ * noise as the floor (rule 4 in `camera_stream_depth.mat`). Pure, pinned in
+ * `PlacementGroundContactTest`.
+ */
+internal object PlacementGroundContact {
+
+    /**
+     * Disc radius in the surface frame, metres: the outer edge of the selection ring, or the
+     * contact shadow's quad when that reaches farther.
+     */
+    fun radius(footprint: SelectionRing.Footprint, quad: PlacementContactShadow.Quad?): Float {
+        val ring = if (footprint.radius > 0f) {
+            footprint.radius + SelectionRing.tubeRadius(footprint.radius)
+        } else 0f
+        val shadow = quad?.let { maxOf(it.sizeX, it.sizeZ) / 2f } ?: 0f
+        return maxOf(ring, shadow)
+    }
+
+    /**
+     * The world-space contact of the disc of [radius] centred on ([centerX], 0, [centerZ]) in the
+     * surface frame whose world transform is [surface] (+Y the surface normal), or `null` when
+     * that frame is degenerate.
+     */
+    fun world(surface: Transform, centerX: Float, centerZ: Float, radius: Float): GroundContact? {
+        val center = (surface * Float4(centerX, 0f, centerZ, 1f)).xyz
+        val up = surface.y.xyz
+        val scale = length(up)
+        if (!(scale > 0f) || !scale.isFinite() || !(radius > 0f)) return null
+        if (!(center.x.isFinite() && center.y.isFinite() && center.z.isFinite())) return null
+        return GroundContact(center, up / scale, radius * scale)
     }
 }

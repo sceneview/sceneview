@@ -10,6 +10,7 @@ import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.DenseSamples
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
+import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.MonotonicCount
 import io.github.sceneview.demo.demos.internal.ScanDetail
@@ -55,6 +56,13 @@ internal class ScanDenseMap(
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
     private var eye: DebugPose? = null
 
+    /** The first projected frame's height: the floor's guess without a floor plane. On the worker. */
+    private var firstEyeY = Float.NaN
+
+    /** ARCore's floor plane height, set from the main thread as planes come; `null` before one. */
+    @Volatile
+    var floorPlaneY: Float? = null
+
     /** How long the last [add] took, and the longest so far, in milliseconds: a device log's figures. */
     @Volatile
     var lastAddMs = 0f
@@ -97,6 +105,7 @@ internal class ScanDenseMap(
         }
         confidence.record(nanos, samples.count, atBase)
         eye = frame.pose
+        if (firstEyeY.isNaN()) firstEyeY = frame.pose.y
         return samples
     }
 
@@ -166,6 +175,15 @@ internal class ScanDenseMap(
         } else {
             fusion.liveCloud(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS)
         }
+        val covered = CoverageGrid.coveredKeys(whole)
+        // The floor to scan again, judged on the whole map read in place: the drawn surfels are
+        // merged and, past their budget, picked at random far off.
+        val weak = if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
+            LiveCoverageGround.weakCells(
+                fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES,
+                LiveCoverageGround.floorHint(floorPlaneY, firstEyeY),
+            )
+        }
         live = ReplayDenseLayer(
             cloud = drawn,
             voxelM = fusion.voxelM,
@@ -173,10 +191,11 @@ internal class ScanDenseMap(
             atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
             // The floor cells are found here too, on the worker, from the map as before: the
             // live map and the area read them, however far the drawn surfels are merged.
-            coveredCells = CoverageGrid.coveredKeys(whole),
+            coveredCells = covered,
             // The saving orbit and the open top read the map as it stands, not the merged
             // surfels, dense by the eye and sparse away from it (#4792).
             whole = whole,
+            weakCells = weak,
         )
     }
 

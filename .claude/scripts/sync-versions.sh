@@ -480,20 +480,10 @@ fi
 
 # ─── 5c. Free-form docs version refs missed by the Maven-coordinate scans (#1693) ──
 # The section-5 docfile loop only matches `io.github.sceneview:sceneview:X.Y.Z`
-# lines. Several docs carry the release version in prose / HTML stats that the
-# Maven scan never sees, so v4.10.0 shipped with these stale (#1693):
-#   * docs/docs/index.md   — landing-page "Latest Release" stat <span> (was v4.4.0)
-#   * docs/docs/llms-full.txt — "**SceneView:** X.Y.Z" prose line (was 4.0.9)
-# Both are auto-fixed below in the fix-mode block.
-DOCS_INDEX="$REPO_ROOT/docs/docs/index.md"
-if [ -f "$DOCS_INDEX" ]; then
-    V=$(grep -A1 'sv-stat-number' "$DOCS_INDEX" | grep -B1 'Latest Release' \
-        | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' \
-        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    if [ "$V" != "NOT FOUND" ]; then
-        add_check "docs/docs/index.md (Latest Release stat)" "$V"
-    fi
-fi
+# lines. docs/docs/llms-full.txt carries the release version in a prose line the
+# Maven scan never sees, so v4.10.0 shipped with it stale (#1693; it read 4.0.9).
+# It is auto-fixed below in the fix-mode block. (docs/docs/index.md lost its
+# "Latest Release" stat in #4943, so it has nothing left to check.)
 DOCS_LLMS_FULL="$REPO_ROOT/docs/docs/llms-full.txt"
 if [ -f "$DOCS_LLMS_FULL" ]; then
     V=$(grep -m1 -E '^\s*-\s*\*\*SceneView:\*\*' "$DOCS_LLMS_FULL" \
@@ -1470,15 +1460,6 @@ if changed:
     # Fix free-form docs version refs missed by the Maven-coordinate sweep (#1693).
     # Each substitution is scoped to its exact surrounding text so an unrelated
     # version string elsewhere in the file is never touched.
-    #   docs/docs/index.md — the "Latest Release" stat <span>
-    if [ -f "$DOCS_INDEX" ]; then
-        CURRENT=$(grep -A1 'sv-stat-number' "$DOCS_INDEX" | grep -B1 'Latest Release' \
-            | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "v$SOURCE_VERSION" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s|<span class=\"sv-stat-number\">$CURRENT</span>|<span class=\"sv-stat-number\">v$SOURCE_VERSION</span>|" "$DOCS_INDEX"
-            echo -e "  Fixed: docs/docs/index.md (Latest Release stat $CURRENT -> v$SOURCE_VERSION)"
-        fi
-    fi
     #   docs/docs/llms-full.txt — the "**SceneView:** X.Y.Z" prose line
     if [ -f "$DOCS_LLMS_FULL" ]; then
         CURRENT=$(grep -m1 -E '^\s*-\s*\*\*SceneView:\*\*' "$DOCS_LLMS_FULL" \

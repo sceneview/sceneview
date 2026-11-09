@@ -56,11 +56,16 @@ internal enum class HeroTier(
     companion object {
         /**
          * `ActivityManager.isLowRamDevice` starts at the bottom; everything else at the top,
-         * or at the rung this install already [settled] on, whichever is lower.
+         * or at the rung this install already [settled] on, whichever is lower — and always
+         * below a rung that [crashed] the app on this install. A GPU whose driver cannot
+         * compile one of a rung's shaders aborts inside Filament on that rung's first frame,
+         * before the frame budget can judge anything: the Moto G Stylus 2024 and Honor Pad 9
+         * failed on screen-space reflections' blur and crash-looped 4.62 to 4.64 at launch.
          */
-        fun forDevice(lowRam: Boolean, settled: HeroTier? = null): HeroTier {
+        fun forDevice(lowRam: Boolean, settled: HeroTier? = null, crashed: HeroTier? = null): HeroTier {
             val pick = if (lowRam) Light else Cinematic
-            return if (settled != null && settled < pick) settled else pick
+            val cap = crashed?.let { it.lower ?: Light } ?: Cinematic
+            return listOfNotNull(pick, settled, cap).min()
         }
     }
 }

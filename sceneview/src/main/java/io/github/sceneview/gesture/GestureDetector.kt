@@ -91,6 +91,20 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
     val isCoasting: Boolean get() = editingInertia.isCoasting
 
     /**
+     * Where a drag coasts once the finger lifts — `ARSceneView` sets one so the coast travels in
+     * world space; screen space when `null`. See [MoveCoastSpace].
+     *
+     * Library plumbing between the gesture detector and the scene render loops.
+     */
+    @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    @set:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    var moveCoastSpace: MoveCoastSpace?
+        get() = editingInertia.space
+        set(value) {
+            editingInertia.space = value
+        }
+
+    /**
      * Advances every node edit still coasting by one frame of [deltaSeconds]. Called once per
      * frame by `SceneView` / `ARSceneView`; a no-op when nothing coasts.
      */

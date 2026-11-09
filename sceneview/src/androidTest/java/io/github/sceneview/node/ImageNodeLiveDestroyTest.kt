@@ -10,6 +10,7 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.render.RenderTestHarness
 import io.github.sceneview.texture.ImageTexture
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -73,6 +74,8 @@ class ImageNodeLiveDestroyTest {
             val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
             val keep = BillboardNode(materialLoader = materialLoader, bitmap = bitmap)
             harness.scene.addEntity(keep.entity)
+            // Filament 1.77 dropped Engine.isValidTexture: the engine's texture count stands in.
+            val texturesWithKeep = engine.textureCount
             repeat(10) { round ->
                 val node = BillboardNode(materialLoader = materialLoader, bitmap = bitmap)
                 harness.scene.addEntity(node.entity)
@@ -80,23 +83,23 @@ class ImageNodeLiveDestroyTest {
 
                 // A read-back wrapper, the same kind `destroy()` used to pass on.
                 val readBack = node.materialInstance
-                val material = readBack.material
-                assertTrue(engine.isValidMaterialInstance(material, readBack))
+                assertTrue(materialLoader.tracks(readBack))
 
-                harness.scene.removeEntity(node.entity)
+                harness.scene.remove(node.entity)
                 node.destroy()
 
                 assertFalse(
                     "round $round: destroy() must destroy the node's material instance",
-                    engine.isValidMaterialInstance(material, readBack)
+                    materialLoader.tracks(readBack)
                 )
                 // Past the grace period the texture is freed. Before the fix, this aborted the
                 // process at the next beginFrame.
                 repeat(EngineDestroyQueue.GRACE_FRAMES + 2) { frame() }
             }
             // Still a live, rendered sibling sharing the same bitmap.
-            assertTrue(engine.isValidTexture(keep.texture))
-            harness.scene.removeEntity(keep.entity)
+            assertEquals("only the sibling's texture is left", texturesWithKeep, engine.textureCount)
+            assertTrue(runCatching { keep.texture.nativeObject }.isSuccess)
+            harness.scene.remove(keep.entity)
             keep.destroy()
             repeat(EngineDestroyQueue.GRACE_FRAMES + 2) { frame() }
             bitmap.recycle()
@@ -110,13 +113,14 @@ class ImageNodeLiveDestroyTest {
             val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
             val texture = ImageTexture.Builder().bitmap(bitmap).build(engine)
             val tracked = materialLoader.createImageInstance(texture)
-            val material = tracked.material
             // Same native instance, new Java object: what any read-back returns.
-            val alias = MaterialInstance(engine, tracked.nativeObject)
+            val alias = MaterialInstance.wrap(tracked.nativeObject)
 
             materialLoader.destroyMaterialInstance(alias)
 
-            assertFalse(engine.isValidMaterialInstance(material, alias))
+            assertFalse(materialLoader.tracks(alias))
+            // Filament clears the wrapper it destroys: the loader's own one, not the alias.
+            assertTrue(runCatching { tracked.nativeObject }.isFailure)
             materialLoader.destroyMaterialInstance(alias) // already gone: a no-op
             EngineDestroyQueue.of(engine).enqueueTexture(texture)
             repeat(EngineDestroyQueue.GRACE_FRAMES + 2) { frame() }

@@ -62,7 +62,12 @@ class _ViewerPageState extends State<ViewerPage> {
       Icons.pets,
       usdzResource: 'khronos_fox.usdz',
     ),
-    _SampleModel('Damaged Helmet', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb', Icons.sports_motorsports),
+    // Motorcycle Helmet by sayedgamal655, CC-BY 4.0.
+    _SampleModel(
+      'Motorcycle Helmet',
+      'https://sceneview.github.io/models/platforms/moto_helmet_v2.glb',
+      Icons.sports_motorsports,
+    ),
     _SampleModel('Avocado', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Avocado/glTF-Binary/Avocado.glb', Icons.eco),
     _SampleModel('Flight Helmet', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/FlightHelmet/glTF/FlightHelmet.gltf', Icons.flight),
     _SampleModel('Water Bottle', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/WaterBottle/glTF-Binary/WaterBottle.glb', Icons.water_drop),

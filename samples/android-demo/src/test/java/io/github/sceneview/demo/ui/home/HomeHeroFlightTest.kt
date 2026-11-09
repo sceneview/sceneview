@@ -64,6 +64,15 @@ class HomeHeroFlightTest {
     }
 
     @Test
+    fun `a rung that crashed the app on this install is never started again`() {
+        assertEquals(HeroTier.High, HeroTier.forDevice(lowRam = false, crashed = HeroTier.Cinematic))
+        assertEquals(HeroTier.Standard, HeroTier.forDevice(lowRam = false, settled = HeroTier.Standard, crashed = HeroTier.Cinematic))
+        assertEquals(HeroTier.Standard, HeroTier.forDevice(lowRam = false, settled = HeroTier.Cinematic, crashed = HeroTier.High))
+        assertEquals(HeroTier.Light, HeroTier.forDevice(lowRam = false, crashed = HeroTier.Light))
+        assertEquals(HeroTier.Light, HeroTier.forDevice(lowRam = true, crashed = HeroTier.Cinematic))
+    }
+
+    @Test
     fun `a GPU drawing a rung at 2 fps leaves it within five seconds, two rungs down`() {
         val budget = HeroFrameBudget()
         var nanos = 0L

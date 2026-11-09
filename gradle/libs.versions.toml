@@ -1,6 +1,6 @@
 [versions]
 # Build tools
-agp = "9.4.1"
+agp = "9.5.0"
 kotlin = "2.4.21"
 composeMultiplatform = "1.12.2"
 
@@ -9,6 +9,7 @@ coreKtx = "1.19.1"
 coreSplashscreen = "1.2.0"
 appcompat = "1.8.0"
 fragmentKtx = "1.9.1"
+startupRuntime = "1.2.0"
 
 # Compose
 composeBom = "2026.09.00"
@@ -29,7 +30,7 @@ kotlinMath = "1.8.0"
 # integration approach and slicing plan (issue #1738).
 jetpackXrArCore = "1.0.0-rc02"
 
-# Filament 1.72.1 — must match the material-binary version (MATERIAL_VERSION 72)
+# Filament 1.77.3 — must match the material-binary version (MATERIAL_VERSION 77)
 # of the .filamat files committed under sceneview/src/main/assets/materials/ and
 # arsceneview/src/main/assets/materials/ (the ANDROID runtime track only; the two
 # web tracks have their own pins below).
@@ -48,14 +49,23 @@ jetpackXrArCore = "1.0.0-rc02"
 # toolchain in the SAME change (bash tools/GenerateFilamat.sh) — the paired
 # runtime+blob update that the ABI invariant requires (1.72.1 landed on
 # repo1.maven.org, verified 2026-07-16).
+# 1.77.3 crosses several material-format boundaries (1.73, 1.75, 1.76 and 1.77
+# all flag "Recompile Materials" / "New Material Version"): MATERIAL_VERSION
+# 72 → 77. All 42 Android .filamat blobs (sceneview, arsceneview, android-demo)
+# were recompiled with matc 1.77.3 in the SAME change. 1.77.3 is the newest
+# release on repo1.maven.org (verified 2026-11-03): 1.78.x and 1.79.0 exist only
+# as GitHub release assets so far. Move to 1.79.0 once it reaches Maven Central
+# (it fixes the 1.77 Java ShadowOptions regression, google/filament#10565, and
+# 1.78 changes TransformManager instance stability — audit Node's cached
+# transform instances then).
 # Session #800 / #961 track future Filament bumps with the same paired-update
 # guarantee.
-filament = "1.72.1"
+filament = "1.77.3"
 # The WEB Filament runtime — MUST track the npm `filament` pin in
 # sceneview-web/build.gradle.kts (`npm("filament", ...)`) exactly. The Kotlin/JS
 # bundle runs against that npm build (staged by web-bundle-smoke.sh from the
 # Kotlin/JS build's node_modules), whose MATERIAL_VERSION is its minor digit
-# (1.52.x → v52) — a DIFFERENT track from the Android `filament` above (v72).
+# (1.52.x → v52) — a DIFFERENT track from the Android `filament` above (v77).
 # tools/GenerateFilamat.sh compiles the sceneview-web blobs (e.g. splat_web.mat,
 # #2646 P2) with the matc matching THIS version, so the web ABI invariant is
 # explicit and --check-able. Bumping the npm pin ⇒ bump this together and
@@ -64,8 +74,8 @@ filament = "1.72.1"
 filamentWeb = "1.52.3"
 # The WEBSITE Filament runtime — MUST match the Filament.js build vendored at
 # website-static/js/filament/{filament.js,filament.wasm}, which is a THIRD track,
-# independent of both `filament` (Android, v72) and `filamentWeb` (npm, v52) —
-# it currently happens to sit on the same 1.72.1 release as the Android AAR,
+# independent of both `filament` (Android, v77) and `filamentWeb` (npm, v52) —
+# it sat on the same 1.72.1 release as the Android AAR until the AAR moved to 1.77.3,
 # but it moves on its own schedule (bumped 1.70.1 → 1.72.1 for #3456: 1.72.1 is
 # the first tagged release with google/filament#10116, the Embind `quatf`
 # registration that `LightManager.setShadowOptions` / `Builder.shadowOptions`
@@ -84,10 +94,10 @@ filamentWeb = "1.52.3"
 filamentWebsite = "1.72.1"
 # Desktop Filament via filament-kmp on Maven. Independent of the three Filament
 # runtime pins above — this artifact vendors its own native Filament and its own
-# built-in materials (0.8.0 ships Filament 1.78.0, MATERIAL_VERSION 78; 0.7.3 was 1.77.3 / 77).
+# built-in materials (0.9.0 ships Filament 1.79.0, MATERIAL_VERSION 79; 0.8.0 was 1.78.0 / 78).
 # Used only by sceneview-compose desktopMain, which loads no SceneView .filamat: a bump
 # that changes MATERIAL_VERSION needs no blob here, only a desktop-demo run.
-filamentKmp = "0.8.0"
+filamentKmp = "0.9.0"
 arCore = "1.57.0"
 
 # Networking
@@ -120,7 +130,7 @@ mlkitObjectDetection = "17.0.2"
 
 # ML Kit GenAI Prompt API (Point & Ask demo — see PointAndAskDemo, #2648).
 # Beta artifact: image+text prompts against Gemini Nano on-device via AICore.
-mlkitGenaiPrompt = "1.0.0-beta4"
+mlkitGenaiPrompt = "1.0.0-beta5"
 
 # MediaPipe Tasks Vision (body-tracking demo — see ARBodyTrackerDemo, #1763)
 # Bumped 0.20230731 → 0.10.26: pre-0.10.26 MediaPipe .so files have 4 KB ELF
@@ -140,11 +150,11 @@ mediapipeTasksVision = "0.10.26"
 # OpenCL/OpenGL accelerator that 2.1.5 bundled). 2.2.x gave `litert` and `litert-api` the same
 # namespace, which failed AGP 9's app manifest merge; `:samples:android-demo:processDebugMainManifest`
 # is the proof for any bump. `litert-gpu` must stay declared or `Backend.Gpu` loses its accelerator.
-litert = "2.3.0"
+litert = "2.3.2"
 # ONNX Runtime (MIT) — JVM tests only: the desktop artifact runs YOLOX-Tiny's ONNX export, which the
 # demo's LiteRT model was converted from, in the tests that judge the detector on photos and on real
 # scans. Not in any app: the Android artifact started a telemetry provider at every launch.
-onnxruntime = "1.31.0"
+onnxruntime = "1.31.1"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"
@@ -186,6 +196,7 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
+androidx-startup-runtime = { group = "androidx.startup", name = "startup-runtime", version.ref = "startupRuntime" }
 
 # Compose BOM (manages all Compose versions)
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }

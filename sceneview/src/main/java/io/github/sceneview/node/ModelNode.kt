@@ -29,6 +29,7 @@ import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.model.lightEntities
 import io.github.sceneview.model.model
 import io.github.sceneview.model.renderableEntities
+import io.github.sceneview.model.restPoseBoundingBox
 import io.github.sceneview.utils.intervalSeconds
 import kotlin.math.abs
 
@@ -261,10 +262,14 @@ open class ModelNode(
     }
 
     /**
-     * Gets the bounding box computed from the supplied min / max values in glTF accessors.
+     * The model's bounds in its rest pose, as loaded: the glTF accessors' min / max for a model
+     * without skins and, for a skinned one, the box its vertices fill once moved by their joints
+     * (#4949) — so a rig exported in centimetres under an armature scaled by 0.01 measures its
+     * real 1.8 m, not 180. Animation and morph targets are not followed.
      *
-     * This does not return a bounding box over all FilamentInstance, it's just a straightforward
-     * AAAB that can be determined at load time from the asset data.
+     * It is not a bounding box over every FilamentInstance, only one determined at load time from
+     * the asset data. gltfio's `recomputeBoundingBoxes()` is not reachable from its Java API, and
+     * would need the source data SceneView releases once a model is loaded.
      *
      * @throws IllegalStateException once the model was destroyed, as [halfExtent], [extents],
      * [center] and [size] do.
@@ -272,7 +277,7 @@ open class ModelNode(
     val boundingBox: Box
         get() {
             checkModelAlive("boundingBox")
-            return model.boundingBox
+            return model.restPoseBoundingBox
         }
     val halfExtent get() = boundingBox.halfExtent.let { v -> Float3(v[0], v[1], v[2]) }
     val extents get() = halfExtent * 2.0f
@@ -300,8 +305,8 @@ open class ModelNode(
      * (parents, rotation, scale, translation). Its lowest Y is where the model touches the
      * floor; its X/Z extent is the footprint — what a contact shadow or a fit check needs.
      *
-     * Like [boundingBox], it comes from the glTF accessors' min / max, not from the posed
-     * skinned geometry.
+     * Like [boundingBox], it is the rest pose as loaded, skinning included: it does not follow
+     * the animation playing.
      *
      * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]), as
      * [boundingBox] does.
@@ -463,12 +468,7 @@ open class ModelNode(
         set(value) = renderableNodes.forEach { it.isShadowReceiver = value }
 
     init {
-        nodes.forEach { node ->
-            node.parent = when (val parentEntity = node.parentEntity) {
-                this.entity -> this
-                else -> nodes.firstOrNull { it.entity == parentEntity } ?: this
-            }
-        }
+        attachToParents(this, nodes)
         // Sanitize renderable entities with empty AABBs to prevent Filament crash.
         // Filament 1.70+ enforces: "AABB can't be empty, unless culling is disabled
         // and the object is not a shadow caster/receiver".
@@ -933,6 +933,29 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
+
+/**
+ * Parents each of [nodes] to the node of [nodes] whose entity is its glTF parent, or to [root].
+ *
+ * One map lookup per node and one [Node.childNodes] write per parent. A linear search per node
+ * and one copy-on-write `Set` per child cost O(n²) on the main thread, inside composition: a
+ * Sketchfab model with a few thousand nodes froze it for seconds, an ANR in the field.
+ */
+internal fun attachToParents(
+    root: Node,
+    nodes: List<Node>,
+    parentEntityOf: (Node) -> Entity? = { it.parentEntity },
+) {
+    val byEntity = HashMap<Entity, Node>(nodes.size * 2)
+    nodes.forEach { byEntity.putIfAbsent(it.entity, it) }
+    val childrenOf = LinkedHashMap<Node, MutableList<Node>>()
+    nodes.forEach { node ->
+        val parentEntity = parentEntityOf(node)
+        val parent = if (parentEntity == root.entity) root else byEntity[parentEntity] ?: root
+        childrenOf.getOrPut(parent) { ArrayList() } += node
+    }
+    childrenOf.forEach { (parent, children) -> parent.childNodes = parent.childNodes + children }
 }
 
 /**

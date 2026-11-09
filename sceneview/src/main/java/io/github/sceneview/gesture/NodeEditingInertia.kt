@@ -4,6 +4,7 @@ import android.view.MotionEvent
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Quaternion
 import dev.romainguy.kotlin.math.degrees
+import io.github.sceneview.math.Position
 import io.github.sceneview.node.Node
 import kotlin.math.PI
 import kotlin.math.exp
@@ -19,7 +20,10 @@ import kotlin.math.ln
  * - a drag moves a synthetic pointer along the release velocity, in screen space, and hands it to
  *   the node that accepted `onMoveBegin` — the hit test, an AR `PoseNode`'s
  *   plane hit and the app's `onMove` veto all run as for the finger. The node therefore stays on
- *   the surface it was dragged on, and the coast stops the first time that surface is missed;
+ *   the surface it was dragged on, and the coast stops the first time that surface is missed.
+ *   With a [space] (an AR scene), the coast slides a point along that surface in world space and
+ *   the pointer is that point as the camera sees it now, so turning the phone mid-coast does not
+ *   carry the node along;
  * - a twist / pinch feeds the editing node's `onRotate` / `onScale` the step the release velocity
  *   asks for, so the scale range and the app's callbacks still apply.
  *
@@ -54,6 +58,9 @@ internal class NodeEditingInertia(
     )
     private val step = FloatArray(2)
 
+    /** Where drags coast: screen space when `null` — see [MoveCoastSpace]. */
+    var space: MoveCoastSpace? = null
+
     private var moveX = 0f
     private var moveY = 0f
     /** The node that accepted `onMoveBegin`, set by the detector once the node has answered. */
@@ -75,8 +82,14 @@ internal class NodeEditingInertia(
         val owner: Node,
         val detector: MoveGestureDetector,
         val event: MotionEvent,
+        /** Set when the coast travels in world space: the space and the surface it slides on. */
+        val space: MoveCoastSpace?,
+        val surface: MoveCoastSpace.Surface?,
     ) {
         val isGone: Boolean get() = node.isDestroyed || owner.isDestroyed
+
+        /** The coasting point on [surface], in world space. */
+        var position: Position = surface?.origin ?: Position()
     }
 
     private class Coast<D>(
@@ -131,7 +144,9 @@ internal class NodeEditingInertia(
             action = MotionEvent.ACTION_MOVE
             setLocation(moveX, moveY)
         }
-        moveCoast = MoveCoast(node, owner, detector, synthetic)
+        val space = space
+        val surface = space?.let { runCatching { it.release(owner, moveX, moveY) }.getOrNull() }
+        moveCoast = MoveCoast(node, owner, detector, synthetic, space, surface)
         return true
     }
 
@@ -139,8 +154,17 @@ internal class NodeEditingInertia(
         val coast = moveCoast ?: return
         if (coast.isGone) return finishMove()
         val going = move.advance(deltaSeconds, step)
-        moveX += step[0]
-        moveY += step[1]
+        val surface = coast.surface
+        if (surface == null) {
+            moveX += step[0]
+            moveY += step[1]
+        } else {
+            coast.position += surface.perPixelX * step[0] + surface.perPixelY * step[1]
+            // Out of view: nothing left to hit-test, the node rests where it was last seen.
+            val screen = coast.space?.toScreen(coast.position) ?: return finishMove()
+            moveX = screen.x
+            moveY = screen.y
+        }
         coast.event.setLocation(moveX, moveY)
         // The owner's drag path: a surface missed under the coasting point ends the coast.
         val moved = runCatching { coast.owner.onMove(coast.detector, coast.event) }.getOrDefault(false)

@@ -7,7 +7,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.SideEffect
+import io.github.sceneview.demo.demos.internal.scanPathLength
+import io.github.sceneview.demo.theme.LocalMotionEnabled
+import io.github.sceneview.demo.theme.motionDuration
+import io.github.sceneview.haptic.rememberHapticFeedback
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import io.github.sceneview.demo.demos.internal.CaptureChrome
 import io.github.sceneview.demo.demos.internal.CaptureCue
@@ -29,6 +38,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.R
@@ -63,7 +73,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.BiasAbsoluteAlignment
+import io.github.sceneview.demo.demos.internal.ScanTurn
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -89,6 +101,15 @@ import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanPhase
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanStep
+import io.github.sceneview.demo.demos.internal.RescanZone
+import io.github.sceneview.demo.demos.internal.ScanReviewCopy
+import io.github.sceneview.demo.demos.internal.ScanReviewResult
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.liveRegion
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
@@ -269,6 +290,84 @@ private const val PLACE_STEPS = 100f
 /** The eye's height in [ScanLens.cameraToWorld], column-major: the translation's y. */
 private const val EYE_HEIGHT_TERM = 13
 
+/**
+ * The guide's arrow (#4540, QA-24): a glass card at the screen's edge on the target's side — in
+ * the middle when it is ahead or behind — with an arrow in `accent-guidance`, the colour of the
+ * floor ribbon and the dashed gap, turned to the target's heading as the phone turns, and the
+ * distance to it under it while it is not reached. It goes once the phone lines up with the
+ * target, with one tick ([ScanWallsState.alignedTicks], at most once a second); the ribbon on the
+ * floor stays. Said as the coaching line says it. Under reduced motion it appears and goes without a fade.
+ */
+@Composable
+internal fun BoxScope.ScanGuideArrow(walls: ScanWallsState) {
+    val hint = walls.hint
+    val shown = walls.arrowShown && hint != null
+    // Kept through the fade-out, so the arrow leaves from where it was.
+    var last by remember { mutableStateOf(hint) }
+    if (shown) last = hint
+    ScanAlignedTick(walls)
+    // Left and right are the room's, not the reading direction's: the same side in RTL.
+    val alignment = when (last?.turn) {
+        ScanTurn.Left -> AbsoluteAlignment.CenterLeft
+        ScanTurn.Right -> AbsoluteAlignment.CenterRight
+        else -> Alignment.Center
+    }
+    val fade = motionDuration(SceneViewTokens.Duration.mediumMillis)
+    val locale = LocalConfiguration.current.locales[0]
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(fade)),
+        exit = fadeOut(tween(fade)),
+        modifier = Modifier.align(alignment).padding(Space.md).testTag(SCAN_TURN_TAG),
+    ) {
+        val said = last
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .widthIn(min = SceneViewTokens.Layout.touchTarget + Space.md)
+                .background(LocalStageChrome.current.card, RoundedCornerShape(SceneViewTokens.Radius.lg))
+                .padding(Space.sm)
+                // One description, not the arrow's line then the distance again.
+                .clearAndSetSemantics {
+                    contentDescription = said?.let { ScanCopy.guideHint(it, locale) }.orEmpty()
+                },
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.ArrowUpward,
+                contentDescription = null,
+                tint = ArOverlay.accentGuidance,
+                // Read in the layer: the heading moves every frame, the card does not recompose.
+                modifier = Modifier
+                    .size(SceneViewTokens.Layout.touchTarget - Space.sm)
+                    .graphicsLayer { rotationZ = walls.headingDegrees },
+            )
+            said?.metres?.let { metres ->
+                Text(
+                    text = scanPathLength(metres, locale),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = LocalStageChrome.current.onCard,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One tick each time the phone lines up with the guide's target ([ScanWallsState.alignedTicks], at
+ * most once a second): none for those counted while it was not composed.
+ */
+@Composable
+internal fun ScanAlignedTick(walls: ScanWallsState) {
+    val haptic = rememberHapticFeedback()
+    val ticks = walls.alignedTicks
+    var felt by remember { mutableIntStateOf(ticks) }
+    LaunchedEffect(ticks) {
+        if (ticks > felt) haptic.selection()
+        felt = ticks
+    }
+}
+
 private const val GAUGE_SEGMENTS = 10
 
 /**
@@ -361,22 +460,82 @@ private fun ScanPauseButton(paused: Boolean, label: String, onClick: () -> Unit)
  * Finish's review: the capture frozen, nothing built yet. Keep scanning returns to the same
  * capture; Save scan builds and writes it. A capture with nothing in it offers only Keep
  * scanning — there is nothing to save.
+ *
+ * Review before you leave: a room's capture is read once for the parts it missed ([review],
+ * `null` when there is no dense map to read; [checking] while it is read). With parts to fix the
+ * card says how many, names the one the 3D view is on ([focus]), and offers Fix now — the same
+ * capture, that part framed in amber ([onFixNow]) — or Build anyway. A finger on the card holds
+ * the view on the part being read ([onHold]) so Fix now aims where the user looks; Next part
+ * ([onNext]) moves on by hand, as a screen reader's user or reduced motion does.
  */
 @Composable
+@Suppress("LongParameterList") // the review's answers, and what it found
 internal fun ScanReviewCard(
     empty: Boolean,
     figures: String,
     onKeepScanning: () -> Unit,
     onSave: () -> Unit,
+    review: ScanReviewResult? = null,
+    checking: Boolean = false,
+    focus: Int = 0,
+    onFixNow: ((RescanZone) -> Unit)? = null,
+    onHold: () -> Unit = {},
+    onNext: () -> Unit = {},
 ) {
-    OverlayCard(testTag = SCAN_REVIEW_TAG) {
+    val zones = review?.zones.orEmpty().takeUnless { empty || checking }.orEmpty()
+    val focusIndex = focus.coerceIn(0, (zones.size - 1).coerceAtLeast(0))
+    val focused = zones.getOrNull(focusIndex)
+    val holdOnTouch = Modifier.pointerInput(onHold) {
+        // The initial pass: the view stops on the part before any button sees the tap.
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            onHold()
+        }
+    }
+    OverlayCard(testTag = SCAN_REVIEW_TAG, modifier = holdOnTouch) {
         ScanStepRow(ScanStep.Review)
-        Text(text = if (empty) ScanCopy.EMPTY_TITLE else ScanCopy.REVIEW_TITLE, style = OnScrimTitle)
+        val title = when {
+            empty -> ScanCopy.EMPTY_TITLE
+            zones.isNotEmpty() -> ScanReviewCopy.title(zones.size)
+            // Set aside is not fixed: the card still says there are parts, and why none is offered.
+            review?.clear == true && !checking && review.setAside > 0 -> ScanReviewCopy.title(review.setAside)
+            review?.clear == true && !checking -> ScanReviewCopy.CLEAR_TITLE
+            else -> ScanCopy.REVIEW_TITLE
+        }
+        Text(text = title, style = OnScrimTitle, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         Text(text = if (empty) ScanCopy.EMPTY_DETAIL else figures, style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted))
-        if (!empty) Text(text = CaptureChrome.REVIEW_DETAIL, style = ScanDetailStyle.copy(color = ArOverlay.onScrim))
+        val detail = when {
+            empty -> null
+            checking -> ScanReviewCopy.CHECKING
+            focused != null -> ScanReviewCopy.focus(focused, focusIndex, zones.size)
+            review?.clear == true && review.setAside > 0 -> ScanReviewCopy.setAside(review.setAside)
+            review?.clear == true -> ScanReviewCopy.CLEAR_DETAIL
+            else -> CaptureChrome.REVIEW_DETAIL
+        }
+        if (detail != null) {
+            Text(
+                text = detail,
+                style = ScanDetailStyle.copy(color = ArOverlay.onScrim),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        if (focused != null && zones.size > 1) {
+            TextButton(onClick = onNext, modifier = Modifier.testTag(SCAN_NEXT_PART_TAG)) { Text(ScanReviewCopy.NEXT_PART) }
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             if (empty) {
                 Button(onClick = onKeepScanning, modifier = Modifier.weight(1f)) { Text(ScanCopy.KEEP_SCANNING) }
+            } else if (focused != null && onFixNow != null) {
+                FilledTonalButton(onClick = onSave, modifier = Modifier.weight(1f).testTag(SCAN_BUILD_ANYWAY_TAG)) {
+                    Text(ScanReviewCopy.BUILD_ANYWAY)
+                }
+                val label = ScanReviewCopy.fixLabel(focused, focusIndex, zones.size)
+                Button(
+                    onClick = { onFixNow(focused) },
+                    modifier = Modifier.weight(1f).testTag(SCAN_FIX_NOW_TAG).semantics { contentDescription = label },
+                ) {
+                    Text(ScanReviewCopy.FIX_NOW)
+                }
             } else {
                 FilledTonalButton(onClick = onKeepScanning, modifier = Modifier.weight(1f)) {
                     Text(ScanCopy.KEEP_SCANNING)
@@ -612,13 +771,17 @@ internal fun ScanDiscardDialog(onCancel: () -> Unit, onDiscard: () -> Unit) {
  * stop tap is the camera's view of the frame before, eased from there onto the orbit.
  *
  * [walls] (#4540), a room's scan only: the walls recognised so far rise in the room, on the
- * camera, and the floor edges still open are dashed where the next wall should be; a chevron at
- * the screen's edge points to the largest gap while it is off screen ([ScanGapChevron]).
+ * camera, and the floor edges still open are dashed where the next wall should be; a ribbon on the
+ * floor leads from the phone's feet to the next one — or to the part Fix now is filling in — and
+ * an arrow turns to it until the phone lines up ([ScanGuideArrow]). Neither shows while the view
+ * has left the phone; the ribbon's chevrons stand still under reduced motion.
  *
  * [phoneOnly], a room's capture (the Live Room): one camera, the phone's, from the first frame to
- * the last. No drag nor pinch takes the view over, no saving orbit leaves the phone, the camera is
- * never veiled; with tracking lost, the capture keeps the last eye and fades out ([trackingLost])
- * rather than drawing over a picture it no longer lines up with.
+ * the last. No drag nor pinch takes the view over, no saving orbit nor review flight leaves the
+ * phone, the camera is never veiled; with tracking lost, the capture keeps the last eye and fades
+ * out ([trackingLost]) rather than drawing over a picture it no longer lines up with. The arrow
+ * card gives way to a chevron at the screen's edge, towards the largest gap while it is off screen
+ * ([ScanGapChevron]); the ribbon and the line-up tick stay.
  */
 @Composable
 @Suppress("LongParameterList", "LongMethod") // the demo's shared engine, handed down once
@@ -637,12 +800,20 @@ internal fun ScanLiveView(
     reviewing: Boolean = false,
     phoneOnly: Boolean = false,
     trackingLost: Boolean = false,
+    reviewPose: (() -> OrbitPose?)? = null,
 ) {
+    // Review before you leave: the view leaves the phone and flies to each part still to fix
+    // ([reviewPose], the part of the moment), over the room with its lid off, as the save does.
+    val flying = reviewPose != null && !saving && !phoneOnly
+    val reviewPoseNow by rememberUpdatedState(reviewPose)
     // Saving, the view is handed back to the automatic framing, which the orbit then drives.
-    LaunchedEffect(saving, phoneOnly) { if (saving && !phoneOnly) orbit.recenter() }
+    // Saving, the view is handed back to the automatic framing, which the orbit then drives. The
+    // Live Room never leaves the phone's eye: no saving orbit, no flight.
     val orbiting = saving && !phoneOnly
+    val leaves = orbiting || flying
+    LaunchedEffect(leaves) { if (leaves) orbit.recenter() }
     val veil by animateColorAsState(
-        targetValue = if (orbiting) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
+        targetValue = if (leaves) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
         animationSpec = tween(SceneViewTokens.Duration.longMillis, easing = SceneViewTokens.Ease.expressive),
         label = "scanVeil",
     )
@@ -661,6 +832,7 @@ internal fun ScanLiveView(
     var lidOff by remember { mutableStateOf(false) }
     // The saving orbit's, not the save's: the Live Room saves through the phone's eye still.
     val savingNow by rememberUpdatedState(orbiting)
+    val flyingNow by rememberUpdatedState(flying)
     LaunchedEffect(cutting) {
         openTop = null
         lidOff = false
@@ -673,10 +845,17 @@ internal fun ScanLiveView(
     val drawn = remember(media) {
         // Over the camera its surfels are capped small; the save flight leaves the phone's eye.
         media.liveDense?.let { live ->
-            media.withLiveDense(overCamera = { !savingNow }) { openTop?.takeIf { savingNow } ?: live() }
+            media.withLiveDense(overCamera = { !savingNow && !flyingNow }) {
+                openTop?.takeIf { savingNow || flyingNow } ?: live()
+            }
         } ?: media
     }
     val observed = remember(coverage, walls) { ScanObserveGate() }
+    val motion = LocalMotionEnabled.current
+    SideEffect {
+        walls?.guiding = !saving && !flying
+        walls?.ribbonFlows = motion
+    }
     Box(modifier = Modifier.fillMaxSize().testTag(SCAN_STAGE_TAG)) {
         // Only the camera is dimmed: the cloud is drawn by its own view, above the veil.
         Box(Modifier.fillMaxSize().background(veil))
@@ -694,7 +873,9 @@ internal fun ScanLiveView(
                 val phone = follow.poseFor(livePose(frame.camera))
                 // Round the map as it stands, not the merged surfels the live view draws (#4792).
                 val points = (drawn.liveDense?.invoke() ?: media.dense)?.whole ?: frame.mapPoints
-                savingOrbit?.poseFor(phone, points, orbit, ready = lidOff) ?: phone
+                savingOrbit?.poseFor(phone, points, orbit, ready = lidOff)
+                    ?: reviewPoseNow?.invoke()?.takeIf { flyingNow && lidOff }
+                    ?: phone
             },
             observe = { frame ->
                 val pose = livePose(frame.camera)
@@ -714,7 +895,7 @@ internal fun ScanLiveView(
             // second view drawn at the display's 60 Hz redrew the same picture every other vsync,
             // one GPU pass and one swap too many on a mid-range phone (#4743). Saving, the orbit is
             // the view's own motion and gets the display's full rate back.
-            maxFps = if (orbiting) null else SCAN_LIVE_FPS,
+            maxFps = if (leaves) null else SCAN_LIVE_FPS,
         )
         if (phoneOnly) {
             // One camera, the phone's: a finger on the screen moves nothing (no orbit to take over).
@@ -731,7 +912,12 @@ internal fun ScanLiveView(
                     },
             )
             val lens = orbit.firstPerson
-            if (walls != null && lens != null && !saving && !reviewing) ScanGapChevron(walls, lens)
+            if (walls != null && !saving) {
+                ScanAlignedTick(walls)
+                if (lens != null && !reviewing) ScanGapChevron(walls, lens)
+            }
+        } else if (walls != null && !saving && !flying) {
+            ScanGuideArrow(walls)
         }
     }
 }
@@ -769,6 +955,7 @@ private val ScanDotSize = Space.md - Space.xs / 2
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
 internal const val SCAN_ROOM_GAUGE_TAG = "ar_rerun_scan_room_gauge"
 internal const val SCAN_GAP_CHEVRON_TAG = "ar_rerun_scan_gap_chevron"
+internal const val SCAN_TURN_TAG = "ar_rerun_scan_turn"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"
 internal const val SCAN_RECENTER_TAG = "ar_rerun_scan_recenter"
 internal const val SCAN_POINTS_TAG = "ar_rerun_scan_points"
@@ -777,6 +964,9 @@ internal const val SCAN_PAUSE_TAG = "ar_rerun_scan_pause"
 internal const val SCAN_FINISH_TAG = "ar_rerun_scan_finish"
 internal const val SCAN_HINT_TAG = "ar_rerun_scan_hint"
 internal const val SCAN_REVIEW_TAG = "ar_rerun_scan_review"
+internal const val SCAN_FIX_NOW_TAG = "ar_rerun_scan_fix_now"
+internal const val SCAN_BUILD_ANYWAY_TAG = "ar_rerun_scan_build_anyway"
+internal const val SCAN_NEXT_PART_TAG = "ar_rerun_scan_next_part"
 internal const val SCAN_SAVING_TAG = "ar_rerun_scan_saving"
 internal const val SCAN_SAVE_FAILED_TAG = "ar_rerun_scan_save_failed"
 internal const val SCAN_SAVE_AS_FILE_TAG = "ar_rerun_scan_save_as_file"

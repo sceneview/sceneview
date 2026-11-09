@@ -75,7 +75,17 @@ class LightEstimator(
         var mainLightIntensity: Float? = null,
         var mainLightDirection: Direction? = null,
         var reflections: Texture? = null,
-        var irradiance: FloatArray? = null
+        var irradiance: FloatArray? = null,
+        /**
+         * How much of their authored glow emissive materials keep in this room, in
+         * `[EMISSIVE_MIN_SCALE, 1]`, or `null` to leave them as they are (#4950).
+         *
+         * Filament adds emissive after lighting, so the estimate that darkens the rest of a
+         * model in a dim room never reaches its glow, which then shines as if in the dark.
+         * Only [LightEstimationMode.ENVIRONMENTAL_HDR] sets it: the calibration was measured
+         * on its ambient spherical harmonics.
+         */
+        var emissiveScale: Float? = null
     ) {
         /**
          * Resets every field to `null` so the single reused instance (#1105) starts
@@ -89,6 +99,7 @@ class LightEstimator(
             mainLightDirection = null
             reflections = null
             irradiance = null
+            emissiveScale = null
         }
     }
 
@@ -237,13 +248,6 @@ class LightEstimator(
      * `FloatArray(4)` allocation is gone.
      */
     private val colorCorrections = FloatArray(4)
-
-    /**
-     * Reusable per-face byte-offset array for the `ENVIRONMENTAL_HDR` cubemap
-     * upload (#1105). ARCore's HDR cubemap is always exactly [CUBEMAP_FACE_COUNT]
-     * faces, so this is a fixed-size field instead of a per-frame `IntArray`.
-     */
-    private val faceOffsets = IntArray(CUBEMAP_FACE_COUNT)
 
     /**
      * Reusable RGB-triplet scratch for copying cubemap pixels (#1105) — the inner
@@ -572,9 +576,8 @@ class LightEstimator(
                         // suspenders for forward compatibility with future loop edits.
                         try {
                             val (width, height) = arImages[0].width to arImages[0].height
-                            // #1105: `faceOffsets` is the reused [CUBEMAP_FACE_COUNT]-sized
-                            // field. ARCore's HDR cubemap is always exactly 6 faces;
-                            // guard against a future ARCore that changes that so we never
+                            // ARCore's HDR cubemap is always exactly 6 faces, uploaded
+                            // below as the 6 layers of one contiguous buffer; guard against a future ARCore that changes that so we never
                             // index out of bounds.
                             check(arImages.size == CUBEMAP_FACE_COUNT) {
                                 "Expected an $CUBEMAP_FACE_COUNT-face ARCore HDR cubemap, " +
@@ -594,8 +597,7 @@ class LightEstimator(
                             }
                             // `rgbBytes` (#1105) is the reused 6-byte RGB-triplet
                             // scratch field — see its field doc.
-                            arImages.forEachIndexed { index, image ->
-                                faceOffsets[index] = buffer.position()
+                            arImages.forEach { image ->
                                 val imageBuffer = image.planes[0].buffer
                                 while (imageBuffer.hasRemaining()) {
                                     // Only take the RGB channels
@@ -640,10 +642,14 @@ class LightEstimator(
                             // so an extra-fast Filament backend cannot fire the
                             // callback before we've observed the latched `true`.
                             uploadInFlight = true
-                            @Suppress("DEPRECATION")
+                            // Filament 1.77 removed the per-face-offsets overload: a
+                            // cubemap is now uploaded as a 2D array of six layers, the
+                            // faces packed back to back in `buffer` (as filled above).
                             cubeMapTexture.setImage(
                                 engine,
                                 0,
+                                0, 0, 0,
+                                width, height, CUBEMAP_FACE_COUNT,
                                 // The callback IS load-bearing — DO NOT no-op it.
                                 //
                                 // Filament `setImage()` uploads the buffer
@@ -695,8 +701,7 @@ class LightEstimator(
                                     // (#1102) — same closure semantics, one allocation per
                                     // LightEstimator instead of one per cubemap upload.
                                     uploadCompletedCallback
-                                ),
-                                faceOffsets
+                                )
                             )
                             reflections = if (environmentalHdrSpecularFilter) {
                                 iblPrefilter.specularFilter(cubeMapTexture).also {
@@ -714,13 +719,18 @@ class LightEstimator(
                         }
                     }
                 }
+                // The constant SH term is the room's brightness, which also sets how much of
+                // its glow an emissive material keeps (#4950): read even when the SH
+                // themselves are not applied.
+                val ambientSh = lightEstimate.environmentalHdrAmbientSphericalHarmonics
+                emissiveScale = emissiveScale(ambientLuminance(ambientSh))
                 if (environmentalHdrSphericalHarmonics) {
                     // Convert Environmental HDR's spherical harmonics to Filament
                     // irradiance spherical harmonics, in place into the reused
                     // `irradianceBuffer` field (#1105) — the previous
                     // `mapIndexed { … }.toFloatArray()` allocated a 27-element
                     // `List<Float>` plus a fresh `FloatArray` every frame.
-                    val sh = lightEstimate.environmentalHdrAmbientSphericalHarmonics
+                    val sh = ambientSh
                     // ARCore documents this as always 9 SH coefficients × 3 RGB
                     // channels. Guard the fixed-size buffer against a future
                     // ARCore that changes that rather than indexing out of bounds.
@@ -795,6 +805,33 @@ class LightEstimator(
     companion object {
 
         /**
+         * The ambient luminance (see [ambientLuminance]) from which emissive materials keep
+         * their full authored glow (#4950). Measured on a Pixel 4a: a daylit room reads 0.75 to
+         * 0.8, which halves the glow; a dim room reads far less, down to [EMISSIVE_MIN_SCALE].
+         */
+        internal const val EMISSIVE_ROOM_REFERENCE = 1.6f
+
+        /** The least glow a dark room leaves an emissive material, so it never goes out (#4950). */
+        internal const val EMISSIVE_MIN_SCALE = 0.2f
+
+        /**
+         * The Rec. 709 luminance of the constant term (`[0..2]`) of ARCore's ambient spherical
+         * harmonics, or `NaN` when there is none.
+         */
+        internal fun ambientLuminance(sh: FloatArray): Float =
+            if (sh.size < 3) Float.NaN
+            else 0.2126f * sh[0] + 0.7152f * sh[1] + 0.0722f * sh[2]
+
+        /**
+         * The share of its authored glow an emissive material keeps in a room of
+         * [roomLuminance]: proportional to it, within `[EMISSIVE_MIN_SCALE, 1]`, so never
+         * brighter than authored; `null` for a reading that is not a number (#4950).
+         */
+        internal fun emissiveScale(roomLuminance: Float): Float? =
+            if (!roomLuminance.isFinite()) null
+            else (roomLuminance / EMISSIVE_ROOM_REFERENCE).coerceIn(EMISSIVE_MIN_SCALE, 1f)
+
+        /**
          * Legacy Sceneform pixel-intensity gain applied to the `AMBIENT_INTENSITY`
          * main-light intensity (#1105).
          *
@@ -810,7 +847,7 @@ class LightEstimator(
 
         /**
          * Number of cubemap faces in ARCore's `ENVIRONMENTAL_HDR` reflection
-         * cubemap — always 6. Sizes the reused [faceOffsets] field (#1105).
+         * cubemap — always 6, uploaded as the six layers of one buffer.
          */
         private const val CUBEMAP_FACE_COUNT = 6
 

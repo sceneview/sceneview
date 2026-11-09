@@ -1497,6 +1497,25 @@ private fun RerunLiveScreen(
             }
     }
 
+    // Review before you leave: Stop and review reads a room's capture once for the parts it missed,
+    // and the 3D view flies to each; Fix now resumes the same capture with one framed in amber,
+    // and the review comes back once it is filled in. Not for an object, a home's rooms nor a re-scan.
+    val scanReview = remember(scanMedia) { ScanReviewSession() }
+    val reviewsParts = scanScope.mapsGround && !scanScope.roomByRoom && rescan == null
+    val reviewCycles by rememberUpdatedState(rememberReviewCycles())
+    LaunchedEffect(scanReview, phase == ScanPhase.Reviewing && reviewsParts) {
+        if (phase != ScanPhase.Reviewing || !reviewsParts) return@LaunchedEffect scanReview.leave()
+        scanReview.review(cycles = { reviewCycles }) {
+            scan?.reviewCloud() ?: qaLong?.let { withContext(Dispatchers.Default) { it.dense.savedCloud() } }
+        }
+    }
+    LaunchedEffect(scanReview.fix) { scanReview.watchFix(scanning = { phase.integrates }) { phase = phase.finish() } }
+    // The guide's ribbon and arrow lead to the part being fixed, not to the room's next gap.
+    SideEffect { scanWalls?.fixTarget = scanReview.fix?.zone?.centre }
+    val reviewShown = scanReview.shown?.takeIf { phase == ScanPhase.Reviewing }
+    // The Live Room has no third person: its review says and frames each part, with no flight to it.
+    val reviewFlying by rememberUpdatedState(reviewShown != null && !liveRoom)
+
     // #4716 on the emulator, which has no AR: the `record` take's own photos stand in for the
     // camera, each with the pose and the lens it was taken with, drawn full screen under the live
     // view as ARCore draws its image — so a capture shows whether the points sit on the picture.
@@ -1509,7 +1528,7 @@ private fun RerunLiveScreen(
         var shown = -1
         while (true) {
             val index = withFrameNanos { media.trace.imageIndexAt(media.trace.duration) }
-            if (!ScanLens.seesThroughPhone(tracking = true, phase)) {
+            if (!ScanLens.seesThroughPhone(tracking = true, phase, reviewFlying)) {
                 scanLens.invalidate()
                 shown = -1
                 continue
@@ -2047,6 +2066,15 @@ private fun RerunLiveScreen(
                                 figures = ScanCopy.reviewFigures(keptPoints, capturedPhotos, capturedClock),
                                 onKeepScanning = { moveTo(ScanPhase.Scanning) },
                                 onSave = onSaveScan,
+                                review = scanReview.found.takeIf { reviewsParts },
+                                checking = scanReview.checking && reviewsParts,
+                                focus = scanReview.focus,
+                                onFixNow = { zone ->
+                                    scanReview.startFix(zone, scanMedia?.liveDense?.invoke()?.cloud)
+                                    moveTo(ScanPhase.Scanning)
+                                },
+                                onHold = scanReview::hold,
+                                onNext = scanReview::next,
                             )
                             phase == ScanPhase.Saving -> ScanSavingCard(points = keptPoints)
                             phase == ScanPhase.SaveFailed -> ScanSaveFailedCard(
@@ -2122,6 +2150,7 @@ private fun RerunLiveScreen(
                                             ),
                                             nextRoom = roomNumber.takeIf { betweenRooms },
                                             walls = scanWalls?.wallCount,
+                                            guide = scanWalls?.hint,
                                             done = scanWalls?.done == true,
                                             facingWall = scanCoverage.facingWall,
                                             wallToFinish = scanWalls?.facingUnfinished == true,
@@ -2132,7 +2161,8 @@ private fun RerunLiveScreen(
                                     dark = trackingLost &&
                                         (ForcedTrackingFailure.override ?: trackingFailureReason) ==
                                         TrackingFailureReason.INSUFFICIENT_LIGHT,
-                                )?.takeIf { rescan == null || it is CaptureCue.Blocked },
+                                )?.takeIf { rescan == null || it is CaptureCue.Blocked }
+                                    ?.let { CaptureChrome.spoken(it, scanWalls?.hint, scanWalls?.spokenHint) },
                                 complete = scanComplete,
                                 onTogglePause = {
                                     betweenRooms = false
@@ -2227,7 +2257,7 @@ private fun RerunLiveScreen(
                         // saving, the saving orbit owns the view ([ScanLens.seesThroughPhone]).
                         // The Live Room has no saving orbit: its eye stays the phone's while it saves, and
                         // tracking lost, it keeps the last one while the capture fades out over it.
-                        if (ScanLens.seesThroughPhone(isTracking, phase) || (liveRoom && isTracking)) {
+                        if (ScanLens.seesThroughPhone(isTracking, phase, reviewFlying) || (liveRoom && isTracking)) {
                             scanLens.update { cameraToWorld, projection ->
                                 frame.camera.displayOrientedPose.toMatrix(cameraToWorld, 0)
                                 frame.camera.getProjectionMatrix(projection, 0, ScanLens.NEAR_M, ScanLens.FAR_M)
@@ -2308,7 +2338,16 @@ private fun RerunLiveScreen(
                         reviewing = phase == ScanPhase.Reviewing,
                         phoneOnly = liveRoom,
                         trackingLost = trackingLost,
+                        reviewPose = reviewShown?.takeIf { !liveRoom }?.let { scanReview.poseFor(it, scanOrbit.verticalFovDegrees) }
+                            ?.let { pose -> { pose } },
                     )
+                    // The part the view has flown to, framed in amber in the room.
+                    reviewShown?.takeIf { !liveRoom }?.let { ScanReviewFrame(scanOrbit, it) }
+                }
+                // Fix now: the part framed in amber over the camera, and how far along it is.
+                val fixing = scanReview.fix
+                if (recording && fixing != null && (phase == ScanPhase.Scanning || phase == ScanPhase.Paused)) {
+                    RescanGuide(fixing, live = { scanMedia?.liveDense?.invoke()?.cloud }, lens = scanLens, drawn = scanFollowing)
                 }
                 // A part scanned again (#4736): its frame over the camera, and how far along it is —
                 // gone once it did not line up: the card says so, once, and saves it on its own (#4815).

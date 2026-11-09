@@ -12,7 +12,8 @@
 #
 # Formatting rule mirrors the existing hand-authored values: a value >= 1000
 # renders as "X.YK" (one decimal), anything below renders as a plain integer
-# (e.g. stars=1.3K).
+# (e.g. stars=1.3K). The decimal is truncated, never rounded up: 1,357 stars
+# reads 1.3K, matching the public wording "more than 1,300 stars".
 #
 # Usage:
 #   update-site-metrics.sh --stars N [--file PATH]
@@ -53,7 +54,7 @@ fi
 
 format_metric() {
   awk -v n="$1" 'BEGIN {
-    if (n >= 1000) { printf "%.1fK", n / 1000 }
+    if (n >= 1000) { printf "%.1fK", int(n / 100) / 10 }
     else { printf "%d", n }
   }'
 }

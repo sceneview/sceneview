@@ -39,7 +39,7 @@ object LightingStage {
     // ── Geometry ─────────────────────────────────────────────────────────────────────────────
 
     /** The hero. Already bundled and already the model both demos' card art was generated from. */
-    const val HERO_MODEL: String = "models/khronos_damaged_helmet.glb"
+    const val HERO_MODEL: String = "models/moto_helmet_v2.glb"
 
     /** Hero size, world units on its longest axis — so the helmet spans 0.5 m. */
     const val HERO_UNITS: Float = 0.5f

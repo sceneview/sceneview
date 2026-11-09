@@ -8,6 +8,7 @@ import android.view.Surface
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Stream
+import com.google.android.filament.android.StreamHelper
 import com.google.android.filament.Texture
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.drainFramePipeline
@@ -80,8 +81,7 @@ open class VideoNode(
     private val surface: Surface = Surface(surfaceTexture)
 
     /** The Filament [Stream] backed by the internal [SurfaceTexture]. */
-    val stream: Stream = Stream.Builder()
-        .stream(surfaceTexture)
+    val stream: Stream = StreamHelper.setStreamSource(Stream.Builder(), surfaceTexture)
         .build(materialLoader.engine)
 
     /** The Filament external [Texture] sampling frames from [stream]. */
