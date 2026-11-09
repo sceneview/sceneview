@@ -5,7 +5,6 @@ import android.os.Build
 import android.os.Process
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.common.MotionSensorReport
-import io.github.sceneview.demo.labs.Labs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -173,8 +172,6 @@ fun captureBugReportMetadata(context: Context, screen: ReportScreen): Map<String
         put("ABI", Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
         put("Display", "${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi}dpi")
         put("Locale", Locale.getDefault().toLanguageTag())
-        // Which early-access features the tester could see (SceneView Labs).
-        put("Labs", Labs.reportLine())
         // #4522: only when an AR session stalled and the motion sensors were listened to.
         MotionSensorReport.line()?.let { put(MotionSensorReport.KEY, it) }
     }

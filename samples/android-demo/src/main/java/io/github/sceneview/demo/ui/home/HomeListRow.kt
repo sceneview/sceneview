@@ -56,8 +56,6 @@ import io.github.sceneview.demo.DemoFreshness
 import io.github.sceneview.demo.DemoPreviews
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.isLabs
-import io.github.sceneview.demo.labs.LabsChip
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlin.math.PI
@@ -104,7 +102,6 @@ fun DemoListRow(
     }
     val badges: @Composable RowScope.() -> Unit = {
         if (freshness != DemoFreshness.None) FreshnessChip(freshness = freshness, accent = accent)
-        if (demo.isLabs) LabsChip()
         if (demo.status != DemoStatus.Working) StatusChip(status = demo.status)
     }
     val rowModifier = modifier.testTag(HomeTestTags.row(demo.id))
