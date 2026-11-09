@@ -755,11 +755,10 @@ private fun ModeSelector(
 // ─── Single Model section ─────────────────────────────────────────────────────
 // The original `model-viewer` demo — the flagship full-screen 3D model viewer.
 //
-// **Default state.** Loads the bundled `phoenix_bird.glb` (CC-BY 4.0) so the demo
-// renders identically with or without a Sketchfab API key — the very first
-// frame the user sees is the same hero shot the screenshots and store assets
-// promise. The CAMERA orbits the bird so lights, reflections and IBL hit the
-// same surface every frame.
+// **Default state.** Opens the first bundled entry, the Flight Helmet: its bundled
+// stand-in (`moto_helmet_v2.glb`, CC-BY 4.0) renders at once, with or without a
+// Sketchfab API key, and the HD file replaces it when it is on disk. The CAMERA
+// orbits the model so lights, reflections and IBL hit the same surface every frame.
 //
 // **"Surprise me" button.** When the user taps the extended FAB at the
 // bottom-start, the demo searches the Sketchfab API for a downloadable model
@@ -929,7 +928,7 @@ private fun SingleModelSection(
         if (surpriseStage == SurpriseStage.Decoding) surpriseStage = null
     }
     val streamedModelInstance = streamedModel?.instance
-    // The bundled hero — assets/models/phoenix_bird.glb. Loaded
+    // The selected bundled model (the Flight Helmet's stand-in at launch). Loaded
     // eagerly so the first frame after launch shows the hero shot.
     // A Museum & Space entry has no bundled stand-in: nothing to load until its HD file is in.
     // Called unconditionally, for the reason above (#1464): a null path is a value, not a
