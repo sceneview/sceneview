@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **The website's 3D Scan section shows real scans rendered in real time.** The two sped-up screen recordings are replaced by a kitchen and a garden terrace, both scanned on a Pixel 9 with the 3D Scan demo. SceneView's web renderer draws each one as a slow 12-second orbit that loops seamlessly. They sit on flat media cards with a light and a dark render, and only the pair that matches the theme loads and plays.
