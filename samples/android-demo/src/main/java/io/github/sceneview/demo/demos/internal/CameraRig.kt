@@ -123,26 +123,24 @@ enum class RigSubject(
         extent = 0.58f,
         yawDegrees = -22f,
     ),
-    ToyCar(
-        label = "Toy Car",
-        assetPath = "models/khronos_toy_car.glb",
+    Sneaker(
+        label = "Nike Air Jordan 1",
+        assetPath = "models/air_jordan_1.glb",
         groundX = 0.44f,
         groundZ = -0.27f,
-        // `scaleToUnits` normalises the LARGEST dimension, and this asset's bounds include
-        // the draped cloth the car sits on — so a value that reads as "same size as the
-        // helmet" leaves the car itself a third of it. Scaled to what is visible, not to
-        // what the bounding box measures.
+        // Long and low: normalising its length to the helmet's would leave it flat on the
+        // floor. The three subjects are matched by visual mass, not by bounding-box extent.
         extent = 0.62f,
         yawDegrees = 38f,
     ),
-    Lantern(
-        label = "Lantern",
-        assetPath = "models/khronos_lantern.glb",
+    FilmCamera(
+        label = "Canon AT-1",
+        assetPath = "models/canon_at1.glb",
         groundX = -0.44f,
         groundZ = 0.27f,
-        // Tall and thin: normalising its height to the helmet's would leave a sliver. The
-        // three subjects are matched by visual mass, not by bounding-box extent.
-        extent = 0.80f,
+        // A 1977 film SLR: compact and dense, chrome and leatherette, so it reads at a
+        // smaller extent than the two others.
+        extent = 0.50f,
         yawDegrees = -34f,
     ),
 }

@@ -142,61 +142,60 @@ data class PlacementModel(
  * as content someone meant to put in the room. That audit never reached the AR View tab's
  * own list. It does now.
  *
- * Every entry is a grounded object — a character, a piece of furniture or a household item
- * — with a distinct silhouette and material, so cycling the picker visibly changes the room.
+ * Every entry is a grounded object — a piece of furniture or a household item — with a distinct
+ * silhouette and material, so cycling the picker visibly changes the room.
  *
- * **What the catalogue offers, and why (#3324).** Two rows used to be untextured low-poly
- * animals (`khronos_fox`, `shiba`): flat vertex colours and a single base-colour map, which
- * is exactly what "the default models aren't great" describes — they say nothing about what
- * Filament can render, and a fox in a living room is not a thing anyone places. They are
- * replaced by three Khronos glTF-Sample-Assets pieces that each drive a *different* material
- * model — sheen (velvet), sheen + specular, and iridescence + transmission + volume — so the
- * six rows now read as a small showroom rather than as a conformance suite. (Verified on
- * `emulator-5554`: both sheen rows read as velvet. The dish's iridescent shell renders as a
- * dark glossy form there with no thin-film shift — correct geometry, scale and metal, but
- * the iridescence contribution does not appear on that emulator's ES 3.0 GL translator, and
- * has not yet been confirmed on a real GPU.) Both GLBs stay
- * in the APK: `SampleAssets` still uses them as offline fallbacks and `ARGeospatialAnchorsDemo`
- * loads the fox directly, so nothing is deleted, only re-curated.
+ * **What the catalogue offers, and why (2026-11-09).** Real products at their real size, as an
+ * IKEA Place would show them: a sofa arrives 2.1 m long, a toaster 30 cm wide. The rows used to
+ * be Khronos glTF sample assets (Toy Car, Lantern, Velvet Sofa, Sheen Chair, Olive Dish) and the
+ * Quaternius Ranger, all fitted into the same 0.3 m preview — material tests at toy size, which
+ * is what "the demo models look bad" describes. These files are the HD pack's, bundled byte for
+ * byte ([io.github.sceneview.demo.common.CatalogueProducts.BUNDLED]), authored in metres: the
+ * sizes below are their own bounding boxes, so the read-out says "Actual size". The old GLBs
+ * stay in the APK — `SampleAssets` fallbacks and other demos still load them.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
     PlacementModel(
-        id = "toy-car",
-        displayName = "Toy Car",
-        assetLocation = "models/khronos_toy_car.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-    // Bundled showcases share a 0.3 m longest-axis preview on Android and iOS.
-    // An explicitly imported or measured viewer selection retains its selected size basis.
-    PlacementModel(
-        id = "ranger",
-        displayName = "Ranger",
-        assetLocation = "models/quaternius_ranger.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
+        id = "rivet-aiden-armchair",
+        displayName = "Rivet Aiden armchair",
+        assetLocation = "models/rivet_aiden_armchair.glb",
+        realWorldSizeMeters = 0.93f,
+        sizeIsMeasured = true,
     ),
     PlacementModel(
-        id = "velvet-sofa",
-        displayName = "Velvet Sofa",
-        assetLocation = "models/khronos_glam_velvet_sofa.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
+        id = "rivet-sloane-sofa",
+        displayName = "Rivet Sloane sofa",
+        assetLocation = "models/rivet_sloane_sofa.glb",
+        realWorldSizeMeters = 2.14f,
+        sizeIsMeasured = true,
     ),
     PlacementModel(
-        id = "sheen-chair",
-        displayName = "Sheen Chair",
-        assetLocation = "models/khronos_sheen_chair.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
+        id = "rivet-arc-floor-lamp",
+        displayName = "Rivet arc floor lamp",
+        assetLocation = "models/rivet_arc_floor_lamp.glb",
+        realWorldSizeMeters = 1.93f,
+        sizeIsMeasured = true,
     ),
     PlacementModel(
-        id = "lantern",
-        displayName = "Lantern",
-        assetLocation = "models/khronos_lantern.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
+        id = "wishbone-chair",
+        displayName = "Wishbone dining chair",
+        assetLocation = "models/wishbone_chair.glb",
+        realWorldSizeMeters = 0.74f,
+        sizeIsMeasured = true,
     ),
     PlacementModel(
-        id = "olive-dish",
-        displayName = "Olive Dish",
-        assetLocation = "models/khronos_iridescent_dish.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
+        id = "smeg-toaster",
+        displayName = "SMEG toaster",
+        assetLocation = "models/smeg_toaster.glb",
+        realWorldSizeMeters = 0.30f,
+        sizeIsMeasured = true,
+    ),
+    PlacementModel(
+        id = "air-jordan-1",
+        displayName = "Nike Air Jordan 1",
+        assetLocation = "models/air_jordan_1.glb",
+        realWorldSizeMeters = 0.33f,
+        sizeIsMeasured = true,
     ),
 )
 

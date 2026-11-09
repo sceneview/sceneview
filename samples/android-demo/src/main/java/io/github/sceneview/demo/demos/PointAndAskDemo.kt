@@ -180,17 +180,17 @@ private class AskFramePreview(
 )
 
 /**
- * One bundled showcase model offered by Drop-3D mode's picker (#3083). All three ship in
- * the APK already (used elsewhere in the demo app), so adding the picker costs zero new
- * assets — [scaleUnits] matches the value already tuned for that asset in `ArViewTab`.
+ * One bundled model offered by Drop-3D mode's picker (#3083). All three ship in the APK
+ * already (the Model Viewer's own list), so the picker downloads nothing — [scaleUnits] is the
+ * product's real longest side in metres, so it lands in the room at its true size.
  */
 private data class PropSpec(val asset: String, val label: String, val scaleUnits: Float)
 
-/** Drop-3D mode's picker options, in display order. Shiba stays first — the prior default. */
+/** Drop-3D mode's picker options, in display order; the first is the default. */
 private val DROP_PROPS = listOf(
-    PropSpec(asset = "models/shiba.glb", label = "Shiba", scaleUnits = 0.45f),
-    PropSpec(asset = "models/khronos_fox.glb", label = "Fox", scaleUnits = 0.3f),
-    PropSpec(asset = "models/khronos_toy_car.glb", label = "Toy Car", scaleUnits = 0.3f),
+    PropSpec(asset = "models/smeg_toaster.glb", label = "SMEG toaster", scaleUnits = 0.30f),
+    PropSpec(asset = "models/air_jordan_1.glb", label = "Air Jordan 1", scaleUnits = 0.33f),
+    PropSpec(asset = "models/canon_at1.glb", label = "Canon AT-1", scaleUnits = 0.14f),
 )
 
 /**
@@ -258,8 +258,8 @@ private class AnswerPanel(
  * is shown in an overlay card. Fully offline — the frame never leaves the device.
  *
  * Long-press a surface to drop a virtual prop into the room: because the capture reads the
- * AR view itself, the on-device model *sees the augmented scene* — tap the shiba you just
- * placed and Nano describes a dog that only exists in AR. That is the demo's whole point,
+ * AR view itself, the on-device model *sees the augmented scene* — tap the toaster you just
+ * placed and Nano describes a SMEG toaster that only exists in AR. That is the demo's whole point,
  * which is why a tap on a node is never swallowed (#3187).
  *
  * **The screen is one explicit state machine** ([AskFlow], plain Kotlin, JVM-tested):
@@ -310,10 +310,10 @@ private class AnswerPanel(
  *    (`ACTION_RECOGNIZE_SPEECH`, #3292), reopened after each pause so one stays a sentence
  *    rather than the end of it — still no `RECORD_AUDIO`, by design.
  *  - **Drop-3D mode** — long-press now drops whichever [PropSpec] is selected in the picker
- *    (`DROP_PROPS`), not always the shiba. Re-scoped to the three GLBs already bundled in the
- *    APK (shiba, fox, toy car) instead of the original branch's two new ~7 MB binary assets
- *    (`animated_trex.glb`, `monstera_plant.glb`) — same "pick a model, drop it, ask about it"
- *    experience with zero new assets or `CREDITS.md` licensing entries to land.
+ *    (`DROP_PROPS`). Since 2026-11-09 the picker offers real products bundled in the APK (a
+ *    SMEG toaster, a Nike Air Jordan 1, a Canon AT-1) instead of the Shiba, the Fox and the
+ *    Toy Car: "what is this and how much does it cost?" has an answer for a real product, and
+ *    none for a sample asset.
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {
