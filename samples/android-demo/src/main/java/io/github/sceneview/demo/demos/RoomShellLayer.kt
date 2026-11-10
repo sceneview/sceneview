@@ -15,7 +15,7 @@ import io.github.sceneview.demo.demos.internal.room.RoomShellBuilder
 import io.github.sceneview.demo.demos.internal.room.RoomShellGlb
 
 /*
- * A room's result as a dollhouse (Live Room v2): its floor and four walls as flat planes textured
+ * A room's result as a dollhouse (Live Room v2): its floor and walls — four, or an L's six — as flat planes textured
  * from the scan's photos, single-sided and facing into the room, and what stands in it as small
  * coloured points ([RoomShellBuilder]). The result opens on it; the Photo layer's splats stay
  * one tap away. Built once off the main thread and kept with the scan (`room.glb`,
@@ -40,7 +40,7 @@ internal class RoomShellShown(val model: RerunScanModel, val objects: SplatCloud
  * Bumped whenever the shell's builder makes a different shell of the same scan: a shell kept by
  * an earlier one is built again.
  */
-internal const val ROOM_SHELL_VERSION = 1
+internal const val ROOM_SHELL_VERSION = 2
 
 /**
  * Session [id]'s room shell: read back from [store] when kept, else built from [input] and kept.

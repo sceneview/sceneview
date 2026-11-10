@@ -7,8 +7,9 @@ import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.ModelGlb
 
 /**
- * A [RoomShell]'s faces as one glTF 2.0 binary: one mesh of five quads, each its own primitive
- * with its own photo texture (JPEG), unlit (`KHR_materials_unlit`: the photos carry the room's
+ * A [RoomShell]'s faces as one glTF 2.0 binary: one mesh, each face its own primitive — one quad
+ * per piece ([ShellFace.pieces], its UVs where the piece lies in the face's texture) — with its own
+ * photo texture (JPEG), unlit (`KHR_materials_unlit`: the photos carry the room's
  * light), single-sided and wound to face into the room — so orbiting from outside, the walls
  * between the eye and the room are culled and the room reads as a dollhouse. World space, the
  * scan's own, metres, Y up.
@@ -22,31 +23,41 @@ internal object RoomShellGlb {
     fun write(faces: List<ShellFace>, encoder: AtlasEncoder, generator: String = "SceneView room shell"): ByteArray? {
         require(faces.isNotEmpty() && faces.all { it.argb.size == it.columns * it.rows }) { "faces without textures" }
         val jpegs = faces.map { encoder.jpeg(it.argb, it.columns, it.rows) ?: return null }
-        val n = faces.size * CORNERS
+        val firstQuad = IntArray(faces.size + 1).also { q -> faces.forEachIndexed { f, face -> q[f + 1] = q[f] + face.pieceCount } }
+        val quads = firstQuad[faces.size]
+        val n = quads * CORNERS
+        require(n <= MAX_VERTICES) { "too many pieces: $quads" }
         val positions = FloatArray(n * 3)
         val normals = FloatArray(n * 3)
         val uvs = FloatArray(n * 2)
-        val indices = IntArray(faces.size * QUAD_INDICES)
+        val indices = IntArray(quads * QUAD_INDICES)
         val corner = FloatArray(3)
         faces.forEachIndexed { f, face ->
-            // Corners (0, 0), (1, 0), (1, 1), (0, 1) along u and v; the texture's top row is v's far end.
-            for (k in 0 until CORNERS) {
-                val su = if (k == 1 || k == 2) 1f else 0f
-                val sv = if (k >= 2) 1f else 0f
-                face.at(su * face.lengthU, sv * face.lengthV, corner)
-                val v = f * CORNERS + k
-                for (c in 0 until 3) {
-                    positions[v * 3 + c] = corner[c]
-                    normals[v * 3 + c] = face.normal[c]
-                }
-                uvs[v * 2] = su
-                uvs[v * 2 + 1] = 1f - sv
-            }
             // Counter-clockwise seen from the side the normal points to: the front face.
             val cross = cross(face.u, face.v)
             val front = cross[0] * face.normal[0] + cross[1] * face.normal[1] + cross[2] * face.normal[2] > 0f
             val order = if (front) FRONT else BACK
-            for (k in 0 until QUAD_INDICES) indices[f * QUAD_INDICES + k] = f * CORNERS + order[k]
+            for (piece in 0 until face.pieceCount) {
+                val quad = firstQuad[f] + piece
+                val s0 = face.pieces[piece * 4]
+                val t0 = face.pieces[piece * 4 + 1]
+                val s1 = face.pieces[piece * 4 + 2]
+                val t1 = face.pieces[piece * 4 + 3]
+                // Corners (s0, t0), (s1, t0), (s1, t1), (s0, t1) along u and v; the texture's top row is v's far end.
+                for (k in 0 until CORNERS) {
+                    val s = if (k == 1 || k == 2) s1 else s0
+                    val t = if (k >= 2) t1 else t0
+                    face.at(s, t, corner)
+                    val v = quad * CORNERS + k
+                    for (c in 0 until 3) {
+                        positions[v * 3 + c] = corner[c]
+                        normals[v * 3 + c] = face.normal[c]
+                    }
+                    uvs[v * 2] = s / face.lengthU
+                    uvs[v * 2 + 1] = 1f - t / face.lengthV
+                }
+                for (k in 0 until QUAD_INDICES) indices[quad * QUAD_INDICES + k] = quad * CORNERS + order[k]
+            }
         }
         val positionBytes = n * 12
         val normalBytes = n * 12
@@ -80,8 +91,8 @@ internal object RoomShellGlb {
         )
         faces.indices.forEach { f ->
             accessors += jsonOf(
-                "bufferView" to 3, "byteOffset" to f * QUAD_INDICES * 2,
-                "componentType" to UNSIGNED_SHORT, "count" to QUAD_INDICES, "type" to "SCALAR",
+                "bufferView" to 3, "byteOffset" to firstQuad[f] * QUAD_INDICES * 2,
+                "componentType" to UNSIGNED_SHORT, "count" to faces[f].pieceCount * QUAD_INDICES, "type" to "SCALAR",
             )
         }
         val primitives = faces.indices.map { f ->
@@ -133,7 +144,7 @@ internal object RoomShellGlb {
             normals.forEach { putFloat(it) }
             for (face in faces) {
                 val c = face.meanColor
-                repeat(CORNERS) {
+                repeat(CORNERS * face.pieceCount) {
                     put(RerunMeshGlb.LINEAR[(c shr 16) and 0xFF])
                     put(RerunMeshGlb.LINEAR[(c shr 8) and 0xFF])
                     put(RerunMeshGlb.LINEAR[c and 0xFF])
@@ -161,6 +172,7 @@ internal object RoomShellGlb {
     private fun pad4(size: Int) = (size + 3) and 3.inv()
 
     private const val CORNERS = 4
+    private const val MAX_VERTICES = 65_536
     private const val QUAD_INDICES = 6
     private val FRONT = intArrayOf(0, 1, 2, 0, 2, 3)
     private val BACK = intArrayOf(0, 2, 1, 0, 3, 2)

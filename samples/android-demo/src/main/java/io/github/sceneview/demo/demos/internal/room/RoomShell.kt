@@ -24,7 +24,9 @@ import kotlin.math.sqrt
  * One flat side of a [RoomShell]: a rectangle from [origin] along the unit vectors [u] and [v]
  * ([lengthU] × [lengthV] metres), seen from the side its [normal] points to — into the room — and
  * its photo texture, [columns] × [rows] texels, ARGB, rows top first (the top row is the far end
- * of [v]). World space, the scan's own.
+ * of [v]). World space, the scan's own. Drawn as its [pieces]: rectangles `[s0, s1] × [t0, t1]` metres
+ * along [u] and [v], four floats each, all of it by default — an L-shaped room's floor is the
+ * rectangle round it, textured whole, drawn as the pieces inside the room.
  */
 internal class ShellFace(
     val name: String,
@@ -36,7 +38,10 @@ internal class ShellFace(
     val normal: FloatArray,
     val columns: Int,
     val rows: Int,
+    val pieces: FloatArray = floatArrayOf(0f, 0f, lengthU, lengthV),
 ) {
+    val pieceCount: Int get() = pieces.size / 4
+
     /** The texture, once the photos coloured it. */
     var argb: IntArray = IntArray(0)
         internal set
@@ -81,15 +86,24 @@ internal data class RoomShellStats(
 }
 
 /**
- * A room as a dollhouse reads it: its [box]'s floor and four walls as flat textured [faces] —
- * coloured from the scan's photos — and what stands in the room, [objects], as coloured points.
+ * A room as a dollhouse reads it: its floor and walls as flat textured [faces] — coloured from the
+ * scan's photos — and what stands in the room, [objects], as coloured points. Its [box]'s floor and
+ * four walls, or, when [plan] is not `null`, the rectilinear room it holds (an L, a T…).
  */
-internal class RoomShell(val box: RoomBox, val faces: List<ShellFace>, val objects: DenseCloud, val stats: RoomShellStats)
+internal class RoomShell(
+    val box: RoomBox,
+    val faces: List<ShellFace>,
+    val objects: DenseCloud,
+    val stats: RoomShellStats,
+    val plan: RoomPlan? = null,
+)
 
 /*
  * The room shell, from a scan's dense cloud and its key photos, off the main thread, pure Kotlin:
  *
- * 1. The box ([RoomBox]): the room's frame, its four walls, its floor and ceiling.
+ * 1. The box ([RoomBox]): the room's frame, its four walls, its floor and ceiling; then its plan
+ *    ([RoomPlan]), when the scan shows part of the box to be outside the room — an L-shaped room's
+ *    notch — its walls the plan's and its floor the plan's cells.
  * 2. The cloud cleaned: a point is kept for the depth maps when [CLEAN_MIN_NEIGHBOURS] others lie
  *    within [CLEAN_RADIUS_M] and its confidence is [MIN_CONFIDENCE] or more (a voxel hash, no tree).
  * 3. The faces: floor and walls as [TEXEL_M] texel grids, each texel the weighted mean of every
@@ -98,7 +112,7 @@ internal class RoomShell(val box: RoomBox, val faces: List<ShellFace>, val objec
  *    border: `(cos / distance² · border)^1.5`, sampled bilinearly. A texel no photo saw takes the
  *    nearest seen one's colour; a 3 × 3 median then smooths the speckle.
  * 4. The objects: cleaned points with [OBJECT_MIN_NEIGHBOURS] within [OBJECT_RADIUS_M], inside
- *    the box by its margins, not part of a wall, coloured from the photos the same way (with the
+ *    the room by its margins, not part of a wall, coloured from the photos the same way (with the
  *    tighter [OBJECT_OCCLUSION_M]) or keeping their own colour when none sees them.
  */
 internal object RoomShellBuilder {
@@ -117,6 +131,15 @@ internal object RoomShellBuilder {
         val started = System.nanoTime()
         val normals = cloud.normals ?: return null
         val box = RoomBox.of(cloud, floorY) ?: return null
+        val shots = photos?.photos.orEmpty()
+        val cameras = FloatArray(shots.size * 3).also { out ->
+            shots.forEachIndexed { k, shot ->
+                out[k * 3] = shot.pose.x
+                out[k * 3 + 1] = shot.pose.y
+                out[k * 3 + 2] = shot.pose.z
+            }
+        }
+        val plan = RoomPlan.of(cloud, box, cameras)
         val boxMs = since(started)
         val neighboursStarted = System.nanoTime()
         val n = cloud.count
@@ -127,7 +150,12 @@ internal object RoomShellBuilder {
             near[it] >= CLEAN_MIN_NEIGHBOURS && (confidences?.get(it)?.toInt()?.and(0xFF) ?: FULL_CONFIDENCE) >= MIN_CONFIDENCE
         }
         val wide = neighbourCounts(p, OBJECT_RADIUS_M)
-        val objectIndices = objects(cloud, normals, box, clean, wide)
+        val toWall: (Float, Float) -> Float = if (plan == null) {
+            { a, b -> minOf(a - box.a0, box.a1 - a, b - box.b0, box.b1 - b) }
+        } else {
+            plan::toWall
+        }
+        val objectIndices = objects(cloud, normals, box, clean, wide, toWall)
         val cleanPositions = IntList(n).also { list -> for (i in 0 until n) if (clean[i]) list.add(i) }.let { list ->
             FloatArray(list.size * 3) { p[list[it / 3] * 3 + it % 3] }
         }
@@ -135,7 +163,7 @@ internal object RoomShellBuilder {
         progress(PROGRESS_NEIGHBOURS)
 
         val photosStarted = System.nanoTime()
-        val faces = faces(box)
+        val faces = if (plan == null) faces(box) else faces(plan)
         val faceAcc = faces.map { Accumulator(it.columns * it.rows) }
         val objectPositions = FloatArray(objectIndices.size * 3) { p[objectIndices[it / 3] * 3 + it % 3] }
         val objectNormals = FloatArray(objectIndices.size * 3) { normals[objectIndices[it / 3] * 3 + it % 3] }
@@ -192,6 +220,7 @@ internal object RoomShellBuilder {
                 photosMs = photosMs,
                 finishMs = since(finishStarted),
             ),
+            plan = plan,
         )
     }
 
@@ -205,14 +234,6 @@ internal object RoomShellBuilder {
         val up = floatArrayOf(0f, 1f, 0f)
         fun corner(ra: Float, rb: Float) = floatArrayOf(box.worldX(ra, rb), box.floorY, box.worldZ(ra, rb))
         fun neg(x: FloatArray) = FloatArray(3) { -x[it] }
-        fun face(name: String, origin: FloatArray, u: FloatArray, v: FloatArray, lu: Float, lv: Float, normal: FloatArray): ShellFace {
-            val texel = max(TEXEL_M, max(lu, lv) / MAX_TEXTURE_PX)
-            return ShellFace(
-                name, origin, u, v, lu, lv, normal,
-                columns = (lu / texel).roundToInt().coerceAtLeast(1),
-                rows = (lv / texel).roundToInt().coerceAtLeast(1),
-            )
-        }
         return listOf(
             face("floor", corner(box.a0, box.b0), a, b, box.width, box.depth, up),
             face("wx0", corner(box.a0, box.b0), b, up, box.depth, box.height, a),
@@ -223,11 +244,71 @@ internal object RoomShellBuilder {
     }
 
     /**
-     * The points that stand in the room: cleaned, [OBJECT_MIN_NEIGHBOURS] within
-     * [OBJECT_RADIUS_M], inside the box by its margins, and not a wall's — a point facing
-     * sideways within [WALL_BAND_M] of one.
+     * The floor and the walls of [plan], each facing into the room, in world space: the floor the
+     * box's whole, drawn only over the plan's cells, so its pieces share one texture and meet
+     * without a seam; the walls named `wall0`, `wall1`… in the plan's order.
      */
-    private fun objects(cloud: DenseCloud, normals: FloatArray, box: RoomBox, clean: BooleanArray, wide: IntArray): IntArray {
+    fun faces(plan: RoomPlan): List<ShellFace> {
+        val box = plan.box
+        val a = floatArrayOf(box.worldX(1f, 0f), 0f, box.worldZ(1f, 0f))
+        val b = floatArrayOf(box.worldX(0f, 1f), 0f, box.worldZ(0f, 1f))
+        val up = floatArrayOf(0f, 1f, 0f)
+        fun corner(ra: Float, rb: Float) = floatArrayOf(box.worldX(ra, rb), box.floorY, box.worldZ(ra, rb))
+        fun signed(x: FloatArray, sign: Int) = FloatArray(3) { x[it] * sign }
+        val pieces = FloatArray(plan.floor.size * 4).also { out ->
+            plan.floor.forEachIndexed { k, r ->
+                out[k * 4] = r.a0 - box.a0
+                out[k * 4 + 1] = r.b0 - box.b0
+                out[k * 4 + 2] = r.a1 - box.a0
+                out[k * 4 + 3] = r.b1 - box.b0
+            }
+        }
+        val floor = face("floor", corner(box.a0, box.b0), a, b, box.width, box.depth, up, pieces)
+        val walls = plan.walls.mapIndexed { k, wall ->
+            if (wall.alongA) {
+                face("wall$k", corner(wall.from, wall.line), a, up, wall.length, box.height, signed(b, wall.inward))
+            } else {
+                face("wall$k", corner(wall.line, wall.from), b, up, wall.length, box.height, signed(a, wall.inward))
+            }
+        }
+        return listOf(floor) + walls
+    }
+
+    @Suppress("LongParameterList")
+    private fun face(
+        name: String,
+        origin: FloatArray,
+        u: FloatArray,
+        v: FloatArray,
+        lu: Float,
+        lv: Float,
+        normal: FloatArray,
+        pieces: FloatArray = floatArrayOf(0f, 0f, lu, lv),
+    ): ShellFace {
+        val texel = max(TEXEL_M, max(lu, lv) / MAX_TEXTURE_PX)
+        return ShellFace(
+            name, origin, u, v, lu, lv, normal,
+            columns = (lu / texel).roundToInt().coerceAtLeast(1),
+            rows = (lv / texel).roundToInt().coerceAtLeast(1),
+            pieces = pieces,
+        )
+    }
+
+    /**
+     * The points that stand in the room: cleaned, [OBJECT_MIN_NEIGHBOURS] within
+     * [OBJECT_RADIUS_M], inside the room by its margins — [toWall] the room-frame distance to its
+     * nearest wall, negative outside — and not a wall's: a point facing sideways within
+     * [WALL_BAND_M] of one.
+     */
+    @Suppress("LongParameterList")
+    private fun objects(
+        cloud: DenseCloud,
+        normals: FloatArray,
+        box: RoomBox,
+        clean: BooleanArray,
+        wide: IntArray,
+        toWall: (Float, Float) -> Float,
+    ): IntArray {
         val p = cloud.positions
         val out = IntList(cloud.count / 4 + 1)
         for (i in 0 until cloud.count) {
@@ -237,9 +318,9 @@ internal object RoomShellBuilder {
             val z = p[i * 3 + 2]
             val a = box.a(x, z)
             val b = box.b(x, z)
-            val toWall = minOf(a - box.a0, box.a1 - a, b - box.b0, box.b1 - b)
-            if (abs(normals[i * 3 + 1]) < WALL_MAX_NY && toWall < WALL_BAND_M) continue
-            if (toWall <= OBJECT_WALL_MARGIN_M) continue
+            val wall = toWall(a, b)
+            if (abs(normals[i * 3 + 1]) < WALL_MAX_NY && wall < WALL_BAND_M) continue
+            if (wall <= OBJECT_WALL_MARGIN_M) continue
             if (y <= box.floorY + OBJECT_FLOOR_MARGIN_M || y >= box.ceilingY - OBJECT_CEILING_MARGIN_M) continue
             out.add(i)
         }
