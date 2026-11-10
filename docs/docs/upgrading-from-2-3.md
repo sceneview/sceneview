@@ -13,6 +13,8 @@ If your Android app still ships SceneView 2.3.x, this page takes it forward in t
    `Engine.nDestroyEngine` ANR, in views that create their own engine. Coming from 2.3.2 or 2.3.3,
    only the version number changes: Filament 1.68.2 and ARCore 1.52.0 are already the ones 2.3.4
    ships, and sections 1.2 to 1.6 do not apply.
+   Coming from 2.3.1, Filament still moves from 1.66.0 to 1.68.2 and ARCore from 1.51.0 to
+   1.52.0: sections 1.3 (your own materials), 1.4 and 1.6 apply, 1.2 and 1.5 are already done.
 2. **2.3.4 → 4.x.** The Compose-only API. More work, covered here in summary and in detail in the
    [Migration Guide](migration.md#sceneview-2x-to-3x).
 
@@ -99,8 +101,9 @@ matching `matc` ([#640](https://github.com/sceneview/sceneview/pull/640)); 2.3.2
 **Your own materials.** A `.filamat` is compiled for one Filament material version. If your app
 ships materials of its own, recompile them with `matc` from the
 [Filament 1.68.2 release](https://github.com/google/filament/releases/tag/v1.68.2): the bundled
-materials go from material version 56 in 2.3.0 to 68 in 2.3.4, and Filament does not load a
-material built for another version.
+materials go from material version 56 in 2.3.0 to 66 in 2.3.1 and 68 in 2.3.2 to 2.3.4, and
+Filament does not load a material built for another version. This applies coming from 2.3.1 too:
+a material compiled for Filament 1.66.0 does not load in 1.68.2.
 
 **`KTX1Loader` returns bundles.** If you call Filament's `KTX1Loader` yourself, take the object out
 of the returned bundle, as SceneView's `EnvironmentLoader` does since 2.3.1:
@@ -130,8 +133,8 @@ Texture.Builder()
 
 ### 1.4 ARCore 1.48.0 → 1.52.0
 
-No SceneView API change comes with it. If your build declares `com.google.ar:core` itself, use
-1.52.0 or above.
+2.3.1 ships ARCore 1.51.0, and 2.3.2 to 2.3.4 ship 1.52.0. No SceneView API change comes with
+it. If your build declares `com.google.ar:core` itself, use 1.52.0 or above.
 
 ### 1.5 `FileLoader.fuelManager` → `FileLoader.httpLoader` (2.3.1)
 
@@ -424,7 +427,7 @@ section 1.8). Nothing to change in your code.
 |---|---|---|
 | 2.3.0 / 2.3.1 | Bump to 2.3.4 | 1.1 |
 | 2.3.0 | JVM target 21, Kotlin 2.1+; with `arsceneview`, `compileSdk` 36 and AGP 8.9.1+ | 1.2 |
-| 2.3.0 | Recompile your own `.filamat` for Filament 1.68.2 | 1.3 |
+| 2.3.0 / 2.3.1 | Recompile your own `.filamat` for Filament 1.68.2 | 1.3 |
 | 2.3.0 | `KTX1Loader.create*(…)` → `.indirectLight` / `.skybox` | 1.3 |
 | 2.3.0 | `FileLoader.fuelManager` → `FileLoader.httpLoader`; failed URL loads return `null` | 1.5 |
 | 2.3.0 / 2.3.1 | Turn keep-screen-on off per view if needed | 1.6 |
