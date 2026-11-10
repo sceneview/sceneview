@@ -20,7 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * A depth scan's dense map as the capture screen sees it (#4629): [DenseFusion] on this phone's
  * budget ([DenseFusion.budgetFor] its heap), the one count the HUD shows — the points the saved
  * scan keeps, so the live figure and the saved one agree — the live 3D card's snapshot, and
- * whether the map has just coarsened part of itself to make room ([detail]).
+ * whether the map has just coarsened part of itself to make room ([detail]). [liveAlpha] is how
+ * opaque the live snapshot's surfels are drawn over the camera.
  *
  * [add] runs on one worker thread at a time; the rest is read from the main thread.
  */
@@ -28,6 +29,7 @@ internal class ScanDenseMap(
     maxPoints: Int = DenseFusion.budgetFor(Runtime.getRuntime().maxMemory()),
     maxLevel: Int = DenseFusion.MAX_LEVEL,
     private val clock: () -> Long = System::nanoTime,
+    private val liveAlpha: Float = 1f,
 ) {
     val fusion = DenseFusion(maxPoints = maxPoints, maxLevel = maxLevel)
 
@@ -188,7 +190,8 @@ internal class ScanDenseMap(
             cloud = drawn,
             voxelM = fusion.voxelM,
             mesh = DenseSurfels.mesh(drawn, fusion.voxelM),
-            atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
+            // Over a room's camera, see-through ([DenseSurfels.LIVE_ROOM_ALPHA]).
+            atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR, alpha = liveAlpha),
             // The floor cells are found here too, on the worker, from the map as before: the
             // live map and the area read them, however far the drawn surfels are merged.
             coveredCells = covered,

@@ -82,6 +82,8 @@
     <string name="scan_rescan_refused">Couldn\'t line up this part with your scan.</string>
     <!-- Fix now, at the capture's review: the part is filled in by the same scan, then reviewed again. -->
     <string name="scan_fix_covered">Covered. Checking your scan again…</string>
+    <!-- Fix now, the part's fill not growing for a while of scanning: what to try, not a frozen figure. -->
+    <string name="scan_fix_stalled">Nothing new here yet: move closer to the amber frame (%1$d%%)</string>
     <!-- QA only (debug build, QA mode): the result's lit / unlit A/B in More. -->
     <string name="scan_result_qa_shading_as_built" translatable="false">Shading: as built</string>
     <string name="scan_result_qa_shading_lit" translatable="false">Shading: lit</string>

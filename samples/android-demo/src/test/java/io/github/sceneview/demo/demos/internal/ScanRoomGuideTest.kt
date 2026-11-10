@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -113,10 +114,55 @@ class ScanRoomGuideTest {
     }
 
     @Test
-    fun `depth lost goes before how to move and after the light`() {
-        assertEquals(LiveRoomMessage.NoDepth, LiveRoomGuide.message(false, false, true, true, true, LiveRoomMessage.NoDepth))
-        assertEquals(LiveRoomMessage.TooDark, LiveRoomGuide.message(true, true, true, true, true, LiveRoomMessage.DepthLost))
-        assertEquals(LiveRoomMessage.TrackingLost, LiveRoomGuide.message(true, false, false, false, false, LiveRoomMessage.DepthLost))
+    fun `no depth message in the Live Room, where it read as a false alarm`() {
+        assertTrue(LiveRoomMessage.entries.none { it.blocker == ScanBlocker.NoDepth || it.blocker == ScanBlocker.DepthLost })
+    }
+
+    @Test
+    fun `a part fill line gives way to a blocker, the one message`() {
+        assertFalse(LiveRoomGuide.partLineShown(CaptureCue.Blocked(ScanBlocker.TooFast, brief = true)))
+        assertFalse(LiveRoomGuide.partLineShown(CaptureCue.Blocked(ScanBlocker.Full, brief = true)))
+        assertTrue(LiveRoomGuide.partLineShown(null))
+        assertTrue(LiveRoomGuide.partLineShown(CaptureCue.Next(ScanCopy.ROOM_DONE)))
+    }
+
+    @Test
+    fun `the chevron leads to the part being fixed or reviewed, before any gap and after the room is done`() {
+        val gap = floatArrayOf(0f, 0f, 2f, -4f)
+        val part = floatArrayOf(3f, -1f)
+        assertEquals(Triple(3f, 1.4f, -1f), GapChevron.aim(gap, part, done = false, height = 1.4f))
+        assertEquals(Triple(3f, 1.4f, -1f), GapChevron.aim(null, part, done = true, height = 1.4f))
+        assertEquals(Triple(1f, 1.4f, -2f), GapChevron.aim(gap, null, done = false, height = 1.4f))
+        assertNull(GapChevron.aim(gap, null, done = true, height = 1.4f))
+        assertNull(GapChevron.aim(null, null, done = false, height = 1.4f))
+    }
+
+    @Test
+    fun `a part being fixed, off screen, gets the chevron, which goes once the part is well inside`() {
+        // Fix now's part to the right of a phone looking down -z: the chevron on the right edge.
+        val (x, y, z) = requireNotNull(GapChevron.aim(null, floatArrayOf(3f, -1f), done = false, height = 0f))
+        val place = requireNotNull(GapChevron.place(EYE, LENS, x, y, z))
+        assertEquals(1f, place.x, TOLERANCE)
+        val (cx, cy, cz) = requireNotNull(GapChevron.aim(null, floatArrayOf(0.2f, -2f), done = false, height = 0f))
+        assertNull(GapChevron.place(EYE, LENS, cx, cy, cz, shown = true))
+    }
+
+    @Test
+    fun `the chevron's band keeps the whole disc clear of the measured status card and controls`() {
+        // A 2,400 px stage, the card's bottom edge at 24 %, the controls from 70 %: a 160 px chevron.
+        val height = 2400f
+        val chevron = 160f
+        val band = GapChevron.band(height, topCover = 0.24f * height, bottomCover = 0.30f * height, chevron = chevron)
+        // BiasAlignment puts the chevron's top at (height - chevron) * (1 + bias) / 2.
+        val topEdge = (height - chevron) * (1f + band.start) / 2f
+        val bottomEdge = (height - chevron) * (1f + band.endInclusive) / 2f + chevron
+        assertEquals(0.24f * height, topEdge, 0.5f)
+        assertEquals(0.70f * height, bottomEdge, 0.5f)
+        // A gap straight up stops at the band's top, under the card.
+        val place = requireNotNull(GapChevron.place(EYE, LENS, 0f, 5f, -1f, top = band.start, bottom = band.endInclusive))
+        assertEquals(band.start, place.y, TOLERANCE)
+        // Chrome that leaves no room round the middle falls back to the guess.
+        assertEquals(-GapChevron.MAX_Y..GapChevron.MAX_Y, GapChevron.band(height, height * 0.6f, height * 0.6f, chevron))
     }
 
     @Test

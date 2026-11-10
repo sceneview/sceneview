@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /*
@@ -505,5 +506,23 @@ object DenseSurfels {
     fun uvOf(index: Int): Pair<Float, Float> = PointColorAtlas.uvOf(index, ATLAS_SIZE)
 
     /** The atlas's RGBA bytes: surfel `i` is texel `i`, row-major; no colour → [fallback]. */
-    fun atlas(cloud: DenseCloud, fallback: Int): ByteArray = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
+    fun atlas(cloud: DenseCloud, fallback: Int, alpha: Float = 1f): ByteArray {
+        val pixels = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
+        if (alpha < 1f) {
+            val a = (alpha.coerceIn(0f, 1f) * BYTE_MAX).roundToInt().toByte()
+            for (i in 0 until minOf(cloud.count, MAX_SURFELS)) pixels[i * 4 + 3] = a
+        }
+        return pixels
+    }
+
+    /**
+     * How opaque the live capture is over a room's camera (the Live Room): `scan_surfel.mat`
+     * blends its atlas's alpha. Opaque, a room scanned for a few minutes covered every wall and the
+     * camera went from a picture with patches on it to patches alone; at this, overlapping edges
+     * included, the camera still reads through every surfel. No veil: the camera is not dimmed,
+     * the capture is lighter.
+     */
+    const val LIVE_ROOM_ALPHA = 0.6f
+
+    private const val BYTE_MAX = 255f
 }

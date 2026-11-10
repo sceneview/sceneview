@@ -176,7 +176,6 @@ import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.LiveRoomGuide
-import io.github.sceneview.demo.demos.internal.LiveRoomMessage
 import io.github.sceneview.demo.demos.internal.ScanCoach
 import io.github.sceneview.demo.demos.internal.turnedBy
 import kotlin.math.PI
@@ -1926,16 +1925,74 @@ private fun RerunLiveScreen(
         onDispose { activity.requestedOrientation = before }
     }
 
+    // The capture's one message, worked out once: the controls show it, and a part's own line
+    // (Fix now, a re-scan) gives way to it while it is a blocker ([LiveRoomGuide.partLineShown]).
+    val captureCue: CaptureCue? = if (liveRoom) {
+        val full = (scan?.denseDetail ?: qaLong?.shownDetail) == ScanDetail.Full ||
+            (photoLimitReached && !photoNoticeOver)
+        LiveRoomGuide.cue(
+            phase = phase,
+            message = LiveRoomGuide.message(
+                trackingLost = trackingLost,
+                dark = trackingLost &&
+                    (ForcedTrackingFailure.override ?: trackingFailureReason) ==
+                    TrackingFailureReason.INSUFFICIENT_LIGHT,
+                tooFast = scanCoverage.coachLine == ScanCoach.Line.Slower,
+                // Nothing new once the room is covered or the scan is full is
+                // the end of the scan, not a surface to move closer to.
+                moveCloser = lowTexture ||
+                    (
+                        scanCoverage.coachLine == ScanCoach.Line.NothingNew &&
+                            !pointsRising && roomDone == null && !full
+                        ),
+                full = full,
+            ),
+            done = roomDone,
+        )?.takeIf { rescan == null || it is CaptureCue.Blocked }
+    } else CaptureChrome.cue(
+        CaptureChrome.roomLine(
+            ScanScopeCopy.coaching(
+                scope = scanScope,
+                line = ScanCopy.coaching(
+                    phase = phase,
+                    trackingLost = trackingLost,
+                    photoLimitReached = photoLimitReached && !photoNoticeOver,
+                    detail = scan?.denseDetail ?: qaLong?.shownDetail ?: ScanDetail.Fine,
+                    coach = scanCoverage.coachLine,
+                    lowTexture = lowTexture,
+                    depthStarved = depthStarved,
+                    pointsRising = pointsRising,
+                    hasPoints = capturedPoints > 0,
+                ),
+                nextRoom = roomNumber.takeIf { betweenRooms },
+                walls = scanWalls?.wallCount,
+                guide = scanWalls?.hint,
+                done = scanWalls?.done == true,
+                facingWall = scanCoverage.facingWall,
+                wallToFinish = scanWalls?.facingUnfinished == true,
+                floorLeft = roomDone == null,
+            ),
+            roomDone,
+        ),
+        dark = trackingLost &&
+            (ForcedTrackingFailure.override ?: trackingFailureReason) ==
+            TrackingFailureReason.INSUFFICIENT_LIGHT,
+    )?.takeIf { rescan == null || it is CaptureCue.Blocked }
+        ?.let { CaptureChrome.spoken(it, scanWalls?.hint, scanWalls?.spokenHint) }
+
+    // A capture owns the screen, and so does a room's from the first frame: while AR gets ready
+    // the Live Room shows only what it will scan with — no dock, no 3D card, no Settings sheet.
+    val capturing = recording || liveRoom
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBackFromLive,
         // A capture owns the screen (#4807): no dock, and Send feedback / QA mode in the ⋮ menu
         // at the top, where the Settings button took the bottom of the screen for two rows.
-        actionsMenu = recording,
+        actionsMenu = capturing,
         // The sheet holds what the screen must not: the connection steps a developer types
         // once. The screen itself only says what the demo does and whether it is live. A
         // capture in progress owns the screen: no Settings over it.
-        controls = if (recording) null else { { RerunSheet() } },
+        controls = if (capturing) null else { { RerunSheet() } },
         topOverlay = {
             if (recording && scanMedia != null) {
                 // The HUD runs on its own clock: the trace records nothing while tracking is
@@ -1987,17 +2044,20 @@ private fun RerunLiveScreen(
                 val availabilityCardShown = arCoreAvailability != null && qaState == null
                 if (!availabilityCardShown) {
                     if (isConnected) RerunStatusCard(status)
-                    ArDebugPip(
-                        session = debugSession,
-                        orbit = pipOrbit,
-                        engine = engine,
-                        modelLoader = modelLoader,
-                        materialLoader = materialLoader,
-                        onExpand = { debugFullScreen = true },
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .padding(end = Space.md),
-                    )
+                    // A room's capture is first person from the start: no 3D card while AR gets ready.
+                    if (!liveRoom) {
+                        ArDebugPip(
+                            session = debugSession,
+                            orbit = pipOrbit,
+                            engine = engine,
+                            modelLoader = modelLoader,
+                            materialLoader = materialLoader,
+                            onExpand = { debugFullScreen = true },
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(end = Space.md),
+                        )
+                    }
                 }
             }
         },
@@ -2124,64 +2184,9 @@ private fun RerunLiveScreen(
                             )
                             else -> ScanControls(
                                 phase = phase,
-                                cue = if (liveRoom) {
-                                    val full = (scan?.denseDetail ?: qaLong?.shownDetail) == ScanDetail.Full ||
-                                        (photoLimitReached && !photoNoticeOver)
-                                    LiveRoomGuide.cue(
-                                        phase = phase,
-                                        message = LiveRoomGuide.message(
-                                            trackingLost = trackingLost,
-                                            dark = trackingLost &&
-                                                (ForcedTrackingFailure.override ?: trackingFailureReason) ==
-                                                TrackingFailureReason.INSUFFICIENT_LIGHT,
-                                            tooFast = scanCoverage.coachLine == ScanCoach.Line.Slower,
-                                            // Nothing new once the room is covered or the scan is full is
-                                            // the end of the scan, not a surface to move closer to.
-                                            moveCloser = lowTexture ||
-                                                (
-                                                    scanCoverage.coachLine == ScanCoach.Line.NothingNew &&
-                                                        !pointsRising && roomDone == null && !full
-                                                    ),
-                                            full = full,
-                                            depth = when {
-                                                !depthStarved -> null
-                                                capturedPoints > 0 -> LiveRoomMessage.DepthLost
-                                                else -> LiveRoomMessage.NoDepth
-                                            },
-                                        ),
-                                        done = roomDone,
-                                    )?.takeIf { rescan == null || it is CaptureCue.Blocked }
-                                } else CaptureChrome.cue(
-                                    CaptureChrome.roomLine(
-                                        ScanScopeCopy.coaching(
-                                            scope = scanScope,
-                                            line = ScanCopy.coaching(
-                                                phase = phase,
-                                                trackingLost = trackingLost,
-                                                photoLimitReached = photoLimitReached && !photoNoticeOver,
-                                                detail = scan?.denseDetail ?: qaLong?.shownDetail ?: ScanDetail.Fine,
-                                                coach = scanCoverage.coachLine,
-                                                lowTexture = lowTexture,
-                                                depthStarved = depthStarved,
-                                                pointsRising = pointsRising,
-                                                hasPoints = capturedPoints > 0,
-                                            ),
-                                            nextRoom = roomNumber.takeIf { betweenRooms },
-                                            walls = scanWalls?.wallCount,
-                                            guide = scanWalls?.hint,
-                                            done = scanWalls?.done == true,
-                                            facingWall = scanCoverage.facingWall,
-                                            wallToFinish = scanWalls?.facingUnfinished == true,
-                                            floorLeft = !scanComplete,
-                                        ),
-                                        roomDone,
-                                    ),
-                                    dark = trackingLost &&
-                                        (ForcedTrackingFailure.override ?: trackingFailureReason) ==
-                                        TrackingFailureReason.INSUFFICIENT_LIGHT,
-                                )?.takeIf { rescan == null || it is CaptureCue.Blocked }
-                                    ?.let { CaptureChrome.spoken(it, scanWalls?.hint, scanWalls?.spokenHint) },
+                                cue = captureCue,
                                 complete = scanComplete,
+                                reserveCue = liveRoom,
                                 onTogglePause = {
                                     betweenRooms = false
                                     moveTo(phase.togglePause())
@@ -2198,7 +2203,7 @@ private fun RerunLiveScreen(
             }
         },
         // A scan in progress owns the screen: nothing in the dock may leave it half-taken.
-        dock = if (recording) emptyList() else listOf(
+        dock = if (capturing) emptyList() else listOf(
             DockItem(
                 icon = Icons.Rounded.Videocam,
                 label = "Camera view",
@@ -2358,19 +2363,43 @@ private fun RerunLiveScreen(
                         trackingLost = trackingLost,
                         reviewPose = reviewShown?.takeIf { !liveRoom }?.let { scanReview.poseFor(it, scanOrbit.verticalFovDegrees) }
                             ?.let { pose -> { pose } },
+                        reviewPart = reviewShown?.takeIf { liveRoom }?.centre,
                     )
-                    // The part the view has flown to, framed in amber in the room.
-                    reviewShown?.let { ScanReviewFrame(scanOrbit, it) }
+                    // The part the view has flown to, framed in amber in the room. The Live Room
+                    // stays on the phone's eye: the part framed on the camera through it, as Fix
+                    // now frames it, and the chevron leads to it while it is off screen.
+                    reviewShown?.let { zone ->
+                        if (liveRoom) {
+                            val corners = remember(zone) { SessionFix.SAME_FRAME.corners(zone.box) }
+                            val eye = rememberLensTick(scanLens)
+                            ScanLensFrame(corners, scanLens, { eye.value })
+                        } else {
+                            ScanReviewFrame(scanOrbit, zone)
+                        }
+                    }
                 }
                 // Fix now: the part framed in amber over the camera, and how far along it is.
                 val fixing = scanReview.fix
                 if (recording && fixing != null && (phase == ScanPhase.Scanning || phase == ScanPhase.Paused)) {
-                    RescanGuide(fixing, live = { scanMedia?.liveDense?.invoke()?.cloud }, lens = scanLens, drawn = scanFollowing)
+                    SideEffect { fixing.scanning = phase.integrates && !trackingLost }
+                    RescanGuide(
+                        fixing,
+                        live = { scanMedia?.liveDense?.invoke()?.cloud },
+                        lens = scanLens,
+                        drawn = scanFollowing,
+                        lineShown = LiveRoomGuide.partLineShown(captureCue),
+                    )
                 }
                 // A part scanned again (#4736): its frame over the camera, and how far along it is —
                 // gone once it did not line up: the card says so, once, and saves it on its own (#4815).
                 if (recording && rescan != null && phase != ScanPhase.SaveFailed && !rescanSeparate) {
-                    RescanGuide(rescan, live = { scanMedia?.liveDense?.invoke()?.cloud }, lens = scanLens, drawn = scanFollowing)
+                    RescanGuide(
+                        rescan,
+                        live = { scanMedia?.liveDense?.invoke()?.cloud },
+                        lens = scanLens,
+                        drawn = scanFollowing,
+                        lineShown = LiveRoomGuide.partLineShown(captureCue),
+                    )
                 }
             }
 

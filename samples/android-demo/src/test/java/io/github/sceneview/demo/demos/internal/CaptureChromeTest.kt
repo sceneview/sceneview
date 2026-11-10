@@ -148,4 +148,14 @@ class CaptureChromeTest {
         assertEquals(CaptureChromeState(ScanBlocker.Full, false), CaptureChromeState.of(CaptureCue.Blocked(ScanBlocker.Full), false))
         assertEquals(CaptureChromeState(null, true), CaptureChromeState.of(CaptureCue.Next(ScanCopy.ROOM_DONE), true))
     }
+
+    @Test
+    fun `the Live Room's message place never shrinks, so the room model above it never jumps`() {
+        val floor = 48
+        var tallest = 0
+        val heights = listOf(0, 40, 0, 96, 40, 0).map { measured ->
+            CueSlotHeight.of(measured, floor, tallest).also { tallest = it }
+        }
+        assertEquals(listOf(48, 48, 48, 96, 96, 96), heights)
+    }
 }

@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -29,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import io.github.sceneview.demo.LocalDemoSceneCover
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.Icons
@@ -83,6 +87,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.material.icons.rounded.ChevronRight
+import io.github.sceneview.demo.demos.internal.CueSlotHeight
 import io.github.sceneview.demo.demos.internal.GapChevron
 import io.github.sceneview.demo.demos.internal.GapChevronPlace
 import io.github.sceneview.demo.demos.internal.ScanLens
@@ -223,58 +228,81 @@ internal fun ScanRoomGauge(share: Float, complete: Boolean) {
 }
 
 /**
- * The chevron towards the largest gap of a room's scan ([GapChevron]): at the screen's edge the gap
- * lies past, pointing at it, in `accent-guidance` — the colour of the dashed gap on the camera — on
- * the capture's dark fill. Gone while the gap is in the picture, where its dashes speak for it, and
- * once the room is done. Read off [walls]' cue and [lens] each frame; recomposed only when it moves.
+ * The chevron towards what a room's scan leads to ([GapChevron.aim]): the part being fixed
+ * ([ScanWallsState.fixTarget]) or reviewed ([reviewPart], `x, z`), else the largest gap. At the
+ * screen's edge the point lies past, pointing at it, in `accent-guidance` — the colour of the
+ * dashed gap and of the part's amber frame — on the capture's dark fill. Gone while the point is
+ * in the picture, where its dashes or its frame speak for it, and once the room is done with no
+ * part to lead to. Kept between the chrome's measured bands ([LocalDemoSceneCover],
+ * [GapChevron.band]): never under the status card, the room model or the controls. Read off
+ * [walls] and [lens] each frame; recomposed only when it moves.
  */
 @Composable
-internal fun BoxScope.ScanGapChevron(walls: ScanWallsState, lens: ScanLens) {
-    var place by remember(walls, lens) { mutableStateOf<GapChevronPlace?>(null) }
-    LaunchedEffect(walls, lens) {
-        var shown: GapChevronPlace? = null
-        while (true) {
-            withFrameNanos { }
-            val edge = walls.cueEdge
-            // Fix now leads to the part being filled in (ribbon, tick, amber frame): no chevron to another gap.
-            val next = if (edge == null || walls.done || walls.fixTarget != null || !lens.ready) {
-                null
-            } else {
-                val (x, y, z) = GapChevron.target(edge, height = lens.cameraToWorld[EYE_HEIGHT_TERM])
-                GapChevron.place(lens.cameraToWorld, lens.projection, x, y, z, shown = shown != null)?.rounded()
-            }
-            if (next != shown) {
-                shown = next
-                place = next
+internal fun BoxScope.ScanGapChevron(walls: ScanWallsState, lens: ScanLens, reviewPart: FloatArray? = null) {
+    val density = LocalDensity.current
+    val cover = LocalDemoSceneCover.current
+    BoxWithConstraints(Modifier.matchParentSize()) {
+        val chevronPx = with(density) { (SceneViewTokens.Layout.touchTarget + Space.sm * 2).toPx() }
+        val band = GapChevron.band(
+            height = constraints.maxHeight.toFloat(),
+            topCover = with(density) { cover.calculateTopPadding().toPx() },
+            bottomCover = with(density) { cover.calculateBottomPadding().toPx() },
+            chevron = chevronPx,
+        )
+        val bandNow by rememberUpdatedState(band)
+        val reviewing by rememberUpdatedState(reviewPart)
+        var place by remember(walls, lens) { mutableStateOf<GapChevronPlace?>(null) }
+        LaunchedEffect(walls, lens) {
+            var shown: GapChevronPlace? = null
+            while (true) {
+                withFrameNanos { }
+                val aim = GapChevron.aim(
+                    gap = walls.cueEdge,
+                    part = reviewing ?: walls.fixTarget,
+                    done = walls.done,
+                    height = lens.cameraToWorld[EYE_HEIGHT_TERM],
+                )
+                val next = if (aim == null || !lens.ready) {
+                    null
+                } else {
+                    val (x, y, z) = aim
+                    val (top, bottom) = bandNow.start to bandNow.endInclusive
+                    GapChevron.place(lens.cameraToWorld, lens.projection, x, y, z, shown = shown != null, top = top, bottom = bottom)
+                        ?.rounded()
+                }
+                if (next != shown) {
+                    shown = next
+                    place = next
+                }
             }
         }
-    }
-    // Kept through the fade-out, so the chevron leaves from where it was.
-    var last by remember { mutableStateOf(GapChevronPlace(1f, 0f, 0f)) }
-    place?.let { last = it }
-    AnimatedVisibility(
-        visible = place != null,
-        enter = fadeIn(tween(SceneViewTokens.Duration.mediumMillis)),
-        exit = fadeOut(tween(SceneViewTokens.Duration.mediumMillis)),
-        // The room's left and right, not the reading direction's: the same side in RTL.
-        modifier = Modifier
-            .align(BiasAbsoluteAlignment(last.x, last.y))
-            .padding(Space.sm)
-            .testTag(SCAN_GAP_CHEVRON_TAG),
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
+        // Kept through the fade-out, so the chevron leaves from where it was.
+        var last by remember { mutableStateOf(GapChevronPlace(1f, 0f, 0f)) }
+        place?.let { last = it }
+        AnimatedVisibility(
+            visible = place != null,
+            enter = fadeIn(tween(SceneViewTokens.Duration.mediumMillis)),
+            exit = fadeOut(tween(SceneViewTokens.Duration.mediumMillis)),
+            // The room's left and right, not the reading direction's: the same side in RTL.
             modifier = Modifier
-                .size(SceneViewTokens.Layout.touchTarget)
-                .background(ScanControlFill, CircleShape)
-                .semantics { contentDescription = ScanCopy.GAP_CHEVRON },
+                .align(BiasAbsoluteAlignment(last.x, last.y))
+                .padding(Space.sm)
+                .testTag(SCAN_GAP_CHEVRON_TAG),
         ) {
-            Icon(
-                imageVector = Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = ArOverlay.accentGuidance,
-                modifier = Modifier.size(SceneViewTokens.Layout.touchTarget - Space.sm).rotate(last.degrees),
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(SceneViewTokens.Layout.touchTarget)
+                    .background(ScanControlFill, CircleShape)
+                    .semantics { contentDescription = ScanCopy.GAP_CHEVRON },
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = ArOverlay.accentGuidance,
+                    modifier = Modifier.size(SceneViewTokens.Layout.touchTarget - Space.sm).rotate(last.degrees),
+                )
+            }
         }
     }
 }
@@ -387,6 +415,7 @@ internal fun ScanControls(
     onFinish: () -> Unit,
     resumeLabel: String = ScanCopy.RESUME,
     complete: Boolean = false,
+    reserveCue: Boolean = false,
 ) {
     CaptureChromeHaptics(cue, complete)
     Column(
@@ -394,7 +423,13 @@ internal fun ScanControls(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        if (cue != null) ScanCueLine(cue)
+        if (reserveCue) {
+            // The Live Room's message comes and goes: its place stays, so what stands above the
+            // controls — the room model — does not jump up and down with it.
+            ScanCueSlot { if (cue != null) ScanCueLine(cue) }
+        } else if (cue != null) {
+            ScanCueLine(cue)
+        }
         Row(
             modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -430,6 +465,26 @@ internal fun ScanControls(
             }
         }
         ScanStepRow(ScanStep.of(phase))
+    }
+}
+
+/**
+ * The capture's message place, kept whether a message shows or not: at least a touch target
+ * high, and never lower than the tallest message it has held ([CueSlotHeight]), so a line that
+ * comes, goes or wraps moves nothing above it.
+ */
+@Composable
+private fun ScanCueSlot(content: @Composable () -> Unit) {
+    val tallest = remember { IntArray(1) }
+    val floor = with(LocalDensity.current) { SceneViewTokens.Layout.touchTarget.roundToPx() }
+    Layout(content = content, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = measurables.map { it.measure(loose) }
+        val height = CueSlotHeight.of(placeables.maxOfOrNull { it.height } ?: 0, floor, tallest[0])
+        tallest[0] = height
+        layout(constraints.maxWidth, height) {
+            placeables.forEach { it.placeRelative((constraints.maxWidth - it.width) / 2, (height - it.height) / 2) }
+        }
     }
 }
 
@@ -782,7 +837,8 @@ internal fun ScanDiscardDialog(onCancel: () -> Unit, onDiscard: () -> Unit) {
  * phone, the camera is never veiled; with tracking lost, the capture keeps the last eye and fades
  * out ([trackingLost]) rather than drawing over a picture it no longer lines up with. The arrow
  * card gives way to a chevron at the screen's edge, towards the largest gap while it is off screen
- * ([ScanGapChevron]); the ribbon and the line-up tick stay.
+ * ([ScanGapChevron]) — or towards the part being fixed, or in review the part the card names
+ * ([reviewPart], `x, z`); the ribbon and the line-up tick stay.
  */
 @Composable
 @Suppress("LongParameterList", "LongMethod") // the demo's shared engine, handed down once
@@ -802,6 +858,7 @@ internal fun ScanLiveView(
     phoneOnly: Boolean = false,
     trackingLost: Boolean = false,
     reviewPose: (() -> OrbitPose?)? = null,
+    reviewPart: FloatArray? = null,
 ) {
     // Review before you leave: the view leaves the phone and flies to each part still to fix
     // ([reviewPose], the part of the moment), over the room with its lid off, as the save does.
@@ -916,7 +973,10 @@ internal fun ScanLiveView(
             if (walls != null && !saving) {
                 ScanAlignedTick(walls)
                 // With tracking lost the eye is stale: no chevron from a pose the phone has left.
-                if (lens != null && !reviewing && !trackingLost) ScanGapChevron(walls, lens)
+                // In review it leads to the part the card names, once that part is off screen.
+                if (lens != null && !trackingLost && (!reviewing || reviewPart != null)) {
+                    ScanGapChevron(walls, lens, reviewPart = reviewPart.takeIf { reviewing })
+                }
             }
         } else if (walls != null && !saving && !flying) {
             ScanGuideArrow(walls)

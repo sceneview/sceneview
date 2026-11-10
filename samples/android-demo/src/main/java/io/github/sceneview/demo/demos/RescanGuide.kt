@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +24,8 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -34,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.FillStall
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RescanAlignment
 import io.github.sceneview.demo.demos.internal.RescanGuidance
@@ -48,6 +52,8 @@ import io.github.sceneview.demo.demos.internal.ScanReview
 import io.github.sceneview.demo.demos.internal.ScanReviewResult
 import io.github.sceneview.demo.demos.internal.ScanLens
 import io.github.sceneview.demo.demos.internal.SvpcCodec
+import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.demos.internal.LiveRoomGuide
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -107,9 +113,20 @@ internal class SessionFix(
     override var status: RescanStatus by mutableStateOf(RescanStatus.Lined(SAME_FRAME, watch.baseline))
         private set
 
+    /** Whether the capture scans now, tracking held: set from the main thread, time paused is no stall. */
+    @Volatile
+    var scanning: Boolean = true
+
+    /** The fill has not grown for a while of scanning ([FillStall]): the line says what to try. */
+    var stalled: Boolean by mutableStateOf(false)
+        private set
+    private val stall = FillStall()
+
     /** The part's fill on [live], the capture as it stands. Off the main thread. */
     override fun follow(live: DenseCloud) {
-        status = RescanStatus.Lined(SAME_FRAME, ScanReview.fillOf(zone, live, review))
+        val fill = ScanReview.fillOf(zone, live, review)
+        stalled = stall.update(fill, nanoTime(), scanning)
+        status = RescanStatus.Lined(SAME_FRAME, fill)
     }
 
     /** Whether [fill] is enough for the review to come back now: the only time the guide says Covered. */
@@ -215,16 +232,19 @@ internal class RescanTarget(
 /**
  * Over the live view of a re-scan (#4736), or of a part fixed at the review ([SessionFix]): the
  * part to fill in, framed in amber on the camera where it stands once the re-scan is lined up,
- * and a line saying how far along it is. [live] is the live cloud, read on the main thread every
- * [FOLLOW_MS]; [lens] the phone's eye, drawn from while [drawn] (the live view follows the phone).
+ * and a line saying how far along it is — unless [lineShown] is `false`, a blocker being the one
+ * message then ([LiveRoomGuide.partLineShown]). [live] is the live cloud, read on the main thread
+ * every [FOLLOW_MS]; [lens] the phone's eye, drawn from while [drawn] (the live view follows the phone).
  */
 @Composable
+@Suppress("LongParameterList") // the part, its cloud, the eye, and the two switches
 internal fun RescanGuide(
     target: RescanFollower,
     live: () -> DenseCloud?,
     lens: ScanLens,
     drawn: Boolean,
     modifier: Modifier = Modifier,
+    lineShown: Boolean = true,
 ) {
     LaunchedEffect(target) {
         while (true) {
@@ -235,35 +255,69 @@ internal fun RescanGuide(
             }
         }
     }
-    // The eye is not snapshot state: a frame tick copies its version, which the frame reads to redraw.
-    var eye by remember(lens) { mutableLongStateOf(lens.version) }
-    LaunchedEffect(lens) { while (true) withFrameNanos { eye = lens.version } }
+    val eye = rememberLensTick(lens)
     val status = target.status
-    val amber = SceneViewTokens.ArOverlay.accentGuidance
     Box(modifier.fillMaxSize()) {
         val lined = status as? RescanStatus.Lined
         if (lined != null && drawn) {
             val corners = remember(lined.pose, target) { lined.pose.inverse().corners(target.zone.box) }
-            Canvas(Modifier.fillMaxSize().testTag(RESCAN_GUIDE_FRAME_TAG)) {
-                if (eye == 0L || !lens.ready) return@Canvas
-                val edges = RescanGuidance.outline(corners, lens.cameraToWorld, lens.projection, size.width, size.height)
-                val stroke = FRAME_STROKE.toPx()
-                for (k in edges.indices step EDGE_FLOATS) {
-                    drawLine(amber, Offset(edges[k], edges[k + 1]), Offset(edges[k + 2], edges[k + 3]), stroke, StrokeCap.Round)
-                }
+            ScanLensFrame(corners, lens, { eye.value }, Modifier.testTag(RESCAN_GUIDE_FRAME_TAG))
+        }
+        if (lineShown) {
+            RescanGuideLine(
+                text = when {
+                    status is RescanStatus.Refused -> stringResource(R.string.scan_rescan_refused)
+                    lined == null -> stringResource(R.string.scan_rescan_lining_up)
+                    target is SessionFix && target.done(lined.fill) -> stringResource(R.string.scan_fix_covered)
+                    target !is SessionFix && RescanGuidance.covered(lined.fill) -> stringResource(R.string.scan_rescan_covered)
+                    target is SessionFix && target.stalled ->
+                        stringResource(R.string.scan_fix_stalled, (lined.fill * PERCENT).roundToInt())
+                    else -> stringResource(R.string.scan_rescan_fill, (lined.fill * PERCENT).roundToInt())
+                },
+                modifier = Modifier.align(BiasAlignment(0f, LINE_BIAS)),
+            )
+        }
+    }
+}
+
+/**
+ * A part's amber frame — the box whose eight [corners] (world, [RescanPose.corners]' order) it
+ * spans — drawn on the camera through the phone's eye [lens], read every frame ([eye],
+ * [rememberLensTick]). Only in the band
+ * the chrome leaves free ([LocalDemoSceneCover]): a frame's edge never crosses the status card,
+ * the buttons, the line or the controls, which stand over the camera as cards.
+ */
+@Composable
+internal fun ScanLensFrame(corners: FloatArray, lens: ScanLens, eye: () -> Long, modifier: Modifier = Modifier) {
+    val amber = SceneViewTokens.ArOverlay.accentGuidance
+    val cover = LocalDemoSceneCover.current
+    val direction = LocalLayoutDirection.current
+    Canvas(modifier.fillMaxSize()) {
+        if (eye() == 0L || !lens.ready) return@Canvas
+        val edges = RescanGuidance.outline(corners, lens.cameraToWorld, lens.projection, size.width, size.height)
+        val stroke = FRAME_STROKE.toPx()
+        clipRect(
+            left = cover.calculateLeftPadding(direction).toPx(),
+            top = cover.calculateTopPadding().toPx(),
+            right = size.width - cover.calculateRightPadding(direction).toPx(),
+            bottom = size.height - cover.calculateBottomPadding().toPx(),
+        ) {
+            for (k in edges.indices step EDGE_FLOATS) {
+                drawLine(amber, Offset(edges[k], edges[k + 1]), Offset(edges[k + 2], edges[k + 3]), stroke, StrokeCap.Round)
             }
         }
-        RescanGuideLine(
-            text = when {
-                status is RescanStatus.Refused -> stringResource(R.string.scan_rescan_refused)
-                lined == null -> stringResource(R.string.scan_rescan_lining_up)
-                target is SessionFix && target.done(lined.fill) -> stringResource(R.string.scan_fix_covered)
-                target !is SessionFix && RescanGuidance.covered(lined.fill) -> stringResource(R.string.scan_rescan_covered)
-                else -> stringResource(R.string.scan_rescan_fill, (lined.fill * PERCENT).roundToInt())
-            },
-            modifier = Modifier.align(BiasAlignment(0f, LINE_BIAS)),
-        )
     }
+}
+
+/**
+ * [lens]'s version, copied every frame: the eye is not snapshot state, so a frame reads this to
+ * redraw what it draws through it ([ScanLensFrame]).
+ */
+@Composable
+internal fun rememberLensTick(lens: ScanLens): State<Long> {
+    val eye = remember(lens) { mutableLongStateOf(lens.version) }
+    LaunchedEffect(lens) { while (true) withFrameNanos { eye.longValue = lens.version } }
+    return eye
 }
 
 /** The guide's line, a card on the stage like the result's pills. */

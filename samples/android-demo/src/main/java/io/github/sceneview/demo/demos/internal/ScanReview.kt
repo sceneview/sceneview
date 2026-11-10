@@ -239,6 +239,40 @@ class ScanFixWatch(val zone: RescanZone, val baseline: Float, private val starte
     }
 }
 
+/**
+ * Whether a fix has stopped filling its part: its fill, read every few seconds while the capture
+ * scans ([update]), has not grown by [MIN_STEP] for [STALL_SECONDS]. A part no depth reaches — a
+ * plain wall too far for the relaxed depth, a wall drawn off the real one, an opening — stays at
+ * its percentage however long it is scanned, and the line says what to try instead of a figure
+ * that never moves. Time paused does not count.
+ */
+class FillStall(private val stallNanos: Long = (STALL_SECONDS * NS_PER_S).toLong()) {
+    private var best = Float.NEGATIVE_INFINITY
+    private var scannedSince = 0L
+    private var lastNanos = Long.MIN_VALUE
+
+    /** Whether the fill has stalled, [fill] read at [nowNanos], the capture [scanning] since the last read. */
+    fun update(fill: Float, nowNanos: Long, scanning: Boolean): Boolean {
+        if (lastNanos != Long.MIN_VALUE && scanning) scannedSince += nowNanos - lastNanos
+        lastNanos = nowNanos
+        if (fill >= best + MIN_STEP || best == Float.NEGATIVE_INFINITY) {
+            best = maxOf(best, fill)
+            scannedSince = 0L
+        }
+        return scannedSince >= stallNanos
+    }
+
+    companion object {
+        /** Scanning this long with no growth is a stall, seconds: long enough for a slow sweep. */
+        const val STALL_SECONDS = 12f
+
+        /** Less growth than this is none: one cell of a part, a sensor's noise. */
+        const val MIN_STEP = 0.01f
+
+        private const val NS_PER_S = 1e9f
+    }
+}
+
 /** The review's words, English as the capture's other lines ([ScanCopy]). */
 object ScanReviewCopy {
     const val CHECKING = "Checking for parts you missed…"

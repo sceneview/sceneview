@@ -19,6 +19,24 @@ class CoverageGridTest {
         .reduce { a, b -> a + b }
 
     @Test
+    fun `a live capture whose feature map comes back shorter keeps every cell it covered`() {
+        // The Live Room's model lost most of its covered floor in one frame at 0:46 of a walk.
+        val grid = CoverageGrid()
+        val depthCell = CoverageGrid.key(9, 9)
+        grid.addCells(longArrayOf(depthCell))
+        grid.update(cells(0 to 0, 1 to 0, 2 to 0))
+        assertEquals(4, grid.covered)
+        assertFalse("no new cell from the shorter map", grid.update(cells(0 to 0), keepCovered = true))
+        assertEquals(4, grid.covered)
+        assertTrue(grid.isCovered(9, 9))
+        assertTrue("a new cell past it still counts", grid.update(cells(0 to 0, 5 to 5), keepCovered = true))
+        assertEquals(5, grid.covered)
+        // A replay scrubbed back starts again, as before.
+        grid.update(cells(0 to 0))
+        assertEquals(1, grid.covered)
+    }
+
+    @Test
     fun `a cell is covered from its third point, not before`() {
         val grid = CoverageGrid()
         assertFalse(grid.update(at(0.1f, 0.1f, n = 2)))

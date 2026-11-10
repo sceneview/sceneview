@@ -57,11 +57,22 @@ internal class CoverageGrid(
     /**
      * Bins the first [count] points of [mapPoints] (xyz triples) not seen yet — all of them by
      * default; a dense cloud revealed as a prefix passes its revealed count. Returns `true` when a
-     * cell became covered — the scan grew.
+     * cell became covered — the scan grew. A shorter prefix than the last starts the grid again,
+     * unless [keepCovered] (a live capture): then the cells covered so far stay.
      */
-    fun update(mapPoints: FloatArray, count: Int = mapPoints.size / 3): Boolean {
+    fun update(mapPoints: FloatArray, count: Int = mapPoints.size / 3, keepCovered: Boolean = false): Boolean {
         val total = count.coerceIn(0, mapPoints.size / 3)
-        if (total < consumed) reset()
+        if (total < consumed) {
+            // A replay scrubbed back starts again. A live capture never loses a cell it covered:
+            // its points are binned again from the first, the cells stay — the depth snapshot's
+            // cells with them, which only come back with the next snapshot.
+            if (keepCovered) {
+                counts.clear()
+                consumed = 0
+            } else {
+                reset()
+            }
+        }
         var grew = false
         for (i in consumed until total) {
             val cx = cellOf(mapPoints[i * 3])
@@ -69,8 +80,7 @@ internal class CoverageGrid(
             val key = key(cx, cz)
             val count = (counts[key] ?: 0) + 1
             counts[key] = count
-            if (count == minPoints) {
-                coveredCells += key
+            if (count == minPoints && coveredCells.add(key)) {
                 include(cx, cz)
                 grew = true
             }

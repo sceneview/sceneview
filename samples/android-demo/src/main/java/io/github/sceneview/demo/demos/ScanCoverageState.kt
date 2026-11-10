@@ -187,7 +187,9 @@ internal class ScanCoverageState {
         var grew = when {
             saved != null -> grid.updateSaved(saved, frame.time, { frame.mapPoints }, dense, denseCount)
             dense != null -> grid.update(dense, denseCount)
-            else -> grid.update(frame.mapPoints)
+            // Live, a covered cell stays covered: a shorter feature map wiped the room's
+            // covered floor, depth cells included, while the % stood still.
+            else -> grid.update(frame.mapPoints, keepCovered = record != null)
         }
         // A live depth scan's dense cloud, a new snapshot every few seconds (#4540): the feature
         // map alone stops at its cap, and the figure froze while the cloud kept growing.

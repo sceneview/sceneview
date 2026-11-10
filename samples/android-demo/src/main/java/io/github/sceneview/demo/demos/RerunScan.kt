@@ -37,6 +37,7 @@ import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanCutoff
 import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
 import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanProjection
 import io.github.sceneview.demo.demos.internal.ScanSharpPicker
@@ -115,7 +116,12 @@ internal class ScanCapture private constructor(
     // one runs is skipped, never queued, so a slow phone thins the depth instead of lagging.
     // The map keeps a whole flat or house within this phone's budget: past it, it coarsens the
     // regions the camera has left instead of dropping what is new (#4629).
-    private val dense = if (rawDepth) ScanDenseMap() else null
+    // A room is scanned in first person (the Live Room): its capture is drawn see-through over the camera.
+    private val dense = if (rawDepth) {
+        ScanDenseMap(liveAlpha = if (preset == ScanPreset.ROOM) DenseSurfels.LIVE_ROOM_ALPHA else 1f)
+    } else {
+        null
+    }
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).

@@ -21,16 +21,13 @@ import kotlin.math.sqrt
 enum class LiveRoomMessage(val blocker: ScanBlocker) {
     TrackingLost(ScanBlocker.TrackingLost),
     TooDark(ScanBlocker.TooDark),
-
-    /** The depth sensor gives nothing usable, before any point was captured. */
-    NoDepth(ScanBlocker.NoDepth),
-
-    /** The same once points exist: the scan stopped growing for lack of depth. */
-    DepthLost(ScanBlocker.DepthLost),
     SlowDown(ScanBlocker.TooFast),
     MoveCloser(ScanBlocker.LowTexture),
 
-    /** The scan cannot take more: not a way to scan better, so it comes after the four. */
+    /**
+     * The scan cannot take more: not a way to scan better, so it comes after the four. No depth
+     * message: a starved depth read as a false alarm while the room's patches kept coming (#4963).
+     */
     Full(ScanBlocker.Full),
 }
 
@@ -48,10 +45,9 @@ object LiveRoomGuide {
 
     /**
      * The message to show, or `null` when the scan goes well: Tracking lost, then Too dark, then
-     * the depth lost ([depth], [LiveRoomMessage.NoDepth] or [LiveRoomMessage.DepthLost]: nothing is
-     * captured, so it goes before how to move), then Slow down, then Move closer. A track lost for lack of light ([dark], ARCore's own reason)
-     * reads Too dark, which says what to do about it; any other loss reads Tracking lost, over
-     * everything else.
+     * Slow down, then Move closer, then Scan full. A track lost for lack of light ([dark], ARCore's
+     * own reason) reads Too dark, which says what to do about it; any other loss reads Tracking
+     * lost, over everything else.
      */
     fun message(
         trackingLost: Boolean,
@@ -59,11 +55,9 @@ object LiveRoomGuide {
         tooFast: Boolean,
         moveCloser: Boolean,
         full: Boolean = false,
-        depth: LiveRoomMessage? = null,
     ): LiveRoomMessage? = when {
         trackingLost && !dark -> LiveRoomMessage.TrackingLost
         dark -> LiveRoomMessage.TooDark
-        depth != null -> depth
         tooFast -> LiveRoomMessage.SlowDown
         moveCloser -> LiveRoomMessage.MoveCloser
         full -> LiveRoomMessage.Full
@@ -84,12 +78,20 @@ object LiveRoomGuide {
         }
         else -> null
     }
+
+    /**
+     * Whether a part's own line ("Fill the amber frame: 40 %", Fix now or a re-scan) shows with
+     * the capture's [cue]: not while a blocker is up. One message at a time, and what stops the
+     * scan comes first — a percentage cannot move while it holds.
+     */
+    fun partLineShown(cue: CaptureCue?): Boolean = cue !is CaptureCue.Blocked
 }
 
 /**
- * The chevron at the screen's edge towards the largest gap of a room's scan ([ScanGuide.cue]):
- * shown only while that gap is off screen, on the edge the gap lies past, pointing at it. A gap
- * behind the phone puts it on the side to turn to.
+ * The chevron at the screen's edge towards what the room's scan leads to ([aim]): the largest gap
+ * ([ScanGuide.cue]), or the part being fixed or reviewed. Shown only while that point is off
+ * screen, on the edge it lies past, pointing at it. A point behind the phone puts it on the side
+ * to turn to.
  */
 object GapChevron {
 
@@ -97,8 +99,8 @@ object GapChevron {
      * Where the chevron goes for the world point ([tx], [ty], [tz]) seen by the camera at
      * [cameraToWorld] through [projection] (column-major, ARCore's), or `null` while the point is
      * on screen. Once [shown], it stays until the point is well inside ([HIDE_INSIDE]), so a gap
-     * at the edge of the picture does not blink. [maxY] keeps it off the top and bottom bands the
-     * status card and the controls take, as a share of the half-height.
+     * at the edge of the picture does not blink. [top] and [bottom] bound it across the screen's
+     * height, as alignment biases ([band]): clear of the status card and of the controls.
      */
     @Suppress("LongParameterList") // the eye, the lens, the point and the two bounds
     fun place(
@@ -108,7 +110,8 @@ object GapChevron {
         ty: Float,
         tz: Float,
         shown: Boolean = false,
-        maxY: Float = MAX_Y,
+        top: Float = -MAX_Y,
+        bottom: Float = MAX_Y,
     ): GapChevronPlace? {
         // Into the camera's frame: the transpose of its rotation, about its position.
         val px = tx - cameraToWorld[12]
@@ -141,23 +144,56 @@ object GapChevron {
             dx /= length
             dy /= length
         }
-        // On the edge of the screen's box, the y band cut to [maxY]; screen y runs down.
-        val k = min(if (abs(dx) > EPSILON) 1f / abs(dx) else Float.MAX_VALUE, if (abs(dy) > EPSILON) maxY / abs(dy) else Float.MAX_VALUE)
+        // On the edge of the screen's box, the y band cut to [top]..[bottom]; screen y runs down.
+        val up = top.coerceIn(-1f, -MIN_BAND)
+        val down = bottom.coerceIn(MIN_BAND, 1f)
+        val yRoom = if (dy > 0f) -up else down
+        val k = min(if (abs(dx) > EPSILON) 1f / abs(dx) else Float.MAX_VALUE, if (abs(dy) > EPSILON) yRoom / abs(dy) else Float.MAX_VALUE)
         val x = (dx * k).coerceIn(-1f, 1f)
-        val y = (-dy * k).coerceIn(-maxY, maxY)
+        val y = (-dy * k).coerceIn(up, down)
         val degrees = Math.toDegrees(atan2(-dy, dx).toDouble()).toFloat()
         return GapChevronPlace(x, y, degrees)
+    }
+
+    /**
+     * The chevron's band across a stage [height] pixels tall whose top [topCover] and bottom
+     * [bottomCover] pixels the chrome takes (the status card, the room model and the controls,
+     * measured): the alignment biases between which a chevron [chevron] pixels tall stays whole
+     * between them. A stage too small for one falls back to [MAX_Y] either side.
+     */
+    fun band(height: Float, topCover: Float, bottomCover: Float, chevron: Float): ClosedFloatingPointRange<Float> {
+        val free = height - chevron
+        if (free <= 0f) return -MAX_Y..MAX_Y
+        val top = 2f * topCover / free - 1f
+        val bottom = 1f - 2f * bottomCover / free
+        if (top >= -MIN_BAND || bottom <= MIN_BAND) return -MAX_Y..MAX_Y
+        return top..bottom
     }
 
     /** The point the chevron aims at for a floor [edge] (`ax, az, bx, bz`): its middle, at the eye's [height]. */
     fun target(edge: FloatArray, height: Float): Triple<Float, Float, Float> =
         Triple((edge[0] + edge[2]) / 2f, height, (edge[1] + edge[3]) / 2f)
 
+    /**
+     * What the chevron leads to, at the eye's [height]: the [part] being fixed or reviewed (its
+     * middle on the floor, `x, z`, [RescanZone.centre]) whatever else is open — the frame and the
+     * line speak of it, not of another gap — else the room's largest [gap] until the room is
+     * [done]. `null` for nothing to lead to.
+     */
+    fun aim(gap: FloatArray?, part: FloatArray?, done: Boolean, height: Float): Triple<Float, Float, Float>? = when {
+        part != null -> Triple(part[0], height, part[1])
+        gap != null && !done -> target(gap, height)
+        else -> null
+    }
+
     /** A gap shown goes once it is this far inside the picture, in normalised device units. */
     const val HIDE_INSIDE = 0.7f
 
-    /** The chevron's band across the screen's height: clear of the status card and the controls. */
+    /** The chevron's band across the screen's height without measured chrome: a guess, [band] is the rule. */
     const val MAX_Y = 0.55f
+
+    /** The least the band reaches either side of the middle: a chevron always has somewhere to go. */
+    private const val MIN_BAND = 0.05f
 
     private const val EPSILON = 1e-4f
 }

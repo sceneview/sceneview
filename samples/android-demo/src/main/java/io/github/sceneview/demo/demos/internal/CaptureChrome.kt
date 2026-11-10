@@ -248,3 +248,12 @@ object CaptureChrome {
 
     private const val PERCENT = 100
 }
+
+/**
+ * The height of the capture's message place when the Live Room keeps it: the message [measured] now, at least [floor] — one line's touch target — and never less than the
+ * [tallest] it has held. It grows once for a taller message, then stays: what stands above it
+ * never jumps when a message comes or goes.
+ */
+object CueSlotHeight {
+    fun of(measured: Int, floor: Int, tallest: Int): Int = maxOf(measured, floor, tallest)
+}
