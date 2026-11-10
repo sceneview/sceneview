@@ -76,6 +76,9 @@ class RoomShellCorpusTest {
         return buildJsonObject {
             put("file", file.name)
             put("box", shell.box.toString())
+            put("plan", shell.plan?.toString() ?: "box")
+            val cameras = photos?.photos.orEmpty().flatMap { listOf(it.pose.x, it.pose.y, it.pose.z) }.toFloatArray()
+            put("cells", RoomPlan.cells(cloud, shell.box, cameras)?.toString() ?: "no peak inside the box")
             put("points", s.points)
             put("clean_points", s.cleanPoints)
             put("object_points", s.objectPoints)
