@@ -27,8 +27,17 @@ import java.util.zip.CRC32
 /**
  * A capture as the recorder writes it: its manifest, its log in the Rerun bridge's wire format,
  * and its photos packed in one archive the manifest indexes. Byte for byte what is on disk.
+ *
+ * A scan just recorded may also carry its raw depth, recorded to a temp file ([depth],
+ * [ScanDepthFormat]): the store moves it into the session as `capture-depth.bin`. It is not part
+ * of the pack's bytes — never read into memory, never in a `.svscan`, ignored by [equals].
  */
-class RerunCapturePack(val manifest: ByteArray, val log: ByteArray, val media: ByteArray) {
+class RerunCapturePack(
+    val manifest: ByteArray,
+    val log: ByteArray,
+    val media: ByteArray,
+    val depth: File? = null,
+) {
     override fun equals(other: Any?): Boolean = other is RerunCapturePack &&
         manifest.contentEquals(other.manifest) && log.contentEquals(other.log) && media.contentEquals(other.media)
 
@@ -295,6 +304,7 @@ class RerunSessionStore(val root: File) {
         val dir = directoryOf(session.id)
         dir.mkdirs()
         for ((name, bytes) in capture.files()) writeAtomically(File(dir, name), bytes)
+        capture.depth?.let { keepDepth(it, File(dir, ScanDepthFormat.FILE)) }
         opened.firstPhoto()?.let { runCatching { writeAtomically(File(dir, THUMBNAIL), it) } }
         model?.let { writeModel(dir, it) }
         writeAtomically(File(dir, INFO), session.toJson().toByteArray())
@@ -462,6 +472,22 @@ class RerunSessionStore(val root: File) {
             throw RerunImportFailure.Empty(fileName).apply { initCause(failure) }
         } catch (failure: RerunImportFailure.Unreadable) {
             throw RerunImportFailure.Unreadable(fileName).apply { initCause(failure) }
+        }
+    }
+
+    /**
+     * Moves a scan's depth recording ([ScanDepthFormat]) into its session: a rename on the same
+     * storage, a copy otherwise. Its raw depth is for replaying the fusion off the phone, never
+     * what the scan needs to open: one that does not move is left out, and the save goes on.
+     */
+    private fun keepDepth(recording: File, target: File) {
+        if (!recording.isFile) return
+        runCatching {
+            if (!recording.renameTo(target)) {
+                val partial = File(target.parentFile, target.name + PARTIAL)
+                recording.copyTo(partial, overwrite = true)
+                if (partial.renameTo(target)) recording.delete() else partial.delete()
+            }
         }
     }
 
