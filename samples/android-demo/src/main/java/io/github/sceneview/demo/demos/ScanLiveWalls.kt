@@ -23,6 +23,7 @@ import io.github.sceneview.demo.demos.internal.ScanGuide
 import io.github.sceneview.demo.demos.internal.ScanGuideHint
 import io.github.sceneview.demo.demos.internal.ScanRibbon
 import io.github.sceneview.demo.demos.internal.ScanTarget
+import io.github.sceneview.demo.demos.internal.WallCountHold
 import io.github.sceneview.demo.demos.internal.WallExtent
 import io.github.sceneview.demo.demos.internal.WallMesh
 import io.github.sceneview.demo.demos.internal.lostBetween
@@ -70,8 +71,17 @@ internal class ScanWallsState(
     var cueEdge: FloatArray? = null
         private set
 
+    /** The walls recognised now, as the source has them: what the gauge and the room's completion read. */
     var wallCount by mutableIntStateOf(0)
         private set
+
+    /**
+     * The wall count the status card and the coaching line say: [wallCount] held steady
+     * ([WallCountHold]), so a plane refit never reads `4 of 4 walls`, `1 of 4 walls`, `5 walls` in turn.
+     */
+    var shownWallCount by mutableIntStateOf(0)
+        private set
+    private val countHold = WallCountHold()
 
     /** The room's scan done so far, `0..1` ([ScanGuide.completion]); it only grows. */
     var completion by mutableFloatStateOf(0f)
@@ -183,6 +193,8 @@ internal class ScanWallsState(
             val finished = closed || completion >= 1f
             if (finished != done) done = finished
         }
+        val shownCount = countHold.update(wallCount, clock())
+        if (shownCount != shownWallCount) shownWallCount = shownCount
         val cue = if (done) null else ScanGuide.cue(pose, openEdges, cueEdge)
         cueEdge = cue?.edge
         val fix = fixTarget
@@ -218,6 +230,8 @@ internal class ScanWallsState(
         gridVersion = -1
         observedAt = Float.NaN
         wallCount = 0
+        countHold.reset()
+        shownWallCount = 0
         completion = 0f
         done = false
         guidance.clear()

@@ -170,6 +170,8 @@ import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
+import io.github.sceneview.demo.demos.internal.ScanSaveProgress
+import io.github.sceneview.demo.demos.internal.ScanSaveStep
 import io.github.sceneview.demo.demos.internal.OpenedCapture
 import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
@@ -1380,6 +1382,8 @@ private fun RerunLiveScreen(
     // Why the last save failed, said on the "Couldn't save" card (#4815), and the scan it could
     // not keep — the merged copy, for a part scanned again — which Save as file still writes out.
     var saveFailure by remember { mutableStateOf<ScanSaveFailure?>(null) }
+    // Where Build 3D model stands, step by step (#4903): the save card's bar and its line.
+    var saveProgress by remember { mutableStateOf(ScanSaveProgress.start(linesUp = false)) }
     var unsaved by remember { mutableStateOf<Pair<RerunCapturePack, String>?>(null) }
     // The built scan [unsaved] was made from: Try again writes that same copy, never merging the
     // re-scan a second time beside it — two copies of a long scan where one ran out of memory.
@@ -1665,6 +1669,9 @@ private fun RerunLiveScreen(
         val nothingToSave = builtPack == null && qaTrace == null && capture == null
         if (phase == ScanPhase.Saving || nothingToSave) return@save
         leaveAsked = false
+        saveProgress = ScanSaveProgress.start(linesUp = rescan != null && !rescanSeparate)
+        // Each step as it starts, and how far the painting is — that one from the build's thread.
+        val step: (ScanSaveStep, Float) -> Unit = { next, inner -> saveProgress = saveProgress.copy(step = next, inner = inner) }
         moveTo(ScanPhase.Saving)
         // The home this room belongs to, when it is one: read now, for a save that ends away.
         val homeOf = homeSession.takeIf { next != SaveNext.Open }
@@ -1700,13 +1707,15 @@ private fun RerunLiveScreen(
             // lands on the same "Couldn't save" card as a failed write, and Try again rebuilds.
             val built = runCatching {
                 builtPack ?: when {
-                    qaTrace != null && sample != null ->
+                    qaTrace != null && sample != null -> {
+                        step(ScanSaveStep.Painting, 0f)
                         qaSessionOf(
                             qaTrace, sample, scanScope,
                             depth = qaState != QA_STATE_RECORD_NO_DEPTH,
                             depthStalled = qaState == QA_STATE_RECORD_WALLS_STALLED,
                         )
-                    capture != null -> capture.finish()
+                    }
+                    capture != null -> capture.finish(step)
                     else -> null
                 }
             }.onFailure { if (it is CancellationException) throw it }
@@ -1734,6 +1743,7 @@ private fun RerunLiveScreen(
             val held = unsaved?.takeIf { unsavedFrom === pack }
             val merging = runCatching {
                 rescan?.takeUnless { held != null || rescanSeparate }?.let {
+                    step(ScanSaveStep.LiningUp, 0f)
                     withContext(Dispatchers.Default) { it.merge(pack) }
                 }
             }.onFailure { if (it is CancellationException) throw it }
@@ -1762,6 +1772,7 @@ private fun RerunLiveScreen(
             unsavedFrom = pack
             // Opened once, before it is written: the result screen shows it, and the save counts
             // its figures off it instead of parsing a long scan's log a second time (#4815).
+            step(ScanSaveStep.Checking, 0f)
             val openedResult = runCatching { loadRerunSession(saved) }
                 .onFailure { if (it is CancellationException) throw it }
             openedResult.exceptionOrNull()?.let {
@@ -1769,6 +1780,7 @@ private fun RerunLiveScreen(
             }
             val opened = openedResult.getOrNull()
             // The saved entry's id opens its result screen, where the name is edited (#4597).
+            step(ScanSaveStep.Writing, 0f)
             val savedResult = withContext(Dispatchers.IO) {
                 runCatching {
                     check(!qaSaveFails) { "QA: forced save failure" }
@@ -1965,7 +1977,7 @@ private fun RerunLiveScreen(
                     hasPoints = capturedPoints > 0,
                 ),
                 nextRoom = roomNumber.takeIf { betweenRooms },
-                walls = scanWalls?.wallCount,
+                walls = scanWalls?.shownWallCount,
                 guide = scanWalls?.hint,
                 done = scanWalls?.done == true,
                 facingWall = scanCoverage.facingWall,
@@ -2143,7 +2155,7 @@ private fun RerunLiveScreen(
                                 onHold = scanReview::hold,
                                 onNext = scanReview::next,
                             )
-                            phase == ScanPhase.Saving -> ScanSavingCard(points = keptPoints)
+                            phase == ScanPhase.Saving -> ScanSavingCard(saveProgress, points = keptPoints)
                             phase == ScanPhase.SaveFailed -> ScanSaveFailedCard(
                                 // The scan was never written: discarding it asks first.
                                 onDiscard = { discardAsked = true },

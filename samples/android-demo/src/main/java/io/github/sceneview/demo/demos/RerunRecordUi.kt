@@ -70,7 +70,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import io.github.sceneview.demo.demos.internal.ScanSaveCopy
+import io.github.sceneview.demo.demos.internal.ScanSaveProgress
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -176,9 +178,12 @@ internal fun ScanHud(
                 modifier = Modifier.weight(1f),
             )
         }
+        // While the model builds, the headline alone (#4903): the capture's clock is stopped and its
+        // gauge is the scan's, not the build's — the save card below says how far the build is.
+        if (phase == ScanPhase.Saving) return@OverlayCard
         // One line under it (#4807): `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured`.
         Text(
-            text = CaptureChrome.detail(clock, room?.wallCount, points),
+            text = CaptureChrome.detail(clock, room?.shownWallCount, points),
             style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -663,22 +668,36 @@ internal fun HomeReviewCard(
 }
 
 /**
- * Save scan, in progress: the card stays where the review was, with what it is doing — fusing the
- * capture's [points] (#4719), while the view turns round the cloud ([ScanLiveView]'s `saving`).
+ * Save scan, in progress: the card stays where the review was, with the step it is at and how far
+ * the whole save is (#4903) — `Step 2 of 5 · Fusing 224k points…` (#4719) over a determinate bar
+ * driven by the save's own steps ([ScanSaveProgress]) — while the view turns round the cloud
+ * ([ScanLiveView]'s `saving`). It used to spin on "Fusing" for a minute and a half.
  */
 @Composable
-internal fun ScanSavingCard(points: Int = 0) {
+internal fun ScanSavingCard(progress: ScanSaveProgress, points: Int = 0) {
+    val line = ScanSaveCopy.line(progress, points)
+    // Between two real values only: the bar never moves on a timer of its own.
+    val shown by animateFloatAsState(
+        targetValue = progress.fraction,
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+        label = "saveProgress",
+    )
     OverlayCard(testTag = SCAN_SAVING_TAG) {
         ScanStepRow(ScanStep.Model)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(Space.md + Space.xs / 2),
-                color = ArOverlay.onScrim,
-                strokeWidth = Space.xs / 2,
-            )
-            Spacer(Modifier.width(Space.sm))
-            Text(text = ScanCopy.fusing(points), style = OnScrimTitle)
-        }
+        Text(
+            text = line,
+            style = OnScrimTitle,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        LinearProgressIndicator(
+            progress = { shown },
+            modifier = Modifier
+                .widthIn(max = ArOverlay.maxWidth)
+                .fillMaxWidth()
+                .testTag(SCAN_SAVING_PROGRESS_TAG),
+            color = ArOverlay.accentProgress,
+            trackColor = ArOverlay.meterTrack,
+        )
     }
 }
 
@@ -1030,6 +1049,7 @@ internal const val SCAN_FIX_NOW_TAG = "ar_rerun_scan_fix_now"
 internal const val SCAN_BUILD_ANYWAY_TAG = "ar_rerun_scan_build_anyway"
 internal const val SCAN_NEXT_PART_TAG = "ar_rerun_scan_next_part"
 internal const val SCAN_SAVING_TAG = "ar_rerun_scan_saving"
+internal const val SCAN_SAVING_PROGRESS_TAG = "ar_rerun_scan_saving_progress"
 internal const val SCAN_SAVE_FAILED_TAG = "ar_rerun_scan_save_failed"
 internal const val SCAN_SAVE_AS_FILE_TAG = "ar_rerun_scan_save_as_file"
 internal const val SCAN_SAVE_RETRY_TAG = "ar_rerun_scan_save_retry"
