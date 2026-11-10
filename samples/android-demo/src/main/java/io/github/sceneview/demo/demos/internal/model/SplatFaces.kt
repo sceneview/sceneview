@@ -44,6 +44,41 @@ internal class SplatFaces private constructor(
         return mask
     }
 
+    /**
+     * [visible] from the faces [was] drawn the frame before: a face comes or goes only once the eye
+     * is [HYSTERESIS_M] past its plane, so an eye that hovers on a plane (an orbit at the ceiling's
+     * height, a finger resting mid-drag) does not swap the splats back and forth every frame —
+     * each swap is a new sort with a new filter (#4896).
+     */
+    fun visible(x: Float, y: Float, z: Float, was: Int): Int {
+        val now = visible(x, y, z)
+        if (now == was) return now
+        val u = x * cosYaw + z * sinYaw
+        val v = -x * sinYaw + z * cosYaw
+        var mask = now
+        for (f in 0 until FACES) {
+            val bit = 1 shl f
+            if ((now xor was) and bit == 0) continue
+            val at = when (f / 2) {
+                0 -> u
+                1 -> y
+                else -> v
+            }
+            // Too close to the plane to call: the face stays as it was.
+            if (kotlin.math.abs(at - planes[f]) < HYSTERESIS_M) mask = (mask and bit.inv()) or (was and bit)
+        }
+        return mask
+    }
+
+    /**
+     * Which of [all]'s splats are in the faces of [mask], as `SplatNode.shownSplats` reads it;
+     * `null` when every splat is. O(splats), off the main thread.
+     */
+    fun shown(mask: Int): BooleanArray? {
+        val shown = BooleanArray(all.count) { mask and (1 shl face[it].toInt()) != 0 }
+        return if (shown.all { it }) null else shown
+    }
+
     /** [all]'s splats in the faces of [mask], in their order; [all] itself when every face is in. */
     fun cloud(mask: Int): SplatCloud {
         val n = face.count { mask and (1 shl it.toInt()) != 0 }
@@ -78,6 +113,9 @@ internal class SplatFaces private constructor(
 
         /** Where a face's plane stands among its splats, from the side it faces away from. */
         const val EDGE_SHARE = 0.1f
+
+        /** How far past a face's plane the eye goes before the face comes or goes, metres. */
+        const val HYSTERESIS_M = 0.1f
 
         /** A normal steeper than this (|y|) counts towards the floor or the ceiling, not a wall. */
         private const val WALL_MAX_Y = 0.5f

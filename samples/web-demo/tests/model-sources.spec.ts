@@ -25,7 +25,7 @@ import {
 
 /** Absolute URL of a real GLB served by the Playwright dev server. */
 function localGlbUrl(page: import('@playwright/test').Page): string {
-  return new URL('/models/sheen_chair.glb', page.url()).toString();
+  return new URL('/models/phoenix_bird.glb', page.url()).toString();
 }
 
 /** Build one Icosa list-asset whose renderable format points at `glbUrl`. */

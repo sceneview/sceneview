@@ -142,6 +142,9 @@ test.describe('Filament.js shadow options (#3456)', () => {
       const F = (window as any).Filament;
       const sv = (window as any).sceneViewInstance;
       const engine = sv._engine;
+      // The demo opens in the photo studio, whose camera move-in and quality tiers
+      // keep changing frames: the bench is a plain scene, so turn it off first.
+      if (typeof sv.setStudio === 'function') sv.setStudio(false);
       sv.setAutoRotate(false);
       sv._angle = 0.785;
       sv._orbitRadius = 5.5;

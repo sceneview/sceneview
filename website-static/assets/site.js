@@ -509,13 +509,15 @@
     }
 
     /* 3D Scan videos: play only while in view; reduced motion or reduced data keeps the
-       posters and offers native controls instead. The button pauses both. */
+       posters and offers native controls instead. The button pauses both. Each card holds a
+       light and a dark render and CSS shows one: only the shown ones play, and a theme
+       change hands playback over to the other pair. */
     var scan = $('[data-scan]');
     if (scan) {
       var vids = $$('video', scan), sp = $('.scan__pause', scan), held = false, seen = false;
       var playAll = function (go) {
         vids.forEach(function (v) {
-          if (go) { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); } else v.pause();
+          if (go && v.getClientRects().length) { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); } else v.pause();
         });
       };
       if (caps.reduced || caps.reducedData || !('IntersectionObserver' in window)) {
@@ -527,6 +529,10 @@
           if (!held) playAll(seen);
         }, { threshold: 0.25 });
         vio.observe(scan);
+        var retheme = function () { if (!held) playAll(seen); };
+        var tmo = new MutationObserver(retheme);
+        tmo.observe(doc, { attributes: true, attributeFilter: ['data-theme'] });
+        on(mqDark, 'change', retheme);
         on(sp, 'click', function () {
           held = !held;
           sp.setAttribute('aria-pressed', String(held));
@@ -534,7 +540,7 @@
           playAll(!held && seen);
         });
         ac.signal.addEventListener('abort', function () {
-          vio.disconnect(); playAll(false); held = false;
+          vio.disconnect(); tmo.disconnect(); playAll(false); held = false;
           if (sp) { sp.setAttribute('aria-pressed', 'false'); sp.setAttribute('aria-label', 'Pause the scan videos'); }
         });
       }

@@ -1,3 +1,8 @@
+---
+title: SceneView for AI assistants — Claude, ChatGPT / Codex, Gemini, Copilot, Cursor
+description: "Give an AI assistant the current SceneView API: a context block to paste, the sceneview-mcp server, the Claude Code plugin, the Codex plugin and skills, and the rules files each tool reads."
+---
+
 # Use SceneView with AI Assistants
 
 Copy the context block below into any AI assistant to get accurate SceneView
@@ -12,6 +17,8 @@ I'm building with SceneView — the Compose-native 3D & AR SDK for Android.
 - 3D only: io.github.sceneview:sceneview:4.67.0
 - 3D + AR: io.github.sceneview:arsceneview:4.67.0
 - Use SceneView { } or ARSceneView { } composables
+- Never the 2.x API: no Scene(childNodes = ...), ARScene, rememberNodes
+- From Android Views: host SceneView { } in a ComposeView
 - Nodes are composables inside the content block
 - Load models with rememberModelInstance(modelLoader, "models/file.glb")
 - LightNode uses named parameter: apply = { intensity(...) }
@@ -34,6 +41,25 @@ client — see
 [AI-assisted development](ai-development.md#per-tool-setup) for the one your
 assistant reads, or the client's own documentation.
 
+## Skills: Claude Code and Codex
+
+Three skills (`sceneview` for Android, `sceneview-ios`, `sceneview-web`) teach an agent the
+API, the pitfalls and the samples. In Claude Code, install the plugin, which also brings the
+MCP server:
+
+```
+/plugin marketplace add sceneview/claude-marketplace
+/plugin install sceneview@sceneview
+```
+
+Codex finds the skills on its own inside any checkout of this repository, through
+`.agents/skills/`. To install them as a plugin for every project, from a clone:
+
+```bash
+codex plugin marketplace add "$PWD"          # an absolute path; a relative one does not resolve
+codex plugin add sceneview@sceneview-local
+```
+
 ## Rules files in the repo
 
 A checkout of SceneView carries the context file each of these tools reads on
@@ -55,7 +81,7 @@ your tool reads, or point your assistant at `llms.txt`.
 
 For AI system prompts, use:
 
-- **Compact**: `https://sceneview.github.io/llms-full.txt` (~13 kB, fits most context windows)
+- **Compact**: `https://sceneview.github.io/llms-full.txt` (~15 kB, fits most context windows)
 - **Complete**: `https://sceneview.github.io/llms.txt` (full API reference, and an index of these docs at the top)
 - **MCP resource**: `sceneview://api` (served by sceneview-mcp)
 

@@ -63,7 +63,6 @@ import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.VoiceDictationButton
 import io.github.sceneview.demo.common.VoiceDictationListeningHint
 import io.github.sceneview.demo.common.rememberVoiceDictation
-import io.github.sceneview.demo.labs.Labs
 import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlinx.coroutines.launch
@@ -220,8 +219,6 @@ fun BugReportSheet(
                 onClick = {
                     if (openGitHubIssue(context, report.info, note)) {
                         sendError = null
-                        // The first report sent joins SceneView Labs (see Labs.onReportSent).
-                        Labs.onReportSent()
                         onDismiss()
                     } else {
                         sendError = noAppError
@@ -241,7 +238,6 @@ fun BugReportSheet(
                 onClick = {
                     if (shareReport(context, report, note, includeScreenshot)) {
                         sendError = null
-                        Labs.onReportSent()
                         onDismiss()
                     } else {
                         sendError = noAppError

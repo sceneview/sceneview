@@ -3231,7 +3231,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -3506,7 +3507,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -3559,7 +3561,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -3585,7 +3588,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -3918,7 +3922,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -4287,7 +4292,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -4335,7 +4341,8 @@
       ],
       "usedIn": [
         "website",
-        "android-demo"
+        "android-demo",
+        "web-demo"
       ],
       "defaultScale": 1.0
     },
@@ -4435,6 +4442,55 @@
       "usedIn": [
         "website",
         "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "polyhaven_vintage_camera",
+      "name": "Vintage camera",
+      "_comment": "Web demo catalog: Poly Haven \"Camera 01\" at 2k, packed from its glTF into one GLB with gltf-transform copy (geometry and textures untouched).",
+      "source": "polyhaven",
+      "sourceId": "Camera_01",
+      "sourceUrl": "https://polyhaven.com/a/Camera_01",
+      "author": "Rajil Jose Macatangay",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "vintage_camera.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "camera",
+        "vintage",
+        "photography",
+        "real-scale"
+      ],
+      "usedIn": [
+        "web-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "polyhaven_chess_set",
+      "name": "Chess set",
+      "_comment": "Web demo catalog: Poly Haven \"Chess Set\" at 1k, packed from its glTF into one GLB with gltf-transform copy (geometry and textures untouched).",
+      "source": "polyhaven",
+      "sourceId": "chess_set",
+      "sourceUrl": "https://polyhaven.com/a/chess_set",
+      "author": "Riley Queen",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "chess_set.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "chess",
+        "game",
+        "decor",
+        "vintage",
+        "real-scale"
+      ],
+      "usedIn": [
+        "web-demo"
       ],
       "defaultScale": 1.0
     }

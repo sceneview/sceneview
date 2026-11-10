@@ -234,12 +234,6 @@ fun HomeScreen(
      * nothing else.
      */
     buildVersion: String = BuildConfig.VERSION_NAME,
-    /**
-     * The SceneView Labs card, drawn as the first section under the hero
-     * ([io.github.sceneview.demo.labs.LabsHomeCard] in the app). A slot so this screen knows
-     * nothing about Labs state; `null` in previews and the catalogue goldens.
-     */
-    labsCard: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val home = SceneViewTokens.Home
     val gridState = rememberLazyGridState()
@@ -421,7 +415,6 @@ fun HomeScreen(
     val chipsShown = !searching && rows.map { it.category }.distinct().size > 1
     val headItemCount = 1 + // header spacer
         (if (searching) 0 else 1) + // hero
-        (if (!searching && labsCard != null) 1 else 0) + // Labs
         (if (!searching && whatsNewLead != null) 1 else 0) +
         (if (!searching && featuredShelf.isNotEmpty()) 1 + featuredShelf.size else 0) +
         (if (searching) 0 else 1) + // browse online
@@ -503,18 +496,6 @@ fun HomeScreen(
                         pagerState = featuredPagerState,
                         modifier = Modifier.testTag(HomeTestTags.HERO),
                     )
-                }
-                // SceneView Labs: the first section under the hero, one compact card that
-                // invites testers in, or carries the switch once they are.
-                if (!searching && labsCard != null) {
-                    item(key = LABS_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
-                        labsCard(
-                            Modifier
-                                .animateItem()
-                                .cascadeIn(cascade.delayFor(cascadeIndex++))
-                                .padding(top = home.groupGap - home.rowGap),
-                        )
-                    }
                 }
                 // "What's new": the one row that answers "what changed?" without a scroll
                 // through the catalogue (#3927). It counts the New / Updated cards and opens
@@ -732,9 +713,6 @@ private const val HERO_ITEM_KEY = "hero"
 /** Grid key of the "What's new" row under the hero. */
 private const val WHATS_NEW_ITEM_KEY = "whats-new"
 
-/** Grid key of the SceneView Labs card, right under the hero. */
-private const val LABS_ITEM_KEY = "labs"
-
 /**
  * The layer under the grid that carries the sky and the night circuit (#3948).
  *
@@ -880,10 +858,9 @@ internal val FEATURED_IDS = listOf("ar-rerun", "cosmos", "ar-placement", "model-
 /**
  * The featured pager's demo pages (#3567), in page order: [HERO_DEMO_ID] first — it is the
  * demo the store listing, the deep link and the app icon all point at — then Cosmos, the
- * first of [FEATURED_IDS], then the two newest showpieces that are not Labs experiments,
+ * first of [FEATURED_IDS], then two of the newest showpieces,
  * Real-World Scan (a Gaussian-splat capture, 4.57) and Rolling Balls (4.55) (#4622: "one or
- * two more cards"; a Labs id here would change the page count when Labs flips, see
- * `LabsTest`). Four pages, not more: a carousel nobody
+ * two more cards"). Four pages, not more: a carousel nobody
  * reaches the end of is a list. What the pager shows the "Featured" banners under it do not
  * repeat ([homeTopSections], #4304), which is why the two new pages are demos outside
  * [FEATURED_IDS]: the banners keep the other three featured demos. A page added from

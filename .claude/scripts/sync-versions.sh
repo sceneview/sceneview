@@ -692,14 +692,6 @@ if [ -f "$WEBSITE_WEB" ]; then
     V=$(grep 'softwareVersion' "$WEBSITE_WEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
     add_check "website-static/web.html (softwareVersion)" "$V"
 fi
-# Playground AI-prompt coordinates (arsceneview + sceneview-web@).
-WEBSITE_PLAYGROUND="$REPO_ROOT/website-static/playground.html"
-if [ -f "$WEBSITE_PLAYGROUND" ]; then
-    V=$(grep -oE 'arsceneview:[0-9]+\.[0-9]+\.[0-9]+' "$WEBSITE_PLAYGROUND" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
-    add_check "website-static/playground.html (prompt arsceneview:)" "$V"
-    V=$(grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+' "$WEBSITE_PLAYGROUND" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
-    add_check "website-static/playground.html (prompt sceneview-web@)" "$V"
-fi
 # `js/sceneview.js?v=X.Y.Z` cache-busters — a stale ?v= keeps serving the
 # previous script from the HTTP cache after a deploy.
 STALE_BUSTERS=$(grep -rhoE 'sceneview\.js\?v=[0-9]+\.[0-9]+\.[0-9]+' "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sort -u | grep -v "^${SOURCE_VERSION}$" || true)
@@ -797,6 +789,7 @@ SPM_FILES=(
     docs/docs/platforms.md
     docs/docs/samples-ios.md
     docs/docs/quickstart-ios.md
+    docs/docs/3d-ar-library.md
     docs/docs/faq.md
     # iOS codelabs ship an SPM "version rule … from `X.Y.Z`" instruction in
     # prose-backtick form; #1693 found them 6 minors stale after v4.10.0.
@@ -808,7 +801,6 @@ SPM_FILES=(
     # snippet is fresh by construction. `website-static/.well-known/llms.txt`
     # is likewise absent: it was a stale hand-kept copy of root `llms.txt` that
     # docs.yml has never deployed, and it was deleted rather than swept.
-    website-static/playground.html
     .github/copilot-instructions.md
     gpt/system-prompt.md
     # AI-assistant prompt surfaces in .gitignore'd dirs — tracked files
@@ -901,7 +893,8 @@ fi
 
 # Extra docs-site pages carrying Maven artifact refs that section 5 misses.
 for docfile in docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-tv.md \
-               docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md; do
+               docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
+               docs/docs/3d-ar-library.md docs/docs/sceneform-replacement.md; do
     F="$REPO_ROOT/$docfile"
     if [ -f "$F" ]; then
         V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
@@ -911,10 +904,19 @@ for docfile in docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-t
     fi
 done
 
+# The Compose Multiplatform page carries only the sceneview-compose coordinate.
+CMP_DOC="$REPO_ROOT/docs/docs/compose-multiplatform.md"
+if [ -f "$CMP_DOC" ]; then
+    V=$(grep -m1 'io\.github\.sceneview:sceneview-compose:' "$CMP_DOC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "docs/docs/compose-multiplatform.md" "$V"
+    fi
+fi
+
 # Website static pages carrying Maven artifact refs (index.html, web.html,
-# geometry-demo.html, playground.html).
+# geometry-demo.html).
 for webfile in website-static/index.html website-static/web.html \
-               website-static/geometry-demo.html website-static/playground.html; do
+               website-static/geometry-demo.html; do
     F="$REPO_ROOT/$webfile"
     if [ -f "$F" ]; then
         V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
@@ -935,7 +937,7 @@ fi
 
 # Web CDN refs — `cdn.jsdelivr.net/gh/sceneview/sceneview@vX.Y.Z` and
 # `cdn.jsdelivr.net/npm/sceneview-web@X.Y.Z` pinned in README + docs.
-for cdnfile in README.md docs/docs/index.md website-static/index.html website-static/web.html; do
+for cdnfile in README.md docs/docs/index.md docs/docs/3d-ar-library.md website-static/index.html website-static/web.html; do
     F="$REPO_ROOT/$cdnfile"
     if [ -f "$F" ]; then
         V=$(grep -oE 'sceneview(-web)?@v?[0-9]+\.[0-9]+\.[0-9]+' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
@@ -1230,7 +1232,7 @@ if [ "$FIX_MODE" = "--fix" ] && [ "$ERRORS" -gt 0 ]; then
     # Carrier-invariant guard (#3234): snapshot every website-static page the
     # fix block touches; after all fixes, only version strings may differ.
     declare -a GUARDED_FILES=() GUARDED_BAKS=()
-    for GF in "$WEBSITE_INDEX" "$WEBSITE_WEB" "$WEBSITE_PLAYGROUND"; do
+    for GF in "$WEBSITE_INDEX" "$WEBSITE_WEB"; do
         [ -f "$GF" ] || continue
         GUARDED_FILES+=("$GF")
         GUARDED_BAKS+=("$(_snapshot_carriers "$GF")")
@@ -1667,8 +1669,10 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
         for f in docs/docs/ai-context.md docs/docs/android-xr-emulator.md \
                  docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-tv.md \
                  docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
+                 docs/docs/3d-ar-library.md docs/docs/sceneform-replacement.md \
+                 docs/docs/compose-multiplatform.md \
                  website-static/index.html website-static/web.html \
-                 website-static/geometry-demo.html website-static/playground.html; do
+                 website-static/geometry-demo.html; do
             F="$REPO_ROOT/$f"
             if [ -f "$F" ] && grep -q "io\.github\.sceneview:[^:]*:$OLD_V_RE" "$F" 2>/dev/null; then
                 _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V_RE/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
@@ -1676,7 +1680,7 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
             fi
         done
         # README + docs badge URLs and CDN @version pins.
-        for f in README.md docs/docs/index.md website-static/web.html; do
+        for f in README.md docs/docs/index.md docs/docs/3d-ar-library.md website-static/web.html; do
             F="$REPO_ROOT/$f"
             [ -f "$F" ] || continue
             if grep -qE "(badge/(Flutter|React%20Native)-v$OLD_V_RE|sceneview(-web)?@v?$OLD_V_RE|sceneview\.js\?v=$OLD_V_RE)" "$F" 2>/dev/null; then
@@ -1932,18 +1936,6 @@ if changed:
     if [ -f "$WEBSITE_WEB" ] && ! grep -q "\"softwareVersion\": \"$SOURCE_VERSION\"" "$WEBSITE_WEB"; then
         _sed_inplace "s/\"softwareVersion\": \"$SEMVER\"/\"softwareVersion\": \"$SOURCE_VERSION\"/" "$WEBSITE_WEB"
         echo -e "  Fixed: website-static/web.html (softwareVersion -> $SOURCE_VERSION)"
-    fi
-
-    # website-static/playground.html — the two AI-prompt version pins.
-    if [ -f "$WEBSITE_PLAYGROUND" ]; then
-        if ! grep -q "arsceneview:$SOURCE_VERSION" "$WEBSITE_PLAYGROUND"; then
-            _sed_inplace "s|arsceneview:$SEMVER|arsceneview:$SOURCE_VERSION|g" "$WEBSITE_PLAYGROUND"
-            echo -e "  Fixed: playground.html (prompt arsceneview: -> $SOURCE_VERSION)"
-        fi
-        if ! grep -q "sceneview-web@$SOURCE_VERSION" "$WEBSITE_PLAYGROUND"; then
-            _sed_inplace "s|sceneview-web@$SEMVER|sceneview-web@$SOURCE_VERSION|g" "$WEBSITE_PLAYGROUND"
-            echo -e "  Fixed: playground.html (prompt sceneview-web@ -> $SOURCE_VERSION)"
-        fi
     fi
 
     # sceneview.js?v= cache-busters — EVERY html under website-static (incl.

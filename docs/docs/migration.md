@@ -8,6 +8,8 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 Sections run from the newest release down to the oldest. **Coming from SceneView 2.x?** Start at
 [SceneView 2.x to 3.x](#sceneview-2x-to-3x), then read the newer sections above it for anything
 your app uses.
+For a shorter path from 2.3.0–2.3.4, with the Filament and ARCore updates and the
+`Engine.nDestroyEngine` ANR, see [Upgrading from 2.3.x](upgrading-from-2-3.md).
 
 SceneView is open source and maintained by its community. If your app ships with it, you can
 support the project on [Open Collective](https://opencollective.com/sceneview).
@@ -591,7 +593,7 @@ SceneView { root in
 
 ### 1. New: AR Debug — Rerun.io integration
 
-SceneView can now stream an ARCore / ARKit session to the [Rerun](https://rerun.io) viewer for scrub-and-replay debugging. See the full guide in the [llms.txt reference](https://github.com/sceneview/sceneview/blob/main/llms.txt) or the [AR Debug (Rerun)](https://sceneview.github.io/playground.html) example in the playground.
+SceneView can now stream an ARCore / ARKit session to the [Rerun](https://rerun.io) viewer for scrub-and-replay debugging. See the full guide in the [llms.txt reference](https://github.com/sceneview/sceneview/blob/main/llms.txt).
 
 Quick wire-up on Android:
 

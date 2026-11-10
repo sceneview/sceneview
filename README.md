@@ -1,11 +1,29 @@
 # SceneView
 
-> **The AI-first 3D & AR SDK for Jetpack Compose, SwiftUI and the web.**
+> **The AI-first 3D & AR SDK for Jetpack Compose, Compose Multiplatform, SwiftUI and the web.**
 
 Declarative 3D and AR for app developers who want a model on screen, or in the room, without a
 game engine: Filament + ARCore on Android, RealityKit + ARKit on Apple, Filament.js + WebXR in the
-browser — with Flutter, React Native and Compose Multiplatform bridges on top. Open source,
-Apache 2.0.
+browser — with Flutter, React Native and Compose Multiplatform bridges on top. It is the
+maintained successor to Google Sceneform. Open source, Apache 2.0.
+
+| Building with | Add | Then write |
+|---|---|---|
+| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.67.0` | `SceneView { }` |
+| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.67.0` | `ARSceneView { }` or `PlacementScene` |
+| Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
+| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.67.0` | `SceneViewer(model = …)` in `commonMain` |
+| SwiftUI — iOS, macOS, visionOS | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView` |
+| Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
+
+Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `ARScene`)?
+[The mapping](https://sceneview.github.io/docs/sceneform-replacement/). Which artifact fits your app:
+[3D and AR library, per platform](https://sceneview.github.io/docs/3d-ar-library/).
+
+**Used in production.** More than 1,300 stars on GitHub, and over 500 public repositories declare
+SceneView as a dependency. It ships in Medal, IKEA, Lenskart and Safie on Google Play, is declared by the
+open-source apps Bitkey (Block) and Vocable (WillowTree), and is a dependency of the GeneXus
+Augmented Reality module and the TruVideo camera SDK. The Niantic Spatial SDK samples use it for AR.
 
 **AI-first** means one thing here: an assistant that reads [`llms.txt`](./llms.txt) or
 [the MCP server](./mcp/) writes SceneView code that works on the first try. When it doesn't, the
@@ -34,7 +52,7 @@ API or the doc gets fixed.
 <p>
   <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo"><img src="website-static/assets/brand/stores/google-play-badge-trimmed.png" alt="Get it on Google Play" height="56"></a>&nbsp;
   <a href="https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763"><img src="website-static/assets/brand/stores/app-store.svg" alt="Download on the App Store" height="56"></a>&nbsp;
-  <a href="https://sceneview.github.io/playground.html"><img src="website-static/assets/brand/stores/web-playground.svg" alt="Open the Web Playground" height="56"></a>
+  <a href="https://sceneview.github.io/web-demo/"><img src="website-static/assets/brand/stores/web-demo.svg" alt="Open the web demo" height="56"></a>
 </p>
 
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
@@ -53,7 +71,6 @@ The demo apps are built from [`samples/`](samples/). Any demo opens straight fro
 Install the Android demo, record your screen while you use a demo, and tell us what breaks or
 confuses you: [open an issue](https://github.com/sceneview/sceneview/issues/new?labels=user-feedback)
 with the recording attached, or send it from the app (any demo, Settings, then Send feedback).
-Your first report unlocks **SceneView Labs**, early access to the experimental demos, straight away.
 
 ---
 
@@ -523,7 +540,7 @@ helpers. A Kotlin Multiplatform project that only needs the shared core (collisi
 geometry, animation, physics — no renderer) uses
 `implementation("io.github.sceneview:sceneview-core-js:4.67.0")`.
 
-[Landing page](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [npm](https://www.npmjs.com/package/sceneview-web)
+[Landing page](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [npm](https://www.npmjs.com/package/sceneview-web)
 
 ---
 
@@ -602,7 +619,7 @@ sceneview-core (Kotlin Multiplatform)
 
 ## Links
 
-- [Website](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [Documentation](https://sceneview.github.io/docs/)
+- [Website](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [Documentation](https://sceneview.github.io/docs/)
 - [Discord](https://discord.gg/UbNDDBTNqb) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Migration v2 → v3](MIGRATION.md)
 
 ## Sponsors

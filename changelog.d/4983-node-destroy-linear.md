@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Destroying a node with many children no longer freezes the main thread.** Each child's `destroy()` detaches it from its parent, and that parent, itself being destroyed, re-walked every subtree it still held after each detach. The work was quadratic in the tree size, and a big model leaving the composition caused ANRs in the field. A node being destroyed now only requests a frame when it loses a child.

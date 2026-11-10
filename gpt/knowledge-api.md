@@ -21,14 +21,16 @@
 - [Model formats](https://sceneview.github.io/docs/formats/): glTF, GLB, USDZ, and what converts into what
 - [Platforms](https://sceneview.github.io/docs/platforms/): what each target supports and how mature it is
 - [Recipes](https://sceneview.github.io/docs/recipes/): task-shaped answers to "I want to…"
-- [Migration from Sceneform](https://sceneview.github.io/docs/migration/): the mapping, class by class
+- [Which 3D & AR library](https://sceneview.github.io/docs/3d-ar-library/): the dependency and a minimal working example per platform — Compose, Views, Compose Multiplatform, SwiftUI, web
+- [Sceneform replacement](https://sceneview.github.io/docs/sceneform-replacement/): moving from Sceneform, class by class, and from SceneView 2.x code
+- [Migration guide](https://sceneview.github.io/docs/migration/): every breaking change between SceneView versions
 - [Troubleshooting](https://sceneview.github.io/docs/troubleshooting/): symptom, cause, fix
 - [FAQ](https://sceneview.github.io/docs/faq/): the questions that come back
 
 ## Reference
 
 - [Full API reference](https://sceneview.github.io/llms.txt): this file — setup, composables, every node type, threading rules, recipes
-- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~13 kB, when the full file will not fit
+- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~15 kB, when the full file will not fit
 - [Generated API docs — 3D](https://sceneview.github.io/api/sceneview/latest/sceneview/): Dokka output for `sceneview`
 - [Generated API docs — AR](https://sceneview.github.io/api/sceneview/latest/arsceneview/): Dokka output for `arsceneview`
 
@@ -932,12 +934,13 @@ One parameter, one meaning on the three: `cameraPositionProvider: (() -> Positio
 ### SplatNode — 3D Gaussian Splatting (radiance-field captures) (#2646)
 Renders a `SplatCloud` (the KMP data model: flat `positions`/`scales`/`rotations`/`colors`/`opacities`
 arrays) as camera-facing gaussian discs — instanced quads, per-splat data in RGBA16F textures,
-premultiplied-alpha blending. Clouds above 65535 splats are split into multiple draws internally.
+premultiplied-alpha blending. Clouds above 32767 splats (Filament's instance cap) are split into multiple draws internally.
 ```kotlin
 @Composable fun SplatNode(
     splatCloud: SplatCloud,          // io.github.sceneview.core.splat.SplatCloud (must be non-empty)
     cameraPositionProvider: (() -> Position)? = null,  // null = sort for the scene camera (default)
     splatCount: Int = splatCloud.count,  // render only the first N texels — LOD / reveal hook
+    shownSplats: BooleanArray? = null,   // false = splat hidden, without rebuilding the node; pass a new array, applied at the next sort
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),

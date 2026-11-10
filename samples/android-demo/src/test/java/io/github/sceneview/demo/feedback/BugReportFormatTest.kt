@@ -132,7 +132,7 @@ class BugReportFormatTest {
 
     @Test
     fun `share text stays under its budget with an oversized metadata row`() {
-        val info = BugReportInfo(linkedMapOf("Labs" to "y".repeat(SHARE_TEXT_MAX_CHARS * 2)), logcat = emptyList())
+        val info = BugReportInfo(linkedMapOf("Locale" to "y".repeat(SHARE_TEXT_MAX_CHARS * 2)), logcat = emptyList())
         assertTrue(formatShareText(info, "").length <= SHARE_TEXT_MAX_CHARS)
     }
 

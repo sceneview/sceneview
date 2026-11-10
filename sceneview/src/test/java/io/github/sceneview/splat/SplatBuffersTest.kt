@@ -11,7 +11,7 @@ import kotlin.math.pow
 
 /**
  * Pure-JVM pins for the [SplatBuffers] contracts consumed by `SplatNode` (#2646): the per-splat
- * texel layout (splat → texel round-trip), the 65535-instances/draw batch splitting, the
+ * texel layout (splat → texel round-trip), the 32767-instances/draw batch splitting, the
  * painter's (back-to-front) sort order, and the culling AABB.
  *
  * The GPU side (texture upload, instanced renderables, the actual pixels) needs a device — it is
@@ -63,12 +63,33 @@ class SplatBuffersTest {
     fun batchRangesSplitsAtMaxInstancesPerDraw() {
         assertEquals(emptyList<IntRange>(), SplatBuffers.batchRanges(0))
         assertEquals(listOf(0..0), SplatBuffers.batchRanges(1))
-        assertEquals(listOf(0..65534), SplatBuffers.batchRanges(65535))
-        assertEquals(listOf(0..65534, 65535..65535), SplatBuffers.batchRanges(65536))
+        assertEquals(listOf(0..32766), SplatBuffers.batchRanges(32767))
+        assertEquals(listOf(0..32766, 32767..32767), SplatBuffers.batchRanges(32768))
         assertEquals(
-            listOf(0..65534, 65535..131069, 131070..196604, 196605..199999),
-            SplatBuffers.batchRanges(200_000)
+            listOf(0..32766, 32767..65533, 65534..98300, 98301..99999),
+            SplatBuffers.batchRanges(100_000)
         )
+    }
+
+    /**
+     * #4896: `RenderableManager.Builder.instances(n)` clamps `n` to 32767 without a word, so a
+     * batch asking for more draws only its first 32767 slots. With 65535-slot batches every
+     * batch lost its back half — a slice of view depth — which showed as gaps along the seams
+     * of any cloud over one batch. Every slot must be drawn once Filament has clamped.
+     */
+    @Test
+    fun everySlotIsDrawnUnderFilamentsInstanceClamp() {
+        assertTrue(SplatBuffers.MAX_INSTANCES_PER_BATCH <= SplatBuffers.FILAMENT_INSTANCE_CLAMP)
+        for (count in intArrayOf(1, 32767, 32768, 65535, 65536, 262_672, 500_000)) {
+            val drawn = BooleanArray(count)
+            SplatBuffers.batchRanges(count).forEach { batch ->
+                // What Filament actually draws for this renderable: instances(batch.count()), clamped.
+                val instances = minOf(batch.count(), SplatBuffers.FILAMENT_INSTANCE_CLAMP)
+                for (i in 0 until instances) drawn[batch.first + i] = true
+            }
+            val missing = drawn.count { !it }
+            assertEquals("slots never drawn for a $count-splat cloud", 0, missing)
+        }
     }
 
     @Test
@@ -87,22 +108,51 @@ class SplatBuffersTest {
         }
     }
 
+    @Test
+    fun sortIntoReusedScratchMatchesAFreshSort() {
+        val positions = FloatArray(3 * 500) { i -> ((i * 7919) % 1000) / 100f - 5f }
+        val keys = LongArray(600)
+        val order = IntArray(600) { -1 }
+        for (cam in listOf(floatArrayOf(0f, 0f, 0f), floatArrayOf(9f, -2f, 4f), floatArrayOf(-7f, 3f, -1f))) {
+            val fresh = SplatBuffers.sortBackToFront(positions, 500, cam[0], cam[1], cam[2])
+            val reused = SplatBuffers.sortBackToFront(positions, 500, cam[0], cam[1], cam[2], keys, order)
+            assertArrayEquals(fresh, reused.copyOf(500))
+        }
+    }
+
+    @Test
+    fun sortOfTheShownSplatsKeepsTheirBackToFrontOrder() {
+        val positions = FloatArray(3 * 500) { i -> ((i * 7919) % 1000) / 100f - 5f }
+        val shown = BooleanArray(500) { it % 3 != 0 }
+        val keys = LongArray(500)
+        val order = IntArray(500) { -1 }
+        val all = SplatBuffers.sortBackToFront(positions, 500, 9f, -2f, 4f)
+        val n = SplatBuffers.sortBackToFront(positions, 500, 9f, -2f, 4f, keys, order, shown)
+        assertEquals(shown.count { it }, n)
+        // The full order with the hidden splats taken out, nothing else moved.
+        assertArrayEquals(all.filter { shown[it] }.toIntArray(), order.copyOf(n))
+        assertEquals(0, SplatBuffers.sortBackToFront(positions, 500, 0f, 0f, 0f, keys, order, BooleanArray(500)))
+        assertThrows(IllegalArgumentException::class.java) {
+            SplatBuffers.sortBackToFront(positions, 500, 0f, 0f, 0f, keys, order, BooleanArray(10))
+        }
+    }
+
     // ── visibleInBatch (splatCount LOD cut) ───────────────────────────────────────────────────
 
     @Test
     fun visibleInBatchCutsTheGlobalOrderPerBatch() {
-        val first = 0..65534
-        val second = 65535..99999
+        val first = 0..32766
+        val second = 32767..49999
         // Cut inside the first batch: second batch fully hidden.
         assertEquals(1000, SplatBuffers.visibleInBatch(1000, first))
         assertEquals(0, SplatBuffers.visibleInBatch(1000, second))
         // Cut inside the second batch: first batch fully visible.
-        assertEquals(65535, SplatBuffers.visibleInBatch(70_000, first))
-        assertEquals(4465, SplatBuffers.visibleInBatch(70_000, second))
+        assertEquals(32767, SplatBuffers.visibleInBatch(40_000, first))
+        assertEquals(7233, SplatBuffers.visibleInBatch(40_000, second))
         // Extremes.
         assertEquals(0, SplatBuffers.visibleInBatch(0, first))
-        assertEquals(65535, SplatBuffers.visibleInBatch(100_000, first))
-        assertEquals(34465, SplatBuffers.visibleInBatch(100_000, second))
+        assertEquals(32767, SplatBuffers.visibleInBatch(50_000, first))
+        assertEquals(17233, SplatBuffers.visibleInBatch(50_000, second))
     }
 
     // ── texel packing round-trip ──────────────────────────────────────────────────────────────
@@ -337,6 +387,15 @@ class SplatBuffersTest {
         assertEquals(listOf(2, 0, 1, 0), (0 until 4).map { packed.get(it) })
         assertThrows(IllegalArgumentException::class.java) {
             SplatBuffers.packOrder(IntArray(5), 2)
+        }
+    }
+
+    @Test
+    fun packOrderOfTheFirstSlotsLeavesTheRestZero() {
+        val packed = SplatBuffers.packOrder(intArrayOf(2, 0, 1, 3), 2, SplatBuffers.textureSize(4))
+        assertEquals(listOf(2, 0, 0, 0), (0 until 4).map { packed.get(it) })
+        assertThrows(IllegalArgumentException::class.java) {
+            SplatBuffers.packOrder(IntArray(2), 3, 2)
         }
     }
 

@@ -1,6 +1,16 @@
 # Try SceneView
 
-Get the demo app running on your device in under a minute.
+Open the web demo in your browser, or get the demo app running on your device in under a minute.
+
+---
+
+## In the browser — nothing to install
+
+The web demo runs SceneView Web (Filament.js, WebGL2) in any recent browser: a 3D model
+viewer, Sketchfab search, procedural geometry, a physics scene, HDR environments and
+WebXR on devices that support it.
+
+<a href="https://sceneview.github.io/web-demo/" class="md-button md-button--primary">Open the web demo</a>
 
 ---
 
@@ -44,7 +54,7 @@ Download APK
 
 <div class="try-download-card">
 <h3>All Platform Demos</h3>
-<p>APKs for Android, Android TV. iOS and Web demos available from source.</p>
+<p>APKs for Android, Android TV. The iOS demo builds from source; the web demo runs in the browser.</p>
 <a href="https://github.com/sceneview/sceneview/releases/latest" class="md-button">
 Browse all APKs
 </a>

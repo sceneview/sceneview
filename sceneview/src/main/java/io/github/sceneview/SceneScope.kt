@@ -1920,6 +1920,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      *                               the scene camera. `null` (the default) uses the scene camera.
      * @param splatCount             Number of splats rendered, coerced to `0..splatCloud.count`.
      *                               Defaults to the full cloud; lower it for LOD / reveal effects.
+     * @param shownSplats            Which splats are drawn (`shownSplats[i] == false` hides splat
+     *                               `i`), or `null` for all. Pass a new array to change it: the
+     *                               node keeps its textures and applies it at its next sort.
      * @param position               World-space position.
      * @param rotation               World-space rotation (Euler angles in degrees).
      * @param scale                  Uniform or non-uniform scale.
@@ -1934,6 +1937,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         splatCloud: SplatCloud,
         cameraPositionProvider: (() -> Position)? = null,
         splatCount: Int = splatCloud.count,
+        shownSplats: BooleanArray? = null,
         position: Position = Position(x = 0f),
         rotation: Rotation = Rotation(x = 0f),
         scale: Scale = Scale(1f),
@@ -1952,6 +1956,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             // Cheap var assignments — keep the latest lambda + count without re-keying the node.
             node.cameraPositionProvider = cameraPositionProvider
             node.splatCount = splatCount
+            node.shownSplats = shownSplats // a no-op while the same array; re-sorts otherwise
             // Only the count changes what is drawn; the provider is read per frame.
             if (splatCount != prevSplatCount.value) {
                 prevSplatCount.value = splatCount

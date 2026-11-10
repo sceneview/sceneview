@@ -1,6 +1,8 @@
 site_name: SceneView
-site_description: "Open-source 3D & AR SDK for Android and iOS. Compose-native scenes powered by Google Filament and ARCore on Android, SwiftUI and RealityKit on iOS. Drop-in SceneView{} and ARSceneView{} composables for model viewing, AR placement, physics, and immersive experiences."
-site_url: https://sceneview.github.io/
+site_description: "SceneView: open-source 3D and AR SDK for Jetpack Compose and Android (Filament, ARCore), Kotlin and Compose Multiplatform, SwiftUI on iOS, macOS and visionOS (RealityKit, ARKit), and the web (Filament.js, WebXR). The maintained successor to Google Sceneform."
+# The docs are deployed under /docs/ (docs.yml builds into site/docs). site_url must say so,
+# or every canonical link and docs/sitemap.xml entry points to a 404 at the site root.
+site_url: https://sceneview.github.io/docs/
 repo_url: https://github.com/sceneview/sceneview
 repo_name: sceneview/sceneview
 edit_uri: edit/main/docs/docs/
@@ -8,6 +10,8 @@ copyright: Copyright &copy; 2021-2026 Thomas Gorisse — Apache 2.0 License
 
 theme:
   name: material
+  # overrides/main.html adds the SoftwareSourceCode JSON-LD to every page.
+  custom_dir: overrides
   palette:
     # Without a `media:` key Material always starts on the first palette, so the docs
     # stayed pure white for readers whose OS is in dark mode until they found the toggle.
@@ -53,12 +57,14 @@ theme:
 nav:
   - Home: index.md
   - Get Started:
+    - Which 3D & AR library: 3d-ar-library.md
     - Quickstart: quickstart.md
     - Quickstart (Apple): quickstart-ios.md
     - Quickstart (Web): quickstart-web.md
     - Quickstart (TV): quickstart-tv.md
     - Quickstart (Flutter): quickstart-flutter.md
     - Quickstart (React Native): quickstart-react-native.md
+    - Sceneform replacement: sceneform-replacement.md
     - Platforms: platforms.md
     - API Cheatsheet: cheatsheet.md
     - API Cheatsheet (Apple): cheatsheet-ios.md
@@ -111,6 +117,7 @@ nav:
     - Contribute: contributing.md
     - Changelog: changelog.md
     - Migration Guide: migration.md
+    - Upgrading from 2.3.x: upgrading-from-2-3.md
 
 # ONE `extra:` mapping — never two. YAML is last-key-wins: this file used to declare
 # `extra:` twice (analytics + feedback here, social/generator/version further down), so

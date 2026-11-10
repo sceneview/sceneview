@@ -704,6 +704,7 @@ internal fun RerunModelScreen(
     hintStays: Boolean = false,
     opened: RerunScanModel? = null,
     scope: ScanScope = ScanScope.Room,
+    surfels: DenseCloud? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     val state by produceState<ModelState>(ModelState.Loading, source, id) {
@@ -856,7 +857,7 @@ internal fun RerunModelScreen(
     var more by remember { mutableStateOf(false) }
     var shown by remember(opensOn) { mutableStateOf(false) }
     // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
-    val layers = rememberResultLayers(source, opensOn, settled)
+    val layers = rememberResultLayers(source, surfels, opensOn, settled)
     val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
     var revealOver by remember(opensOn, animateReveal) { mutableStateOf(!animateReveal) }
     // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for

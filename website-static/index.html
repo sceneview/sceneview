@@ -55,8 +55,8 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <link rel="preload" as="image" href="assets/home/hero-phoenix-sq-960.webp" imagesrcset="assets/home/hero-phoenix-sq-640.webp 640w, assets/home/hero-phoenix-sq-960.webp 960w" imagesizes="44vw" media="(min-width: 960px) and (min-height: 600px)" fetchpriority="high">
-  <link rel="preload" as="image" href="assets/home/hero-phoenix-wide-960.webp" imagesrcset="assets/home/hero-phoenix-wide-640.webp 640w, assets/home/hero-phoenix-wide-960.webp 960w" imagesizes="100vw" media="not ((min-width: 960px) and (min-height: 600px))" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/hero-smeg-toaster-sq-960.webp" imagesrcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" imagesizes="44vw" media="(min-width: 960px) and (min-height: 600px)" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/hero-smeg-toaster-wide-960.webp" imagesrcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w" imagesizes="100vw" media="not ((min-width: 960px) and (min-height: 600px))" fetchpriority="high">
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/fit.js" defer></script>
@@ -137,7 +137,7 @@
       <a href="/docs/">Docs</a>
       <a href="/docs/samples/">Samples</a>
       <a href="/docs/showcase/">Showcase</a>
-      <a href="/playground.html">Playground</a>
+      <a href="/web-demo/">Web demo</a>
     </nav>
     <div class="nav__end">
       <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars data-metric="stars">1.3K</span></a>
@@ -159,7 +159,7 @@
       <li><a href="/docs/">Docs <span>quickstarts, API</span></a></li>
       <li><a href="/docs/samples/">Samples <span>Android, Apple, web</span></a></li>
       <li><a href="/docs/showcase/">Showcase</a></li>
-      <li><a href="/playground.html">Playground <span>in the browser</span></a></li>
+      <li><a href="/web-demo/">Web demo <span>in the browser</span></a></li>
       <li><a href="https://github.com/sceneview/sceneview">GitHub <span data-stars data-stars-prefix="★ "></span></a></li>
       <li><a href="https://discord.gg/UbNDDBTNqb">Discord <span>community</span></a></li>
     </ul>
@@ -179,22 +179,22 @@
        title first, then the picture (site.css, hero). The fit (data-bbox …) is assets/fit.js. -->
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero__pin">
-      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/web-demo/models/phoenix_bird.glb" data-anim="0"
-           data-bbox="-730,-370,-536,238,610,528" data-hull="ellipse" data-elev="0.15" data-angle="0.6" data-fill="0.86" data-top="0.8" data-bottom="-1.12"
+      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/models/platforms/smeg_toaster.glb"
+           data-bbox="-0.155,0,-0.0925,0.155,0.2021,0.0925" data-hull="box" data-elev="0.22" data-angle="0.55" data-fill="0.8" data-top="0.55" data-bottom="-0.62"
            data-autoload="idle" data-mobile="tap">
         <div class="stage__box">
           <div class="stage__frame">
             <picture>
-              <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-phoenix-sq-640.webp 640w, assets/home/hero-phoenix-sq-960.webp 960w" sizes="44vw" width="960" height="960">
-              <img class="stage__poster" src="assets/home/hero-phoenix-wide-960.webp" srcset="assets/home/hero-phoenix-wide-640.webp 640w, assets/home/hero-phoenix-wide-960.webp 960w"
+              <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" sizes="44vw" width="960" height="960">
+              <img class="stage__poster" src="assets/home/hero-smeg-toaster-wide-960.webp" srcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w"
                    sizes="100vw" width="960" height="600" fetchpriority="high"
-                   alt="A phoenix in flight, its long tail feathers in orange and blue, rendered by SceneView Web.">
+                   alt="A pastel green SMEG two-slice toaster with a chrome base and lever, rendered by SceneView Web.">
             </picture>
-            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a phoenix in flight. Drag sideways to turn it."></canvas>
+            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a SMEG toaster. Drag sideways to turn it."></canvas>
           </div>
         </div>
         <div class="stage__bar">
-          <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042">Phoenix Bird</a> by NORBERTO-3D, CC&nbsp;BY&nbsp;4.0</p>
+          <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1">SMEG toaster</a> by The Fresh Lab, CC&nbsp;BY&nbsp;4.0</p>
           <button class="stage__load btn btn--text" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
           <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
         </div>
@@ -206,7 +206,7 @@
           <p class="lead">SceneView renders 3D models and AR scenes inside Jetpack Compose, SwiftUI and web apps. Scenes are declared in code, like the rest of the UI.</p>
           <div class="hero__ctas">
             <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
-            <a class="btn btn--outlined btn--lg" href="/playground.html">Try it in the browser</a>
+            <a class="btn btn--outlined btn--lg" href="/web-demo/">Try in browser</a>
           </div>
           <ul class="hero__meta">
             <li>Open source under Apache 2.0</li>
@@ -235,7 +235,7 @@
 
         <ol class="hero__specs" aria-label="What the page uses">
           <li><b>A transparent canvas on the page</b><code>SceneView.create(canvas, { transparent: true })</code></li>
-          <li><b>The model's own animation</b><code>playAnimation(0, true)</code></li>
+          <li><b>A turntable rotation</b><code>setAutoRotate(true)</code></li>
           <li><b>Image-based lighting</b><code>iblUrl, iblIntensity</code></li>
         </ol>
       </div>
@@ -344,33 +344,41 @@
     </div>
   </section>
 
-  <!-- 2b · 3D SCAN — the demo app's scanner, shown as two real screen recordings (Pixel 9, sped up).
-       Videos play only in view, never under reduced motion or reduced data; the button pauses both. -->
+  <!-- 2b · 3D SCAN — two real scans from the demo app (Pixel 9), rendered in real time by SceneView's
+       web renderer as one slow orbit, never sped up. Each card has a light and a dark render; only the
+       one matching the theme shows and plays. Videos play only in view, never under reduced motion or
+       reduced data; the button pauses both. -->
   <section class="section" id="scan" aria-labelledby="scan-title">
     <div class="container">
       <div class="scan">
         <div class="scan__copy reveal">
-          <h2 class="h2" id="scan-title">Scan a room or an object with your phone</h2>
+          <h2 class="h2" id="scan-title">Scan a whole room with your phone</h2>
           <p class="lead">The 3D Scan demo fuses ARCore depth into a coloured 3D model as you walk around. Turn it, cut the room open as a dollhouse, then place it in AR at its real size. Everything runs on the phone: no upload, no cloud.</p>
           <div class="scan__ctas">
             <a class="btn btn--filled btn--lg" href="/open?demo=ar-rerun">Open the 3D Scan demo</a>
             <a class="btn btn--outlined btn--lg" href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Get it on Google Play</a>
           </div>
-          <p class="scan__note">Screen recordings from a Pixel 9, sped up. Android; the detailed model needs ARCore Depth.</p>
+          <p class="scan__note">Scanned on a Pixel 9 with the 3D Scan demo, rendered in real time by SceneView. Android; the detailed model needs ARCore Depth.</p>
         </div>
         <div class="scan__media reveal" style="--i:1" data-scan>
           <button class="scan__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the scan videos"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
-          <figure class="phone">
-            <video class="phone__screen" muted loop playsinline preload="none" poster="assets/demos/scan-object.webp" width="540" height="1212" aria-labelledby="scan-cap-object">
-              <source src="assets/demos/scan-object.mp4" type="video/mp4">
+          <figure class="scan-card">
+            <video class="scan-card__video scan-card__video--light" muted loop playsinline preload="none" poster="assets/demos/scan-kitchen-light.webp" width="864" height="1080" aria-labelledby="scan-cap-kitchen">
+              <source src="assets/demos/scan-kitchen-light.mp4" type="video/mp4">
             </video>
-            <figcaption id="scan-cap-object">A cabinet, from point cloud to textured model, then in AR</figcaption>
+            <video class="scan-card__video scan-card__video--dark" muted loop playsinline preload="none" poster="assets/demos/scan-kitchen-dark.webp" width="864" height="1080" aria-labelledby="scan-cap-kitchen">
+              <source src="assets/demos/scan-kitchen-dark.mp4" type="video/mp4">
+            </video>
+            <figcaption id="scan-cap-kitchen">A kitchen, scanned in one walk and opened as a dollhouse</figcaption>
           </figure>
-          <figure class="phone">
-            <video class="phone__screen" muted loop playsinline preload="none" poster="assets/demos/scan-room-poster.webp" width="360" height="774" aria-labelledby="scan-cap-room">
-              <source src="assets/demos/scan-room.mp4" type="video/mp4">
+          <figure class="scan-card">
+            <video class="scan-card__video scan-card__video--light" muted loop playsinline preload="none" poster="assets/demos/scan-terrace-light.webp" width="864" height="1080" aria-labelledby="scan-cap-terrace">
+              <source src="assets/demos/scan-terrace-light.mp4" type="video/mp4">
             </video>
-            <figcaption id="scan-cap-room">A whole room, scanned in one walk</figcaption>
+            <video class="scan-card__video scan-card__video--dark" muted loop playsinline preload="none" poster="assets/demos/scan-terrace-dark.webp" width="864" height="1080" aria-labelledby="scan-cap-terrace">
+              <source src="assets/demos/scan-terrace-dark.mp4" type="video/mp4">
+            </video>
+            <figcaption id="scan-cap-terrace">A garden terrace, scanned in under a minute</figcaption>
           </figure>
         </div>
       </div>
@@ -537,10 +545,29 @@
       <div>
       <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
            the nav (its data-metric anchor) is the one value rewritten weekly by
-           .claude/scripts/update-site-metrics.sh. No company names here: an Apache 2.0 user has not
-           endorsed SceneView, and Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
+           .claude/scripts/update-site-metrics.sh. The logo wall names only companies whose code was
+           checked to use SceneView (all checked November 9, 2026): Google Play binaries containing
+           SceneView classes (Medal, IKEA, Lenskart, Safie), public build files declaring it (Bitkey,
+           Vocable, Niantic Spatial SDK samples) and Maven Central POMs depending on it (GeneXus,
+           TruVideo). Each file in assets/brand/used-in/ is the company's official logo from its own
+           site or brand kit; the page renders them as one-colour silhouettes, IKEA in its own colours.
+           Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
       <p class="numbers reveal">SceneView has <a href="https://github.com/sceneview/sceneview">more than 1,300 stars on GitHub</a>, and <a href="/companies.html">over 500 public repositories</a> declare it as a dependency.</p>
-      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Star count from the GitHub repository page.</p>
+      <div class="used-in reveal">
+        <p class="numbers">Used in apps, SDKs and samples from:</p>
+        <ul class="used-in__logos">
+          <li><a href="https://play.google.com/store/apps/details?id=tv.medal.recorder" aria-label="Medal on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/medal-logo-black.svg" alt="Medal" width="117" height="28" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.ingka.ikea.app" aria-label="IKEA on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/ikea-wordmark-black.svg" alt="IKEA" width="104" height="20" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.lenskart.app" aria-label="Lenskart on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/lenskart-logo.svg" alt="Lenskart" width="131" height="40" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.safie.safieviewer" aria-label="Safie Viewer on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/safie-logo-white.svg" alt="Safie" width="101" height="34" loading="lazy"></a></li>
+          <li><a href="https://github.com/proto-at-block/bitkey" aria-label="Bitkey by Block, open source on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/bitkey-logo-black.svg" alt="Bitkey" width="125" height="28" loading="lazy"></a></li>
+          <li><a href="https://github.com/willowtreeapps/vocable-android" aria-label="Vocable by WillowTree, open source on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/willowtree-logo-white.svg" alt="WillowTree" width="153" height="34" loading="lazy"></a></li>
+          <li><a href="https://central.sonatype.com/artifact/com.genexus.android/AugmentedReality" aria-label="GeneXus Augmented Reality module on Maven Central"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/genexus-logo-white.svg" alt="GeneXus" width="124" height="22" loading="lazy"></a></li>
+          <li><a href="https://central.sonatype.com/artifact/com.truvideo.com/sdk-camera" aria-label="TruVideo camera SDK on Maven Central"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/truvideo-logo-white.svg" alt="TruVideo" width="119" height="28" loading="lazy"></a></li>
+          <li><a href="https://github.com/nianticspatial/nsdk-samples-kotlin" aria-label="Niantic Spatial SDK samples on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/niantic-spatial-logo.svg" alt="Niantic Spatial" width="115" height="44" loading="lazy"></a></li>
+        </ul>
+      </div>
+      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Star count from the GitHub repository page. Apps checked in their Google Play builds, open-source apps and samples in their public build files and SDKs in their Maven Central POMs, on November 9, 2026. Logos are trademarks of their owners.</p>
       </div>
     </div>
   </section>
@@ -592,11 +619,11 @@
       <div class="finale reveal">
         <div class="finale__text">
           <h2 class="h2" id="start-title">Getting started</h2>
-          <p class="lead">Each platform has a quickstart of about ten lines, and the playground edits a live scene in the browser.</p>
+          <p class="lead">Each platform has a quickstart of about ten lines, and the web demo runs SceneView in the browser, with nothing to install.</p>
         </div>
         <div class="finale__ctas">
           <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
-          <a class="btn btn--outlined btn--lg" href="/playground.html">Open the playground</a>
+          <a class="btn btn--outlined btn--lg" href="/web-demo/">Open the web demo</a>
         </div>
       </div>
     </div>
@@ -612,7 +639,7 @@
       </div>
       <div><h2 class="footer__h">Product</h2><ul>
         <li><a href="/docs/">Docs</a></li><li><a href="/docs/samples/">Samples</a></li>
-        <li><a href="/docs/showcase/">Showcase</a></li><li><a href="/playground.html">Playground</a></li>
+        <li><a href="/docs/showcase/">Showcase</a></li><li><a href="/web-demo/">Web demo</a></li>
         <li><a href="/use-cases.html">3D scan use cases</a></li>
         <li><a href="/api/sceneview/latest/sceneview/">API reference</a></li></ul></div>
       <div><h2 class="footer__h">Platforms</h2><ul>

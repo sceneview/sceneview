@@ -1,3 +1,8 @@
+---
+title: SceneView nodes reference — ModelNode, AnchorNode, LightNode and every node composable
+description: "Every node composable of SceneView and ARSceneView on Android: what it is, its parameters, a copy-paste example and the traps around lifecycle, recomposition and threading."
+---
+
 # SceneView nodes — complete reference
 
 A scannable, AI-first reference for every node type exposed by `SceneView` and `ARSceneView` on Android. Each section answers four questions:

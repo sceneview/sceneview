@@ -72,25 +72,27 @@ import java.util.Locale
 import io.github.sceneview.model.restPoseBoundingBox
 
 /**
- * **Camera path** — a keyframed camera move played around an animated subject.
+ * **Camera path** — a keyframed camera move played around a car, the way a car commercial
+ * turns round its subject.
  *
- * The camera is driven by [CameraPosePath.orbit]: one turn round the fox, framed from the
+ * The camera is driven by [CameraPosePath.orbit]: one turn round the Peugeot 2008, framed from the
  * subject's measured bounding box and the camera's real field of view, so the whole subject stays
  * in frame at every azimuth. A [CameraPathPlayer] owns the playhead; the scene's `onFrame` advances
  * it by the time between frames and writes the pose to the camera. The timeline bar plays, pauses
  * and scrubs the same playhead, so a scrubbed frame and a played frame at the same time are the
  * same pose.
  *
- * The move waits for its subject. Until the fox is loaded and drawn
+ * The move waits for its subject. Until the car is loaded and drawn
  * ([io.github.sceneview.demo.FirstFrameState.sceneReady]) the demo's loading cover stays up, the
- * playhead holds at `0` and the timeline is disabled; the clock starts from `0` once the fox is on
+ * playhead holds at `0` and the timeline is disabled; the clock starts from `0` once the car is on
  * screen, so the first lap is never an empty stage.
  *
  * The camera manipulator is off (`cameraManipulator = null`): the path owns the camera, and a
  * manipulator would overwrite the scripted pose on the next frame.
  *
- * In QA mode the move starts paused at its first keyframe and the fox holds its rest pose (no
- * clip plays), so a capture is deterministic.
+ * In QA mode the move starts paused at its first keyframe, so a capture is deterministic. The
+ * subject used to be the Khronos Fox (2026-11-09: "the demo models look bad"); a real car is what
+ * a camera move like this is filmed round.
  */
 @Composable
 fun CameraPathDemo(onBack: () -> Unit) {
@@ -162,12 +164,12 @@ fun CameraPathDemo(onBack: () -> Unit) {
             startAzimuthDegrees = ORBIT_START_AZIMUTH_DEGREES,
         )
     }
-    // Not autoPlay: a player that starts on composition runs its clock while the fox is still
+    // Not autoPlay: a player that starts on composition runs its clock while the car is still
     // loading, and the first lap plays round an empty stage.
     val player = rememberCameraPathPlayer(path, autoPlay = false)
     // Place the camera before the first frame: `onFrame` only fires once a frame was presented.
     LaunchedEffect(path) { cameraNode.applyPose(player.pose) }
-    // The clock starts from 0 once the fox is loaded and drawn. QA mode stays paused at the
+    // The clock starts from 0 once the car is loaded and drawn. QA mode stays paused at the
     // first keyframe, so a capture is deterministic.
     val sceneReady by firstFrame.sceneReady
     LaunchedEffect(player) {
@@ -178,12 +180,12 @@ fun CameraPathDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_camera_path_title),
         onBack = onBack,
-        // The cover lifts on the fox, not on the first frame: the move is round the fox, and
+        // The cover lifts on the car, not on the first frame: the move is round the car, and
         // lifting before it lands showed the camera circling an empty floor.
         firstFrameRendered = firstFrame.sceneReady,
         sceneReady = firstFrame.sceneReady,
         contentIssue = firstFrame.contentIssue,
-        // Pressed before the fox is in, the ready effect still starts the clock again from 0.
+        // Pressed before the car is in, the ready effect still starts the clock again from 0.
         onReset = { player.restart() },
         themedStage = true,
         bottomOverlay = {
@@ -234,8 +236,6 @@ fun CameraPathDemo(onBack: () -> Unit) {
                     scaleToUnits = SUBJECT_UNITS,
                     centerOrigin = Position(y = -1f),
                     autoAnimate = false,
-                    // QA mode: no clip, the rest pose, so every capture shows the same fox.
-                    animationName = SUBJECT_CLIP.takeUnless { DemoSettings.qaMode },
                 )
             }
         }
@@ -318,8 +318,8 @@ internal fun formatClock(seconds: Float): String {
     return String.format(Locale.US, "%d:%02d", whole / SECONDS_PER_MINUTE, whole % SECONDS_PER_MINUTE)
 }
 
-private const val SUBJECT_ASSET = "models/khronos_fox.glb"
-private const val SUBJECT_CLIP = "Survey"
+/** A real product, bundled byte for byte from the HD pack (CC BY 4.0, David_Holiday). */
+private const val SUBJECT_ASSET = "models/peugeot_2008.glb"
 private const val SUBJECT_UNITS = 1f
 private const val FALLBACK_DEPTH = 0.6f
 private const val FALLBACK_ASPECT = 0.47

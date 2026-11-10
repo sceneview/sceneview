@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal.model
 
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlin.math.cos
@@ -34,6 +35,20 @@ class SplatFacesTest {
     }
 
     @Test
+    fun `the filter the node sorts with keeps the splats of the cut, in place`() {
+        val room = room(30f)
+        val faces = SplatFaces.of(SurfelSplats.of(room.cloud))
+        val (ex, ez) = toWorld(30f, -3f, -3f)
+        val mask = faces.visible(ex, 4f, ez)
+        val shown = requireNotNull(faces.shown(mask))
+        val cut = faces.cloud(mask)
+        assertEquals(cut.count, shown.count { it })
+        val kept = faces.all.positions.toList().chunked(3).filterIndexed { i, _ -> shown[i] }.flatten()
+        assertEquals(cut.positions.toList(), kept)
+        assertNull(faces.shown(SplatFaces.ALL))
+    }
+
+    @Test
     fun `splats with no normal are drawn from everywhere, and every face is the whole cloud`() {
         val cloud = DenseCloud(
             positions = floatArrayOf(0f, 0f, 0f, 1f, 1f, 1f),
@@ -43,6 +58,24 @@ class SplatFacesTest {
         val faces = SplatFaces.of(splats)
         assertEquals(2, faces.cloud(faces.visible(0f, -10f, 0f)).count)
         assertSame(splats, faces.cloud(SplatFaces.ALL))
+    }
+
+    @Test
+    fun `a face comes or goes only once the eye is clearly past its plane`() {
+        val room = room(0f)
+        val faces = SplatFaces.of(SurfelSplats.of(room.cloud))
+        val nearU = 1 shl 0 // +U: the wall at u = -2, facing into the room
+        val inside = faces.visible(-1.9f, 1.3f, 0f)
+        assertEquals(nearU, inside and nearU)
+        // Just outside the wall's plane: too close to call, the wall stays as it was drawn.
+        val hovering = faces.visible(-2.05f, 1.3f, 0f, was = inside)
+        assertEquals(nearU, hovering and nearU)
+        assertEquals("hovering back and forth on the plane changes nothing", hovering, faces.visible(-1.97f, 1.3f, 0f, was = hovering))
+        // Well past it: the wall goes, and it takes as much to bring it back.
+        val outside = faces.visible(-2.3f, 1.3f, 0f, was = hovering)
+        assertEquals(0, outside and nearU)
+        assertEquals(0, faces.visible(-1.95f, 1.3f, 0f, was = outside) and nearU)
+        assertEquals(nearU, faces.visible(-1.7f, 1.3f, 0f, was = outside) and nearU)
     }
 
     @Test

@@ -12,10 +12,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.github.sceneview.core.splat.SplatCloud
+import io.github.sceneview.demo.BuildConfig
+import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -119,6 +123,32 @@ class ResultLayerPickerTest {
     }
 
     @Test
+    fun `a scan whose model is read back from its cache still offers Photo, built from its own surfels`() {
+        // #4896: reopened from the cache, the scan has its model and its recording but no model
+        // source; the splats need only the surfels, so Photo is offered and built from them.
+        val surfels = DenseCloud(
+            positions = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f),
+            colors = IntArray(3) { 0xFF808080.toInt() },
+            normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f),
+        )
+        assertFalse("nothing to splat: no Photo", photoOffered(null, null))
+        assertTrue(photoOffered(null, surfels))
+        // Photo is offered in debug builds only: testReleaseUnitTest would wait for splats never built.
+        assumeTrue(BuildConfig.DEBUG)
+        val qa = DemoSettings.qaMode
+        DemoSettings.qaMode = true
+        try {
+            lateinit var layers: ResultLayers
+            rule.setContent { layers = rememberResultLayers(source = null, surfels = surfels, key = "cached", settled = true) }
+            rule.waitUntil(WAIT_MS) { layers.splats != null || layers.unavailable }
+            assertTrue("Photo offered without a model source", layers.offered)
+            assertEquals(3, layers.splats?.count)
+        } finally {
+            DemoSettings.qaMode = qa
+        }
+    }
+
+    @Test
     fun `outside QA mode there is no switch`() {
         rule.setContent {
             SceneViewDemoTheme(darkTheme = false) {
@@ -136,5 +166,6 @@ class ResultLayerPickerTest {
     private companion object {
         const val SETTLE_MS = 2_000L
         const val MID_RISE_MS = 80L
+        const val WAIT_MS = 5_000L
     }
 }

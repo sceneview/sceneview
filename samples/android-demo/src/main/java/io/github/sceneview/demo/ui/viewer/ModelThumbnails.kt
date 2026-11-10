@@ -25,6 +25,19 @@ object ModelThumbnails {
         // thumbnail rather than a placeholder.
         "shiba" to R.drawable.model_thumb_shiba,
         "quaternius_ranger" to R.drawable.model_thumb_quaternius_ranger,
+        // Real products bundled in the APK (2026-11-09): the same bytes as their HD pack files, so
+        // the HD pack's renders are theirs too. Keyed by the bundled stem for the AR picker, which
+        // looks a card up by its file name.
+        "peugeot_2008" to R.drawable.model_thumb_hd_peugeot_2008,
+        "vespa_et3" to R.drawable.model_thumb_hd_vespa_et3,
+        "rivet_aiden_armchair" to R.drawable.model_thumb_hd_rivet_aiden_armchair,
+        "rivet_sloane_sofa" to R.drawable.model_thumb_hd_rivet_sloane_sofa,
+        "rivet_arc_floor_lamp" to R.drawable.model_thumb_hd_rivet_arc_floor_lamp,
+        "wishbone_chair" to R.drawable.model_thumb_hd_wishbone_chair,
+        "smeg_toaster" to R.drawable.model_thumb_hd_smeg_toaster,
+        "kitchenaid_stand_mixer" to R.drawable.model_thumb_hd_kitchenaid_stand_mixer,
+        "air_jordan_1" to R.drawable.model_thumb_hd_air_jordan_1,
+        "canon_at1" to R.drawable.model_thumb_hd_canon_at1,
         // HD pack scans with no bundled stand-in: keyed by the entry's `thumbnailStem`, rendered
         // from the downloaded GLB itself. The viewer also shows them on the stage until it loads.
         "hd_apollo11_exterior" to R.drawable.model_thumb_hd_apollo11_exterior,

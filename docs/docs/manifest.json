@@ -81,7 +81,7 @@
       "name": "Try Online",
       "short_name": "Try",
       "url": "/try/",
-      "description": "Interactive SceneView playground"
+      "description": "Try SceneView in the browser or on a phone"
     },
     {
       "name": "iOS Quickstart",

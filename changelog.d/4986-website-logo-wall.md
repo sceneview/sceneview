@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- Website: the Adoption section shows one wall of official logos for every company whose code was checked to use SceneView — Medal, IKEA, Lenskart and Safie (Google Play builds), Bitkey and WillowTree's Vocable (public build files), GeneXus and TruVideo (Maven Central POMs) and the Niantic Spatial SDK samples — rendered as one-colour silhouettes, IKEA in its own colours.

@@ -234,12 +234,6 @@ BUNDLED_SCOPES = [
         "ignore_suffixes": (".md", ".json"),
         "format": "html",
         "thumbnails": "models/platforms/thumbnails",
-        # Models the site serves from another scope's tree: the home hero loads
-        # `/web-demo/models/phoenix_bird.glb`, which the docs deploy copies from
-        # the web demo. Served path -> repo path; credited on this page as well.
-        "served": {
-            "web-demo/models/phoenix_bird.glb": "samples/web-demo/site/models/phoenix_bird.glb",
-        },
     },
 ]
 
@@ -706,7 +700,7 @@ def render_catalog_credits(models: list[dict]) -> str:
     lines: list[str] = []
     lines.append("# 3D Asset Credits")
     lines.append("")
-    lines.append("SceneView's sample apps, documentation and website playground use a catalogue of")
+    lines.append("SceneView's sample apps, documentation and website use a catalogue of")
     lines.append("3D models authored by third parties and distributed under open licenses. This")
     lines.append("file lists every model that ships with a public release of the repository, in")
     lines.append("compliance with the attribution clause of each license.")
