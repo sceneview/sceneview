@@ -101,6 +101,25 @@ class ScanRoomGuideTest {
     }
 
     @Test
+    fun `a gap behind a phone tilted down still sends the chevron to the side`() {
+        // The eye pitched 30 degrees down: column-major, the camera's y and z axes turned about x.
+        val c = kotlin.math.cos(Math.toRadians(-30.0)).toFloat()
+        val s = kotlin.math.sin(Math.toRadians(-30.0)).toFloat()
+        val tilted = floatArrayOf(1f, 0f, 0f, 0f, 0f, c, s, 0f, 0f, -s, c, 0f, 0f, 0f, 0f, 1f)
+        val place = requireNotNull(GapChevron.place(tilted, LENS, 0.05f, 0f, 3f))
+        assertEquals(1f, place.x, TOLERANCE)
+        assertEquals(0f, place.y, TOLERANCE)
+        assertEquals(0f, place.degrees, TOLERANCE)
+    }
+
+    @Test
+    fun `depth lost goes before how to move and after the light`() {
+        assertEquals(LiveRoomMessage.NoDepth, LiveRoomGuide.message(false, false, true, true, true, LiveRoomMessage.NoDepth))
+        assertEquals(LiveRoomMessage.TooDark, LiveRoomGuide.message(true, true, true, true, true, LiveRoomMessage.DepthLost))
+        assertEquals(LiveRoomMessage.TrackingLost, LiveRoomGuide.message(true, false, false, false, false, LiveRoomMessage.DepthLost))
+    }
+
+    @Test
     fun `a gap high above keeps the chevron clear of the status card`() {
         val place = requireNotNull(GapChevron.place(EYE, LENS, 0f, 5f, -1f))
         assertEquals(-GapChevron.MAX_Y, place.y, TOLERANCE)

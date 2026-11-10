@@ -21,6 +21,12 @@ import kotlin.math.sqrt
 enum class LiveRoomMessage(val blocker: ScanBlocker) {
     TrackingLost(ScanBlocker.TrackingLost),
     TooDark(ScanBlocker.TooDark),
+
+    /** The depth sensor gives nothing usable, before any point was captured. */
+    NoDepth(ScanBlocker.NoDepth),
+
+    /** The same once points exist: the scan stopped growing for lack of depth. */
+    DepthLost(ScanBlocker.DepthLost),
     SlowDown(ScanBlocker.TooFast),
     MoveCloser(ScanBlocker.LowTexture),
 
@@ -42,7 +48,8 @@ object LiveRoomGuide {
 
     /**
      * The message to show, or `null` when the scan goes well: Tracking lost, then Too dark, then
-     * Slow down, then Move closer. A track lost for lack of light ([dark], ARCore's own reason)
+     * the depth lost ([depth], [LiveRoomMessage.NoDepth] or [LiveRoomMessage.DepthLost]: nothing is
+     * captured, so it goes before how to move), then Slow down, then Move closer. A track lost for lack of light ([dark], ARCore's own reason)
      * reads Too dark, which says what to do about it; any other loss reads Tracking lost, over
      * everything else.
      */
@@ -52,9 +59,11 @@ object LiveRoomGuide {
         tooFast: Boolean,
         moveCloser: Boolean,
         full: Boolean = false,
+        depth: LiveRoomMessage? = null,
     ): LiveRoomMessage? = when {
         trackingLost && !dark -> LiveRoomMessage.TrackingLost
         dark -> LiveRoomMessage.TooDark
+        depth != null -> depth
         tooFast -> LiveRoomMessage.SlowDown
         moveCloser -> LiveRoomMessage.MoveCloser
         full -> LiveRoomMessage.Full
@@ -119,9 +128,10 @@ object GapChevron {
             val limit = if (shown) HIDE_INSIDE else 1f
             if (abs(dx) <= limit && abs(dy) <= limit) return null
         } else {
-            // Behind the phone: the side to turn to is the side it lies on.
-            dx = lx
-            dy = ly
+            // Behind the phone: the side to turn to is the side it lies on. Never up or down: a
+            // phone held tilted would send a gap straight behind to the top or the bottom edge.
+            dx = if (lx < 0f) -1f else 1f
+            dy = 0f
         }
         val length = sqrt(dx * dx + dy * dy)
         if (length < EPSILON) {

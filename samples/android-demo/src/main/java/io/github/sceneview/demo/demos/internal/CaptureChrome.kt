@@ -27,7 +27,7 @@ enum class ScanBlocker(val cause: String, val wayOut: String, val short: String)
     TooDark("Too dark to track", "Turn on a light or move somewhere brighter", "Too dark"),
     TooFast("Moving too fast", "Slow down until this goes away", "Slow down"),
     LowTexture("Too little detail here", "Move closer to the surface", "Move closer"),
-    NoDepth("No depth yet", "Keep the lens clear and move slowly", "No depth yet"),
+    NoDepth("No depth yet", "Keep the lens clear and move slowly", "No depth"),
     DepthLost("Depth lost", "Keep the lens clear and move slowly", "Depth lost"),
     Full("This scan is full", "Tap Stop and review to keep what you have", "Scan full"),
 }

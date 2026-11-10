@@ -236,7 +236,8 @@ internal fun BoxScope.ScanGapChevron(walls: ScanWallsState, lens: ScanLens) {
         while (true) {
             withFrameNanos { }
             val edge = walls.cueEdge
-            val next = if (edge == null || walls.done || !lens.ready) {
+            // Fix now leads to the part being filled in (ribbon, tick, amber frame): no chevron to another gap.
+            val next = if (edge == null || walls.done || walls.fixTarget != null || !lens.ready) {
                 null
             } else {
                 val (x, y, z) = GapChevron.target(edge, height = lens.cameraToWorld[EYE_HEIGHT_TERM])

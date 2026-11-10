@@ -176,6 +176,7 @@ import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.LiveRoomGuide
+import io.github.sceneview.demo.demos.internal.LiveRoomMessage
 import io.github.sceneview.demo.demos.internal.ScanCoach
 import io.github.sceneview.demo.demos.internal.turnedBy
 import kotlin.math.PI
@@ -2124,6 +2125,8 @@ private fun RerunLiveScreen(
                             else -> ScanControls(
                                 phase = phase,
                                 cue = if (liveRoom) {
+                                    val full = (scan?.denseDetail ?: qaLong?.shownDetail) == ScanDetail.Full ||
+                                        (photoLimitReached && !photoNoticeOver)
                                     LiveRoomGuide.cue(
                                         phase = phase,
                                         message = LiveRoomGuide.message(
@@ -2132,10 +2135,19 @@ private fun RerunLiveScreen(
                                                 (ForcedTrackingFailure.override ?: trackingFailureReason) ==
                                                 TrackingFailureReason.INSUFFICIENT_LIGHT,
                                             tooFast = scanCoverage.coachLine == ScanCoach.Line.Slower,
+                                            // Nothing new once the room is covered or the scan is full is
+                                            // the end of the scan, not a surface to move closer to.
                                             moveCloser = lowTexture ||
-                                                (scanCoverage.coachLine == ScanCoach.Line.NothingNew && !pointsRising),
-                                            full = (scan?.denseDetail ?: qaLong?.shownDetail) == ScanDetail.Full ||
-                                                (photoLimitReached && !photoNoticeOver),
+                                                (
+                                                    scanCoverage.coachLine == ScanCoach.Line.NothingNew &&
+                                                        !pointsRising && roomDone == null && !full
+                                                    ),
+                                            full = full,
+                                            depth = when {
+                                                !depthStarved -> null
+                                                capturedPoints > 0 -> LiveRoomMessage.DepthLost
+                                                else -> LiveRoomMessage.NoDepth
+                                            },
                                         ),
                                         done = roomDone,
                                     )?.takeIf { rescan == null || it is CaptureCue.Blocked }
@@ -2348,7 +2360,7 @@ private fun RerunLiveScreen(
                             ?.let { pose -> { pose } },
                     )
                     // The part the view has flown to, framed in amber in the room.
-                    reviewShown?.takeIf { !liveRoom }?.let { ScanReviewFrame(scanOrbit, it) }
+                    reviewShown?.let { ScanReviewFrame(scanOrbit, it) }
                 }
                 // Fix now: the part framed in amber over the camera, and how far along it is.
                 val fixing = scanReview.fix
