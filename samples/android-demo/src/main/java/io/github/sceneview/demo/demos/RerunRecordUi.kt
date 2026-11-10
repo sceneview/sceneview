@@ -915,7 +915,8 @@ internal fun ScanLiveView(
             val lens = orbit.firstPerson
             if (walls != null && !saving) {
                 ScanAlignedTick(walls)
-                if (lens != null && !reviewing) ScanGapChevron(walls, lens)
+                // With tracking lost the eye is stale: no chevron from a pose the phone has left.
+                if (lens != null && !reviewing && !trackingLost) ScanGapChevron(walls, lens)
             }
         } else if (walls != null && !saving && !flying) {
             ScanGuideArrow(walls)

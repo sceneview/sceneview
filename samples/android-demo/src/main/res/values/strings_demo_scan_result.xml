@@ -33,8 +33,6 @@
     <!-- Live coverage map (#4631) -->
     <string name="scan_coverage_area">%1$s covered</string>
     <string name="scan_coverage_label">Scan map: %1$s of floor covered. The hatched part is still to scan.</string>
-    <!-- The live map legend's soft-red swatch: floor the camera passed too fast -->
-    <string name="scan_map_legend_redo">Red: floor to scan again, slower</string>
     <!-- Map to complete, the live map opened (#4718) -->
     <string name="scan_coverage_title">Map to complete</string>
     <string name="scan_coverage_covered">Covered · %1$s</string>
@@ -43,10 +41,6 @@
     <string name="scan_coverage_hint">Walk to the hatched areas to fill them in.</string>
     <string name="scan_coverage_expand">Open the map</string>
     <string name="scan_coverage_collapse">Close the map</string>
-    <!-- The live 3D map of a room's scan, sharing the screen with the camera -->
-    <string name="scan_live_map_area">%1$s covered · hatched: still to scan</string>
-    <string name="scan_live_map_swap_camera">Make the camera bigger</string>
-    <string name="scan_live_map_swap_map">Make the map bigger</string>
 
     <!-- Export sheet -->
     <string name="scan_export_title">Export scan</string>
