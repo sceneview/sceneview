@@ -109,26 +109,10 @@ internal class RoomBox(
          */
         @Suppress("ReturnCount")
         private fun walls(q: FloatArray, nq: FloatArray, p: FloatArray, floorY: Float): Pair<Float, Float>? {
-            val n = q.size
-            val sorted = q.copyOf().also { it.sort() }
-            val lo = quantile(sorted, LOW_QUANTILE) - BOX_PAD_M
-            val hi = quantile(sorted, 1f - LOW_QUANTILE) + BOX_PAD_M
-            val bins = floor((hi - lo) / BIN_M).toInt()
-            if (bins < 2) return null
-            val counts = FloatArray(bins)
-            var facing = 0
-            for (i in 0 until n) {
-                if (abs(nq[i]) <= WALL_MIN_NORMAL || p[i * 3 + 1] <= floorY + WALL_MIN_HEIGHT_M) continue
-                val k = floor((q[i] - lo) / BIN_M).toInt()
-                if (k in 0 until bins) {
-                    counts[k]++
-                    facing++
-                }
-            }
-            if (facing < MIN_WALL_POINTS) return null
-            val smooth = FloatArray(bins) { k ->
-                (counts[(k - 1).coerceAtLeast(0)] + counts[k] + counts[(k + 1).coerceAtMost(bins - 1)]) / 3f
-            }
+            val histogram = wallHistogram(q, nq, p, floorY) ?: return null
+            val lo = histogram.lo
+            val smooth = histogram.smooth
+            val bins = smooth.size
             val peak = smooth.max()
             val threshold = PEAK_SHARE * peak
             var first = -1
@@ -151,6 +135,36 @@ internal class RoomBox(
                 return lo + best * BIN_M + BIN_M / 2
             }
             return refined(first) to refined(last)
+        }
+
+        /**
+         * Along one axis, the histogram of the points facing it ([q] their coordinate on it, [nq]
+         * their normals'), over [WALL_MIN_HEIGHT_M] above [floorY]: [BIN_M] bins from [WallHistogram.lo],
+         * smoothed over three. `null` with fewer than two bins or [MIN_WALL_POINTS] points.
+         */
+        @Suppress("ReturnCount")
+        fun wallHistogram(q: FloatArray, nq: FloatArray, p: FloatArray, floorY: Float): WallHistogram? {
+            val n = q.size
+            val sorted = q.copyOf().also { it.sort() }
+            val lo = quantile(sorted, LOW_QUANTILE) - BOX_PAD_M
+            val hi = quantile(sorted, 1f - LOW_QUANTILE) + BOX_PAD_M
+            val bins = floor((hi - lo) / BIN_M).toInt()
+            if (bins < 2) return null
+            val counts = FloatArray(bins)
+            var facing = 0
+            for (i in 0 until n) {
+                if (abs(nq[i]) <= WALL_MIN_NORMAL || p[i * 3 + 1] <= floorY + WALL_MIN_HEIGHT_M) continue
+                val k = floor((q[i] - lo) / BIN_M).toInt()
+                if (k in 0 until bins) {
+                    counts[k]++
+                    facing++
+                }
+            }
+            if (facing < MIN_WALL_POINTS) return null
+            val smooth = FloatArray(bins) { k ->
+                (counts[(k - 1).coerceAtLeast(0)] + counts[k] + counts[(k + 1).coerceAtMost(bins - 1)]) / 3f
+            }
+            return WallHistogram(lo, smooth)
         }
 
         private fun ceilingOf(cloud: DenseCloud, floorY: Float): Float {
@@ -231,4 +245,10 @@ internal class RoomBox(
         private const val MIN_WALL_POINTS = 200
         private const val FLOOR_MIN_NY = 0.85f
     }
+}
+
+/** A wall histogram along one axis: bin `k` holds `[lo + k·BIN_M, lo + (k + 1)·BIN_M)`, smoothed over three. */
+internal class WallHistogram(val lo: Float, val smooth: FloatArray) {
+    /** The centre of bin [k]. */
+    fun at(k: Int): Float = lo + k * RoomBox.BIN_M + RoomBox.BIN_M / 2
 }
