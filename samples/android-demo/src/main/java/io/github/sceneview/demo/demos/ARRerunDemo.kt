@@ -170,6 +170,8 @@ import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
+import io.github.sceneview.demo.demos.internal.ScanSaveProgress
+import io.github.sceneview.demo.demos.internal.ScanSaveStep
 import io.github.sceneview.demo.demos.internal.OpenedCapture
 import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
@@ -1321,6 +1323,10 @@ private fun RerunLiveScreen(
     // #4500: a scan being saved outlives this screen. The capture's own work runs in a scope kept
     // until its save is done, and the save itself in the process's (RerunScanBuilds).
     val captureScope = remember { RerunScanBuilds.captureScope() }
+    // Live Room: a room's scan keeps the camera clear — no cloud over it, no walls, no guidance —
+    // with the room building up in a live 3D map card below it; Stop saves at once, and the
+    // result opens on the scan as taken. A part scanned again keeps its own guided flow.
+    val liveRoom = scanScope == ScanScope.Room && rescan == null
     val attached = remember { AtomicBoolean(true) }
     val saveJob = remember { AtomicReference<Job?>(null) }
     DisposableEffect(Unit) {
@@ -1378,6 +1384,8 @@ private fun RerunLiveScreen(
     // The built scan, held across a failed write so Try again writes the same one.
     var builtPack by remember { mutableStateOf<RerunCapturePack?>(null) }
     var builtTitle by remember { mutableStateOf("") }
+    // Live Room: the step the save is really in, each one started at a real boundary of the save.
+    var saveProgress by remember { mutableStateOf(ScanSaveProgress.start(linesUp = false)) }
     // Why the last save failed, said on the "Couldn't save" card (#4815), and the scan it could
     // not keep — the merged copy, for a part scanned again — which Save as file still writes out.
     var saveFailure by remember { mutableStateOf<ScanSaveFailure?>(null) }
@@ -1466,7 +1474,7 @@ private fun RerunLiveScreen(
     // What the capture has covered (#4631): the live map and the coach read it, frame by frame.
     val scanCoverage = remember(scanMedia) { ScanCoverageState() }
     // A room's walls, recognised as it is scanned (#4540): Room and Home only.
-    val scanWalls = remember(scanMedia, scanScope) { if (scanScope.hasFloorPlan) ScanWallsState() else null }
+    val scanWalls = remember(scanMedia, scanScope) { if (scanScope.hasFloorPlan && !liveRoom) ScanWallsState() else null }
     // Tapped open, the live map is the map to complete (#4718): the fallback card, where the
     // screen is too short to share between the live 3D map and the camera.
     var scanMapExpanded by remember(scanMedia) { mutableStateOf(false) }
@@ -1673,6 +1681,8 @@ private fun RerunLiveScreen(
         // The home this room belongs to, when it is one: read now, for a save that ends away.
         val homeOf = homeSession.takeIf { next != SaveNext.Open }
         RerunScanBuilds.started()
+        saveProgress = ScanSaveProgress.start(linesUp = rescan != null && !rescanSeparate, paints = !liveRoom)
+        val step: (ScanSaveStep) -> Unit = { next -> saveProgress = saveProgress.at(next) }
         saveFailure = null
         fileSaveFailed = false
         val appContext = context.applicationContext
@@ -1710,7 +1720,8 @@ private fun RerunLiveScreen(
                             depth = qaState != QA_STATE_RECORD_NO_DEPTH,
                             depthStalled = qaState == QA_STATE_RECORD_WALLS_STALLED,
                         )
-                    capture != null -> capture.finish()
+                    // A room scan paints no plane layer: its model and photo layer never read one.
+                    capture != null -> capture.finish(onStep = step, bakePlanes = !liveRoom)
                     else -> null
                 }
             }.onFailure { if (it is CancellationException) throw it }
@@ -1736,6 +1747,7 @@ private fun RerunLiveScreen(
             // ends away from the screen keeps it that way at once. Try again after a failed
             // write writes the copy already merged (#4815).
             val held = unsaved?.takeIf { unsavedFrom === pack }
+            if (rescan != null && held == null && !rescanSeparate) step(ScanSaveStep.LiningUp)
             val merging = runCatching {
                 rescan?.takeUnless { held != null || rescanSeparate }?.let {
                     withContext(Dispatchers.Default) { it.merge(pack) }
@@ -1766,6 +1778,7 @@ private fun RerunLiveScreen(
             unsavedFrom = pack
             // Opened once, before it is written: the result screen shows it, and the save counts
             // its figures off it instead of parsing a long scan's log a second time (#4815).
+            step(ScanSaveStep.Checking)
             val openedResult = runCatching { loadRerunSession(saved) }
                 .onFailure { if (it is CancellationException) throw it }
             openedResult.exceptionOrNull()?.let {
@@ -1773,6 +1786,7 @@ private fun RerunLiveScreen(
             }
             val opened = openedResult.getOrNull()
             // The saved entry's id opens its result screen, where the name is edited (#4597).
+            step(ScanSaveStep.Writing)
             val savedResult = withContext(Dispatchers.IO) {
                 runCatching {
                     check(!qaSaveFails) { "QA: forced save failure" }
@@ -1880,6 +1894,20 @@ private fun RerunLiveScreen(
             delay(HUD_TICK_MS)
         }
     }
+    // Live Room: ARCore's pose slipped while it still said it tracked ([ArDebugRecorder.slipped]):
+    // the scan takes nothing until it comes back, and held too long, offers to finish or restart.
+    val poseSlipped by produceState(false, scan) {
+        while (true) {
+            value = scan != null && debugRecorder.slipped
+            delay(HUD_TICK_MS)
+        }
+    }
+    val poseStuck by produceState(false, scan) {
+        while (true) {
+            value = scan != null && debugRecorder.stuck
+            delay(HUD_TICK_MS)
+        }
+    }
     val photoLimitReached by produceState(false, scan, qaLong) {
         while (true) {
             value = scan?.isPhotoLimitReached ?: qaLong?.shownPhotoLimit ?: false
@@ -1898,7 +1926,7 @@ private fun RerunLiveScreen(
     val captureEmpty = capturedPoints == 0 && capturedPhotos == 0 && stats.planes == 0
     val capturedClock = ArDebugFormat.clock(scan?.elapsedSeconds() ?: stats.duration)
     val trackingLost = recording && (
-        ForcedTrackingFailure.override != null || if (qaRecord) qaTrackingLost else !isTracking
+        ForcedTrackingFailure.override != null || if (qaRecord) qaTrackingLost else !isTracking || poseSlipped
         )
     // The capture's clock runs only while it scans with tracking held: Pause, review, the Back
     // dialog and a lost track all stop it, and it runs on from there.
@@ -1936,7 +1964,7 @@ private fun RerunLiveScreen(
     var stageWidth by remember { mutableFloatStateOf(0f) }
     var stageHeight by remember { mutableFloatStateOf(0f) }
     val staged = recording && scanMedia != null && phase in ScanStageLayout.MAP_PHASES && scanScope.mapsGround &&
-        !debugFullScreen
+        !debugFullScreen && !liveRoom
     // At the finish, the room as scanned: the map, the camera's thumbnail faded out.
     val finishing = phase == ScanPhase.Reviewing
     // Measured afresh at the finish, whose card is taller, and again if the capture resumes.
@@ -2001,6 +2029,8 @@ private fun RerunLiveScreen(
                         covered = scanCoverage.coveredSquareMetres,
                         complete = roomDone != null,
                         trackingLost = trackingLost && phase.integrates,
+                        // Live Room: what was really captured, never a share of a room it cannot know.
+                        floor = scanCoverage.coveredSquareMetres.takeIf { liveRoom },
                     )
                 }
             } else if (debugFullScreen) {
@@ -2061,7 +2091,7 @@ private fun RerunLiveScreen(
                 // the band above. The only writer of that edge.
                 Spacer(Modifier.fillMaxWidth().controlsEdge(stageEdges, measuringEdges))
                 // The 2D card only when the screen has no room for the live 3D map (landscape).
-                if (recording && scanMedia != null && mapsFloor && split == null) {
+                if (recording && scanMedia != null && mapsFloor && split == null && !liveRoom) {
                     ScanCoverageMap(
                         state = scanCoverage,
                         modifier = Modifier
@@ -2071,6 +2101,21 @@ private fun RerunLiveScreen(
                         showFloor = scanWalls == null || scanWalls.wallCount >= ArDebugSession.MIN_ROOM_WALLS,
                         expanded = scanMapExpanded,
                         onToggle = { scanMapExpanded = !scanMapExpanded },
+                    )
+                }
+                // Live Room: the room building up as it is scanned, in a card under the clear camera.
+                if (liveRoom && recording && scanMedia != null &&
+                    (phase == ScanPhase.Scanning || phase == ScanPhase.Paused)
+                ) {
+                    LiveRoomMapCard(
+                        session = debugSession,
+                        media = scanMedia,
+                        coverage = scanCoverage,
+                        engine = engine,
+                        modelLoader = modelLoader,
+                        materialLoader = materialLoader,
+                        livePose = scanLivePose,
+                        paused = phase != ScanPhase.Scanning,
                     )
                 }
                 // Only when it does something: the view was dragged off the phone, on a capture
@@ -2115,7 +2160,17 @@ private fun RerunLiveScreen(
                                 onHold = scanReview::hold,
                                 onNext = scanReview::next,
                             )
-                            phase == ScanPhase.Saving -> ScanSavingCard(points = keptPoints)
+                            phase == ScanPhase.Saving -> ScanSavingCard(
+                                points = keptPoints,
+                                progress = saveProgress.takeIf { liveRoom },
+                            )
+                            liveRoom && poseStuck && phase == ScanPhase.Scanning -> ScanSlippedCard(
+                                onFinish = onSaveScan,
+                                onRestart = {
+                                    dropCapture()
+                                    onStartScan()
+                                },
+                            )
                             phase == ScanPhase.SaveFailed -> ScanSaveFailedCard(
                                 // The scan was never written: discarding it asks first.
                                 onDiscard = { discardAsked = true },
@@ -2193,7 +2248,9 @@ private fun RerunLiveScreen(
                                 },
                                 onFinish = {
                                     betweenRooms = false
-                                    moveTo(phase.finish())
+                                    // Live Room: Stop saves at once — the camera goes, the room
+                                    // turns full screen while it is built.
+                                    if (liveRoom) onSaveScan() else moveTo(phase.finish())
                                 },
                                 resumeLabel = if (betweenRooms) ScanScopeCopy.START_ROOM else ScanCopy.RESUME,
                             )
@@ -2365,7 +2422,7 @@ private fun RerunLiveScreen(
 
                 // A capture owns the screen (#4628): its cloud full screen over the dimmed camera,
                 // following the phone. The camera keeps tracking, and recording, under it.
-                if (recording && scanMedia != null) {
+                if (recording && scanMedia != null && (!liveRoom || phase == ScanPhase.Saving)) {
                     ScanLiveView(
                         session = debugSession,
                         orbit = scanOrbit,
@@ -2381,6 +2438,7 @@ private fun RerunLiveScreen(
                         reviewing = phase == ScanPhase.Reviewing,
                         reviewPose = reviewShown?.let { scanReview.poseFor(it, scanOrbit.verticalFovDegrees) }
                             ?.let { pose -> { pose } },
+                        cameraOff = liveRoom,
                     )
                     // The part the view has flown to, framed in amber in the room.
                     reviewShown?.let { ScanReviewFrame(scanOrbit, it) }

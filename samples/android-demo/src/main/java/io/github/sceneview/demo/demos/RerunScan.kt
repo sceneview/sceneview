@@ -11,6 +11,7 @@ import com.google.ar.core.Pose
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
+import io.github.sceneview.demo.demos.internal.ScanSaveStep
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
@@ -427,7 +428,11 @@ internal class ScanCapture private constructor(
      * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
      */
-    suspend fun finish(): RerunCapturePack? {
+    suspend fun finish(
+        onStep: (ScanSaveStep) -> Unit = {},
+        bakePlanes: Boolean = true,
+    ): RerunCapturePack? {
+        onStep(ScanSaveStep.Finishing)
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
         model?.join()
@@ -452,6 +457,7 @@ internal class ScanCapture private constructor(
             val pose = poses[image.path] ?: return@mapNotNull null
             ScanPhoto(image.path, jpeg, pose)
         }
+        onStep(ScanSaveStep.Fusing)
         val started = System.nanoTime()
         val map = dense
         val cloud = map?.takeIf { it.fusion.count > 0 }
@@ -473,7 +479,10 @@ internal class ScanCapture private constructor(
             depthSource = if (cloud != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
         val camera = "${RerunScanCamera.line}; images ${intrinsics.width}x${intrinsics.height}"
-        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera)
+        onStep(ScanSaveStep.Building)
+        return RerunCaptureBuilder.build(
+            timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera, bakePlanes = bakePlanes,
+        )
             .also { model?.keepFor(it) }
     }
 
