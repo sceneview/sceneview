@@ -158,6 +158,7 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
 import io.github.sceneview.utils.readBuffer
+import io.github.sceneview.core.splat.SplatCloud
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,6 +172,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /*
  * The 3D Scan's result: at the end of a scan, the space as one meshed, coloured 3D model — its raw
@@ -218,13 +220,13 @@ internal sealed interface RerunModelSource {
         /** The model [pack] can build: its live TSDF when this process recorded it, else [media]'s surfels. */
         fun of(pack: RerunCapturePack?, media: RerunReplayMedia?): RerunModelSource? {
             val cloud = media?.dense?.cloud?.takeIf { it.count > 0 }
-            val photos = media?.let(::photosOf)
+            val photos = media?.let(::keyPhotosOf)
             return RerunLiveModels.find(pack)?.let { Live(it, cloud, photos) }
                 ?: cloud?.takeIf { it.normals != null }?.let { Surfels(it, photos) }
         }
 
         /** [media]'s key photos, decoded only when the texture picks them, each bitmap let go once read. */
-        private fun photosOf(media: RerunReplayMedia): ModelPhotos? =
+        fun keyPhotosOf(media: RerunReplayMedia): ModelPhotos? =
             ModelPhotos.of(media.trace, media.manifest.lens) { path ->
                 media.decode(path)?.let { bitmap ->
                     try {
@@ -546,7 +548,7 @@ private fun syntheticPhotos(): ModelPhotos =
     ModelPhotos(TexturedSyntheticRoom.PHOTO_LENS, TexturedSyntheticRoom.photos().map { shot -> ModelPhoto(shot.pose) { shot } })
 
 /** The texture atlas as the `.glb` embeds it. */
-private object JpegAtlasEncoder : AtlasEncoder {
+internal object JpegAtlasEncoder : AtlasEncoder {
     override fun jpeg(argb: IntArray, width: Int, height: Int): ByteArray? {
         val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
         return try {
@@ -647,6 +649,8 @@ private sealed interface ModelState {
         val final: Boolean = true,
         val framedBy: RerunScanModel = model,
         val opensOn: RerunScanModel = framedBy,
+        /** A room's shell ([RoomShellShown]): [model] is its `.glb`, and these its object points. */
+        val objects: SplatCloud? = null,
     ) : ModelState
 
     data object Failed : ModelState
@@ -725,9 +729,40 @@ internal fun RerunModelScreen(
     opened: RerunScanModel? = null,
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
+    /** A room's shell input ([RoomShellInput]): the result opens on its shell when it builds one. */
+    shellInput: RoomShellInput? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
-    val state by produceState<ModelState>(ModelState.Loading, source, id) {
+    // The scan the shell on screen is of: a shell stays only over its own scan.
+    val shellOf = remember { AtomicReference<Any?>(null) }
+    val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput) {
+        // A room opens on its shell (RoomShellLayer.kt): read back, or built here, the old finish
+        // never run beside it. One already on screen stays: the recording read behind it, or the
+        // source, change nothing in it.
+        if ((value as? ModelState.Ready)?.objects != null && id != null && shellOf.get() == id) return@produceState
+        if (scope == ScanScope.Room) {
+            val shown = (value as? ModelState.Ready)
+            val shell = withContext(Dispatchers.Default) {
+                val job = coroutineContext.job
+                // The model on screen, if any, is shown as being finished while the shell builds.
+                if (shown != null && shellInput != null) {
+                    value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
+                }
+                runCatching { roomShellOf(store, id, shellInput) { job.ensureActive() } }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .onFailure { Log.w(TAG, "room shell failed", it) }
+                    .getOrNull()
+            }
+            if (shell != null) {
+                // The recording's depth is no longer needed: the shell is the result, kept with the scan.
+                if (store != null && id != null) (source as? RerunModelSource.Live)?.release()
+                shellOf.set(id)
+                value = ModelState.Ready(shell.model, objects = shell.objects)
+                return@produceState
+            }
+            // No shell: the model as before, the one on screen kept meanwhile.
+            if (shown != null) value = shown
+        }
         val stored = opened ?: if (store != null && id != null) {
             withContext(Dispatchers.IO) { runCatching { store.model(id) }.getOrNull() }
         } else {
@@ -794,6 +829,9 @@ internal fun RerunModelScreen(
     }
     val model = (state as? ModelState.Ready)?.model
     val settled = state.settled
+    // A room's shell: its walls open the box by their own culling, its objects drawn as points.
+    val objects = (state as? ModelState.Ready)?.objects
+    val shell = objects != null
     LaunchedEffect(state) { if (state.settled) onModel(model) }
     val framedBy = (state as? ModelState.Ready)?.framedBy
     // What the user set on the screen is kept across the model that takes the first one's place.
@@ -823,7 +861,8 @@ internal fun RerunModelScreen(
     // A room is a dollhouse: seen into from outside and above, its walls cut at a fixed height
     // over its floor (ScanResultCut) — none comes and goes as the camera turns. It waits for its
     // frame, which knows the floor; an object is drawn whole at once.
-    val cuts = scope.hasFloorPlan
+    // The shell's single-sided walls need no cut: the ones between the eye and the room are culled.
+    val cuts = scope.hasFloorPlan && !shell
     val cutY = frame?.takeIf { cuts }?.let { it.local[1] + ScanResultCut.HEIGHT_M }
     val drawn = model?.takeIf { !cuts || frame != null }
     // More's QA A/B: every material lit, or unlit, against the model as built (the default).
@@ -879,7 +918,15 @@ internal fun RerunModelScreen(
     var more by remember { mutableStateOf(false) }
     var shown by remember(opensOn) { mutableStateOf(false) }
     // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
-    val layers = rememberResultLayers(source, surfels, opensOn, settled, photoFirst = scope.hasFloorPlan)
+    // A room's shell opens on its model and offers Photo next to it; without one, Photo first.
+    val layers = rememberResultLayers(
+        source,
+        surfels ?: shellInput?.cloud,
+        opensOn,
+        settled,
+        photoFirst = scope.hasFloorPlan && !shell,
+        offer = scope.hasFloorPlan,
+    )
     // A room's result stays on Photo unless its finished model passed the quality gate.
     LaunchedEffect(layers, settled) {
         if (settled && scope.hasFloorPlan && layers.offered && model?.finished == true) layers.photoPicked = false
@@ -946,6 +993,7 @@ internal fun RerunModelScreen(
             )
             ResultLayerPicker(
                 layers = layers,
+                modelFirst = shell,
                 plan = plan,
                 ready = shown && instance != null,
                 onPlan = {
@@ -1178,6 +1226,8 @@ internal fun RerunModelScreen(
                     }
                 }
                 ResultPhotoLayer(layers, instance)
+                // The shell's furniture, once its walls are revealed, while Photo is not shown.
+                RoomObjectsLayer(objects, shown = instance != null && revealOver && !layers.photoShown)
             }
             // The ground until the model is drawn on its framing: no pose but that one is seen.
             // Then it fades (`motion-entrance`), never a cut from the save's "Fusing" to the

@@ -326,6 +326,43 @@ class RerunSessionStore(val root: File) {
         }.getOrNull()
     }
 
+    /**
+     * Keeps a room's shell as session [id]'s, next to its capture: `room.glb`, its object points
+     * (`room-objects.svpc`, [SvpcCodec]), then `room.json`, so a shell only reads back whole.
+     *
+     * @throws IllegalStateException when the session is gone, or a file does not write.
+     */
+    fun saveRoomShell(id: String, glb: ByteArray, objects: DenseCloud, version: Int) {
+        val dir = directoryOf(id)
+        check(File(dir, INFO).isFile) { "No session $id" }
+        File(dir, ROOM_INFO).delete()
+        writeAtomically(File(dir, ROOM_GLB), glb)
+        writeAtomically(File(dir, ROOM_OBJECTS), SvpcCodec.encode(objects))
+        writeAtomically(File(dir, ROOM_INFO), "{\"version\":$version}".toByteArray())
+    }
+
+    /**
+     * Session [id]'s room shell — its `.glb` and its object points — when one of [version] is kept;
+     * `null` otherwise, and the result builds it again.
+     */
+    fun roomShell(id: String, version: Int): Pair<ByteArray, DenseCloud>? {
+        val dir = directoryOf(id)
+        return runCatching {
+            val info = File(dir, ROOM_INFO).takeIf { it.isFile }?.readText() ?: return null
+            val kept = (Json.parseToJsonElement(info) as? JsonObject)?.get("version")?.let { (it as? JsonPrimitive)?.intOrNull }
+            if (kept != version) return null
+            val glb = File(dir, ROOM_GLB).takeIf { it.isFile }?.readBytes() ?: return null
+            val objects = File(dir, ROOM_OBJECTS).takeIf { it.isFile }?.readBytes()?.let { SvpcCodec.decode(it) } ?: return null
+            glb to objects
+        }.getOrNull()
+    }
+
+    /** Whether session [id] keeps a room shell of [version]: its result opens on it at once. */
+    fun hasRoomShell(id: String, version: Int): Boolean = runCatching {
+        val info = File(directoryOf(id), ROOM_INFO).takeIf { it.isFile }?.readText() ?: return false
+        (Json.parseToJsonElement(info) as? JsonObject)?.get("version")?.let { (it as? JsonPrimitive)?.intOrNull } == version
+    }.getOrDefault(false)
+
     /** Renames session [id] to [title] (trimmed); `null` when it is gone or [title] is blank. */
     fun rename(id: String, title: String): RerunStoredSession? {
         val name = title.trim().takeIf { it.isNotEmpty() } ?: return null
@@ -444,6 +481,11 @@ class RerunSessionStore(val root: File) {
         /** The scan's result, [RerunScanModel]: its `.glb`, and what it is (written last). */
         const val MODEL_GLB = "model.glb"
         const val MODEL_INFO = "model.json"
+
+        /** A room's shell ([io.github.sceneview.demo.demos.internal.room.RoomShell]): its `.glb`, its object points, and its version (written last). */
+        const val ROOM_GLB = "room.glb"
+        const val ROOM_OBJECTS = "room-objects.svpc"
+        const val ROOM_INFO = "room.json"
 
         /** An imported session's source file: the lowercase hex SHA-256 of its bytes. */
         const val SOURCE_HASH = "source.sha256"

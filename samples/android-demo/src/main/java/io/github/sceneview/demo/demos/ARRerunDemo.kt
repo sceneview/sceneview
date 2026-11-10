@@ -490,7 +490,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             // one — or with one that no longer reads — the replay's cover says "Opening your scan…"
             // while its files are read, then the model is built again from them.
             val keptModel = withContext(Dispatchers.IO) { store.model(id) }
-            val kept = keptModel != null
+            // A room whose shell is kept opens on it at once too (RoomShellLayer.kt).
+            val keptShell = kind == ScanScope.Room &&
+                withContext(Dispatchers.IO) { store.hasRoomShell(id, ROOM_SHELL_VERSION) }
+            val kept = keptModel != null || keptShell
             resultModel = keptModel
             modelSource = null
             hasResult = kept
@@ -813,6 +816,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             scope = if (showingScan) scanKind else ScanScope.Room,
             // The Photo layer's splats when the model is read back from the cache (no source, #4896).
             surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
+            // A room opens on its shell, built from the recording once it is read.
+            shellInput = remember(scanMedia, showingScan, scanKind) {
+                scanMedia?.takeIf { showingScan && scanKind == ScanScope.Room }?.let { RoomShellInput.of(it) }
+            },
         )
     }
     val exportable = when (screen) {
