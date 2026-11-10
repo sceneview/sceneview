@@ -46,6 +46,7 @@ import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanFootprint
 import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
+import io.github.sceneview.demo.demos.internal.ScanDepthRecording
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -100,6 +101,8 @@ internal object RerunCaptureBuilder {
          * two-minute walk it was most of the 76 s the save took.
          */
         bakePlanes: Boolean = true,
+        /** The scan's raw depth, recorded ([ScanDepthRecording]): its file rides with the pack, its lines go in the log. */
+        depth: ScanDepthRecording? = null,
     ): RerunCapturePack = withContext(Dispatchers.Default) {
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         val whole = trace.frameAt(trace.duration)
@@ -146,8 +149,9 @@ internal object RerunCaptureBuilder {
         )
         RerunCapturePack(
             manifest = manifest.toJson().toByteArray(),
-            log = ArDebugLogWriter.writeBytes(events),
+            log = ArDebugLogWriter.writeBytes(events, depth?.logLines.orEmpty()),
             media = archive,
+            depth = depth?.file,
         )
     }
 

@@ -82,6 +82,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.PoseContinuity
+import io.github.sceneview.demo.demos.internal.PoseStep
 import io.github.sceneview.demo.demos.internal.PlaneWallSource
 import io.github.sceneview.demo.demos.internal.livePlanesOf
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
@@ -203,8 +204,14 @@ internal class ArDebugRecorder {
 
         val display = frame.camera.displayOrientedPose.toDebugPose()
         val capture = scan?.takeIf { it.trace === trace }
-        // Checked before anything is added: a slipped pose, photo or depth image is never fused.
-        if (capture != null && !continuity.step(nanos, display).integrates) return
+        // Checked before anything is added: a slipped pose, photo or depth image is never fused —
+        // only its raw depth recorded, flagged, so the guard itself replays off the phone.
+        val step = if (capture != null) continuity.step(nanos, display) else PoseStep.Continuous
+        if (capture != null && step != PoseStep.Continuous) capture.notePoseStep(nanos, display, step)
+        if (capture != null && !step.integrates) {
+            capture.holdDepth(frame, display, step)
+            return
+        }
         trace.addPose(nanos, display)
 
         capture?.recordDepthStats(nanos)
@@ -221,7 +228,7 @@ internal class ArDebugRecorder {
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
-            if (capture != null && depth != null) capture.fuseDepth(depth, image)
+            if (capture != null && depth != null) capture.fuseDepth(depth, image, display, step)
         } finally {
             image?.close()
             depth?.close()
