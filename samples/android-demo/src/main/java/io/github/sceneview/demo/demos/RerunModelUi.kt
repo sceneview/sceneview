@@ -129,7 +129,9 @@ import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.CleanModel
 import io.github.sceneview.demo.demos.internal.model.CleanModelResult
 import io.github.sceneview.demo.demos.internal.model.ModelPhoto
+import io.github.sceneview.demo.demos.internal.model.MeshFigures
 import io.github.sceneview.demo.demos.internal.model.ModelPhotos
+import io.github.sceneview.demo.demos.internal.model.ModelQualityGate
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import io.github.sceneview.demo.isDemoCompactHeight
@@ -328,6 +330,8 @@ internal class RerunModelBuild(
     val budgetReached: Boolean,
     val finished: Boolean = true,
     val outOfMemoryInHeap: Long? = null,
+    /** A room's finished model the quality gate kept out ([ModelQualityGate]): this is the raw surface. */
+    val qualityHeld: Boolean = false,
 )
 
 /**
@@ -352,12 +356,16 @@ internal fun buildRerunModel(
     onRaw: ((RerunModelBuild) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    /** A room's result (Live Room): the finished model replaces the raw surface only past [ModelQualityGate]. */
+    gate: Boolean = false,
     progress: (Float) -> Unit,
 ): RerunModelBuild {
     val started = System.nanoTime()
     val meshed = mesh(source, progress, reconstruction)
     val raw = meshed.surface
     val meshedAt = System.nanoTime()
+    // Measured before the finish, which works in the raw surface's own arrays.
+    val rawFigures = if (gate && raw.triangleCount > 0) MeshFigures.of(raw.mesh.positions, raw.mesh.indices) else null
     val photos = when (source) {
         is RerunModelSource.Live -> source.photos
         is RerunModelSource.Surfels -> source.photos
@@ -393,7 +401,16 @@ internal fun buildRerunModel(
     } else {
         null
     }
-    val finished = finish?.getOrNull()
+    val built = finish?.getOrNull()
+    // Never worse than the scan: a finished model the gate keeps out leaves the raw surface.
+    val verdict = rawFigures?.let { rawOf ->
+        built?.model?.let { m ->
+            ModelQualityGate.judge(rawOf, MeshFigures.of(m.positions, m.texturedIndices + m.plainIndices, m.vertexCount, rawOf.floorY))
+        }
+    }
+    val qualityHeld = verdict?.passes == false
+    if (verdict != null) Log.i(TAG, "model quality gate: $verdict")
+    val finished = built?.takeUnless { qualityHeld }
     // Out of memory, the finish gives the raw surface back itself; one that throws it is left the same.
     val outOfMemory = finished?.stats?.rawKept == true || finish?.exceptionOrNull() is OutOfMemoryError
     val outOfMemoryInHeap = Runtime.getRuntime().maxMemory().takeIf { outOfMemory }
@@ -429,6 +446,7 @@ internal fun buildRerunModel(
         budgetReached = meshed.droppedBlocks > 0,
         finished = finishedMesh != null,
         outOfMemoryInHeap = outOfMemoryInHeap,
+        qualityHeld = qualityHeld,
     )
 }
 
@@ -557,6 +575,7 @@ internal fun buildScanModel(
     onRaw: ((RerunScanModel) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    gate: Boolean = false,
     progress: (Float) -> Unit,
 ): RerunScanModel? {
     val skipMesh = source is RerunModelSource.Synthetic && source.meshFails
@@ -564,7 +583,7 @@ internal fun buildScanModel(
         null
     } else {
         val raw = onRaw?.let { show -> { build: RerunModelBuild -> show(build.scanModel()) } }
-        runCatching { buildRerunModel(source, raw, shown, reconstruction) { progress(it * MESH_PART) } }
+        runCatching { buildRerunModel(source, raw, shown, reconstruction, gate) { progress(it * MESH_PART) } }
             .onFailure { if (it is CancellationException) throw it }
             .onFailure { Log.w(TAG, "meshing failed", it) }
             .getOrNull()
@@ -602,6 +621,7 @@ private fun RerunModelBuild.scanModel() = RerunScanModel(
     budgetReached = budgetReached,
     finished = finished,
     outOfMemoryInHeap = outOfMemoryInHeap,
+    qualityHeld = qualityHeld,
 )
 
 /** QA only: the ray-cast room's depth, fused into coloured points as a recording fuses them. */
@@ -738,7 +758,9 @@ internal fun RerunModelScreen(
                     }
                 }
                 // The default finish, never asked first: the result opens on the model.
-                runCatching { buildScanModel(from, raw, retry?.glb, ReconstructionMethod.Fused, report) }
+                runCatching {
+                    buildScanModel(from, raw, retry?.glb, ReconstructionMethod.Fused, gate = scope.hasFloorPlan, progress = report)
+                }
                     .onFailure { if (it is CancellationException) throw it }
                     .onFailure { Log.w(TAG, "model build failed", it) }
                     .getOrNull()
@@ -857,7 +879,11 @@ internal fun RerunModelScreen(
     var more by remember { mutableStateOf(false) }
     var shown by remember(opensOn) { mutableStateOf(false) }
     // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
-    val layers = rememberResultLayers(source, surfels, opensOn, settled)
+    val layers = rememberResultLayers(source, surfels, opensOn, settled, photoFirst = scope.hasFloorPlan)
+    // A room's result stays on Photo unless its finished model passed the quality gate.
+    LaunchedEffect(layers, settled) {
+        if (settled && scope.hasFloorPlan && layers.offered && model?.finished == true) layers.photoPicked = false
+    }
     val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
     var revealOver by remember(opensOn, animateReveal) { mutableStateOf(!animateReveal) }
     // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
@@ -1333,6 +1359,9 @@ internal enum class ModelStatus(@StringRes val text: Int) {
     /** Shown as scanned, not kept: the next open tries the finish again. */
     RawUnfinished(R.string.scan_result_raw_unfinished),
 
+    /** Shown as scanned: the finished model came out worse than the scan ([ModelQualityGate]). */
+    RawAsScanned(R.string.scan_result_raw_quality),
+
     /** The finished model in the raw surface's place: said once, then faded ([slot]). */
     Finished(R.string.scan_result_finished),
     ;
@@ -1343,7 +1372,7 @@ internal enum class ModelStatus(@StringRes val text: Int) {
          * finish ends: the line keeps the room of the tallest, whichever it ends on.
          */
         val RAW_LINES: List<ModelStatus>
-            get() = listOf(Finishing, FinishingAgain, Finished, RawOutOfMemory, RawOutOfMemoryRetry, RawUnfinished)
+            get() = listOf(Finishing, FinishingAgain, Finished, RawOutOfMemory, RawOutOfMemoryRetry, RawUnfinished, RawAsScanned)
 
         /** For [model] on screen, `null` while none is; [settled] once it is known for good. `null`: nothing to say. */
         fun of(model: RerunScanModel?, settled: Boolean): ModelStatus? = when {
@@ -1355,6 +1384,7 @@ internal enum class ModelStatus(@StringRes val text: Int) {
             model == null -> Failed
             model.kind == RerunScanModel.Kind.Points -> Partial
             model.finished -> null
+            model.qualityHeld -> RawAsScanned
             model.outOfMemoryInHeap != null -> if (model.retriesFinish) RawOutOfMemoryRetry else RawOutOfMemory
             else -> RawUnfinished
         }

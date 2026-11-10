@@ -66,6 +66,12 @@ class RerunScanModel(
      * before a better cleanup show it too.
      */
     val pipeline: Int = PIPELINE,
+    /**
+     * A room's raw surface shown because its finished model came out worse than the scan
+     * ([io.github.sceneview.demo.demos.internal.model.ModelQualityGate]). Not [finished]: not kept
+     * with the scan, the next open builds it again.
+     */
+    val qualityHeld: Boolean = false,
 ) {
     init {
         require(bounds.size == BOUNDS) { "six bounds" }

@@ -83,9 +83,9 @@ internal enum class ResultLayer(val key: String) {
  * of the stage colour ([veil]) so the switch is never a cut.
  */
 @Stable
-internal class ResultLayers(val offered: Boolean) {
+internal class ResultLayers(val offered: Boolean, photoFirst: Boolean = false) {
     /** Photo picked over Model (the Plan position is the screen's own `plan`). */
-    var photoPicked by mutableStateOf(false)
+    var photoPicked by mutableStateOf(photoFirst)
 
     /** The splats of the scan's surfels; `null` until built, or when it has none. */
     var splats by mutableStateOf<SplatCloud?>(null)
@@ -160,10 +160,16 @@ internal fun rememberResultLayers(
     surfels: DenseCloud?,
     key: Any?,
     settled: Boolean,
+    /**
+     * A room's result (Live Room): the layers are always offered and open on Photo, the scan as
+     * it was taken, never worse than it; the screen moves to Model when its finished model
+     * passed the quality gate.
+     */
+    photoFirst: Boolean = false,
 ): ResultLayers {
     // Debug builds only until it is measured on a device: QA mode can be switched on in the store app.
-    val offered = BuildConfig.DEBUG && DemoSettings.qaMode && photoOffered(source, surfels)
-    val layers = remember(source, surfels, key, offered) { ResultLayers(offered) }
+    val offered = (photoFirst || BuildConfig.DEBUG && DemoSettings.qaMode) && photoOffered(source, surfels)
+    val layers = remember(source, surfels, key, offered) { ResultLayers(offered, photoFirst = photoFirst && offered) }
     LaunchedEffect(layers, settled) {
         if (!layers.offered || !settled || layers.splats != null || layers.unavailable) return@LaunchedEffect
         val started = System.nanoTime()
