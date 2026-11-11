@@ -827,6 +827,11 @@ object HeapCappedFinish {
             "held at the swap: raw ${shownRaw.glb.size / MB} MB, finished ${finished.glb.size / MB} MB, " +
                 "its copy ${rendered.size / MB} MB, ground ${ground != null}, raw ground ${rawGround.get() != null}",
         )
+        // Hold all of it through a full collection, asked for: a finish that leaves the heap room
+        // no longer triggers one by itself here, and the peak at the swap is what is measured.
+        System.gc()
+        check(shownRaw.glb.isNotEmpty() && finished.glb.isNotEmpty() && rendered.isNotEmpty()) { "swap released" }
+        if (ground != null) check(ground.hashCode() == ground.hashCode())
         // Out of memory, the finish gives the raw surface back: that is no finish within the heap.
         println(
             "${if (result.stats.rawKept) "RAW SURFACE KEPT, out of memory in ${result.stats.outOfMemoryIn}:" else FINISHED} $rawTriangles -> ${result.stats.finalTriangles} triangles, " +
