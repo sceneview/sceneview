@@ -1,0 +1,8 @@
+<resources>
+    <string name="demo_feel_title">Feel</string>
+    <string name="demo_feel_subtitle">Press foam, oak and steel. Feel the difference</string>
+    <string name="demo_feel_loading">Preparing material pads…</string>
+    <string name="demo_feel_instruction">Press and hold each pad</string>
+    <string name="demo_feel_hold">Hold longer to press deeper. Release to let it recover.</string>
+    <string name="demo_feel_comparison">Foam yields. Oak stops. Steel stays rigid.</string>
+</resources>
