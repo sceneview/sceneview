@@ -15,11 +15,11 @@ object ArImageFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARImageDemo.kt",
         titleRes = R.string.demo_ar_image_title,
         subtitleRes = R.string.demo_ar_image_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Image,
-        order = 41,
+        order = 21,
         addedIn = "4.0.0",
-        tags = setOf("ar", "image", "tracking", "augmented-image", "marker"),
+        tags = setOf("image tracking", "ar", "image", "tracking", "augmented-image", "marker"),
     )
 
     @Composable

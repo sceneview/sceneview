@@ -34,11 +34,11 @@ object ArXrFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARHandTrackingDemo.kt",
         titleRes = R.string.demo_ar_xr_title,
         subtitleRes = R.string.demo_ar_xr_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.BackHand,
-        order = 50,
+        order = 43,
         addedIn = "4.13.0",
-        tags = setOf("ar", "xr", "hand", "tracking", "skeleton", "face", "mesh", "headset"),
+        tags = setOf("android xr (preview)", "ar", "xr", "hand", "tracking", "skeleton", "face", "mesh", "headset"),
         // Live hand and face tracking need an Android XR device — none in the audit matrix and
         // no public emulator yet (#1902, #1903). Phones render static reference poses.
         status = DemoStatus.ComingSoon,

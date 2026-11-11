@@ -5,6 +5,6 @@
      Android's resource merger fans every `res/values/*.xml` file in, so
      `R.string.demo_ar_splat_room_title` etc. remain globally resolvable. -->
 <resources>
-    <string name="demo_ar_splat_room_title">Your Room, as a Dollhouse</string>
+    <string name="demo_ar_splat_room_title">Room model</string>
     <string name="demo_ar_splat_room_subtitle">The room you recorded, standing on your table as a miniature</string>
 </resources>

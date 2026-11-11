@@ -19,13 +19,13 @@ object ArSplatRoomFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt",
         titleRes = R.string.demo_ar_splat_room_title,
         subtitleRes = R.string.demo_ar_splat_room_subtitle,
-        category = DemoCategory.PLACE_AR,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.House,
-        order = 16,
+        order = 23,
         addedIn = "4.45.0",
         // #4231: the dollhouse shows the dense coloured cloud on the real floor.
         updatedIn = "4.52.0",
-        tags = setOf("ar", "rerun", "scan", "room", "dollhouse", "miniature", "placement", "real-scale"),
+        tags = setOf("your room, as a dollhouse", "ar", "rerun", "scan", "room", "dollhouse", "miniature", "placement", "real-scale"),
     )
 
     @Composable

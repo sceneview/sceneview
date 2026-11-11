@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_cloud_anchor_title">Cloud Anchors</string>
+    <string name="demo_ar_cloud_anchor_title">Shared anchors</string>
     <string name="demo_ar_cloud_anchor_subtitle">Persistent anchors shared across devices</string>
     <!-- The one paragraph left in the settings sheet (#3421). Everything the flow needs
          to be used is on screen; this is background, not instruction. -->

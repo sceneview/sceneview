@@ -21,6 +21,7 @@ object GeometryFragment : DemoFragment {
         addedIn = "4.0.0",
         updatedIn = "4.57.0",
         tags = setOf(
+            "geometry primitives",
             "geometry", "cube", "sphere", "cylinder", "cone", "torus", "capsule", "plane", "primitive",
         ),
     )

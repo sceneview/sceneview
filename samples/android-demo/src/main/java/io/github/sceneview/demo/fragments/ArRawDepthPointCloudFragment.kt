@@ -15,11 +15,11 @@ object ArRawDepthPointCloudFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARRawDepthPointCloudDemo.kt",
         titleRes = R.string.demo_ar_raw_depth_cloud_title,
         subtitleRes = R.string.demo_ar_raw_depth_cloud_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.ScatterPlot,
-        order = 46,
+        order = 38,
         addedIn = "4.11.1",
-        tags = setOf("ar", "depth", "raw-depth", "point-cloud", "confidence"),
+        tags = setOf("raw depth point cloud", "ar", "depth", "raw-depth", "point-cloud", "confidence"),
     )
 
     @Composable

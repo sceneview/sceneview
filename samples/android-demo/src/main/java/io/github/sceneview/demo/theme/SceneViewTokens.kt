@@ -401,6 +401,8 @@ object SceneViewTokens {
         val searchFieldHeight = 48.dp
         val contentPadding = 20.dp
         val gridGutter = 12.dp
+        /** Compact live discovery window; action labels grow outside it. */
+        val discoverySceneHeight = 192.dp
         val heroHeight = 320.dp
         val heroHeightExpanded = 400.dp
         val heroPadding = 24.dp

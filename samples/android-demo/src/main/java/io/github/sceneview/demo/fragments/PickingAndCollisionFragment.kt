@@ -22,9 +22,9 @@ object PickingAndCollisionFragment : DemoFragment {
         subtitleRes = R.string.demo_picking_collision_subtitle,
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.TouchApp,
-        order = 32,
+        order = 5,
         addedIn = "4.17.0",
-        tags = setOf("picking", "hit-test", "collision", "ray", "viewnode", "overlay"),
+        tags = setOf("picking & collision", "picking", "hit-test", "collision", "ray", "viewnode", "overlay"),
     )
 
     @Composable

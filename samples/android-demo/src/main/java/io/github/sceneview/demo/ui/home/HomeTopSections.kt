@@ -1,52 +1,40 @@
 package io.github.sceneview.demo.ui.home
 
-/**
- * The demo ids each group above the catalogue draws, every demo at most once.
- *
- * The top of the Home has three places that push a demo: the header's featured pager, the
- * "Featured" banners and the "What's new" row's picture. Each was fed from its own list,
- * and the lists overlap by design — the flagship samples are featured *and* recently
- * updated — so the same demo led all three (the header page, a banner, the What's new
- * picture) before the catalogue had shown anything else.
- *
- * [pager] ids first, then [featured], then [whatsNew]: a group only keeps what no group
- * before it shows. A group left empty is not drawn at all — see `HomeScreen`.
- */
+import androidx.annotation.StringRes
+import io.github.sceneview.demo.R
+
+/** A one-tap discovery action, resolved against the same registry as the catalogue. */
+internal data class HomeOutcome(val demoId: String, @StringRes val labelRes: Int)
+
+internal val HOME_OUTCOMES = listOf(
+    HomeOutcome(HERO_DEMO_ID, R.string.home_view_model),
+    HomeOutcome("ar-placement", R.string.home_place_in_room),
+    HomeOutcome("ar-rerun", R.string.home_explore_scan),
+)
+
+/** Try next shortcuts. Feel joins here when its demo is registered. */
+internal val FEATURED_IDS = listOf("materials", "cosmos", "rolling-balls")
+
+/** Discovery shortcuts and release highlights; none owns a demo's catalogue membership. */
 data class HomeTopSections(
-    /** The header pager's pages, in page order. */
-    val pager: List<String>,
-    /** The "Featured" banners left once the pager's demos are taken out. */
+    val outcomes: List<String>,
     val featured: List<String>,
-    /** The fresh demos neither the pager nor the banners show — the What's new row leads with one. */
     val whatsNew: List<String>,
 ) {
-    /**
-     * The rows under the chips, out of the [ids] the current chip and query keep.
-     *
-     * In the whole catalogue a demo drawn as a [featured] banner just above is not listed a
-     * second time. A [filtered] list — a chip or a search — is a query: it lists every
-     * match, banner or not, so "Place in your room" never looks like it lacks its flagship.
-     */
-    fun catalogue(ids: List<String>, filtered: Boolean): List<String> =
-        if (filtered) ids else ids.filterNot { it in featured }
+    /** Every match keeps its permanent category home, including featured demos. */
+    fun catalogue(ids: List<String>): List<String> = ids
 }
 
-/**
- * Cuts the three lists into [HomeTopSections], in priority order. Pure, so the rule is
- * tested on the JVM with plain ids — it is a rule about the order, not about one demo.
- *
- * Each input keeps its own order; an id repeated inside one list is kept once.
- */
+/** Keep each discovery shortcut once, preserving priority and input order. */
 fun homeTopSections(
-    pager: List<String>,
+    outcomes: List<String>,
     featured: List<String>,
     fresh: List<String>,
 ): HomeTopSections {
     val shown = mutableSetOf<String>()
-    // `add` is false for an id an earlier group — or an earlier row of this one — took.
     fun List<String>.notShownYet(): List<String> = filter { shown.add(it) }
     return HomeTopSections(
-        pager = pager.notShownYet(),
+        outcomes = outcomes.notShownYet(),
         featured = featured.notShownYet(),
         whatsNew = fresh.notShownYet(),
     )

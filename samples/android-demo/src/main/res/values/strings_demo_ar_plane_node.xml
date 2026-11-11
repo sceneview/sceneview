@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_plane_node_title">Plane Lifecycle</string>
+    <string name="demo_ar_plane_node_title">Surface lifecycle</string>
     <string name="demo_ar_plane_node_subtitle">Watch surfaces appear and update</string>
     <plurals name="demo_ar_plane_node_tracked">
         <item quantity="one">%d plane tracked</item>

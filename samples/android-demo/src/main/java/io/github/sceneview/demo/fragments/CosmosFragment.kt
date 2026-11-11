@@ -20,9 +20,9 @@ object CosmosFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/CosmosDemo.kt",
         titleRes = R.string.demo_cosmos_title,
         subtitleRes = R.string.demo_cosmos_subtitle,
-        category = DemoCategory.CREATE,
+        category = DemoCategory.PLAY,
         icon = Icons.Filled.AutoAwesome,
-        order = 1,
+        order = 15,
         addedIn = "4.49.0",
         updatedIn = "4.64.0",
         tags = setOf(

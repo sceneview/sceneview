@@ -35,10 +35,11 @@ object CameraAndGesturesFragment : DemoFragment {
         subtitleRes = R.string.demo_camera_and_gestures_subtitle,
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.PhotoCamera,
-        order = 33,
+        order = 4,
         addedIn = "4.17.0",
         updatedIn = "4.52.0",
         tags = setOf(
+            "camera & gestures",
             "camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit",
             "pip", "multi-view", "render-target",
         ),

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
+    <string name="demo_contact_shadow_preview_title">Contact shadows</string>
     <string name="demo_contact_shadow_preview_subtitle">Compare objects with and without a contact shadow</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>

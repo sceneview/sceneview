@@ -5,7 +5,7 @@
      etc. remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_surfaces_title">Surfaces</string>
+    <string name="demo_ar_surfaces_title">Surface rendering</string>
     <string name="demo_ar_surfaces_subtitle">Dots on floors, dashes on walls, rings on ceilings</string>
     <string name="ar_surfaces_dock_surfaces_label">Show detected surfaces</string>
     <string name="ar_surfaces_dock_surfaces_caption">Surfaces</string>

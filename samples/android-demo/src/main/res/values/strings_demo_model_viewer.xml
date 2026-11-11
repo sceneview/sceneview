@@ -10,8 +10,8 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_model_viewer">Models</string>
-    <!-- Title pill inside the viewer; the registry/home title above stays "Models" (androidTest taps it). -->
+    <string name="demo_model_viewer">Model Viewer</string>
+    <!-- The catalogue and the viewer screen share the same name. -->
     <string name="demo_model_viewer_screen_title">Model Viewer</string>
     <string name="demo_model_viewer_subtitle">Explore a model in 3D or in your room</string>
     <string name="demo_model_viewer_loading">Loading model…</string>

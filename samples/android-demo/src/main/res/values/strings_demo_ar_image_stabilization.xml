@@ -5,7 +5,7 @@
      etc. remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_image_stabilization_title">Image Stabilization</string>
+    <string name="demo_ar_image_stabilization_title">Camera stabilisation</string>
     <string name="demo_ar_image_stabilization_subtitle">Steadies the camera feed. The difference is subtle</string>
     <string name="ar_eis_comparison">Electronic image stabilization smooths small hand shake in the camera feed; the helmet stays anchored either way. The difference is subtle: walk with the phone at arm\'s length, then compare with stabilization on and off.</string>
     <string name="ar_eis_requirement">This phone does not offer ARCore Electronic Image Stabilization.</string>
