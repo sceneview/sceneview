@@ -2,8 +2,10 @@
 title: API Cheatsheet — SceneView for iOS, macOS, visionOS
 description: "Complete API reference for SceneViewSwift node types, views, materials, physics, and AR features on Apple platforms."
 ---
-
 # API Cheatsheet — Apple Platforms
+
+!!! warning "Deprecated"
+    SceneView for SwiftUI is deprecated: 4.68.0 is the last release. Published versions stay installable and the source stays available — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). For Android, start with the [quickstart](quickstart.md).
 
 A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it next to your keyboard.
 

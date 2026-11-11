@@ -2,8 +2,10 @@
 title: Apple Quickstart — SceneView for iOS, macOS, visionOS
 description: "Set up SceneViewSwift in your Xcode project in 10 minutes. Build a 3D model viewer with orbit camera and environment lighting using SwiftUI and RealityKit."
 ---
-
 # Quickstart — Apple Platforms
+
+!!! warning "Deprecated"
+    SceneView for SwiftUI is deprecated: 4.68.0 is the last release. Published versions stay installable and the source stays available — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). For Android, start with the [quickstart](quickstart.md).
 
 !!! tip "Looking for Android?"
     See the [Android Quickstart](quickstart.md) for Jetpack Compose setup.

@@ -1,5 +1,7 @@
 # @sceneview-sdk/react-native
 
+> **Deprecated.** `@sceneview-sdk/react-native`: 4.68.0 is the last release. Published versions stay installable and this source stays available under Apache 2.0 — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 [![npm version](https://img.shields.io/npm/v/@sceneview-sdk/react-native.svg)](https://www.npmjs.com/package/@sceneview-sdk/react-native)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub](https://img.shields.io/badge/GitHub-sceneview%2Fsceneview-black)](https://github.com/sceneview/sceneview)
