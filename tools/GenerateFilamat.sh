@@ -165,6 +165,8 @@ MATS=(
     "sceneview:video_texture_chroma_key:sceneview/src/main/materials/video_texture_chroma_key.mat:sceneview/src/main/assets/materials/video_texture_chroma_key.filamat:-p all -a all"
     "sceneview:view_texture_lit:sceneview/src/main/materials/view_texture_lit.mat:sceneview/src/main/assets/materials/view_texture_lit.filamat:-p all -a all"
     "sceneview:view_texture_unlit:sceneview/src/main/materials/view_texture_unlit.mat:sceneview/src/main/assets/materials/view_texture_unlit.filamat:-p all -a all"
+    "android-demo:matter_surface:samples/android-demo/src/main/materials/matter_surface.mat:samples/android-demo/src/main/assets/materials/matter_surface.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_gel:samples/android-demo/src/main/materials/matter_gel.mat:samples/android-demo/src/main/assets/materials/matter_gel.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:studio_pbr:samples/android-demo/src/main/materials/studio_pbr.mat:samples/android-demo/src/main/assets/materials/studio_pbr.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:studio_glass:samples/android-demo/src/main/materials/studio_glass.mat:samples/android-demo/src/main/assets/materials/studio_glass.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_sprite:samples/android-demo/src/main/materials/cosmos_sprite.mat:samples/android-demo/src/main/assets/materials/cosmos_sprite.filamat:--optimize-size -p mobile -a opengl -a vulkan"

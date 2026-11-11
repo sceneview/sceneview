@@ -10,7 +10,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         private set
     var hasPressed = false
         private set
-    var selected = FeelMaterial.Foam
+    var selected = FeelMaterial.MemoryFoam
         private set
     var inferred = InferredPressure(0f, PressureSource.Duration)
         private set
@@ -26,6 +26,12 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     val contactMillis = LongArray(pads.size) { Long.MIN_VALUE }
     private var foamReleasedAt: Long? = null
 
+    fun select(material: FeelMaterial, now: Long) {
+        opening.cancel()
+        release(now)
+        selected = material
+    }
+
     fun begin(material: FeelMaterial, x: Float, z: Float, pressure: Float, size: Float, now: Long) {
         opening.cancel()
         hasPressed = true
@@ -38,7 +44,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         travelMm = 0f
         lastTravelX = x
         contactMillis[material.ordinal] = now
-        if (material == FeelMaterial.Foam) foamReleasedAt = null
+        if (material == FeelMaterial.MemoryFoam) foamReleasedAt = null
         move(x, z, pressure, size)
         contactX[material.ordinal] = fingerX[material.ordinal]
         contactZ[material.ordinal] = fingerZ[material.ordinal]
@@ -56,7 +62,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     }
 
     fun release(now: Long) {
-        if (active == FeelMaterial.Foam) {
+        if (active == FeelMaterial.MemoryFoam) {
             foamReleasedAt = now
             pads[0] = pads[0].copy(velocity = 0f)
         }
@@ -83,11 +89,11 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         FeelMaterial.entries.forEach { material ->
             val pressure = when {
                 material == pressed -> filteredPressure
-                material == FeelMaterial.Foam -> opening.loadKg * 9.81f / FeelMaterial.MAX_FORCE_N
+                material == FeelMaterial.MemoryFoam -> opening.loadKg * 9.81f / FeelMaterial.MAX_FORCE_N
                 else -> 0f
             }
             // Short memory plateau before viscous recovery, including after the mark lifts.
-            if (material == FeelMaterial.Foam && pressure == 0f &&
+            if (material == FeelMaterial.MemoryFoam && pressure == 0f &&
                 foamReleasedAt?.let { now - it < 140L } == true
             ) return@forEach
             pads[material.ordinal] = stepIndentation(
@@ -101,8 +107,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
 
     companion object {
         const val PAD_HALF_WIDTH = 2.4f
-        const val PAD_HALF_LENGTH = 1.05f
-        const val PAD_THICKNESS = 1.25f
+        const val PAD_HALF_LENGTH = 1.45f
+        const val PAD_THICKNESS = 0.95f
         fun contains(x: Float, z: Float): Boolean =
             kotlin.math.abs(x) <= PAD_HALF_WIDTH && kotlin.math.abs(z) <= PAD_HALF_LENGTH
     }

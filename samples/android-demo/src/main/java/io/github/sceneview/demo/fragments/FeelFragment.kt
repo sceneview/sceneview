@@ -19,7 +19,7 @@ object FeelFragment : DemoFragment {
         order = 2,
         addedIn = "4.68.0",
         status = DemoStatus.InReview,
-        tags = setOf("haptics", "touch", "pressure", "material", "foam", "oak", "steel", "spring", "grid", "firmness", "stiffness", "recovery", "matter"),
+        tags = setOf("haptics", "touch", "pressure", "material", "foam", "gel", "velvet", "leather", "marble", "steel", "spring", "studio", "firmness", "stiffness", "recovery", "matter"),
     )
 
     @Composable

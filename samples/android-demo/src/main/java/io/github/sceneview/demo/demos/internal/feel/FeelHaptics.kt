@@ -20,7 +20,7 @@ internal fun foamIntensity(timeMillis: Long): Float {
     return values[end - 1] + (values[end] - values[end - 1]) * t
 }
 
-/** One contact, then silence (or distance-driven oak grain). No platform calls or timers. */
+/** One contact, then silence (or distance-driven leather grain). No platform calls or timers. */
 internal fun scheduleHaptic(
     previous: HapticSchedule,
     material: FeelMaterial?,
@@ -36,16 +36,16 @@ internal fun scheduleHaptic(
     if (since < 30L) return HapticStep(state)
     val p = if (pressure.isFinite()) pressure.coerceIn(0f, 1f) else 0f
     if (state.stopSent) {
-        if (material != FeelMaterial.Oak || travelMm - state.grainTravelMm < 6f) return HapticStep(state)
+        if (material != FeelMaterial.Leather || travelMm - state.grainTravelMm < 6f) return HapticStep(state)
         // Discard crossings during the actuator's 100 ms refractory window: never queue a burst.
         val next = state.copy(grainTravelMm = travelMm)
         if (since < 100L) return HapticStep(next)
         return HapticStep(next.copy(lastPulseMillis = nowMillis), FeelPulse(FeelPulseKind.LowTick, 0.12f + 0.08f * p))
     }
     val pulse = when (material) {
-        FeelMaterial.Steel -> FeelPulse(FeelPulseKind.Click, 0.90f)
-        FeelMaterial.Oak -> FeelPulse(FeelPulseKind.Click, 0.45f)
-        FeelMaterial.Foam -> FeelPulse(FeelPulseKind.FoamEnvelope, 1f)
+        FeelMaterial.Marble, FeelMaterial.BrushedSteel -> FeelPulse(FeelPulseKind.Click, 0.90f)
+        FeelMaterial.Leather -> FeelPulse(FeelPulseKind.Click, 0.45f)
+        FeelMaterial.MemoryFoam, FeelMaterial.Gel, FeelMaterial.Velvet -> FeelPulse(FeelPulseKind.FoamEnvelope, 1f)
     }
     return HapticStep(
         state.copy(lastPulseMillis = nowMillis, stopSent = true, grainTravelMm = travelMm),

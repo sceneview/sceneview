@@ -8,7 +8,7 @@ import org.junit.Test
 class FeelSimulationTest {
     @Test fun stationaryFingerRampsAndReleaseLetsThePadRecover() {
         val simulation = FeelSimulation()
-        simulation.begin(FeelMaterial.Foam, 0f, 0f, 1f, 0f, 0)
+        simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, 1f, 0f, 0)
         for (time in 0L..3000L step 16) simulation.advance(time)
         assertTrue(simulation.pads[0].depthMm > 15f)
         simulation.release(3000)
@@ -18,17 +18,17 @@ class FeelSimulationTest {
 
     @Test fun eachGestureReevaluatesSensorsAndPreviousPadStillRecovers() {
         val simulation = FeelSimulation()
-        simulation.begin(FeelMaterial.Foam, 0f, 0f, 0.2f, 0f, 0)
+        simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, 0.2f, 0f, 0)
         simulation.move(0f, 0f, 0.4f, 0f)
         simulation.move(0f, 0f, 0.8f, 0f)
         for (time in 0L..3000L step 16) simulation.advance(time)
         assertEquals(PressureSource.Pressure, simulation.inferred.source)
         val oldDepth = simulation.pads[0].depthMm
-        simulation.begin(FeelMaterial.Oak, 0f, 0f, 1f, 0f, 3000)
-        for (time in 3000L..4000L step 16) simulation.advance(time)
+        simulation.begin(FeelMaterial.Leather, 0f, 0f, 1f, 0f, 3000)
+        for (time in 3000L..6000L step 16) simulation.advance(time)
         assertEquals(PressureSource.Duration, simulation.inferred.source)
         assertTrue(simulation.pads[0].depthMm < oldDepth)
-        assertEquals(0.35f, simulation.pads[1].depthMm, 0.0001f)
+        assertEquals(FeelMaterial.Leather.stopMm, simulation.pads[FeelMaterial.Leather.ordinal].depthMm, 0.0001f)
     }
 
     @Test fun hitRegionsRejectOutsideOfEachLocalPad() {
@@ -40,7 +40,7 @@ class FeelSimulationTest {
 
     @Test fun foamRetainsItsDentBrieflyBeforeRecovery() {
         val simulation = FeelSimulation()
-        simulation.begin(FeelMaterial.Foam, 0f, 0f, 1f, 0f, 0)
+        simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, 1f, 0f, 0)
         for (time in 0L..2000L step 10) simulation.advance(time)
         val dent = simulation.pads[0].depthMm
         assertTrue(dent > 17f)
@@ -69,25 +69,25 @@ class FeelSimulationTest {
     @Test fun touchCancelsTheOpeningAndCannotLeaveAHiddenLoad() {
         val simulation = FeelSimulation(openingEnabled = true)
         for (time in 0L..600L step 10) simulation.advance(time)
-        simulation.begin(FeelMaterial.Steel, 0f, 0f, 1f, 0f, 610)
+        simulation.begin(FeelMaterial.BrushedSteel, 0f, 0f, 1f, 0f, 610)
         assertTrue(simulation.opening.finished)
         assertEquals(0f, simulation.opening.loadKg, 0f)
         val oldDepth = simulation.pads[0].depthMm
         for (time in 610L..1610L step 10) simulation.advance(time)
         assertTrue(simulation.pads[0].depthMm < oldDepth)
-        assertEquals(FeelMaterial.Steel, simulation.active)
+        assertEquals(FeelMaterial.BrushedSteel, simulation.active)
     }
 
-    @Test fun onlyTransverseRealMovesProduceOakGrain() {
+    @Test fun onlyTransverseRealMovesProduceLeatherGrain() {
         val simulation = FeelSimulation()
-        simulation.begin(FeelMaterial.Oak, 0f, 0f, 1f, 0f, 0)
+        simulation.begin(FeelMaterial.Leather, 0f, 0f, 1f, 0f, 0)
         assertEquals(FeelPulseKind.Click, simulation.advance(0)?.kind)
         simulation.move(0f, 0.5f, 1f, 0f)
         assertNull(simulation.advance(200))
         simulation.move(6f * FeelMaterial.WORLD_PER_MM, 0.5f, 1f, 0f)
         assertEquals(FeelPulseKind.LowTick, simulation.advance(400)?.kind)
         // Reprojecting a stationary finger is not physical travel.
-        simulation.fingerX[1] += 0.5f
+        simulation.fingerX[FeelMaterial.Leather.ordinal] += 0.5f
         assertNull(simulation.advance(600))
     }
 }

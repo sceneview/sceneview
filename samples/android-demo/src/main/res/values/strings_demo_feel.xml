@@ -1,14 +1,17 @@
 <resources>
     <string name="demo_feel_title">Matter</string>
-    <string name="demo_feel_subtitle">Touch foam, oak and steel. Compare firmness and recovery</string>
-    <string name="demo_feel_loading">Preparing material samples…</string>
+    <string name="demo_feel_subtitle">Six surfaces. Touch, press and explore their character</string>
+    <string name="demo_feel_loading">Preparing the material studio…</string>
     <string name="demo_feel_instruction">Touch and hold</string>
-    <string name="demo_feel_foam">Foam</string>
-    <string name="demo_feel_oak">Oak</string>
-    <string name="demo_feel_steel">Steel</string>
-    <string name="demo_feel_foam_rest">Yields softly · slow to recover</string>
+    <string name="demo_feel_foam">Memory foam</string>
+    <string name="demo_feel_gel">Gel</string>
+    <string name="demo_feel_velvet">Velvet</string>
+    <string name="demo_feel_leather">Leather</string>
+    <string name="demo_feel_marble">Marble</string>
+    <string name="demo_feel_steel">Brushed steel</string>
     <string name="demo_feel_foam_press">Gives %1$d mm · slow to recover</string>
-    <string name="demo_feel_foam_recovery">Recovering slowly · %1$d mm left</string>
-    <string name="demo_feel_oak_response">Barely moves · firm stop</string>
-    <string name="demo_feel_steel_response">Does not move</string>
+    <string name="demo_feel_gel_response">Gives %1$d mm · springs back</string>
+    <string name="demo_feel_gel_rebound">Rebounds %1$d mm · springs back</string>
+    <string name="demo_feel_smooth_response">Gives %1$d mm · smooth recovery</string>
+    <string name="demo_feel_rigid_response">Does not move</string>
 </resources>

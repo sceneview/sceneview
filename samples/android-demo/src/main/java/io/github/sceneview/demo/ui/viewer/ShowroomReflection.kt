@@ -55,6 +55,8 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
         /** How far the settle spring still holds the subject above its resting pose, in metres. */
         val lift: Float,
         val isDark: Boolean,
+        /** Shader-only deformation is invisible to the camera/pose cache (Matter). */
+        val contentVersion: Long = 0L,
     )
 
     private val renderer: Renderer = engine.createRenderer().apply {

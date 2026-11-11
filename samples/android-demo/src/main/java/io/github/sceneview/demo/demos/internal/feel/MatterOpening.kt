@@ -22,7 +22,7 @@ internal class MatterOpening(enabled: Boolean) {
         heightAbovePad = when {
             age < 350L -> TRAVEL * (1f - smooth(age / 350f))
             age < 1250L -> 0f
-            // Retrace the descent within the foam row's perspective headroom.
+            // Retrace the descent above the hero sample.
             else -> TRAVEL * smooth((age - 1250L) / 450f)
         }
     }
@@ -37,10 +37,9 @@ internal class MatterOpening(enabled: Boolean) {
 
     companion object {
         const val MARK_MASS_KG = 0.75f
-        // A fifth-width cube and short drop keep the full frame inside the top row.
-        // MatterStageTest projects the outer bracket corners at maximum travel.
+        // A heavy ceramic mark, one fifth of the sample width.
         const val MARK_WIDTH = FeelSimulation.PAD_HALF_WIDTH * 2f / 5f
-        const val TRAVEL = 0.2f
-        const val SHOW_BRACKETS = true
+        const val TRAVEL = 0.65f
+        const val SHOW_BRACKETS = false
     }
 }

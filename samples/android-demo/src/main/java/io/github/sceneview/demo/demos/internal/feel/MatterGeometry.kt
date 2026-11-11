@@ -1,206 +1,124 @@
 package io.github.sceneview.demo.demos.internal.feel
 
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.sqrt
 
-/** Rest-space lattice and solid share one displacement field; the supported bottom stays fixed. */
-internal class MatterGeometry(val rest: FloatArray, val indices: ShortArray, val contactRing: Boolean = false) {
-    val positions = rest.copyOf()
+/** Immutable rest mesh. Tangent frames are packed XYZW quaternions, as required by Filament. */
+internal class MatterGeometry(
+    val positions: FloatArray,
+    val normals: FloatArray,
+    val tangents: FloatArray,
+    val uv0: FloatArray,
+    val indices: ShortArray,
+)
 
-    fun deform(depthMm: Float, fingerX: Float, fingerZ: Float, material: FeelMaterial) {
-        val depth = visualDepth(depthMm, material)
-        for (i in rest.indices step 3) {
-            val x = rest[i]
-            val y = rest[i + 1]
-            val z = rest[i + 2]
-            val weight = (1f + y / FeelSimulation.PAD_THICKNESS).coerceIn(0f, 1f)
-            val dent = depth * well(x - fingerX, z - fingerZ, material.radius) * weight
-            positions[i] = x
-            positions[i + 1] = y - dent
-            positions[i + 2] = z
-        }
-    }
-
-    companion object {
-        /**
-         * Exaggerated display displacement, deliberately independent of physical WORLD_PER_MM.
-         * Foam uses 1.8× the physical conversion, oak 8×, steel stays rigid. Only the mesh,
-         * contact and opening mark use this scale; captions and haptics retain simulated mm.
-         * Even at the stop a supported layer remains, so the bowl cannot invert the slab.
-         */
-        fun visualDepth(depthMm: Float, material: FeelMaterial): Float =
-            (depthMm.coerceAtLeast(0f) * when (material) {
-                FeelMaterial.Foam -> 0.045f
-                FeelMaterial.Oak -> 0.20f
-                FeelMaterial.Steel -> 0f
-            }).coerceAtMost(FeelSimulation.PAD_THICKNESS * 0.86f)
-
-        /** Normalized finite Plummer bowl, centred at the current local finger position. */
-        fun well(x: Float, z: Float, radius: Float): Float {
-            val r2 = (x * x + z * z) / (radius * radius)
-            val edge = 1f / sqrt(37f)
-            return ((1f / sqrt(1f + r2) - edge) / (1f - edge)).coerceIn(0f, 1f)
-        }
-    }
-}
-
-/** Built once. Triangle ribbons give the lattice a stable width on mobile GLES. */
+/** A rounded box, built once. All six faces meet on identical rounded-edge positions. */
 internal object MatterMeshes {
-    const val TOP = 0
-    const val FRONT = 1
-    const val SIDE = 2
-    const val LATTICE = 3
-    const val CONTACT = 4
-    const val RING = 5
-    /**
-     * The precompiled Cosmos shader has no fade switch. Keep Matter's shader coordinates
-     * wholly inside radius 2, where BOTH its grid fade and surface fade are exactly 1.
-     * The node restores X/Z size; CPU deformation leaves these coordinates unchanged.
-     * Cosmos keeps its radius-12 coordinates and its existing fade, with the same binary.
-     */
-    const val SHADER_XZ_SCALE = 0.75f
-    private const val GRID_STEP = 0.5f / SHADER_XZ_SCALE
-    private const val COLUMNS = 64
-    private const val ROWS = 24
-    private const val LINE = 0.008f
-    private const val LIFT = 0.003f
-    private const val SEGMENTS = 64
-    private val w get() = FeelSimulation.PAD_HALF_WIDTH
-    private val l get() = FeelSimulation.PAD_HALF_LENGTH
-    private val h get() = FeelSimulation.PAD_THICKNESS
-
-    fun top(): MatterGeometry = Builder().apply {
-        patch(COLUMNS, ROWS) { u, v -> floatArrayOf(-w + 2f * w * u, 0f, l - 2f * l * v) }
-    }.build()
-
-    fun sides(ends: Boolean = false): MatterGeometry = Builder().apply {
-        // Outward winding on all four faces. Every layer follows the top's local compression.
-        if (ends) {
-            patch(ROWS, 8) { u, v -> floatArrayOf(w, -h + h * v, l - 2f * l * u) }
-            patch(ROWS, 8) { u, v -> floatArrayOf(-w, -h + h * v, -l + 2f * l * u) }
-        } else {
-            patch(COLUMNS, 8) { u, v -> floatArrayOf(-w + 2f * w * u, -h + h * v, l) }
-            patch(COLUMNS, 8) { u, v -> floatArrayOf(w - 2f * w * u, -h + h * v, -l) }
-        }
-    }.build()
-
-    fun lattice(): MatterGeometry = Builder().apply {
-        // The top uses cosmos_spacetime.filamat. Continue its lines down the front and
-        // right section, with opaque ribbons reaching the silhouette instead of fading out.
-        for (x in -3..3) {
-            val at = x * GRID_STEP
-            patch(1, 8) { u, v -> floatArrayOf((at + (u - 0.5f) * LINE).coerceIn(-w, w), -h + h * v, l + LIFT) }
-        }
-        for (z in -1..1) {
-            val at = z * GRID_STEP
-            patch(1, 8) { u, v -> floatArrayOf(w + LIFT, -h + h * v, at - (u - 0.5f) * LINE) }
-        }
-        for (layer in 0..4) {
-            val at = -h * layer / 4f
-            patch(COLUMNS, 1) { u, v -> floatArrayOf(-w + 2f * w * u, (at + (v - 0.5f) * LINE).coerceIn(-h, 0f), l + LIFT) }
-            patch(ROWS, 1) { u, v -> floatArrayOf(w + LIFT, (at + (v - 0.5f) * LINE).coerceIn(-h, 0f), l - 2f * l * u) }
-        }
-    }.build()
-
+    const val TOP_COLUMNS = 128
+    const val TOP_ROWS = 64
+    const val BEVEL = FeelSimulation.PAD_THICKNESS * 0.1f
     const val RIPPLE_MILLIS = 350L
-    fun rippleRadius(age: Long): Float =
-        0.08f + (age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 1f) * 0.16f
-    fun rippleAlpha(age: Long): Float = (1f - age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 0.99f)
+    private const val BEVEL_STEPS = 6
 
-    /** Six triangles per clipped ring segment; unused slots collapse to a point. */
-    fun contact(disc: Boolean): MatterGeometry {
-        if (!disc) {
-            val count = SEGMENTS * 18
-            return MatterGeometry(FloatArray(count * 3), ShortArray(count) { it.toShort() }, contactRing = true)
+    fun slab(): MatterGeometry {
+        val positions = ArrayList<Float>()
+        val normals = ArrayList<Float>()
+        val tangents = ArrayList<Float>()
+        val uv = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+        val half = floatArrayOf(FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_THICKNESS / 2f,
+            FeelSimulation.PAD_HALF_LENGTH)
+
+        // Extra samples in each bevel strip keep even the thin bottom/side roundovers smooth.
+        fun coordinates(extent: Float, divisions: Int): List<Float> = buildList {
+            for (i in 0 until BEVEL_STEPS) add(-extent + BEVEL * i / BEVEL_STEPS)
+            for (i in 0..divisions) add(-extent + BEVEL + 2f * (extent - BEVEL) * i / divisions)
+            for (i in 1..BEVEL_STEPS) add(extent - BEVEL + BEVEL * i / BEVEL_STEPS)
         }
-        return Builder().apply {
-            patch(SEGMENTS, 1) { u, v ->
-                val angle = 2f * PI.toFloat() * u
-                floatArrayOf(cos(angle) * v, LIFT * 2f, sin(angle) * v)
+        fun face(axis: Int, sign: Float, uAxis: Int, vAxis: Int, columns: Int, rows: Int) {
+            val us = coordinates(half[uAxis], columns)
+            val vs = coordinates(half[vAxis], rows)
+            val start = positions.size / 3
+            for (v in vs) for (u in us) {
+                val p = FloatArray(3)
+                p[axis] = sign * half[axis]; p[uAxis] = u; p[vAxis] = v
+                val core = FloatArray(3) { p[it].coerceIn(-half[it] + BEVEL, half[it] - BEVEL) }
+                val n = normalize(FloatArray(3) { p[it] - core[it] })
+                val rounded = FloatArray(3) { core[it] + BEVEL * n[it] }
+                rounded[1] -= half[1] // Top at zero; supported bottom at -thickness.
+                positions.addAll(rounded.toList())
+                normals.addAll(n.toList())
+                val t = normalize(FloatArray(3) { (if (it == uAxis) 1f else 0f) - n[it] * n[uAxis] })
+                tangents.addAll(packFrame(t, n).toList())
+                uv.add((u / half[uAxis] + 1f) / 2f); uv.add((v / half[vAxis] + 1f) / 2f)
             }
-        }.build()
+            val u = FloatArray(3).apply { this[uAxis] = 1f }
+            val v = FloatArray(3).apply { this[vAxis] = 1f }
+            val forward = cross(u, v)[axis] * sign > 0f
+            for (row in 0 until vs.lastIndex) for (col in 0 until us.lastIndex) {
+                val a = start + row * us.size + col
+                val b = a + 1; val c = a + us.size; val d = c + 1
+                val tri = if (forward) intArrayOf(a, b, c, b, d, c) else intArrayOf(a, c, b, b, c, d)
+                tri.forEach { indices.add(it.toShort()) }
+            }
+        }
+        face(1, 1f, 0, 2, TOP_COLUMNS, TOP_ROWS)
+        face(1, -1f, 0, 2, 32, 16)
+        for (sign in listOf(-1f, 1f)) {
+            face(2, sign, 0, 1, TOP_COLUMNS, 12)
+            face(0, sign, 2, 1, TOP_ROWS, 12)
+        }
+        check(positions.size / 3 < 65536)
+        return MatterGeometry(positions.toFloatArray(), normals.toFloatArray(), tangents.toFloatArray(),
+            uv.toFloatArray(), indices.toShortArray())
     }
 
-    fun updateContact(
-        mesh: MatterGeometry, radius: Float, x: Float, z: Float, depth: Float,
-        material: FeelMaterial, strokeWidth: Float = 0.02f,
-    ) {
-        fun write(vertex: Int, px: Float, pz: Float) {
-            mesh.positions[vertex * 3] = px
-            mesh.positions[vertex * 3 + 1] = LIFT * 2f - MatterGeometry.visualDepth(depth, material) *
-                MatterGeometry.well(px - x, pz - z, material.radius)
-            mesh.positions[vertex * 3 + 2] = pz
-        }
-        if (mesh.contactRing) {
-            for (segment in 0 until SEGMENTS) {
-                fun point(step: Int, outside: Boolean): Pair<Float, Float> {
-                    val angle = 2f * PI.toFloat() * step / SEGMENTS
-                    // Offset in projected space: the ring stays ~1.5 dp wide even along Z.
-                    val half = strokeWidth / 2f * if (outside) 1f else -1f
-                    return x + cos(angle) * (radius + half).coerceAtLeast(0f) to
-                        z + sin(angle) * (radius + half / MatterStage.SIN).coerceAtLeast(0f)
-                }
-                var polygon = listOf(point(segment, false), point(segment, true),
-                    point(segment + 1, true), point(segment + 1, false))
-                // Clip geometry, rather than clamping its vertices into thick arcs at the edge.
-                for (edge in 0..3) {
-                    fun distance(p: Pair<Float, Float>): Float = when (edge) {
-                        0 -> p.first + w
-                        1 -> w - p.first
-                        2 -> p.second + l
-                        else -> l - p.second
-                    }
-                    val clipped = mutableListOf<Pair<Float, Float>>()
-                    if (polygon.isNotEmpty()) {
-                        var previous = polygon.last()
-                        for (current in polygon) {
-                            val before = distance(previous)
-                            val after = distance(current)
-                            if ((before >= 0f) != (after >= 0f)) {
-                                val t = before / (before - after)
-                                clipped += (previous.first + t * (current.first - previous.first)).coerceIn(-w, w) to
-                                    (previous.second + t * (current.second - previous.second)).coerceIn(-l, l)
-                            }
-                            if (after >= 0f) clipped += current
-                            previous = current
-                        }
-                    }
-                    polygon = clipped
-                }
-                val start = segment * 18
-                for (vertex in 0 until 18) write(start + vertex, 0f, 0f)
-                for (triangle in 0 until (polygon.size - 2).coerceAtLeast(0)) {
-                    // Clockwise in X/Z gives an upward normal.
-                    val points = listOf(polygon[0], polygon[triangle + 2], polygon[triangle + 1])
-                    points.forEachIndexed { j, p -> write(start + triangle * 3 + j, p.first, p.second) }
-                }
-            }
-            return
-        }
-        for (i in mesh.rest.indices step 3) {
-            write(i / 3, (x + mesh.rest[i] * radius).coerceIn(-w, w),
-                (z + mesh.rest[i + 2] * radius).coerceIn(-l, l))
-        }
+    /** Rounded-box signed distance; same core/radius as slab() and the shaders' rest normal. */
+    fun distance(x: Float, y: Float, z: Float): Float {
+        val qx = abs(x) - (FeelSimulation.PAD_HALF_WIDTH - BEVEL)
+        val qy = abs(y + FeelSimulation.PAD_THICKNESS / 2f) - (FeelSimulation.PAD_THICKNESS / 2f - BEVEL)
+        val qz = abs(z) - (FeelSimulation.PAD_HALF_LENGTH - BEVEL)
+        return sqrt(max(qx, 0f) * max(qx, 0f) + max(qy, 0f) * max(qy, 0f) +
+            max(qz, 0f) * max(qz, 0f)) + minOf(maxOf(qx, qy, qz), 0f) - BEVEL
     }
 
-    private class Builder {
-        val vertices = mutableListOf<Float>()
-        val indices = mutableListOf<Short>()
-        fun patch(columns: Int, rows: Int, point: (Float, Float) -> FloatArray) {
-            val start = vertices.size / 3
-            for (v in 0..rows) for (u in 0..columns) {
-                point(u.toFloat() / columns, v.toFloat() / rows).forEach(vertices::add)
-            }
-            for (v in 0 until rows) for (u in 0 until columns) {
-                val a = start + v * (columns + 1) + u
-                val b = a + 1
-                val c = a + columns + 1
-                val d = c + 1
-                listOf(a, b, c, b, d, c).forEach { indices += it.toShort() }
-            }
+    private fun normalize(v: FloatArray): FloatArray {
+        val length = sqrt(v.sumOf { (it * it).toDouble() }).toFloat()
+        return FloatArray(3) { v[it] / length }
+    }
+    private fun cross(a: FloatArray, b: FloatArray) = floatArrayOf(
+        a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+    /** Shoemake matrix → quaternion, equivalent to packTangentFrame for a right-handed frame. */
+    private fun packFrame(t: FloatArray, n: FloatArray): FloatArray {
+        val b = cross(n, t)
+        val m = arrayOf(t, b, n) // columns
+        val q = FloatArray(4)
+        val trace = m[0][0] + m[1][1] + m[2][2]
+        if (trace > 0f) {
+            val s = sqrt(trace + 1f) * 2f
+            q[3] = s / 4f
+            q[0] = (m[1][2] - m[2][1]) / s
+            q[1] = (m[2][0] - m[0][2]) / s
+            q[2] = (m[0][1] - m[1][0]) / s
+        } else {
+            val i = (0..2).maxBy { m[it][it] }
+            val j = (i + 1) % 3; val k = (i + 2) % 3
+            val s = sqrt(1f + m[i][i] - m[j][j] - m[k][k]) * 2f
+            q[i] = s / 4f
+            q[j] = (m[j][i] + m[i][j]) / s
+            q[k] = (m[k][i] + m[i][k]) / s
+            q[3] = (m[j][k] - m[k][j]) / s
         }
-        fun build() = MatterGeometry(vertices.toFloatArray(), indices.toShortArray())
+        if (q[3] < 0f) for (i in q.indices) q[i] = -q[i]
+        // Filament uses sign(w) for handedness. Never encode an exact zero (180° frame).
+        val bias = 1f / 32767f
+        if (q[3] < bias) {
+            val factor = sqrt((1f - bias * bias) / (1f - q[3] * q[3]))
+            for (i in 0..2) q[i] *= factor
+            q[3] = bias
+        }
+        return q
     }
 }
