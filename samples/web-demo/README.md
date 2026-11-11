@@ -63,7 +63,14 @@ cp ../../website-static/js/sceneview.js site/js/sceneview.js
 npx http-server site -p 8080
 ```
 
-Open <http://localhost:8080/>. Repeat the copy after editing the viewer.
+Open <http://localhost:8080/>. Use `?studio=false` to start with the plain
+background and lighting, without the studio backdrop, contact shadow or reflection
+(for embeds and feature tests on software WebGL). The Settings **Photo studio**
+switch reflects this initial state and can turn the studio back on. Omit the
+parameter to keep the default studio. It also composes with other query parameters
+and fragments, for example `?studio=false#double-pendulum`.
+
+Repeat the copy after editing the viewer.
 `site/js/sceneview.js` is an ignored local artifact; its only source is
 `website-static/js/sceneview.js`. The `docs.yml` copy step stages that same
 source under `/web-demo/js/sceneview.js` when deploying.

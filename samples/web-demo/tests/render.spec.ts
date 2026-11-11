@@ -36,7 +36,9 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('page loads and shows canvas', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
+    await expect(page.locator('#studio-toggle')).not.toHaveClass(/active/);
+    await expect(page.locator('#studio-toggle')).toHaveAttribute('aria-checked', 'false');
 
     // Wait for the canvas element to be present
     const canvas = page.locator('#scene-canvas');
@@ -46,6 +48,8 @@ test.describe('SceneView Web Demo Rendering', () => {
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
 
+    expect(await page.evaluate(() => (window as any).sceneViewInstance._studio)).toBeNull();
+
     // Capture full-page screenshot
     await page.screenshot({
       path: 'test-results/01_page_loaded.png',
@@ -53,12 +57,22 @@ test.describe('SceneView Web Demo Rendering', () => {
     });
   });
 
-  test('canvas renders non-blank content', async ({ page }) => {
+  // Keep the public default covered end to end; other specs isolate their features
+  // from the studio's reflection and post-processing cost on software WebGL.
+  test('default studio loads a model and renders non-blank content', async ({ page }) => {
     await page.goto('/');
 
     // Wait for loading to complete
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
+
+    // Engine readiness alone does not guarantee that the default model loaded.
+    await expect.poll(() => page.evaluate(() => {
+      const viewer = (window as any).sceneViewInstance;
+      return !!(viewer && viewer._asset && viewer._studio && viewer._studioParts.floor);
+    }), { timeout: 30_000 }).toBe(true);
+    await expect(page.locator('#studio-toggle')).toHaveClass(/active/);
+    await expect(page.locator('#studio-toggle')).toHaveAttribute('aria-checked', 'true');
 
     // Give Filament a moment to render frames
     await page.waitForTimeout(2000);
@@ -85,7 +99,7 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('model results panel is visible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
@@ -105,7 +119,7 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('every tab activates its matching panel', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
@@ -147,7 +161,7 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('catalog tabs expose working controls (issue #1362)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
@@ -185,7 +199,7 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('switching models updates the scene', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
@@ -209,7 +223,7 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('top bar branding is correct', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     // Check logo text
     const logoText = page.locator('.logo-text');
@@ -229,7 +243,7 @@ test.describe('SceneView Web Demo Rendering', () => {
   });
 
   test('XR buttons exist (may be hidden)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     // AR and VR buttons should exist in DOM even if hidden
     const arBtn = page.locator('#enter-ar');

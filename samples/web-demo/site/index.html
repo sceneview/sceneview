@@ -1249,7 +1249,8 @@
       // Picking a background colour leaves it; the Settings switch brings it back.
       // The physics and audio scenes build their own stage, so the studio steps
       // aside while they are open and comes back after.
-      var studioOn = true;
+      // Embedders can opt into the plain viewer with ?studio=false.
+      var studioOn = new URLSearchParams(window.location.search).get('studio') !== 'false';
       var studioSuspended = false;
       var darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
@@ -1348,6 +1349,7 @@
             if (window.MutationObserver) new MutationObserver(sync).observe(sw, { attributes: true, attributeFilter: ['class'] });
           })(switches[i]);
         }
+        setStudioOn(studioOn);
         if (studioToggle) {
           studioToggle.addEventListener('click', function() { setStudioOn(!studioOn); });
         }
@@ -1386,7 +1388,7 @@
         // first, clear the overlay, THEN load the default model as a
         // non-fatal, best-effort step.
         // `studio`: the photo studio from the very first frame, in the visitor's theme.
-        SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx', studio: currentTheme() })
+        SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx', studio: studioOn ? currentTheme() : false })
           .then(function(instance) {
             sceneViewInstance = instance;
             // Test hook: the Playwright suite (tests/shadow-options.spec.ts)

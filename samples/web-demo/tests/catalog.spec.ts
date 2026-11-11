@@ -101,7 +101,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // 60s budget is too tight — `test.slow()` triples it (harness #1560).
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'models');
 
@@ -148,7 +148,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // fetch may fail on a CI runner with no outbound network and must degrade,
     // not blank the tab, so no successful feed is assumed here.
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'models');
 
@@ -182,7 +182,7 @@ test.describe('Web Demo — catalog coverage', () => {
     test(`Geometry tab — ${geo} adds, recolours and renders`, async ({ page }) => {
       test.slow();
       const diag = captureDiagnostics(page);
-      await page.goto('/');
+      await page.goto('/?studio=false');
       await waitForEngineReady(page);
       await switchTab(page, 'geometry');
 
@@ -204,7 +204,7 @@ test.describe('Web Demo — catalog coverage', () => {
   test('Geometry tab — Clear All Geometry does not throw', async ({ page }) => {
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'geometry');
 
@@ -225,7 +225,7 @@ test.describe('Web Demo — catalog coverage', () => {
     test(`Lighting tab — ${light} light adds, recolours and renders`, async ({ page }) => {
       test.slow();
       const diag = captureDiagnostics(page);
-      await page.goto('/');
+      await page.goto('/?studio=false');
       await waitForEngineReady(page);
       await switchTab(page, 'lighting');
 
@@ -264,7 +264,7 @@ test.describe('Web Demo — catalog coverage', () => {
   test('Lighting tab — Remove Added Lights does not throw', async ({ page }) => {
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'lighting');
 
@@ -282,7 +282,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // pass that overruns the default budget on software-rasterised CI (#2099).
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'animation');
 
@@ -314,7 +314,7 @@ test.describe('Web Demo — catalog coverage', () => {
   test('Text tab — 3D text adds, restyles, renders and clears', async ({ page }) => {
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'text');
 
@@ -349,7 +349,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // budget on GPU-less CI runners (#2099).
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'environment');
 
@@ -387,7 +387,7 @@ test.describe('Web Demo — catalog coverage', () => {
 
   test('Physics tab — Double Pendulum runs, sliders + reset work', async ({ page }) => {
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'physics');
 
@@ -414,7 +414,7 @@ test.describe('Web Demo — catalog coverage', () => {
 
   test('Physics tab — #double-pendulum deep link opens it directly', async ({ page }) => {
     const diag = captureDiagnostics(page);
-    await page.goto('/#double-pendulum');
+    await page.goto('/?studio=false#double-pendulum');
     await waitForEngineReady(page);
 
     // The deep link is flushed once the engine is ready.
@@ -432,7 +432,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // `audio.spec.ts` (#1944). Here we only assert the catalog tab switches
     // cleanly and its scene renders — mirroring the other tab tests (#2099).
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'audio');
 
@@ -456,7 +456,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // Triple the budget for GPU-less CI runners (#1560).
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'settings');
 
@@ -489,7 +489,7 @@ test.describe('Web Demo — catalog coverage', () => {
 
   test('Top-bar auto-rotate button toggles without errors', async ({ page }) => {
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     const btn = page.locator('#auto-rotate-toggle');
@@ -508,7 +508,7 @@ test.describe('Web Demo — catalog coverage', () => {
     // overran the default 60s budget. `test.slow()` triples it (#1560, #1643).
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     // Round-trip every tab twice to catch teardown/re-entry leaks
@@ -535,7 +535,7 @@ test.describe('Web Demo — catalog coverage', () => {
   });
 
   test('WebXR AR/VR buttons are present in the DOM (presence only)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
     // DOM-presence check only — WebXR sessions are out of scope for this suite.
     await expect(page.locator('#enter-ar')).toBeAttached();
     await expect(page.locator('#enter-vr')).toBeAttached();

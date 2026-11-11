@@ -87,7 +87,7 @@ async function mockIcosa(
 test.describe('Web Demo — multi-source Explore (#2722)', () => {
   test('source picker shows keyless catalogs and hides Sketchfab without a key', async ({ page }) => {
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await switchTab(page, 'models');
 
@@ -108,7 +108,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
   });
 
   test('Sketchfab chip appears when an API key is provided', async ({ page }) => {
-    await page.goto('/?sketchfab_key=test-key-not-committed');
+    await page.goto('/?studio=false&sketchfab_key=test-key-not-committed');
     await waitForEngineReady(page);
     await switchTab(page, 'models');
     await expect(page.locator('.source-chip[data-source="sketchfab"]')).toBeVisible();
@@ -116,7 +116,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
 
   test('switching to Icosa shows its feed sections from mocked data', async ({ page }) => {
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await mockIcosa(page, localGlbUrl(page));
     await switchTab(page, 'models');
@@ -135,7 +135,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
   });
 
   test('switching source resets the search query', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await mockIcosa(page, localGlbUrl(page));
     await switchTab(page, 'models');
@@ -151,7 +151,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
 
   test('a degraded feed never blanks the tab — survivors still render', async ({ page }) => {
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await mockIcosa(page, localGlbUrl(page), { failNewest: true });
     await switchTab(page, 'models');
@@ -171,7 +171,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
     // A real GLB download + WASM upload + Filament render — slow on software GPU.
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await mockIcosa(page, localGlbUrl(page));
     await switchTab(page, 'models');
@@ -195,7 +195,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
     // file" is a console.error, which expectNoPageErrors turns fatal).
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     // Minimal valid glTF 2.0: one triangle, POSITION+NORMAL in an external bin.
@@ -259,7 +259,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
     // and never touch the archive host.
     test.slow();
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     let archiveHit = false;
@@ -304,7 +304,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
   });
 
   test('the selected source persists across a reload', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
     await mockIcosa(page, localGlbUrl(page));
     await switchTab(page, 'models');
