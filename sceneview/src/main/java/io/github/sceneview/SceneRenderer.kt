@@ -382,27 +382,38 @@ class SceneRenderer(
 
     // ── Cleanup ─────────────────────────────────────────────────────────────────────────────────
 
+    private var surfaceDetachBudget: SurfaceDetachBudget? = null
+
     /**
      * Detaches from the current surface and releases all native resources.
      *
      * Safe to call multiple times.
      */
     fun destroy() {
-        // Release mirror swap chains first — they were created on the engine the mirrorer
-        // bound at its first mirrored frame.
-        surfaceMirrorer?.destroy()
-        surfaceMirrorer = null
-        renderViewRef = null
-        votableSurfaceRef.set(null)
-        votedFrameRate = 0f
-        uiHelper.detach()
-        swapChainRef.getAndSet(null)?.let {
-            runCatching { engine.destroySwapChain(it) }
-                .onFailure { e -> android.util.Log.w("SceneRenderer", "Failed to destroy SwapChain", e) }
+        // UiHelper.detach invokes onDetachedFromSurface synchronously. Its wait shares the
+        // mirror wait's deadline, including time spent in onHostLost.
+        val previousBudget = surfaceDetachBudget
+        val budget = previousBudget ?: SurfaceDetachBudget()
+        surfaceDetachBudget = budget
+        try {
+            // Release mirror swap chains first — they were created on the engine the mirrorer
+            // bound at its first mirrored frame.
+            surfaceMirrorer?.destroy(budget)
+            surfaceMirrorer = null
+            renderViewRef = null
+            votableSurfaceRef.set(null)
+            votedFrameRate = 0f
+            uiHelper.detach()
+            swapChainRef.getAndSet(null)?.let {
+                runCatching { engine.destroySwapChain(it) }
+                    .onFailure { e -> android.util.Log.w("SceneRenderer", "Failed to destroy SwapChain", e) }
+            }
+            displayHelper?.detach()
+            displayHelper = null
+            display = null
+        } finally {
+            surfaceDetachBudget = previousBudget
         }
-        displayHelper?.detach()
-        displayHelper = null
-        display = null
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────────────────────
@@ -472,7 +483,8 @@ class SceneRenderer(
             // the backlog reaches it; frames queued before it meet an abandoned surface, which
             // PlatformEGL tolerates (a failed eglMakeCurrent is logged, eglSwapBuffers' result
             // is ignored) and which drops those frames — nothing is on screen any more anyway.
-            if (!engine.flushAndWait(SURFACE_DETACH_WAIT_NANOS)) {
+            val budget = surfaceDetachBudget ?: SurfaceDetachBudget()
+            if (!engine.flushAndWait(budget.remainingNanos())) {
                 android.util.Log.w(
                     "SceneRenderer",
                     "Surface detached, backend still busy after " +
