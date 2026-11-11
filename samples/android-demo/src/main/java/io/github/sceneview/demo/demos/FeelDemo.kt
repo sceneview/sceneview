@@ -65,6 +65,7 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
+import io.github.sceneview.demo.theme.matterMaterialColors
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Direction
@@ -138,14 +139,26 @@ fun FeelDemo(onBack: () -> Unit) {
         onDispose { EngineDestroyQueue.of(engine).enqueueTexture(horizon) }
     }
     val materials = remember(loader, colors, latticeMaterial, horizon) {
-        val roles = listOf(
-            listOf(colors.primaryFixedDim, colors.primaryContainer, colors.onPrimaryFixedVariant,
-                colors.onPrimaryContainer, colors.onPrimaryFixed, colors.onPrimaryFixed),
-            listOf(colors.tertiaryFixedDim, colors.tertiaryContainer, colors.onTertiaryFixedVariant,
-                colors.onTertiaryContainer, colors.onTertiaryFixed, colors.onTertiaryFixed),
-            listOf(colors.surfaceContainerHighest, colors.surfaceContainerLow, colors.surfaceDim,
-                colors.outline, colors.primary, colors.primary),
-        )
+        // DESIGN.md has no named oak token. Its warmest material role is the brown
+        // tertiaryContainer; fixedDim is pink. Shade each solid toward the scheme's
+        // scrim in linear light, preserving its hue and top > front > side luminance.
+        val materialColors = colors.matterMaterialColors()
+        val roles = listOf(materialColors.primaryFixedDim, materialColors.tertiaryContainer, materialColors.inverseSurface)
+            .mapIndexed { i, top ->
+                val base = top.convert(ColorSpaces.LinearSrgb)
+                val shade = colors.scrim.convert(ColorSpaces.LinearSrgb)
+                val ink = when (i) {
+                    FeelMaterial.Foam.ordinal -> colors.onPrimaryFixed
+                    FeelMaterial.Oak.ordinal -> materialColors.onTertiaryContainer
+                    else -> colors.inverseOnSurface
+                }
+                fun shaded(amount: Float) = base.copy(
+                    red = base.red + (shade.red - base.red) * amount,
+                    green = base.green + (shade.green - base.green) * amount,
+                    blue = base.blue + (shade.blue - base.blue) * amount,
+                )
+                listOf(top, shaded(0.24f), shaded(0.48f), ink, ink, ink)
+            }
         roles.map { row -> row.mapIndexed { part, color ->
             if (part == MatterMeshes.TOP) loader.createInstance(latticeMaterial).apply {
                 // CPU-deformed top, finite inactive wells. No shader change or new .filamat.
@@ -192,6 +205,7 @@ fun FeelDemo(onBack: () -> Unit) {
     val pads = remember { arrayOfNulls<Node>(3) }
     val contacts = remember { Array(3) { arrayOfNulls<Node>(2) } }
     val mark = remember { arrayOfNulls<Node>(1) }
+    val brackets = remember { arrayOfNulls<Node>(1) }
     val lastDeformation = remember { Array(3) { floatArrayOf(Float.NaN, Float.NaN, Float.NaN) } }
     val motionNow by rememberUpdatedState(motion)
     val touchNow by rememberUpdatedState(touch)
@@ -253,6 +267,8 @@ fun FeelDemo(onBack: () -> Unit) {
                                 scale = Scale(stage.scale[i]),
                             )
                         }
+                        brackets[0]?.rotation = Rotation(
+                            x = -stage.openingElevation, y = stage.openingAzimuth)
                         val now = SystemClock.uptimeMillis()
                         if (!motionNow) simulation.opening.cancel()
                         if (!touchView.hasWindowFocus()) touchNow.cancel()
@@ -333,10 +349,10 @@ fun FeelDemo(onBack: () -> Unit) {
                                     val unit = MatterOpening.MARK_WIDTH / 268f
                                     val cubeSide = 268f * unit / 1.4142136f
                                     CubeNode(size = Size(cubeSide), position = Position(y = cubeSide / 2f),
-                                        rotation = Rotation(y = 45f), materialInstance = markMaterial,
+                                        rotation = Rotation(y = 45f + MatterStage.AZIMUTH), materialInstance = markMaterial,
                                         apply = { isTouchable = false })
-                                    if (MatterOpening.SHOW_BRACKETS) Node(position = Position(y = 174f * unit * MatterStage.COS),
-                                        rotation = Rotation(x = -MatterStage.ELEVATION)) {
+                                    if (MatterOpening.SHOW_BRACKETS) Node(position = Position(y = cubeSide / 2f),
+                                        apply = { brackets[0] = this; isTouchable = false }) {
                                         for (sx in listOf(-1f, 1f)) for (sy in listOf(-1f, 1f)) {
                                             CubeNode(size = Size(38f * unit, 8f * unit, 8f * unit),
                                                 position = Position(sx * 141f * unit, sy * 174f * unit, 0f),
@@ -426,7 +442,6 @@ private class FeelTouch(
                 screenX = event.x; screenY = event.y
                 for (kind in FeelMaterial.entries) {
                     val point = pointOnPad(kind, deformed = false) ?: continue
-                    if (!FeelSimulation.contains(point.first, point.second)) continue
                     pointerId = event.getPointerId(0)
                     simulation.begin(kind, point.first, point.second, event.pressure, event.size, event.eventTime)
                     simulation.advance(event.eventTime, startOpening = false)?.let(haptics::play)
@@ -446,7 +461,7 @@ private class FeelTouch(
                 }
                 screenX = event.getX(index); screenY = event.getY(index)
                 val point = pointOnPad(active, deformed = false)
-                if (point == null || !FeelSimulation.contains(point.first, point.second)) { cancel(); return true }
+                if (point == null) { cancel(); return true }
                 simulation.move(point.first, point.second, event.getPressure(index), event.getSize(index))
             }
             MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == pointerId) cancel(released = true)
@@ -473,8 +488,15 @@ private class FeelTouch(
     private fun pointOnPad(kind: FeelMaterial, deformed: Boolean): Pair<Float, Float>? {
         if (view.viewport.width <= 0 || view.viewport.height <= 0) return null
         val ray = view.screenToRay(screenX, screenY) ?: return null
-        return stage.pointOnPad(kind.ordinal, ray.origin.x, ray.origin.y, ray.origin.z,
+        val silhouette = stage.pointOnSlab(kind.ordinal, ray.origin.x, ray.origin.y, ray.origin.z,
+            ray.direction.x, ray.direction.y, ray.direction.z) ?: return null
+        if (!deformed || kotlin.math.abs(silhouette.first) >= FeelSimulation.PAD_HALF_WIDTH - 0.0001f ||
+            kotlin.math.abs(silhouette.second) >= FeelSimulation.PAD_HALF_LENGTH - 0.0001f) return silhouette
+        // Keep following the dent plane on top, and the nearest top edge on a section.
+        val point = stage.pointOnPad(kind.ordinal, ray.origin.x, ray.origin.y, ray.origin.z,
             ray.direction.x, ray.direction.y, ray.direction.z,
-            if (deformed) MatterGeometry.visualDepth(simulation.pads[kind.ordinal].depthMm, kind) else 0f)
+            MatterGeometry.visualDepth(simulation.pads[kind.ordinal].depthMm, kind)) ?: return silhouette
+        return point.first.coerceIn(-FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH) to
+            point.second.coerceIn(-FeelSimulation.PAD_HALF_LENGTH, FeelSimulation.PAD_HALF_LENGTH)
     }
 }

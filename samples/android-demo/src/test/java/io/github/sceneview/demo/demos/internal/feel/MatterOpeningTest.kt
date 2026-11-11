@@ -9,7 +9,7 @@ class MatterOpeningTest {
     @Test fun descentContactLiftAndHintFitInTwoSeconds() {
         val opening = MatterOpening(true)
         opening.advance(100)
-        assertEquals(0.8f, opening.heightAbovePad, 0.0001f)
+        assertEquals(MatterOpening.TRAVEL, opening.heightAbovePad, 0.0001f)
         assertEquals(0f, opening.loadKg, 0f)
         opening.advance(450)
         assertEquals(MatterOpening.MARK_MASS_KG, opening.loadKg, 0f)
@@ -24,8 +24,8 @@ class MatterOpeningTest {
         assertFalse(opening.visible)
     }
 
-    @Test fun markSpansOneThirdOfBlockAndFirstPressPermanentlyDismissesHint() {
-        assertEquals(FeelSimulation.PAD_HALF_WIDTH * 2f / 3f, MatterOpening.MARK_WIDTH, 0f)
+    @Test fun markSpansOneFifthOfBlockAndFirstPressPermanentlyDismissesHint() {
+        assertEquals(FeelSimulation.PAD_HALF_WIDTH * 2f / 5f, MatterOpening.MARK_WIDTH, 0f)
         val simulation = FeelSimulation(openingEnabled = true)
         assertFalse(simulation.hasPressed)
         simulation.begin(FeelMaterial.Steel, 0f, 0f, 1f, 0f, 100L)

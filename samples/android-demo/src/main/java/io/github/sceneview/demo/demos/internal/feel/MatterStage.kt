@@ -1,7 +1,10 @@
 package io.github.sceneview.demo.demos.internal.feel
 
-import kotlin.math.cos
+import kotlin.math.abs
 import kotlin.math.atan
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.tan
 
@@ -15,6 +18,10 @@ internal class MatterStage {
     val z = FloatArray(3)
     val scale = FloatArray(3) { 1f }
     val tilt = FloatArray(3)
+    var openingElevation = ELEVATION
+        private set
+    var openingAzimuth = AZIMUTH
+        private set
     val halfWidth = DISTANCE * tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
     var halfHeight = halfWidth
         private set
@@ -75,7 +82,42 @@ internal class MatterStage {
             y[i] = up * COS
             z[i] = -right * SIN_AZIMUTH + up * UP_Z
         }
+        // The opening belongs to the tilted foam row. Face its frame toward the actual
+        // local eye, including row translation, rather than the old world camera pitch.
+        val eye = rotate(DISTANCE * BACK_X - x[0], DISTANCE * SIN - y[0],
+            DISTANCE * BACK_Z - z[0], -tilt[0])
+        openingElevation = Math.toDegrees(atan2(eye[1], hypot(eye[0], eye[2])).toDouble()).toFloat()
+        openingAzimuth = Math.toDegrees(atan2(eye[0], eye[2]).toDouble()).toFloat()
         return true
+    }
+
+    /**
+     * Pick the whole resting solid, then project its first intersection vertically onto
+     * the top. Unlike clamping an infinite top-plane hit, this rejects empty space beside
+     * or below the silhouette. The same mapping is used throughout captured pointer travel.
+     */
+    fun pointOnSlab(i: Int, ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float): Pair<Float, Float>? {
+        val origin = rotate((ox - x[i]) / scale[i], (oy - y[i]) / scale[i], (oz - z[i]) / scale[i], -tilt[i])
+        val direction = rotate(dx, dy, dz, -tilt[i])
+        var entry = 0f
+        var exit = Float.POSITIVE_INFINITY
+        val low = floatArrayOf(-FeelSimulation.PAD_HALF_WIDTH, -FeelSimulation.PAD_THICKNESS, -FeelSimulation.PAD_HALF_LENGTH)
+        val high = floatArrayOf(FeelSimulation.PAD_HALF_WIDTH, 0f, FeelSimulation.PAD_HALF_LENGTH)
+        if (direction.all { abs(it) < 0.000001f }) return null
+        for (axis in 0..2) {
+            val d = direction[axis]
+            if (abs(d) < 0.000001f) {
+                if (origin[axis] < low[axis] || origin[axis] > high[axis]) return null
+            } else {
+                val a = (low[axis] - origin[axis]) / d
+                val b = (high[axis] - origin[axis]) / d
+                entry = maxOf(entry, minOf(a, b))
+                exit = minOf(exit, maxOf(a, b))
+                if (exit < entry) return null
+            }
+        }
+        return (origin[0] + direction[0] * entry).coerceIn(low[0], high[0]) to
+            (origin[2] + direction[2] * entry).coerceIn(low[2], high[2])
     }
 
     /** Intersect a rendered world ray with the local top or the centre of its visual dent. */

@@ -20,9 +20,10 @@ internal class MatterOpening(enabled: Boolean) {
         visible = age < 1700L
         loadKg = if (age in 350L until 1250L) MARK_MASS_KG else 0f
         heightAbovePad = when {
-            age < 350L -> 0.8f * (1f - smooth(age / 350f))
+            age < 350L -> TRAVEL * (1f - smooth(age / 350f))
             age < 1250L -> 0f
-            else -> 1.2f * smooth((age - 1250L) / 450f)
+            // Retrace the descent within the foam row's perspective headroom.
+            else -> TRAVEL * smooth((age - 1250L) / 450f)
         }
     }
 
@@ -36,7 +37,10 @@ internal class MatterOpening(enabled: Boolean) {
 
     companion object {
         const val MARK_MASS_KG = 0.75f
-        const val MARK_WIDTH = FeelSimulation.PAD_HALF_WIDTH * 2f / 3f
+        // A fifth-width cube and short drop keep the full frame inside the top row.
+        // MatterStageTest projects the outer bracket corners at maximum travel.
+        const val MARK_WIDTH = FeelSimulation.PAD_HALF_WIDTH * 2f / 5f
+        const val TRAVEL = 0.2f
         const val SHOW_BRACKETS = true
     }
 }
