@@ -281,6 +281,8 @@ class DeferredTeardownDeadlineTest {
                 return true
             }
 
+            // A shadow of the native method: it has to be a function.
+            @Suppress("FunctionOnlyReturningConstant")
             @JvmStatic @Implementation
             fun nCreateRenderer(nativeEngine: Long): Long = 1L
 
