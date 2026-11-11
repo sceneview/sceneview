@@ -64,7 +64,7 @@ async function pixelDiffRatio(page: import('@playwright/test').Page, a: Buffer, 
 
 test.describe('Filament.js shadow options (#3456)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
   });
 
@@ -142,8 +142,8 @@ test.describe('Filament.js shadow options (#3456)', () => {
       const F = (window as any).Filament;
       const sv = (window as any).sceneViewInstance;
       const engine = sv._engine;
-      // The demo opens in the photo studio, whose camera move-in and quality tiers
-      // keep changing frames: the bench is a plain scene, so turn it off first.
+      // Keep this plain-scene bench independent of the studio's camera and effects,
+      // even if its page URL is changed to enable the studio later.
       if (typeof sv.setStudio === 'function') sv.setStudio(false);
       // A default model that failed to load (models not fetched: see the
       // `web-demo` assets scope) leaves sceneview.js's "3D preview unavailable"

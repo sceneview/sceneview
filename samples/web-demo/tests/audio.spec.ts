@@ -123,7 +123,7 @@ async function readAudioHooks(page: import('@playwright/test').Page): Promise<Au
 test.describe('SceneView Web Demo — Spatial Audio', () => {
 
   test('Spatial Audio panel exposes Play / Stop controls', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
@@ -141,7 +141,7 @@ test.describe('SceneView Web Demo — Spatial Audio', () => {
     // Hooks MUST be installed before the page scripts so the demo's first
     // audio call is captured — exactly the methodology from issue #1944.
     await installAudioHooks(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
@@ -178,7 +178,7 @@ test.describe('SceneView Web Demo — Spatial Audio', () => {
 
   test('clicking Stop after Play tears the graph down', async ({ page }) => {
     await installAudioHooks(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
 
     const overlay = page.locator('#loading-overlay');
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });

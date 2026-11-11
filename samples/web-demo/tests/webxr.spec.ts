@@ -49,7 +49,7 @@ test.describe('Web Demo — WebXR (IWER)', () => {
     const iwer = await installIwer(page);
 
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     // 2. The AR/VR buttons must be in the DOM regardless of IWER state.
@@ -114,7 +114,7 @@ test.describe('Web Demo — WebXR (IWER)', () => {
     test.skip(!iwer.injected, `IWER not installed in this environment: ${iwer.error}`);
 
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     // 2. Drive the session end-to-end against the emulated device — request it
@@ -152,7 +152,7 @@ test.describe('Web Demo — WebXR (IWER)', () => {
     test.skip(!iwer.injected, `IWER not installed in this environment: ${iwer.error}`);
 
     const diag = captureDiagnostics(page);
-    await page.goto('/');
+    await page.goto('/?studio=false');
     await waitForEngineReady(page);
 
     const run = await driveWebXrSession(page, 'immersive-vr');
