@@ -155,6 +155,7 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val ready = sheets != null && padMesh != null && groundMesh != null
     firstFrame.holdUntil(ready, "material pads")
+    val readyNow by androidx.compose.runtime.rememberUpdatedState(ready)
     var readout by remember { mutableStateOf(FeelReadout()) }
     val timing = remember { longArrayOf(0L) }
     val framing = remember { doubleArrayOf(0.0) }
@@ -186,7 +187,8 @@ fun FeelDemo(onBack: () -> Unit) {
             fillLightNode = null,
             surfaceMirrorer = recorder.surfaceMirrorer,
             frameRatePolicy = FrameRatePolicy.Continuous(),
-            onTouchEvent = { event, _ -> if (ready) touch.onEvent(event) else true },
+            // Read through state: the scene keeps the first callback it was given.
+            onTouchEvent = { event, _ -> if (readyNow) touch.onEvent(event) else true },
             onFrame = { nanos ->
                 val aspect = camera.getViewPortAspect()
                 if (aspect != framing[0]) {
