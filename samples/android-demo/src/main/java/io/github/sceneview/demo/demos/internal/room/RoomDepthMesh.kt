@@ -73,14 +73,16 @@ internal object RoomDepthMesh {
         val tsdf = RerunTsdf(settings.voxelM, settings.truncationM, settings.maxBytes)
         var count = 0
         var fused = 0
-        val file = CountingInput(depth.inputStream())
-        BufferedInputStream(file, STREAM_BUFFER).use { input ->
+        val file = CountingInput(BufferedInputStream(depth.inputStream(), STREAM_BUFFER))
+        file.use { input ->
             ScanDepthFormat.readHeader(input) ?: return null
             while (true) {
                 val recorded = ScanDepthFormat.readFrame(input) ?: break
                 count++
-                if (count % PROGRESS_FRAMES == 0) progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
-                if (!(integrates?.get(recorded.nanos) ?: !recorded.rejected)) continue
+                if (!(integrates?.get(recorded.nanos) ?: !recorded.rejected)) {
+                    progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
+                    continue
+                }
                 tsdf.integrate(
                     recorded.frame,
                     minConfidence = settings.minConfidence,
@@ -89,6 +91,7 @@ internal object RoomDepthMesh {
                     distanceWeighted = true,
                 )
                 fused++
+                progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
             }
         }
         if (fused == 0) return null
@@ -100,10 +103,15 @@ internal object RoomDepthMesh {
             minWeight = settings.minWeight,
             maxTriangles = settings.maxTriangles,
             minComponentTriangles = settings.minComponentTriangles,
-            progress = { progress(FUSE_SHARE + (1f - FUSE_SHARE) * it) },
+            progress = { progress(FUSE_SHARE + (MESH_END - FUSE_SHARE) * it) },
             weakestCorner = settings.weakestCorner,
         )
-        val (mesh, holes) = if (settings.holeSpanM > 0f) closeHoles(extraction.mesh, settings.holeSpanM) else extraction.mesh to 0
+        val (mesh, holes) = if (settings.holeSpanM > 0f) {
+            closeHoles(extraction.mesh, settings.holeSpanM) { progress(MESH_END + (1f - MESH_END) * it) }
+        } else {
+            extraction.mesh to 0
+        }
+        progress(1f)
         return Result(
             mesh = mesh,
             holesClosed = holes,
@@ -128,14 +136,15 @@ internal object RoomDepthMesh {
      * [mesh] with its holes of a rim under [spanM] closed by [MeshCleanup.fillSmallHoles]: a
      * vertex it adds takes the normal of the triangles round it, the others keep theirs.
      */
-    private fun closeHoles(mesh: RerunMesh, spanM: Float): Pair<RerunMesh, Int> {
-        val (filled, holes) = MeshCleanup.fillSmallHoles(CleanGeometry.of(mesh), maxSpanM = spanM)
+    private fun closeHoles(mesh: RerunMesh, spanM: Float, progress: (Float) -> Unit): Pair<RerunMesh, Int> {
+        val (filled, holes) = MeshCleanup.fillSmallHoles(CleanGeometry.of(mesh), maxSpanM = spanM, progress = { progress(it * NORMALS_START) })
         if (holes == 0) return mesh to 0
         val n = filled.vertexCount
         val normals = mesh.normals.copyOf(n * 3)
         val p = filled.positions
         val ix = filled.indices
         for (t in 0 until filled.triangleCount) {
+            if (t % PROGRESS_TRIANGLES == 0) progress(NORMALS_START + (1f - NORMALS_START) * t / filled.triangleCount)
             val a = ix[t * 3]
             val b = ix[t * 3 + 1]
             val c = ix[t * 3 + 2]
@@ -204,8 +213,10 @@ internal object RoomDepthMesh {
     /** A room's furniture and shell at 2 cm is a few hundred thousand triangles; past this the cells coarsen. */
     const val MAX_TRIANGLES = 600_000
 
-    private const val FUSE_SHARE = 0.8f
-    private const val PROGRESS_FRAMES = 8
+    private const val FUSE_SHARE = 0.65f
+    private const val MESH_END = 0.88f
+    private const val NORMALS_START = 0.9f
+    private const val PROGRESS_TRIANGLES = 1024
     private const val STREAM_BUFFER = 1 shl 16
     private const val NANOS_PER_MS = 1_000_000L
 }

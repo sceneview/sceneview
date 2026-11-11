@@ -37,6 +37,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -747,6 +748,7 @@ internal fun RerunModelScreen(
     val shellOf = remember { AtomicReference<Any?>(null) }
     // The scan whose fused surface is on screen (ScanDepthModel.kt): it stays, as a shell does.
     val depthModelOf = remember { AtomicReference<Any?>(null) }
+    var buildProgress by remember(source, id, shellInput) { mutableStateOf(ScanModelProgress()) }
     val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput) {
         // A room opens on its shell (RoomShellLayer.kt): read back, or built here, the old finish
         // never run beside it. One already on screen stays: the recording read behind it, or the
@@ -764,7 +766,12 @@ internal fun RerunModelScreen(
                 if (shown != null && shellInput != null) {
                     value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
                 }
-                runCatching { roomShellOf(store, id, shellInput, releaseLive) { job.ensureActive() } }
+                runCatching {
+                    roomShellOf(store, id, shellInput, releaseLive) {
+                        job.ensureActive()
+                        buildProgress = buildProgress.advance(it)
+                    }
+                }
                     .onFailure { if (it is CancellationException) throw it }
                     .onFailure { Log.w(TAG, "room shell failed", it) }
                     .getOrNull()
@@ -791,6 +798,7 @@ internal fun RerunModelScreen(
                             value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
                         }
                         job.ensureActive()
+                        buildProgress = buildProgress.advance(it)
                     }
                 }
                     .onFailure { if (it is CancellationException) throw it }
@@ -822,9 +830,11 @@ internal fun RerunModelScreen(
         val built = kept ?: source?.usable()?.let { from ->
             withContext(Dispatchers.Default) {
                 val job = coroutineContext.job
-                // The line narrates the step without a share (one indicator, `DESIGN.md`): the
-                // share is only where a screen closed meanwhile stops the build.
-                val report = { _: Float -> job.ensureActive() }
+                // Report actual work to the result card and stop when the screen leaves.
+                val report = { fraction: Float ->
+                    job.ensureActive()
+                    buildProgress = buildProgress.advance(fraction)
+                }
                 // A big scan's raw surface is shown while it finishes; the model then takes its place.
                 // Finishing again, the kept one is already shown, its .glb the finish's own: a
                 // second, written again, would hold as much heap once more.
@@ -878,17 +888,6 @@ internal fun RerunModelScreen(
     val framedBy = (state as? ModelState.Ready)?.framedBy
     // What the user set on the screen is kept across the model that takes the first one's place.
     val opensOn = (state as? ModelState.Ready)?.opensOn
-    // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
-    // never beside a big scan's finish ([groundSource]). Until the next settles, the last one stays.
-    val groundModel = groundSource(model, settled)
-    val ground by produceState<GroundBuild?>(null, groundModel) {
-        groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
-    }
-    // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
-    // out, never drawn but for More › Measure. The coverage is the capture's to show now.
-    val rescan by produceState<RescanBuild?>(null, source, ground) {
-        value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground) } }
-    }
     // Its frame: square to the walls it saw, on its own box (ScanResultFraming), read once off the
     // model it is framed by ([resultFramedBy]). A new frame — a stale model built again — is read
     // behind the one shown, which stays until then: the room is never left undrawn meanwhile.
@@ -959,6 +958,17 @@ internal fun RerunModelScreen(
     var measuring by remember(opensOn) { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var shown by remember(opensOn) { mutableStateOf(false) }
+    // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
+    // after the first model frame, so analysis cannot compete with its upload and framing.
+    val groundModel = groundSource(model, settled && shown)
+    val ground by produceState<GroundBuild?>(null, groundModel) {
+        groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
+    }
+    // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
+    // out, never drawn but for More › Measure. The coverage is the capture's to show now.
+    val rescan by produceState<RescanBuild?>(null, source, ground) {
+        value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground) } }
+    }
     // Photo | Model | Plan, QA preview (ResultLayers.kt): the scan's surfels as splats.
     // A room's shell opens on its model and offers Photo next to it; without one, Photo first.
     val layers = rememberResultLayers(
@@ -973,7 +983,8 @@ internal fun RerunModelScreen(
     LaunchedEffect(layers, settled) {
         if (settled && scope.hasFloorPlan && layers.offered && model?.finished == true) layers.photoPicked = false
     }
-    val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
+    // Recorded-depth models appear directly: building a large wire must not hide the surface.
+    val animateReveal = (LocalMotionEnabled.current || DemoSettings.qaMotion) && !(id != null && depthModelOf.get() == id)
     var revealOver by remember(opensOn, animateReveal) { mutableStateOf(!animateReveal) }
     // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
     // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
@@ -1021,7 +1032,12 @@ internal fun RerunModelScreen(
         actionsMenu = true,
         topOverlay = { ScanNameCard(title = title, saved = id != null && settled, onRename = rename) },
         bottomOverlay = {
-            ModelStatus.slot(model, settled, rawShownFirst, finishedSaid)?.let { slot -> ModelStatusLine(slot) }
+            val status = ModelStatus.slot(model, settled, rawShownFirst, finishedSaid)
+            if (status != null) {
+                ModelStatusLine(status, progress = buildProgress.fraction.takeIf { !settled })
+            } else if (model != null && !shown) {
+                ModelStatusCard(stringResource(R.string.scan_result_creating), progress = buildProgress.fraction)
+            }
             // Laid out from the start and only faded: the model is framed above this slot, and a
             // hint that came and went would move the model when it goes.
             val hintShown = shown && hintVisible
@@ -1506,12 +1522,13 @@ internal class ModelStatusSlot(val status: ModelStatus, val visible: Boolean) {
 
 /** [slot] as the model screen lays it out under the model: faded, and not heard, once it is not [ModelStatusSlot.visible]. */
 @Composable
-internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifier) {
+internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifier, progress: Float? = null) {
     // Faded, not removed, once said: the model is framed above this slot (as the hint).
     val statusAlpha by animateFloatAsState(if (slot.visible) 1f else 0f, motionFade(), label = "status")
     ModelStatusCard(
         text = stringResource(slot.status.text),
         reserve = slot.reserve.map { stringResource(it.text) },
+        progress = progress,
         modifier = modifier
             .alpha(statusAlpha)
             .then(if (slot.visible) Modifier else Modifier.clearAndSetSemantics { }),
@@ -1525,20 +1542,30 @@ internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifie
  * heard — so the card keeps its room whichever of them it ends on.
  */
 @Composable
-internal fun ModelStatusCard(text: String, modifier: Modifier = Modifier, reserve: List<String> = emptyList()) {
+internal fun ModelStatusCard(
+    text: String,
+    modifier: Modifier = Modifier,
+    reserve: List<String> = emptyList(),
+    progress: Float? = null,
+) {
     val chrome = LocalStageChrome.current
     OverlayCard(testTag = RERUN_MODEL_CARD_TAG, modifier = modifier) {
-        Box {
-            // First in the box, so the line keeps its node as it changes, and is heard changing.
-            NarrationText(
-                text,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                color = chrome.onCard,
-                style = SceneViewTokens.Type.card,
-            )
-            // A narrated line in both its forms: as written, and drawn with its three dots.
-            reserve.flatMap { line -> listOfNotNull(line, narrationBase(line)?.let { "$it..." }) }.forEach { line ->
-                Text(line, style = SceneViewTokens.Type.card, modifier = Modifier.alpha(0f).clearAndSetSemantics { })
+        Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Box {
+                // First in the box, so the line keeps its node as it changes, and is heard changing.
+                NarrationText(
+                    text,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    color = chrome.onCard,
+                    style = SceneViewTokens.Type.card,
+                )
+                // A narrated line in both its forms: as written, and drawn with its three dots.
+                reserve.flatMap { line -> listOfNotNull(line, narrationBase(line)?.let { "$it..." }) }.forEach { line ->
+                    Text(line, style = SceneViewTokens.Type.card, modifier = Modifier.alpha(0f).clearAndSetSemantics { })
+                }
+            }
+            progress?.let { fraction ->
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
             }
         }
     }

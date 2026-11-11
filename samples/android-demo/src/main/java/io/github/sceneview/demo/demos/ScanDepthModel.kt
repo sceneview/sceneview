@@ -80,17 +80,24 @@ internal fun depthModelOf(
     progress: (Float) -> Unit = {},
 ): RerunScanModel? {
     if (store == null || id == null) return null
-    store.depthModel(id, DEPTH_MODEL_VERSION)?.let { return depthModel(it) }
+    store.depthModel(id, DEPTH_MODEL_VERSION)?.let {
+        val model = depthModel(it)
+        if (model != null) progress(1f)
+        return model
+    }
     val depth = File(store.directoryOf(id), ScanDepthFormat.FILE).takeIf { it.isFile } ?: return null
     val standsAsRoom = scope == ScanScope.Room && (cloud == null || RoomBox.of(cloud, floorY) != null)
     if (resultKindOf(scope, hasRecording = true, standsAsRoom = standsAsRoom) != ResultKind.DepthModel) return null
     if (!ScanDepthFormat.readable(depth)) return null
     onRecording()
+    progress(0f)
     val fused = RoomDepthMesh.fuse(depth) { progress(it * FUSE_SHARE) } ?: return null
-    val mesh = capped(fused.mesh) { progress(FUSE_SHARE + (1f - FUSE_SHARE) * it) }
+    val mesh = capped(fused.mesh) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
     if (mesh.triangleCount == 0) return null
+    progress(WRITE_START)
     val glb = RerunMeshGlb.write(mesh, generator = "SceneView depth model")
     runCatching { store.saveDepthModel(id, glb, DEPTH_MODEL_VERSION) }
+    progress(1f)
     return depthModel(glb, mesh, budgetReached = fused.droppedBlocks > 0)
 }
 
@@ -120,8 +127,15 @@ private fun depthModel(glb: ByteArray, mesh: RerunMesh? = null, budgetReached: B
     )
 }
 
-private const val FUSE_SHARE = 0.9f
+private const val FUSE_SHARE = 0.85f
+private const val WRITE_START = 0.98f
 
 /** A collapse moves the surface less than a voxel; one stalled over the budget, up to two. */
 private const val SIMPLIFY_ERROR_M = 0.01f
 private const val SIMPLIFY_ERROR_CEILING_M = 0.04f
+
+/** Real work can retry a stage; the displayed share never moves backwards or exceeds its range. */
+internal data class ScanModelProgress(val fraction: Float = 0f) {
+    fun advance(next: Float): ScanModelProgress =
+        if (next.isFinite()) ScanModelProgress(maxOf(fraction, next.coerceIn(0f, 1f))) else this
+}

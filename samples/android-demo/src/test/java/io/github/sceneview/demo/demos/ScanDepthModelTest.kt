@@ -40,6 +40,29 @@ class ScanDepthModelTest {
     val folder = TemporaryFolder()
 
     @Test
+    fun `displayed progress starts at zero and clamps retries and invalid reports`() {
+        var state = ScanModelProgress()
+        assertEquals(0f, state.fraction, 0f)
+        for (value in listOf(0.2f, 0.1f, Float.NaN, Float.POSITIVE_INFINITY, -1f)) {
+            state = state.advance(value)
+            assertEquals(0.2f, state.fraction, 0f)
+        }
+        assertEquals(1f, state.advance(2f).fraction, 0f)
+    }
+
+    @Test
+    fun `depth build reports advancing fusion meshing and finishing progress`() {
+        val reports = ArrayList<Float>()
+        assertNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null, progress = reports::add))
+        assertEquals(0f, reports.first(), 0f)
+        assertEquals(1f, reports.last(), 0f)
+        assertTrue(reports.zipWithNext().all { (a, b) -> b >= a })
+        assertTrue("per frame fusion", reports.count { it > 0f && it < 0.55f } >= frames.size - 1)
+        assertTrue("meshing", reports.any { it in 0.56f..0.74f })
+        assertTrue("hole closing", reports.any { it in 0.75f..0.84f })
+    }
+
+    @Test
     fun `a room that stands as one opens on its shell, with or without a recording`() {
         assertEquals(ResultKind.Shell, resultKindOf(ScanScope.Room, hasRecording = true, standsAsRoom = true))
         assertEquals(ResultKind.Shell, resultKindOf(ScanScope.Room, hasRecording = false, standsAsRoom = true))
