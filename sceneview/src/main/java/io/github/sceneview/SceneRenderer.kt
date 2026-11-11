@@ -391,7 +391,7 @@ class SceneRenderer(
      */
     fun destroy() {
         // UiHelper.detach invokes onDetachedFromSurface synchronously. Its wait shares the
-        // mirror wait's deadline, including time spent in onHostLost.
+        // mirror wait's budget, excluding time spent in onHostLost.
         val previousBudget = surfaceDetachBudget
         val budget = previousBudget ?: SurfaceDetachBudget()
         surfaceDetachBudget = budget
@@ -484,11 +484,11 @@ class SceneRenderer(
             // PlatformEGL tolerates (a failed eglMakeCurrent is logged, eglSwapBuffers' result
             // is ignored) and which drops those frames — nothing is on screen any more anyway.
             val budget = surfaceDetachBudget ?: SurfaceDetachBudget()
-            if (!engine.flushAndWait(budget.remainingNanos())) {
+            if (!budget.waitFor { engine.flushAndWait(it) }) {
                 android.util.Log.w(
                     "SceneRenderer",
                     "Surface detached, backend still busy after " +
-                        "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer (#3799)"
+                        "${budget.lastWaitNanos / 1_000_000} ms; not waiting longer (#3799)"
                 )
             }
         }

@@ -1,2 +1,2 @@
 <!-- category: Fixed -->
-- **Android recording disposal (#4864).** Mirror and scene surface teardown share one one-second wait budget. Recorder surface release still follows the mirror wait; a later window detach submits destruction with only the remaining timeout.
+- **Android recording disposal (#4864).** Mirror and scene surface teardown share one one-second budget for time spent waiting on the backend, excluding recorder finalisation and other teardown work. Recorder surface release still follows the mirror wait; a later window detach submits destruction with only the remaining timeout. Busy-backend warnings report the actual wait duration.

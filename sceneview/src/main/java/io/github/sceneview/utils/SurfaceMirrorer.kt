@@ -252,7 +252,7 @@ class SurfaceMirrorer {
             android.util.Log.w(
                 "SurfaceMirrorer",
                 "Mirroring stopped, backend still busy after " +
-                    "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+                    "${waitBudget.lastWaitNanos / 1_000_000} ms; not waiting longer"
             )
         }
     }
@@ -325,8 +325,8 @@ class SurfaceMirrorer {
         }
         this.engine = null
         if (engine != null) release(engine, swapChains, waitBudget)
-        // Renderer destruction has an unbounded native wait. Defer it; elapsed time alone
-        // never authorizes it. The engine must outlive the deferred release.
+        // Renderer destruction has an unbounded native wait. Defer it until a fresh fence is
+        // reached (any reached fence after the 5 s fallback). The engine must outlive the release.
         if (renderer != null) engine?.destroyRendererWhenBackendIdle(renderer)
         onHostLost?.invoke()
     }
@@ -366,5 +366,5 @@ internal fun <S> releaseSwapChains(
 ): Boolean {
     if (swapChains.isEmpty()) return true
     swapChains.forEach(destroySwapChain)
-    return flushAndWait(waitBudget.remainingNanos())
+    return waitBudget.waitFor(flushAndWait)
 }
