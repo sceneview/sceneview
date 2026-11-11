@@ -21,10 +21,12 @@ class MatterCaptionTest {
         for (material in FeelMaterial.entries) {
             assertEquals(false, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = false))
             assertEquals(false, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = true))
-            assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(1f), pressed = false))
+            assertEquals(false, MatterSurfaces.showsDisplacement(material, Indentation(1f), pressed = false))
+            assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(1f), pressed = true))
+            assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(2f), pressed = false))
         }
         assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(0f, -2f), false))
-        assertTrue(MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(-1f), false))
+        assertTrue(MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(-2f), false))
         assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.MemoryFoam, Indentation(.001f), false))
     }
 
@@ -33,7 +35,7 @@ class MatterCaptionTest {
         for (now in 0L..12000L step 16L) {
             simulation.advance(now)
             val state = simulation.pads[0]
-            if (state.depthMm < .5f) {
+            if (state.depthMm < 2f) {
                 assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.MemoryFoam, state, false))
             }
         }

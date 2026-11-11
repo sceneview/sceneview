@@ -9,7 +9,7 @@ package io.github.sceneview.demo.demos.internal.feel
  * Memory foam     .86 .79 .59              .94        0      0     0
  * Gel             1 1 1                   .045       0      0     0  (amber absorption, IOR 1.45)
  * Velvet          .009 .065 .028           .90        0      0     emerald pile, strength 1
- * Leather         .22 .075 .028            .44        0      .30   0
+ * Leather         .22 .075 .028            .44        0      .22   0  (coat roughness .30)
  * Carrara marble  .82 .83 .80              .09        0      1     0  (coat roughness .055)
  * Brushed steel   .56 .58 .60              .26        1      0     0  (anisotropy .95)
  * Opening ceramic .025 .03 .04             .16        0      .80   0
@@ -40,7 +40,7 @@ internal object MatterSurfaces {
             rimRadius = 1.08f, rimWidth = .22f, visualMm = .036f),
         Surface(.009f, .065f, .028f, .90f, sheen = 1f, bulge = .22f,
             wrinkles = .075f, foldCount = 18f, visualMm = .055f),
-        Surface(.22f, .075f, .028f, .44f, coat = .30f, falloff = 2.6f,
+        Surface(.22f, .075f, .028f, .44f, coat = .22f, coatRoughness = .30f, falloff = 2.6f,
             bulge = .26f, wrinkles = .13f, foldCount = 7f, rimRadius = 1.12f,
             rimWidth = .23f, visualMm = .075f),
         Surface(.82f, .83f, .80f, .09f, coat = 1f, coatRoughness = .055f),
@@ -66,8 +66,8 @@ internal object MatterSurfaces {
         return depth.coerceIn(-FeelSimulation.PAD_THICKNESS * .25f, FeelSimulation.PAD_THICKNESS * .78f)
     }
 
-    /** Never select a numeric caption if its whole-millimetre readout would round to zero. */
+    /** At rest, sub-2 mm recovery reads as character; contact still reports whole millimetres. */
     fun showsDisplacement(material: FeelMaterial, state: Indentation, pressed: Boolean): Boolean =
-        !material.rigid && kotlin.math.abs(state.depthMm) >= .5f &&
+        !material.rigid && kotlin.math.abs(state.depthMm) >= (if (pressed) .5f else 2f) &&
             (pressed || kotlin.math.abs(visualDepth(state.depthMm, material)) > .003f)
 }

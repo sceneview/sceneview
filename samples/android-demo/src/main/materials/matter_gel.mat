@@ -232,8 +232,8 @@ fragment {
         // on this thin slab, especially at the concave wall's grazing angles.
         float top = smoothstep(-materialParams.dimensions.w * 2.0, 0.0, p.y);
         float compressed = variable_rest.w * top;
-        material.absorption = materialParams.absorption * mix(1.0, 0.45, compressed);
-        material.thickness = mix(min(thickness, 0.55), min(thickness, 0.32), compressed);
+        material.absorption = materialParams.absorption * mix(0.75, 0.25, compressed);
+        material.thickness = mix(min(thickness, 0.28), min(thickness, 0.10), compressed);
         material.ambientOcclusion = 1.0;
     }
 }

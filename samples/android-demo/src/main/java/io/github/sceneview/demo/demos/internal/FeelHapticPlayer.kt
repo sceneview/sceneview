@@ -9,94 +9,95 @@ import android.os.Vibrator
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
-import io.github.sceneview.demo.demos.internal.feel.FeelPulse
-import io.github.sceneview.demo.demos.internal.feel.FeelPulseKind
-import io.github.sceneview.demo.demos.internal.feel.foamIntensity
-import kotlin.math.roundToInt
+import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.demos.internal.feel.FeelEffect
+import io.github.sceneview.demo.demos.internal.feel.FeelPrimitive
+import io.github.sceneview.demo.demos.internal.feel.waveform
 
-/** Android boundary only. Timing, strength and one-shot stops live in the pure scheduler. */
+/** Android boundary. Never queues work: one composition/waveform, or one View feedback, in flight. */
 internal class FeelHapticPlayer(private val view: View) {
     private val vibrator = view.context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     private val attributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-        .build()
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
     private val supported = mutableMapOf<Int, Boolean>()
-    // Exact design envelope sampled at 20 ms. A zero amplitude is an off segment.
-    private val foamTimings = LongArray(71) { if (it == 0) 0L else 20L }
-    private val foamAmplitudes = IntArray(71) { (255f * foamIntensity(it * 20L)).roundToInt() }
-    private var foamStartedAt: Long? = null
+    private val durations = mutableMapOf<Int, Int>()
+    private var busyUntil = 0L
+    private var lastStarted: Long? = null
 
-    fun play(pulse: FeelPulse) {
-        // Vibrator does not consistently apply the View's touch-feedback setting itself.
-        if (!view.isAttachedToWindow || !view.hasWindowFocus() || !view.isHapticFeedbackEnabled ||
-            Settings.System.getInt(view.context.contentResolver, Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) == 0
-        ) return
+    private fun allowed(): Boolean = !DemoSettings.qaMode && view.isAttachedToWindow && view.hasWindowFocus() &&
+        view.isHapticFeedbackEnabled && Settings.System.getInt(view.context.contentResolver,
+            Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) != 0
+
+    fun play(effect: FeelEffect) {
+        if (!allowed()) { cancel(); return }
+        val now = SystemClock.uptimeMillis()
+        if (now < busyUntil || lastStarted?.let { now - it < 25L } == true) return
         val motor = vibrator
-        if (pulse.kind == FeelPulseKind.FoamEnvelope) {
-            // Without amplitude control there is no faithful soft bed: omit it, never buzz.
-            if (motor != null && motor.hasVibrator() && Build.VERSION.SDK_INT >= 26 && motor.hasAmplitudeControl()) {
-                try {
-                    motor.vibrate(VibrationEffect.createWaveform(foamTimings, foamAmplitudes, -1), attributes)
-                    foamStartedAt = SystemClock.uptimeMillis()
-                } catch (_: RuntimeException) { /* Optional device capability. */ }
-            }
-            return
-        }
         if (motor != null && motor.hasVibrator() && Build.VERSION.SDK_INT >= 26) {
-            try {
-                // API 30 cannot reliably query individual primitive support.
-                if (Build.VERSION.SDK_INT >= 31) {
-                    val primitive = when (pulse.kind) {
-                        FeelPulseKind.LowTick -> VibrationEffect.Composition.PRIMITIVE_LOW_TICK
-                        FeelPulseKind.Click -> VibrationEffect.Composition.PRIMITIVE_CLICK
-                        FeelPulseKind.FoamEnvelope -> return
-                    }
-                    if (supported.getOrPut(primitive) { motor.areAllPrimitivesSupported(primitive) }) {
-                        motor.vibrate(
-                            VibrationEffect.startComposition().addPrimitive(primitive, pulse.scale).compose(),
-                            attributes,
-                        )
+            if (Build.VERSION.SDK_INT >= 30) {
+                try {
+                    val ids = effect.pulses.map { primitiveId(it.kind) }
+                    if (ids.all { id -> id != null && supported.getOrPut(id) {
+                            motor.arePrimitivesSupported(id).firstOrNull() == true
+                        } }) {
+                        val composition = VibrationEffect.startComposition()
+                        var duration = 0L
+                        for ((index, pulse) in effect.pulses.withIndex()) {
+                            val id = ids[index]!!
+                            composition.addPrimitive(id, pulse.scale, pulse.pauseMillis)
+                            duration += pulse.pauseMillis + if (Build.VERSION.SDK_INT >= 31) {
+                                durations.getOrPut(id) { motor.getPrimitiveDurations(id).firstOrNull() ?: 0 }
+                                    .takeIf { it > 0 }?.toLong() ?: pulse.kind.durationMillis
+                            } else pulse.kind.durationMillis
+                        }
+                        motor.cancel()
+                        motor.vibrate(composition.compose(), attributes)
+                        busyUntil = now + maxOf(25L, duration); lastStarted = now
                         return
                     }
-                }
-                val duration = when (pulse.kind) {
-                    FeelPulseKind.LowTick -> 8L
-                    FeelPulseKind.Click -> 20L
-                    FeelPulseKind.FoamEnvelope -> return
-                }
-                val amplitude = if (motor.hasAmplitudeControl()) {
-                    (pulse.scale * 255f).toInt().coerceIn(1, 255)
-                } else VibrationEffect.DEFAULT_AMPLITUDE
-                motor.vibrate(VibrationEffect.createOneShot(duration, amplitude), attributes)
-                return
-            } catch (_: RuntimeException) {
-                // Missing permission or a vendor implementation rejecting an advertised effect.
+                } catch (_: RuntimeException) { /* Try the waveform if a vendor rejects composition. */ }
             }
+            try {
+                if (motor.hasAmplitudeControl()) {
+                    val waveform = effect.waveform()
+                    motor.cancel()
+                    motor.vibrate(VibrationEffect.createWaveform(waveform.timings, waveform.amplitudes, -1), attributes)
+                    busyUntil = now + maxOf(25L, waveform.timings.sum()); lastStarted = now
+                    return
+                }
+            } catch (_: RuntimeException) { /* Missing permission or vendor implementation. */ }
         }
-        view.performHapticFeedback(
-            if (pulse.kind == FeelPulseKind.Click) HapticFeedbackConstants.CONTEXT_CLICK
-            else HapticFeedbackConstants.CLOCK_TICK,
-        )
+        // No amplitude control: let the platform choose its touch effect rather than a loud buzz.
+        val feedback = when (effect.pulses.first().kind) {
+            FeelPrimitive.Click -> HapticFeedbackConstants.CONTEXT_CLICK
+            FeelPrimitive.SlowRise, FeelPrimitive.QuickRise -> HapticFeedbackConstants.LONG_PRESS
+            else -> HapticFeedbackConstants.CLOCK_TICK
+        }
+        if (view.performHapticFeedback(feedback)) {
+            busyUntil = now + maxOf(50L, effect.durationMillis); lastStarted = now
+        }
+    }
+
+    private fun primitiveId(kind: FeelPrimitive): Int? = when (kind) {
+        FeelPrimitive.LowTick -> if (Build.VERSION.SDK_INT >= 31) VibrationEffect.Composition.PRIMITIVE_LOW_TICK else null
+        FeelPrimitive.Tick -> VibrationEffect.Composition.PRIMITIVE_TICK
+        FeelPrimitive.Click -> VibrationEffect.Composition.PRIMITIVE_CLICK
+        FeelPrimitive.SlowRise -> VibrationEffect.Composition.PRIMITIVE_SLOW_RISE
+        FeelPrimitive.QuickRise -> VibrationEffect.Composition.PRIMITIVE_QUICK_RISE
+    }
+
+    /** Also called while idle, so QA/focus changes stop an envelope already playing. */
+    fun onFrame() {
+        if (busyUntil == 0L) return
+        if (!allowed()) cancel()
+        else if (SystemClock.uptimeMillis() >= busyUntil) busyUntil = 0L
     }
 
     fun cancel() {
-        foamStartedAt = null
-        try { vibrator?.cancel() } catch (_: RuntimeException) { /* Optional device capability. */ }
-    }
-
-    /** A normal finger lift gets the design's 20 ms tail; interruption always uses cancel(). */
-    fun release() {
-        val started = foamStartedAt
-        val amplitude = started?.let { (255f * foamIntensity(SystemClock.uptimeMillis() - it)).roundToInt() } ?: 0
-        cancel()
-        val motor = vibrator ?: return
-        if (amplitude == 0 || Build.VERSION.SDK_INT < 26 || !view.hasWindowFocus()) return
-        try {
-            motor.vibrate(VibrationEffect.createWaveform(
-                longArrayOf(0, 5, 5, 5, 5),
-                intArrayOf(0, amplitude, amplitude * 2 / 3, amplitude / 3, 0), -1,
-            ), attributes)
-        } catch (_: RuntimeException) { /* Optional device capability. */ }
+        if (busyUntil != 0L) {
+            try { vibrator?.cancel() } catch (_: RuntimeException) { /* Optional capability. */ }
+        }
+        busyUntil = 0L
     }
 }

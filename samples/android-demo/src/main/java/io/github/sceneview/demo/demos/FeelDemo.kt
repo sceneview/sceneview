@@ -225,6 +225,7 @@ fun FeelDemo(onBack: () -> Unit) {
         val focused = touchView.hasWindowFocus()
         // Initial composition can precede window focus. Do not dismiss an opening not yet shown.
         if (!focused && (simulation.active != null || simulation.opening.visible)) touch.cancel()
+        haptics.onFrame()
         touch.followIndentation()
         simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && openingAllowed)
             ?.let(haptics::play)
@@ -317,7 +318,7 @@ fun FeelDemo(onBack: () -> Unit) {
                     ShowroomFloor(stage = showroom, center = center, floorY = floorY,
                         radius = MatterStage.RADIUS, halfWidth = FeelSimulation.PAD_HALF_WIDTH,
                         halfDepth = FeelSimulation.PAD_HALF_LENGTH, yawDegrees = 0f,
-                        showFloor = true, shadowAlpha = if (switching) 0f else 1f)
+                        showFloor = true, shadowAlpha = if (switching) 0f else if (displayed == FeelMaterial.Gel) .08f else 1f)
                     FeelMaterial.entries.forEach { kind ->
                         Node(isVisible = kind == FeelMaterial.MemoryFoam, apply = { pads[kind.ordinal] = this }) {
                             MeshNode(
@@ -349,7 +350,12 @@ fun FeelDemo(onBack: () -> Unit) {
                 ShowroomViewOptions(view, dark, staged = true, showroomLit = true,
                     radius = MatterStage.RADIUS, requestRender = {})
                 // Apply AFTER the showroom/default quality effects; Matter has no bloom halo.
-                LaunchedEffect(view, dark) {
+                LaunchedEffect(view, dark, displayed) {
+                    // SSAO darkens the floor through screen-space transmission, even without
+                    // a receiving shadow flag on the gel mesh. Keep its optical background clear.
+                    view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply {
+                        enabled = displayed != FeelMaterial.Gel
+                    }
                     view.bloomOptions = view.bloomOptions.apply { enabled = false }
                     view.shadowType = View.ShadowType.DPCF
                 }
@@ -495,11 +501,11 @@ private class FeelTouch(
 
     fun cancel(released: Boolean = false) {
         simulation.opening.cancel()
-        if (released && simulation.active != null) haptics.release() else haptics.cancel()
+        haptics.cancel()
         pointerId = -1
         emptyGesture = false
         velocity?.recycle(); velocity = null
-        simulation.release(SystemClock.uptimeMillis())
+        simulation.release(SystemClock.uptimeMillis(), hapticRelease = released)
     }
 
     private fun pointOnPad(kind: FeelMaterial, deformed: Boolean): Pair<Float, Float>? {

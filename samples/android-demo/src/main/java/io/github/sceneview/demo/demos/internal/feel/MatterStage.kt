@@ -44,7 +44,7 @@ internal class MatterStage {
             return true
         }
         // Re-centre the projected silhouette, not the origin: perspective lifts the far edge.
-        // The rounded silhouette fills ~90% width; a small upward bias leaves room for its shadow.
+        // The rounded silhouette fills ~90% width; the silhouette and soft shadow together centre in the free stage.
         repeat(5) {
             var low = 3f; var high = 100f
             repeat(30) {
@@ -63,7 +63,7 @@ internal class MatterStage {
                             val projected = (x * UP_X + cy * COS + z * UP_Z) / depth
                             bottom = minOf(bottom, projected); top = maxOf(top, projected)
                         }
-                targetY += ((bottom + top) * .5f - TAN_HALF_FOV / aspect * .04f) * distance / COS
+                targetY += ((bottom + top) * .5f - TAN_HALF_FOV / aspect * .11f) * distance / COS
             }
         }
         return true

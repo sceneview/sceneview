@@ -262,13 +262,13 @@ fragment {
         vec3 t = normalize(variable_bentTangent.xyz);
         t = normalize(t - n * dot(t, n));
         if (kind < 0.5) {
-            vec2 cell = cells(p * 48.0);
-            float resolved = 1.0 - smoothstep(0.45, 1.3, length(fwidth(p * 48.0)));
-            // Fine shallow open cells: only 3.5% albedo and 8% cavity occlusion, never dark dots.
-            float pore = (1.0 - smoothstep(0.15, 0.55, cell.x)) * resolved;
-            colour *= (1.0 - 0.035 * pore) * (1.0 - 0.035 * compressed);
-            occlusion = 1.0 - 0.08 * pore;
-            height = -0.0018 * pore * (1.0 - 0.8 * compressed);
+            vec2 cell = cells(p * 32.0);
+            float resolved = 1.0 - smoothstep(0.65, 1.5, length(fwidth(p * 32.0)));
+            // Open-cell walls, resolved at the hero distance, with no dark pore centres.
+            float wall = (1.0 - smoothstep(0.025, 0.20, cell.y - cell.x)) * resolved;
+            colour *= (0.982 + 0.018 * wall) * (1.0 - 0.035 * compressed);
+            occlusion = 0.98 + 0.02 * wall;
+            height = 0.0030 * wall * (1.0 - 0.65 * compressed);
         } else if (kind < 2.5) {
             vec2 nap = p.xz + p.y * vec2(0.31, 0.73);
             pile = noise2(nap * vec2(3.0, 8.0));
@@ -283,36 +283,55 @@ fragment {
             n = normalize(n + t * (sweep + crushed * 0.22) + b * sweep * 0.45);
             rough -= crushed * 0.12;
         } else if (kind < 3.5) {
-            vec2 cell = cells(p * 24.0);
-            float resolved = 1.0 - smoothstep(0.4, 1.4, length(fwidth(p * 24.0)));
-            float valley = (1.0 - smoothstep(0.015, 0.12, cell.y - cell.x)) * resolved;
-            colour *= 1.0 - 0.28 * valley;
-            height = -0.012 * valley;
-            rough += valley * 0.14;
-            coatRoughness += valley * 0.13;
-            occlusion = 1.0 - valley * 0.24;
+            vec2 cell = cells(p * 14.0);
+            float footprint = length(fwidth(p * 14.0));
+            float resolved = 1.0 - smoothstep(0.55, 1.5, footprint);
+            // Rounded irregular pebbles, not sharp micro-pits: a broad, smooth satin lobe.
+            float pebble = smoothstep(0.015, 0.25 + footprint * 0.12, cell.y - cell.x);
+            float valley = (1.0 - pebble) * resolved;
+            colour *= 1.0 - 0.18 * valley;
+            height = 0.0025 * pebble * resolved;
+            rough += valley * 0.10;
+            coatRoughness += valley * 0.10;
+            occlusion = 1.0 - valley * 0.10;
         } else if (kind < 4.5) {
-            // Across/along coordinates preserve one diagonal direction through the whole slab.
-            // Meander varies only along the vein: no closed 2D noise contours (agate swirls).
-            vec2 stone = vec2(p.x + p.z * 0.58, p.z - p.x * 0.58) + p.y * vec2(0.43, 0.71);
-            float along = stone.y;
-            float meander = (noise2(vec2(along * 0.65, 7.2)) - 0.5) * 0.34 +
-                (noise2(vec2(along * 1.7, 18.4)) - 0.5) * 0.09;
-            float across = stone.x + meander;
-            float band = floor(across / 1.35 + 0.5);
-            float centre = band * 1.35 + (hash3(vec3(band, 3.1, 9.7)).x - 0.5) * 0.30;
-            float offset = across - centre;
-            float width = mix(0.018, 0.060, noise2(vec2(along * 1.1, band + 4.8)));
-            float aa = max(fwidth(offset), 0.001);
-            float vein = 1.0 - smoothstep(width * 0.2, width + aa, abs(offset));
-            float deepVein = 1.0 - smoothstep(width, width * 3.0 + aa, abs(offset));
-            // A fine fork diverges and rejoins the main seam over 2.8 units of flow.
-            float branchPhase = fract((along + band * 0.7) / 2.8);
-            float branchOffset = 0.27 * sin(branchPhase * 3.14159265);
-            float branch = 1.0 - smoothstep(0.006, 0.016 + aa, abs(offset - branchOffset));
-            branch *= smoothstep(0.0, 0.18, branchPhase) * (1.0 - smoothstep(0.72, 1.0, branchPhase));
-            float cloud = fbm(stone * 1.15 + 3.4);
-            colour *= 1.0 - 0.07 * cloud - 0.12 * deepVein - 0.36 * vein - 0.13 * branch;
+            // Continuous high-precision coordinates: no rounded band IDs or periodic forks
+            // whose discontinuities print dashed lines across the polished top.
+            highp vec2 stone = vec2(p.x + p.z * 0.58, p.z - p.x * 0.58) + p.y * vec2(0.43, 0.71);
+            highp float along = stone.y;
+            highp float meander = (noise2(vec2(along * 0.8, 7.2)) - 0.5) * 0.85 +
+                (noise2(vec2(along * 2.1, 18.4)) - 0.5) * 0.18;
+            highp float across = stone.x + meander;
+            float cloud = fbm(stone * 0.95 + 3.4);
+            float broadWidth = mix(0.09, 0.28, cloud);
+            float softVein = exp(-pow((across + 1.15) / broadWidth, 2.0));
+            float secondVein = exp(-pow((across - 1.05 + 0.22 * sin(along * 1.6)) /
+                (broadWidth * 1.8), 2.0));
+            // Shared low-frequency phases keep seven vein layers from repeating the noise evaluation.
+            vec2 flow = vec2(sin(along * 1.2), cos(along * 1.2));
+            vec2 fadeFlow = vec2(sin(along * 0.85), cos(along * 0.85));
+            float hairlines = 0.0;
+            float forks = 0.0;
+            for (int i = 0; i < 7; i++) {
+                float seed = float(i);
+                vec3 h = hash3(vec3(seed, 3.1, 9.7));
+                highp float centre = -3.1 + seed * 0.98 + (h.x - 0.5) * 0.65;
+                vec2 direction = h.yz * 2.0 - 1.0;
+                highp float offset = across - centre + 0.18 * dot(flow, direction);
+                float life = clamp(0.5 + 0.42 * dot(fadeFlow, direction.yx) +
+                    0.25 * (cloud - 0.5), 0.0, 1.0);
+                float fade = smoothstep(0.22, 0.60, life);
+                float width = mix(0.004, 0.024, life * life);
+                float aa = max(fwidth(offset), 0.001);
+                hairlines += (1.0 - smoothstep(width, width + aa, abs(offset))) * fade;
+                if (i < 3) {
+                    float forkOffset = 0.10 + 0.25 * sin(along * 0.9 + seed);
+                    float fork = 1.0 - smoothstep(0.003, 0.008 + aa, abs(offset - forkOffset));
+                    forks += fork * fade * smoothstep(0.0, 0.45, forkOffset);
+                }
+            }
+            colour *= 1.0 - 0.09 * cloud - 0.20 * softVein - 0.12 * secondVein -
+                0.26 * min(hairlines, 1.0) - 0.12 * min(forks, 1.0);
             rough += cloud * 0.018;
         } else {
             // Visible long brushing plus subpixel micro-grooves, both running along X.
@@ -326,12 +345,17 @@ fragment {
             height = (streak - 0.5) * 0.0010 * resolved + (fine - 0.5) * 0.00018 * fineResolved;
         }
         // Surface-gradient bump from the rest-space field: no extra noise evaluations.
-        vec3 dx = dFdx(getWorldPosition()), dy = dFdy(getWorldPosition());
-        vec3 r1 = cross(dy, n), r2 = cross(n, dx);
-        float det = dot(dx, r1);
-        vec3 gradient = (dFdx(height) * r1 + dFdy(height) * r2) /
-            (abs(det) > 0.00000001 ? det : 0.00000001);
-        vec3 detailed = normalize(n - gradient);
+        vec3 detailed = n;
+        if (kind < 3.5 || kind > 4.5) {
+            highp vec3 dx = dFdx(getWorldPosition()), dy = dFdy(getWorldPosition());
+            highp vec3 r1 = cross(dy, n), r2 = cross(n, dx);
+            highp float det = dot(dx, r1);
+            // Never divide by a mediump epsilon that underflows to zero on mobile GPUs.
+            if (abs(det) > 0.000000000001) {
+                highp vec3 gradient = (dFdx(height) * r1 + dFdy(height) * r2) / det;
+                detailed = normalize(n - gradient);
+            }
+        }
         mat3 toTangent = transpose(getWorldTangentFrame());
         material.normal = toTangent * detailed;
         material.clearCoatNormal = toTangent * (kind > 2.5 && kind < 3.5 ? detailed : n);

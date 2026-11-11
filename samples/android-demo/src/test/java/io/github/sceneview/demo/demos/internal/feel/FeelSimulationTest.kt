@@ -105,7 +105,9 @@ class FeelSimulationTest {
         for (time in 0L..3000L step 16) simulation.advance(time)
         assertTrue(simulation.pads[0].depthMm > 15f)
         simulation.release(3000)
-        for (time in 3000L..13000L step 16) assertNull(simulation.advance(time))
+        val tails = (3000L..13000L step 16).mapNotNull { simulation.advance(it) }
+        assertEquals(1, tails.size)
+        assertEquals(FeelPrimitive.LowTick, tails.single().pulses.single().kind)
         assertTrue(simulation.pads[0].depthMm < 0.001f)
     }
 
@@ -171,16 +173,50 @@ class FeelSimulationTest {
         assertEquals(FeelMaterial.BrushedSteel, simulation.active)
     }
 
-    @Test fun onlyTransverseRealMovesProduceLeatherGrain() {
+    @Test fun gelReleaseHapticsFollowTheSamePadStateAsTheShaderAndSelectionCancelsThem() {
         val simulation = FeelSimulation()
-        simulation.begin(FeelMaterial.Leather, 0f, 0f, 1f, 0f, 0)
-        assertEquals(FeelPulseKind.Click, simulation.advance(0)?.kind)
-        simulation.move(0f, 0.5f, 1f, 0f)
-        assertNull(simulation.advance(200))
-        simulation.move(6f * FeelMaterial.WORLD_PER_MM, 0.5f, 1f, 0f)
-        assertEquals(FeelPulseKind.LowTick, simulation.advance(400)?.kind)
-        // Reprojecting a stationary finger is not physical travel.
-        simulation.fingerX[FeelMaterial.Leather.ordinal] += 0.5f
-        assertNull(simulation.advance(600))
+        simulation.begin(FeelMaterial.Gel, 0f, 0f, 1f, 0f, 0)
+        for (now in 0L..4000L step 16) simulation.advance(now)
+        simulation.release(4000)
+        var count = 0
+        var old = simulation.pads[FeelMaterial.Gel.ordinal]
+        for (now in 4016L..7000L step 16) {
+            val effect = simulation.advance(now)
+            val state = simulation.pads[FeelMaterial.Gel.ordinal]
+            if (effect != null) {
+                count++
+                assertEquals(FeelPrimitive.LowTick, effect.pulses.single().kind)
+                assertTrue(old.velocity < 0f && state.velocity >= 0f)
+                assertEquals(.65f * kotlin.math.abs(minOf(old.depthMm, state.depthMm)) / 6.15f,
+                    effect.pulses.single().scale, .00001f)
+            }
+            old = state
+        }
+        assertEquals(3, count)
+        simulation.begin(FeelMaterial.Gel, 0f, 0f, 1f, 0f, 7100)
+        for (now in 7100L..11100L step 16) simulation.advance(now)
+        simulation.release(11100)
+        simulation.select(FeelMaterial.Marble, 11110)
+        for (now in 11120L..14500L step 16) assertNull(simulation.advance(now))
+    }
+
+    @Test fun realMovesBrushLeatherOnBothAxesButReprojectionDoesNot() {
+        for (alongX in listOf(false, true)) {
+            val simulation = FeelSimulation()
+            simulation.begin(FeelMaterial.Leather, 0f, 0f, 1f, 0f, 0)
+            assertEquals(FeelPrimitive.Tick, simulation.advance(0)?.pulses?.single()?.kind)
+            var grains = 0
+            for (now in 10L..500L step 10) {
+                val travel = now / 500f
+                simulation.move(if (alongX) travel else 0f, if (alongX) 0f else travel, 1f, 0f)
+                simulation.advance(now)?.let { grains++ }
+            }
+            assertTrue(grains > 0)
+            // Reprojecting a stationary finger is not physical travel.
+            for (now in 510L..1000L step 10) {
+                simulation.fingerX[FeelMaterial.Leather.ordinal] += .005f
+                assertNull(simulation.advance(now))
+            }
+        }
     }
 }

@@ -41,8 +41,9 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     private var downMillis = 0L
     private var lastFrameMillis: Long? = null
     private var filteredPressure = 0f
-    private var haptics = HapticSchedule()
-    private var travelMm = 0f
+    private val haptics = FeelHaptics()
+    private var travelXmm = 0f
+    private var travelZmm = 0f
     private var lastTravelX = 0f
     val contactX = FloatArray(pads.size)
     val contactZ = FloatArray(pads.size)
@@ -51,7 +52,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
 
     fun select(material: FeelMaterial, now: Long) {
         opening.cancel()
-        release(now)
+        release(now, hapticRelease = false)
         selected = material
     }
 
@@ -67,7 +68,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         trailHeadFade[i] = 1f
         samples = PressureSamples()
         filteredPressure = 0.12f
-        travelMm = 0f
+        travelXmm = 0f
+        travelZmm = 0f
         lastTravelX = x
         lastTravelZ = z
         pathTravel = 0f
@@ -81,15 +83,17 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         if (material == FeelMaterial.Gel) gelReleasedAt = Long.MIN_VALUE
         contactX[material.ordinal] = fingerX[material.ordinal]
         contactZ[material.ordinal] = fingerZ[material.ordinal]
+        haptics.begin(material, pads[material.ordinal])
     }
 
     fun move(x: Float, z: Float, pressure: Float, size: Float) {
         val material = active ?: return
-        // The grain runs along Z. Only real X travel crosses it; reprojection never adds ticks.
+        // Measure real pointer travel on both axes; reprojection never brushes the material.
         val clampedX = x.coerceIn(-PAD_HALF_WIDTH, PAD_HALF_WIDTH)
         val clampedZ = z.coerceIn(-PAD_HALF_LENGTH, PAD_HALF_LENGTH)
         pathTravel += hypot(clampedX - lastTravelX, clampedZ - lastTravelZ)
-        travelMm += kotlin.math.abs(clampedX - lastTravelX) / FeelMaterial.WORLD_PER_MM
+        travelXmm += kotlin.math.abs(clampedX - lastTravelX) / FeelMaterial.WORLD_PER_MM
+        travelZmm += kotlin.math.abs(clampedZ - lastTravelZ) / FeelMaterial.WORLD_PER_MM
         lastTravelX = clampedX
         lastTravelZ = clampedZ
         fingerX[material.ordinal] = clampedX
@@ -97,7 +101,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         samples = observePressure(samples, pressure, size)
     }
 
-    fun release(now: Long) {
+    fun release(now: Long, hapticRelease: Boolean = true) {
+        if (hapticRelease) active?.let { haptics.release(pads[it.ordinal], now) } else haptics.cancel()
         if (active == FeelMaterial.Gel) {
             gelReleasedAt = now
             gelReleaseDepth = MatterSurfaces.visualDepth(pads[1].depthMm, FeelMaterial.Gel).coerceAtLeast(0f)
@@ -111,10 +116,9 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         active = null
         filteredPressure = 0f
         inferred = InferredPressure(0f, PressureSource.Duration)
-        haptics = scheduleHaptic(haptics, null, 0f, now).schedule
     }
 
-    fun advance(now: Long, startOpening: Boolean = true): FeelPulse? {
+    fun advance(now: Long, startOpening: Boolean = true): FeelEffect? {
         val dt = lastFrameMillis?.let { ((now - it) / 1000f).coerceIn(0f, 0.05f) } ?: 0f
         lastFrameMillis = now
         val previousLoad = opening.loadKg
@@ -183,9 +187,10 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
                 pads[material.ordinal], material, pressure, dt,
             )
         }
-        val step = scheduleHaptic(haptics, pressed, filteredPressure, now, travelMm)
-        haptics = step.schedule
-        return step.pulse
+        val effect = haptics.advance(pads[selected.ordinal], filteredPressure,
+            travelXmm, travelZmm, dt, now)
+        travelXmm = 0f; travelZmm = 0f
+        return effect
     }
 
     companion object {
