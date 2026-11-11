@@ -84,7 +84,6 @@ class DemoRegistryIntegrityTest {
         // the real registry — guards that no demo is unreachable via
         // `sceneview://demo/<id>` or the `--es demo <id>` QA channel.
         for (demo in ALL_DEMOS) {
-            val sourcePath = demo.sourcePath ?: error("${demo.id}: no sourcePath")
             assertEquals(
                 "Demo '${demo.id}' must validate against its own registry",
                 demo.id,
