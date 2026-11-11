@@ -1,6 +1,8 @@
 package io.github.sceneview.ar
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -228,6 +230,19 @@ class CameraArbiterTest {
         assertTrue(posted.isEmpty())
     }
 
+    @Test
+    fun `a callback exception during posted hand back escapes unchanged`() {
+        arbiter.resume(a)
+        arbiter.resume(b)
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+        arbiter.pause(b)
+
+        assertSame(bug, assertThrows(IllegalStateException::class.java) { runPosted() })
+        assertTrue(a.isRunning)
+        assertTrue(calls.none { it == "A failed" })
+    }
+
     private fun runPosted() {
         while (posted.isNotEmpty()) posted.removeFirst().invoke()
     }
@@ -236,19 +251,22 @@ class CameraArbiterTest {
         override var isRunning = false
         override var canRun = true
         var failure: Exception? = null
+        var afterResumeFailure: Exception? = null
 
         /** Next [start] finds the camera still held by a closing session and returns idle. */
         var waitsForCamera = false
 
-        override fun start() {
+        override fun start(): Exception? {
             if (waitsForCamera) {
                 waitsForCamera = false
                 calls += "$name waits"
-                return
+                return null
             }
             calls += "$name start"
-            failure?.let { throw it }
+            failure?.let { return it }
             isRunning = true
+            afterResumeFailure?.let { throw it }
+            return null
         }
 
         override fun stop() {

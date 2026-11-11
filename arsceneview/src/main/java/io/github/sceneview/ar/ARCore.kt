@@ -233,41 +233,21 @@ class ARCore(
      * the camera goes back to the session it was taken from.
      */
     private fun resumeSession() {
-        hostCallbackFailure = null
         cameraArbiter.resume(cameraClient)
-        hostCallbackFailure?.let {
-            hostCallbackFailure = null
-            throw it
-        }
     }
-
-    /**
-     * What the host's own [onSessionResumed] threw once ARCore did resume. It is not a resume
-     * failure, so it is not reported through [onArSessionFailed]: [resumeSession] rethrows it to
-     * the host unchanged.
-     */
-    private var hostCallbackFailure: Exception? = null
 
     /** This session as [CameraArbiter] sees it. */
     private val cameraClient = object : CameraClient {
         override val isRunning: Boolean get() = session?.isResumed == true
         override val canRun: Boolean get() = session?.isClosed == false
-        override fun start() {
-            val session = session ?: return
+        override fun start(): Exception? {
+            val session = session ?: return null
+            var failure: Exception? = null
             // A session closed a moment ago may still be releasing the camera (#4771). Past the
             // wait, this session stays next in line and the close resumes it when done.
             resumeOnceCameraFree(
                 awaitTeardowns = { sessionTeardown.awaitIdle() },
-                resume = {
-                    try {
-                        session.resume()
-                    } catch (exception: Exception) {
-                        // The session counts as resumed from the moment ARCore resumed it:
-                        // whatever threw after that (the host's callback) is not a resume failure.
-                        if (!session.isResumed) throw exception
-                        hostCallbackFailure = exception
-                    }
-                },
+                resume = { failure = session.resumeReportingFailure() },
                 onStillClosing = {
                     Log.w(
                         "ARCore",
@@ -276,9 +256,11 @@ class ARCore(
                     )
                 },
             )
+            return failure
         }
         override fun stop() { session?.takeIf { it.isResumed }?.pause() }
         override fun onStartFailed(exception: Exception) {
+            publishAvailability(ARCoreAvailability.SessionFailed)
             Log.w("ARCore", "Could not resume the ARCore session; the next resume tries again", exception)
             onException(exception)
         }
@@ -333,11 +315,16 @@ class ARCore(
             session = ARSession(
                 context,
                 features,
-                onResumed = onSessionResumed,
+                onResumed = {
+                    publishAvailability(null)
+                    onSessionResumed(it)
+                },
                 onPaused = onSessionPaused,
                 onConfigChanged = onSessionConfigChanged
             ).also(onSessionCreated)
-            publishAvailability(null)
+            // A recreated session has not acquired the camera yet. Keep a previous failure
+            // visible until onResumed confirms success.
+            if (arCoreAvailability != ARCoreAvailability.SessionFailed) publishAvailability(null)
         } catch (exception: Exception) {
             onSessionCreateFailed(exception)
         }
@@ -574,12 +561,12 @@ class ARCore(
     }
 
     /**
-     * Drops a session that failed to be created and creates a fresh one, resuming it when the
-     * host is resumed. No-op before any creation attempt.
+     * Recreates and resumes a failed session while the host is resumed.
+     * A paused or detached host does nothing; its next lifecycle resume can try again.
      */
     fun retrySession(context: Context? = lastContext) {
+        if (isHostDetached || !isHostResumed) return
         val target = context ?: return
-        publishAvailability(null)
         destroy()
         createSession(target)
         resumeSession()

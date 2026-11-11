@@ -1058,7 +1058,7 @@ fun ARSceneView(
         ARCore(
             onSessionCreated = { session ->
                 cameraPermissionState = null
-                arCoreAvailability = null
+                // Availability is cleared by a successful resume, through ARCore's callback.
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
                 // resume(), and configure() happens here, then resume() runs immediately

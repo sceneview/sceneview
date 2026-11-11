@@ -39,10 +39,8 @@ enum class ARCoreAvailability {
     CheckFailed,
 
     /**
-     * ARCore reported itself installed and current, but creating the session still failed —
-     * the emulator case found while validating #3374: `ArCoreApk` answers
-     * `SUPPORTED_INSTALLED`, then `Session()` throws and the host hangs on its own
-     * "initializing" copy exactly as an unsupported device used to. Retryable.
+     * ARCore is installed, but session creation or resume failed. A busy camera can cause
+     * this after returning to the app too. Retryable; a successful resume clears the state.
      */
     SessionFailed,
 }

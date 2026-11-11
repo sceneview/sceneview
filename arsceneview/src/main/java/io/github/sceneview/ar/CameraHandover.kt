@@ -69,13 +69,13 @@ internal interface CameraClient {
     /** `true` when there is a session that can be resumed: created, and not closed. */
     val canRun: Boolean
 
-    /** Resumes the session. Throws whatever `Session.resume()` throws. */
-    fun start()
+    /** Returns a native resume failure, or null. Host callback exceptions propagate. */
+    fun start(): Exception?
 
     /** Pauses the session. */
     fun stop()
 
-    /** [start] threw [exception]: the session is not running. */
+    /** [start] returned [exception]: native resume failed. */
     fun onStartFailed(exception: Exception)
 }
 
@@ -152,12 +152,10 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
         }
     }
 
-    /** @return `false` when the resume threw; the failure went to the session's own host. */
-    private fun start(client: CameraClient): Boolean = try {
-        client.start()
-        true
-    } catch (e: Exception) {
-        client.onStartFailed(e)
-        false
+    /** Only a native resume failure is reported; never catch host callback exceptions. */
+    private fun start(client: CameraClient): Boolean {
+        val failure = client.start() ?: return true
+        client.onStartFailed(failure)
+        return false
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.view.Display
 import android.view.WindowManager
+import com.google.ar.core.RecordingStatus
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.FatalException
@@ -14,6 +15,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,6 +51,7 @@ class ARSessionResumeFailureTest {
     private lateinit var failures: MutableList<Exception>
     private var created: Session? = null
     private var resumedCallbacks = 0
+    private val published = mutableListOf<ARCoreAvailability?>()
 
     @Before
     fun setUp() {
@@ -60,6 +63,9 @@ class ARSessionResumeFailureTest {
         created = null
         resumedCallbacks = 0
         resumeFailure = null
+        geometryFailure = null
+        resumeCalls = 0
+        published.clear()
         ShadowLog.clear()
         arCore = newARCore(onSessionResumed = { resumedCallbacks++ })
     }
@@ -74,7 +80,16 @@ class ARSessionResumeFailureTest {
         ).apply {
             checkCameraPermission = false
             features = emptySet()
+            onARCoreAvailability = { published += it }
         }
+
+    @After
+    fun tearDown() {
+        arCore.detachHost()
+        // The shadow makes close synchronous and native-free; remove the arbiter's client too.
+        arCore.session?.close()
+        arCore.destroy()
+    }
 
     @Test
     fun `every documented resume failure reaches onArSessionFailed from the host resume`() {
@@ -91,6 +106,7 @@ class ARSessionResumeFailureTest {
 
             assertNotNull("The session is created before it is resumed", created)
             assertEquals(listOf<Exception>(failure), failures)
+            assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
             assertFalse(
                 "A session ARCore refused to resume must not read as resumed (${failure::class.simpleName})",
                 (created as ARSession).isResumed,
@@ -145,6 +161,7 @@ class ARSessionResumeFailureTest {
 
         assertTrue("The camera is free again: the session resumes", (created as ARSession).isResumed)
         assertEquals("onSessionResumed runs for the successful resume only", 1, resumedCallbacks)
+        assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
     }
 
     @Test
@@ -160,6 +177,85 @@ class ARSessionResumeFailureTest {
         assertEquals("ARCore did resume: nothing to report", emptyList<Exception>(), failures)
     }
 
+    @Test
+    fun `repeated failures keep the failure state and report every attempt`() {
+        resumeFailure = CameraNotAvailableException("busy")
+        repeat(2) { arCore.resume(context, handler = null) }
+        assertEquals(2, failures.size)
+        assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
+    }
+
+    @Test
+    fun `retry while paused keeps the failure and leaves the session untouched`() {
+        resumeFailure = CameraNotAvailableException("busy")
+        arCore.resume(context, handler = null)
+        val failed = created
+        arCore.pause()
+        resumeFailure = null
+
+        arCore.retrySession(context)
+
+        assertSame(failed, created)
+        assertEquals(1, resumeCalls)
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
+        arCore.resume(context, handler = null)
+        assertEquals(2, resumeCalls)
+        assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
+    }
+
+    @Test
+    fun `a detached host cannot retry even with an explicit context`() {
+        resumeFailure = CameraNotAvailableException("busy")
+        arCore.resume(context, handler = null)
+        val failed = created
+        arCore.detachHost()
+        arCore.retrySession(context)
+        assertSame(failed, created)
+        assertEquals(1, resumeCalls)
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
+    }
+
+    @Test
+    fun `try again keeps a failing camera visible and clears it only on success`() {
+        resumeFailure = CameraNotAvailableException("busy")
+        arCore.resume(context, handler = null)
+        arCore.retryARCoreAvailability()
+        assertEquals(2, failures.size)
+        assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
+
+        resumeFailure = null
+        arCore.retryARCoreAvailability()
+
+        assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
+        assertTrue((created as ARSession).isResumed)
+    }
+
+    @Test
+    fun `display geometry exceptions propagate without being session failures`() {
+        val bug = IllegalArgumentException("display geometry")
+        geometryFailure = bug
+        assertSame(bug, assertThrows(IllegalArgumentException::class.java) {
+            arCore.resume(context, handler = null)
+        })
+        assertTrue((created as ARSession).isResumed)
+        assertTrue(failures.isEmpty())
+        assertTrue(published.isEmpty())
+    }
+
+    @Test
+    fun `a host callback that pauses then throws is still a host exception`() {
+        val bug = IllegalStateException("host paused itself")
+        arCore = newARCore(onSessionResumed = {
+            it.pause()
+            throw bug
+        })
+        assertSame(bug, assertThrows(IllegalStateException::class.java) {
+            arCore.resume(context, handler = null)
+        })
+        assertTrue(failures.isEmpty())
+        assertTrue(published.isEmpty())
+    }
+
     @Implements(Session::class)
     class ResumeFailingSession {
         @Suppress("FunctionName", "UNUSED_PARAMETER")
@@ -168,11 +264,29 @@ class ARSessionResumeFailureTest {
 
         @Implementation
         protected fun resume() {
+            resumeCalls++
             resumeFailure?.let { throw it }
         }
+
+        @Suppress("UNUSED_PARAMETER")
+        @Implementation
+        protected fun setDisplayGeometry(rotation: Int, width: Int, height: Int) {
+            geometryFailure?.let { throw it }
+        }
+
+        @Implementation
+        protected fun pause() = Unit
+
+        @Implementation
+        protected fun close() = Unit
+
+        @Implementation
+        protected fun getRecordingStatus(): RecordingStatus = RecordingStatus.NONE
     }
 
     private companion object {
         var resumeFailure: Exception? = null
+        var geometryFailure: Exception? = null
+        var resumeCalls = 0
     }
 }
