@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure-JVM pins for #3799 and #3885: no teardown may park the main thread on the backend backlog
- * long enough to ANR, and the engine must outlive every teardown it defers.
+ * Pure-JVM pins for #3799 and #3885: defer releases while their readiness checks report busy,
+ * and keep the engine alive until every dependent release has run. Native waits remain unbounded.
  *
  * [BackendIdleTeardowns] is the Filament-free core of `Engine.whenBackendIdle()`, behind
  * `rememberEngine` (`Engine.destroy()` joins the driver thread after the whole backlog),
@@ -78,6 +78,48 @@ class BackendIdleTeardownTest {
         assertEquals("ran exactly once, flagged as deferred", listOf(true), outcome.runs)
         assertEquals(List(4) { BACKEND_IDLE_POLL_MS }, scheduler.delays)
         assertEquals(0, teardowns.size)
+    }
+
+    @Test
+    fun pendingTeardownsShareOneScheduledPoll() {
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        var busy = true
+        var runs = 0
+        repeat(20) {
+            teardowns.defer(
+                isEngineAlive = { true },
+                isBackendBusy = { busy },
+                schedule = scheduler.schedule,
+                teardown = { runs++ },
+            )
+        }
+        assertEquals(listOf(BACKEND_IDLE_POLL_MS), scheduler.delays)
+        scheduler.runNext()
+        assertEquals(2, scheduler.delays.size)
+        busy = false
+        scheduler.runAll()
+        assertEquals(20, runs)
+        assertEquals(0, teardowns.size)
+    }
+
+    @Test
+    fun explicitCleanupAlsoKeepsTheEngineAfterLateRegisteredChildren() {
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        val order = mutableListOf<String>()
+        for (name in listOf("engine", "child")) {
+            teardowns.defer(
+                isEngineAlive = { true },
+                isBackendBusy = { true },
+                schedule = scheduler.schedule,
+                teardown = { order += name },
+                runsLast = name == "engine",
+            )
+        }
+        teardowns.runPending()
+        scheduler.runAll()
+        assertEquals(listOf("child", "engine"), order)
     }
 
     @Test

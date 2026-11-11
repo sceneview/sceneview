@@ -24,8 +24,8 @@ import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.GltfioTextureTables
-import io.github.sceneview.freshFenceProbe
 import io.github.sceneview.isAsyncLoadPending
+import io.github.sceneview.isBackendBusy
 import io.github.sceneview.isValid
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
@@ -1579,19 +1579,16 @@ private class SettlingDestroys(private val engine: Engine) {
     private var pending = 0
 
     fun defer(isInFlight: () -> Boolean, pumpedProgress: () -> Float, destroy: () -> Unit) {
-        // A fresh fence, not one created at the first poll: asyncCancelLoad's flushAndWait covers
-        // what is queued when it runs, the next screen's shader compilations included.
-        val probe = engine.freshFenceProbe()
+        // Share the engine's probe: freshness while shared, a reached fence once retiring.
         val gate = AsyncLoadSettleGate(
             isInFlight = isInFlight,
             pumpedProgress = pumpedProgress,
-            isBackendBusy = probe::isBusy,
+            isBackendBusy = engine::isBackendBusy,
             now = SystemClock::uptimeMillis,
         )
         pending++
         engine.whenIdle(isBusy = gate::isBusy, onEngineGone = { pending-- }) {
             pending--
-            probe.release()
             destroy()
         }
     }
@@ -1617,8 +1614,8 @@ private class SettlingDestroys(private val engine: Engine) {
  * [stallTimeoutMs] stops holding the destroy. That one is cancelled for real, so the gate then
  * waits for [isBackendBusy] to say the backend recently caught up: the cancel's `flushAndWait`
  * then only waits for what the main thread queued since. [isBackendBusy] is first asked at that
- * point, which is where a [io.github.sceneview.FreshFenceProbe] starts its diagnostic delay.
- * Elapsed time does not authorize the cancel.
+ * point, sharing the engine's probe and diagnostic delay with other pending releases. A retiring
+ * engine only needs a reached fence; elapsed time alone never authorizes the cancel.
  *
  * Filament-free so the ordering can be pinned in a JVM test. Main thread only.
  */

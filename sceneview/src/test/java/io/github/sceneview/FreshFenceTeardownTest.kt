@@ -132,33 +132,25 @@ class FreshFenceTeardownTest {
 
     /**
      * A renderer and then its engine (`runsLast`, as `destroyWhenBackendIdle` passes it) deferred
-     * at t = 0 on an idle backend, each through its own probe, polled every [pollEveryMs].
+     * at t = 0 after rendering stops, sharing the production registry's probe and retirement policy.
      */
     private fun replayRendererThenEngine(pollEveryMs: Long): Pair<Result, Result> {
         val backend = SimBackend()
         backend.pollGaps = listOf(pollEveryMs)
-        backend.at(6_000) { backend.pollGaps = listOf(BACKEND_IDLE_POLL_MS) }
-        val teardowns = BackendIdleTeardowns()
+        val teardowns = BackendIdleTeardowns(probe = newProbe(backend))
         var renderer: Result? = null
         var engine: Result? = null
         teardowns.defer(
             isEngineAlive = { true },
-            isBackendBusy = freshFence(backend),
             schedule = backend.schedule,
             teardown = { deferred -> renderer = Result(backend.now, backend.drainWaitMs(), deferred) },
         )
         teardowns.defer(
             isEngineAlive = { true },
-            isBackendBusy = freshFence(backend),
             schedule = backend.schedule,
             teardown = { deferred -> engine = Result(backend.now, backend.drainWaitMs(), deferred) },
             runsLast = true,
         )
-        var frame = 8L
-        while (frame < 20_000) {
-            backend.at(frame) { backend.enqueue(4) }
-            frame += pollEveryMs
-        }
         backend.runUntil(20_000)
         return checkNotNull(renderer) { "the renderer never ran" } to
             checkNotNull(engine) { "the engine never ran" }
@@ -166,14 +158,14 @@ class FreshFenceTeardownTest {
 
     private val framesWithinFreshAge = FRESH_FENCE_MAX_AGE_MS / BACKEND_IDLE_POLL_MS
 
-    private val freshFence: (SimBackend) -> () -> Boolean = { backend ->
-        FreshFenceProbe(
-            createFence = backend::createFence,
-            isReached = backend::isReached,
-            destroyFence = {},
-            now = { backend.now },
-        )::isBusy
-    }
+    private fun newProbe(backend: SimBackend) = FreshFenceProbe(
+        createFence = backend::createFence,
+        isReached = backend::isReached,
+        destroyFence = {},
+        now = { backend.now },
+    )
+
+    private val freshFence: (SimBackend) -> () -> Boolean = { backend -> newProbe(backend)::isBusy }
 
     @Test
     fun `a dispose-time fence releases into the next screen's backlog`() {
@@ -450,12 +442,14 @@ class FreshFenceTeardownTest {
     }
 
     @Test
-    fun `an engine waiting for the renderer also waits for polling to recover`() {
+    fun `a retiring engine releases after its renderer without waiting for polling recovery`() {
         for (gap in listOf(66L, 300L)) {
             val (renderer, engine) = replayRendererThenEngine(pollEveryMs = gap)
-            assertTrue(renderer.ranAtMs >= 6_000)
-            assertTrue(engine.ranAtMs >= renderer.ranAtMs)
-            assertTrue(engine.ranAtMs <= 6_000 + gap + 2 * BACKEND_IDLE_POLL_MS)
+            assertEquals(gap, renderer.ranAtMs)
+            assertTrue(engine.ranAtMs > renderer.ranAtMs)
+            assertTrue(engine.ranAtMs <= 3 * gap)
+            assertEquals(0L, renderer.blockedMs)
+            assertEquals(0L, engine.blockedMs)
         }
     }
 

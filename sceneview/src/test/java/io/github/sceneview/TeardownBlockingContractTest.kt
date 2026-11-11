@@ -8,11 +8,10 @@ import java.io.File
 
 /**
  * Source contract for the teardown paths field ANR reports caught blocking the main thread in
- * Filament fence waits. The waits themselves are native; what JVM tests can pin is that SceneView
- * no longer asks for them.
+ * Filament fence waits. These assertions pin mitigation wiring, not a native blocking-time bound.
  *
  * What it protects: the engine built without the GPU frame-complete metric, both deferred
- * teardowns (renderer and engine, cancelled async loads) polling a fresh fence, and
+ * teardowns and cancelled async loads sharing an engine probe, and
  * `VideoNode.destroy` draining only on a thread without a looper. It matches source text
  * (whitespace-collapsed), so it is deliberately brittle: renaming or reformatting one of the
  * matched calls fails it, and the matched strings must then be updated along with the code — after
@@ -43,16 +42,16 @@ class TeardownBlockingContractTest {
         )
     }
 
-    /** Both deferred teardowns poll a fresh fence, not one created once at the first poll. */
+    /** Deferred releases and stalled loads use the same engine probe and retirement policy. */
     @Test
-    fun `deferred teardowns poll fresh fences`() {
+    fun `deferred teardowns and stalled loads share the engine probe`() {
         val engine = source("Engine.kt")
-        assertTrue(engine.contains("val probe = freshFenceProbe()"))
-        assertTrue(engine.contains("isBusy = probe::isBusy"))
+        assertTrue(engine.contains("probe = freshFenceProbe()"))
+        assertTrue(engine.contains("isBusy = { isBackendBusy() }"))
         assertFalse(engine.contains("isBusy = { isFenceBusy(fence) }"))
 
         val modelLoader = source("loaders/ModelLoader.kt")
-        assertTrue(modelLoader.contains("isBackendBusy = probe::isBusy"))
+        assertTrue(modelLoader.contains("isBackendBusy = engine::isBackendBusy"))
         assertFalse(modelLoader.contains("engine.createFence().also { fence = it }"))
     }
 
