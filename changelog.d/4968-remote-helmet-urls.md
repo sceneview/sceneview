@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **No sample, doc or MCP default loads the Damaged Helmet any more.** The Flutter and React Native demos, the plugin examples, the `sceneview-web` quick start, the MCP artifact, preview and web samples, `llms.txt` and the free-models page now load the CC-BY 4.0 Motorcycle Helmet by sayedgamal655 from the website. The gaming model catalog lists the animated Phoenix Bird by NORBERTO-3D in its place. MCP artifact pages credit the default model and fit any model to the camera ([#4968](https://github.com/sceneview/sceneview/pull/4968)).

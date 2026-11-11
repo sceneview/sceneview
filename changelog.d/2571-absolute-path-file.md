@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **A bare absolute path loads the file it names.** `rememberModelInstance(modelLoader, file.absolutePath)` and the other loaders read a location without a scheme from the APK's assets. So a model saved in the app's storage failed with `FileNotFoundException` and never showed. A location that starts with `/` is now a file on disk, as `file://` URIs and `SplatNode` already were. Relative paths are still assets ([Discussion #2571](https://github.com/sceneview/sceneview/discussions/2571)).

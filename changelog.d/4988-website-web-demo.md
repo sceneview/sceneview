@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **The web demo replaces the website Playground.** The site's "try it in the browser" link, in the nav, the hero, the footer, the showcase and the docs Try page, now opens [the web demo](https://sceneview.github.io/web-demo/). The old `playground.html` address redirects there. The home hero now shows a SMEG toaster (The Fresh Lab, CC BY 4.0) instead of the phoenix ([#4988](https://github.com/sceneview/sceneview/pull/4988)).

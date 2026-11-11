@@ -749,7 +749,7 @@
                 <svg class="logo-icon" aria-hidden="true" focusable="false"><use href="#i-logo"/></svg>
                 <span class="logo-text">SceneView</span>
             </a>
-            <span class="page-title">Web demo <span class="logo-version">v4.67.0</span></span>
+            <span class="page-title">Web demo <span class="logo-version">v4.68.0</span></span>
             <div class="top-right">
                 <button id="auto-rotate-toggle" class="icon-btn auto-rotate-btn active state" title="Auto-rotate" aria-label="Auto-rotate" aria-pressed="true">
                     <svg class="icon" aria-hidden="true" focusable="false"><use href="#ms-360"/></svg>
@@ -1397,7 +1397,7 @@
             instance.setAutoRotate(autoRotate);
             instance.setQuality('medium');
             loadingOverlay.classList.add('hidden');
-            console.log('SceneView Web Demo initialized — v4.67.0');
+            console.log('SceneView Web Demo initialized — v4.68.0');
             // Engine init complete — surface any update snackbar deferred
             // while the loading overlay was still covering the viewport.
             flushPendingUpdateSnackbar();
@@ -2907,7 +2907,7 @@
       // No-op if version.json is missing (dev mode, no deploy yet, fetch
       // blocked by an ad-blocker, …) — the snackbar just stays hidden.
 
-      var BUILD_VERSION = '4.67.0';
+      var BUILD_VERSION = '4.68.0';
       var VERSION_URL = '/version.json';
       var UPDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;     // 12 hours
       var UPDATE_LAST_CHECK_KEY = 'sceneview.update.lastCheckAt';
