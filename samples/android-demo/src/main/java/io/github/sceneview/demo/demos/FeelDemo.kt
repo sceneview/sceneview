@@ -395,8 +395,8 @@ private class FeelTouch(
     private fun pointAtHeight(y: Float): Pair<Float, Float>? {
         if (view.viewport.width <= 0 || view.viewport.height <= 0) return null
         val ray = view.screenToRay(screenX, screenY) ?: return null
-        val origin = ray.getOrigin()
-        val direction = ray.getDirection()
+        val origin = ray.origin
+        val direction = ray.direction
         if (direction.y >= -0.0001f) return null
         val t = (y - origin.y) / direction.y
         if (t < 0f) return null
