@@ -191,7 +191,7 @@ fun FeelDemo(onBack: () -> Unit) {
                     val now = SystemClock.uptimeMillis()
                     if (!motionNow) simulation.opening.cancel()
                     if (!touchView.hasWindowFocus()) touchNow.cancel()
-                    simulation.advance(now, startOpening = firstFrame.sceneReady)?.let(haptics::play)
+                    simulation.advance(now, startOpening = firstFrame.sceneReady.value)?.let(haptics::play)
                     touchNow.followIndentation()
                     FeelMaterial.entries.forEach { kind ->
                         val i = kind.ordinal
