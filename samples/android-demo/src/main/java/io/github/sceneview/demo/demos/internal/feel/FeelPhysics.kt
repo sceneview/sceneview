@@ -10,9 +10,9 @@ internal enum class FeelMaterial(
     val damping: Float, // N s/mm
     val mass: Float, // N s²/mm (effective mass)
     val stopMm: Float,
-    val radius: Float, // Scene units; 1 mm of indentation is WORLD_PER_MM units.
+    val radius: Float, // Visual well radius in scene units; independent of simulated millimetres.
 ) {
-    Foam("Foam", 0.35f, 0.28f, 0.03f, 24f, 0.85f),
+    Foam("Foam", 0.35f, 0.28f, 0.03f, 24f, 1.15f),
     Oak("Oak", 12f, 0.65f, 0.008f, 0.35f, 0.38f),
     Steel("Steel", 240f, 1f, 0.008f, 0f, 0.22f);
 

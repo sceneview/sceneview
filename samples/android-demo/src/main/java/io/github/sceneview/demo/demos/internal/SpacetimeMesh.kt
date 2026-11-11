@@ -111,6 +111,14 @@ internal fun MaterialInstance.bindHorizon(horizon: Texture) = setParameter(
     ),
 )
 
+/** Main-thread, fully lit horizon for Matter's reuse of the precompiled sheet material. */
+internal fun createMatterHorizon(engine: Engine): Texture = Texture.Builder()
+    .width(1).height(1).levels(1).sampler(Texture.Sampler.SAMPLER_2D)
+    .format(Texture.InternalFormat.R8).build(engine).apply {
+        val texel = ByteBuffer.allocateDirect(1).apply { put(255.toByte()); flip() }
+        setImage(engine, 0, Texture.PixelBufferDescriptor(texel, Texture.Format.R, Texture.Type.UBYTE, 1))
+    }
+
 /**
  * Main thread only. Position (x, 0, z) per vertex, 16-bit indices; the horizon map as one R8
  * texture. Cosmos keeps its original polar grid, bounds and 512² map. Rectangular

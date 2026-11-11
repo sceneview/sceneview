@@ -12,7 +12,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /** Main-thread GPU boundary. Staging slots are reused only after Filament releases the upload. */
-internal class MatterMesh(private val engine: Engine, val geometry: MatterGeometry) {
+internal class MatterMesh(private val engine: Engine, val geometry: MatterGeometry, private val xzScale: Float = 1f) {
     private val handler = Handler(Looper.getMainLooper())
     private val staging = Array(3) {
         ByteBuffer.allocateDirect(geometry.positions.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -34,8 +34,8 @@ internal class MatterMesh(private val engine: Engine, val geometry: MatterGeomet
         indices.setBuffer(engine, indexData)
         buffers = SheetBuffers(vertices, indices, Box(
             0f, -FeelSimulation.PAD_THICKNESS / 2f, 0f,
-            FeelSimulation.PAD_HALF_WIDTH + 0.01f, FeelSimulation.PAD_THICKNESS / 2f + 0.01f,
-            FeelSimulation.PAD_HALF_LENGTH + 0.01f,
+            (FeelSimulation.PAD_HALF_WIDTH + 0.01f) * xzScale, FeelSimulation.PAD_THICKNESS / 2f + 0.01f,
+            (FeelSimulation.PAD_HALF_LENGTH + 0.01f) * xzScale,
         ))
         upload()
     }
@@ -51,7 +51,12 @@ internal class MatterMesh(private val engine: Engine, val geometry: MatterGeomet
         if (slot < 0) return // Coalesce to the latest shape until a staging slot is released.
         val data = staging[slot]
         data.clear()
-        data.put(geometry.positions).flip()
+        for (i in geometry.positions.indices step 3) {
+            data.put(geometry.positions[i] * xzScale)
+            data.put(geometry.positions[i + 1])
+            data.put(geometry.positions[i + 2] * xzScale)
+        }
+        data.flip()
         available[slot] = false
         pending = false
         buffers.vertexBuffer.setBufferAt(engine, 0, data, 0, geometry.positions.size, handler, released[slot])

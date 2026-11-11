@@ -1,14 +1,21 @@
 package io.github.sceneview.demo.demos.internal.feel
 
-/** Three portrait rows in one camera. Labels and geometry share the same measured row bounds. */
+import kotlin.math.cos
+import kotlin.math.atan
+import kotlin.math.sin
+import kotlin.math.tan
+
+/** Three portrait rows, fitted using the same perspective as the renderer and touch rays. */
 internal class MatterStage {
     var widthPx = 1
     var heightPx = 1
     val captionPx = IntArray(3)
+    val x = FloatArray(3)
     val y = FloatArray(3)
     val z = FloatArray(3)
     val scale = FloatArray(3) { 1f }
-    val halfWidth = FeelSimulation.PAD_HALF_WIDTH / 0.9f
+    val tilt = FloatArray(3)
+    val halfWidth = DISTANCE * tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
     var halfHeight = halfWidth
         private set
     private var framedWidth = -1
@@ -23,20 +30,93 @@ internal class MatterStage {
         halfHeight = halfWidth * heightPx / widthPx.coerceAtLeast(1)
         val row = halfHeight * 2f / 3f
         val unitsPerPx = halfWidth * 2f / widthPx.coerceAtLeast(1)
-        val blockHeight = 2f * FeelSimulation.PAD_HALF_LENGTH * SIN + FeelSimulation.PAD_THICKNESS * COS
         for (i in 0..2) {
-            val caption = captionPx[i] * unitsPerPx
-            scale[i] = ((row - caption).coerceAtLeast(0.1f) * 0.92f / blockHeight).coerceAtMost(1f)
-            val up = halfHeight - row * (i + 0.5f) + caption / 2f + FeelSimulation.PAD_THICKNESS * COS * scale[i] / 2f
+            val top = halfHeight - i * row
+            val bottom = top - row + captionPx[i] * unitsPerPx
+            val middle = (top + bottom) / 2f
+            val half = (top - bottom).coerceAtLeast(0f) * 0.48f
+            // Aim each display plinth at its row's view ray. Without this correction the
+            // top row is almost edge-on and the bottom row almost overhead in a tall viewport.
+            tilt[i] = atan(middle / DISTANCE)
+            // Each corner imposes an interval on the centre in camera right/up coordinates.
+            // Intersect those intervals: unlike an orthographic fit, this includes foreshortening
+            // and the different viewing angles of the upper and lower samples.
+            fun fit(s: Float): FloatArray {
+                var left = Float.NEGATIVE_INFINITY
+                var right = Float.POSITIVE_INFINITY
+                var low = Float.NEGATIVE_INFINITY
+                var high = Float.POSITIVE_INFINITY
+                for (px in listOf(-FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH))
+                    for (py in listOf(-FeelSimulation.PAD_THICKNESS, 0f))
+                        for (pz in listOf(-FeelSimulation.PAD_HALF_LENGTH, FeelSimulation.PAD_HALF_LENGTH)) {
+                            val p = rotate(px, py, pz, tilt[i])
+                            val depth = 1f - s * (p[0] * BACK_X + p[1] * SIN + p[2] * BACK_Z) / DISTANCE
+                            val r = s * (p[0] * COS_AZIMUTH - p[2] * SIN_AZIMUTH)
+                            val u = s * (p[0] * UP_X + p[1] * COS + p[2] * UP_Z)
+                            left = maxOf(left, -halfWidth * 0.94f * depth - r)
+                            right = minOf(right, halfWidth * 0.94f * depth - r)
+                            low = maxOf(low, (middle - half) * depth - u)
+                            high = minOf(high, (middle + half) * depth - u)
+                        }
+                return floatArrayOf(left, right, low, high)
+            }
+            var small = 0f
+            var large = 2f
+            repeat(24) {
+                val candidate = (small + large) / 2f
+                val bounds = fit(candidate)
+                if (bounds[0] <= bounds[1] && bounds[2] <= bounds[3]) small = candidate else large = candidate
+            }
+            scale[i] = small.coerceAtLeast(0.001f)
+            val bounds = fit(scale[i])
+            val right = (bounds[0] + bounds[1]) / 2f
+            val up = (bounds[2] + bounds[3]) / 2f
+            x[i] = right * COS_AZIMUTH + up * UP_X
             y[i] = up * COS
-            z[i] = -up * SIN
+            z[i] = -right * SIN_AZIMUTH + up * UP_Z
         }
         return true
     }
 
+    /** Intersect a rendered world ray with the local top or the centre of its visual dent. */
+    fun pointOnPad(i: Int, ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float,
+                   visualDepth: Float = 0f): Pair<Float, Float>? {
+        val origin = rotate((ox - x[i]) / scale[i], (oy - y[i]) / scale[i], (oz - z[i]) / scale[i], -tilt[i])
+        val direction = rotate(dx, dy, dz, -tilt[i])
+        if (direction[1] >= -0.0001f) return null
+        val t = (-visualDepth - origin[1]) / direction[1]
+        if (t < 0f) return null
+        return origin[0] + direction[0] * t to origin[2] + direction[2] * t
+    }
+
     companion object {
+        // Deliberate product view: perspective, 40° horizontal FOV, 42° above and 24° to
+        // the right. A close camera makes the top lattice converge and exposes the right side.
+        // SceneView resets its lens on surface resize; FeelDemo reapplies this projection per frame.
+        const val HORIZONTAL_FOV = 40.0
+        const val DISTANCE = 8f
+        const val NEAR = 0.1
+        const val FAR = 100.0
         const val ELEVATION = 42f
-        const val SIN = 0.6691306f
-        const val COS = 0.7431448f
+        const val AZIMUTH = 24f
+        val SIN = sin(Math.toRadians(ELEVATION.toDouble())).toFloat()
+        val COS = cos(Math.toRadians(ELEVATION.toDouble())).toFloat()
+        val SIN_AZIMUTH = sin(Math.toRadians(AZIMUTH.toDouble())).toFloat()
+        val COS_AZIMUTH = cos(Math.toRadians(AZIMUTH.toDouble())).toFloat()
+        val BACK_X = SIN_AZIMUTH * COS
+        val BACK_Z = COS_AZIMUTH * COS
+        val UP_X = -SIN_AZIMUTH * SIN
+        val UP_Z = -COS_AZIMUTH * SIN
+
+        /** Rotate around camera right; also used inversely for local touch coordinates. */
+        fun rotate(x: Float, y: Float, z: Float, angle: Float): FloatArray {
+            val r = x * COS_AZIMUTH - z * SIN_AZIMUTH
+            val u = x * UP_X + y * COS + z * UP_Z
+            val b = x * BACK_X + y * SIN + z * BACK_Z
+            val up = u * cos(angle) - b * sin(angle)
+            val back = u * sin(angle) + b * cos(angle)
+            return floatArrayOf(r * COS_AZIMUTH + up * UP_X + back * BACK_X,
+                up * COS + back * SIN, -r * SIN_AZIMUTH + up * UP_Z + back * BACK_Z)
+        }
     }
 }

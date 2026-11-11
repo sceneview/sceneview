@@ -6,7 +6,10 @@ import android.view.MotionEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -32,8 +37,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Camera
+import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Skybox
+import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
@@ -41,10 +49,14 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.rememberFilmicView
 import io.github.sceneview.demo.demos.internal.FeelHapticPlayer
+import io.github.sceneview.demo.demos.internal.bindHorizon
+import io.github.sceneview.demo.demos.internal.createMatterHorizon
 import io.github.sceneview.demo.demos.internal.MatterMesh
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
+import io.github.sceneview.demo.demos.internal.feel.MatterGeometry
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
@@ -55,7 +67,6 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.environment.Environment
-import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -67,9 +78,10 @@ import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberView
 import io.github.sceneview.utils.screenToRay
 import kotlin.math.roundToInt
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** Matter: one camera, three solid samples, one shared load simulation. No downloaded assets. */
 @Composable
@@ -81,10 +93,10 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val engine = rememberEngine()
     val loader = rememberMaterialLoader(engine)
-    val view = rememberView(engine)
+    // The existing Cosmos lattice encodes inverseFilmic; use its matching tone mapper.
+    val view = rememberFilmicView(engine)
     val camera = rememberCameraNode(engine)
     val light = rememberMainLightNode(engine) { lightDirection = Direction(-0.3f, -1f, -0.8f) }
-    val density = LocalDensity.current.density
     val recorder = rememberDemoSceneRecorder()
     val firstFrame = rememberFirstFrameState(engine)
     val touchView = LocalView.current
@@ -108,33 +120,64 @@ fun FeelDemo(onBack: () -> Unit) {
 
     val colors = MaterialTheme.colorScheme
     val skybox = remember(engine, colors.surface) {
-        val c = ViewerBackdrop.linearBeforeNeutral(colors.surface)
+        val c = ViewerBackdrop.linearBeforeFilmic(colors.surface)
         Skybox.Builder().color(c[0], c[1], c[2], 1f).build(engine)
     }
     DisposableEffect(engine, skybox) { onDispose { engine.destroySkybox(skybox) } }
     val environment = remember(skybox) { Environment(skybox = skybox) }
     val meshes = remember(engine) {
-        Array(3) { listOf(MatterMeshes.top(), MatterMeshes.sides(), MatterMeshes.lattice(),
-            MatterMeshes.contact(true), MatterMeshes.contact(false)).map { MatterMesh(engine, it) } }
+        Array(3) { listOf(MatterMeshes.top(), MatterMeshes.sides(), MatterMeshes.sides(ends = true),
+            MatterMeshes.lattice(), MatterMeshes.contact(true), MatterMeshes.contact(false)).mapIndexed { part, geometry ->
+            MatterMesh(engine, geometry, if (part == MatterMeshes.TOP) MatterMeshes.SHADER_XZ_SCALE else 1f)
+        } }
     }
     DisposableEffect(meshes) { onDispose { meshes.forEach { row -> row.forEach(MatterMesh::destroy) } } }
-    val materials = remember(loader, colors) {
+    val latticeMaterial = remember(loader) { loader.createMaterial("materials/cosmos_spacetime.filamat") }
+    val horizon = remember(engine) { createMatterHorizon(engine) }
+    DisposableEffect(engine, horizon) {
+        onDispose { EngineDestroyQueue.of(engine).enqueueTexture(horizon) }
+    }
+    val materials = remember(loader, colors, latticeMaterial, horizon) {
         val roles = listOf(
-            listOf(colors.primary, colors.primary, colors.onPrimary, colors.onPrimary, colors.onPrimary),
-            listOf(colors.tertiary, colors.tertiary, colors.onTertiary, colors.onTertiary, colors.onTertiary),
-            listOf(colors.surfaceContainerHighest, colors.surfaceContainerHighest, colors.outline, colors.primary, colors.primary),
+            listOf(colors.primaryFixedDim, colors.primaryContainer, colors.onPrimaryFixedVariant,
+                colors.onPrimaryContainer, colors.onPrimaryFixed, colors.onPrimaryFixed),
+            listOf(colors.tertiaryFixedDim, colors.tertiaryContainer, colors.onTertiaryFixedVariant,
+                colors.onTertiaryContainer, colors.onTertiaryFixed, colors.onTertiaryFixed),
+            listOf(colors.surfaceContainerHighest, colors.surfaceContainerLow, colors.surfaceDim,
+                colors.outline, colors.primary, colors.primary),
         )
-        roles.mapIndexed { sample, row -> row.mapIndexed { part, color ->
-            // A flat, darker tone of the face's own role makes the section legible in both themes.
-            val tone = if (part == 1) color.copy(
-                red = color.red * 0.72f, green = color.green * 0.72f, blue = color.blue * 0.72f,
-            ) else color
-            loader.createUnlitColorInstance(tone.copy(alpha = when (part) {
-                2 -> if (sample == FeelMaterial.Steel.ordinal) 1f else 0.42f
-                3 -> 0.12f
-                4 -> 0.99f // Transparent material variant so the steel ring can fade at runtime.
-                else -> 1f
-            }))
+        roles.map { row -> row.mapIndexed { part, color ->
+            if (part == MatterMeshes.TOP) loader.createInstance(latticeMaterial).apply {
+                // CPU-deformed top, finite inactive wells. No shader change or new .filamat.
+                val bodies = FloatArray(32) { if (it % 4 == 3) 1f else 0f }
+                setParameter("bodies", MaterialInstance.FloatElement.FLOAT4, bodies, 0, 8)
+                setParameter("spheres", MaterialInstance.FloatElement.FLOAT4, FloatArray(32), 0, 8)
+                setParameter("ringCenter", 0f, 0f, 0f, 0f)
+                setParameter("ringNormal", 0f, 1f, 0f, 0f)
+                setParameter("offset", 0f)
+                setParameter("well", 0f)
+                bindHorizon(horizon)
+                // Overhead light saturates the shader's 1.25 lighting ceiling everywhere in
+                // our unfaded patch. Compensate it to show the actual M3 role on the flat top.
+                setParameter("lightDir", 0f, 1f, 0f)
+                val base = color.convert(ColorSpaces.LinearSrgb)
+                val ink = row[MatterMeshes.CONTACT].convert(ColorSpaces.LinearSrgb)
+                setParameter("baseColor", base.red / 1.25f, base.green / 1.25f, base.blue / 1.25f)
+                // The shader adds its grid; a signed difference also permits dark themed ink.
+                setParameter("gridColor", (ink.red - base.red) / 1.632f,
+                    (ink.green - base.green) / 1.632f, (ink.blue - base.blue) / 1.632f)
+                setParameter("intensity", 1f)
+            } else {
+                val alpha = when (part) {
+                    MatterMeshes.CONTACT -> 0.06f
+                    MatterMeshes.RING -> 0.99f
+                    else -> 1f
+                }
+                loader.createUnlitColorInstance(color.copy(alpha = alpha)).apply {
+                    val c = ViewerBackdrop.linearBeforeFilmic(color)
+                    setParameter("color", c[0], c[1], c[2], alpha)
+                }
+            }
         } }
     }
     val markMaterial = remember(loader, colors) { loader.createColorInstance(colors.primary, roughness = 0.8f) }
@@ -154,8 +197,8 @@ fun FeelDemo(onBack: () -> Unit) {
     val touchNow by rememberUpdatedState(touch)
     val meshesNow by rememberUpdatedState(meshes)
     val materialsNow by rememberUpdatedState(materials)
-    val primaryNow by rememberUpdatedState(colors.primary)
-    val densityNow by rememberUpdatedState(density)
+    val ringColorNow by rememberUpdatedState(ViewerBackdrop.linearBeforeFilmic(colors.primary))
+    val ringWidthNow by rememberUpdatedState(with(LocalDensity.current) { SceneViewTokens.Layout.hairlineWidth.toPx() })
     var readout by remember { mutableStateOf(FeelReadout()) }
     val timing = remember { longArrayOf(0L) }
     firstFrame.holdUntil(true, "material samples")
@@ -175,7 +218,7 @@ fun FeelDemo(onBack: () -> Unit) {
         // Physically inset this viewport once. The labels use precisely the same free area.
         val hintAlpha by animateFloatAsState(if (readout.showHint) 1f else 0f, motionFade(), label = "touch hint")
         Box(Modifier.fillMaxSize().background(colors.surface).padding(LocalDemoSceneCover.current)) {
-            Box(Modifier.fillMaxSize().padding(bottom = SceneViewTokens.Space.xl).onSizeChanged {
+            Box(Modifier.fillMaxSize().padding(bottom = SceneViewTokens.Space.lg).onSizeChanged {
                 stage.widthPx = it.width
                 stage.heightPx = it.height
             }) {
@@ -194,13 +237,20 @@ fun FeelDemo(onBack: () -> Unit) {
                     // SceneView retains the FIRST callback: never close over a readiness Boolean.
                     onTouchEvent = { event, _ -> touchNow.onEvent(event) },
                     onFrame = { nanos ->
+                        // Surface resize can reset CameraNode's lens AFTER Compose measures.
+                        // Reapply the explicit perspective before both rendering and picking.
+                        camera.setProjection(MatterStage.HORIZONTAL_FOV,
+                            stage.widthPx.toDouble() / stage.heightPx.coerceAtLeast(1),
+                            MatterStage.NEAR, MatterStage.FAR, Camera.Fov.HORIZONTAL)
                         if (stage.frame()) {
-                            camera.setProjection(Camera.Projection.ORTHO, -stage.halfWidth.toDouble(), stage.halfWidth.toDouble(),
-                                -stage.halfHeight.toDouble(), stage.halfHeight.toDouble(), 0.1, 100.0)
-                            camera.position = Position(0f, 20f * MatterStage.SIN, 20f * MatterStage.COS)
+                            camera.position = Position(MatterStage.DISTANCE * MatterStage.BACK_X,
+                                MatterStage.DISTANCE * MatterStage.SIN, MatterStage.DISTANCE * MatterStage.BACK_Z)
                             camera.lookAt(Position())
                             for (i in 0..2) pads[i]?.transform = Transform(
-                                Position(0f, stage.y[i], stage.z[i]), scale = Scale(stage.scale[i]),
+                                Position(stage.x[i], stage.y[i], stage.z[i]),
+                                quaternion = Quaternion(MatterStage.COS_AZIMUTH * sin(stage.tilt[i] / 2f), 0f,
+                                    -MatterStage.SIN_AZIMUTH * sin(stage.tilt[i] / 2f), cos(stage.tilt[i] / 2f)),
+                                scale = Scale(stage.scale[i]),
                             )
                         }
                         val now = SystemClock.uptimeMillis()
@@ -215,9 +265,9 @@ fun FeelDemo(onBack: () -> Unit) {
                             val z = if (kind == FeelMaterial.Steel) simulation.contactZ[i] else simulation.fingerZ[i]
                             val previous = lastDeformation[i]
                             if (depth != previous[0] || x != previous[1] || z != previous[2]) {
-                                for (part in 0..2) {
+                                for (part in MatterMeshes.TOP..MatterMeshes.LATTICE) {
                                     val mesh = meshesNow[i][part]
-                                    mesh.geometry.deform(depth, x, z, kind.radius)
+                                    mesh.geometry.deform(depth, x, z, kind)
                                     mesh.upload()
                                 }
                                 previous[0] = depth; previous[1] = x; previous[2] = z
@@ -228,21 +278,24 @@ fun FeelDemo(onBack: () -> Unit) {
                             contacts[i][0]?.isVisible = touching && kind != FeelMaterial.Steel
                             contacts[i][1]?.isVisible = if (kind == FeelMaterial.Steel) ripple else touching
                             if (touching || ripple) {
-                                val contactRadius = 0.20f + simulation.inferred.value * 0.15f
-                                MatterMeshes.updateContact(meshesNow[i][3].geometry, contactRadius, x, z, depth, kind)
-                                MatterMeshes.updateContact(meshesNow[i][4].geometry,
-                                    if (ripple) MatterMeshes.rippleRadius(age, x, z) else contactRadius, x, z, depth, kind,
-                                    strokeWidth = 1.5f * densityNow * stage.halfWidth * 2f /
+                                val contactRadius = 0.12f + simulation.inferred.value * 0.10f
+                                MatterMeshes.updateContact(meshesNow[i][MatterMeshes.CONTACT].geometry, contactRadius, x, z, depth, kind)
+                                MatterMeshes.updateContact(meshesNow[i][MatterMeshes.RING].geometry,
+                                    if (ripple) MatterMeshes.rippleRadius(age) else contactRadius, x, z, depth, kind,
+                                    strokeWidth = ringWidthNow * stage.halfWidth * 2f /
                                         stage.widthPx.coerceAtLeast(1) / stage.scale[i])
-                                if (ripple) materialsNow[i][4].setColor(primaryNow.copy(alpha = MatterMeshes.rippleAlpha(age)))
-                                meshesNow[i][3].upload()
-                                meshesNow[i][4].upload()
+                                if (ripple) {
+                                    val c = ringColorNow
+                                    materialsNow[i][MatterMeshes.RING].setParameter("color", c[0], c[1], c[2], MatterMeshes.rippleAlpha(age))
+                                }
+                                meshesNow[i][MatterMeshes.CONTACT].upload()
+                                meshesNow[i][MatterMeshes.RING].upload()
                             }
                         }
                         mark[0]?.apply {
                             isVisible = simulation.opening.visible
                             if (isVisible) transform = Transform(Position(y =
-                                -simulation.pads[0].depthMm * FeelMaterial.WORLD_PER_MM + simulation.opening.heightAbovePad))
+                                -MatterGeometry.visualDepth(simulation.pads[0].depthMm, FeelMaterial.Foam) + simulation.opening.heightAbovePad))
                         }
                         if (now - timing[0] >= 50L) {
                             timing[0] = now
@@ -266,7 +319,11 @@ fun FeelDemo(onBack: () -> Unit) {
                                         isShadowCaster = false
                                         isShadowReceiver = false
                                         isTouchable = false
-                                        if (part >= 3) { contacts[i][part - 3] = this; isVisible = false }
+                                        if (part == MatterMeshes.TOP) scale = Scale(
+                                            1f / MatterMeshes.SHADER_XZ_SCALE, 1f, 1f / MatterMeshes.SHADER_XZ_SCALE)
+                                        if (part >= MatterMeshes.CONTACT) {
+                                            contacts[i][part - MatterMeshes.CONTACT] = this; isVisible = false
+                                        }
                                     },
                                 )
                             }
@@ -294,6 +351,11 @@ fun FeelDemo(onBack: () -> Unit) {
                         }
                     }
                 }
+                // Run after SceneView's default quality effect: inverse-Filmic light colours
+                // are HDR values, but product silhouettes must not acquire a bloom halo.
+                LaunchedEffect(view) {
+                    view.bloomOptions = view.bloomOptions.apply { enabled = false }
+                }
                 Column(Modifier.fillMaxSize()) {
                     FeelMaterial.entries.forEach { kind ->
                         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -315,6 +377,7 @@ fun FeelDemo(onBack: () -> Unit) {
 
 private data class FeelReadout(val foamDepth: Float = 0f, val pressingFoam: Boolean = false, val showHint: Boolean = false)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FeelCaption(kind: FeelMaterial, readout: FeelReadout, modifier: Modifier) {
     val depth by animateFloatAsState(readout.foamDepth, motionFade(), label = "foam indentation")
@@ -333,10 +396,14 @@ private fun FeelCaption(kind: FeelMaterial, readout: FeelReadout, modifier: Modi
         FeelMaterial.Steel -> stringResource(R.string.demo_feel_steel_response)
     }
     Surface(color = MaterialTheme.colorScheme.surface, modifier = modifier) {
-        Column(Modifier.padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.xs)) {
-            Text(name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            // A full-width row fits at 360 dp. At large font scales it grows instead of clipping.
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.xs),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            // One compact line at normal font size; wrap and remeasure at accessibility sizes.
+            Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -406,13 +473,8 @@ private class FeelTouch(
     private fun pointOnPad(kind: FeelMaterial, deformed: Boolean): Pair<Float, Float>? {
         if (view.viewport.width <= 0 || view.viewport.height <= 0) return null
         val ray = view.screenToRay(screenX, screenY) ?: return null
-        if (ray.direction.y >= -0.0001f) return null
-        val i = kind.ordinal
-        val scale = stage.scale[i]
-        val height = stage.y[i] - if (deformed) simulation.pads[i].depthMm * FeelMaterial.WORLD_PER_MM * scale else 0f
-        val t = (height - ray.origin.y) / ray.direction.y
-        if (t < 0f) return null
-        return (ray.origin.x + ray.direction.x * t) / scale to
-            (ray.origin.z + ray.direction.z * t - stage.z[i]) / scale
+        return stage.pointOnPad(kind.ordinal, ray.origin.x, ray.origin.y, ray.origin.z,
+            ray.direction.x, ray.direction.y, ray.direction.z,
+            if (deformed) MatterGeometry.visualDepth(simulation.pads[kind.ordinal].depthMm, kind) else 0f)
     }
 }

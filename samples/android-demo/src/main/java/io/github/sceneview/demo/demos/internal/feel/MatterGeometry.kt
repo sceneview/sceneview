@@ -1,7 +1,6 @@
 package io.github.sceneview.demo.demos.internal.feel
 
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -10,13 +9,14 @@ import kotlin.math.sqrt
 internal class MatterGeometry(val rest: FloatArray, val indices: ShortArray, val contactRing: Boolean = false) {
     val positions = rest.copyOf()
 
-    fun deform(depthMm: Float, fingerX: Float, fingerZ: Float, radius: Float) {
+    fun deform(depthMm: Float, fingerX: Float, fingerZ: Float, material: FeelMaterial) {
+        val depth = visualDepth(depthMm, material)
         for (i in rest.indices step 3) {
             val x = rest[i]
             val y = rest[i + 1]
             val z = rest[i + 2]
             val weight = (1f + y / FeelSimulation.PAD_THICKNESS).coerceIn(0f, 1f)
-            val dent = depthMm * FeelMaterial.WORLD_PER_MM * well(x - fingerX, z - fingerZ, radius) * weight
+            val dent = depth * well(x - fingerX, z - fingerZ, material.radius) * weight
             positions[i] = x
             positions[i + 1] = y - dent
             positions[i + 2] = z
@@ -24,7 +24,20 @@ internal class MatterGeometry(val rest: FloatArray, val indices: ShortArray, val
     }
 
     companion object {
-        /** Normalized, finite Plummer well, so the centre agrees with the simulated millimetres. */
+        /**
+         * Exaggerated display displacement, deliberately independent of physical WORLD_PER_MM.
+         * Foam uses 1.8× the physical conversion, oak 8×, steel stays rigid. Only the mesh,
+         * contact and opening mark use this scale; captions and haptics retain simulated mm.
+         * Even at the stop a supported layer remains, so the bowl cannot invert the slab.
+         */
+        fun visualDepth(depthMm: Float, material: FeelMaterial): Float =
+            (depthMm.coerceAtLeast(0f) * when (material) {
+                FeelMaterial.Foam -> 0.045f
+                FeelMaterial.Oak -> 0.20f
+                FeelMaterial.Steel -> 0f
+            }).coerceAtMost(FeelSimulation.PAD_THICKNESS * 0.86f)
+
+        /** Normalized finite Plummer bowl, centred at the current local finger position. */
         fun well(x: Float, z: Float, radius: Float): Float {
             val r2 = (x * x + z * z) / (radius * radius)
             val edge = 1f / sqrt(37f)
@@ -35,6 +48,20 @@ internal class MatterGeometry(val rest: FloatArray, val indices: ShortArray, val
 
 /** Built once. Triangle ribbons give the lattice a stable width on mobile GLES. */
 internal object MatterMeshes {
+    const val TOP = 0
+    const val FRONT = 1
+    const val SIDE = 2
+    const val LATTICE = 3
+    const val CONTACT = 4
+    const val RING = 5
+    /**
+     * The precompiled Cosmos shader has no fade switch. Keep Matter's shader coordinates
+     * wholly inside radius 2, where BOTH its grid fade and surface fade are exactly 1.
+     * The node restores X/Z size; CPU deformation leaves these coordinates unchanged.
+     * Cosmos keeps its radius-12 coordinates and its existing fade, with the same binary.
+     */
+    const val SHADER_XZ_SCALE = 0.75f
+    private const val GRID_STEP = 0.5f / SHADER_XZ_SCALE
     private const val COLUMNS = 64
     private const val ROWS = 24
     private const val LINE = 0.008f
@@ -48,37 +75,38 @@ internal object MatterMeshes {
         patch(COLUMNS, ROWS) { u, v -> floatArrayOf(-w + 2f * w * u, 0f, l - 2f * l * v) }
     }.build()
 
-    fun sides(): MatterGeometry = Builder().apply {
+    fun sides(ends: Boolean = false): MatterGeometry = Builder().apply {
         // Outward winding on all four faces. Every layer follows the top's local compression.
-        patch(COLUMNS, 8) { u, v -> floatArrayOf(-w + 2f * w * u, -h + h * v, l) }
-        patch(COLUMNS, 8) { u, v -> floatArrayOf(w - 2f * w * u, -h + h * v, -l) }
-        patch(ROWS, 8) { u, v -> floatArrayOf(w, -h + h * v, l - 2f * l * u) }
-        patch(ROWS, 8) { u, v -> floatArrayOf(-w, -h + h * v, -l + 2f * l * u) }
+        if (ends) {
+            patch(ROWS, 8) { u, v -> floatArrayOf(w, -h + h * v, l - 2f * l * u) }
+            patch(ROWS, 8) { u, v -> floatArrayOf(-w, -h + h * v, -l + 2f * l * u) }
+        } else {
+            patch(COLUMNS, 8) { u, v -> floatArrayOf(-w + 2f * w * u, -h + h * v, l) }
+            patch(COLUMNS, 8) { u, v -> floatArrayOf(w - 2f * w * u, -h + h * v, -l) }
+        }
     }.build()
 
     fun lattice(): MatterGeometry = Builder().apply {
-        for (x in 0..16) {
-            val at = -w + 2f * w * x / 16f
-            patch(1, ROWS) { u, v -> floatArrayOf((at + (u - 0.5f) * LINE).coerceIn(-w, w), LIFT, l - 2f * l * v) }
+        // The top uses cosmos_spacetime.filamat. Continue its lines down the front and
+        // right section, with opaque ribbons reaching the silhouette instead of fading out.
+        for (x in -3..3) {
+            val at = x * GRID_STEP
             patch(1, 8) { u, v -> floatArrayOf((at + (u - 0.5f) * LINE).coerceIn(-w, w), -h + h * v, l + LIFT) }
         }
-        for (z in 0..6) {
-            val at = l - 2f * l * z / 6f
-            patch(COLUMNS, 1) { u, v -> floatArrayOf(-w + 2f * w * u, LIFT, (at - (v - 0.5f) * LINE).coerceIn(-l, l)) }
+        for (z in -1..1) {
+            val at = z * GRID_STEP
+            patch(1, 8) { u, v -> floatArrayOf(w + LIFT, -h + h * v, at - (u - 0.5f) * LINE) }
         }
         for (layer in 0..4) {
             val at = -h * layer / 4f
             patch(COLUMNS, 1) { u, v -> floatArrayOf(-w + 2f * w * u, (at + (v - 0.5f) * LINE).coerceIn(-h, 0f), l + LIFT) }
+            patch(ROWS, 1) { u, v -> floatArrayOf(w + LIFT, (at + (v - 0.5f) * LINE).coerceIn(-h, 0f), l - 2f * l * u) }
         }
     }.build()
 
     const val RIPPLE_MILLIS = 350L
-    fun rippleRadius(age: Long, x: Float = 0f, z: Float = 0f): Float {
-        val farX = w + abs(x)
-        val farZ = l + abs(z)
-        val reach = sqrt(farX * farX + farZ * farZ)
-        return 0.08f + (age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 1f) * (reach - 0.08f)
-    }
+    fun rippleRadius(age: Long): Float =
+        0.08f + (age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 1f) * 0.16f
     fun rippleAlpha(age: Long): Float = (1f - age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 0.99f)
 
     /** Six triangles per clipped ring segment; unused slots collapse to a point. */
@@ -101,7 +129,7 @@ internal object MatterMeshes {
     ) {
         fun write(vertex: Int, px: Float, pz: Float) {
             mesh.positions[vertex * 3] = px
-            mesh.positions[vertex * 3 + 1] = LIFT * 2f - depth * FeelMaterial.WORLD_PER_MM *
+            mesh.positions[vertex * 3 + 1] = LIFT * 2f - MatterGeometry.visualDepth(depth, material) *
                 MatterGeometry.well(px - x, pz - z, material.radius)
             mesh.positions[vertex * 3 + 2] = pz
         }

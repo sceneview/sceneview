@@ -101,8 +101,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
 
     companion object {
         const val PAD_HALF_WIDTH = 2.4f
-        const val PAD_HALF_LENGTH = 0.6f
-        const val PAD_THICKNESS = 0.8f
+        const val PAD_HALF_LENGTH = 1.05f
+        const val PAD_THICKNESS = 1.25f
         fun contains(x: Float, z: Float): Boolean =
             kotlin.math.abs(x) <= PAD_HALF_WIDTH && kotlin.math.abs(z) <= PAD_HALF_LENGTH
     }
