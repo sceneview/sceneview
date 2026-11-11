@@ -6,6 +6,79 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FeelSimulationTest {
+    @Test fun dragHasMaterialSpecificLagIndependentOfFrameRateAndFreezesOnRelease() {
+        for (kind in FeelMaterial.entries) {
+            val positions = listOf(10L, 20L).map { step ->
+                val simulation = FeelSimulation()
+                simulation.begin(kind, 0f, 0f, 1f, 0f, 0L)
+                simulation.advance(0L)
+                simulation.move(1f, -.5f, 1f, 0f)
+                for (now in step..100L step step) simulation.advance(now)
+                val x = simulation.dentX[kind.ordinal]
+                assertEquals(-x * .5f, simulation.dentZ[kind.ordinal], .0001f)
+                if (kind.rigid) assertEquals(1f, x, 0f)
+                else assertTrue("${kind.name}: $x", x in .5f.. .99f)
+                simulation.release(100L)
+                simulation.advance(116L)
+                assertEquals(x, simulation.dentX[kind.ordinal], 0f)
+                x
+            }
+            assertEquals(kind.name, positions[0], positions[1], .00001f)
+        }
+    }
+
+    @Test fun draggedFoamAndVelvetKeepABoundedTrailWhichSurvivesReleaseAndFades() {
+        for (kind in listOf(FeelMaterial.MemoryFoam, FeelMaterial.Velvet)) {
+            val simulation = FeelSimulation()
+            val i = kind.ordinal
+            simulation.begin(kind, -2f, 0f, 1f, 0f, 0L)
+            for (now in 0L..2000L step 10L) simulation.advance(now)
+            assertTrue(simulation.trails[i].indices.step(4).all { simulation.trails[i][it + 2] == 0f })
+            for (now in 2010L..6000L step 10L) {
+                val x = -2f + ((now - 2000L) % 2000L) / 500f
+                simulation.move(x, 0f, 1f, 0f)
+                simulation.advance(now)
+            }
+            val trail = simulation.trails[i]
+            assertEquals(8 * 4, trail.size)
+            val strengths = trail.indices.step(4).map { it + 2 }
+            assertTrue(strengths.all { trail[it] in 0f..1f })
+            assertTrue(strengths.count { trail[it] > 0f } >= 4)
+            simulation.release(6000L)
+            val peak = strengths.maxOf { trail[it] }
+            for (now in 6010L..7000L step 10L) simulation.advance(now)
+            assertTrue(strengths.maxOf { trail[it] } in .1f..peak)
+            for (now in 7010L..11000L step 10L) simulation.advance(now)
+            assertTrue(strengths.all { trail[it] == 0f })
+            assertTrue(trail === simulation.trails[i])
+        }
+    }
+
+    @Test fun reprojectedStationaryFingerDoesNotPaintATrail() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, 1f, 0f, 0L)
+        for (now in 0L..3000L step 10L) {
+            simulation.fingerZ[0] = now / 3000f
+            simulation.advance(now)
+        }
+        assertTrue(simulation.trails[0].indices.step(4).all { simulation.trails[0][it + 2] == 0f })
+    }
+
+    @Test fun gelReleaseWaveCapturesTheLaggedContactAndNewPressCancelsIt() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.Gel, -.5f, .2f, 1f, 0f, 0L)
+        for (now in 0L..2000L step 10L) simulation.advance(now)
+        simulation.move(.5f, .2f, 1f, 0f)
+        simulation.advance(2010L)
+        simulation.release(2010L)
+        assertEquals(simulation.dentX[1], simulation.gelReleaseX, 0f)
+        assertTrue(simulation.gelReleaseDepth > .3f)
+        simulation.release(2100L)
+        assertEquals(2010L, simulation.gelReleasedAt)
+        simulation.begin(FeelMaterial.Gel, 1f, 0f, 1f, 0f, 2200L)
+        assertEquals(Long.MIN_VALUE, simulation.gelReleasedAt)
+    }
+
     @Test fun lightSensorPressureMakesAWideVisibleFoamBowlAndStillRecoversSlowly() {
         val simulation = FeelSimulation()
         simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, .10f, 0f, 0L)

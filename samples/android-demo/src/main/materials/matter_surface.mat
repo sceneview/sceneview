@@ -5,6 +5,9 @@
 // Parameters:
 //   finger, depth, radius — local XZ contact, signed visual depth and well radius.
 //   profile              — falloff exponent, bulge ratio, wrinkle ratio, fold count.
+//   rimShape             — radial peak and width, relative to the dent radius.
+//   trail[8], trailMode  — XZ, strength, inverse width²; 0 off, 1 foam groove, 2 velvet pile.
+//   releaseWave          — gel release XZ, age in seconds, damped amplitude.
 //   dimensions           — half width, thickness, half length, bevel radius.
 //   bounce               — rigid whole-sample vertical offset, in model space.
 //   albedo, roughness    — linear physical constants from MatterSurfaces, never UI tokens.
@@ -16,6 +19,10 @@
 material {
     "name": "Matter surface",
     "parameters": [
+        { "type": "float2", "name": "rimShape" },
+        { "type": "float4[8]", "name": "trail", "precision": "high" },
+        { "type": "float", "name": "trailMode" },
+        { "type": "float4", "name": "releaseWave", "precision": "high" },
         {
             "type": "float2",
             "name": "finger"
@@ -106,19 +113,78 @@ material {
 }
 vertex {
     // KEEP IN SYNC: this vertex block is duplicated in matter_surface.mat and matter_gel.mat.
-    // Only uniforms move the static rest mesh. Its bottom has zero displacement weight.
-    float dentField(vec2 p) {
+    // A field and its analytic XZ gradient, evaluated ONCE per vertex (including the trail).
+    // Components: displacement, d/dx, d/dz, crushed pile. The supported bottom stays fixed.
+    highp vec4 dentField(highp vec2 p) {
         vec2 q = (p - materialParams.finger) / materialParams.radius;
-        float r = length(q);
-        float bowl = exp(-2.0 * pow(r, materialParams.profile.x));
-        float rim = exp(-pow((r - 1.05) * 3.8, 2.0)) * smoothstep(0.0, 0.35, r);
-        float folds = 0.0;
-        if (materialParams.profile.z > 0.0) {
+        float r = max(length(q), 0.0001);
+        vec2 radial = q / r / materialParams.radius;
+        float power = pow(r, materialParams.profile.x);
+        float bowl = exp(-2.0 * power);
+        float db = -2.0 * materialParams.profile.x * power / r * bowl;
+        float gateT = clamp((r - 0.20) / 0.35, 0.0, 1.0);
+        float gate = gateT * gateT * (3.0 - 2.0 * gateT);
+        float dg = 6.0 * gateT * (1.0 - gateT) / 0.35;
+        float rimQ = (r - materialParams.rimShape.x) / materialParams.rimShape.y;
+        float rim = exp(-rimQ * rimQ);
+        float dr = rim * (dg - gate * 2.0 * rimQ / materialParams.rimShape.y);
+        float positiveDepth = max(materialParams.depth, 0.0);
+        float field = -materialParams.depth * bowl + positiveDepth * materialParams.profile.y * rim * gate;
+        vec2 gradient = (-materialParams.depth * db + positiveDepth * materialParams.profile.y * dr) * radial;
+        if (materialParams.profile.z > 0.0 && positiveDepth > 0.00001) {
             float angle = r > 0.0001 ? atan(q.y, q.x) : 0.0;
-            folds = cos(angle * materialParams.profile.w + r * 4.0) * r * r * exp(-2.0 * r * r);
+            float phase = angle * materialParams.profile.w + r * 0.35;
+            float fold = cos(phase), slope = -sin(phase);
+            // Seven narrow leather creases; eighteen rounded velvet folds.
+            if (materialParams.profile.w < 10.0) {
+                slope *= 3.0 * fold * fold;
+                fold = fold * fold * fold;
+            }
+            float envelopeQ = (r - 0.9) / 0.55;
+            float envelope = exp(-envelopeQ * envelopeQ);
+            float de = envelope * (dg - gate * 2.0 * envelopeQ / 0.55);
+            float amplitude = positiveDepth * materialParams.profile.z;
+            vec2 angular = vec2(-q.y, q.x) / (r * r * materialParams.radius);
+            field += amplitude * envelope * gate * fold;
+            gradient += amplitude * (de * fold * radial + envelope * gate * slope *
+                (materialParams.profile.w * angular + 0.35 * radial));
         }
-        return materialParams.depth * (-bowl + materialParams.profile.y * rim +
-            materialParams.profile.z * folds);
+        float pile = 0.0;
+        if (materialParams.trailMode > 0.5) {
+            float memory = 0.0;
+            vec2 memoryGradient = vec2(0.0);
+            for (int i = 0; i < 8; i++) {
+                vec4 samplePoint = materialParams.trail[i];
+                vec2 delta = p - samplePoint.xy;
+                float cell = samplePoint.z * exp(-dot(delta, delta) * samplePoint.w);
+                memory += cell;
+                memoryGradient -= 2.0 * delta * samplePoint.w * cell;
+            }
+            float remaining = exp(-memory);
+            pile = 1.0 - remaining;
+            if (materialParams.trailMode < 1.5) {
+                // Smooth bounded union: grooves cannot stack up or deepen the main well.
+                float groove = 0.22 * pile;
+                field -= groove * (1.0 - bowl);
+                gradient += groove * db * radial - 0.22 * remaining * memoryGradient * (1.0 - bowl);
+                pile = 0.0;
+            }
+        }
+        if (materialParams.releaseWave.w > 0.00001) {
+            vec2 delta = p - materialParams.releaseWave.xy;
+            float distance = max(length(delta), 0.0001);
+            float offset = distance - materialParams.releaseWave.z * 1.35;
+            float envelope = exp(-offset * offset / 0.16);
+            float gateT = clamp(distance / 0.25, 0.0, 1.0);
+            float gate = gateT * gateT * (3.0 - 2.0 * gateT);
+            float dg = 6.0 * gateT * (1.0 - gateT) / 0.25;
+            float wave = sin(offset * 10.0);
+            float amplitude = materialParams.releaseWave.w;
+            field += amplitude * envelope * gate * wave;
+            gradient += amplitude * envelope * ((dg - gate * offset * 12.5) * wave +
+                gate * 10.0 * cos(offset * 10.0)) * delta / distance;
+        }
+        return vec4(field, gradient, pile);
     }
     void materialVertex(inout MaterialVertexInputs material) {
         highp vec3 p = getPosition().xyz;
@@ -131,25 +197,22 @@ vertex {
         vec3 axis = abs(n.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
         vec3 t = normalize(axis - n * dot(axis, n));
         float weight = clamp(1.0 + p.y / materialParams.dimensions.y, 0.0, 1.0);
-        float field = 0.0;
-        if (abs(materialParams.depth) > 0.000001) {
-            field = dentField(p.xz);
-            // Central differences of the SAME displacement, not a second approximate well.
-            const float e = 0.002;
-            float gx = (dentField(p.xz + vec2(e, 0.0)) - dentField(p.xz - vec2(e, 0.0))) / (2.0 * e) * weight;
-            float gz = (dentField(p.xz + vec2(0.0, e)) - dentField(p.xz - vec2(0.0, e))) / (2.0 * e) * weight;
-            float gy = max(0.15, 1.0 + field / materialParams.dimensions.y);
-            // Inverse-transpose Jacobian for the normal, Jacobian for the brushing tangent.
+        vec4 deformation = vec4(0.0);
+        if (abs(materialParams.depth) > 0.000001 || materialParams.trailMode > 0.5 ||
+            materialParams.releaseWave.w > 0.00001) {
+            deformation = dentField(p.xz);
+            float gx = deformation.y * weight, gz = deformation.z * weight;
+            float gy = max(0.15, 1.0 + deformation.x / materialParams.dimensions.y);
+            // Inverse-transpose Jacobian for N, Jacobian for the brushing tangent.
             n = normalize(vec3(n.x - gx * n.y / gy, n.y / gy, n.z - gz * n.y / gy));
             t = normalize(vec3(t.x, gx * t.x + gy * t.y + gz * t.z, t.z));
         }
         material.worldPosition.xyz += mat3(getWorldFromModelMatrix()) *
-            vec3(0.0, weight * field + materialParams.bounce, 0.0);
-        material.rest = vec4(p, clamp(-field / materialParams.dimensions.y, 0.0, 1.0));
-        material.bentNormal = vec4(normalize(getWorldFromModelNormalMatrix() * n), 0.0);
+            vec3(0.0, weight * deformation.x + materialParams.bounce, 0.0);
+        material.rest = vec4(p, clamp(-deformation.x / materialParams.dimensions.y, 0.0, 1.0));
+        material.bentNormal = vec4(normalize(getWorldFromModelNormalMatrix() * n), deformation.w * weight);
         material.bentTangent = vec4(normalize(mat3(getWorldFromModelMatrix()) * t), 0.0);
-        // Keep Filament's original orthonormal TBN for the fragment's world → tangent mapping.
-        // The deformed N/T above drive normal, clearCoatNormal and anisotropyDirection there.
+        // Filament's original TBN maps the deformed world-space frame back in the fragment.
     }
 }
 fragment {
@@ -187,6 +250,7 @@ fragment {
     void material(inout MaterialInputs material) {
         highp vec3 p = variable_rest.xyz;
         float compressed = variable_rest.w;
+        float crushed = max(compressed, variable_bentNormal.w * 0.65);
         vec3 colour = materialParams.albedo;
         float rough = materialParams.roughness;
         float occlusion = 1.0;
@@ -198,26 +262,26 @@ fragment {
         vec3 t = normalize(variable_bentTangent.xyz);
         t = normalize(t - n * dot(t, n));
         if (kind < 0.5) {
-            vec2 cell = cells(p * 23.0);
-            float resolved = 1.0 - smoothstep(0.45, 1.3, length(fwidth(p * 23.0)));
-            // Broad open cavities separated by soft, creamy cell walls, rather than black dots.
-            float pore = (1.0 - smoothstep(0.22, 0.62, cell.x)) * resolved;
-            colour *= (1.0 - 0.11 * pore) * (1.0 - 0.10 * compressed);
-            occlusion = 1.0 - 0.62 * pore;
-            height = -0.014 * pore * (1.0 - 0.8 * compressed);
+            vec2 cell = cells(p * 48.0);
+            float resolved = 1.0 - smoothstep(0.45, 1.3, length(fwidth(p * 48.0)));
+            // Fine shallow open cells: only 3.5% albedo and 8% cavity occlusion, never dark dots.
+            float pore = (1.0 - smoothstep(0.15, 0.55, cell.x)) * resolved;
+            colour *= (1.0 - 0.035 * pore) * (1.0 - 0.035 * compressed);
+            occlusion = 1.0 - 0.08 * pore;
+            height = -0.0018 * pore * (1.0 - 0.8 * compressed);
         } else if (kind < 2.5) {
             vec2 nap = p.xz + p.y * vec2(0.31, 0.73);
             pile = noise2(nap * vec2(3.0, 8.0));
             float fibre = noise2(nap * vec2(65.0, 240.0));
             float resolved = 1.0 - smoothstep(0.35, 1.4, length(fwidth(nap * vec2(65.0, 240.0))));
             float facing = clamp(dot(n, getWorldViewVector()), 0.0, 1.0);
-            colour *= (0.48 + 0.24 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * compressed);
+            colour *= (0.48 + 0.24 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * crushed);
             height = (fibre - 0.5) * 0.0018 * resolved;
             // Swept nap tilts the sheen lobe; a crushed patch lays fibres along the slab tangent.
             vec3 b = cross(n, t);
             float sweep = (pile - 0.5) * 0.30;
-            n = normalize(n + t * (sweep + compressed * 0.22) + b * sweep * 0.45);
-            rough -= compressed * 0.12;
+            n = normalize(n + t * (sweep + crushed * 0.22) + b * sweep * 0.45);
+            rough -= crushed * 0.12;
         } else if (kind < 3.5) {
             vec2 cell = cells(p * 24.0);
             float resolved = 1.0 - smoothstep(0.4, 1.4, length(fwidth(p * 24.0)));
@@ -228,22 +292,27 @@ fragment {
             coatRoughness += valley * 0.13;
             occlusion = 1.0 - valley * 0.24;
         } else if (kind < 4.5) {
-            vec2 stone = vec2(p.x + p.z * 0.58, p.z - p.x * 0.22) + p.y * vec2(0.43, 0.71);
-            vec2 warp = vec2(fbm(stone * 0.72 + 7.0), fbm(stone * 0.83 - 11.0));
-            vec2 q = stone + (warp - 0.5) * 2.4;
-            float cloud = fbm(q * 1.15 + 3.4);
-            // Nonperiodic ridged fBm: widths breathe from cloudy seams to hairlines.
-            // The secondary ridge joins the main field; there is no repeated sine/isoline comb.
-            float field = fbm(q * vec2(0.72, 1.65));
-            float width = mix(0.012, 0.105, smoothstep(0.30, 0.72, warp.y));
-            float ridge = abs(field - 0.51);
-            float aa = max(fwidth(field), 0.001);
-            float vein = 1.0 - smoothstep(width * 0.20, width + aa, ridge);
-            float deepVein = 1.0 - smoothstep(width, width * 2.8 + aa, ridge);
-            float branchField = field + (noise2(q * 4.1 + 21.0) - 0.5) * 0.16;
-            float branch = 1.0 - smoothstep(0.003, 0.014 + fwidth(branchField), abs(branchField - 0.51));
-            branch *= smoothstep(0.34, 0.64, cloud);
-            colour *= 1.0 - 0.10 * cloud - 0.14 * deepVein - 0.38 * vein - 0.10 * branch;
+            // Across/along coordinates preserve one diagonal direction through the whole slab.
+            // Meander varies only along the vein: no closed 2D noise contours (agate swirls).
+            vec2 stone = vec2(p.x + p.z * 0.58, p.z - p.x * 0.58) + p.y * vec2(0.43, 0.71);
+            float along = stone.y;
+            float meander = (noise2(vec2(along * 0.65, 7.2)) - 0.5) * 0.34 +
+                (noise2(vec2(along * 1.7, 18.4)) - 0.5) * 0.09;
+            float across = stone.x + meander;
+            float band = floor(across / 1.35 + 0.5);
+            float centre = band * 1.35 + (hash3(vec3(band, 3.1, 9.7)).x - 0.5) * 0.30;
+            float offset = across - centre;
+            float width = mix(0.018, 0.060, noise2(vec2(along * 1.1, band + 4.8)));
+            float aa = max(fwidth(offset), 0.001);
+            float vein = 1.0 - smoothstep(width * 0.2, width + aa, abs(offset));
+            float deepVein = 1.0 - smoothstep(width, width * 3.0 + aa, abs(offset));
+            // A fine fork diverges and rejoins the main seam over 2.8 units of flow.
+            float branchPhase = fract((along + band * 0.7) / 2.8);
+            float branchOffset = 0.27 * sin(branchPhase * 3.14159265);
+            float branch = 1.0 - smoothstep(0.006, 0.016 + aa, abs(offset - branchOffset));
+            branch *= smoothstep(0.0, 0.18, branchPhase) * (1.0 - smoothstep(0.72, 1.0, branchPhase));
+            float cloud = fbm(stone * 1.15 + 3.4);
+            colour *= 1.0 - 0.07 * cloud - 0.12 * deepVein - 0.36 * vein - 0.13 * branch;
             rough += cloud * 0.018;
         } else {
             // Visible long brushing plus subpixel micro-grooves, both running along X.
@@ -277,8 +346,8 @@ fragment {
         material.clearCoatRoughness = coatRoughness;
         vec3 pileTint = sqrt(materialParams.albedo);
         pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
-        material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + compressed * 0.2), 0.0, 1.0);
-        material.sheenRoughness = clamp(materialParams.sheenRoughness - compressed * 0.13 + (pile - 0.5) * 0.10, 0.2, 1.0);
+        material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + crushed * 0.2), 0.0, 1.0);
+        material.sheenRoughness = clamp(materialParams.sheenRoughness - crushed * 0.13 + (pile - 0.5) * 0.10, 0.2, 1.0);
         material.anisotropy = materialParams.anisotropy;
         // A hairline on the actual rigid surface: no extra mesh, clipping or vertex upload.
         float distanceToRing = abs(length(p.xz - materialParams.ripple.xy) - materialParams.ripple.z);

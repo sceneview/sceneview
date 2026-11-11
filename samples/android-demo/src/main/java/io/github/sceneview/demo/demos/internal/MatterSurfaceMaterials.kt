@@ -21,6 +21,11 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
             setParameter("bounce", 0f)
             setParameter("radius", kind.radius)
             setParameter("profile", finish.falloff, finish.bulge, finish.wrinkles, finish.foldCount)
+            setParameter("rimShape", finish.rimRadius, finish.rimWidth)
+            setParameter("trailMode", 0f)
+            setParameter("trail", MaterialInstance.FloatElement.FLOAT4,
+                FloatArray(FeelSimulation.TRAIL_POINTS * 4), 0, FeelSimulation.TRAIL_POINTS)
+            setParameter("releaseWave", 0f, 0f, 0f, 0f)
             setParameter("dimensions", FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_THICKNESS,
                 FeelSimulation.PAD_HALF_LENGTH, MatterMeshes.BEVEL)
             setParameter("albedo", finish.red, finish.green, finish.blue)
@@ -60,8 +65,23 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
     fun update(kind: FeelMaterial, simulation: FeelSimulation, now: Long, motion: Boolean, ringWidth: Float) {
         val i = kind.ordinal
         samples[i].apply {
-            setParameter("finger", simulation.fingerX[i], simulation.fingerZ[i])
+            setParameter("finger", simulation.dentX[i], simulation.dentZ[i])
             setParameter("depth", MatterSurfaces.visualDepth(simulation.pads[i].depthMm, kind))
+            if (kind == FeelMaterial.MemoryFoam || kind == FeelMaterial.Velvet) {
+                val trail = simulation.trails[i]
+                val hasTrail = (0 until FeelSimulation.TRAIL_POINTS).any { trail[it * 4 + 2] > 0f }
+                setParameter("trailMode", if (!hasTrail) 0f else if (kind == FeelMaterial.MemoryFoam) 1f else 2f)
+                setParameter("trail", MaterialInstance.FloatElement.FLOAT4, trail, 0, FeelSimulation.TRAIL_POINTS)
+            }
+            if (kind == FeelMaterial.Gel) {
+                val age = if (simulation.gelReleasedAt == Long.MIN_VALUE) -1f else (now - simulation.gelReleasedAt) / 1000f
+                val tail = ((FeelSimulation.GEL_WAVE_SECONDS - age) / .6f).coerceIn(0f, 1f)
+                val amplitude = if (motion && age in 0f..FeelSimulation.GEL_WAVE_SECONDS) {
+                    simulation.gelReleaseDepth * .12f * exp(-1.4f * age) *
+                        (age / .15f).coerceIn(0f, 1f) * tail * tail * (3f - 2f * tail)
+                } else 0f
+                setParameter("releaseWave", simulation.gelReleaseX, simulation.gelReleaseZ, age, amplitude)
+            }
             val age = if (simulation.contactMillis[i] == Long.MIN_VALUE) Long.MAX_VALUE else now - simulation.contactMillis[i]
             val ripple = kind.rigid && motion && age in 0L until MatterMeshes.RIPPLE_MILLIS
             // Upwards only, under 0.72 illustrative mm: the tile never enters the floor.

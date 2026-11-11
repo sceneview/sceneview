@@ -225,9 +225,9 @@ fun FeelDemo(onBack: () -> Unit) {
         val focused = touchView.hasWindowFocus()
         // Initial composition can precede window focus. Do not dismiss an opening not yet shown.
         if (!focused && (simulation.active != null || simulation.opening.visible)) touch.cancel()
+        touch.followIndentation()
         simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && openingAllowed)
             ?.let(haptics::play)
-        touch.followIndentation()
         val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
         val progress = if (motion) slide.value else 1f
         FeelMaterial.entries.forEach { kind ->
@@ -259,8 +259,14 @@ fun FeelDemo(onBack: () -> Unit) {
             for (kind in FeelMaterial.entries) if (kind == displayed || kind == outgoing) {
                 val i = kind.ordinal
                 signature = signature * 31 + simulation.pads[i].depthMm.toBits()
-                signature = signature * 31 + simulation.fingerX[i].toBits()
-                signature = signature * 31 + simulation.fingerZ[i].toBits()
+                signature = signature * 31 + simulation.dentX[i].toBits()
+                signature = signature * 31 + simulation.dentZ[i].toBits()
+                for (slot in 0 until FeelSimulation.TRAIL_POINTS) {
+                    signature = signature * 31 + simulation.trails[i][slot * 4 + 2].toBits()
+                }
+                if (kind == FeelMaterial.Gel && motion && simulation.gelReleasedAt != Long.MIN_VALUE &&
+                    now - simulation.gelReleasedAt in 0L..(FeelSimulation.GEL_WAVE_SECONDS * 1000).toLong()
+                ) signature += now / 32L
                 val contactAt = simulation.contactMillis[i]
                 if (kind.rigid && motion && contactAt != Long.MIN_VALUE &&
                     now - contactAt in 0L until MatterMeshes.RIPPLE_MILLIS) signature += now / 32L
@@ -319,7 +325,10 @@ fun FeelDemo(onBack: () -> Unit) {
                                 vertexBuffer = mesh.vertexBuffer, indexBuffer = mesh.indexBuffer,
                                 boundingBox = mesh.boundingBox, materialInstance = materials.samples[kind.ordinal],
                                 apply = {
-                                    isShadowCaster = true; isShadowReceiver = true; isTouchable = false
+                                    // A transmissive gel must not receive its own opaque shadow in the well.
+                                    isShadowCaster = kind != FeelMaterial.Gel
+                                    isShadowReceiver = kind != FeelMaterial.Gel
+                                    isTouchable = false
                                     setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
                                 },
                             )

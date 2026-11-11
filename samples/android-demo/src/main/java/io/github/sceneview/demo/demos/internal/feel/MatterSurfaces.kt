@@ -6,7 +6,7 @@ package io.github.sceneview.demo.demos.internal.feel
  * coloured by volume absorption. The other RGB values are diffuse albedos.
  *
  *                 albedo / reflectance     roughness  metal  coat  sheen
- * Memory foam     .82 .73 .48              .94        0      0     0
+ * Memory foam     .86 .79 .59              .94        0      0     0
  * Gel             1 1 1                   .045       0      0     0  (amber absorption, IOR 1.45)
  * Velvet          .009 .065 .028           .90        0      0     emerald pile, strength 1
  * Leather         .22 .075 .028            .44        0      .30   0
@@ -28,16 +28,21 @@ internal object MatterSurfaces {
         val bulge: Float = 0f,
         val wrinkles: Float = 0f,
         val foldCount: Float = 0f,
+        val rimRadius: Float = 1.15f,
+        val rimWidth: Float = .32f,
         val visualMm: Float = FeelMaterial.WORLD_PER_MM,
     )
 
     private val surfaces = arrayOf(
-        Surface(.82f, .73f, .48f, .94f, bulge = .07f, visualMm = .032f),
-        Surface(1f, 1f, 1f, .045f, falloff = 2.2f, bulge = .22f, visualMm = .036f),
-        Surface(.009f, .065f, .028f, .90f, sheen = 1f, bulge = .08f,
-            wrinkles = .035f, foldCount = 18f, visualMm = .055f),
+        Surface(.86f, .79f, .59f, .94f, bulge = .20f, rimRadius = 1.28f,
+            rimWidth = .45f, visualMm = .032f),
+        Surface(1f, 1f, 1f, .045f, falloff = 2.2f, bulge = .48f,
+            rimRadius = 1.08f, rimWidth = .22f, visualMm = .036f),
+        Surface(.009f, .065f, .028f, .90f, sheen = 1f, bulge = .22f,
+            wrinkles = .075f, foldCount = 18f, visualMm = .055f),
         Surface(.22f, .075f, .028f, .44f, coat = .30f, falloff = 2.6f,
-            bulge = .04f, wrinkles = .055f, foldCount = 12f, visualMm = .075f),
+            bulge = .26f, wrinkles = .13f, foldCount = 7f, rimRadius = 1.12f,
+            rimWidth = .23f, visualMm = .075f),
         Surface(.82f, .83f, .80f, .09f, coat = 1f, coatRoughness = .055f),
         Surface(.56f, .58f, .60f, .26f, metallic = 1f, anisotropy = .95f),
     )
@@ -45,9 +50,9 @@ internal object MatterSurfaces {
     const val GEL_IOR = 1.45f
     const val GEL_TRANSMISSION = 1f
     // Beer-Lambert coefficients per model-space unit: colour lives INSIDE the gel.
-    const val GEL_ABSORPTION_RED = .12f
-    const val GEL_ABSORPTION_GREEN = .85f
-    const val GEL_ABSORPTION_BLUE = 3.4f
+    const val GEL_ABSORPTION_RED = .06f
+    const val GEL_ABSORPTION_GREEN = .42f
+    const val GEL_ABSORPTION_BLUE = 1.65f
     operator fun get(material: FeelMaterial): Surface = surfaces[material.ordinal]
 
     /** Signed for gel's overshoot; always leaves a supported layer under the deepest dent. */
@@ -61,8 +66,8 @@ internal object MatterSurfaces {
         return depth.coerceIn(-FeelSimulation.PAD_THICKNESS * .25f, FeelSimulation.PAD_THICKNESS * .78f)
     }
 
-    /** Match the caption to visible recovery, including gel crossing zero with velocity. */
+    /** Never select a numeric caption if its whole-millimetre readout would round to zero. */
     fun showsDisplacement(material: FeelMaterial, state: Indentation, pressed: Boolean): Boolean =
-        !material.rigid && (pressed || kotlin.math.abs(visualDepth(state.depthMm, material)) > .003f ||
-            kotlin.math.abs(state.velocity) > .05f)
+        !material.rigid && kotlin.math.abs(state.depthMm) >= .5f &&
+            (pressed || kotlin.math.abs(visualDepth(state.depthMm, material)) > .003f)
 }

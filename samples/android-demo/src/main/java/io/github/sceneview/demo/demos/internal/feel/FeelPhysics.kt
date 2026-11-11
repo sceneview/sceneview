@@ -12,13 +12,22 @@ internal enum class FeelMaterial(
     val radius: Float, // Well radius in model space, independent of the physical readout.
 ) {
     MemoryFoam(0.35f, 0.28f, 0.03f, 24f, 1.28f),
-    Gel(0.65f, 0.055f, 0.012f, 18f, 0.85f),
+    Gel(0.65f, 0.038f, 0.012f, 18f, 0.85f),
     Velvet(1.25f, 0.18f, 0.006f, 6f, 0.65f),
     Leather(3.5f, 0.23f, 0.004f, 2f, 0.58f),
     Marble(160f, 1f, 0.008f, 0f, 0.22f),
     BrushedSteel(240f, 1f, 0.008f, 0f, 0.22f);
 
     val rigid get() = stopMm == 0f
+
+    /** Time constant of the contact's lateral response (63% of a step), in seconds. */
+    val dragSeconds get() = when (this) {
+        MemoryFoam -> .13f
+        Gel -> .055f
+        Velvet -> .035f
+        Leather -> .025f
+        else -> 0f
+    }
 
     companion object {
         const val MAX_FORCE_N = 8f

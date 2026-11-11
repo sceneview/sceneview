@@ -37,7 +37,15 @@ class MatterStageTest {
                 assertTrue("hero width is $occupied", occupied in .89f.. .91f)
             }
             val centreY = (points.maxOf { it.second } + points.minOf { it.second }) / 2f
-            assertEquals("silhouette centres in the free stage", height / 2f, centreY, height * .012f)
+            assertEquals("silhouette centres with room for its contact shadow", height * .48f, centreY, height * .012f)
+            if (width == 1080) {
+                val top = points.minOf { it.second } / height
+                assertTrue("top edge is near the upper third: $top", top in .32f.. .35f)
+                assertTrue("closer than v6's 8.77", stage.distance < 7.5f)
+                assertTrue("lower than v6's 3.16", stage.eyeY < 2.3f)
+                val floor = project(stage, 0f, -FeelSimulation.PAD_THICKNESS, FeelSimulation.PAD_HALF_LENGTH + .3f)
+                assertTrue("contact shadow remains inside the stage", floor.second < height * .85f)
+            }
             assertFalse(stage.frame())
             stage.heightPx += 40
             assertTrue(stage.frame())

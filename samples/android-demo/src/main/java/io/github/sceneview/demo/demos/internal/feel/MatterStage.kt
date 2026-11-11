@@ -38,13 +38,13 @@ internal class MatterStage {
                         if (depth <= NEAR) return false
                         val right = x * COS_AZIMUTH - z * SIN_AZIMUTH
                         val up = x * UP_X + cy * COS + z * UP_Z
-                        if (abs(right) > depth * TAN_HALF_FOV * .945f ||
+                        if (abs(right) > depth * TAN_HALF_FOV * .957f ||
                             abs(up) > depth * TAN_HALF_FOV / aspect * .78f) return false
                     }
             return true
         }
         // Re-centre the projected silhouette, not the origin: perspective lifts the far edge.
-        // Conservative box fitting leaves about 90% width after the rounded corners are removed.
+        // The rounded silhouette fills ~90% width; a small upward bias leaves room for its shadow.
         repeat(5) {
             var low = 3f; var high = 100f
             repeat(30) {
@@ -63,7 +63,7 @@ internal class MatterStage {
                             val projected = (x * UP_X + cy * COS + z * UP_Z) / depth
                             bottom = minOf(bottom, projected); top = maxOf(top, projected)
                         }
-                targetY += (bottom + top) * .5f * distance / COS
+                targetY += ((bottom + top) * .5f - TAN_HALF_FOV / aspect * .04f) * distance / COS
             }
         }
         return true
@@ -74,13 +74,29 @@ internal class MatterStage {
         val length = sqrt(dx * dx + dy * dy + dz * dz)
         if (!length.isFinite() || length < 0.000001f) return null
         val nx = dx / length; val ny = dy / length; val nz = dz / length
-        var travel = 0f
+        // Start at the bounding box, so nearly grazing side rays do not spend all 96 steps
+        // approaching the slab from the camera. The rounded SDF still rejects empty corners.
+        var enter = 0f
+        var leave = FAR.toFloat()
+        fun clip(origin: Float, direction: Float, low: Float, high: Float): Boolean {
+            if (abs(direction) < .000001f) return origin in low..high
+            val a = (low - origin) / direction
+            val b = (high - origin) / direction
+            enter = maxOf(enter, minOf(a, b))
+            leave = minOf(leave, maxOf(a, b))
+            return enter <= leave
+        }
+        if (!clip(ox, nx, -FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH) ||
+            !clip(oy, ny, -FeelSimulation.PAD_THICKNESS, 0f) ||
+            !clip(oz, nz, -FeelSimulation.PAD_HALF_LENGTH, FeelSimulation.PAD_HALF_LENGTH)
+        ) return null
+        var travel = enter
         repeat(96) {
             val x = ox + nx * travel; val y = oy + ny * travel; val z = oz + nz * travel
             val distance = MatterMeshes.distance(x, y, z)
             if (distance < 0.00005f) return x to z
             travel += distance
-            if (travel > FAR) return null
+            if (travel > leave + .00005f) return null
         }
         return null
     }
@@ -95,10 +111,10 @@ internal class MatterStage {
     }
 
     companion object {
-        const val HORIZONTAL_FOV = 40.0
+        const val HORIZONTAL_FOV = 48.0
         const val NEAR = 0.1
         const val FAR = 150.0
-        const val ELEVATION = 27f
+        const val ELEVATION = 24f
         const val AZIMUTH = 24f
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()

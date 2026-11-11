@@ -20,12 +20,26 @@ class MatterCaptionTest {
     @Test fun restShowsCharacterAndOnlyContactOrVisibleRecoveryShowsMillimetres() {
         for (material in FeelMaterial.entries) {
             assertEquals(false, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = false))
-            assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = true))
+            assertEquals(false, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = true))
             assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(1f), pressed = false))
         }
-        assertTrue(MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(0f, -2f), false))
+        assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(0f, -2f), false))
         assertTrue(MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(-1f), false))
         assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.MemoryFoam, Indentation(.001f), false))
+    }
+
+    @Test fun openingRecoveryAndZeroCrossingsNeverSelectAZeroMillimetreCaption() {
+        val simulation = FeelSimulation(openingEnabled = true)
+        for (now in 0L..12000L step 16L) {
+            simulation.advance(now)
+            val state = simulation.pads[0]
+            if (state.depthMm < .5f) {
+                assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.MemoryFoam, state, false))
+            }
+        }
+        for (depth in listOf(-.49f, 0f, .49f)) for (pressed in listOf(false, true)) {
+            assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(depth, 4f), pressed))
+        }
     }
 
     @Test fun everyExistingMatterLocaleHasSixNamesCharacterCaptionsAndMillimetreReadouts() {

@@ -55,8 +55,10 @@ class FeelPhysicsTest {
         var crossings = 0
         var minimum = 0f
         var maximumAfterFirstCrossing = 0f
-        repeat(360) {
+        val upwardPeaks = mutableListOf<Float>()
+        repeat(480) {
             val next = stepIndentation(state, kind, 0f, 1f / 60f)
+            if (state.velocity < 0f && next.velocity >= 0f && state.depthMm < 0f) upwardPeaks += -state.depthMm
             if (next.depthMm * state.depthMm < 0f) crossings++
             minimum = minOf(minimum, next.depthMm)
             if (crossings >= 1) maximumAfterFirstCrossing = maxOf(maximumAfterFirstCrossing, next.depthMm)
@@ -65,6 +67,8 @@ class FeelPhysicsTest {
         assertTrue(minimum < -1f)
         assertTrue(maximumAfterFirstCrossing > .5f)
         assertTrue(crossings >= 4)
+        assertTrue("three visible upward peaks: $upwardPeaks", upwardPeaks.take(3).all { it > .15f })
+        assertTrue(upwardPeaks.size >= 3)
         assertTrue(abs(state.depthMm) < .001f && abs(state.velocity) < .001f)
         assertTrue(MatterSurfaces.visualDepth(minimum, kind) < 0f)
     }
