@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.view.MotionEvent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +22,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -42,6 +45,7 @@ import io.github.sceneview.demo.demos.internal.FeelHapticPlayer
 import io.github.sceneview.demo.demos.internal.MatterMesh
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
+import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
@@ -51,6 +55,8 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.environment.Environment
+import io.github.sceneview.material.setColor
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
@@ -59,6 +65,7 @@ import io.github.sceneview.math.Transform
 import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberView
 import io.github.sceneview.utils.screenToRay
@@ -76,6 +83,8 @@ fun FeelDemo(onBack: () -> Unit) {
     val loader = rememberMaterialLoader(engine)
     val view = rememberView(engine)
     val camera = rememberCameraNode(engine)
+    val light = rememberMainLightNode(engine) { lightDirection = Direction(-0.3f, -1f, -0.8f) }
+    val density = LocalDensity.current.density
     val recorder = rememberDemoSceneRecorder()
     val firstFrame = rememberFirstFrameState(engine)
     val touchView = LocalView.current
@@ -111,12 +120,21 @@ fun FeelDemo(onBack: () -> Unit) {
     DisposableEffect(meshes) { onDispose { meshes.forEach { row -> row.forEach(MatterMesh::destroy) } } }
     val materials = remember(loader, colors) {
         val roles = listOf(
-            listOf(colors.primary, colors.primaryContainer, colors.onPrimary, colors.onPrimary, colors.onPrimary),
-            listOf(colors.tertiary, colors.tertiaryContainer, colors.onTertiary, colors.onTertiary, colors.onTertiary),
-            listOf(colors.surfaceContainerHighest, colors.outline, colors.onSurfaceVariant, colors.onSurface, colors.onSurface),
+            listOf(colors.primary, colors.primary, colors.onPrimary, colors.onPrimary, colors.onPrimary),
+            listOf(colors.tertiary, colors.tertiary, colors.onTertiary, colors.onTertiary, colors.onTertiary),
+            listOf(colors.surfaceContainerHighest, colors.surfaceContainerHighest, colors.outline, colors.primary, colors.primary),
         )
-        roles.map { row -> row.mapIndexed { index, color ->
-            loader.createUnlitColorInstance(color.copy(alpha = when (index) { 2 -> 0.42f; 3 -> 0.12f; else -> 1f }))
+        roles.mapIndexed { sample, row -> row.mapIndexed { part, color ->
+            // A flat, darker tone of the face's own role makes the section legible in both themes.
+            val tone = if (part == 1) color.copy(
+                red = color.red * 0.72f, green = color.green * 0.72f, blue = color.blue * 0.72f,
+            ) else color
+            loader.createUnlitColorInstance(tone.copy(alpha = when (part) {
+                2 -> if (sample == FeelMaterial.Steel.ordinal) 1f else 0.42f
+                3 -> 0.12f
+                4 -> 0.99f // Transparent material variant so the steel ring can fade at runtime.
+                else -> 1f
+            }))
         } }
     }
     val markMaterial = remember(loader, colors) { loader.createColorInstance(colors.primary, roughness = 0.8f) }
@@ -135,6 +153,9 @@ fun FeelDemo(onBack: () -> Unit) {
     val motionNow by rememberUpdatedState(motion)
     val touchNow by rememberUpdatedState(touch)
     val meshesNow by rememberUpdatedState(meshes)
+    val materialsNow by rememberUpdatedState(materials)
+    val primaryNow by rememberUpdatedState(colors.primary)
+    val densityNow by rememberUpdatedState(density)
     var readout by remember { mutableStateOf(FeelReadout()) }
     val timing = remember { longArrayOf(0L) }
     firstFrame.holdUntil(true, "material samples")
@@ -149,141 +170,145 @@ fun FeelDemo(onBack: () -> Unit) {
         themedStage = true,
         actionsMenu = true,
         recorder = recorder,
-        bottomOverlayReservesScene = true,
-        bottomOverlay = {
-            Surface(color = colors.surface, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    if (readout.showHint) stringResource(R.string.demo_feel_instruction) else "",
-                    Modifier.padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-        },
+        dockHidden = true,
     ) {
         // Physically inset this viewport once. The labels use precisely the same free area.
-        Box(Modifier.fillMaxSize().padding(LocalDemoSceneCover.current).onSizeChanged {
-            stage.widthPx = it.width
-            stage.heightPx = it.height
-        }) {
-            SceneView(
-                modifier = Modifier.fillMaxSize(),
-                engine = engine,
-                materialLoader = loader,
-                view = view,
-                cameraNode = camera,
-                cameraManipulator = null,
-                autoCenterContent = false,
-                environment = environment,
-                surfaceMirrorer = recorder.surfaceMirrorer,
-                frameRatePolicy = FrameRatePolicy.Continuous(),
-                // SceneView retains the FIRST callback: never close over a readiness Boolean.
-                onTouchEvent = { event, _ -> touchNow.onEvent(event) },
-                onFrame = { nanos ->
-                    if (stage.frame()) {
-                        camera.setProjection(Camera.Projection.ORTHO, -stage.halfWidth.toDouble(), stage.halfWidth.toDouble(),
-                            -stage.halfHeight.toDouble(), stage.halfHeight.toDouble(), 0.1, 100.0)
-                        camera.position = Position(0f, 20f * MatterStage.SIN, 20f * MatterStage.COS)
-                        camera.lookAt(Position())
-                        for (i in 0..2) pads[i]?.transform = Transform(
-                            Position(0f, stage.y[i], stage.z[i]), scale = Scale(stage.scale[i]),
-                        )
-                    }
-                    val now = SystemClock.uptimeMillis()
-                    if (!motionNow) simulation.opening.cancel()
-                    if (!touchView.hasWindowFocus()) touchNow.cancel()
-                    simulation.advance(now, startOpening = firstFrame.sceneReady.value)?.let(haptics::play)
-                    touchNow.followIndentation()
-                    FeelMaterial.entries.forEach { kind ->
-                        val i = kind.ordinal
-                        val depth = simulation.pads[i].depthMm
-                        val x = simulation.fingerX[i]
-                        val z = simulation.fingerZ[i]
-                        val previous = lastDeformation[i]
-                        if (depth != previous[0] || x != previous[1] || z != previous[2]) {
-                            for (part in 0..2) {
-                                val mesh = meshesNow[i][part]
-                                mesh.geometry.deform(depth, x, z, kind.radius)
-                                mesh.upload()
-                            }
-                            previous[0] = depth; previous[1] = x; previous[2] = z
-                        }
-                        val touching = simulation.active == kind
-                        val age = if (simulation.contactMillis[i] == Long.MIN_VALUE) Long.MAX_VALUE else now - simulation.contactMillis[i]
-                        val ripple = kind == FeelMaterial.Steel && motionNow && age in 0L..450L
-                        contacts[i][0]?.isVisible = touching
-                        contacts[i][1]?.isVisible = if (kind == FeelMaterial.Steel) ripple else touching
-                        if (touching || ripple) {
-                            val contactRadius = 0.20f + simulation.inferred.value * 0.15f
-                            MatterMeshes.updateContact(meshesNow[i][3].geometry, contactRadius, x, z, depth, kind)
-                            MatterMeshes.updateContact(meshesNow[i][4].geometry,
-                                if (ripple) 0.20f + age / 450f * 2.2f else contactRadius, x, z, depth, kind)
-                            meshesNow[i][3].upload()
-                            meshesNow[i][4].upload()
-                        }
-                    }
-                    mark[0]?.apply {
-                        isVisible = simulation.opening.visible
-                        if (isVisible) transform = Transform(Position(y =
-                            -simulation.pads[0].depthMm * FeelMaterial.WORLD_PER_MM + simulation.opening.heightAbovePad))
-                    }
-                    if (now - timing[0] >= 50L) {
-                        timing[0] = now
-                        readout = FeelReadout(simulation.pads[0].depthMm, simulation.active == FeelMaterial.Foam,
-                            simulation.opening.finished)
-                    }
-                    firstFrame.onFrame(nanos)
-                },
-            ) {
-                FeelMaterial.entries.forEach { kind ->
-                    val i = kind.ordinal
-                    Node(apply = { pads[i] = this }) {
-                        meshes[i].forEachIndexed { part, mesh ->
-                            MeshNode(
-                                primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
-                                vertexBuffer = mesh.buffers.vertexBuffer,
-                                indexBuffer = mesh.buffers.indexBuffer,
-                                boundingBox = mesh.buffers.box,
-                                materialInstance = materials[i][part],
-                                apply = {
-                                    isShadowCaster = false
-                                    isShadowReceiver = false
-                                    isTouchable = false
-                                    if (part >= 3) { contacts[i][part - 3] = this; isVisible = false }
-                                },
+        val hintAlpha by animateFloatAsState(if (readout.showHint) 1f else 0f, motionFade(), label = "touch hint")
+        Box(Modifier.fillMaxSize().background(colors.surface).padding(LocalDemoSceneCover.current)) {
+            Box(Modifier.fillMaxSize().padding(bottom = SceneViewTokens.Space.xl).onSizeChanged {
+                stage.widthPx = it.width
+                stage.heightPx = it.height
+            }) {
+                SceneView(
+                    modifier = Modifier.fillMaxSize(),
+                    engine = engine,
+                    materialLoader = loader,
+                    view = view,
+                    cameraNode = camera,
+                    mainLightNode = light,
+                    cameraManipulator = null,
+                    autoCenterContent = false,
+                    environment = environment,
+                    surfaceMirrorer = recorder.surfaceMirrorer,
+                    frameRatePolicy = FrameRatePolicy.Continuous(),
+                    // SceneView retains the FIRST callback: never close over a readiness Boolean.
+                    onTouchEvent = { event, _ -> touchNow.onEvent(event) },
+                    onFrame = { nanos ->
+                        if (stage.frame()) {
+                            camera.setProjection(Camera.Projection.ORTHO, -stage.halfWidth.toDouble(), stage.halfWidth.toDouble(),
+                                -stage.halfHeight.toDouble(), stage.halfHeight.toDouble(), 0.1, 100.0)
+                            camera.position = Position(0f, 20f * MatterStage.SIN, 20f * MatterStage.COS)
+                            camera.lookAt(Position())
+                            for (i in 0..2) pads[i]?.transform = Transform(
+                                Position(0f, stage.y[i], stage.z[i]), scale = Scale(stage.scale[i]),
                             )
                         }
-                        if (kind == FeelMaterial.Foam) {
-                            Node(apply = { mark[0] = this; isTouchable = false }) {
-                                // logo.svg: cube width 268, frame width 320, brackets 38 long / 8 thick.
-                                val unit = 0.9f / 320f
-                                val cubeSide = 268f * unit / 1.4142136f
-                                CubeNode(size = Size(cubeSide), position = Position(y = cubeSide / 2f),
-                                    rotation = Rotation(y = 45f), materialInstance = markMaterial,
-                                    apply = { isTouchable = false })
-                                Node(position = Position(y = 174f * unit * MatterStage.COS),
-                                    rotation = Rotation(x = -MatterStage.ELEVATION)) {
-                                    for (sx in listOf(-1f, 1f)) for (sy in listOf(-1f, 1f)) {
-                                        CubeNode(size = Size(38f * unit, 8f * unit, 8f * unit),
-                                            position = Position(sx * 141f * unit, sy * 174f * unit, 0f),
-                                            materialInstance = bracketMaterial, apply = { isTouchable = false })
-                                        CubeNode(size = Size(8f * unit, 38f * unit, 8f * unit),
-                                            position = Position(sx * 160f * unit, sy * 155f * unit, 0f),
-                                            materialInstance = bracketMaterial, apply = { isTouchable = false })
+                        val now = SystemClock.uptimeMillis()
+                        if (!motionNow) simulation.opening.cancel()
+                        if (!touchView.hasWindowFocus()) touchNow.cancel()
+                        simulation.advance(now, startOpening = firstFrame.sceneReady.value)?.let(haptics::play)
+                        touchNow.followIndentation()
+                        FeelMaterial.entries.forEach { kind ->
+                            val i = kind.ordinal
+                            val depth = simulation.pads[i].depthMm
+                            val x = if (kind == FeelMaterial.Steel) simulation.contactX[i] else simulation.fingerX[i]
+                            val z = if (kind == FeelMaterial.Steel) simulation.contactZ[i] else simulation.fingerZ[i]
+                            val previous = lastDeformation[i]
+                            if (depth != previous[0] || x != previous[1] || z != previous[2]) {
+                                for (part in 0..2) {
+                                    val mesh = meshesNow[i][part]
+                                    mesh.geometry.deform(depth, x, z, kind.radius)
+                                    mesh.upload()
+                                }
+                                previous[0] = depth; previous[1] = x; previous[2] = z
+                            }
+                            val touching = simulation.active == kind
+                            val age = if (simulation.contactMillis[i] == Long.MIN_VALUE) Long.MAX_VALUE else now - simulation.contactMillis[i]
+                            val ripple = kind == FeelMaterial.Steel && motionNow && age in 0L until MatterMeshes.RIPPLE_MILLIS
+                            contacts[i][0]?.isVisible = touching && kind != FeelMaterial.Steel
+                            contacts[i][1]?.isVisible = if (kind == FeelMaterial.Steel) ripple else touching
+                            if (touching || ripple) {
+                                val contactRadius = 0.20f + simulation.inferred.value * 0.15f
+                                MatterMeshes.updateContact(meshesNow[i][3].geometry, contactRadius, x, z, depth, kind)
+                                MatterMeshes.updateContact(meshesNow[i][4].geometry,
+                                    if (ripple) MatterMeshes.rippleRadius(age, x, z) else contactRadius, x, z, depth, kind,
+                                    strokeWidth = 1.5f * densityNow * stage.halfWidth * 2f /
+                                        stage.widthPx.coerceAtLeast(1) / stage.scale[i])
+                                if (ripple) materialsNow[i][4].setColor(primaryNow.copy(alpha = MatterMeshes.rippleAlpha(age)))
+                                meshesNow[i][3].upload()
+                                meshesNow[i][4].upload()
+                            }
+                        }
+                        mark[0]?.apply {
+                            isVisible = simulation.opening.visible
+                            if (isVisible) transform = Transform(Position(y =
+                                -simulation.pads[0].depthMm * FeelMaterial.WORLD_PER_MM + simulation.opening.heightAbovePad))
+                        }
+                        if (now - timing[0] >= 50L) {
+                            timing[0] = now
+                            readout = FeelReadout(simulation.pads[0].depthMm, simulation.active == FeelMaterial.Foam,
+                                simulation.opening.finished && !simulation.hasPressed)
+                        }
+                        firstFrame.onFrame(nanos)
+                    },
+                ) {
+                    FeelMaterial.entries.forEach { kind ->
+                        val i = kind.ordinal
+                        Node(apply = { pads[i] = this }) {
+                            meshes[i].forEachIndexed { part, mesh ->
+                                MeshNode(
+                                    primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                                    vertexBuffer = mesh.buffers.vertexBuffer,
+                                    indexBuffer = mesh.buffers.indexBuffer,
+                                    boundingBox = mesh.buffers.box,
+                                    materialInstance = materials[i][part],
+                                    apply = {
+                                        isShadowCaster = false
+                                        isShadowReceiver = false
+                                        isTouchable = false
+                                        if (part >= 3) { contacts[i][part - 3] = this; isVisible = false }
+                                    },
+                                )
+                            }
+                            if (kind == FeelMaterial.Foam) {
+                                Node(apply = { mark[0] = this; isTouchable = false }) {
+                                    // logo.svg: cube width 268, frame width 320, brackets 38 long / 8 thick.
+                                    val unit = MatterOpening.MARK_WIDTH / 268f
+                                    val cubeSide = 268f * unit / 1.4142136f
+                                    CubeNode(size = Size(cubeSide), position = Position(y = cubeSide / 2f),
+                                        rotation = Rotation(y = 45f), materialInstance = markMaterial,
+                                        apply = { isTouchable = false })
+                                    if (MatterOpening.SHOW_BRACKETS) Node(position = Position(y = 174f * unit * MatterStage.COS),
+                                        rotation = Rotation(x = -MatterStage.ELEVATION)) {
+                                        for (sx in listOf(-1f, 1f)) for (sy in listOf(-1f, 1f)) {
+                                            CubeNode(size = Size(38f * unit, 8f * unit, 8f * unit),
+                                                position = Position(sx * 141f * unit, sy * 174f * unit, 0f),
+                                                materialInstance = bracketMaterial, apply = { isTouchable = false })
+                                            CubeNode(size = Size(8f * unit, 38f * unit, 8f * unit),
+                                                position = Position(sx * 160f * unit, sy * 155f * unit, 0f),
+                                                materialInstance = bracketMaterial, apply = { isTouchable = false })
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-            Column(Modifier.fillMaxSize()) {
-                FeelMaterial.entries.forEach { kind ->
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        FeelCaption(kind, readout, Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                            .onSizeChanged { stage.captionPx[kind.ordinal] = it.height })
+                Column(Modifier.fillMaxSize()) {
+                    FeelMaterial.entries.forEach { kind ->
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            FeelCaption(kind, readout, Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                                .onSizeChanged { stage.captionPx[kind.ordinal] = it.height })
+                        }
                     }
                 }
             }
+            Text(
+                stringResource(R.string.demo_feel_instruction),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SceneViewTokens.Space.xs).alpha(hintAlpha),
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onSurface,
+            )
         }
     }
 }
@@ -309,7 +334,7 @@ private fun FeelCaption(kind: FeelMaterial, readout: FeelReadout, modifier: Modi
     }
     Surface(color = MaterialTheme.colorScheme.surface, modifier = modifier) {
         Column(Modifier.padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.xs)) {
-            Text(name, style = MaterialTheme.typography.titleMedium)
+            Text(name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             // A full-width row fits at 360 dp. At large font scales it grows instead of clipping.
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

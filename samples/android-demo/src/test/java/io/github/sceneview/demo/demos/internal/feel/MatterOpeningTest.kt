@@ -24,6 +24,20 @@ class MatterOpeningTest {
         assertFalse(opening.visible)
     }
 
+    @Test fun markSpansOneThirdOfBlockAndFirstPressPermanentlyDismissesHint() {
+        assertEquals(FeelSimulation.PAD_HALF_WIDTH * 2f / 3f, MatterOpening.MARK_WIDTH, 0f)
+        val simulation = FeelSimulation(openingEnabled = true)
+        assertFalse(simulation.hasPressed)
+        simulation.begin(FeelMaterial.Steel, 0f, 0f, 1f, 0f, 100L)
+        simulation.move(1f, 0.2f, 1f, 0f)
+        assertEquals(0f, simulation.contactX[FeelMaterial.Steel.ordinal], 0f)
+        assertEquals(0f, simulation.contactZ[FeelMaterial.Steel.ordinal], 0f)
+        simulation.release(150L)
+        simulation.advance(3000L)
+        assertTrue(simulation.hasPressed)
+        assertTrue(simulation.opening.finished)
+    }
+
     @Test fun reducedMotionAndQaNeverCreateALoad() {
         val opening = MatterOpening(false)
         for (now in 0L..3000L step 10) {

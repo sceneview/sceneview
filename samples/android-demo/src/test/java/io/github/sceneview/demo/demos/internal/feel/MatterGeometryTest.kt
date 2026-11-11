@@ -67,6 +67,49 @@ class MatterGeometryTest {
         assertTrue(top.rest.contentEquals(top.positions))
     }
 
+    @Test fun projectedTopAndFrontHaveComparableHeight() {
+        val top = 2f * FeelSimulation.PAD_HALF_LENGTH * MatterStage.SIN
+        val front = FeelSimulation.PAD_THICKNESS * MatterStage.COS
+        assertTrue(top / front in 0.75f..1.5f)
+    }
+
+    @Test fun rippleIsThinFadesAndClipsWithoutFoldingOntoTheEdges() {
+        assertEquals(350L, MatterMeshes.RIPPLE_MILLIS)
+        assertTrue(MatterMeshes.rippleRadius(0) < MatterMeshes.rippleRadius(175))
+        assertTrue(MatterMeshes.rippleAlpha(0) > MatterMeshes.rippleAlpha(175))
+        assertEquals(0f, MatterMeshes.rippleAlpha(350), 0f)
+        val reach = kotlin.math.sqrt(FeelSimulation.PAD_HALF_WIDTH * FeelSimulation.PAD_HALF_WIDTH +
+            FeelSimulation.PAD_HALF_LENGTH * FeelSimulation.PAD_HALF_LENGTH)
+        assertEquals(reach, MatterMeshes.rippleRadius(350), 0.00001f)
+        assertTrue(MatterMeshes.rippleRadius(350, FeelSimulation.PAD_HALF_WIDTH) > reach)
+        val mesh = MatterMeshes.contact(false)
+        val radius = 0.35f
+        val width = 0.02f
+        for (x in listOf(0f, FeelSimulation.PAD_HALF_WIDTH)) {
+            MatterMeshes.updateContact(mesh, radius, x, 0f, 0f, FeelMaterial.Steel, width)
+            var area = 0f
+            for (i in mesh.indices.indices step 3) {
+                val a = mesh.indices[i].toInt() * 3
+                val b = mesh.indices[i + 1].toInt() * 3
+                val c = mesh.indices[i + 2].toInt() * 3
+                val normal = (mesh.positions[b + 2] - mesh.positions[a + 2]) * (mesh.positions[c] - mesh.positions[a]) -
+                    (mesh.positions[b] - mesh.positions[a]) * (mesh.positions[c + 2] - mesh.positions[a + 2])
+                assertTrue(normal >= -0.000001f)
+                area += normal / 2f
+                for (v in listOf(a, b, c)) {
+                    val px = mesh.positions[v]
+                    val pz = mesh.positions[v + 2]
+                    assertTrue(FeelSimulation.contains(px, pz))
+                    if (normal > 0.000001f) {
+                        val distance = kotlin.math.sqrt((px - x) * (px - x) + pz * pz)
+                        assertTrue(abs(distance - radius) <= width / MatterStage.SIN)
+                    }
+                }
+            }
+            assertTrue(area > 0f && area < 0.1f)
+        }
+    }
+
     @Test fun portraitRowsReserveCaptionsAndFillTheWidth() {
         val stage = MatterStage().apply {
             widthPx = 360

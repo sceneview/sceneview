@@ -8,6 +8,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     val fingerZ = FloatArray(pads.size)
     var active: FeelMaterial? = null
         private set
+    var hasPressed = false
+        private set
     var selected = FeelMaterial.Foam
         private set
     var inferred = InferredPressure(0f, PressureSource.Duration)
@@ -19,11 +21,14 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     private var haptics = HapticSchedule()
     private var travelMm = 0f
     private var lastTravelX = 0f
+    val contactX = FloatArray(pads.size)
+    val contactZ = FloatArray(pads.size)
     val contactMillis = LongArray(pads.size) { Long.MIN_VALUE }
     private var foamReleasedAt: Long? = null
 
     fun begin(material: FeelMaterial, x: Float, z: Float, pressure: Float, size: Float, now: Long) {
         opening.cancel()
+        hasPressed = true
         release(now)
         active = material
         selected = material
@@ -35,6 +40,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         contactMillis[material.ordinal] = now
         if (material == FeelMaterial.Foam) foamReleasedAt = null
         move(x, z, pressure, size)
+        contactX[material.ordinal] = fingerX[material.ordinal]
+        contactZ[material.ordinal] = fingerZ[material.ordinal]
     }
 
     fun move(x: Float, z: Float, pressure: Float, size: Float) {
@@ -94,7 +101,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
 
     companion object {
         const val PAD_HALF_WIDTH = 2.4f
-        const val PAD_HALF_LENGTH = 0.8f
+        const val PAD_HALF_LENGTH = 0.6f
         const val PAD_THICKNESS = 0.8f
         fun contains(x: Float, z: Float): Boolean =
             kotlin.math.abs(x) <= PAD_HALF_WIDTH && kotlin.math.abs(z) <= PAD_HALF_LENGTH

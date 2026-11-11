@@ -34,5 +34,9 @@ internal class MatterOpening(enabled: Boolean) {
 
     private fun smooth(t: Float): Float = t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
 
-    companion object { const val MARK_MASS_KG = 0.75f }
+    companion object {
+        const val MARK_MASS_KG = 0.75f
+        const val MARK_WIDTH = FeelSimulation.PAD_HALF_WIDTH * 2f / 3f
+        const val SHOW_BRACKETS = true
+    }
 }

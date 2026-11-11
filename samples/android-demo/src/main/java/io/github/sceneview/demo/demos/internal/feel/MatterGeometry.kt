@@ -1,12 +1,13 @@
 package io.github.sceneview.demo.demos.internal.feel
 
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Rest-space lattice and solid share one displacement field; the supported bottom stays fixed. */
-internal class MatterGeometry(val rest: FloatArray, val indices: ShortArray) {
+internal class MatterGeometry(val rest: FloatArray, val indices: ShortArray, val contactRing: Boolean = false) {
     val positions = rest.copyOf()
 
     fun deform(depthMm: Float, fingerX: Float, fingerZ: Float, radius: Float) {
@@ -71,23 +72,88 @@ internal object MatterMeshes {
         }
     }.build()
 
-    /** Unit disc/ring; the runtime maps it onto the current surface without allocating a mesh. */
-    fun contact(disc: Boolean): MatterGeometry = Builder().apply {
-        patch(SEGMENTS, 1) { u, v ->
-            val angle = 2f * PI.toFloat() * u
-            val radius = if (disc) v else 0.94f + 0.06f * v
-            floatArrayOf(cos(angle) * radius, LIFT * 2f, sin(angle) * radius)
-        }
-    }.build()
+    const val RIPPLE_MILLIS = 350L
+    fun rippleRadius(age: Long, x: Float = 0f, z: Float = 0f): Float {
+        val farX = w + abs(x)
+        val farZ = l + abs(z)
+        val reach = sqrt(farX * farX + farZ * farZ)
+        return 0.08f + (age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 1f) * (reach - 0.08f)
+    }
+    fun rippleAlpha(age: Long): Float = (1f - age / RIPPLE_MILLIS.toFloat()).coerceIn(0f, 0.99f)
 
-    fun updateContact(mesh: MatterGeometry, radius: Float, x: Float, z: Float, depth: Float, material: FeelMaterial) {
-        for (i in mesh.rest.indices step 3) {
-            val px = (x + mesh.rest[i] * radius).coerceIn(-w, w)
-            val pz = (z + mesh.rest[i + 2] * radius).coerceIn(-l, l)
-            mesh.positions[i] = px
-            mesh.positions[i + 1] = LIFT * 2f - depth * FeelMaterial.WORLD_PER_MM *
+    /** Six triangles per clipped ring segment; unused slots collapse to a point. */
+    fun contact(disc: Boolean): MatterGeometry {
+        if (!disc) {
+            val count = SEGMENTS * 18
+            return MatterGeometry(FloatArray(count * 3), ShortArray(count) { it.toShort() }, contactRing = true)
+        }
+        return Builder().apply {
+            patch(SEGMENTS, 1) { u, v ->
+                val angle = 2f * PI.toFloat() * u
+                floatArrayOf(cos(angle) * v, LIFT * 2f, sin(angle) * v)
+            }
+        }.build()
+    }
+
+    fun updateContact(
+        mesh: MatterGeometry, radius: Float, x: Float, z: Float, depth: Float,
+        material: FeelMaterial, strokeWidth: Float = 0.02f,
+    ) {
+        fun write(vertex: Int, px: Float, pz: Float) {
+            mesh.positions[vertex * 3] = px
+            mesh.positions[vertex * 3 + 1] = LIFT * 2f - depth * FeelMaterial.WORLD_PER_MM *
                 MatterGeometry.well(px - x, pz - z, material.radius)
-            mesh.positions[i + 2] = pz
+            mesh.positions[vertex * 3 + 2] = pz
+        }
+        if (mesh.contactRing) {
+            for (segment in 0 until SEGMENTS) {
+                fun point(step: Int, outside: Boolean): Pair<Float, Float> {
+                    val angle = 2f * PI.toFloat() * step / SEGMENTS
+                    // Offset in projected space: the ring stays ~1.5 dp wide even along Z.
+                    val half = strokeWidth / 2f * if (outside) 1f else -1f
+                    return x + cos(angle) * (radius + half).coerceAtLeast(0f) to
+                        z + sin(angle) * (radius + half / MatterStage.SIN).coerceAtLeast(0f)
+                }
+                var polygon = listOf(point(segment, false), point(segment, true),
+                    point(segment + 1, true), point(segment + 1, false))
+                // Clip geometry, rather than clamping its vertices into thick arcs at the edge.
+                for (edge in 0..3) {
+                    fun distance(p: Pair<Float, Float>): Float = when (edge) {
+                        0 -> p.first + w
+                        1 -> w - p.first
+                        2 -> p.second + l
+                        else -> l - p.second
+                    }
+                    val clipped = mutableListOf<Pair<Float, Float>>()
+                    if (polygon.isNotEmpty()) {
+                        var previous = polygon.last()
+                        for (current in polygon) {
+                            val before = distance(previous)
+                            val after = distance(current)
+                            if ((before >= 0f) != (after >= 0f)) {
+                                val t = before / (before - after)
+                                clipped += (previous.first + t * (current.first - previous.first)).coerceIn(-w, w) to
+                                    (previous.second + t * (current.second - previous.second)).coerceIn(-l, l)
+                            }
+                            if (after >= 0f) clipped += current
+                            previous = current
+                        }
+                    }
+                    polygon = clipped
+                }
+                val start = segment * 18
+                for (vertex in 0 until 18) write(start + vertex, 0f, 0f)
+                for (triangle in 0 until (polygon.size - 2).coerceAtLeast(0)) {
+                    // Clockwise in X/Z gives an upward normal.
+                    val points = listOf(polygon[0], polygon[triangle + 2], polygon[triangle + 1])
+                    points.forEachIndexed { j, p -> write(start + triangle * 3 + j, p.first, p.second) }
+                }
+            }
+            return
+        }
+        for (i in mesh.rest.indices step 3) {
+            write(i / 3, (x + mesh.rest[i] * radius).coerceIn(-w, w),
+                (z + mesh.rest[i + 2] * radius).coerceIn(-l, l))
         }
     }
 
