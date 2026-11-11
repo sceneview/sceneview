@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,7 +56,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -600,7 +600,10 @@ fun HomeScreen(
     }
 }
 
-/** Native list layout leaves the whole label visible at large font scales. */
+/**
+ * A discovery shortcut: icon, then a label that wraps instead of clipping at large font
+ * scales. A plain row rather than `ListItem`, whose headline slot clipped at 130 % text.
+ */
 @Composable
 private fun DiscoveryRow(
     label: String,
@@ -608,11 +611,23 @@ private fun DiscoveryRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ListItem(
-        headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge) },
-        leadingContent = { Icon(demo.icon, contentDescription = null) },
-        modifier = modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
-    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
+    ) {
+        Icon(demo.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 /**
