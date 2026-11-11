@@ -25,9 +25,11 @@ SceneView 4.63.0 sets these floors on the app that depends on it.
 | `compileSdk` | **37** | The published AARs declare `minCompileSdk=37`; `checkDebugAarMetadata` fails below it. |
 | `minSdk` | **24** or higher | The SDK's own `minSdk`. |
 | Android Gradle Plugin | **9.4.0** or newer | The first AGP that officially supports `compileSdk 37`. SceneView itself builds with AGP 9.5.0. |
-| Kotlin | **2.4** | SceneView is compiled with Kotlin 2.4.21 and depends on `kotlin-stdlib` 2.4.21. |
+| Kotlin | **2.3** or newer | SceneView is compiled with Kotlin 2.4.21; a 2.3 compiler reads its metadata, 2.2 refuses it. |
 | JVM target (Java and Kotlin) | **21** | SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions. Any `Position`/`Float3` arithmetic inlines them, and Kotlin refuses to inline JVM 21 bytecode into a lower target. |
 | JDK | **21** or newer | Needed to compile Java at target 21. JVM unit tests that load SceneView classes also need a JDK 21 runtime. |
+
+**Older toolchain?** If the app cannot move to compileSdk 37 / AGP 9 yet (AGP 8.x, compileSdk 36, Kotlin 2.2, JVM target 17), use SceneView **4.18.0**: the newest release that builds there (checked 2026-11-12 with a Compose viewer and an ARCore tap-to-place screen; the API above is the same). Do not fall back to 2.x: its API (`Scene`, `ARScene`, class-based nodes) is a different generation. The floor comes from Filament 1.76+ and Compose 1.12, which themselves declare `minCompileSdk=37`.
 
 In the app module's `build.gradle.kts`:
 
