@@ -10,3 +10,4 @@
 - **Live Room keeps photographed planes for scans without dense geometry.** Captures without raw depth, or without usable depth points, retain the textured replay they open on.
 - **Live Room measures the whole floor.** The ground covers the shell's floor faces, including rectangular interiors, while leaving L-shaped and T-shaped cutouts outside.
 - **3D Scan uses less working memory when rebuilding a result.** Depth fusion releases its TSDF before hole closing and simplification, reuses owned mesh arrays, and ground loading reads only positions and normals.
+- **3D Scan results open closer.** Rooms and objects fill the shorter screen side and make one gentle quarter-turn on opening. A touch stops the move at once, reduced motion skips it, and Reset returns to the same close view.
