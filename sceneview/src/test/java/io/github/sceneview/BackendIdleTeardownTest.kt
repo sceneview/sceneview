@@ -234,7 +234,7 @@ class BackendIdleTeardownTest {
 
     /** `Handler.postDelayed` returns `false` once its looper is quitting: nothing would ever poll. */
     @Test
-    fun aTeardownThatCannotBeScheduledRunsAtOnceInsteadOfNever() {
+    fun aRefusedPollRetainsTheTeardownUntilExplicitEngineCleanup() {
         val teardowns = BackendIdleTeardowns()
         val refused = Outcome()
         teardowns.defer(
@@ -243,8 +243,10 @@ class BackendIdleTeardownTest {
             schedule = { _, _ -> false },
             teardown = refused.teardown,
         )
-        // Refused at the first scheduling: run before defer returns, so not deferred.
-        assertEquals(listOf(false), refused.runs)
+        assertTrue(refused.runs.isEmpty())
+        assertEquals(1, teardowns.size)
+        teardowns.runPending()
+        assertEquals(listOf(true), refused.runs)
         assertEquals(0, teardowns.size)
 
         // Refused at a later re-check, once the looper started quitting.
@@ -259,6 +261,9 @@ class BackendIdleTeardownTest {
         )
         assertTrue(later.runs.isEmpty())
         pending.removeFirst().invoke()
+        assertTrue(later.runs.isEmpty())
+        assertEquals(1, teardowns.size)
+        teardowns.runPending()
         assertEquals(listOf(true), later.runs)
         assertEquals(0, teardowns.size)
     }

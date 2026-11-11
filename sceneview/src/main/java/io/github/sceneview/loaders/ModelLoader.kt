@@ -1617,7 +1617,8 @@ private class SettlingDestroys(private val engine: Engine) {
  * [stallTimeoutMs] stops holding the destroy. That one is cancelled for real, so the gate then
  * waits for [isBackendBusy] to say the backend recently caught up: the cancel's `flushAndWait`
  * then only waits for what the main thread queued since. [isBackendBusy] is first asked at that
- * point, which is where a [io.github.sceneview.FreshFenceProbe] starts its give-up delay.
+ * point, which is where a [io.github.sceneview.FreshFenceProbe] starts its diagnostic delay.
+ * Elapsed time does not authorize the cancel.
  *
  * Filament-free so the ordering can be pinned in a JVM test. Main thread only.
  */

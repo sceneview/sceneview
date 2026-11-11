@@ -99,8 +99,8 @@ internal fun Engine.drainFramePipeline(timeoutNanos: Long): Boolean {
 internal const val BACKEND_IDLE_POLL_MS = 16L
 
 /**
- * Destroys this engine once its backend has executed everything already queued, **without
- * blocking the calling thread on that drain**.
+ * Destroys this engine once its backend has executed everything already queued, polling the backlog first.
+ * Native destruction itself still has no timeout.
  *
  * [Engine.destroy] joins the driver thread after it has run every pending command
  * (`FEngine::shutdown`: "wait for all pending commands to be executed and the thread to exit").
@@ -127,8 +127,8 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
 }
 
 /**
- * Destroys [renderer] once this engine's backend has executed everything already queued, **without
- * blocking the calling thread on that drain**.
+ * Destroys [renderer] once this engine's backend has executed everything already queued, polling the backlog first.
+ * Native destruction itself still has no timeout.
  *
  * [Engine.destroyRenderer] is not a plain handle release: `FRenderer::terminate` first waits for
  * "all pending commands" to execute (`Fence::waitAndDestroy(engine.createFence())`, Filament
@@ -144,7 +144,7 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
  * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
  * A main thread polling less often than every 48 ms never finds a fence fresh: the destroy then
- * waits for the 5 s fallback ([FRESH_FENCE_GIVE_UP_MS]).
+ * remains pending until polling recovers; five seconds only triggers a warning.
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
@@ -178,8 +178,8 @@ private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
  * waited for. See [BackendIdleTeardowns] for the contract.
  *
  * [onIdle] receives `deferred = false` when it ran before this function returned, which is now the
- * exception — the old blocking behaviour, when the thread has no [Looper] or the fence could not be
- * created. Even an idle backend defers it by one poll: a fence just created is not reached yet by
+ * exception — a fence must already be reached and fresh. A missing fence keeps deferring.
+ * Even an idle backend usually defers it by one poll: a fence just created is not reached yet by
  * the zero-timeout check made right after. A deferred [onIdle] is run by [safeDestroy] at the
  * latest, so the engine always outlives it. [onEngineGone] runs instead of [onIdle] only when the
  * engine is already destroyed, or is destroyed without [safeDestroy] while the fence is pending;
@@ -192,12 +192,9 @@ internal fun Engine.whenBackendIdle(
     runsLast: Boolean = false,
     onIdle: (deferred: Boolean) -> Unit,
 ) {
+    check(Looper.myLooper() == Looper.getMainLooper()) { "Filament teardown requires the main thread" }
     if (!isValid) {
         onEngineGone()
-        return
-    }
-    if (Looper.myLooper() == null) {
-        onIdle(false)
         return
     }
     // A fence created now only covers what is queued now; [onIdle]'s own wait covers what is
@@ -215,14 +212,17 @@ internal fun Engine.whenBackendIdle(
 
 /**
  * A [FreshFenceProbe] on this engine's fences: busy until the backend has caught up with what is
- * queued on it: a fence reached within 48 ms of its creation. Never waits. Not busy when no fence
- * can be created.
+ * queued on it: a fence reached within 48 ms of its creation. A missing fence means busy.
+ * The fence wait has a zero timeout, but submitting commands can itself block in Filament.
  */
 internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     createFence = { runCatching { createFence() }.getOrNull() },
     isReached = { !isFenceBusy(it) },
     destroyFence = { destroyFence(it) },
     now = SystemClock::uptimeMillis,
+    onStillBusy = {
+        Log.w("Sceneview", "Backend teardown still pending after 5 s; continuing to defer (#4969)")
+    },
 )
 
 /**
@@ -230,7 +230,7 @@ internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
  * still wait for room in a full command stream.
  */
 internal fun isFenceBusy(fence: Fence): Boolean =
-    runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
+    runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull() != Fence.FenceStatus.CONDITION_SATISFIED
 
 /**
  * Runs [onIdle] on the calling thread once [isBusy] returns `false`, polling it from the calling
@@ -238,7 +238,7 @@ internal fun isFenceBusy(fence: Fence): Boolean =
  * [whenBackendIdle], for a release whose "would block" condition is not a fence (#3981).
  *
  * Same contract as [whenBackendIdle]: [onIdle] gets `deferred = false` when it ran before this
- * function returned (nothing was busy, or the thread has no [Looper]), it runs at the latest from
+ * function returned (nothing was busy), it runs at the latest from
  * [safeDestroy], and [onEngineGone] replaces it once the engine is gone — [isBusy] is then never
  * called again. Main thread only.
  */
@@ -248,20 +248,16 @@ internal fun Engine.whenIdle(
     runsLast: Boolean = false,
     onIdle: (deferred: Boolean) -> Unit,
 ) {
+    check(Looper.myLooper() == Looper.getMainLooper()) { "Filament teardown requires the main thread" }
     if (!isValid) {
         onEngineGone()
         return
     }
-    val looper = Looper.myLooper()
-    if (looper == null) {
-        onIdle(false)
-        return
-    }
-    val handler = Handler(looper)
+    val handler = Handler(Looper.getMainLooper())
     backendIdleTeardowns.getOrPut(this) { BackendIdleTeardowns() }.defer(
         isEngineAlive = { isValid },
         isBackendBusy = isBusy,
-        // `false` once the looper is quitting: the teardown then runs at once instead of never.
+        // A refused post retains the teardown; it never authorizes a blocking release.
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
         teardown = { deferred ->
             // Checked again here: whatever path runs a teardown, it never touches a dead engine.

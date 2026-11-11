@@ -56,13 +56,12 @@ internal class BackendIdleTeardowns {
      * run: the engine's own destroy passes it, so a release still waiting for its own condition (a
      * `ModelLoader` waiting for its texture decoders, #3981) is not forced early by [runPending],
      * which would block the calling thread exactly where the deferral meant not to. Its
-     * [isBackendBusy] is still polled meanwhile, every time: a probe that keeps time (its give-up
+     * [isBackendBusy] is still polled meanwhile, every time: a probe that keeps time (its diagnostic
      * delay, its freshness) then counts from the deferral, not from the end of the others, and
      * the teardown runs in the same poll as the last of them when the backend is idle.
      *
-     * [schedule] returns whether the re-check was queued. When it was not — a `Handler` whose
-     * looper is quitting — the teardown runs at once rather than never: a release that may block
-     * is better than a leaked one. It runs with `deferred = false` when that happens in this call.
+     * If [schedule] refuses a poll, retain the teardown for [runPending]. A failed post is not
+     * evidence that destruction is safe; it must not force a blocking release on the caller.
      */
     fun defer(
         isEngineAlive: () -> Boolean,
@@ -93,19 +92,20 @@ internal class BackendIdleTeardowns {
                     entry.drop()
                     onEngineGone()
                 }
-                (isBackendBusy() || othersPending()) && schedule(intervalMs, ::poll) -> Unit
+                isBackendBusy() || othersPending() -> {
+                    schedule(intervalMs, ::poll)
+                }
                 else -> entry.run()
             }
         }
-        if (!schedule(intervalMs, ::poll)) {
-            entry.drop()
-            teardown(false)
-        }
+        schedule(intervalMs, ::poll)
     }
 
     /**
      * Runs every teardown still waiting, oldest first. Called right before the engine is destroyed.
      * A teardown registered while this runs is run too.
+     *
+     * This explicitly bypasses readiness checks and may block. It is not a timeout fallback.
      */
     fun runPending() {
         while (pending.isNotEmpty()) pending.first().run()
