@@ -1,4 +1,5 @@
 // @sceneId     text
+// @source      SceneViewDemo/Views/Demos/TextDemo.swift
 // @title       3D Text
 // @subtitle    Extruded text with styles and sizes
 // @category    content

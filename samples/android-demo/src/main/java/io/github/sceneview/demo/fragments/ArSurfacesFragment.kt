@@ -17,6 +17,7 @@ import io.github.sceneview.demo.demos.ARSurfacesDemo
 object ArSurfacesFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-surfaces",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARSurfacesDemo.kt",
         titleRes = R.string.demo_ar_surfaces_title,
         subtitleRes = R.string.demo_ar_surfaces_subtitle,
         category = DemoCategory.PLACE_AR,

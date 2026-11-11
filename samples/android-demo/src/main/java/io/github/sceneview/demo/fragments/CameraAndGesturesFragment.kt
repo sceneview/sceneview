@@ -30,6 +30,7 @@ object CameraAndGesturesFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "camera-gestures",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt",
         titleRes = R.string.demo_camera_and_gestures_title,
         subtitleRes = R.string.demo_camera_and_gestures_subtitle,
         category = DemoCategory.VIEW_3D,

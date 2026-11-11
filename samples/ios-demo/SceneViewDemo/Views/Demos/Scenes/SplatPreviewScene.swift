@@ -1,4 +1,5 @@
 // @sceneId     splat-preview
+// @source      SceneViewDemo/Views/Demos/SplatPreviewDemo.swift
 // @title       Real-World Scan
 // @subtitle    A tree stump and its raccoons, scanned with a phone
 // @category    content

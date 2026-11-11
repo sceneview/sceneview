@@ -1,4 +1,5 @@
 // @sceneId     ar-people-occlusion
+// @source      SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift
 // @title       People Occlusion
 // @subtitle    Virtual objects hide behind real people
 // @category    ar

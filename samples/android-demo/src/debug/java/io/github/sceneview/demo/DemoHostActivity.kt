@@ -5,8 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
 import io.github.sceneview.demo.fragments.GeneratedDemos
+import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
 /**
@@ -121,6 +123,8 @@ class DemoHostActivity : ComponentActivity() {
                     "Add a *Fragment.kt under io.github.sceneview.demo.fragments and run " +
                     "samples/android-demo/scripts/collate-demos.sh (see DemoHostRoutableTest).",
             )
-        GeneratedDemos.Screen(id = resolved, onBack = back)
+        CompositionLocalProvider(LocalSampleId provides resolved) {
+            GeneratedDemos.Screen(id = resolved, onBack = back)
+        }
     }
 }

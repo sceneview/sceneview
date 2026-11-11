@@ -1,4 +1,5 @@
 // @sceneId     contact-shadow-preview
+// @source      SceneViewDemo/Views/Demos/ContactShadowPreviewDemo.swift
 // @title       Contact Shadow Preview
 // @subtitle    Compare objects with and without a contact shadow
 // @category    lighting

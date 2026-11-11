@@ -1,4 +1,5 @@
 // @sceneId     image
+// @source      SceneViewDemo/Views/Demos/ImagePlaneDemo.swift
 // @title       Image Planes
 // @subtitle    Image planes in 3D space
 // @category    content

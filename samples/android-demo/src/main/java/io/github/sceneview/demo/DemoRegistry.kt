@@ -54,6 +54,7 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *
  * @param id          Stable identifier used by the deep-link router
  *                    (`sceneview://demo/<id>`) and as a Compose key.
+ * @param sourcePath  Kotlin implementation path relative to the Android demo module.
  * @param titleRes    Short headline shown on the card — resolved with
  *                    [androidx.compose.ui.res.stringResource] at the call site.
  * @param subtitleRes One-line description rendered under [titleRes].
@@ -94,6 +95,7 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  */
 data class DemoEntry(
     val id: String,
+    val sourcePath: String,
     @StringRes val titleRes: Int,
     @StringRes val subtitleRes: Int,
     val category: String,
@@ -103,7 +105,10 @@ data class DemoEntry(
     val addedIn: String,
     val status: DemoStatus = DemoStatus.Working,
     val updatedIn: String? = null,
-)
+) {
+    val sourceUrl: String
+        get() = "https://github.com/sceneview/sceneview/blob/main/samples/android-demo/$sourcePath"
+}
 
 /**
  * Stable category keys — they are map keys and registry filters, never

@@ -705,6 +705,14 @@ struct DemoCover: View {
                 .navigationTitle(title)
                 .navigationBarTitleInline()
                 .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        if let sourceURL = GeneratedScenes.sourceURL(for: sampleId) {
+                            Link(destination: sourceURL) {
+                                Label("View Source", systemImage: "chevron.left.forwardslash.chevron.right")
+                            }
+                            .accessibilityIdentifier("demo-view-source")
+                        }
+                    }
                     ToolbarItem(placement: .cancellationAction) {
                         Button {
                             #if os(iOS)

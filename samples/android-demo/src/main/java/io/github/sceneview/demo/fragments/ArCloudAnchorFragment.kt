@@ -24,6 +24,7 @@ object ArCloudAnchorFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "ar-cloud-anchor",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARCloudAnchorDemo.kt",
         titleRes = R.string.demo_ar_cloud_anchor_title,
         subtitleRes = R.string.demo_ar_cloud_anchor_subtitle,
         category = DemoCategory.PLACE_AR,

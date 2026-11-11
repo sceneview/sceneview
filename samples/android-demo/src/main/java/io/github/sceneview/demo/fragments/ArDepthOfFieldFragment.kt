@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARDepthOfFieldDemo
 object ArDepthOfFieldFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-depth-of-field",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARDepthOfFieldDemo.kt",
         titleRes = R.string.demo_ar_depth_of_field_title,
         subtitleRes = R.string.demo_ar_depth_of_field_subtitle,
         category = DemoCategory.UNDERSTAND,

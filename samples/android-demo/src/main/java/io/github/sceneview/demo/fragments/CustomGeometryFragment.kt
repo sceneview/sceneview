@@ -20,6 +20,7 @@ import io.github.sceneview.demo.demos.CustomGeometryDemo
 object CustomGeometryFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "custom-geometry",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/CustomGeometryDemo.kt",
         titleRes = R.string.demo_custom_geometry_title,
         subtitleRes = R.string.demo_custom_geometry_subtitle,
         category = DemoCategory.CREATE,

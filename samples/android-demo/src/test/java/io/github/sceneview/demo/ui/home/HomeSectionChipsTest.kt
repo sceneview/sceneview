@@ -104,6 +104,7 @@ class HomeSectionChipsTest {
 
         fun demo(id: String, category: String, order: Int) = DemoEntry(
             id = id,
+            sourcePath = "src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt",
             titleRes = R.string.home_section_featured,
             subtitleRes = R.string.home_browse_subtitle,
             category = category,

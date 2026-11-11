@@ -1,4 +1,5 @@
 // @sceneId     model-viewer
+// @source      SceneViewDemo/Views/Demos/ModelViewerDemo.swift
 // @title       Models
 // @subtitle    Explore a model in 3D or in your room
 // @category    basics3D

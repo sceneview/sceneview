@@ -1,4 +1,5 @@
 // @sceneId     geometry
+// @source      SceneViewDemo/Views/Demos/AllShapesDemo.swift
 // @title       Geometry Primitives
 // @subtitle    Show, hide and restyle the seven built-in shapes
 // @category    basics3D

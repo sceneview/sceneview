@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.LinesPathsDemo
 object LinesPathsFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "lines-paths",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/LinesPathsDemo.kt",
         titleRes = R.string.demo_lines_paths_title,
         subtitleRes = R.string.demo_lines_paths_subtitle,
         category = DemoCategory.CREATE,

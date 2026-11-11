@@ -1,4 +1,5 @@
 // @sceneId     ar-depth-occlusion
+// @source      SceneViewDemo/Views/Demos/ARDepthOcclusionDemo.swift
 // @title       Depth Occlusion
 // @subtitle    Real-world depth masks virtual objects
 // @category    ar

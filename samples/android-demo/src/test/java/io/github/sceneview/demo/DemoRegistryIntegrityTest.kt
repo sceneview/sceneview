@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
 import io.github.sceneview.demo.ui.home.FEATURED_IDS
@@ -27,6 +28,24 @@ import io.github.sceneview.demo.ui.home.homeTopSections
  * in [DeepLinkRouterTest].
  */
 class DemoRegistryIntegrityTest {
+
+    @Test
+    fun `every registered demo source exists relative to the module`() {
+        val moduleDirectory = File(System.getProperty("user.dir"))
+        for (demo in ALL_DEMOS) {
+            assertEquals(
+                "https://github.com/sceneview/sceneview/blob/main/samples/android-demo/${demo.sourcePath}",
+                demo.sourceUrl,
+            )
+            val source = File(moduleDirectory, demo.sourcePath)
+            assertTrue("${demo.id}: missing source ${source.absolutePath}", source.isFile)
+            assertTrue(
+                "${demo.id}: source must be a Kotlin demo",
+                demo.sourcePath.startsWith("src/main/java/io/github/sceneview/demo/demos/") &&
+                    demo.sourcePath.endsWith(".kt"),
+            )
+        }
+    }
 
     /** kebab-case: lowercase ASCII letters / digits, hyphen-separated. */
     private val kebabCase = Regex("^[a-z0-9]+(-[a-z0-9]+)*$")

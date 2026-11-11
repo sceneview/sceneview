@@ -1,4 +1,5 @@
 // @sceneId     spatial-audio
+// @source      SceneViewDemo/Views/Demos/SpatialAudioDemo.swift
 // @title       Spatial Audio
 // @subtitle    Positional 3D audio with distance falloff
 // @category    advanced

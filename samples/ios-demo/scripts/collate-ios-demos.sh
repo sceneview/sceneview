@@ -5,6 +5,7 @@
 # Each *Scene.swift file carries structured directive comments in its header:
 #
 #   // @sceneId     <slug>         stable deep-link id matching Android DemoRegistry
+#   // @source      <path.swift>   implementation path relative to samples/ios-demo
 #   // @title       <Human title>
 #   // @subtitle    <One-line description>
 #   // @icon        <SF Symbol name>
@@ -320,7 +321,8 @@ cat <<'HEADER'
 import SwiftUI
 
 /// Generated aggregate of every `DemoScene` declared under
-/// `Views/Demos/Scenes/`. Drives three surfaces from one source of truth —
+/// `Views/Demos/Scenes/`. Drives the catalogue, source links and routing
+/// from one source of truth —
 /// the `@sceneId` directives — so they can never drift apart:
 ///   - `all()` — the Samples-tab demo grid (`SamplesTab.allScenes()`).
 ///   - `allowedIds` — the generated half of `DemoDeepLinkRegistry.allowedIds`
@@ -329,6 +331,28 @@ import SwiftUI
 ///     `DemoDeepLinkRegistry.destination(for:)`.
 /// Regenerate with `samples/ios-demo/scripts/collate-ios-demos.sh`.
 enum GeneratedScenes {
+    /// Swift implementation paths relative to samples/ios-demo.
+    static let sourcePaths: [String: String] = [
+HEADER
+
+for f in "$SCENES_DIR"/*Scene.swift; do
+    scene_id=$(grep -m1 '// @sceneId' "$f" | sed -E 's|.*// @sceneId[[:space:]]+||; s/[[:space:]]+$//')
+    source_path=$(sed -nE 's|^// @source[[:space:]]+([^[:space:]]+)[[:space:]]*$|\1|p' "$f")
+    if [[ ! "$source_path" =~ ^SceneViewDemo/[A-Za-z0-9_/-]+\.swift$ ]]; then
+        echo "Error: $f needs an @source Swift path relative to samples/ios-demo." >&2
+        exit 1
+    fi
+    printf '        "%s": "%s",\n' "$scene_id" "$source_path"
+done
+
+cat <<'HEADER'
+    ]
+
+    static func sourceURL(for id: String?) -> URL? {
+        guard let id, let path = sourcePaths[id] else { return nil }
+        return URL(string: "https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/" + path)
+    }
+
     /// All demo items, sorted by scene id.
     ///
     /// AR items decorated with `@iosOnly true` are guarded with `#if os(iOS)`

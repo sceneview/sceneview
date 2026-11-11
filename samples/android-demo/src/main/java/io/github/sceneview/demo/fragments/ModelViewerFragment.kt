@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ModelViewerDemo
 object ModelViewerFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "model-viewer",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt",
         titleRes = R.string.demo_model_viewer,
         subtitleRes = R.string.demo_model_viewer_subtitle,
         category = DemoCategory.VIEW_3D,

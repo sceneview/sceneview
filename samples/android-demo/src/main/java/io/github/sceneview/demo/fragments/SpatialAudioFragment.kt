@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.SpatialAudioDemo
 object SpatialAudioFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "spatial-audio",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/SpatialAudioDemo.kt",
         titleRes = R.string.demo_spatial_audio_title,
         subtitleRes = R.string.demo_spatial_audio_subtitle,
         category = DemoCategory.CREATE,

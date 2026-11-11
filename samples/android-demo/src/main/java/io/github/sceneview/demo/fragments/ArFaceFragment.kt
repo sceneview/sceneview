@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARFaceDemo
 object ArFaceFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-face",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARFaceDemo.kt",
         titleRes = R.string.demo_ar_face_title,
         subtitleRes = R.string.demo_ar_face_subtitle,
         category = DemoCategory.UNDERSTAND,

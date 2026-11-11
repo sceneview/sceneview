@@ -43,6 +43,7 @@ is no longer a shared anchor either.
    object MyDemoFragment : DemoFragment {
        override val entry: DemoEntry = DemoEntry(
            id = "my-demo",
+           sourcePath = "src/main/java/io/github/sceneview/demo/demos/MyDemo.kt",
            titleRes = R.string.demo_my_demo_title,
            subtitleRes = R.string.demo_my_demo_subtitle,
            category = DemoCategory.VIEW_3D,

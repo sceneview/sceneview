@@ -1,4 +1,5 @@
 // @sceneId     custom-mesh
+// @source      SceneViewDemo/Views/Demos/CustomMeshDemo.swift
 // @title       Custom Geometry
 // @subtitle    A knot generated vertex by vertex
 // @category    advanced

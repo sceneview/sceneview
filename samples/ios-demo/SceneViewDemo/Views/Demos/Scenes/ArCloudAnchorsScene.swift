@@ -1,4 +1,5 @@
 // @sceneId     ar-cloud-anchor
+// @source      SceneViewDemo/Views/Demos/Scenes/ArCloudAnchorsScene.swift
 // @title       Cloud Anchors
 // @subtitle    Persistent multi-user anchors
 // @category    ar

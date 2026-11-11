@@ -16,6 +16,7 @@ import io.github.sceneview.demo.demos.ARRerunDemo
 object ArSplatRoomFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-splat-room",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt",
         titleRes = R.string.demo_ar_splat_room_title,
         subtitleRes = R.string.demo_ar_splat_room_subtitle,
         category = DemoCategory.PLACE_AR,

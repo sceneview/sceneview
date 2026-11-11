@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.MaterialsDemo
 object MaterialsFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "materials",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/MaterialsDemo.kt",
         titleRes = R.string.demo_materials_title,
         subtitleRes = R.string.demo_materials_subtitle,
         category = DemoCategory.CREATE,

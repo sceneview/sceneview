@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARPointCloudDemo
 object ArPointCloudFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-point-cloud",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPointCloudDemo.kt",
         titleRes = R.string.demo_ar_point_cloud_title,
         subtitleRes = R.string.demo_ar_point_cloud_subtitle,
         category = DemoCategory.UNDERSTAND,

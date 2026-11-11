@@ -1,4 +1,5 @@
 // @sceneId     ar-image
+// @source      SceneViewDemo/Views/Demos/ARImageTrackingDemo.swift
 // @title       Image Tracking
 // @subtitle    Detect and track reference images
 // @category    ar

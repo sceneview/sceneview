@@ -1,4 +1,5 @@
 // @sceneId     ar-scene-mesh
+// @source      SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift
 // @title       Scene Mesh
 // @subtitle    LiDAR real-time polygonal mesh reconstruction
 // @category    ar

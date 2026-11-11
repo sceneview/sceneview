@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.ARPoolDemo
 object ArPoolFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-pool",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPoolDemo.kt",
         titleRes = R.string.demo_ar_pool_title,
         subtitleRes = R.string.demo_ar_pool_subtitle,
         category = DemoCategory.PLACE_AR,

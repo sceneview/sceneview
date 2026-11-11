@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARDepthVisualizationDemo
 object ArDepthVisualizationFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-depth-visualization",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARDepthVisualizationDemo.kt",
         titleRes = R.string.demo_ar_depth_visualization_title,
         subtitleRes = R.string.demo_ar_depth_visualization_subtitle,
         category = DemoCategory.UNDERSTAND,

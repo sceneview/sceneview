@@ -1,4 +1,5 @@
 // @sceneId     ar-body-tracker
+// @source      SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift
 // @title       Body anchor tracking
 // @subtitle    Follow a detected body anchor in real time
 // @category    ar

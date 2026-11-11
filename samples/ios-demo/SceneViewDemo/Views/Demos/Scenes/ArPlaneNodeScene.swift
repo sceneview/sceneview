@@ -1,4 +1,5 @@
 // @sceneId     ar-plane-node
+// @source      SceneViewDemo/Views/Demos/ARPlaneNodeDemo.swift
 // @title       AR Plane Node
 // @subtitle    Detect and visualise planes with marker cubes
 // @category    ar

@@ -1,4 +1,5 @@
 // @sceneId     billboard
+// @source      SceneViewDemo/Views/Demos/BillboardDemo.swift
 // @title       Billboard
 // @subtitle    Labels that face the camera
 // @category    content

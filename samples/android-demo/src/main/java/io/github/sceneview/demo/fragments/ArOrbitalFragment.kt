@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.OrbitalARDemo
 object ArOrbitalFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-orbital",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/OrbitalARDemo.kt",
         titleRes = R.string.demo_ar_orbital_title,
         subtitleRes = R.string.demo_ar_orbital_subtitle,
         category = DemoCategory.PLACE_AR,

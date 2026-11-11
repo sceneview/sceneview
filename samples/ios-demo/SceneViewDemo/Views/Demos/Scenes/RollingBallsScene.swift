@@ -1,4 +1,5 @@
 // @sceneId     rolling-balls
+// @source      SceneViewDemo/Views/Demos/RollingBallsDemo.swift
 // @title       Rolling Balls
 // @subtitle    Drop, tilt and knock over a tray of balls
 // @category    advanced

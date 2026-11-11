@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.DebugOverlayDemo
 object DebugOverlayFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "debug-overlay",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/DebugOverlayDemo.kt",
         titleRes = R.string.demo_debug_overlay_title,
         subtitleRes = R.string.demo_debug_overlay_subtitle,
         category = DemoCategory.DEV_TOOLS,

@@ -1,4 +1,5 @@
 // @sceneId     animation-physics
+// @source      SceneViewDemo/Views/Demos/AnimationDemo.swift
 // @title       Animation
 // @subtitle    Play, pause, and control animations
 // @category    basics3D

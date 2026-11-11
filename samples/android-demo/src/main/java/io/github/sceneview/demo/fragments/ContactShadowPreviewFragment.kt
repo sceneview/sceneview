@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.ContactShadowPreviewDemo
 object ContactShadowPreviewFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "contact-shadow-preview",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ContactShadowPreviewDemo.kt",
         titleRes = R.string.demo_contact_shadow_preview_title,
         subtitleRes = R.string.demo_contact_shadow_preview_subtitle,
         // Deliberately NOT under AUGMENTED_REALITY: the feature lives in `sceneview` (not

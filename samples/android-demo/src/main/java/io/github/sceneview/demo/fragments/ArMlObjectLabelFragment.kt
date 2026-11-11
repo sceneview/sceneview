@@ -19,6 +19,7 @@ import io.github.sceneview.demo.demos.ARMLObjectLabelDemo
 object ArMlObjectLabelFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-ml-object-label",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARMLObjectLabelDemo.kt",
         titleRes = R.string.demo_ar_ml_title,
         subtitleRes = R.string.demo_ar_ml_subtitle,
         category = DemoCategory.UNDERSTAND,
