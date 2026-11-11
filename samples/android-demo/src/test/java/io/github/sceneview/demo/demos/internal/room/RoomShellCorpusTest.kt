@@ -2,6 +2,8 @@ package io.github.sceneview.demo.demos.internal.room
 
 import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.RerunMesh
+import io.github.sceneview.demo.demos.internal.RerunMeshGlb
 import io.github.sceneview.demo.demos.internal.model.CleanModelCorpus
 import io.github.sceneview.demo.demos.internal.model.JvmAtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.JvmImages
@@ -25,6 +27,12 @@ import java.io.File
  * Skipped when either variable is unset. Writes, per scan, `room.glb`, each face's texture
  * (`tex_<face>.png`), the `.glb` drawn back as the result shows it from four dollhouse corners
  * (`doll0.png` … `doll3.png`) and from above (`top.png`), and `room.json`, its figures.
+ *
+ * A session that kept its depth recording has its depth fused again ([RoomDepthMesh]): the whole
+ * surface drawn on its own (`fused0.png` … `fused3.png`, `fused_top.png`) — a scan without a room
+ * box too — and the shell's objects are that surface's (the dollhouse views above), next to the
+ * shell its points would give (`points0.png`). The fusion's timings, blocks and triangles go in
+ * `room.json`. Folders named `out…` under the corpus are outputs, never scans.
  */
 class RoomShellCorpusTest {
     @Test
@@ -32,7 +40,11 @@ class RoomShellCorpusTest {
         val corpus = System.getenv(CORPUS)?.let(::File)
         val out = System.getenv(OUT)?.let(::File)
         assumeTrue("$CORPUS and $OUT not set", corpus != null && out != null)
-        val scans = checkNotNull(corpus).walkTopDown().filter(CleanModelCorpus::isScan).sortedBy { it.path }.toList()
+        val scans = checkNotNull(corpus).walkTopDown()
+            .onEnter { it == corpus || !it.name.startsWith("out") }
+            .filter(CleanModelCorpus::isScan)
+            .sortedBy { it.path }
+            .toList()
         assumeTrue("no scan in $corpus", scans.isNotEmpty())
         scans.forEach { scan -> println(run(scan, File(checkNotNull(out), scan.name))) }
     }
@@ -55,14 +67,20 @@ class RoomShellCorpusTest {
         val photos = ModelPhotos.of(capture.trace, capture.manifest.lens) { path ->
             capture.bytesOf(path)?.let(JvmImages::decode)?.let { BakePhoto(ORIGIN, it.width, it.height, it.argb) }
         }
+        val fused = if (file.isDirectory) RoomDepthMesh.fuseSession(file, tuning()) else null
+        fused?.let {
+            drawFused(it.mesh, out)
+            File(out, "fused.glb").writeBytes(RerunMeshGlb.write(it.mesh))
+        }
         val started = System.nanoTime()
-        val shell = runBlocking { RoomShellBuilder.build(cloud, photos, capture.manifest.floorY) }
+        val shell = runBlocking { RoomShellBuilder.build(cloud, photos, capture.manifest.floorY, depthMesh = fused?.mesh) }
             ?: return buildJsonObject {
                 put("file", file.name)
                 put("shell", "none: no convincing room box")
+                fused?.let { put("depth", depthJson(it)) }
             }
         val buildMs = (System.nanoTime() - started) / NANOS_PER_MS
-        val glb = checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder)) { "glb not written" }
+        val glb = checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder, objects = shell.objectMesh)) { "glb not written" }
         File(out, "room.glb").writeBytes(glb)
         shell.faces.forEach { face -> File(out, "tex_${face.name}.png").writeBytes(JvmImages.png(face.argb, face.columns, face.rows)) }
         val mesh = ShellRender.read(glb)
@@ -72,10 +90,19 @@ class RoomShellCorpusTest {
         }
         val top = ShellRender.view(mesh, shell.objects, shell.box, null)
         File(out, "top.png").writeBytes(JvmImages.png(top.argb, top.width, top.height))
+        if (fused != null) {
+            // The same shell with its objects as points: what a scan without its depth shows.
+            val points = checkNotNull(runBlocking { RoomShellBuilder.build(cloud, photos, capture.manifest.floorY) })
+            val pointsMesh = ShellRender.read(checkNotNull(RoomShellGlb.write(points.faces, JvmAtlasEncoder)))
+            val image = ShellRender.view(pointsMesh, points.objects, points.box, AZIMUTHS[0])
+            File(out, "points0.png").writeBytes(JvmImages.png(image.argb, image.width, image.height))
+        }
         val s = shell.stats
         return buildJsonObject {
             put("file", file.name)
             put("box", shell.box.toString())
+            put("floor_y", shell.box.floorY)
+            put("ceiling_y", shell.box.ceilingY)
             put("plan", shell.plan?.toString() ?: "box")
             val cameras = photos?.photos.orEmpty().flatMap { listOf(it.pose.x, it.pose.y, it.pose.z) }.toFloatArray()
             put("cells", RoomPlan.cells(cloud, shell.box, cameras)?.toString() ?: "no peak inside the box")
@@ -83,6 +110,8 @@ class RoomShellCorpusTest {
             put("clean_points", s.cleanPoints)
             put("object_points", s.objectPoints)
             put("objects_recoloured", s.objectsRecoloured)
+            put("object_triangles", s.objectTriangles)
+            fused?.let { put("depth", depthJson(it)) }
             put("photos", s.photosIn)
             put("photos_used", s.photosUsed)
             put("texels", s.texels)
@@ -96,6 +125,45 @@ class RoomShellCorpusTest {
             put("build_ms", buildMs)
             put("cores", Runtime.getRuntime().availableProcessors())
         }
+    }
+
+    /** The fusion's settings, each overridable by `SCENEVIEW_DEPTH_<NAME>` to tune them on the corpus. */
+    private fun tuning(): RoomDepthMesh.Settings {
+        fun env(name: String) = System.getenv("SCENEVIEW_DEPTH_$name")
+        val d = RoomDepthMesh.Settings()
+        return d.copy(
+            voxelM = env("VOXEL")?.toFloat() ?: d.voxelM,
+            truncationM = env("TRUNCATION")?.toFloat() ?: d.truncationM,
+            minWeight = env("MIN_WEIGHT")?.toFloat() ?: d.minWeight,
+            weakestCorner = env("WEAKEST")?.toFloat() ?: d.weakestCorner,
+            minComponentTriangles = env("MIN_COMPONENT")?.toInt() ?: d.minComponentTriangles,
+        )
+    }
+
+    /** The whole fused surface on its own, from the four corners and from above. */
+    private fun drawFused(surface: RerunMesh, out: File) {
+        AZIMUTHS.forEachIndexed { i, azimuth ->
+            val image = ShellRender.view(surface, azimuth)
+            File(out, "fused$i.png").writeBytes(JvmImages.png(image.argb, image.width, image.height))
+        }
+        val top = ShellRender.view(surface, null)
+        File(out, "fused_top.png").writeBytes(JvmImages.png(top.argb, top.width, top.height))
+    }
+
+    private fun depthJson(r: RoomDepthMesh.Result): JsonObject = buildJsonObject {
+        put("frames", r.frames)
+        put("fused_frames", r.fused)
+        put("blocks", r.blocks)
+        put("bytes", r.bytes)
+        put("max_bytes", RoomDepthMesh.MAX_BYTES)
+        put("dropped_blocks", r.droppedBlocks)
+        put("raw_triangles", r.rawTriangles)
+        put("triangles", r.mesh.triangleCount)
+        put("vertices", r.mesh.vertexCount)
+        put("dropped_components", r.droppedComponents)
+        put("capped", r.capped)
+        put("fuse_ms", r.fuseMs)
+        put("mesh_ms", r.meshMs)
     }
 
     private companion object {

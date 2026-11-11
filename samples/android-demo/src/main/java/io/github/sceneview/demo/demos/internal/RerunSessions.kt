@@ -338,7 +338,8 @@ class RerunSessionStore(val root: File) {
 
     /**
      * Keeps a room's shell as session [id]'s, next to its capture: `room.glb`, its object points
-     * (`room-objects.svpc`, [SvpcCodec]), then `room.json`, so a shell only reads back whole.
+     * (`room-objects.svpc`, [SvpcCodec]; none when its furniture is a mesh in the `.glb`), then
+     * `room.json`, so a shell only reads back whole.
      *
      * @throws IllegalStateException when the session is gone, or a file does not write.
      */

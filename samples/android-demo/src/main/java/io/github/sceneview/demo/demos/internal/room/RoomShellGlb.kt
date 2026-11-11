@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal.room
 
 import io.github.sceneview.demo.demos.internal.RerunJson
+import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunMeshGlb
 import io.github.sceneview.demo.demos.internal.jsonOf
 import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
@@ -17,10 +18,21 @@ import io.github.sceneview.demo.demos.internal.model.ModelGlb
  * Accessors 0–3 are `POSITION`, `NORMAL`, `COLOR_0` (each face's mean colour) and every face's
  * indices, as [RerunMeshGlb] writes them, so the app's own readers (framing, ground, thumbnails)
  * read it as they read a model.
+ *
+ * With an object mesh ([RoomShell.objectMesh]), it is one more primitive, last: its own
+ * `POSITION`, `NORMAL`, `COLOR_0` (linear, the vertex colours) and 32-bit indices, with a lit,
+ * double-sided white material — the camera's colours carry the room's light, the shading the
+ * furniture's shape, and a piece the scan saw from one side only is not culled from the other.
  */
 internal object RoomShellGlb {
     /** The `.glb` of [faces], `null` when [encoder] cannot encode one of their textures. */
-    fun write(faces: List<ShellFace>, encoder: AtlasEncoder, generator: String = "SceneView room shell"): ByteArray? {
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    fun write(
+        faces: List<ShellFace>,
+        encoder: AtlasEncoder,
+        generator: String = "SceneView room shell",
+        objects: RerunMesh? = null,
+    ): ByteArray? {
         require(faces.isNotEmpty() && faces.all { it.argb.size == it.columns * it.rows }) { "faces without textures" }
         val jpegs = faces.map { encoder.jpeg(it.argb, it.columns, it.rows) ?: return null }
         val firstQuad = IntArray(faces.size + 1).also { q -> faces.forEachIndexed { f, face -> q[f + 1] = q[f] + face.pieceCount } }
@@ -72,6 +84,12 @@ internal object RoomShellGlb {
         val indexAt = next(indexBytes)
         val uvAt = next(uvBytes)
         val imageAt = jpegs.map { next(pad4(it.size)) }
+        val mesh = objects?.takeIf { it.triangleCount > 0 }
+        val meshVertices = mesh?.vertexCount ?: 0
+        val meshPositionAt = next(meshVertices * 12)
+        val meshNormalAt = next(meshVertices * 12)
+        val meshColorAt = next(meshVertices * 4)
+        val meshIndexAt = next((mesh?.indices?.size ?: 0) * 4)
         val binBytes = at
         val min = FloatArray(3) { Float.MAX_VALUE }
         val max = FloatArray(3) { -Float.MAX_VALUE }
@@ -102,7 +120,7 @@ internal object RoomShellGlb {
                 "material" to f,
                 "mode" to TRIANGLES,
             )
-        }
+        }.toMutableList()
         val views = mutableListOf(
             view(positionAt, positionBytes, ARRAY_BUFFER, 12),
             view(normalAt, normalBytes, ARRAY_BUFFER, 12),
@@ -111,6 +129,51 @@ internal object RoomShellGlb {
             view(uvAt, uvBytes, ARRAY_BUFFER, 8),
         )
         jpegs.forEachIndexed { f, jpeg -> views += jsonOf("buffer" to 0, "byteOffset" to imageAt[f], "byteLength" to jpeg.size) }
+        val materials = faces.mapIndexed { f, face ->
+            jsonOf(
+                "name" to face.name,
+                "pbrMetallicRoughness" to jsonOf(
+                    "baseColorTexture" to jsonOf("index" to f),
+                    "metallicFactor" to 0.0,
+                    "roughnessFactor" to 1.0,
+                ),
+                "extensions" to jsonOf(ModelGlb.UNLIT to jsonOf()),
+            )
+        }.toMutableList()
+        if (mesh != null) {
+            val firstView = views.size
+            views += view(meshPositionAt, meshVertices * 12, ARRAY_BUFFER, 12)
+            views += view(meshNormalAt, meshVertices * 12, ARRAY_BUFFER, 12)
+            views += view(meshColorAt, meshVertices * 4, ARRAY_BUFFER, 4)
+            views += view(meshIndexAt, mesh.indices.size * 4, ELEMENT_ARRAY_BUFFER, null)
+            val b = mesh.bounds()
+            val firstAccessor = accessors.size
+            accessors += jsonOf(
+                "bufferView" to firstView, "componentType" to FLOAT, "count" to meshVertices, "type" to "VEC3",
+                "min" to listOf(b[0], b[1], b[2]).map(Float::toDouble), "max" to listOf(b[3], b[4], b[5]).map(Float::toDouble),
+            )
+            accessors += jsonOf("bufferView" to firstView + 1, "componentType" to FLOAT, "count" to meshVertices, "type" to "VEC3")
+            accessors += jsonOf(
+                "bufferView" to firstView + 2, "componentType" to UNSIGNED_BYTE, "normalized" to true,
+                "count" to meshVertices, "type" to "VEC4",
+            )
+            accessors += jsonOf("bufferView" to firstView + 3, "componentType" to UNSIGNED_INT, "count" to mesh.indices.size, "type" to "SCALAR")
+            primitives += jsonOf(
+                "attributes" to jsonOf("POSITION" to firstAccessor, "NORMAL" to firstAccessor + 1, "COLOR_0" to firstAccessor + 2),
+                "indices" to firstAccessor + 3,
+                "material" to materials.size,
+                "mode" to TRIANGLES,
+            )
+            materials += jsonOf(
+                "name" to OBJECTS,
+                "pbrMetallicRoughness" to jsonOf(
+                    "baseColorFactor" to listOf(1.0, 1.0, 1.0, 1.0),
+                    "metallicFactor" to 0.0,
+                    "roughnessFactor" to 1.0,
+                ),
+                "doubleSided" to true,
+            )
+        }
         val json = jsonOf(
             "asset" to jsonOf("version" to "2.0", "generator" to generator),
             "extensionsUsed" to listOf(ModelGlb.UNLIT),
@@ -118,17 +181,7 @@ internal object RoomShellGlb {
             "scenes" to listOf(jsonOf("nodes" to listOf(0))),
             "nodes" to listOf(jsonOf("name" to "room", "mesh" to 0)),
             "meshes" to listOf(jsonOf("name" to "room", "primitives" to primitives)),
-            "materials" to faces.mapIndexed { f, face ->
-                jsonOf(
-                    "name" to face.name,
-                    "pbrMetallicRoughness" to jsonOf(
-                        "baseColorTexture" to jsonOf("index" to f),
-                        "metallicFactor" to 0.0,
-                        "roughnessFactor" to 1.0,
-                    ),
-                    "extensions" to jsonOf(ModelGlb.UNLIT to jsonOf()),
-                )
-            },
+            "materials" to materials,
             "textures" to faces.indices.map { jsonOf("sampler" to 0, "source" to it) },
             "samplers" to listOf(
                 jsonOf("magFilter" to LINEAR, "minFilter" to LINEAR_MIPMAP_LINEAR, "wrapS" to CLAMP_TO_EDGE, "wrapT" to CLAMP_TO_EDGE),
@@ -158,6 +211,17 @@ internal object RoomShellGlb {
                 put(jpeg)
                 repeat(pad4(jpeg.size) - jpeg.size) { put(0) }
             }
+            if (mesh != null) {
+                mesh.positions.forEach { putFloat(it) }
+                mesh.normals.forEach { putFloat(it) }
+                for (c in mesh.colors) {
+                    put(RerunMeshGlb.LINEAR[(c shr 16) and 0xFF])
+                    put(RerunMeshGlb.LINEAR[(c shr 8) and 0xFF])
+                    put(RerunMeshGlb.LINEAR[c and 0xFF])
+                    put(0xFF.toByte())
+                }
+                mesh.indices.forEach { putInt(it) }
+            }
         }
     }
 
@@ -183,6 +247,10 @@ internal object RoomShellGlb {
     private const val FLOAT = 5126
     private const val UNSIGNED_BYTE = 5121
     private const val UNSIGNED_SHORT = 5123
+    private const val UNSIGNED_INT = 5125
+
+    /** The object mesh's material name: what a reader looks for to find the furniture. */
+    const val OBJECTS = "objects"
     private const val TRIANGLES = 4
     private const val LINEAR = 9729
     private const val LINEAR_MIPMAP_LINEAR = 9987

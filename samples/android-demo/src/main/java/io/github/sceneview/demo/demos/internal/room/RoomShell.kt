@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal.room
 import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.model.IntList
 import io.github.sceneview.demo.demos.internal.model.ModelPhotos
@@ -73,6 +74,8 @@ internal data class RoomShellStats(
     val cleanPoints: Int,
     val objectPoints: Int,
     val objectsRecoloured: Int,
+    /** The object mesh's triangles ([RoomShell.objectMesh]), 0 without one. */
+    val objectTriangles: Int,
     val photosIn: Int,
     val photosUsed: Int,
     val texels: Int,
@@ -87,8 +90,10 @@ internal data class RoomShellStats(
 
 /**
  * A room as a dollhouse reads it: its floor and walls as flat textured [faces] — coloured from the
- * scan's photos — and what stands in the room, [objects], as coloured points. Its [box]'s floor and
- * four walls, or, when [plan] is not `null`, the rectilinear room it holds (an L, a T…).
+ * scan's photos — and what stands in the room: [objectMesh], a vertex-coloured surface cut from the
+ * scan's depth fused again ([RoomDepthMesh]), when the scan kept its depth; else [objects], coloured
+ * points (empty when there is a mesh). Its [box]'s floor and four walls, or, when [plan] is not
+ * `null`, the rectilinear room it holds (an L, a T…).
  */
 internal class RoomShell(
     val box: RoomBox,
@@ -96,6 +101,7 @@ internal class RoomShell(
     val objects: DenseCloud,
     val stats: RoomShellStats,
     val plan: RoomPlan? = null,
+    val objectMesh: RerunMesh? = null,
 )
 
 /*
@@ -113,20 +119,24 @@ internal class RoomShell(
  *    nearest seen one's colour; a 3 × 3 median then smooths the speckle.
  * 4. The objects: cleaned points with [OBJECT_MIN_NEIGHBOURS] within [OBJECT_RADIUS_M], inside
  *    the room by its margins, not part of a wall, coloured from the photos the same way (with the
- *    tighter [OBJECT_OCCLUSION_M]) or keeping their own colour when none sees them.
+ *    tighter [OBJECT_OCCLUSION_M]) or keeping their own colour when none sees them. Given the
+ *    scan's depth fused into a surface ([RoomDepthMesh]), the objects are that surface's triangles
+ *    the same tests keep ([objectMesh]), its small floating pieces dropped, and no points.
  */
 internal object RoomShellBuilder {
     /**
      * The shell of [cloud] — its floor at [floorY], the manifest's — textured from [photos];
-     * `null` when the cloud does not stand as a room ([RoomBox.of]) or has no normals. [progress]
-     * (0–1) may throw to stop it.
+     * `null` when the cloud does not stand as a room ([RoomBox.of]) or has no normals. With
+     * [depthMesh], the scan's depth fused into a surface ([RoomDepthMesh]), its objects are cut
+     * from that surface instead of the cloud's points. [progress] (0–1) may throw to stop it.
      */
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     suspend fun build(
         cloud: DenseCloud,
         photos: ModelPhotos?,
         floorY: Float?,
         progress: (Float) -> Unit = {},
+        depthMesh: RerunMesh? = null,
     ): RoomShell? {
         val started = System.nanoTime()
         val normals = cloud.normals ?: return null
@@ -155,7 +165,8 @@ internal object RoomShellBuilder {
         } else {
             plan::toWall
         }
-        val objectIndices = objects(cloud, normals, box, clean, wide, toWall)
+        val objectMesh = depthMesh?.let { objectMesh(it, box, toWall) }
+        val objectIndices = if (objectMesh != null) IntArray(0) else objects(cloud, normals, box, clean, wide, toWall)
         val cleanPositions = IntList(n).also { list -> for (i in 0 until n) if (clean[i]) list.add(i) }.let { list ->
             FloatArray(list.size * 3) { p[list[it / 3] * 3 + it % 3] }
         }
@@ -211,6 +222,7 @@ internal object RoomShellBuilder {
                 cleanPoints = cleanPositions.size / 3,
                 objectPoints = objectIndices.size,
                 objectsRecoloured = recoloured,
+                objectTriangles = objectMesh?.triangleCount ?: 0,
                 photosIn = all.size,
                 photosUsed = used,
                 texels = texels,
@@ -221,7 +233,100 @@ internal object RoomShellBuilder {
                 finishMs = since(finishStarted),
             ),
             plan = plan,
+            objectMesh = objectMesh,
         )
+    }
+
+    /**
+     * The triangles of [mesh] that stand in the room, by the tests [objects] puts a point to — its
+     * middle inside the room by its margins ([toWall] as there), over the floor and under the
+     * ceiling, not a sideways face near a wall, not a level face under [OBJECT_FLOOR_LIKE_M] (a
+     * surface is smoother than points: the floor drawn a few centimetres high shows) — then whole
+     * pieces of fewer than
+     * [OBJECT_MIN_TRIANGLES] triangles dropped: a speck the cut left on the floor or a wall.
+     */
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
+    fun objectMesh(mesh: RerunMesh, box: RoomBox, toWall: (Float, Float) -> Float): RerunMesh {
+        val p = mesh.positions
+        val ix = mesh.indices
+        val triangles = mesh.triangleCount
+        val keep = BooleanArray(triangles)
+        for (t in 0 until triangles) {
+            val a = ix[t * 3]
+            val b = ix[t * 3 + 1]
+            val c = ix[t * 3 + 2]
+            val x = (p[a * 3] + p[b * 3] + p[c * 3]) / 3f
+            val y = (p[a * 3 + 1] + p[b * 3 + 1] + p[c * 3 + 1]) / 3f
+            val z = (p[a * 3 + 2] + p[b * 3 + 2] + p[c * 3 + 2]) / 3f
+            if (y <= box.floorY + OBJECT_FLOOR_MARGIN_M || y >= box.ceilingY - OBJECT_CEILING_MARGIN_M) continue
+            val wall = toWall(box.a(x, z), box.b(x, z))
+            if (wall <= OBJECT_WALL_MARGIN_M) continue
+            // The face's own normal: a vertex's comes from the field's gradient, smoothed.
+            val ux = p[b * 3] - p[a * 3]
+            val uy = p[b * 3 + 1] - p[a * 3 + 1]
+            val uz = p[b * 3 + 2] - p[a * 3 + 2]
+            val vx = p[c * 3] - p[a * 3]
+            val vy = p[c * 3 + 1] - p[a * 3 + 1]
+            val vz = p[c * 3 + 2] - p[a * 3 + 2]
+            val nx = uy * vz - uz * vy
+            val ny = uz * vx - ux * vz
+            val nz = ux * vy - uy * vx
+            val length = sqrt(nx * nx + ny * ny + nz * nz)
+            if (length <= 0f) continue
+            if (abs(ny / length) < WALL_MAX_NY && wall < WALL_BAND_M) continue
+            // Level and low: the floor where the scan drew it a little high, a rug — not furniture.
+            if (abs(ny / length) > FLOOR_MIN_NY && y < box.floorY + OBJECT_FLOOR_LIKE_M) continue
+            keep[t] = true
+        }
+        // Pieces: vertices joined by the kept triangles.
+        val parent = IntArray(mesh.vertexCount) { it }
+        fun find(v: Int): Int {
+            var r = v
+            while (parent[r] != r) {
+                parent[r] = parent[parent[r]]
+                r = parent[r]
+            }
+            return r
+        }
+        for (t in 0 until triangles) {
+            if (!keep[t]) continue
+            val r0 = find(ix[t * 3])
+            val r1 = find(ix[t * 3 + 1])
+            if (r0 != r1) parent[r0] = r1
+            val r2 = find(ix[t * 3 + 2])
+            val r = find(r1)
+            if (r2 != r) parent[r2] = r
+        }
+        val size = IntArray(mesh.vertexCount)
+        for (t in 0 until triangles) if (keep[t]) size[find(ix[t * 3])]++
+        for (t in 0 until triangles) if (keep[t] && size[find(ix[t * 3])] < OBJECT_MIN_TRIANGLES) keep[t] = false
+        val remap = IntArray(mesh.vertexCount) { -1 }
+        var vertices = 0
+        var kept = 0
+        for (t in 0 until triangles) {
+            if (!keep[t]) continue
+            kept++
+            for (k in 0 until 3) if (remap[ix[t * 3 + k]] < 0) remap[ix[t * 3 + k]] = vertices++
+        }
+        val positions = FloatArray(vertices * 3)
+        val normals = FloatArray(vertices * 3)
+        val colors = IntArray(vertices)
+        for (v in 0 until mesh.vertexCount) {
+            val to = remap[v]
+            if (to < 0) continue
+            for (k in 0 until 3) {
+                positions[to * 3 + k] = p[v * 3 + k]
+                normals[to * 3 + k] = mesh.normals[v * 3 + k]
+            }
+            colors[to] = mesh.colors[v]
+        }
+        val indices = IntArray(kept * 3)
+        var at = 0
+        for (t in 0 until triangles) {
+            if (!keep[t]) continue
+            for (k in 0 until 3) indices[at++] = remap[ix[t * 3 + k]]
+        }
+        return RerunMesh(positions, normals, colors, indices)
     }
 
     /**
@@ -500,6 +605,13 @@ internal object RoomShellBuilder {
     const val MIN_CONFIDENCE = 200
     const val OBJECT_RADIUS_M = 0.08f
     const val OBJECT_MIN_NEIGHBOURS = 45
+
+    /** An object mesh's piece with fewer triangles than this is a speck the cut left: dropped. */
+    const val OBJECT_MIN_TRIANGLES = 300
+
+    /** A level face (normal Y over [FLOOR_MIN_NY]) this near the floor is the floor's, not an object's. */
+    const val OBJECT_FLOOR_LIKE_M = 0.16f
+    const val FLOOR_MIN_NY = 0.9f
 
     /** How far inside the walls, over the floor and under the ceiling an object point is. */
     const val OBJECT_WALL_MARGIN_M = 0.07f

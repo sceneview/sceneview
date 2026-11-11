@@ -39,7 +39,9 @@ class ScanDepthCorpusTest {
         val corpus = System.getenv(CORPUS)?.let(::File)
         val out = System.getenv(OUT)?.let(::File)
         assumeTrue("$CORPUS and $OUT not set", corpus != null && out != null)
+        // Folders named `out…` under the corpus are outputs, never sessions.
         val sessions = checkNotNull(corpus).walkTopDown()
+            .onEnter { it == corpus || !it.name.startsWith("out") }
             .filter { it.isDirectory && CleanModelCorpus.isScan(it) }
             .sortedBy { it.path }
             .toList()
