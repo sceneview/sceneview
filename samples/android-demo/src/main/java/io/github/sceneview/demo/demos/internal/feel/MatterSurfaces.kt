@@ -2,16 +2,16 @@ package io.github.sceneview.demo.demos.internal.feel
 
 /**
  * Physical appearance constants, in LINEAR sRGB; never theme/UI colours. These are illustrative
- * finishes, not measured BRDFs. Steel's RGB is conductor reflectance; the others are diffuse
- * albedos. The shader adds zero-mean roughness detail around these base values.
+ * finishes, not measured BRDFs. Steel's RGB is conductor reflectance; gel is a clear interface
+ * coloured by volume absorption. The other RGB values are diffuse albedos.
  *
  *                 albedo / reflectance     roughness  metal  coat  sheen
- * Memory foam     .78 .72 .59              .94        0      0     0
- * Gel             .55 .86 .79              .08        0      0     0  (IOR 1.35)
- * Velvet          .025 .055 .14            .88        0      0     blue pile
- * Leather         .22 .075 .028            .48        0      .25   0
- * Carrara marble  .82 .83 .80              .19        0      .70   0
- * Brushed steel   .56 .58 .60               .30        1      0     0  (anisotropy .80)
+ * Memory foam     .82 .73 .48              .94        0      0     0
+ * Gel             1 1 1                   .045       0      0     0  (amber absorption, IOR 1.45)
+ * Velvet          .009 .065 .028           .90        0      0     emerald pile, strength 1
+ * Leather         .22 .075 .028            .44        0      .30   0
+ * Carrara marble  .82 .83 .80              .09        0      1     0  (coat roughness .055)
+ * Brushed steel   .56 .58 .60              .26        1      0     0  (anisotropy .95)
  * Opening ceramic .025 .03 .04             .16        0      .80   0
  */
 internal object MatterSurfaces {
@@ -22,6 +22,7 @@ internal object MatterSurfaces {
         val coat: Float = 0f,
         val coatRoughness: Float = 0.14f,
         val sheen: Float = 0f,
+        val sheenRoughness: Float = .38f,
         val anisotropy: Float = 0f,
         val falloff: Float = 2f,
         val bulge: Float = 0f,
@@ -31,22 +32,37 @@ internal object MatterSurfaces {
     )
 
     private val surfaces = arrayOf(
-        Surface(.78f, .72f, .59f, .94f, bulge = .07f, visualMm = .032f),
-        Surface(.55f, .86f, .79f, .08f, falloff = 2.2f, bulge = .22f, visualMm = .036f),
-        Surface(.025f, .055f, .14f, .88f, sheen = .75f, bulge = .08f,
+        Surface(.82f, .73f, .48f, .94f, bulge = .07f, visualMm = .032f),
+        Surface(1f, 1f, 1f, .045f, falloff = 2.2f, bulge = .22f, visualMm = .036f),
+        Surface(.009f, .065f, .028f, .90f, sheen = 1f, bulge = .08f,
             wrinkles = .035f, foldCount = 18f, visualMm = .055f),
-        Surface(.22f, .075f, .028f, .48f, coat = .25f, falloff = 2.6f,
+        Surface(.22f, .075f, .028f, .44f, coat = .30f, falloff = 2.6f,
             bulge = .04f, wrinkles = .055f, foldCount = 12f, visualMm = .075f),
-        Surface(.82f, .83f, .80f, .19f, coat = .70f),
-        Surface(.56f, .58f, .60f, .30f, metallic = 1f, anisotropy = .80f),
+        Surface(.82f, .83f, .80f, .09f, coat = 1f, coatRoughness = .055f),
+        Surface(.56f, .58f, .60f, .26f, metallic = 1f, anisotropy = .95f),
     )
     val ceramic = Surface(.025f, .03f, .04f, .16f, coat = .80f)
-    const val GEL_IOR = 1.35f
-    const val GEL_TRANSMISSION = 0.92f
+    const val GEL_IOR = 1.45f
+    const val GEL_TRANSMISSION = 1f
+    // Beer-Lambert coefficients per model-space unit: colour lives INSIDE the gel.
+    const val GEL_ABSORPTION_RED = .12f
+    const val GEL_ABSORPTION_GREEN = .85f
+    const val GEL_ABSORPTION_BLUE = 3.4f
     operator fun get(material: FeelMaterial): Surface = surfaces[material.ordinal]
 
     /** Signed for gel's overshoot; always leaves a supported layer under the deepest dent. */
-    fun visualDepth(depthMm: Float, material: FeelMaterial): Float = if (material.rigid) 0f else
-        (depthMm * get(material).visualMm).coerceIn(-FeelSimulation.PAD_THICKNESS * .25f,
-            FeelSimulation.PAD_THICKNESS * .78f)
+    fun visualDepth(depthMm: Float, material: FeelMaterial): Float {
+        if (material.rigid || !depthMm.isFinite()) return 0f
+        val depth = if (material == FeelMaterial.MemoryFoam) {
+            // A light 3 mm press already makes a 0.39-unit bowl, with a smooth return to zero.
+            // Only the display mapping changes; the spring and slow recovery stay physical.
+            FeelSimulation.PAD_THICKNESS * .78f * depthMm.coerceAtLeast(0f) / (depthMm.coerceAtLeast(0f) + 2.7f)
+        } else depthMm * get(material).visualMm
+        return depth.coerceIn(-FeelSimulation.PAD_THICKNESS * .25f, FeelSimulation.PAD_THICKNESS * .78f)
+    }
+
+    /** Match the caption to visible recovery, including gel crossing zero with velocity. */
+    fun showsDisplacement(material: FeelMaterial, state: Indentation, pressed: Boolean): Boolean =
+        !material.rigid && (pressed || kotlin.math.abs(visualDepth(state.depthMm, material)) > .003f ||
+            kotlin.math.abs(state.velocity) > .05f)
 }

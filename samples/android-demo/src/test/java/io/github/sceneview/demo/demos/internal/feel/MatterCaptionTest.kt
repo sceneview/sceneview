@@ -17,7 +17,18 @@ class MatterCaptionTest {
         }
     }
 
-    @Test fun everyExistingMatterLocaleHasSixNamesAndWordedMillimetreReadouts() {
+    @Test fun restShowsCharacterAndOnlyContactOrVisibleRecoveryShowsMillimetres() {
+        for (material in FeelMaterial.entries) {
+            assertEquals(false, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = false))
+            assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(), pressed = true))
+            assertEquals(!material.rigid, MatterSurfaces.showsDisplacement(material, Indentation(1f), pressed = false))
+        }
+        assertTrue(MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(0f, -2f), false))
+        assertTrue(MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(-1f), false))
+        assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.MemoryFoam, Indentation(.001f), false))
+    }
+
+    @Test fun everyExistingMatterLocaleHasSixNamesCharacterCaptionsAndMillimetreReadouts() {
         val base = strings(File(resources, "values/strings_demo_feel.xml"))
         val required = base.keys
         val files = resources.walkTopDown().filter { it.extension == "xml" && it.readText().contains("name=\"demo_feel_") }.toList()
@@ -25,6 +36,11 @@ class MatterCaptionTest {
         for (file in files) {
             val translated = strings(file)
             assertTrue("Missing Matter strings in $file", translated.keys.containsAll(required))
+            for (key in listOf("foam_rest", "gel_rest", "velvet_rest", "leather_rest", "rigid_rest")) {
+                val value = translated.getValue("demo_feel_$key")
+                assertTrue(value.contains("·"))
+                assertTrue(!value.contains("mm") && !value.contains("%"))
+            }
             for (key in listOf("foam_press", "gel_response", "gel_rebound", "smooth_response")) {
                 val value = translated.getValue("demo_feel_$key")
                 assertTrue(value.contains("%1\$d"))

@@ -6,6 +6,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MatterOpeningTest {
+    @Test fun onlySystemAnimationsAndRuntimeQaGateTheOpening() {
+        assertTrue(MatterOpening.isAllowed(systemAnimations = true, qaMode = false))
+        assertFalse(MatterOpening.isAllowed(systemAnimations = false, qaMode = false))
+        assertFalse(MatterOpening.isAllowed(systemAnimations = true, qaMode = true))
+        assertFalse(MatterOpening.isAllowed(systemAnimations = false, qaMode = true))
+    }
+
+    @Test fun loadingOrInitialMissingFocusDoesNotConsumeTheOpening() {
+        val simulation = FeelSimulation(openingEnabled = true)
+        for (now in 0L..5000L step 16) simulation.advance(now, startOpening = false)
+        assertFalse(simulation.opening.finished)
+        assertFalse(simulation.opening.visible)
+        assertEquals(0f, simulation.pads[0].depthMm, 0f)
+        simulation.advance(5100L, startOpening = true)
+        assertTrue(simulation.opening.visible)
+        assertEquals(MatterOpening.TRAVEL, simulation.opening.heightAbovePad, 0f)
+    }
+
     @Test fun descentContactLiftAndHintFitInTwoSeconds() {
         val opening = MatterOpening(true)
         opening.advance(100)

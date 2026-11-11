@@ -15,7 +15,9 @@ internal class MatterStage {
     val halfWidth get() = distance * TAN_HALF_FOV
     val halfHeight get() = halfWidth * heightPx / widthPx.coerceAtLeast(1)
     val eyeX get() = distance * BACK_X
-    val eyeY get() = TARGET_Y + distance * SIN
+    var targetY = TARGET_Y
+        private set
+    val eyeY get() = targetY + distance * SIN
     val eyeZ get() = distance * BACK_Z
     // Enough travel to put the complete silhouette off screen before the next settles.
     val slideDistance get() = halfWidth * 2f + FeelSimulation.PAD_HALF_WIDTH * 2f
@@ -26,26 +28,44 @@ internal class MatterStage {
         if (widthPx == framedWidth && heightPx == framedHeight) return false
         framedWidth = widthPx; framedHeight = heightPx
         val aspect = widthPx.toFloat() / heightPx.coerceAtLeast(1)
+        targetY = TARGET_Y
         fun fits(d: Float): Boolean {
             for (x in listOf(-FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH))
                 for (y in listOf(-FeelSimulation.PAD_THICKNESS, 0f))
                     for (z in listOf(-FeelSimulation.PAD_HALF_LENGTH, FeelSimulation.PAD_HALF_LENGTH)) {
-                        val cy = y - TARGET_Y
+                        val cy = y - targetY
                         val depth = d - (x * BACK_X + cy * SIN + z * BACK_Z)
                         if (depth <= NEAR) return false
                         val right = x * COS_AZIMUTH - z * SIN_AZIMUTH
                         val up = x * UP_X + cy * COS + z * UP_Z
-                        if (abs(right) > depth * TAN_HALF_FOV * .85f ||
-                            abs(up) > depth * TAN_HALF_FOV / aspect * .72f) return false
+                        if (abs(right) > depth * TAN_HALF_FOV * .945f ||
+                            abs(up) > depth * TAN_HALF_FOV / aspect * .78f) return false
                     }
             return true
         }
-        var low = 3f; var high = 100f
-        repeat(30) {
-            val mid = (low + high) / 2f
-            if (fits(mid)) high = mid else low = mid
+        // Re-centre the projected silhouette, not the origin: perspective lifts the far edge.
+        // Conservative box fitting leaves about 90% width after the rounded corners are removed.
+        repeat(5) {
+            var low = 3f; var high = 100f
+            repeat(30) {
+                val mid = (low + high) / 2f
+                if (fits(mid)) high = mid else low = mid
+            }
+            distance = high
+            if (it < 4) {
+                var bottom = Float.POSITIVE_INFINITY
+                var top = Float.NEGATIVE_INFINITY
+                for (x in listOf(-FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH))
+                    for (y in listOf(-FeelSimulation.PAD_THICKNESS, 0f))
+                        for (z in listOf(-FeelSimulation.PAD_HALF_LENGTH, FeelSimulation.PAD_HALF_LENGTH)) {
+                            val cy = y - targetY
+                            val depth = distance - (x * BACK_X + cy * SIN + z * BACK_Z)
+                            val projected = (x * UP_X + cy * COS + z * UP_Z) / depth
+                            bottom = minOf(bottom, projected); top = maxOf(top, projected)
+                        }
+                targetY += (bottom + top) * .5f * distance / COS
+            }
         }
-        distance = high
         return true
     }
 
@@ -78,7 +98,7 @@ internal class MatterStage {
         const val HORIZONTAL_FOV = 40.0
         const val NEAR = 0.1
         const val FAR = 150.0
-        const val ELEVATION = 32f
+        const val ELEVATION = 27f
         const val AZIMUTH = 24f
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
@@ -90,6 +110,13 @@ internal class MatterStage {
         val BACK_Z = COS_AZIMUTH * COS
         val UP_X = -SIN_AZIMUTH * SIN
         val UP_Z = -COS_AZIMUTH * SIN
+        // Yaw the HDR by azimuth - 90 degrees: a long side softbox crosses the top reflection.
+        // Rotation around Y preserves the showroom's upward irradiance and floor exposure.
+        val STUDIO_ROTATION = floatArrayOf(
+            SIN_AZIMUTH, 0f, COS_AZIMUTH,
+            0f, 1f, 0f,
+            -COS_AZIMUTH, 0f, SIN_AZIMUTH,
+        )
         val RADIUS = sqrt(FeelSimulation.PAD_HALF_WIDTH * FeelSimulation.PAD_HALF_WIDTH +
             FeelSimulation.PAD_HALF_LENGTH * FeelSimulation.PAD_HALF_LENGTH +
             FeelSimulation.PAD_THICKNESS * FeelSimulation.PAD_THICKNESS / 4f)

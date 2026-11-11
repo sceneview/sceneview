@@ -6,6 +6,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FeelSimulationTest {
+    @Test fun lightSensorPressureMakesAWideVisibleFoamBowlAndStillRecoversSlowly() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, .10f, 0f, 0L)
+        simulation.move(0f, 0f, .20f, 0f)
+        simulation.move(0f, 0f, .12f, 0f)
+        for (now in 0L..2500L step 10) simulation.advance(now)
+        val depth = simulation.pads[0].depthMm
+        assertTrue("light pressure remains a small physical measurement", depth in 2f..3f)
+        val visible = MatterSurfaces.visualDepth(depth, FeelMaterial.MemoryFoam)
+        assertTrue("light pressure gives a deep visual bowl", visible > FeelSimulation.PAD_THICKNESS * .35f)
+        assertTrue(FeelMaterial.MemoryFoam.radius > 1.2f)
+        simulation.release(2500L)
+        for (now in 2510L..2630L step 10) simulation.advance(now)
+        assertEquals(visible, MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam), .0001f)
+        for (now in 2640L..3200L step 10) simulation.advance(now)
+        assertTrue(MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) > .10f)
+        for (now in 3210L..13000L step 10) simulation.advance(now)
+        assertTrue(MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) < .003f)
+    }
+
     @Test fun stationaryFingerRampsAndReleaseLetsThePadRecover() {
         val simulation = FeelSimulation()
         simulation.begin(FeelMaterial.MemoryFoam, 0f, 0f, 1f, 0f, 0)

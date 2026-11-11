@@ -28,12 +28,15 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
             if (kind == FeelMaterial.Gel) {
                 setParameter("ior", MatterSurfaces.GEL_IOR)
                 setParameter("transmission", MatterSurfaces.GEL_TRANSMISSION)
+                setParameter("absorption", MatterSurfaces.GEL_ABSORPTION_RED,
+                    MatterSurfaces.GEL_ABSORPTION_GREEN, MatterSurfaces.GEL_ABSORPTION_BLUE)
             } else {
                 setParameter("surface", kind.ordinal.toFloat())
                 setParameter("metallic", finish.metallic)
                 setParameter("coat", finish.coat)
                 setParameter("coatRoughness", finish.coatRoughness)
                 setParameter("sheen", finish.sheen)
+                setParameter("sheenRoughness", finish.sheenRoughness)
                 setParameter("anisotropy", finish.anisotropy)
                 setParameter("ripple", 0f, 0f, 0f, 0f)
                 setParameter("rippleColor", 0f, 0f, 0f)

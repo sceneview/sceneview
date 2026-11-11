@@ -36,6 +36,9 @@ internal class MatterOpening(enabled: Boolean) {
     private fun smooth(t: Float): Float = t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
 
     companion object {
+        // The QA APK suffix is not a gate; only the runtime flag suppresses the opening.
+        fun isAllowed(systemAnimations: Boolean, qaMode: Boolean): Boolean = systemAnimations && !qaMode
+
         const val MARK_MASS_KG = 0.75f
         // A heavy ceramic mark, one fifth of the sample width.
         const val MARK_WIDTH = FeelSimulation.PAD_HALF_WIDTH * 2f / 5f

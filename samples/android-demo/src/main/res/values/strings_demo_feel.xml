@@ -9,6 +9,11 @@
     <string name="demo_feel_leather">Leather</string>
     <string name="demo_feel_marble">Marble</string>
     <string name="demo_feel_steel">Brushed steel</string>
+    <string name="demo_feel_foam_rest">Soft · slow to recover</string>
+    <string name="demo_feel_gel_rest">Clear · springs back</string>
+    <string name="demo_feel_velvet_rest">Plush · directional pile</string>
+    <string name="demo_feel_leather_rest">Supple · fine grain</string>
+    <string name="demo_feel_rigid_rest">Firm · does not move</string>
     <string name="demo_feel_foam_press">Gives %1$d mm · slow to recover</string>
     <string name="demo_feel_gel_response">Gives %1$d mm · springs back</string>
     <string name="demo_feel_gel_rebound">Rebounds %1$d mm · springs back</string>

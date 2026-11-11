@@ -11,7 +11,7 @@ class MatterStageTest {
         widthPx = width; heightPx = height; frame()
     }
     private fun project(stage: MatterStage, x: Float, y: Float, z: Float): Pair<Float, Float> {
-        val cy = y - MatterStage.TARGET_Y
+        val cy = y - stage.targetY
         val right = x * MatterStage.COS_AZIMUTH - z * MatterStage.SIN_AZIMUTH
         val up = x * MatterStage.UP_X + cy * MatterStage.COS + z * MatterStage.UP_Z
         val depth = stage.distance - (x * MatterStage.BACK_X + cy * MatterStage.SIN + z * MatterStage.BACK_Z)
@@ -21,7 +21,7 @@ class MatterStageTest {
     private fun hit(stage: MatterStage, x: Float, y: Float, z: Float) = stage.pointOnSlab(
         stage.eyeX, stage.eyeY, stage.eyeZ, x - stage.eyeX, y - stage.eyeY, z - stage.eyeZ)
 
-    @Test fun heroFillsAbout85PercentOfPortraitWidthAndFitsShortWindows() {
+    @Test fun heroFillsAbout90PercentOfPortraitWidthAndFitsShortWindows() {
         val mesh = MatterMeshes.slab()
         for ((width, height) in listOf(1080 to 1600, 360 to 400, 900 to 300)) {
             val stage = stage(width, height)
@@ -34,8 +34,10 @@ class MatterStageTest {
             }
             if (height > width) {
                 val occupied = (points.maxOf { it.first } - points.minOf { it.first }) / width
-                assertTrue("hero width is $occupied", occupied in .80f.. .87f)
+                assertTrue("hero width is $occupied", occupied in .89f.. .91f)
             }
+            val centreY = (points.maxOf { it.second } + points.minOf { it.second }) / 2f
+            assertEquals("silhouette centres in the free stage", height / 2f, centreY, height * .012f)
             assertFalse(stage.frame())
             stage.heightPx += 40
             assertTrue(stage.frame())
@@ -70,8 +72,8 @@ class MatterStageTest {
     @Test fun dentIsVisibleAtPhoneResolutionAndOpeningFitsTheHeroViewport() {
         val stage = stage()
         val rest = project(stage, 0f, 0f, 0f)
-        val pressed = project(stage, 0f, -MatterSurfaces.visualDepth(18f, FeelMaterial.MemoryFoam), 0f)
-        assertTrue(pressed.second - rest.second > 60f)
+        val pressed = project(stage, 0f, -MatterSurfaces.visualDepth(3f, FeelMaterial.MemoryFoam), 0f)
+        assertTrue(pressed.second - rest.second > 45f)
         assertFalse(MatterOpening.SHOW_BRACKETS)
         val simulation = FeelSimulation(openingEnabled = true)
         for (now in 0L..2000L step 16L) {

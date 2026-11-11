@@ -129,11 +129,14 @@ fun FeelDemo(onBack: () -> Unit) {
     val recorder = rememberDemoSceneRecorder()
     val firstFrame = rememberFirstFrameState(engine)
     val touchView = LocalView.current
-    val systemMotion = remember(touchView) {
-        Settings.Global.getFloat(touchView.context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+    var systemMotion by remember(touchView) {
+        mutableStateOf(Settings.Global.getFloat(touchView.context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f)
     }
-    val motion = systemMotion && LocalMotionEnabled.current && !DemoSettings.qaMode
-    val simulation = remember { FeelSimulation(openingEnabled = motion) }
+    val openingAllowed = MatterOpening.isAllowed(systemMotion, DemoSettings.qaMode)
+    val motion = openingAllowed && LocalMotionEnabled.current
+    // Keep an unplayed opening pending while QA/system motion disables it.
+    val simulation = remember { FeelSimulation(openingEnabled = true) }
     val stage = remember { MatterStage() }
     val haptics = remember(touchView) { FeelHapticPlayer(touchView) }
     val touch = remember(simulation, view, haptics, stage, touchView) {
@@ -142,6 +145,10 @@ fun FeelDemo(onBack: () -> Unit) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, touch) {
         val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                systemMotion = Settings.Global.getFloat(touchView.context.contentResolver,
+                    Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+            }
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) touch.cancel()
         }
         lifecycle.addObserver(observer)
@@ -184,7 +191,10 @@ fun FeelDemo(onBack: () -> Unit) {
     val center = remember { Position(y = -FeelSimulation.PAD_THICKNESS / 2f) }
     val floorY = -FeelSimulation.PAD_THICKNESS
     SideEffect {
-        hdr?.indirectLight?.intensity = ShowroomMath.baseIntensity(hdrPath)
+        hdr?.indirectLight?.apply {
+            intensity = ShowroomMath.baseIntensity(hdrPath)
+            setRotation(MatterStage.STUDIO_ROTATION)
+        }
         showroom.dress(ShowroomStage.Look(
             palette = palette, isDark = dark, neutral = true,
             irradiance = ShowroomMath.upwardIrradiance(hdrPath),
@@ -209,11 +219,14 @@ fun FeelDemo(onBack: () -> Unit) {
             stage.widthPx.toDouble() / stage.heightPx.coerceAtLeast(1),
             MatterStage.NEAR, MatterStage.FAR, Camera.Fov.HORIZONTAL)
         camera.position = Position(stage.eyeX, stage.eyeY, stage.eyeZ)
-        camera.lookAt(Position(y = MatterStage.TARGET_Y))
+        camera.lookAt(Position(y = stage.targetY))
         val now = SystemClock.uptimeMillis()
-        if (!motion) simulation.opening.cancel()
-        if (!touchView.hasWindowFocus()) touch.cancel()
-        simulation.advance(now, startOpening = firstFrame.sceneReady.value)?.let(haptics::play)
+        if (!openingAllowed && simulation.opening.visible) simulation.opening.cancel()
+        val focused = touchView.hasWindowFocus()
+        // Initial composition can precede window focus. Do not dismiss an opening not yet shown.
+        if (!focused && (simulation.active != null || simulation.opening.visible)) touch.cancel()
+        simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && openingAllowed)
+            ?.let(haptics::play)
         touch.followIndentation()
         val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
         val progress = if (motion) slide.value else 1f
@@ -266,7 +279,9 @@ fun FeelDemo(onBack: () -> Unit) {
         reflection.onFrame()
         if (now - timing[0] >= 50L) {
             timing[0] = now
-            readout = FeelReadout(displayed, simulation.pads[displayed.ordinal].depthMm)
+            val indentation = simulation.pads[displayed.ordinal]
+            readout = FeelReadout(displayed, indentation.depthMm,
+                MatterSurfaces.showsDisplacement(displayed, indentation, simulation.active == displayed))
         }
         firstFrame.onFrame(nanos)
     })
@@ -331,12 +346,16 @@ fun FeelDemo(onBack: () -> Unit) {
                 }
             }
             FeelControls(selected, if (readout.material == selected) readout.depth else 0f,
-                switching, motion, choose)
+                readout.material == selected && readout.showDisplacement, switching, motion, choose)
         }
     }
 }
 
-private data class FeelReadout(val material: FeelMaterial = FeelMaterial.MemoryFoam, val depth: Float = 0f)
+private data class FeelReadout(
+    val material: FeelMaterial = FeelMaterial.MemoryFoam,
+    val depth: Float = 0f,
+    val showDisplacement: Boolean = false,
+)
 
 @Composable
 private fun materialName(kind: FeelMaterial): String = stringResource(when (kind) {
@@ -349,7 +368,8 @@ private fun materialName(kind: FeelMaterial): String = stringResource(when (kind
 })
 
 @Composable
-private fun FeelControls(selected: FeelMaterial, depth: Float, switching: Boolean, motion: Boolean,
+private fun FeelControls(selected: FeelMaterial, depth: Float, showDisplacement: Boolean,
+                         switching: Boolean, motion: Boolean,
                          choose: (FeelMaterial) -> Unit) {
     val chips = rememberLazyListState()
     LaunchedEffect(selected, motion) {
@@ -361,7 +381,13 @@ private fun FeelControls(selected: FeelMaterial, depth: Float, switching: Boolea
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs)) {
                 Text(materialName(selected), style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface)
-                val response = when (selected) {
+                val response = if (!showDisplacement) when (selected) {
+                    FeelMaterial.MemoryFoam -> R.string.demo_feel_foam_rest
+                    FeelMaterial.Gel -> R.string.demo_feel_gel_rest
+                    FeelMaterial.Velvet -> R.string.demo_feel_velvet_rest
+                    FeelMaterial.Leather -> R.string.demo_feel_leather_rest
+                    FeelMaterial.Marble, FeelMaterial.BrushedSteel -> R.string.demo_feel_rigid_rest
+                } else when (selected) {
                     FeelMaterial.MemoryFoam -> R.string.demo_feel_foam_press
                     FeelMaterial.Gel -> if (depth < -0.5f) R.string.demo_feel_gel_rebound else R.string.demo_feel_gel_response
                     FeelMaterial.Velvet, FeelMaterial.Leather -> R.string.demo_feel_smooth_response

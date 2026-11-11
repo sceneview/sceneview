@@ -9,7 +9,7 @@
 //   bounce               — rigid whole-sample vertical offset, in model space.
 //   albedo, roughness    — linear physical constants from MatterSurfaces, never UI tokens.
 //   surface              — FeelMaterial ordinal (0 foam, 2 velvet, 3 leather, 4 marble, 5 steel).
-//   metallic, coat, coatRoughness, sheen, anisotropy — physical finish constants.
+//   metallic, coat, coatRoughness, sheen, sheenRoughness, anisotropy — physical finish constants.
 //   ripple               — rigid contact XZ, expanding radius, opacity; zero opacity disables.
 //   rippleColor, rippleWidth — theme primary in scene-linear light; model-space hairline.
 // matc profile: --optimize-size -p mobile -a opengl -a vulkan (Filament 1.77.3).
@@ -67,6 +67,10 @@ material {
         {
             "type": "float",
             "name": "sheen"
+        },
+        {
+            "type": "float",
+            "name": "sheenRoughness"
         },
         {
             "type": "float",
@@ -154,13 +158,17 @@ fragment {
         p += dot(p, p.yxz + 33.33);
         return fract((p.xxy + p.yxx) * p.zyx);
     }
-    highp float noise3(highp vec3 p) {
-        vec3 i = floor(p), f = fract(p);
+    // Four hashes per sample; the marble's domain warp uses three-octave 2D fBm.
+    // A continuous oblique projection carries the pattern across the top and sides.
+    highp float noise2(highp vec2 p) {
+        vec2 i = floor(p), f = fract(p);
         f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(hash3(i).x, hash3(i + vec3(1,0,0)).x, f.x),
-                       mix(hash3(i + vec3(0,1,0)).x, hash3(i + vec3(1,1,0)).x, f.x), f.y),
-                   mix(mix(hash3(i + vec3(0,0,1)).x, hash3(i + vec3(1,0,1)).x, f.x),
-                       mix(hash3(i + vec3(0,1,1)).x, hash3(i + vec3(1,1,1)).x, f.x), f.y), f.z);
+        return mix(mix(hash3(vec3(i, 0)).x, hash3(vec3(i + vec2(1,0), 0)).x, f.x),
+                   mix(hash3(vec3(i + vec2(0,1), 0)).x, hash3(vec3(i + vec2(1,1), 0)).x, f.x), f.y);
+    }
+    highp float fbm(highp vec2 p) {
+        return noise2(p) * 0.57 + noise2(p * 2.13 + 7.1) * 0.29 +
+            noise2(p * 4.37 + 19.7) * 0.14;
     }
     // One 3D Worley neighbourhood, shared by colour, occlusion and screen-derivative bump.
     // Uniform surface branches ensure marble/steel never pay for the cell search.
@@ -185,48 +193,69 @@ fragment {
         float height = 0.0;
         float pile = 0.0;
         float kind = materialParams.surface;
-        if (kind < 0.5) {
-            vec2 cell = cells(p * 36.0);
-            float resolved = 1.0 - smoothstep(0.45, 1.3, length(fwidth(p * 36.0)));
-            float pore = (1.0 - smoothstep(0.13, 0.36, cell.x)) * resolved;
-            // Open cells darken inside; compression flattens their relief rather than sliding it.
-            colour *= (1.0 - 0.34 * pore) * (1.0 - 0.12 * compressed);
-            occlusion = 1.0 - 0.45 * pore;
-            height = -0.009 * pore * (1.0 - 0.8 * compressed);
-        } else if (kind < 2.5) {
-            float grain = noise3(p * 230.0);
-            float resolved = 1.0 - smoothstep(0.35, 1.4, length(fwidth(p * 230.0)));
-            pile = mix(0.5, grain, resolved);
-            colour *= 0.88 + 0.24 * pile + 0.38 * compressed;
-            height = (pile - 0.5) * 0.0015;
-            rough -= compressed * 0.14;
-        } else if (kind < 3.5) {
-            vec2 cell = cells(p * 24.0);
-            float resolved = 1.0 - smoothstep(0.4, 1.4, length(fwidth(p * 24.0)));
-            float valley = (1.0 - smoothstep(0.015, 0.10, cell.y - cell.x)) * resolved;
-            colour *= 1.0 - 0.32 * valley;
-            height = -0.008 * valley;
-            rough += valley * 0.10;
-            occlusion = 1.0 - valley * 0.18;
-        } else if (kind < 4.5) {
-            vec3 q = p * 1.6;
-            float warp = noise3(q + vec3(7.0, 2.0, 0.0)) * 2.8 + noise3(q * 2.3) * 0.7;
-            float phase = p.x * 2.0 + p.z * 3.7 + p.y * 2.6 + warp;
-            float vein = pow(1.0 - abs(sin(phase * 3.0)), 12.0);
-            float fine = pow(1.0 - abs(sin(phase * 15.0 + noise3(q * 4.0))), 20.0);
-            colour *= 1.0 - 0.42 * vein - 0.10 * fine;
-            rough += vein * 0.035;
-        } else {
-            // The grooves run along X (the analytic tangent); detail varies across Z.
-            float frequency = p.z * 1100.0;
-            float resolved = 1.0 - smoothstep(0.4, 1.5, fwidth(frequency));
-            float streak = noise3(vec3(p.x * 1.5, frequency, p.y * 1100.0));
-            rough += (streak - 0.5) * 0.16 * resolved;
-            height = (streak - 0.5) * 0.00035 * resolved;
-        }
+        float coatRoughness = materialParams.coatRoughness;
         vec3 n = normalize(variable_bentNormal.xyz);
         vec3 t = normalize(variable_bentTangent.xyz);
         t = normalize(t - n * dot(t, n));
+        if (kind < 0.5) {
+            vec2 cell = cells(p * 23.0);
+            float resolved = 1.0 - smoothstep(0.45, 1.3, length(fwidth(p * 23.0)));
+            // Broad open cavities separated by soft, creamy cell walls, rather than black dots.
+            float pore = (1.0 - smoothstep(0.22, 0.62, cell.x)) * resolved;
+            colour *= (1.0 - 0.11 * pore) * (1.0 - 0.10 * compressed);
+            occlusion = 1.0 - 0.62 * pore;
+            height = -0.014 * pore * (1.0 - 0.8 * compressed);
+        } else if (kind < 2.5) {
+            vec2 nap = p.xz + p.y * vec2(0.31, 0.73);
+            pile = noise2(nap * vec2(3.0, 8.0));
+            float fibre = noise2(nap * vec2(65.0, 240.0));
+            float resolved = 1.0 - smoothstep(0.35, 1.4, length(fwidth(nap * vec2(65.0, 240.0))));
+            float facing = clamp(dot(n, getWorldViewVector()), 0.0, 1.0);
+            colour *= (0.48 + 0.24 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * compressed);
+            height = (fibre - 0.5) * 0.0018 * resolved;
+            // Swept nap tilts the sheen lobe; a crushed patch lays fibres along the slab tangent.
+            vec3 b = cross(n, t);
+            float sweep = (pile - 0.5) * 0.30;
+            n = normalize(n + t * (sweep + compressed * 0.22) + b * sweep * 0.45);
+            rough -= compressed * 0.12;
+        } else if (kind < 3.5) {
+            vec2 cell = cells(p * 24.0);
+            float resolved = 1.0 - smoothstep(0.4, 1.4, length(fwidth(p * 24.0)));
+            float valley = (1.0 - smoothstep(0.015, 0.12, cell.y - cell.x)) * resolved;
+            colour *= 1.0 - 0.28 * valley;
+            height = -0.012 * valley;
+            rough += valley * 0.14;
+            coatRoughness += valley * 0.13;
+            occlusion = 1.0 - valley * 0.24;
+        } else if (kind < 4.5) {
+            vec2 stone = vec2(p.x + p.z * 0.58, p.z - p.x * 0.22) + p.y * vec2(0.43, 0.71);
+            vec2 warp = vec2(fbm(stone * 0.72 + 7.0), fbm(stone * 0.83 - 11.0));
+            vec2 q = stone + (warp - 0.5) * 2.4;
+            float cloud = fbm(q * 1.15 + 3.4);
+            // Nonperiodic ridged fBm: widths breathe from cloudy seams to hairlines.
+            // The secondary ridge joins the main field; there is no repeated sine/isoline comb.
+            float field = fbm(q * vec2(0.72, 1.65));
+            float width = mix(0.012, 0.105, smoothstep(0.30, 0.72, warp.y));
+            float ridge = abs(field - 0.51);
+            float aa = max(fwidth(field), 0.001);
+            float vein = 1.0 - smoothstep(width * 0.20, width + aa, ridge);
+            float deepVein = 1.0 - smoothstep(width, width * 2.8 + aa, ridge);
+            float branchField = field + (noise2(q * 4.1 + 21.0) - 0.5) * 0.16;
+            float branch = 1.0 - smoothstep(0.003, 0.014 + fwidth(branchField), abs(branchField - 0.51));
+            branch *= smoothstep(0.34, 0.64, cloud);
+            colour *= 1.0 - 0.10 * cloud - 0.14 * deepVein - 0.38 * vein - 0.10 * branch;
+            rough += cloud * 0.018;
+        } else {
+            // Visible long brushing plus subpixel micro-grooves, both running along X.
+            vec2 brushed = vec2(p.x * 1.4, (p.z + p.y) * 155.0);
+            float streak = noise2(brushed);
+            float resolved = 1.0 - smoothstep(0.45, 1.5, fwidth(brushed.y));
+            float fine = noise2(brushed * vec2(1.0, 5.0));
+            float fineResolved = 1.0 - smoothstep(0.4, 1.5, fwidth(brushed.y * 5.0));
+            colour *= 1.0 + (streak - 0.5) * 0.15 * resolved;
+            rough += (streak - 0.5) * 0.22 * resolved + (fine - 0.5) * 0.07 * fineResolved;
+            height = (streak - 0.5) * 0.0010 * resolved + (fine - 0.5) * 0.00018 * fineResolved;
+        }
         // Surface-gradient bump from the rest-space field: no extra noise evaluations.
         vec3 dx = dFdx(getWorldPosition()), dy = dFdy(getWorldPosition());
         vec3 r1 = cross(dy, n), r2 = cross(n, dx);
@@ -236,7 +265,7 @@ fragment {
         vec3 detailed = normalize(n - gradient);
         mat3 toTangent = transpose(getWorldTangentFrame());
         material.normal = toTangent * detailed;
-        material.clearCoatNormal = toTangent * n;
+        material.clearCoatNormal = toTangent * (kind > 2.5 && kind < 3.5 ? detailed : n);
         material.anisotropyDirection = normalize(toTangent * t);
         prepareMaterial(material);
         material.baseColor = vec4(colour, 1.0);
@@ -245,9 +274,11 @@ fragment {
         material.reflectance = 0.5;
         material.ambientOcclusion = occlusion;
         material.clearCoat = materialParams.coat;
-        material.clearCoatRoughness = materialParams.coatRoughness;
-        material.sheenColor = sqrt(materialParams.albedo) * materialParams.sheen * (0.65 + compressed * 0.7);
-        material.sheenRoughness = clamp(0.65 - compressed * 0.25 + pile * 0.1, 0.2, 1.0);
+        material.clearCoatRoughness = coatRoughness;
+        vec3 pileTint = sqrt(materialParams.albedo);
+        pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
+        material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + compressed * 0.2), 0.0, 1.0);
+        material.sheenRoughness = clamp(materialParams.sheenRoughness - compressed * 0.13 + (pile - 0.5) * 0.10, 0.2, 1.0);
         material.anisotropy = materialParams.anisotropy;
         // A hairline on the actual rigid surface: no extra mesh, clipping or vertex upload.
         float distanceToRing = abs(length(p.xz - materialParams.ripple.xy) - materialParams.ripple.z);
