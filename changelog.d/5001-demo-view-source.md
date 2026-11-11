@@ -1,2 +1,2 @@
 <!-- category: Added -->
-Every Android and iOS demo now offers a View Source action linking directly to its implementation on GitHub.
+- **Demo apps: View source.** Every demo screen of the Android and iOS apps offers a View source action that opens its implementation on GitHub.

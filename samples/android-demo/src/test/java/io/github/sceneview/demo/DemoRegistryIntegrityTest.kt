@@ -33,16 +33,17 @@ class DemoRegistryIntegrityTest {
     fun `every registered demo source exists relative to the module`() {
         val moduleDirectory = File(System.getProperty("user.dir"))
         for (demo in ALL_DEMOS) {
+            val sourcePath = demo.sourcePath ?: error("${demo.id}: no sourcePath")
             assertEquals(
-                "https://github.com/sceneview/sceneview/blob/main/samples/android-demo/${demo.sourcePath}",
+                "https://github.com/sceneview/sceneview/blob/main/samples/android-demo/$sourcePath",
                 demo.sourceUrl,
             )
-            val source = File(moduleDirectory, demo.sourcePath)
+            val source = File(moduleDirectory, sourcePath)
             assertTrue("${demo.id}: missing source ${source.absolutePath}", source.isFile)
             assertTrue(
                 "${demo.id}: source must be a Kotlin demo",
-                demo.sourcePath.startsWith("src/main/java/io/github/sceneview/demo/demos/") &&
-                    demo.sourcePath.endsWith(".kt"),
+                sourcePath.startsWith("src/main/java/io/github/sceneview/demo/demos/") &&
+                    sourcePath.endsWith(".kt"),
             )
         }
     }
@@ -83,6 +84,7 @@ class DemoRegistryIntegrityTest {
         // the real registry — guards that no demo is unreachable via
         // `sceneview://demo/<id>` or the `--es demo <id>` QA channel.
         for (demo in ALL_DEMOS) {
+            val sourcePath = demo.sourcePath ?: error("${demo.id}: no sourcePath")
             assertEquals(
                 "Demo '${demo.id}' must validate against its own registry",
                 demo.id,

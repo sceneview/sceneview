@@ -95,7 +95,6 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  */
 data class DemoEntry(
     val id: String,
-    val sourcePath: String,
     @StringRes val titleRes: Int,
     @StringRes val subtitleRes: Int,
     val category: String,
@@ -105,9 +104,12 @@ data class DemoEntry(
     val addedIn: String,
     val status: DemoStatus = DemoStatus.Working,
     val updatedIn: String? = null,
+    // Last and optional so a test fixture can omit it; every registered demo declares one
+    // (DemoRegistryIntegrityTest).
+    val sourcePath: String? = null,
 ) {
-    val sourceUrl: String
-        get() = "https://github.com/sceneview/sceneview/blob/main/samples/android-demo/$sourcePath"
+    val sourceUrl: String?
+        get() = sourcePath?.let { "https://github.com/sceneview/sceneview/blob/main/samples/android-demo/$it" }
 }
 
 /**
