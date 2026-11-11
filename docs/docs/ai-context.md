@@ -14,8 +14,8 @@ Paste this at the start of your conversation:
 
 ```
 I'm building with SceneView — the Compose-native 3D & AR SDK for Android.
-- 3D only: io.github.sceneview:sceneview:4.67.0
-- 3D + AR: io.github.sceneview:arsceneview:4.67.0
+- 3D only: io.github.sceneview:sceneview:4.68.0
+- 3D + AR: io.github.sceneview:arsceneview:4.68.0
 - Use SceneView { } or ARSceneView { } composables
 - Never the 2.x API: no Scene(childNodes = ...), ARScene, rememberNodes
 - From Android Views: host SceneView { } in a ComposeView
