@@ -40,7 +40,7 @@ internal object RoomDepthMesh {
     )
 
     /** The fused surface and what it cost. */
-    class Result(
+    data class Result(
         val mesh: RerunMesh,
         val frames: Int,
         val fused: Int,
@@ -67,6 +67,25 @@ internal object RoomDepthMesh {
         settings: Settings = Settings(),
         integrates: Map<Long, Boolean>? = null,
         progress: (Float) -> Unit = {},
+    ): Result? {
+        // Only extracted arrays and scalar statistics cross this call boundary. The TSDF and
+        // its block index are no longer retained when hole closing allocates its topology.
+        val raw = extract(depth, settings, integrates, progress) ?: return null
+        val started = System.nanoTime()
+        val (mesh, holes) = if (settings.holeSpanM > 0f) {
+            closeHoles(raw.mesh, settings.holeSpanM) { progress(MESH_END + (1f - MESH_END) * it) }
+        } else {
+            raw.mesh to 0
+        }
+        progress(1f)
+        return raw.copy(mesh = mesh, holesClosed = holes, meshMs = raw.meshMs + since(started))
+    }
+
+    private fun extract(
+        depth: File,
+        settings: Settings,
+        integrates: Map<Long, Boolean>?,
+        progress: (Float) -> Unit,
     ): Result? {
         val started = System.nanoTime()
         val total = depth.length().coerceAtLeast(1L)
@@ -106,15 +125,9 @@ internal object RoomDepthMesh {
             progress = { progress(FUSE_SHARE + (MESH_END - FUSE_SHARE) * it) },
             weakestCorner = settings.weakestCorner,
         )
-        val (mesh, holes) = if (settings.holeSpanM > 0f) {
-            closeHoles(extraction.mesh, settings.holeSpanM) { progress(MESH_END + (1f - MESH_END) * it) }
-        } else {
-            extraction.mesh to 0
-        }
-        progress(1f)
         return Result(
-            mesh = mesh,
-            holesClosed = holes,
+            mesh = extraction.mesh,
+            holesClosed = 0,
             frames = count,
             fused = fused,
             blocks = tsdf.blockCount,
@@ -137,7 +150,7 @@ internal object RoomDepthMesh {
      * vertex it adds takes the normal of the triangles round it, the others keep theirs.
      */
     private fun closeHoles(mesh: RerunMesh, spanM: Float, progress: (Float) -> Unit): Pair<RerunMesh, Int> {
-        val (filled, holes) = MeshCleanup.fillSmallHoles(CleanGeometry.of(mesh), maxSpanM = spanM, progress = { progress(it * NORMALS_START) })
+        val (filled, holes) = MeshCleanup.fillSmallHoles(CleanGeometry.consuming(mesh), maxSpanM = spanM, progress = { progress(it * NORMALS_START) })
         if (holes == 0) return mesh to 0
         val n = filled.vertexCount
         val normals = mesh.normals.copyOf(n * 3)

@@ -14,6 +14,7 @@ import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ScanDepthFormat
 import io.github.sceneview.demo.demos.internal.ScanDepthHeader
+import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.SyntheticScene
 import io.github.sceneview.demo.demos.internal.SyntheticShape
@@ -153,15 +154,41 @@ class ScanDepthModelTest {
         assertSame(small, capped(small))
     }
 
+    @Test
+    fun `object replay respects the recorded range while rooms keep their five metre range`() {
+        val pose = DebugPose(0f, 0f, 0f, 0f, 0f, 0f, 1f)
+        val planes = listOf(1_000, 2_000).flatMap { depth ->
+            List(3) {
+                DepthFrame(
+                    32, 32, ShortArray(32 * 32) { depth.toShort() },
+                    ByteArray(32 * 32) { -1 }, IntArray(32 * 32) { GREY },
+                    32f, 32f, 15.5f, 15.5f, pose,
+                )
+            }
+        }
+        val empty = DenseCloud(FloatArray(0), IntArray(0))
+        for (farM in listOf(ScanPreset.OBJECT.farM, 2.5f)) {
+            val header = HEADER.copy(farM = farM)
+            for (scope in listOf(ScanScope.Object, ScanScope.Room)) {
+                val store = store(recording = true, header = header, recordedFrames = planes)
+                val model = checkNotNull(depthModelOf(store, ID, scope, empty, null))
+                val mesh = checkNotNull(RerunGlbMesh.read(model.glb))
+                assertTrue("near surface missing", mesh.positions.indices.any { it % 3 == 2 && mesh.positions[it] in -1.05f..-0.95f })
+                val hasFar = mesh.positions.indices.any { it % 3 == 2 && mesh.positions[it] < -1.9f }
+                assertEquals("$scope with recorded farM=$farM", scope != ScanScope.Object || farM > 2f, hasFar)
+            }
+        }
+    }
+
     /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
-    private fun store(recording: Boolean): RerunSessionStore {
+    private fun store(recording: Boolean, header: ScanDepthHeader = HEADER, recordedFrames: List<DepthFrame> = frames): RerunSessionStore {
         val store = RerunSessionStore(folder.newFolder())
         val dir = store.directoryOf(ID).apply { mkdirs() }
         File(dir, RerunSessionStore.INFO).writeText("{}")
         if (recording) {
             File(dir, ScanDepthFormat.FILE).outputStream().buffered().use { out ->
-                out.write(ScanDepthFormat.header(HEADER))
-                frames.forEachIndexed { i, f ->
+                out.write(ScanDepthFormat.header(header))
+                recordedFrames.forEachIndexed { i, f ->
                     out.write(ScanDepthFormat.encode(RecordedDepthFrame(i.toLong(), i.toLong(), PoseStep.Continuous, 128, f, f.pose, 0f, null)))
                 }
             }

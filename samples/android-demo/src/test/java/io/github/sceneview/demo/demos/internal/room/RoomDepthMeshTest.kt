@@ -1,5 +1,9 @@
 package io.github.sceneview.demo.demos.internal.room
 
+import io.github.sceneview.demo.demos.roomShellShown
+import io.github.sceneview.demo.demos.sharedRerunModel
+import io.github.sceneview.demo.demos.internal.RerunGlbFile
+import io.github.sceneview.demo.demos.internal.objects
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
@@ -42,6 +46,7 @@ class RoomDepthMeshTest {
         assertEquals(scanFrames.size, fused.frames)
         assertEquals(scanFrames.size, fused.fused)
         assertEquals("the byte cap dropped blocks", 0, fused.droppedBlocks)
+        assertTrue("fusion statistics survive TSDF release", fused.blocks > 0 && fused.bytes > 0L)
         val m = fused.mesh
         assertTrue("${m.triangleCount} triangles", m.triangleCount > MIN_ROOM_TRIANGLES)
         assertTrue("no wall", vertices(m).any { (x, y, _) -> abs(x - MAX.x) < NEAR_M && y > 1f })
@@ -101,7 +106,9 @@ class RoomDepthMeshTest {
         val shell = checkNotNull(runBlocking { RoomShellBuilder.build(cloud, null, 0f) })
         assertNull(shell.objectMesh)
         assertTrue("${shell.objects.count} points", shell.objects.count > 0)
-        assertNull(ShellRender.read(checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder))).objects)
+        val glb = checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder))
+        assertNull(ShellRender.read(glb).objects)
+        assertExportIncludesPoints(glb, shell.objects)
     }
 
     @Test
@@ -121,12 +128,23 @@ class RoomDepthMeshTest {
             assertTrue("${shell.objects.count} points", shell.objects.count > 0)
             val glb = checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder, objects = shell.objectMesh))
             assertNull(ShellRender.read(glb).objects)
+            assertExportIncludesPoints(glb, shell.objects)
             val store = RerunSessionStore(folder.newFolder())
             store.directoryOf(ID).mkdirs()
             File(store.directoryOf(ID), RerunSessionStore.INFO).writeText("{}")
             store.saveRoomShell(ID, glb, shell.objects, 1)
             assertEquals(shell.objects.count, checkNotNull(store.roomShell(ID, 1)).second.count)
         }
+    }
+
+    private fun assertExportIncludesPoints(glb: ByteArray, points: DenseCloud) {
+        val shown = checkNotNull(roomShellShown(glb, points))
+        val shared = RerunGlbFile.parse(sharedRerunModel(shown.model).glb, "shared")
+        val primitive = shared.json.objects("meshes").flatMap { it.objects("primitives") }
+            .single { (it["mode"] as? Number)?.toInt() == 0 }
+        val attributes = primitive["attributes"] as Map<*, *>
+        val accessor = shared.json.objects("accessors")[(attributes["POSITION"] as Number).toInt()]
+        assertEquals(points.count, (accessor["count"] as Number).toInt())
     }
 
     /** The scan's frames written as a depth recording, each marked held back when [held]; its time its index. */

@@ -72,6 +72,8 @@ class RerunScanModel(
      * with the scan, the next open builds it again.
      */
     val qualityHeld: Boolean = false,
+    /** Shell furniture drawn separately as splats; included as POINTS when sharing. */
+    val exportPoints: DenseCloud? = null,
 ) {
     init {
         require(bounds.size == BOUNDS) { "six bounds" }

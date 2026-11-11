@@ -516,7 +516,9 @@ internal class ScanCapture private constructor(
      */
     suspend fun finish(
         onStep: (ScanSaveStep) -> Unit = {},
+        // false skips painting only if the saved cloud can provide the dense result.
         bakePlanes: Boolean = true,
+        onPlaneBaking: (Boolean) -> Unit = {},
     ): RerunCapturePack? {
         onStep(ScanSaveStep.Finishing)
         // The fusion under way finishes first, and its last growth goes on the timeline.
@@ -578,9 +580,11 @@ internal class ScanCapture private constructor(
             depthSource = if (cloud != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
         val camera = "${RerunScanCamera.line}; images ${intrinsics.width}x${intrinsics.height}"
+        val paints = shouldBakeScanPlanes(liveRoom = !bakePlanes, hasDenseGeometry = cloud != null)
+        onPlaneBaking(paints)
         onStep(ScanSaveStep.Building)
         return RerunCaptureBuilder.build(
-            timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera, bakePlanes = bakePlanes,
+            timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera, bakePlanes = paints,
             depth = depth,
         )
             .also { model?.keepFor(it) }
@@ -772,3 +776,7 @@ private fun CameraIntrinsics.toScan(): ScanIntrinsics? {
 }
 
 private fun Pose.toScanPose() = DebugPose(tx(), ty(), tz(), qx(), qy(), qz(), qw())
+
+/** A sparse capture opens on replay and still needs its photographed planes. */
+internal fun shouldBakeScanPlanes(liveRoom: Boolean, hasDenseGeometry: Boolean): Boolean =
+    !liveRoom || !hasDenseGeometry

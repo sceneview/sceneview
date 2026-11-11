@@ -53,7 +53,7 @@ internal class RoomShellShown(val model: RerunScanModel, val objects: SplatCloud
  * Bumped whenever the shell's builder makes a different shell of the same scan: a shell kept by
  * an earlier one is built again.
  */
-internal const val ROOM_SHELL_VERSION = 3
+internal const val ROOM_SHELL_VERSION = 4
 
 /**
  * Session [id]'s room shell: read back from [store] when kept, else built from [input] and kept.
@@ -74,7 +74,7 @@ internal suspend fun roomShellOf(
     if (kept != null) {
         val (glb, objects) = kept
         Log.i(SHELL_TAG, "room shell read back: ${objects.count} object points in ${(System.nanoTime() - started) / NS_PER_MS} ms")
-        return shown(glb, objects)
+        return roomShellShown(glb, objects)
     }
     input ?: return null
     // A scan that stands as no room (outdoors, an object) is not fused for nothing.
@@ -111,10 +111,10 @@ internal suspend fun roomShellOf(
         runCatching { store.saveRoomShell(id, glb, shell.objects, ROOM_SHELL_VERSION) }
             .onFailure { Log.w(SHELL_TAG, "room shell not kept", it) }
     }
-    return shown(glb, shell.objects)
+    return roomShellShown(glb, shell.objects)
 }
 
-private fun shown(glb: ByteArray, objects: DenseCloud): RoomShellShown? {
+internal fun roomShellShown(glb: ByteArray, objects: DenseCloud): RoomShellShown? {
     val mesh = RerunGlbMesh.read(glb) ?: return null
     val model = RerunScanModel(
         kind = RerunScanModel.Kind.Mesh,
@@ -122,12 +122,13 @@ private fun shown(glb: ByteArray, objects: DenseCloud): RoomShellShown? {
         bounds = RerunResultView.framingBounds(mesh),
         triangles = mesh.triangleCount,
         vertices = mesh.vertexCount,
+        exportPoints = objects.takeIf { it.count > 0 },
     )
     return RoomShellShown(model, SurfelSplats.points(objects))
 }
 
 /**
- * The shell's object points in the scene, while [shown]: small opaque splats, sorted against the
+ * The shell's object points in the scene, while [roomShellShown]: small opaque splats, sorted against the
  * scene's camera on their own (`SplatNode`).
  */
 @Composable

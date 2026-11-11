@@ -1,9 +1,14 @@
 package io.github.sceneview.demo.demos.internal.room
 
+import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.RerunGlbFile
+import io.github.sceneview.demo.demos.internal.RerunGltfBuilder
 import io.github.sceneview.demo.demos.internal.RerunJson
 import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunMeshGlb
+import io.github.sceneview.demo.demos.internal.instantiate
 import io.github.sceneview.demo.demos.internal.jsonOf
+import io.github.sceneview.demo.demos.internal.merge
 import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.ModelGlb
 
@@ -25,6 +30,23 @@ import io.github.sceneview.demo.demos.internal.model.ModelGlb
  * furniture's shape, and a piece the scan saw from one side only is not culled from the other.
  */
 internal object RoomShellGlb {
+    /** Add fallback furniture to the shared file, centring both layers together on the floor. */
+    fun withPoints(glb: ByteArray, points: DenseCloud): ByteArray {
+        if (points.count == 0) return glb
+        val writer = RerunGltfBuilder(null)
+        val shell = checkNotNull(writer.merge(RerunGlbFile.parse(glb, "room"), "room"))
+        val children = writer.instantiate(shell).toMutableList()
+        writer.addDense(points)?.let { children += it }
+        val (min, max) = checkNotNull(shell.bounds)
+        val root = writer.addNode(
+            jsonOf(
+                "name" to "room", "children" to children,
+                "translation" to listOf(-(min.x + max.x) / 2, -min.y, -(min.z + max.z) / 2),
+            ),
+        )
+        return writer.glb("Room", null, root)
+    }
+
     /** The `.glb` of [faces], `null` when [encoder] cannot encode one of their textures. */
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun write(
@@ -176,6 +198,7 @@ internal object RoomShellGlb {
         }
         val json = jsonOf(
             "asset" to jsonOf("version" to "2.0", "generator" to generator),
+            "extras" to jsonOf("sceneviewRoomShell" to true),
             "extensionsUsed" to listOf(ModelGlb.UNLIT),
             "scene" to 0,
             "scenes" to listOf(jsonOf("nodes" to listOf(0))),

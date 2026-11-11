@@ -1577,8 +1577,8 @@ private class GroundBuild(val ground: ScanGround, val meshes: ScanGroundMeshes)
 /** [model]'s ground, `null` when its vertices cannot be read or stand on nothing. Off the main thread. */
 private fun groundOf(model: RerunScanModel): GroundBuild? = runCatching {
     val started = System.nanoTime()
-    val mesh = RerunGlbMesh.read(model.glb) ?: return@runCatching null
-    val ground = ScanGround.of(mesh.positions, mesh.normals, mesh.vertexCount) ?: return@runCatching null
+    val mesh = RerunGlbMesh.readGeometry(model.glb) ?: return@runCatching null
+    val ground = ScanGround.of(mesh.positions, mesh.normals, mesh.vertexCount, shellQuads = mesh.shellQuads) ?: return@runCatching null
     GroundBuild(ground, ScanGroundMeshes.of(ground)).also {
         Log.i(
             TAG,

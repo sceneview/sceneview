@@ -1732,8 +1732,12 @@ private fun RerunLiveScreen(
                             depth = qaState != QA_STATE_RECORD_NO_DEPTH,
                             depthStalled = qaState == QA_STATE_RECORD_WALLS_STALLED,
                         )
-                    // A room scan paints no plane layer: its model and photo layer never read one.
-                    capture != null -> capture.finish(onStep = step, bakePlanes = !liveRoom)
+                    // Only a dense room result can omit the replay's painted planes.
+                    capture != null -> capture.finish(
+                        onStep = step,
+                        bakePlanes = !liveRoom,
+                        onPlaneBaking = { paints -> saveProgress = saveProgress.copy(paints = paints) },
+                    )
                     else -> null
                 }
             }.onFailure { if (it is CancellationException) throw it }

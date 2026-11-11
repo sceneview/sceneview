@@ -48,7 +48,7 @@ internal fun resultKindOf(scope: ScanScope, hasRecording: Boolean, standsAsRoom:
  * Bumped whenever [depthModelOf] makes a different surface of the same recording: a surface kept
  * by an earlier one is built again.
  */
-internal const val DEPTH_MODEL_VERSION = 1
+internal const val DEPTH_MODEL_VERSION = 2
 
 /**
  * The most triangles the fused surface is shown with: past it, it is simplified down to it. 250k
@@ -88,11 +88,12 @@ internal fun depthModelOf(
     val depth = File(store.directoryOf(id), ScanDepthFormat.FILE).takeIf { it.isFile } ?: return null
     val standsAsRoom = scope == ScanScope.Room && (cloud == null || RoomBox.of(cloud, floorY) != null)
     if (resultKindOf(scope, hasRecording = true, standsAsRoom = standsAsRoom) != ResultKind.DepthModel) return null
-    if (!ScanDepthFormat.readable(depth)) return null
+    val header = runCatching { depth.inputStream().buffered().use(ScanDepthFormat::readHeader) }.getOrNull() ?: return null
     onRecording()
     progress(0f)
-    val fused = RoomDepthMesh.fuse(depth) { progress(it * FUSE_SHARE) } ?: return null
-    val mesh = capped(fused.mesh) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
+    val settings = RoomDepthMesh.Settings(farM = if (scope == ScanScope.Object) header.farM else RoomDepthMesh.FAR_M)
+    val fused = RoomDepthMesh.fuse(depth, settings) { progress(it * FUSE_SHARE) } ?: return null
+    val mesh = capped(fused.mesh, consume = true) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
     if (mesh.triangleCount == 0) return null
     progress(WRITE_START)
     val glb = RerunMeshGlb.write(mesh, generator = "SceneView depth model")
@@ -101,8 +102,11 @@ internal fun depthModelOf(
     return depthModel(glb, mesh, budgetReached = fused.droppedBlocks > 0)
 }
 
-/** [mesh] within [DEPTH_MODEL_MAX_TRIANGLES], simplified when past it. */
-internal fun capped(mesh: RerunMesh, progress: (Float) -> Unit = {}): RerunMesh =
+/**
+ * [mesh] within [DEPTH_MODEL_MAX_TRIANGLES], simplified when past it. With [consume], its colour
+ * and index arrays may be reused: the caller must be done reading the input mesh.
+ */
+internal fun capped(mesh: RerunMesh, consume: Boolean = false, progress: (Float) -> Unit = {}): RerunMesh =
     if (mesh.triangleCount <= DEPTH_MODEL_MAX_TRIANGLES) {
         mesh
     } else {
@@ -111,6 +115,7 @@ internal fun capped(mesh: RerunMesh, progress: (Float) -> Unit = {}): RerunMesh 
             DEPTH_MODEL_MAX_TRIANGLES,
             maxErrorM = SIMPLIFY_ERROR_M,
             maxErrorCeilingM = SIMPLIFY_ERROR_CEILING_M,
+            consume = consume,
             progress = progress,
         )
     }
