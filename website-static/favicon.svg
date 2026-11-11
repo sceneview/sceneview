@@ -1,34 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <defs>
-    <linearGradient id="tg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#A4C1FF"/>
-      <stop offset="100%" stop-color="#5A8EE8"/>
-    </linearGradient>
-    <linearGradient id="rg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#3D7FD9"/>
-      <stop offset="100%" stop-color="#005BC1"/>
-    </linearGradient>
-    <linearGradient id="lg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#003A7D"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Isometric cube — compact for favicon -->
-  <!-- Left face -->
-  <polygon points="16,18 7,13 7,22 16,27" fill="url(#lg)"/>
-  <!-- Right face -->
-  <polygon points="16,18 25,13 25,22 16,27" fill="url(#rg)"/>
-  <!-- Top face -->
-  <polygon points="16,9 25,14 16,19 7,14" fill="url(#tg)"/>
-
-  <!-- Viewport brackets — subtle at small size -->
-  <polyline points="4,7 4,4 7,4"
-            fill="none" stroke="#005BC1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="28,7 28,4 25,4"
-            fill="none" stroke="#005BC1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="4,25 4,28 7,28"
-            fill="none" stroke="#005BC1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="28,25 28,28 25,28"
-            fill="none" stroke="#005BC1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="20 20 68 68">
+  <style>@media (prefers-color-scheme: dark) { path { fill: #ADC6FF; } }</style>
+  <!-- DESIGN.md: surface; faces: on-primary-container, primary-container, primary. -->
+  <path fill="#004494" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+  <path fill="#004494" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+  <path fill="#004494" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
 </svg>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DESIGN.md: Fidelity, source #005BC1, contrast 0. Identity only. -->
+    <color name="ic_launcher_background">#11131A</color>
+    <color name="sceneview_identity_on_primary_container">#C9D9FF</color>
+    <color name="sceneview_identity_primary_container">#005BC1</color>
+    <color name="sceneview_identity_primary">#ADC6FF</color>
+</resources>

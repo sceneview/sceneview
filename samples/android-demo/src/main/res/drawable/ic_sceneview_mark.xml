@@ -1,25 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- SceneView cube mark — the launcher cube without the viewport brackets, at
-     the 24 dp size the home header uses. Brand blue ramp per DESIGN.md:
-     shadow face #003A7D → lit face #005BC1 → top face #A4C1FF. -->
+<!-- Same separated faces as branding/logo.svg; DESIGN.md M3 colour roles. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-
-    <!-- Left face — shadow side -->
-    <path
-        android:fillColor="#003A7D"
-        android:pathData="M12,12 L2,6.2 L2,17.8 L12,23.6 Z" />
-
-    <!-- Right face — lit side -->
-    <path
-        android:fillColor="#005BC1"
-        android:pathData="M12,12 L22,6.2 L22,17.8 L12,23.6 Z" />
-
-    <!-- Top face — direct light -->
-    <path
-        android:fillColor="#A4C1FF"
-        android:pathData="M12,0.4 L22,6.2 L12,12 L2,6.2 Z" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="68" android:viewportHeight="68">
+    <group android:translateX="-20" android:translateY="-20">
+    <path android:fillColor="@color/sceneview_identity_on_primary_container"
+        android:pathData="M54 23.6L78.942 38L54 52.4L29.058 38Z" />
+    <path android:fillColor="@color/sceneview_identity_primary_container"
+        android:pathData="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z" />
+    <path android:fillColor="@color/sceneview_identity_primary"
+        android:pathData="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z" />
+    </group>
 </vector>
