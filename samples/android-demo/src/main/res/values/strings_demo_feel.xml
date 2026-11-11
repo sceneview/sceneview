@@ -1,8 +1,14 @@
 <resources>
-    <string name="demo_feel_title">Feel</string>
-    <string name="demo_feel_subtitle">Press foam, oak and steel. Feel the difference</string>
-    <string name="demo_feel_loading">Preparing material pads…</string>
-    <string name="demo_feel_instruction">Press and hold each pad</string>
-    <string name="demo_feel_hold">Hold longer to press deeper. Release to let it recover.</string>
-    <string name="demo_feel_comparison">Foam yields. Oak stops. Steel stays rigid.</string>
+    <string name="demo_feel_title">Matter</string>
+    <string name="demo_feel_subtitle">Touch foam, oak and steel. Compare firmness and recovery</string>
+    <string name="demo_feel_loading">Preparing material samples…</string>
+    <string name="demo_feel_instruction">Touch and hold</string>
+    <string name="demo_feel_foam">Foam</string>
+    <string name="demo_feel_oak">Oak</string>
+    <string name="demo_feel_steel">Steel</string>
+    <string name="demo_feel_foam_rest">Yields softly · slow to recover</string>
+    <string name="demo_feel_foam_press">Gives %1$d mm · slow to recover</string>
+    <string name="demo_feel_foam_recovery">Recovering slowly · %1$d mm left</string>
+    <string name="demo_feel_oak_response">Barely moves · firm stop</string>
+    <string name="demo_feel_steel_response">Does not move</string>
 </resources>

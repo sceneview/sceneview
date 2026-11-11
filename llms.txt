@@ -6975,7 +6975,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Create & record
 
 - `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
-- `feel` — Feel. Press foam, oak and steel. Feel the difference.
+- `matter` — Matter. Touch foam, oak and steel. Compare firmness and recovery.
 - `materials` — Materials. Compare metal, glass, fabric and glow.
 - `lighting` — Lighting. Studio light, daylight, reflections, fog and shading.
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.

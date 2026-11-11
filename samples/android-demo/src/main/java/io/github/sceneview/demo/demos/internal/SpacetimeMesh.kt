@@ -16,7 +16,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import com.google.android.filament.Box as FilamentBox
 
-/** Shared upload path for Cosmos and Feel; the compiled material remains unchanged. */
+/** Buffer ownership shared by Cosmos sheets and Matter solids. */
 internal class SheetBuffers(val vertexBuffer: VertexBuffer, val indexBuffer: IndexBuffer, val box: FilamentBox) {
     fun destroy(engine: Engine) {
         engine.safeDestroyVertexBuffer(vertexBuffer)
@@ -113,8 +113,8 @@ internal fun MaterialInstance.bindHorizon(horizon: Texture) = setParameter(
 
 /**
  * Main thread only. Position (x, 0, z) per vertex, 16-bit indices; the horizon map as one R8
- * texture. Cosmos keeps its original polar grid, bounds and 512² map. Feel uses rectangular
- * patches and a single lit texel, since its moving wells have no baked star shadow.
+ * texture. Cosmos keeps its original polar grid, bounds and 512² map. Rectangular
+ * patches can use a single lit texel when there is no baked star shadow.
  */
 internal fun StagedSheet.uploadSheet(engine: Engine): GpuSheet {
     val strideBytes = CosmosSpacetime.GRID_STRIDE * Float.SIZE_BYTES

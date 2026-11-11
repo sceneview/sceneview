@@ -22,6 +22,14 @@ import org.robolectric.RobolectricTestRunner
  */
 @RunWith(RobolectricTestRunner::class)
 class DeepLinkRouterTest {
+    @Test
+    fun `feel links redirect to matter with no tab`() {
+        assertEquals("matter", DeepLinkRouter.parse(Uri.parse("sceneview://demo/feel")))
+        assertEquals("matter", DeepLinkRouter.parse(Uri.parse("sceneview://demo/matter")))
+        assertNull(DeepLinkRouter.resolveInitialTab("feel", null))
+        assertTrue(ALL_DEMOS.none { it.id == "feel" })
+    }
+
 
     @Test
     fun `retired wall link opens placement with wall selected`() {

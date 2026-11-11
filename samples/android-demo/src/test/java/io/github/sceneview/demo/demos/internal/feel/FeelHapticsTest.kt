@@ -6,65 +6,66 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FeelHapticsTest {
-    @Test fun steelClicksImmediatelyAndOnlyOnceUntilRelease() {
-        var state = HapticSchedule()
-        var clicks = 0
-        for (time in 0L..2000L step 5) {
-            val step = scheduleHaptic(state, FeelMaterial.Steel, Indentation(), time / 2000f, time)
-            state = step.schedule
-            if (step.pulse != null) {
-                clicks++
-                assertEquals(0L, time)
-                assertEquals(FeelPulseKind.Click, step.pulse.kind)
-            }
-        }
-        assertEquals(1, clicks)
-        state = scheduleHaptic(state, null, Indentation(), 0f, 2100).schedule
-        assertEquals(FeelPulseKind.Click, scheduleHaptic(state, FeelMaterial.Steel, Indentation(), 0.1f, 2200).pulse?.kind)
-    }
-
-    @Test fun oakBuildsResistanceThenClicksOnceAtTheStop() {
-        var state = HapticSchedule()
-        val first = scheduleHaptic(state, FeelMaterial.Oak, Indentation(0.1f, 1f), 0.5f, 0)
-        assertEquals(FeelPulseKind.Tick, first.pulse?.kind)
-        state = first.schedule
-        val stop = scheduleHaptic(state, FeelMaterial.Oak, Indentation(0.35f), 1f, 40)
-        assertEquals(FeelPulseKind.Click, stop.pulse?.kind)
-        state = stop.schedule
-        for (time in 80L..2000L step 40) {
-            val step = scheduleHaptic(state, FeelMaterial.Oak, Indentation(0.35f), 1f, time)
-            assertNull(step.pulse)
-            state = step.schedule
-        }
-        assertNull(scheduleHaptic(state, FeelMaterial.Oak, Indentation(0.1f), 0.2f, 2100).pulse)
-    }
-
-    @Test fun foamTicksContinueAndSpeedIncreasesRateAndScale() {
-        fun pulses(velocity: Float): List<Pair<Long, FeelPulse>> {
+    @Test fun rigidMaterialsHaveOneContactAndNoTimedStopClick() {
+        for ((material, scale) in listOf(FeelMaterial.Oak to 0.45f, FeelMaterial.Steel to 0.90f)) {
             var state = HapticSchedule()
-            val result = mutableListOf<Pair<Long, FeelPulse>>()
-            for (time in 0L..2000L step 5) {
-                val step = scheduleHaptic(state, FeelMaterial.Foam, Indentation(10f, velocity), 0.5f, time)
+            val first = scheduleHaptic(state, material, 0.12f, 0)
+            assertEquals(FeelPulse(FeelPulseKind.Click, scale), first.pulse)
+            state = first.schedule
+            for (time in 5L..3000L step 5) {
+                val step = scheduleHaptic(state, material, 1f, time)
+                assertNull(step.pulse)
                 state = step.schedule
-                step.pulse?.let { result += time to it }
             }
-            return result
         }
-        val slow = pulses(0f)
-        val fast = pulses(24f)
-        assertTrue(slow.size > 10)
-        assertTrue(fast.size > slow.size * 2)
-        assertTrue(fast.first().second.scale > slow.first().second.scale)
-        assertTrue(fast.all { it.second.kind == FeelPulseKind.LowTick && it.second.scale in 0f..1f })
-        assertTrue(fast.zipWithNext().all { (a, b) -> b.first - a.first >= 30 })
+    }
+
+    @Test fun foamStartsOneContinuousEnvelopeAndNeverTicks() {
+        var state = HapticSchedule()
+        var count = 0
+        for (time in 0L..4000L step 5) {
+            val step = scheduleHaptic(state, FeelMaterial.Foam, 1f, time)
+            state = step.schedule
+            step.pulse?.let {
+                count++
+                assertEquals(FeelPulseKind.FoamEnvelope, it.kind)
+            }
+        }
+        assertEquals(1, count)
+    }
+
+    @Test fun foamEnvelopeMatchesEveryAuthoredPointAndInterpolatesWithoutOvershoot() {
+        for ((time, intensity) in listOf(0L to 0f, 60L to 0.08f, 300L to 0.14f,
+            850L to 0.20f, 1200L to 0.12f, 1400L to 0f)) {
+            assertEquals(intensity, foamIntensity(time), 0.00001f)
+        }
+        assertEquals(0.11f, foamIntensity(180), 0.00001f)
+        assertEquals(0f, foamIntensity(-1), 0f)
+        assertEquals(0f, foamIntensity(Long.MAX_VALUE), 0f)
+        assertTrue((0L..2000L).all { foamIntensity(it) in 0f..0.20f })
+    }
+
+    @Test fun oakGrainNeedsSixMillimetresAndDiscardsExcessCrossings() {
+        var state = scheduleHaptic(HapticSchedule(), FeelMaterial.Oak, 0f, 0).schedule
+        assertNull(scheduleHaptic(state, FeelMaterial.Oak, 1f, 200, 5.9f).pulse)
+        val grain = scheduleHaptic(state, FeelMaterial.Oak, 1f, 200, 6f)
+        assertEquals(FeelPulseKind.LowTick, grain.pulse?.kind)
+        assertEquals(0.20f, grain.pulse!!.scale, 0.00001f)
+        state = grain.schedule
+        val tooFast = scheduleHaptic(state, FeelMaterial.Oak, 1f, 250, 60f)
+        assertNull(tooFast.pulse)
+        state = tooFast.schedule
+        assertNull(scheduleHaptic(state, FeelMaterial.Oak, 1f, 1000, 60f).pulse)
+        assertEquals(FeelPulseKind.LowTick,
+            scheduleHaptic(state, FeelMaterial.Oak, 1f, 1000, 66f).pulse?.kind)
     }
 
     @Test fun rapidReleaseAndMaterialSwitchCannotBypassActuatorThrottle() {
         var state = HapticSchedule()
         val emitted = mutableListOf<Long>()
         for (time in 0L..300L step 5) {
-            state = scheduleHaptic(state, null, Indentation(), 0f, time).schedule
-            val step = scheduleHaptic(state, FeelMaterial.Steel, Indentation(), 1f, time)
+            state = scheduleHaptic(state, null, 0f, time).schedule
+            val step = scheduleHaptic(state, FeelMaterial.Steel, 1f, time)
             state = step.schedule
             step.pulse?.let { emitted += time }
         }
@@ -72,9 +73,11 @@ class FeelHapticsTest {
         assertTrue(emitted.zipWithNext().all { (a, b) -> b - a >= 30 })
     }
 
-    @Test fun releaseSilencesTheScheduler() {
-        val press = scheduleHaptic(HapticSchedule(), FeelMaterial.Foam, Indentation(10f, 5f), 1f, 0)
-        val release = scheduleHaptic(press.schedule, null, Indentation(10f, -5f), 0f, 100)
+    @Test fun releaseSilencesTheSchedulerAndRearmsNextContact() {
+        val press = scheduleHaptic(HapticSchedule(), FeelMaterial.Foam, 1f, 0)
+        val release = scheduleHaptic(press.schedule, null, 0f, 100)
         assertNull(release.pulse)
+        assertEquals(FeelPulseKind.FoamEnvelope,
+            scheduleHaptic(release.schedule, FeelMaterial.Foam, 0.12f, 200).pulse?.kind)
     }
 }

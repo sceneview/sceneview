@@ -11,7 +11,7 @@ import io.github.sceneview.demo.demos.FeelDemo
 
 object FeelFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
-        id = "feel",
+        id = "matter",
         titleRes = R.string.demo_feel_title,
         subtitleRes = R.string.demo_feel_subtitle,
         category = DemoCategory.CREATE,
@@ -19,7 +19,7 @@ object FeelFragment : DemoFragment {
         order = 2,
         addedIn = "4.68.0",
         status = DemoStatus.InReview,
-        tags = setOf("haptics", "touch", "pressure", "material", "foam", "oak", "steel", "spring", "grid"),
+        tags = setOf("haptics", "touch", "pressure", "material", "foam", "oak", "steel", "spring", "grid", "firmness", "stiffness", "recovery", "matter"),
     )
 
     @Composable

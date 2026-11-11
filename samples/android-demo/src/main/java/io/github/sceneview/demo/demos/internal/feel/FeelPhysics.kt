@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal.feel
 
 import kotlin.math.ceil
+import kotlin.math.abs
 
 /** Illustrative effective spring parameters, not measurements of commercial materials. */
 internal enum class FeelMaterial(
@@ -17,7 +18,7 @@ internal enum class FeelMaterial(
 
     companion object {
         const val MAX_FORCE_N = 8f
-        const val WORLD_PER_MM = 0.05f
+        const val WORLD_PER_MM = 0.025f
     }
 }
 
@@ -47,5 +48,5 @@ internal fun stepIndentation(
         if (d <= 0f) { d = 0f; v = v.coerceAtLeast(0f) }
         if (d >= material.stopMm) { d = material.stopMm; v = v.coerceAtMost(0f) }
     }
-    return Indentation(d, v)
+    return if (force == 0f && d < 0.0001f && abs(v) < 0.001f) Indentation() else Indentation(d, v)
 }
