@@ -25,7 +25,7 @@ dependencies {
 }
 ```
 
-The app module needs `compileSdk = 37`, `minSdk` 24 or higher, Kotlin 2.4 and JVM target 21.
+The app module needs `compileSdk = 37`, `minSdk` 24 or higher, Kotlin 2.3 or newer and JVM target 21 (on AGP 8 / compileSdk 36, use 4.18.0).
 The [quickstart requirements](quickstart.md#requirements) give the full Gradle block.
 
 ## Minimal AR screen: tap a plane to place a model

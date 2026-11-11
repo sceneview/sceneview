@@ -63,7 +63,7 @@ dependencies {
 }
 ```
 
-The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.4, and JVM target 21 for Java and Kotlin (`compileOptions { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }` and `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }`): SceneView ships Java 21 bytecode with public `inline` functions.
+The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.3 or newer, and JVM target 21 for Java and Kotlin (`compileOptions { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }` and `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }`): SceneView ships Java 21 bytecode with public `inline` functions.
 
 ### AndroidManifest.xml (AR apps only)
 `arsceneview` already declares the `CAMERA` permission and `com.google.ar.core` = `optional`.

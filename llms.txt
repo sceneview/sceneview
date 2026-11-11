@@ -112,7 +112,7 @@ dependencies {
     implementation("io.github.sceneview:arsceneview:4.68.0") // AR (includes sceneview)
 }
 ```
-The app module needs `compileSdk = 37` (the published AARs declare `minCompileSdk=37`), `minSdk` 24 or higher, AGP 9.4.0+ and Kotlin 2.4 (SceneView is compiled with 2.4.21). SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions, so the app compiles Java and Kotlin with JVM target 21:
+The app module needs `compileSdk = 37` (the published AARs declare `minCompileSdk=37`), `minSdk` 24 or higher, AGP 9.4.0+ and Kotlin 2.3 or newer (SceneView is compiled with 2.4.21, whose metadata a 2.3 compiler reads; Kotlin 2.2 is refused). SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions, so the app compiles Java and Kotlin with JVM target 21:
 ```kotlin notest Gradle Kotlin DSL (app module build.gradle.kts), not a Kotlin source file
 android {
     compileSdk = 37
@@ -125,6 +125,23 @@ android {
 kotlin {
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) }
 }
+```
+
+**Older toolchain?** If the app cannot move to compileSdk 37 / AGP 9 yet (AGP 8.x, compileSdk 36, Kotlin 2.2, JVM target 17), use SceneView **4.18.0**: the newest release that builds there (checked 2026-11-12 with a Compose viewer and an ARCore tap-to-place screen; the API above is the same). Do not fall back to 2.x: its API (`Scene`, `ARScene`, class-based nodes) is a different generation. The floor comes from Filament 1.76+ and Compose 1.12, which themselves declare `minCompileSdk=37`.
+
+### Imports — copy these, do not guess packages
+Every top-level SceneView function lives in `io.github.sceneview` (3D) or `io.github.sceneview.ar` (AR). Node
+composables (`ModelNode`, `AnchorNode`, `CubeNode`, `LightNode`…) are members of the `SceneView { }` /
+`ARSceneView { }` content scope: they need **no import**.
+```kotlin
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberCameraManipulator
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener   // not io.github.sceneview.gesture
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraNode
 ```
 
 ### AndroidManifest.xml (AR apps)
