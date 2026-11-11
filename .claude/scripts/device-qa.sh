@@ -700,6 +700,20 @@ run_web() {
     return 0
   }
 
+  # The demo's catalog models (the default KitchenAid mixer included) are not in
+  # git since #4992: assets/manifest.json's `web-demo` scope lists them. Without
+  # them the page opens on a failed load, sceneview.js paints its "3D preview
+  # unavailable" overlay over the canvas, and every canvas screenshot captures
+  # that overlay instead of the scene (release run 43069674875: shadow bench at
+  # 0.000 % on/off). Materialise them here, so every caller — device-qa.yml,
+  # release-fast.yml, a local run — tests the demo users get. Idempotent and
+  # offline once the shared cache is warm.
+  log "materialising the web demo's models (assets scope web-demo)"
+  bash tools/fetch-assets.sh --scope web-demo || {
+    record web failed "could not fetch the web-demo models (tools/fetch-assets.sh --scope web-demo)" "" "$(( $(date +%s) - started ))"
+    return 0
+  }
+
   # --fast: run only the lighter render smoke spec, not the full catalog.
   # NOTE: deliberately NOT passing --reporter — a CLI --reporter REPLACES the
   # whole config reporter list, which would drop the custom qa-summary-reporter
