@@ -829,6 +829,7 @@ object HeapCappedFinish {
         )
         // Hold all of it through a full collection, asked for: a finish that leaves the heap room
         // no longer triggers one by itself here, and the peak at the swap is what is measured.
+        @Suppress("ExplicitGarbageCollectionCall") // The bench measures this collection.
         System.gc()
         check(shownRaw.glb.isNotEmpty() && finished.glb.isNotEmpty() && rendered.isNotEmpty()) { "swap released" }
         if (ground != null) check(ground.hashCode() == ground.hashCode())
