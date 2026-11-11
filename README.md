@@ -94,6 +94,12 @@ snippet and the reason for each.
 Stuck on AGP 8 / compileSdk 36 / Kotlin 2.2? Use `4.18.0`, the newest release that builds there.
 
 ```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberModelInstance
+
 @Composable
 fun ModelScreen() {
     SceneView(modifier = Modifier.fillMaxSize()) {          // orbit camera + default lighting
@@ -116,6 +122,16 @@ implementation("io.github.sceneview:arsceneview:4.68.0")   // includes the 3D mo
 ```
 
 ```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import com.google.ar.core.Anchor
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.ar.arcore.getUpdatedPlanes
+import io.github.sceneview.rememberModelInstance
+
 @Composable
 fun ARScreen() {
     var anchor by remember { mutableStateOf<Anchor?>(null) }

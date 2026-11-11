@@ -142,6 +142,8 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener   // not io.github.sceneview.gesture
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull   // Trackable / HitResult extensions
+import io.github.sceneview.ar.arcore.getUpdatedPlanes
 ```
 
 ### AndroidManifest.xml (AR apps)
