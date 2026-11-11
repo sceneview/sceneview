@@ -12,6 +12,8 @@ import io.github.sceneview.ar.arcore.ARSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -25,6 +27,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowLog
+import org.robolectric.shadows.ShadowLooper
 
 /**
  * A failed `Session.resume()` reaches [ARCore.onArSessionFailed] instead of the host app.
@@ -36,8 +39,9 @@ import org.robolectric.shadows.ShadowLog
  * exception escaped all three and crashed the app.
  *
  * Robolectric instruments `com.google.ar.core` and [ResumeFailingSession] replaces the two
- * `Session` methods the path reaches: the native constructor (a no-op) and `resume()` (throws
- * [resumeFailure], when set). [ARSession] itself, and every line of [ARCore], run for real.
+ * `Session` methods the path reaches: the native constructor and `resume()` (throw
+ * [creationFailure] and [resumeFailure], when set). [ARSession] itself, and every line of
+ * [ARCore], run for real.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(
@@ -50,6 +54,7 @@ class ARSessionResumeFailureTest {
     private lateinit var arCore: ARCore
     private lateinit var failures: MutableList<Exception>
     private var created: Session? = null
+    private var createdCallbacks = 0
     private var resumedCallbacks = 0
     private val published = mutableListOf<ARCoreAvailability?>()
 
@@ -61,7 +66,10 @@ class ARSessionResumeFailureTest {
         context = app.createWindowContext(display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
         failures = mutableListOf()
         created = null
+        createdCallbacks = 0
         resumedCallbacks = 0
+        creationFailure = null
+        creationCalls = 0
         resumeFailure = null
         geometryFailure = null
         resumeCalls = 0
@@ -70,12 +78,18 @@ class ARSessionResumeFailureTest {
         arCore = newARCore(onSessionResumed = { resumedCallbacks++ })
     }
 
-    private fun newARCore(onSessionResumed: (Session) -> Unit) =
+    private fun newARCore(
+        onSessionResumed: (Session) -> Unit,
+        onArSessionFailed: (Exception) -> Unit = { failures += it },
+    ) =
         ARCore(
-            onSessionCreated = { created = it },
+            onSessionCreated = {
+                created = it
+                createdCallbacks++
+            },
             onSessionResumed = onSessionResumed,
             onSessionPaused = {},
-            onArSessionFailed = { failures += it },
+            onArSessionFailed = onArSessionFailed,
             onSessionConfigChanged = { _, _ -> },
         ).apply {
             checkCameraPermission = false
@@ -115,16 +129,62 @@ class ARSessionResumeFailureTest {
     }
 
     @Test
-    fun `a resume failure from retrySession reaches onArSessionFailed`() {
-        resumeFailure = null
-        arCore.resume(context, handler = null)
-        assertEquals(emptyList<Exception>(), failures)
+    fun `retrying a resume failure preserves the live session and reports another failure`() {
         val failure = CameraNotAvailableException("camera held by another app")
         resumeFailure = failure
+        arCore.resume(context, handler = null)
+        val failed = arCore.session!!
 
         arCore.retrySession(context)
 
+        assertSame(failed, arCore.session)
+        assertFalse(failed.isClosed)
+        assertFalse(failed.isResumed)
+        assertEquals(1, creationCalls)
+        assertEquals(1, createdCallbacks)
+        assertEquals(2, resumeCalls)
+        assertEquals(listOf<Exception>(failure, failure), failures)
+        assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
+    }
+
+    @Test
+    fun `retrying a creation failure creates and resumes a session`() {
+        val failure = IllegalStateException("session creation failed")
+        creationFailure = failure
+        arCore.resume(context, handler = null)
+        assertNull(arCore.session)
+        assertEquals(0, createdCallbacks)
+        assertEquals(0, resumeCalls)
         assertEquals(listOf<Exception>(failure), failures)
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
+        creationFailure = null
+
+        arCore.retryARCoreAvailability()
+
+        assertSame(created, arCore.session)
+        assertTrue(arCore.session!!.isResumed)
+        assertEquals(2, creationCalls)
+        assertEquals(1, createdCallbacks)
+        assertEquals(1, resumedCallbacks)
+        assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
+    }
+
+    @Test
+    fun `retrying a closed session creates another session`() {
+        resumeFailure = CameraNotAvailableException("busy")
+        arCore.resume(context, handler = null)
+        val closed = arCore.session!!
+        closed.close()
+        resumeFailure = null
+
+        arCore.retrySession(context)
+
+        assertNotSame(closed, arCore.session)
+        assertTrue(arCore.session!!.isResumed)
+        assertEquals(2, creationCalls)
+        assertEquals(2, createdCallbacks)
+        assertEquals(2, resumeCalls)
+        assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
     }
 
     @Test
@@ -178,6 +238,37 @@ class ARSessionResumeFailureTest {
     }
 
     @Test
+    fun `posted hand back logs and reports host exceptions even if the failure callback throws`() {
+        val hostBug = IllegalStateException("host resumed callback")
+        val reportBug = IllegalStateException("host failure callback")
+        var failCallback = false
+        arCore = newARCore(
+            onSessionResumed = { if (failCallback) throw hostBug },
+            onArSessionFailed = { failures += it; throw reportBug },
+        )
+        val covering = newARCore(onSessionResumed = {})
+        try {
+            arCore.resume(context, handler = null)
+            covering.resume(context, handler = null)
+            failCallback = true
+
+            covering.pause()
+            ShadowLooper.idleMainLooper()
+
+            assertEquals(listOf<Exception>(hostBug), failures)
+            assertTrue(arCore.session!!.isResumed)
+            assertTrue("Native resume succeeded: no session failure state", published.isEmpty())
+            val logs = ShadowLog.getLogsForTag("ARCore")
+            assertTrue(logs.any { it.throwable === hostBug })
+            assertTrue(logs.any { it.throwable === reportBug })
+        } finally {
+            covering.detachHost()
+            covering.session?.close()
+            covering.destroy()
+        }
+    }
+
+    @Test
     fun `repeated failures keep the failure state and report every attempt`() {
         resumeFailure = CameraNotAvailableException("busy")
         repeat(2) { arCore.resume(context, handler = null) }
@@ -219,7 +310,10 @@ class ARSessionResumeFailureTest {
     fun `try again keeps a failing camera visible and clears it only on success`() {
         resumeFailure = CameraNotAvailableException("busy")
         arCore.resume(context, handler = null)
+        val failed = arCore.session!!
         arCore.retryARCoreAvailability()
+        assertSame(failed, arCore.session)
+        assertFalse(failed.isClosed)
         assertEquals(2, failures.size)
         assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
 
@@ -227,7 +321,13 @@ class ARSessionResumeFailureTest {
         arCore.retryARCoreAvailability()
 
         assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
-        assertTrue((created as ARSession).isResumed)
+        assertSame(failed, arCore.session)
+        assertFalse(failed.isClosed)
+        assertTrue(failed.isResumed)
+        assertEquals(1, creationCalls)
+        assertEquals(1, createdCallbacks)
+        assertEquals(3, resumeCalls)
+        assertEquals(1, resumedCallbacks)
     }
 
     @Test
@@ -260,7 +360,10 @@ class ARSessionResumeFailureTest {
     class ResumeFailingSession {
         @Suppress("FunctionName", "UNUSED_PARAMETER")
         @Implementation
-        protected fun __constructor__(context: Context, features: Set<Session.Feature>) = Unit
+        protected fun __constructor__(context: Context, features: Set<Session.Feature>) {
+            creationCalls++
+            creationFailure?.let { throw it }
+        }
 
         @Implementation
         protected fun resume() {
@@ -285,6 +388,8 @@ class ARSessionResumeFailureTest {
     }
 
     private companion object {
+        var creationFailure: Exception? = null
+        var creationCalls = 0
         var resumeFailure: Exception? = null
         var geometryFailure: Exception? = null
         var resumeCalls = 0

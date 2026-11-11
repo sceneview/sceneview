@@ -35,7 +35,8 @@ const val kDefaultHitTestInstantDistance = 2.0f
  * @param onSessionPaused      Called each time the session pauses.
  * @param onArSessionFailed    Called when session creation or resume fails, once per failed
  *                             attempt: every host resume, permission grant or [retrySession]
- *                             that cannot resume the session reports again.
+ *                             that cannot resume the session reports again. Also reports host
+ *                             callback exceptions during a posted camera handover.
  * @param onSessionConfigChanged Called when the session configuration changes.
  */
 class ARCore(
@@ -262,7 +263,15 @@ class ARCore(
         override fun onStartFailed(exception: Exception) {
             publishAvailability(ARCoreAvailability.SessionFailed)
             Log.w("ARCore", "Could not resume the ARCore session; the next resume tries again", exception)
-            onException(exception)
+            this@ARCore.onException(exception)
+        }
+        override fun onException(exception: Exception) {
+            Log.w("ARCore", "Exception during camera hand-back", exception)
+            try {
+                this@ARCore.onException(exception)
+            } catch (callbackException: Exception) {
+                Log.w("ARCore", "Exception reporting a camera hand-back failure", callbackException)
+            }
         }
     }
 
@@ -549,8 +558,8 @@ class ARCore(
      * @param handler the permission handler; defaults to the one passed to [create].
      */
     fun retryARCoreAvailability(handler: ARPermissionHandler? = permissionHandler) {
-        // A session that failed to be created is retried by creating another one — the
-        // availability check already said "installed" and would say so again (#3374).
+        // Retry creation or resume directly: the availability check already said "installed"
+        // and would say so again (#3374).
         if (arCoreAvailability == ARCoreAvailability.SessionFailed) {
             retrySession()
             return
@@ -561,14 +570,16 @@ class ARCore(
     }
 
     /**
-     * Recreates and resumes a failed session while the host is resumed.
+     * Retries a failed session while the host is resumed, creating it only if absent or closed.
      * A paused or detached host does nothing; its next lifecycle resume can try again.
      */
     fun retrySession(context: Context? = lastContext) {
         if (isHostDetached || !isHostResumed) return
-        val target = context ?: return
-        destroy()
-        createSession(target)
+        // The scene still owns planes and anchors from a live session. Closing it here would
+        // invalidate their native handles (#4026); a failed resume can retry the same session.
+        if (session?.isClosed != false) {
+            createSession(context ?: return)
+        }
         resumeSession()
     }
 

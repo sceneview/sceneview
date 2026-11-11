@@ -14,6 +14,7 @@ import org.junit.Test
 class CameraArbiterTest {
 
     private val calls = mutableListOf<String>()
+    private val exceptions = mutableListOf<Exception>()
     private val posted = ArrayDeque<() -> Unit>()
     private val arbiter = CameraArbiter { posted.addLast(it) }
 
@@ -231,14 +232,63 @@ class CameraArbiterTest {
     }
 
     @Test
-    fun `a callback exception during posted hand back escapes unchanged`() {
+    fun `a callback exception during direct resume escapes unchanged`() {
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+
+        assertSame(bug, assertThrows(IllegalStateException::class.java) { arbiter.resume(a) })
+        assertTrue(a.isRunning)
+        assertTrue(exceptions.isEmpty())
+        assertTrue(calls.none { it == "A failed" })
+    }
+
+    @Test
+    fun `a callback exception during synchronous hand back reaches the resume caller`() {
+        arbiter.resume(a)
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+        b.failure = IllegalStateException("camera not available")
+
+        assertSame(bug, assertThrows(IllegalStateException::class.java) { arbiter.resume(b) })
+        assertTrue(a.isRunning)
+        assertTrue(exceptions.isEmpty())
+        assertEquals(listOf("A start", "A stop", "B start", "B failed", "A start"), calls)
+    }
+
+    @Test
+    fun `a callback exception during posted hand back is reported and keeps the running claim`() {
         arbiter.resume(a)
         arbiter.resume(b)
         val bug = IllegalStateException("host callback")
         a.afterResumeFailure = bug
         arbiter.pause(b)
 
-        assertSame(bug, assertThrows(IllegalStateException::class.java) { runPosted() })
+        runPosted()
+
+        assertEquals(listOf(bug), exceptions)
+        assertTrue(a.isRunning)
+        assertTrue(calls.none { it == "A failed" })
+
+        calls.clear()
+        arbiter.resume(b)
+        assertEquals(listOf("A stop", "B start"), calls)
+    }
+
+    @Test
+    fun `a callback exception after asynchronous close is reported`() {
+        arbiter.resume(a)
+        arbiter.resume(b)
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+
+        arbiter.destroy(b) { onClosed ->
+            b.close()
+            posted.addLast(onClosed)
+        }
+        assertTrue(exceptions.isEmpty())
+        runPosted()
+
+        assertEquals(listOf(bug), exceptions)
         assertTrue(a.isRunning)
         assertTrue(calls.none { it == "A failed" })
     }
@@ -276,6 +326,10 @@ class CameraArbiterTest {
 
         override fun onStartFailed(exception: Exception) {
             calls += "$name failed"
+        }
+
+        override fun onException(exception: Exception) {
+            exceptions += exception
         }
 
         fun close() {
