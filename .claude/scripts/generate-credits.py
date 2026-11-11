@@ -341,6 +341,20 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`",
     },
+    "matter_surface.filamat": {
+        "name": "matter_surface.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_surface.mat`",
+    },
+    "matter_gel.filamat": {
+        "name": "matter_gel.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_gel.mat`",
+    },
     "cosmos_sprite.filamat": {
         "name": "cosmos_sprite.filamat",
         "author": "SceneView project",

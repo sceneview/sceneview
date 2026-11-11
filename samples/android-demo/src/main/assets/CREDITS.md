@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **61**.
+Assets bundled: **63**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -102,6 +102,10 @@ Assets bundled: **61**.
   Compiled from `samples/android-demo/src/main/materials/cosmos_spacetime.mat` (Cosmos Spacetime view)
 - `materials/cosmos_sprite.filamat` — **[cosmos_sprite.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (66 KB)  
   Compiled from `samples/android-demo/src/main/materials/cosmos_sprite.mat` (Cosmos demo, #4152)
+- `materials/matter_gel.filamat` — **[matter_gel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (387 KB)  
+  Compiled from `samples/android-demo/src/main/materials/matter_gel.mat`
+- `materials/matter_surface.filamat` — **[matter_surface.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (570 KB)  
+  Compiled from `samples/android-demo/src/main/materials/matter_surface.mat`
 - `materials/pool_coping.filamat` — **[pool_coping.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (332 KB)  
   Compiled from `samples/android-demo/src/main/materials/pool_coping.mat` (Pool in the garden)
 - `materials/pool_liner.filamat` — **[pool_liner.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (360 KB)  
