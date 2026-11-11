@@ -31,9 +31,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
-/** Layout and navigation checks without loading the live renderer. */
+/**
+ * Layout and navigation checks without loading the live renderer. Native graphics: the legacy
+ * shadow text layout does not measure real glyphs, so it cannot answer "does this label fit".
+ */
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w360dp-h800dp-xhdpi")
 class HomeDiscoveryTest {
     @get:Rule
