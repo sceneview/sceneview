@@ -58,13 +58,15 @@ internal const val ROOM_SHELL_VERSION = 3
 /**
  * Session [id]'s room shell: read back from [store] when kept, else built from [input] and kept.
  * `null` when there is neither, or the scan stands as no room ([RoomShellBuilder.build]) — the
- * result then shows the model as before. Blocking CPU and disk work, off the main thread;
- * [progress] may throw to stop it.
+ * result then shows the model as before. [onRecording] runs once a depth recording is known to
+ * read, before it is fused. Blocking CPU and disk work, off the main thread; [progress] may throw
+ * to stop it.
  */
 internal suspend fun roomShellOf(
     store: RerunSessionStore?,
     id: String?,
     input: RoomShellInput?,
+    onRecording: () -> Unit = {},
     progress: (Float) -> Unit,
 ): RoomShellShown? {
     val started = System.nanoTime()
@@ -77,7 +79,9 @@ internal suspend fun roomShellOf(
     input ?: return null
     // A scan that stands as no room (outdoors, an object) is not fused for nothing.
     val depth = (input.depth ?: if (store != null && id != null) File(store.directoryOf(id), ScanDepthFormat.FILE) else null)
-        ?.takeIf { it.isFile && RoomBox.of(input.cloud, input.floorY) != null }
+        ?.takeIf { it.isFile && RoomBox.of(input.cloud, input.floorY) != null && ScanDepthFormat.readable(it) }
+    // A recording that reads replaces the live TSDF as the source: it goes before the fusion.
+    if (depth != null) onRecording()
     // The depth fused again first, then the shell: the fusion is the longer part when there is one.
     val fusedShare = if (depth != null) DEPTH_SHARE else 0f
     val fused = depth?.let { file ->

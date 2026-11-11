@@ -222,6 +222,10 @@ object ScanDepthFormat {
         return runCatching { decode(body) }.getOrNull()
     }
 
+    /** Whether [file] opens as a depth recording: its header reads. */
+    fun readable(file: File): Boolean =
+        runCatching { BufferedInputStream(file.inputStream()).use { readHeader(it) != null } }.getOrDefault(false)
+
     /** Every frame of [file], read one at a time: a long scan's recording never sits whole on the heap. */
     fun <T> read(file: File, use: (ScanDepthHeader, Sequence<RecordedDepthFrame>) -> T): T? =
         BufferedInputStream(file.inputStream(), STREAM_BUFFER).use { input ->

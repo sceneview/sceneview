@@ -121,7 +121,8 @@ internal class RoomShell(
  *    the room by its margins, not part of a wall, coloured from the photos the same way (with the
  *    tighter [OBJECT_OCCLUSION_M]) or keeping their own colour when none sees them. Given the
  *    scan's depth fused into a surface ([RoomDepthMesh]), the objects are that surface's triangles
- *    the same tests keep ([objectMesh]), its small floating pieces dropped, and no points.
+ *    the same tests keep ([objectMesh]), its small floating pieces dropped, and no points — unless
+ *    that leaves no triangle, when the objects stay points.
  */
 internal object RoomShellBuilder {
     /**
@@ -165,7 +166,9 @@ internal object RoomShellBuilder {
         } else {
             plan::toWall
         }
-        val objectMesh = depthMesh?.let { objectMesh(it, box, toWall) }
+        // The furniture is the mesh only when the depth left some: an empty cut (too few views, every
+        // piece too small) keeps the points, which would otherwise vanish from the result and the kept shell.
+        val objectMesh = depthMesh?.let { objectMesh(it, box, toWall) }?.takeIf { it.triangleCount > 0 }
         val objectIndices = if (objectMesh != null) IntArray(0) else objects(cloud, normals, box, clean, wide, toWall)
         val cleanPositions = IntList(n).also { list -> for (i in 0 until n) if (clean[i]) list.add(i) }.let { list ->
             FloatArray(list.size * 3) { p[list[it / 3] * 3 + it % 3] }

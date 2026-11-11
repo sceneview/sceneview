@@ -5,10 +5,13 @@ import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
 import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ScanDepthFormat
+import io.github.sceneview.demo.demos.internal.model.CleanGeometry
+import io.github.sceneview.demo.demos.internal.model.MeshCleanup
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
+import kotlin.math.sqrt
 
 /**
  * A scan's surface fused again from its depth recording ([ScanDepthFormat], `capture-depth.bin`):
@@ -32,6 +35,8 @@ internal object RoomDepthMesh {
         val minComponentTriangles: Int = MIN_COMPONENT_TRIANGLES,
         val maxBytes: Long = MAX_BYTES,
         val maxTriangles: Int = MAX_TRIANGLES,
+        /** Holes whose rim spans at most this are closed ([MeshCleanup.fillSmallHoles]); 0 leaves them. */
+        val holeSpanM: Float = HOLE_SPAN_M,
     )
 
     /** The fused surface and what it cost. */
@@ -46,6 +51,8 @@ internal object RoomDepthMesh {
         val rawTriangles: Int,
         val droppedComponents: Int,
         val capped: Boolean,
+        /** Small holes closed after meshing. */
+        val holesClosed: Int,
         val fuseMs: Long,
         val meshMs: Long,
     )
@@ -96,8 +103,10 @@ internal object RoomDepthMesh {
             progress = { progress(FUSE_SHARE + (1f - FUSE_SHARE) * it) },
             weakestCorner = settings.weakestCorner,
         )
+        val (mesh, holes) = if (settings.holeSpanM > 0f) closeHoles(extraction.mesh, settings.holeSpanM) else extraction.mesh to 0
         return Result(
-            mesh = extraction.mesh,
+            mesh = mesh,
+            holesClosed = holes,
             frames = count,
             fused = fused,
             blocks = tsdf.blockCount,
@@ -114,6 +123,42 @@ internal object RoomDepthMesh {
     /** The surface of the session in [dir], when it keeps a depth recording; `null` otherwise. */
     fun fuseSession(dir: File, settings: Settings = Settings(), progress: (Float) -> Unit = {}): Result? =
         File(dir, ScanDepthFormat.FILE).takeIf { it.isFile }?.let { fuse(it, settings, progress = progress) }
+
+    /**
+     * [mesh] with its holes of a rim under [spanM] closed by [MeshCleanup.fillSmallHoles]: a
+     * vertex it adds takes the normal of the triangles round it, the others keep theirs.
+     */
+    private fun closeHoles(mesh: RerunMesh, spanM: Float): Pair<RerunMesh, Int> {
+        val (filled, holes) = MeshCleanup.fillSmallHoles(CleanGeometry.of(mesh), maxSpanM = spanM)
+        if (holes == 0) return mesh to 0
+        val n = filled.vertexCount
+        val normals = mesh.normals.copyOf(n * 3)
+        val p = filled.positions
+        val ix = filled.indices
+        for (t in 0 until filled.triangleCount) {
+            val a = ix[t * 3]
+            val b = ix[t * 3 + 1]
+            val c = ix[t * 3 + 2]
+            if (a < mesh.vertexCount && b < mesh.vertexCount && c < mesh.vertexCount) continue
+            val ux = p[b * 3] - p[a * 3]
+            val uy = p[b * 3 + 1] - p[a * 3 + 1]
+            val uz = p[b * 3 + 2] - p[a * 3 + 2]
+            val vx = p[c * 3] - p[a * 3]
+            val vy = p[c * 3 + 1] - p[a * 3 + 1]
+            val vz = p[c * 3 + 2] - p[a * 3 + 2]
+            for (v in intArrayOf(a, b, c)) {
+                if (v < mesh.vertexCount) continue
+                normals[v * 3] += uy * vz - uz * vy
+                normals[v * 3 + 1] += uz * vx - ux * vz
+                normals[v * 3 + 2] += ux * vy - uy * vx
+            }
+        }
+        for (v in mesh.vertexCount until n) {
+            val l = sqrt(normals[v * 3] * normals[v * 3] + normals[v * 3 + 1] * normals[v * 3 + 1] + normals[v * 3 + 2] * normals[v * 3 + 2])
+            if (l > 0f) for (k in 0 until 3) normals[v * 3 + k] /= l else normals[v * 3 + 1] = 1f
+        }
+        return RerunMesh(filled.positions, normals, filled.colors, filled.indices) to holes
+    }
 
     /** The bytes read so far through it: how far into the recording the fusion is. */
     private class CountingInput(input: InputStream) : FilterInputStream(input) {
@@ -146,6 +191,12 @@ internal object RoomDepthMesh {
 
     /** Floating pieces smaller than this are noise: about 400 vertices. */
     const val MIN_COMPONENT_TRIANGLES = 700
+
+    /**
+     * Holes up to 15 cm across are closed: the lace a far wall's depth leaves, a pinhole in the
+     * floor. A doorway, the gap between two speakers, a part nobody scanned stay open.
+     */
+    const val HOLE_SPAN_M = 0.15f
 
     /** 48 MB, as the live TSDF ([RerunTsdf.MAX_BYTES]): ~7 900 blocks of 16 cm. */
     const val MAX_BYTES = RerunTsdf.MAX_BYTES

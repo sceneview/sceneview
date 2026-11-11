@@ -368,6 +368,32 @@ class RerunSessionStore(val root: File) {
         }.getOrNull()
     }
 
+    /**
+     * Keeps the surface fused from session [id]'s depth recording (`depth-model.glb`), then
+     * `depth-model.json` with its [version], so it only reads back whole.
+     *
+     * @throws IllegalStateException when the session is gone, or a file does not write.
+     */
+    fun saveDepthModel(id: String, glb: ByteArray, version: Int) {
+        val dir = directoryOf(id)
+        check(File(dir, INFO).isFile) { "No session $id" }
+        File(dir, DEPTH_MODEL_INFO).delete()
+        writeAtomically(File(dir, DEPTH_MODEL_GLB), glb)
+        writeAtomically(File(dir, DEPTH_MODEL_INFO), "{\"version\":$version}".toByteArray())
+    }
+
+    /** Session [id]'s surface fused from its depth when one of [version] is kept; `null` otherwise. */
+    fun depthModel(id: String, version: Int): ByteArray? = runCatching {
+        if (!hasDepthModel(id, version)) return null
+        File(directoryOf(id), DEPTH_MODEL_GLB).takeIf { it.isFile }?.readBytes()
+    }.getOrNull()
+
+    /** Whether session [id] keeps a surface fused from its depth, of [version]: its result opens on it at once. */
+    fun hasDepthModel(id: String, version: Int): Boolean = runCatching {
+        val info = File(directoryOf(id), DEPTH_MODEL_INFO).takeIf { it.isFile }?.readText() ?: return false
+        (Json.parseToJsonElement(info) as? JsonObject)?.get("version")?.let { (it as? JsonPrimitive)?.intOrNull } == version
+    }.getOrDefault(false)
+
     /** Whether session [id] keeps a room shell of [version]: its result opens on it at once. */
     fun hasRoomShell(id: String, version: Int): Boolean = runCatching {
         val info = File(directoryOf(id), ROOM_INFO).takeIf { it.isFile }?.readText() ?: return false
@@ -513,6 +539,8 @@ class RerunSessionStore(val root: File) {
         const val ROOM_GLB = "room.glb"
         const val ROOM_OBJECTS = "room-objects.svpc"
         const val ROOM_INFO = "room.json"
+        const val DEPTH_MODEL_GLB = "depth-model.glb"
+        const val DEPTH_MODEL_INFO = "depth-model.json"
 
         /** An imported session's source file: the lowercase hex SHA-256 of its bytes. */
         const val SOURCE_HASH = "source.sha256"

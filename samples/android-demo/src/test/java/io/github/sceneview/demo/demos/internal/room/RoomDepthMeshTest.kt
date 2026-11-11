@@ -104,6 +104,31 @@ class RoomDepthMeshTest {
         assertNull(ShellRender.read(checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder))).objects)
     }
 
+    @Test
+    fun `a depth surface with no furniture left keeps the object points, in the glb and the kept shell`() {
+        // Only the room's own walls and floor: the object cut keeps no triangle of it.
+        val bare = RerunMesh(
+            floatArrayOf(MIN.x, 0f, MIN.z, MAX.x, 0f, MIN.z, MAX.x, 0f, MAX.z),
+            floatArrayOf(0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f, 0f),
+            IntArray(3) { FLOOR },
+            intArrayOf(0, 1, 2),
+        )
+        val empty = RerunMesh(FloatArray(0), FloatArray(0), IntArray(0), IntArray(0))
+        for (depth in listOf(bare, empty)) {
+            val shell = checkNotNull(runBlocking { RoomShellBuilder.build(cloud, null, 0f, depthMesh = depth) })
+            assertNull(shell.objectMesh)
+            assertEquals(0, shell.stats.objectTriangles)
+            assertTrue("${shell.objects.count} points", shell.objects.count > 0)
+            val glb = checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder, objects = shell.objectMesh))
+            assertNull(ShellRender.read(glb).objects)
+            val store = RerunSessionStore(folder.newFolder())
+            store.directoryOf(ID).mkdirs()
+            File(store.directoryOf(ID), RerunSessionStore.INFO).writeText("{}")
+            store.saveRoomShell(ID, glb, shell.objects, 1)
+            assertEquals(shell.objects.count, checkNotNull(store.roomShell(ID, 1)).second.count)
+        }
+    }
+
     /** The scan's frames written as a depth recording, each marked held back when [held]; its time its index. */
     private fun recording(held: Boolean = false): File {
         val file = folder.newFile()

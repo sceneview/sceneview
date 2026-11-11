@@ -245,6 +245,16 @@ internal sealed interface RerunModelSource {
 }
 
 /**
+ * The source a model is built from now: a live TSDF let go for its depth recording
+ * ([depthModelOf], [roomShellOf]) gives way to its surfels, so a fusion that then failed still
+ * leaves the model as before; `null` when there is nothing left to build from.
+ */
+internal fun RerunModelSource.usable(): RerunModelSource? = when {
+    this is RerunModelSource.Live && tsdf == null -> cloud?.takeIf { it.normals != null }?.let { RerunModelSource.Surfels(it, photos) }
+    else -> this
+}
+
+/**
  * The recording's TSDF, fed the same raw-depth copies as the surfel map — the depth image's own
  * lens, fresh depth only — on its own worker: a frame that arrives while one integrates is left
  * to the surfel map alone, so neither slows the other.
@@ -735,11 +745,17 @@ internal fun RerunModelScreen(
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan the shell on screen is of: a shell stays only over its own scan.
     val shellOf = remember { AtomicReference<Any?>(null) }
+    // The scan whose fused surface is on screen (ScanDepthModel.kt): it stays, as a shell does.
+    val depthModelOf = remember { AtomicReference<Any?>(null) }
     val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput) {
         // A room opens on its shell (RoomShellLayer.kt): read back, or built here, the old finish
         // never run beside it. One already on screen stays: the recording read behind it, or the
         // source, change nothing in it.
         if ((value as? ModelState.Ready)?.objects != null && id != null && shellOf.get() == id) return@produceState
+        if (value is ModelState.Ready && id != null && depthModelOf.get() == id) return@produceState
+        // The live TSDF goes once a depth recording is known to read: the recording is the better
+        // source, and the two would otherwise sit on the heap together while it fuses.
+        val releaseLive = { if (store != null && id != null) (source as? RerunModelSource.Live)?.release() }
         if (scope == ScanScope.Room) {
             val shown = (value as? ModelState.Ready)
             val shell = withContext(Dispatchers.Default) {
@@ -748,7 +764,7 @@ internal fun RerunModelScreen(
                 if (shown != null && shellInput != null) {
                     value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
                 }
-                runCatching { roomShellOf(store, id, shellInput) { job.ensureActive() } }
+                runCatching { roomShellOf(store, id, shellInput, releaseLive) { job.ensureActive() } }
                     .onFailure { if (it is CancellationException) throw it }
                     .onFailure { Log.w(TAG, "room shell failed", it) }
                     .getOrNull()
@@ -761,6 +777,32 @@ internal fun RerunModelScreen(
                 return@produceState
             }
             // No shell: the model as before, the one on screen kept meanwhile.
+            if (shown != null) value = shown
+        }
+        // A scan with a depth recording that stands as no room opens on its whole fused surface.
+        if (store != null && id != null) {
+            val shown = (value as? ModelState.Ready)
+            val fused = withContext(Dispatchers.Default) {
+                val job = coroutineContext.job
+                runCatching {
+                    depthModelOf(store, id, scope, shellInput?.cloud ?: surfels, shellInput?.floorY, releaseLive) {
+                        // The model on screen, if any, is shown as being finished meanwhile.
+                        if (shown != null && value === shown) {
+                            value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
+                        }
+                        job.ensureActive()
+                    }
+                }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .onFailure { Log.w(TAG, "depth model failed", it) }
+                    .getOrNull()
+            }
+            if (fused != null) {
+                Log.i(TAG, "depth model: ${fused.triangles} triangles, ${fused.glb.size / 1024} KB")
+                depthModelOf.set(id)
+                value = ModelState.Ready(fused)
+                return@produceState
+            }
             if (shown != null) value = shown
         }
         val stored = opened ?: if (store != null && id != null) {
@@ -777,7 +819,7 @@ internal fun RerunModelScreen(
         val kept = stored?.takeIf { retry == null && stale == null }
         var shownFirst: RerunScanModel? = retry ?: stale
         shownFirst?.let { value = ModelState.Ready(it, final = false) }
-        val built = kept ?: source?.let { from ->
+        val built = kept ?: source?.usable()?.let { from ->
             withContext(Dispatchers.Default) {
                 val job = coroutineContext.job
                 // The line narrates the step without a share (one indicator, `DESIGN.md`): the

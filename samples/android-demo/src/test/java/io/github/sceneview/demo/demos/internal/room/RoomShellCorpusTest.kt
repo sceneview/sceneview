@@ -1,9 +1,16 @@
 package io.github.sceneview.demo.demos.internal.room
 
+import io.github.sceneview.demo.demos.depthModelOf
 import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.RerunGlbMesh
 import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunMeshGlb
+import io.github.sceneview.demo.demos.internal.RerunSessionStore
+import io.github.sceneview.demo.demos.internal.RerunStoredSession
+import io.github.sceneview.demo.demos.internal.ScanDepthFormat
+import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.model.CleanModelCorpus
 import io.github.sceneview.demo.demos.internal.model.JvmAtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.JvmImages
@@ -15,6 +22,7 @@ import kotlinx.serialization.json.put
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
+import java.nio.file.Files
 
 /**
  * The room shell of every recording of a corpus, as the result builds it:
@@ -78,6 +86,7 @@ class RoomShellCorpusTest {
                 put("file", file.name)
                 put("shell", "none: no convincing room box")
                 fused?.let { put("depth", depthJson(it)) }
+                if (fused != null) put("model", modelJson(file, cloud, capture.manifest.floorY, out))
             }
         val buildMs = (System.nanoTime() - started) / NANOS_PER_MS
         val glb = checkNotNull(RoomShellGlb.write(shell.faces, JvmAtlasEncoder, objects = shell.objectMesh)) { "glb not written" }
@@ -136,8 +145,49 @@ class RoomShellCorpusTest {
             truncationM = env("TRUNCATION")?.toFloat() ?: d.truncationM,
             minWeight = env("MIN_WEIGHT")?.toFloat() ?: d.minWeight,
             weakestCorner = env("WEAKEST")?.toFloat() ?: d.weakestCorner,
+            holeSpanM = env("HOLE_SPAN")?.toFloat() ?: d.holeSpanM,
             minComponentTriangles = env("MIN_COMPONENT")?.toInt() ?: d.minComponentTriangles,
         )
+    }
+
+    /**
+     * The result a scan with depth and no room box opens on, built by the app's own
+     * [depthModelOf] — on a copy of the session, so the corpus is never written to — and drawn as
+     * `model0.png` … `model3.png` and `model_top.png`: its figures.
+     */
+    private fun modelJson(session: File, cloud: DenseCloud, floorY: Float?, out: File): JsonObject {
+        val scope = RerunStoredSession.parse(File(session, RerunSessionStore.INFO).readText())?.scope ?: ScanScope.Room
+        val root = Files.createTempDirectory("depth-model").toFile()
+        try {
+            val store = RerunSessionStore(root)
+            val copy = store.directoryOf(session.name).apply { mkdirs() }
+            File(session, RerunSessionStore.INFO).copyTo(File(copy, RerunSessionStore.INFO))
+            File(session, ScanDepthFormat.FILE).copyTo(File(copy, ScanDepthFormat.FILE))
+            val started = System.nanoTime()
+            val model = depthModelOf(store, session.name, scope, cloud, floorY)
+            val buildMs = (System.nanoTime() - started) / NANOS_PER_MS
+            model ?: return buildJsonObject { put("none", "no model for scope ${scope.key}") }
+            val surface = checkNotNull(RerunGlbMesh.read(model.glb)) { "model glb not read back" }
+            AZIMUTHS.forEachIndexed { i, azimuth ->
+                val image = ShellRender.view(surface, azimuth)
+                File(out, "model$i.png").writeBytes(JvmImages.png(image.argb, image.width, image.height))
+            }
+            val top = ShellRender.view(surface, null)
+            File(out, "model_top.png").writeBytes(JvmImages.png(top.argb, top.width, top.height))
+            val readStarted = System.nanoTime()
+            val back = checkNotNull(depthModelOf(store, session.name, scope, cloud, floorY)) { "kept model not read back" }
+            return buildJsonObject {
+                put("scope", scope.key)
+                put("triangles", model.triangles)
+                put("vertices", model.vertices)
+                put("glb_bytes", model.glb.size)
+                put("build_ms", buildMs)
+                put("read_back_ms", (System.nanoTime() - readStarted) / NANOS_PER_MS)
+                put("read_back_same", back.glb.contentEquals(model.glb))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     /** The whole fused surface on its own, from the four corners and from above. */
@@ -162,6 +212,7 @@ class RoomShellCorpusTest {
         put("vertices", r.mesh.vertexCount)
         put("dropped_components", r.droppedComponents)
         put("capped", r.capped)
+        put("holes_closed", r.holesClosed)
         put("fuse_ms", r.fuseMs)
         put("mesh_ms", r.meshMs)
     }

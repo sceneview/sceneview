@@ -493,7 +493,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             // A room whose shell is kept opens on it at once too (RoomShellLayer.kt).
             val keptShell = kind == ScanScope.Room &&
                 withContext(Dispatchers.IO) { store.hasRoomShell(id, ROOM_SHELL_VERSION) }
-            val kept = keptModel != null || keptShell
+            // So does a scan whose surface fused from its depth is kept (ScanDepthModel.kt).
+            val keptDepth = withContext(Dispatchers.IO) { store.hasDepthModel(id, DEPTH_MODEL_VERSION) }
+            val kept = keptModel != null || keptShell || keptDepth
             resultModel = keptModel
             modelSource = null
             hasResult = kept
