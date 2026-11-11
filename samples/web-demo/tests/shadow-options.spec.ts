@@ -145,6 +145,12 @@ test.describe('Filament.js shadow options (#3456)', () => {
       // The demo opens in the photo studio, whose camera move-in and quality tiers
       // keep changing frames: the bench is a plain scene, so turn it off first.
       if (typeof sv.setStudio === 'function') sv.setStudio(false);
+      // A default model that failed to load (models not fetched: see the
+      // `web-demo` assets scope) leaves sceneview.js's "3D preview unavailable"
+      // overlay over the canvas, and the canvas screenshots below would capture
+      // that overlay instead of the bench. The bench replaces the whole scene,
+      // so that failure no longer describes what is on screen: take it down.
+      if (typeof sv._hideLoadFallback === 'function') sv._hideLoadFallback();
       sv.setAutoRotate(false);
       sv._angle = 0.785;
       sv._orbitRadius = 5.5;
