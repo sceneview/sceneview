@@ -13,6 +13,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
+import io.github.sceneview.destroyRendererWhenBackendIdle
 import io.github.sceneview.math.Position
 import kotlin.math.cos
 import kotlin.math.max
@@ -270,7 +271,9 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
         runCatching { engine.destroyView(view) }
         runCatching { engine.destroyCameraComponent(cameraEntity) }
         EntityManager.get().destroy(cameraEntity)
-        runCatching { engine.destroyRenderer(renderer) }
+        // A second Renderer waits for its backend like SceneView's own (#4969): a blocking
+        // destroy here stalled the main thread when a screen left under load.
+        engine.destroyRendererWhenBackendIdle(renderer)
     }
 
     companion object {

@@ -152,7 +152,7 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
  */
-internal fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
+fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
     val startedAt = SystemClock.uptimeMillis()
     whenBackendIdle { deferred ->
         safeDestroyRenderer(renderer)
