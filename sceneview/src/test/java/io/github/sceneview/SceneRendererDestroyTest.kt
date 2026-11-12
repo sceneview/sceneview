@@ -1,6 +1,7 @@
 package io.github.sceneview
 
 import android.graphics.SurfaceTexture
+import android.os.Looper
 import android.view.Surface
 import com.google.android.filament.Engine
 import com.google.android.filament.Renderer
@@ -12,6 +13,7 @@ import io.github.sceneview.testing.ShadowFilamentEngine
 import io.github.sceneview.utils.SurfaceMirrorer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Before
@@ -21,12 +23,15 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
+import org.robolectric.annotation.LooperMode
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.atomic.AtomicReference
 
 /** Exercises real destroy/callback wiring with already-created swap chains and no Filament JNI. */
 @RunWith(RobolectricTestRunner::class)
+@LooperMode(LooperMode.Mode.PAUSED)
 @Config(
     instrumentedPackages = ["com.google.android.filament"],
     shadows = [SceneRendererDestroyTest.RecordingEngine::class],
@@ -34,6 +39,7 @@ import java.util.concurrent.atomic.AtomicReference
 class SceneRendererDestroyTest {
     private lateinit var sceneRenderer: SceneRenderer
     private lateinit var mirrorer: SurfaceMirrorer
+    private lateinit var callback: UiHelper.RendererCallback
     private lateinit var backend: RecordingEngine
     private val calls = mutableListOf<String>()
 
@@ -66,7 +72,7 @@ class SceneRendererDestroyTest {
             as AtomicReference<SwapChain?>
         window.set(windowChain)
         // Use the production callback and UiHelper.detach(), without attaching a native window.
-        val callback = SceneRenderer::class.java.getDeclaredMethod(
+        callback = SceneRenderer::class.java.getDeclaredMethod(
             "makeRendererCallback", Function0::class.java, Boolean::class.javaPrimitiveType,
         ).apply { isAccessible = true }.invoke(sceneRenderer, { 1 }, false)
             as UiHelper.RendererCallback
@@ -99,7 +105,7 @@ class SceneRendererDestroyTest {
         destroyWithWait(mirrorWaitNanos = 750_000_000L, mirrorCaughtUp = true)
         assertEquals(emptyList<String>(), warnings("SurfaceMirrorer"))
         assertEquals(
-            listOf("Surface detached, backend still busy after 250 ms; not waiting longer (#3799)"),
+            listOf("Surface detached, backend still busy after 250 ms (cumulative wait 1000 ms); not waiting longer (#3799)"),
             warnings("SceneRenderer"),
         )
     }
@@ -108,7 +114,7 @@ class SceneRendererDestroyTest {
     fun exhaustedBudgetStillFlushesTheWindowAndReportsZeroWait() {
         destroyWithWait(mirrorWaitNanos = SURFACE_DETACH_WAIT_NANOS, mirrorCaughtUp = false)
         assertEquals(
-            listOf("Surface detached, backend still busy after 0 ms; not waiting longer (#3799)"),
+            listOf("Surface detached, backend still busy after 0 ms (cumulative wait 1000 ms); not waiting longer (#3799)"),
             warnings("SceneRenderer"),
         )
     }
@@ -120,6 +126,83 @@ class SceneRendererDestroyTest {
             listOf("Mirroring stopped, backend still busy after 25 ms; not waiting longer"),
             warnings("SurfaceMirrorer"),
         )
+    }
+
+    @Test
+    fun composeDetachThenDestroySharesBudgetAndReservesMirrorReleaseTime() {
+        detachThenDestroy(windowWaitNanos = 750_000_000L)
+    }
+
+    @Test
+    fun healthyComposeDetachLeavesUnusedTimeForMirrorRelease() {
+        detachThenDestroy(windowWaitNanos = 100_000_000L)
+    }
+
+    private fun detachThenDestroy(windowWaitNanos: Long) {
+        var now = 0L
+        val budget = SurfaceDetachBudget(nanoTime = { now })
+        field(sceneRenderer, "surfaceDetachBudget").set(sceneRenderer, budget)
+        val timeouts = mutableListOf<Long>()
+        backend.onWait = { timeout ->
+            timeouts += timeout
+            calls += "wait"
+            now += if (timeouts.size == 1) windowWaitNanos else timeout
+            timeouts.size == 1 && windowWaitNanos < 750_000_000L
+        }
+        mirrorer.onHostLost = { calls += "host lost" }
+
+        // Compose's applier detaches the TextureView before running onDispose, with no
+        // intervening main-loop message. There is no window chain at destroy() entry.
+        callback.onDetachedFromSurface()
+        assertSame(budget, field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
+        sceneRenderer.destroy()
+        sceneRenderer.destroy()
+
+        assertEquals(listOf("window", "wait", "mirror", "wait", "host lost", "host lost"), calls)
+        assertEquals(listOf(750_000_000L, SURFACE_DETACH_WAIT_NANOS - windowWaitNanos), timeouts)
+        assertEquals(SURFACE_DETACH_WAIT_NANOS, budget.totalWaitNanos)
+        assertNull(field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
+    }
+
+    @Test
+    fun composeDetachDepositsTheBudgetUsedByDestroyInTheSameMessage() {
+        val budgets = mutableListOf<SurfaceDetachBudget?>()
+        backend.onWait = {
+            budgets += field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer)
+                as SurfaceDetachBudget?
+            true
+        }
+
+        callback.onDetachedFromSurface()
+        sceneRenderer.destroy()
+
+        assertEquals(listOf("window", "mirror"), calls)
+        assertEquals(2, budgets.size)
+        assertNotNull(budgets[0])
+        assertSame(budgets[0], budgets[1])
+    }
+
+    @Test
+    fun detachDepositsBudgetAndNextMainMessageGetsAFreshBudget() {
+        val budgets = mutableListOf<SurfaceDetachBudget?>()
+        val timeouts = mutableListOf<Long>()
+        backend.onWait = { timeout ->
+            timeouts += timeout
+            budgets += field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer)
+                as SurfaceDetachBudget?
+            true
+        }
+
+        callback.onDetachedFromSurface()
+        assertNotNull(budgets.single())
+        assertSame(budgets.single(), field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
+        // The posted clearing runs only once this message returns to the main loop.
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull(field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
+        sceneRenderer.destroy()
+
+        assertEquals(listOf(750_000_000L, SURFACE_DETACH_WAIT_NANOS), timeouts)
+        assertNotSame(budgets[0], budgets[1])
     }
 
     private fun destroyWithWait(mirrorWaitNanos: Long, mirrorCaughtUp: Boolean) {
@@ -143,7 +226,7 @@ class SceneRendererDestroyTest {
         // destroy() and clearing the host both notify onHostLost; neither consumes wait time.
         assertEquals(listOf("mirror", "wait", "host lost", "host lost", "window", "wait"), calls)
         assertEquals(listOf(SURFACE_DETACH_WAIT_NANOS, SURFACE_DETACH_WAIT_NANOS - mirrorWaitNanos), timeouts)
-        assertSame(budget, field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
+        assertNull(field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
     }
 
     private fun warnings(tag: String) = ShadowLog.getLogsForTag(tag).map { it.msg }

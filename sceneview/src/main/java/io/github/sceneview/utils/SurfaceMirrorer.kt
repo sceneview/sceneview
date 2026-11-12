@@ -312,8 +312,8 @@ class SurfaceMirrorer {
      * mirrored recording ends with the view that feeds it, and [onHostLost] is called. The
      * recording releases its surface from there, so the swap chains must be gone first; a scene
      * disposed with no mirror, or before a mirror's first frame, waits for nothing. Teardown waits
-     * on the backend are bounded (#4828), not banned: this is the same one-second bound as the
-     * scene's own surface detach. Scene disposal passes the same [waitBudget] to both waits.
+     * on the backend are bounded (#3799, #3854, #4828), not banned: scene disposal passes the
+     * same one-second [waitBudget] to mirror release and window detach, whichever runs first.
      */
     internal fun destroy(waitBudget: SurfaceDetachBudget = SurfaceDetachBudget()) {
         val (engine, swapChains, renderer) = synchronized(surfaceMirrors) {
@@ -350,9 +350,11 @@ class SurfaceMirrorer {
 }
 
 /**
- * Destroys the [swapChains] of stopped mirrors, then, when there was any, waits up to
- * [SURFACE_DETACH_WAIT_NANOS] for the backend to execute everything queued so far: their creation
- * and their destruction, the two backend commands that use the mirrored surface. Apart from its
+ * Destroys the [swapChains] of stopped mirrors, then, when there was any, waits within the
+ * remaining [waitBudget] for the backend to execute everything queued so far: their creation
+ * and their destruction, the two backend commands that use the mirrored surface. The default
+ * budget is [SURFACE_DETACH_WAIT_NANOS]; scene disposal shares it with window detach and reserves
+ * a mirror-release floor before the recorder surface is released (#4860). Kept apart from its
  * Filament calls so that a JVM test can pin it.
  *
  * @return `false` when the backend was still busy at the bound — the commands still run, in
@@ -366,5 +368,5 @@ internal fun <S> releaseSwapChains(
 ): Boolean {
     if (swapChains.isEmpty()) return true
     swapChains.forEach(destroySwapChain)
-    return waitBudget.waitFor(flushAndWait)
+    return waitBudget.waitFor(flushAndWait = flushAndWait)
 }

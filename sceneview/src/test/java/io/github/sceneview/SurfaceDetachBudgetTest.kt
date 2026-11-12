@@ -102,6 +102,7 @@ class SurfaceDetachBudgetTest {
         budget.waitFor { now += second * 3 / 4; true }
         assertFalse(budget.waitFor { now += second / 4; false })
         assertEquals(second / 4, budget.lastWaitNanos)
+        assertEquals(second, budget.totalWaitNanos)
         assertFalse(budget.waitFor { timeout ->
             assertEquals(0L, timeout)
             false
