@@ -46,7 +46,6 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.StartupMarker
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
-import io.github.sceneview.demo.common.updateShadowOptions
 import io.github.sceneview.demo.telemetry.CrashKey
 import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -562,8 +561,6 @@ private fun HomeHeroStage(
                 },
                 nodeApply = {
                     lights.key = this
-                    // Not Builder.shadowOptions(ShadowOptions()): on Filament 1.77 that zeroes
-                    // every option and loses the shadow (see updateShadowOptions).
                     updateShadowOptions {
                         mapSize = 1024
                         shadowFar = 28f

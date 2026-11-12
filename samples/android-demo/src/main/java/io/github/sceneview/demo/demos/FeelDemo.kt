@@ -68,7 +68,6 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.updateShadowOptions
 import io.github.sceneview.demo.demos.internal.FeelHapticPlayer
 import io.github.sceneview.demo.demos.internal.MatterMesh
 import io.github.sceneview.demo.demos.internal.MatterSurfaceMaterials

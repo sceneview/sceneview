@@ -25,7 +25,6 @@ import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.createEnvironment
-import io.github.sceneview.demo.common.updateShadowOptions
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
@@ -136,8 +135,6 @@ class RenderPresetQaActivity : ComponentActivity() {
                             }
                             castShadows(true)
                         }.apply {
-                            // Not Builder.shadowOptions(ShadowOptions()): on Filament 1.77 that
-                            // zeroes every option and loses the shadow (see updateShadowOptions).
                             if (preset == "middle") {
                                 updateShadowOptions { screenSpaceContactShadows = true }
                             }
