@@ -23,7 +23,8 @@ import kotlin.math.min
  * seen twice, two walls of four, an L and a T seen on three quarters of their length, corners
  * hidden behind furniture, a headboard against a wall, a bedroom whose clutter outweighs its walls,
  * one wall seen along a stretch of it, a garage's storage fronts, walls the depth missed and ARCore
- * found as planes, a side open onto the next room, a wall returned only in shards out of line, a far
+ * found as planes, an L's inner walls found as planes behind the walk's mean, a plane across a
+ * doorway, a side open onto the next room, a wall returned only in shards out of line, a far
  * wall never seen, two walls not followed to their far corners, cupboard fronts out of line before
  * a wall never seen. When a figure is given it is
  * within [MAX_ERROR] of the room's, or the case's own bound; where the walls seen do not close the
@@ -329,6 +330,50 @@ class RoomStructureRealScanTest {
         assertTrue("$summary: ${fronts.size} walls along the cupboards' fronts", fronts.isEmpty())
         // The floor seen stands for the wall unseen: the room's full 20 m², marked as an estimate.
         check(CUPBOARDS)
+    }
+
+    @Test
+    fun `an L's inner walls found only as planes face the room, the walk's mean standing behind them`() {
+        for (case in listOf(THIN_L_SOUTH, THIN_L_WEST, THIN_L_BOTH)) {
+            val capture = capture(case)
+            val steps = capture.trail.size / 3
+            val meanX = (0 until steps).sumOf { capture.trail[it * 3].toDouble() } / steps
+            val meanZ = (0 until steps).sumOf { capture.trail[it * 3 + 2].toDouble() } / steps
+            // The walk's mean stands outside the L, behind both its inner walls.
+            assertTrue("${case.name}: the walk's mean ($meanX, $meanZ)", meanX > THIN_L_WING_M && meanZ > THIN_L_WING_M)
+            val structure = RoomStructure.read(capture.scan())
+            val summary = summary(case, structure)
+            assertEquals(summary, case.room.x.size, structure.walls.size)
+            assertEquals("$summary: a wall found as a plane read as deduced", 0, structure.walls.count { it.deduced })
+            assertTrue("$summary: a wall not seen", structure.walls.all { it.seen })
+            assertTrue("$summary: an area marked as an estimate", structure.area?.estimate == false)
+            check(case)
+        }
+    }
+
+    @Test
+    fun `a wall plane across a doorway leaves the doorway out of the wall, and fills where the floor stops`() {
+        // The floor seen on through the doorway: the plane's columns there are not wall.
+        val through = RoomStructure.read(capture(PLANE_DOOR).scan())
+        val summary = summary(PLANE_DOOR, through)
+        val wall = through.walls.single { abs(it.az) < FRONT_NEAR_M && abs(it.bz) < FRONT_NEAR_M }
+        // Metres along the wall from x = 0, whichever way the wall is drawn.
+        val gaps = wall.unseen.map { min(wall.ax, wall.bx) + it.start to min(wall.ax, wall.bx) + it.endInclusive } +
+            wall.openings.map { min(wall.ax, wall.bx) + it.from to min(wall.ax, wall.bx) + it.from + it.width }
+        val doorway = gaps.filter { it.first < PLANE_DOOR_TO_M && it.second > PLANE_DOOR_FROM_M }
+        assertEquals("$summary: the doorway filled as wall, gaps $gaps", 1, doorway.size)
+        val (from, to) = doorway.single()
+        assertTrue(
+            "$summary: the doorway read $from..$to",
+            abs(from - PLANE_DOOR_FROM_M) <= DOORWAY_NEAR_M && abs(to - PLANE_DOOR_TO_M) <= DOORWAY_NEAR_M,
+        )
+        assertEquals("$summary: gaps $gaps", 1, gaps.size)
+        check(PLANE_DOOR)
+        // Nothing seen through it — glass, a mirror, wall the depth missed: the plane stands for the wall.
+        val blind = RoomStructure.read(capture(PLANE_BLIND).scan())
+        val blindWall = blind.walls.single { abs(it.az) < FRONT_NEAR_M && abs(it.bz) < FRONT_NEAR_M }
+        assertTrue("${summary(PLANE_BLIND, blind)}: unseen ${blindWall.unseen}", blindWall.unseen.isEmpty())
+        check(PLANE_BLIND)
     }
 
     /** A case's full reading's median and live reading's best run. */
@@ -692,6 +737,57 @@ class RoomStructureRealScanTest {
         val PLANES = Case(
             "two walls found only as planes",
             SyntheticRoom(RECTANGLE_X, RECTANGLE_Z, planeOnly = setOf(1, 3)),
+            figures = true,
+        )
+
+        /** How wide the wings of [thinL] are. */
+        const val THIN_L_WING_M = 1.5f
+
+        /**
+         * A 6 × 6 m L with wings 1.5 m wide, 15.75 m², the inner walls in [planeOnly] never returned
+         * by the depth and found as planes: the walk's mean stands in neither wing, behind both.
+         */
+        fun thinL(name: String, planeOnly: Set<Int>) = Case(
+            name,
+            SyntheticRoom(
+                floatArrayOf(0f, 6f, 6f, THIN_L_WING_M, THIN_L_WING_M, 0f),
+                floatArrayOf(0f, 0f, THIN_L_WING_M, THIN_L_WING_M, 6f, 6f),
+                planeOnly = planeOnly,
+            ),
+            figures = true,
+        )
+
+        val THIN_L_SOUTH = thinL("thin L, one inner wall a plane", setOf(2))
+        val THIN_L_WEST = thinL("thin L, the other inner wall a plane", setOf(3))
+        val THIN_L_BOTH = thinL("thin L, both inner walls planes", setOf(2, 3))
+
+        /** Where the doorway of [PLANE_DOOR] stands along its wall, and how near it has to be read. */
+        const val PLANE_DOOR_FROM_M = 1f
+        const val PLANE_DOOR_TO_M = 1.9f
+        const val DOORWAY_NEAR_M = 0.25f
+        val PLANE_DOOR_OPENING =
+            SyntheticOpening(wall = 0, from = PLANE_DOOR_FROM_M, width = PLANE_DOOR_TO_M - PLANE_DOOR_FROM_M, sill = 0f, height = 2.05f)
+
+        /**
+         * The rectangle's south wall never returned by the depth and found as one plane from corner
+         * to corner, a doorway in it, the next room's floor seen a metre on through it.
+         */
+        val PLANE_DOOR = Case(
+            "a plane across a doorway",
+            SyntheticRoom(
+                RECTANGLE_X,
+                RECTANGLE_Z,
+                openings = listOf(PLANE_DOOR_OPENING),
+                planeOnly = setOf(0),
+                nextDoor = listOf(SyntheticFloor(-1f, 6f, -1f, 0f)),
+            ),
+            figures = true,
+        )
+
+        /** [PLANE_DOOR] with nothing seen through its doorway: the floor stops at the plane's line. */
+        val PLANE_BLIND = Case(
+            "a plane across a stretch nothing is seen through",
+            SyntheticRoom(RECTANGLE_X, RECTANGLE_Z, openings = listOf(PLANE_DOOR_OPENING), planeOnly = setOf(0)),
             figures = true,
         )
 
