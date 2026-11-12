@@ -1,5 +1,7 @@
 # SceneViewSwift
 
+> **Deprecated.** SceneView for SwiftUI (`SceneViewSwift`): 4.68.0 is the last release. Published versions stay installable and this source stays available under Apache 2.0 — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 3D and AR scenes in SwiftUI, powered by RealityKit. The Apple companion to [SceneView for Android](https://github.com/sceneview/sceneview).
 
 ![iOS 18+](https://img.shields.io/badge/iOS-18%2B-blue)

@@ -75,7 +75,7 @@ if ! git push origin "v$V"; then
   exit 1
 fi
 
-echo "Tagged v$V — dispatching release.yml, play-store.yml, app-store.yml and build-apks.yml on the tag ref."
+echo "Tagged v$V — dispatching release.yml, play-store.yml and build-apks.yml on the tag ref."
 # The tag was pushed with GITHUB_TOKEN, so the `on: push: tags:` trigger of
 # release.yml, play-store.yml, app-store.yml and build-apks.yml will NOT fire
 # (same suppression as above). All four accept workflow_dispatch; running them
@@ -91,5 +91,5 @@ echo "Tagged v$V — dispatching release.yml, play-store.yml, app-store.yml and 
 # its GitHub Release (found by audit, not by a user report).
 gh workflow run release.yml --ref "v$V"
 gh workflow run play-store.yml --ref "v$V" -f track=auto
-gh workflow run app-store.yml --ref "v$V" -f submit_for_review=true
+# app-store.yml was retired with the Apple, Flutter and React Native packages (DEPRECATION.md).
 gh workflow run build-apks.yml --ref "v$V"

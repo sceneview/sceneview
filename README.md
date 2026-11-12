@@ -1,10 +1,10 @@
 # SceneView
 
-> **The AI-first 3D & AR SDK for Jetpack Compose, Compose Multiplatform, SwiftUI and the web.**
+> **The AI-first 3D & AR SDK for Jetpack Compose — and the web.**
 
 Declarative 3D and AR for app developers who want a model on screen, or in the room, without a
-game engine: Filament + ARCore on Android, RealityKit + ARKit on Apple, Filament.js + WebXR in the
-browser — with Flutter, React Native and Compose Multiplatform bridges on top. It is the
+game engine: Filament + ARCore on Android, Filament.js + WebXR in the browser, and a Compose
+Multiplatform viewer. It is the
 maintained successor to Google Sceneform. Open source, Apache 2.0.
 
 | Building with | Add | Then write |
@@ -13,7 +13,6 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 | Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.68.0` | `ARSceneView { }` or `PlacementScene` |
 | Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
 | Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.68.0` | `SceneViewer(model = …)` in `commonMain` |
-| SwiftUI — iOS, macOS, visionOS | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
 Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `ARScene`)?
@@ -167,32 +166,6 @@ Optional app declares `android.hardware.camera.ar` and `android.hardware.camera`
 with `tools:replace="android:value"`. Both snippets are in the
 [AR manifest](docs/docs/quickstart.md#ar-manifest) section.
 
-### iOS / macOS / visionOS (SwiftUI)
-
-Swift Package Manager: `https://github.com/sceneview/sceneview.git`, from `4.63.0`.
-
-```swift
-import SwiftUI
-import SceneViewSwift
-
-struct ModelScreen: View {
-    @State private var model: ModelNode?
-
-    var body: some View {
-        SceneView { root in
-            if let model { root.addChild(model.entity) }
-        }
-        .contentID(model != nil)      // re-run the builder once the model has loaded
-        .environment(.studio)
-        .cameraControls(.orbit)
-        .task { model = try? await ModelNode.load("helmet.usdz") }
-    }
-}
-```
-
-The content closure runs once unless its `.contentID(_:)` changes: without that line, a model
-that finishes loading after the scene appears is never added.
-
 ### Web
 
 ```html
@@ -216,36 +189,11 @@ SceneViewer(model = ModelSource.Asset("models/helmet.glb"), modifier = Modifier.
 A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iOS setup:
 [`sceneview-compose/`](sceneview-compose/README.md).
 
-### Flutter
+### iOS, Flutter and React Native
 
-```dart
-// pubspec.yaml → flutter_sceneview: ^4.68.0
-final controller = SceneViewController();
-
-SceneView(
-  controller: controller,
-  onViewCreated: () => controller.loadModel(
-    const ModelNode(modelPath: 'models/helmet.glb'),
-  ),
-)
-```
-
-### React Native
-
-```tsx
-// npm install @sceneview-sdk/react-native
-import { SceneView } from '@sceneview-sdk/react-native';
-
-<SceneView
-  style={{ flex: 1 }}
-  modelNodes={[{ src: 'models/helmet.glb', position: [0, 0, -2] }]}
-  cameraControlMode="orbit"
-/>
-```
-
-Flutter and React Native bridge a subset of the native API — see
-[`flutter/`](flutter/sceneview_flutter/README.md) and
-[`react-native/`](react-native/react-native-sceneview/README.md) for what is covered.
+SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native
+(`@sceneview-sdk/react-native`) is deprecated: 4.68.0 is their last release. Published versions stay
+installable and the source stays in this repository — [what that means and the timeline](DEPRECATION.md).
 
 ### Your AI assistant
 
@@ -281,12 +229,12 @@ The other platforms in the table below join this section once a capture backs th
 |---|---|---|---|
 | **Android** | Filament | Jetpack Compose | Stable |
 | **Android TV** | Filament | Compose TV | Alpha |
-| **iOS / macOS / visionOS** | RealityKit | SwiftUI | Alpha |
+| **iOS / macOS / visionOS** | RealityKit | SwiftUI | Deprecated — [4.68.0 is the last release](DEPRECATION.md) |
 | **Web** | Filament.js (WebGL2 / WASM) | JavaScript + Kotlin/JS | Alpha |
 | **Compose Multiplatform** | Filament (Android, desktop) · RealityKit (iOS) | `sceneview-compose` | Alpha — viewer subset |
 | **Desktop (JVM)** | Filament, via filament-kmp | Compose Desktop (`sceneview-compose`) | Alpha |
-| **Flutter** | Native per platform | PlatformView | Alpha |
-| **React Native** | Native per platform | Fabric | Alpha |
+| **Flutter** | Native per platform | PlatformView | Deprecated — [4.68.0 is the last release](DEPRECATION.md) |
+| **React Native** | Native per platform | Fabric | Deprecated — [4.68.0 is the last release](DEPRECATION.md) |
 | **AI assistants** | — | `llms.txt`, MCP server, skills | Stable |
 
 ## Install
@@ -297,11 +245,11 @@ The other platforms in the table below join this section once a capture backs th
 | Android AR | `io.github.sceneview:arsceneview:4.68.0` |
 | Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.68.0` |
 | KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.68.0` |
-| Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.63.0` |
+| Apple (SPM) — deprecated | `https://github.com/sceneview/sceneview.git`, exact `4.68.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
-| Flutter | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |
-| React Native | [`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm |
+| Flutter — deprecated | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |
+| React Native — deprecated | [`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm |
 | AI assistants | `npx -y sceneview-mcp` — see [Use with AI](#use-with-ai) |
 
 ---

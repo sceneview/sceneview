@@ -1,5 +1,8 @@
 # React Native Quickstart
 
+!!! warning "Deprecated"
+    `@sceneview-sdk/react-native` is deprecated: 4.68.0 is the last release. Published versions stay installable and the source stays available — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). For Android, start with the [quickstart](quickstart.md).
+
 SceneView provides a React Native module that bridges to native SceneView rendering on both Android (Filament) and iOS (RealityKit).
 
 ## Install
