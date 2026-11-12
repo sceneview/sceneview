@@ -141,7 +141,8 @@ internal fun ScanCueLine(cue: CaptureCue, modifier: Modifier = Modifier) {
             contentColor = ArOverlay.onScrim,
             modifier = modifier
                 .widthIn(max = ArOverlay.maxWidth)
-                .fillMaxWidth()
+                // A short word sits in a pill its own size, centred over the shutter.
+                .then(if (cue.brief) Modifier else Modifier.fillMaxWidth())
                 .testTag(SCAN_BLOCKER_TAG)
                 .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         ) {
@@ -156,9 +157,14 @@ internal fun ScanCueLine(cue: CaptureCue, modifier: Modifier = Modifier) {
                     modifier = Modifier.size(PictogramSize),
                 )
                 Spacer(Modifier.width(Space.sm))
-                Column {
-                    Text(text = cue.blocker.cause, style = ScanLineStyle, color = ArOverlay.onScrim)
-                    Text(text = cue.blocker.wayOut, style = ScanDetailStyle, color = ArOverlay.onScrim)
+                if (cue.brief) {
+                    // One short word to read at arm's length: a room's live capture (LiveRoomGuide).
+                    Text(text = cue.blocker.short, style = ScanLineStyle, color = ArOverlay.onScrim)
+                } else {
+                    Column {
+                        Text(text = cue.blocker.cause, style = ScanLineStyle, color = ArOverlay.onScrim)
+                        Text(text = cue.blocker.wayOut, style = ScanDetailStyle, color = ArOverlay.onScrim)
+                    }
                 }
             }
         }

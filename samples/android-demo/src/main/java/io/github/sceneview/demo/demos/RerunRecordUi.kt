@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -23,13 +24,15 @@ import io.github.sceneview.demo.demos.internal.CaptureCue
 import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
-import io.github.sceneview.demo.demos.internal.ScanTurn
 import io.github.sceneview.math.Position
 import io.github.sceneview.demo.demos.internal.OrbitPose
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import io.github.sceneview.demo.LocalDemoSceneCover
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.Icons
@@ -67,17 +70,30 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import io.github.sceneview.demo.demos.internal.ScanSaveCopy
+import io.github.sceneview.demo.demos.internal.ScanSaveProgress
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
+import androidx.compose.ui.BiasAbsoluteAlignment
+import io.github.sceneview.demo.demos.internal.ScanTurn
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.material.icons.rounded.ChevronRight
+import io.github.sceneview.demo.demos.internal.CueSlotHeight
+import io.github.sceneview.demo.demos.internal.GapChevron
+import io.github.sceneview.demo.demos.internal.GapChevronPlace
+import io.github.sceneview.demo.demos.internal.ScanLens
+import kotlin.math.roundToInt
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -162,9 +178,12 @@ internal fun ScanHud(
                 modifier = Modifier.weight(1f),
             )
         }
+        // While the model builds, the headline alone (#4903): the capture's clock is stopped and its
+        // gauge is the scan's, not the build's — the save card below says how far the build is.
+        if (phase == ScanPhase.Saving) return@OverlayCard
         // One line under it (#4807): `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured`.
         Text(
-            text = CaptureChrome.detail(clock, room?.wallCount, points),
+            text = CaptureChrome.detail(clock, room?.shownWallCount, points),
             style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -214,6 +233,98 @@ internal fun ScanRoomGauge(share: Float, complete: Boolean) {
 }
 
 /**
+ * The chevron towards what a room's scan leads to ([GapChevron.aim]): the part being fixed
+ * ([ScanWallsState.fixTarget]) or reviewed ([reviewPart], `x, z`), else the largest gap. At the
+ * screen's edge the point lies past, pointing at it, in `accent-guidance` — the colour of the
+ * dashed gap and of the part's amber frame — on the capture's dark fill. Gone while the point is
+ * in the picture, where its dashes or its frame speak for it, and once the room is done with no
+ * part to lead to. Kept between the chrome's measured bands ([LocalDemoSceneCover],
+ * [GapChevron.band]): never under the status card, the room model or the controls. Read off
+ * [walls] and [lens] each frame; recomposed only when it moves.
+ */
+@Composable
+internal fun BoxScope.ScanGapChevron(walls: ScanWallsState, lens: ScanLens, reviewPart: FloatArray? = null) {
+    val density = LocalDensity.current
+    val cover = LocalDemoSceneCover.current
+    BoxWithConstraints(Modifier.matchParentSize()) {
+        val chevronPx = with(density) { (SceneViewTokens.Layout.touchTarget + Space.sm * 2).toPx() }
+        val band = GapChevron.band(
+            height = constraints.maxHeight.toFloat(),
+            topCover = with(density) { cover.calculateTopPadding().toPx() },
+            bottomCover = with(density) { cover.calculateBottomPadding().toPx() },
+            chevron = chevronPx,
+        )
+        val bandNow by rememberUpdatedState(band)
+        val reviewing by rememberUpdatedState(reviewPart)
+        var place by remember(walls, lens) { mutableStateOf<GapChevronPlace?>(null) }
+        LaunchedEffect(walls, lens) {
+            var shown: GapChevronPlace? = null
+            while (true) {
+                withFrameNanos { }
+                val aim = GapChevron.aim(
+                    gap = walls.cueEdge,
+                    part = reviewing ?: walls.fixTarget,
+                    done = walls.done,
+                    height = lens.cameraToWorld[EYE_HEIGHT_TERM],
+                )
+                val next = if (aim == null || !lens.ready) {
+                    null
+                } else {
+                    val (x, y, z) = aim
+                    val (top, bottom) = bandNow.start to bandNow.endInclusive
+                    GapChevron.place(lens.cameraToWorld, lens.projection, x, y, z, shown = shown != null, top = top, bottom = bottom)
+                        ?.rounded()
+                }
+                if (next != shown) {
+                    shown = next
+                    place = next
+                }
+            }
+        }
+        // Kept through the fade-out, so the chevron leaves from where it was.
+        var last by remember { mutableStateOf(GapChevronPlace(1f, 0f, 0f)) }
+        place?.let { last = it }
+        AnimatedVisibility(
+            visible = place != null,
+            enter = fadeIn(tween(SceneViewTokens.Duration.mediumMillis)),
+            exit = fadeOut(tween(SceneViewTokens.Duration.mediumMillis)),
+            // The room's left and right, not the reading direction's: the same side in RTL.
+            modifier = Modifier
+                .align(BiasAbsoluteAlignment(last.x, last.y))
+                .padding(Space.sm)
+                .testTag(SCAN_GAP_CHEVRON_TAG),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(SceneViewTokens.Layout.touchTarget)
+                    .background(ScanControlFill, CircleShape)
+                    .semantics { contentDescription = ScanCopy.GAP_CHEVRON },
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = ArOverlay.accentGuidance,
+                    modifier = Modifier.size(SceneViewTokens.Layout.touchTarget - Space.sm).rotate(last.degrees),
+                )
+            }
+        }
+    }
+}
+
+/** [GapChevronPlace] to a hundredth of the screen and a degree: it recomposes when it moves, not on every sway. */
+private fun GapChevronPlace.rounded(): GapChevronPlace = GapChevronPlace(
+    x = (x * PLACE_STEPS).roundToInt() / PLACE_STEPS,
+    y = (y * PLACE_STEPS).roundToInt() / PLACE_STEPS,
+    degrees = degrees.roundToInt().toFloat(),
+)
+
+private const val PLACE_STEPS = 100f
+
+/** The eye's height in [ScanLens.cameraToWorld], column-major: the translation's y. */
+private const val EYE_HEIGHT_TERM = 13
+
+/**
  * The guide's arrow (#4540, QA-24): a glass card at the screen's edge on the target's side — in
  * the middle when it is ahead or behind — with an arrow in `accent-guidance`, the colour of the
  * floor ribbon and the dashed gap, turned to the target's heading as the phone turns, and the
@@ -228,14 +339,7 @@ internal fun BoxScope.ScanGuideArrow(walls: ScanWallsState) {
     // Kept through the fade-out, so the arrow leaves from where it was.
     var last by remember { mutableStateOf(hint) }
     if (shown) last = hint
-    val haptic = rememberHapticFeedback()
-    // One tick per line-up felt here: none for those counted while the arrow was off screen.
-    val ticks = walls.alignedTicks
-    var felt by remember { mutableIntStateOf(ticks) }
-    LaunchedEffect(ticks) {
-        if (ticks > felt) haptic.selection()
-        felt = ticks
-    }
+    ScanAlignedTick(walls)
     // Left and right are the room's, not the reading direction's: the same side in RTL.
     val alignment = when (last?.turn) {
         ScanTurn.Left -> AbsoluteAlignment.CenterLeft
@@ -283,6 +387,21 @@ internal fun BoxScope.ScanGuideArrow(walls: ScanWallsState) {
     }
 }
 
+/**
+ * One tick each time the phone lines up with the guide's target ([ScanWallsState.alignedTicks], at
+ * most once a second): none for those counted while it was not composed.
+ */
+@Composable
+internal fun ScanAlignedTick(walls: ScanWallsState) {
+    val haptic = rememberHapticFeedback()
+    val ticks = walls.alignedTicks
+    var felt by remember { mutableIntStateOf(ticks) }
+    LaunchedEffect(ticks) {
+        if (ticks > felt) haptic.selection()
+        felt = ticks
+    }
+}
+
 private const val GAUGE_SEGMENTS = 10
 
 /**
@@ -301,6 +420,7 @@ internal fun ScanControls(
     onFinish: () -> Unit,
     resumeLabel: String = ScanCopy.RESUME,
     complete: Boolean = false,
+    reserveCue: Boolean = false,
 ) {
     CaptureChromeHaptics(cue, complete)
     Column(
@@ -308,7 +428,13 @@ internal fun ScanControls(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        if (cue != null) ScanCueLine(cue)
+        if (reserveCue) {
+            // The Live Room's message comes and goes: its place stays, so what stands above the
+            // controls — the room model — does not jump up and down with it.
+            ScanCueSlot { if (cue != null) ScanCueLine(cue) }
+        } else if (cue != null) {
+            ScanCueLine(cue)
+        }
         Row(
             modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -344,6 +470,26 @@ internal fun ScanControls(
             }
         }
         ScanStepRow(ScanStep.of(phase))
+    }
+}
+
+/**
+ * The capture's message place, kept whether a message shows or not: at least a touch target
+ * high, and never lower than the tallest message it has held ([CueSlotHeight]), so a line that
+ * comes, goes or wraps moves nothing above it.
+ */
+@Composable
+private fun ScanCueSlot(content: @Composable () -> Unit) {
+    val tallest = remember { IntArray(1) }
+    val floor = with(LocalDensity.current) { SceneViewTokens.Layout.touchTarget.roundToPx() }
+    Layout(content = content, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = measurables.map { it.measure(loose) }
+        val height = CueSlotHeight.of(placeables.maxOfOrNull { it.height } ?: 0, floor, tallest[0])
+        tallest[0] = height
+        layout(constraints.maxWidth, height) {
+            placeables.forEach { it.placeRelative((constraints.maxWidth - it.width) / 2, (height - it.height) / 2) }
+        }
     }
 }
 
@@ -522,22 +668,36 @@ internal fun HomeReviewCard(
 }
 
 /**
- * Save scan, in progress: the card stays where the review was, with what it is doing — fusing the
- * capture's [points] (#4719), while the view turns round the cloud ([ScanLiveView]'s `saving`).
+ * Save scan, in progress: the card stays where the review was, with the step it is at and how far
+ * the whole save is (#4903) — `Step 2 of 5 · Fusing 224k points…` (#4719) over a determinate bar
+ * driven by the save's own steps ([ScanSaveProgress]) — while the view turns round the cloud
+ * ([ScanLiveView]'s `saving`). It used to spin on "Fusing" for a minute and a half.
  */
 @Composable
-internal fun ScanSavingCard(points: Int = 0) {
+internal fun ScanSavingCard(progress: ScanSaveProgress, points: Int = 0) {
+    val line = ScanSaveCopy.line(progress, points)
+    // Between two real values only: the bar never moves on a timer of its own.
+    val shown by animateFloatAsState(
+        targetValue = progress.fraction,
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+        label = "saveProgress",
+    )
     OverlayCard(testTag = SCAN_SAVING_TAG) {
         ScanStepRow(ScanStep.Model)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(Space.md + Space.xs / 2),
-                color = ArOverlay.onScrim,
-                strokeWidth = Space.xs / 2,
-            )
-            Spacer(Modifier.width(Space.sm))
-            Text(text = ScanCopy.fusing(points), style = OnScrimTitle)
-        }
+        Text(
+            text = line,
+            style = OnScrimTitle,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        LinearProgressIndicator(
+            progress = { shown },
+            modifier = Modifier
+                .widthIn(max = ArOverlay.maxWidth)
+                .fillMaxWidth()
+                .testTag(SCAN_SAVING_PROGRESS_TAG),
+            color = ArOverlay.accentProgress,
+            trackColor = ArOverlay.meterTrack,
+        )
     }
 }
 
@@ -690,9 +850,17 @@ internal fun ScanDiscardDialog(onCancel: () -> Unit, onDiscard: () -> Unit) {
  * floor leads from the phone's feet to the next one — or to the part Fix now is filling in — and
  * an arrow turns to it until the phone lines up ([ScanGuideArrow]). Neither shows while the view
  * has left the phone; the ribbon's chevrons stand still under reduced motion.
+ *
+ * [phoneOnly], a room's capture (the Live Room): one camera, the phone's, from the first frame to
+ * the last. No drag nor pinch takes the view over, no saving orbit nor review flight leaves the
+ * phone, the camera is never veiled; with tracking lost, the capture keeps the last eye and fades
+ * out ([trackingLost]) rather than drawing over a picture it no longer lines up with. The arrow
+ * card gives way to a chevron at the screen's edge, towards the largest gap while it is off screen
+ * ([ScanGapChevron]) — or towards the part being fixed, or in review the part the card names
+ * ([reviewPart], `x, z`); the ribbon and the line-up tick stay.
  */
 @Composable
-@Suppress("LongParameterList") // the demo's shared engine, handed down once
+@Suppress("LongParameterList", "LongMethod") // the demo's shared engine, handed down once
 internal fun ScanLiveView(
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
@@ -706,27 +874,41 @@ internal fun ScanLiveView(
     saving: Boolean = false,
     walls: ScanWallsState? = null,
     reviewing: Boolean = false,
+    phoneOnly: Boolean = false,
+    trackingLost: Boolean = false,
     reviewPose: (() -> OrbitPose?)? = null,
+    reviewPart: FloatArray? = null,
 ) {
     // Review before you leave: the view leaves the phone and flies to each part still to fix
     // ([reviewPose], the part of the moment), over the room with its lid off, as the save does.
-    val flying = reviewPose != null && !saving
+    val flying = reviewPose != null && !saving && !phoneOnly
     val reviewPoseNow by rememberUpdatedState(reviewPose)
     // Saving, the view is handed back to the automatic framing, which the orbit then drives.
-    LaunchedEffect(saving, flying) { if (saving || flying) orbit.recenter() }
+    // Saving, the view is handed back to the automatic framing, which the orbit then drives. The
+    // Live Room never leaves the phone's eye: no saving orbit, no flight.
+    val orbiting = saving && !phoneOnly
+    val leaves = orbiting || flying
+    LaunchedEffect(leaves) { if (leaves) orbit.recenter() }
     val veil by animateColorAsState(
-        targetValue = if (saving || flying) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
+        targetValue = if (leaves) ArOverlay.cameraDim.copy(alpha = 1f) else ArOverlay.cameraDim,
         animationSpec = tween(SceneViewTokens.Duration.longMillis, easing = SceneViewTokens.Ease.expressive),
         label = "scanVeil",
     )
-    val savingOrbit = remember(saving) { if (saving) ScanSavingOrbit() else null }
+    // Tracking lost over the phone's eye: the capture fades rather than float off its walls.
+    val shown by animateFloatAsState(
+        targetValue = if (phoneOnly && trackingLost) 0f else 1f,
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+        label = "scanLiveShown",
+    )
+    val savingOrbit = remember(orbiting) { if (orbiting) ScanSavingOrbit() else null }
     // Saving, the room loses its lid (#4742): the orbit rises out through its top, past no ceiling.
     // Cut while the scan is reviewed, so it is ready by the save; the orbit holds on the phone's
-    // eye until it is drawn.
-    val cutting = reviewing || saving
+    // eye until it is drawn. The phone's own eye needs no cut.
+    val cutting = !phoneOnly && (reviewing || saving)
     var openTop by remember { mutableStateOf<ReplayDenseLayer?>(null) }
     var lidOff by remember { mutableStateOf(false) }
-    val savingNow by rememberUpdatedState(saving)
+    // The saving orbit's, not the save's: the Live Room saves through the phone's eye still.
+    val savingNow by rememberUpdatedState(orbiting)
     val flyingNow by rememberUpdatedState(flying)
     LaunchedEffect(cutting) {
         openTop = null
@@ -760,7 +942,7 @@ internal fun ScanLiveView(
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = shown },
             replay = drawn,
             transparent = true,
             visible = { it in SCAN_LIVE_GROUPS },
@@ -785,14 +967,39 @@ internal fun ScanLiveView(
             },
             // The walls stand in the room while it is scanned; saving, the orbit shows the cloud.
             walls = walls,
-            drawWalls = !saving,
+            drawWalls = !orbiting,
             // The cloud moves with the phone's eye, which ARCore updates at the camera's 30 Hz: a
             // second view drawn at the display's 60 Hz redrew the same picture every other vsync,
             // one GPU pass and one swap too many on a mid-range phone (#4743). Saving, the orbit is
             // the view's own motion and gets the display's full rate back.
-            maxFps = if (saving || flying) null else SCAN_LIVE_FPS,
+            maxFps = if (leaves) null else SCAN_LIVE_FPS,
         )
-        if (walls != null && !saving && !flying) ScanGuideArrow(walls)
+        if (phoneOnly) {
+            // One camera, the phone's: a finger on the screen moves nothing (no orbit to take over).
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            do {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    },
+            )
+            val lens = orbit.firstPerson
+            if (walls != null && !saving) {
+                ScanAlignedTick(walls)
+                // With tracking lost the eye is stale: no chevron from a pose the phone has left.
+                // In review it leads to the part the card names, once that part is off screen.
+                if (lens != null && !trackingLost && (!reviewing || reviewPart != null)) {
+                    ScanGapChevron(walls, lens, reviewPart = reviewPart.takeIf { reviewing })
+                }
+            }
+        } else if (walls != null && !saving && !flying) {
+            ScanGuideArrow(walls)
+        }
     }
 }
 
@@ -828,6 +1035,7 @@ private val ScanDotSize = Space.md - Space.xs / 2
 
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
 internal const val SCAN_ROOM_GAUGE_TAG = "ar_rerun_scan_room_gauge"
+internal const val SCAN_GAP_CHEVRON_TAG = "ar_rerun_scan_gap_chevron"
 internal const val SCAN_TURN_TAG = "ar_rerun_scan_turn"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"
 internal const val SCAN_RECENTER_TAG = "ar_rerun_scan_recenter"
@@ -841,6 +1049,7 @@ internal const val SCAN_FIX_NOW_TAG = "ar_rerun_scan_fix_now"
 internal const val SCAN_BUILD_ANYWAY_TAG = "ar_rerun_scan_build_anyway"
 internal const val SCAN_NEXT_PART_TAG = "ar_rerun_scan_next_part"
 internal const val SCAN_SAVING_TAG = "ar_rerun_scan_saving"
+internal const val SCAN_SAVING_PROGRESS_TAG = "ar_rerun_scan_saving_progress"
 internal const val SCAN_SAVE_FAILED_TAG = "ar_rerun_scan_save_failed"
 internal const val SCAN_SAVE_AS_FILE_TAG = "ar_rerun_scan_save_as_file"
 internal const val SCAN_SAVE_RETRY_TAG = "ar_rerun_scan_save_retry"

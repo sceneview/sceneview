@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -13,6 +14,8 @@ import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.ScanBlocker
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanPhase
+import io.github.sceneview.demo.demos.internal.ScanSaveProgress
+import io.github.sceneview.demo.demos.internal.ScanSaveStep
 import io.github.sceneview.demo.demos.internal.ScanStep
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -96,5 +99,31 @@ class CaptureChromeUiTest {
         }
         composeRule.onNodeWithText("Building the model", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText(ScanCopy.PAUSED, substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `while the model builds, the top card drops the stopped clock and the scan's gauge`() {
+        composeRule.setContent {
+            ScanHud(
+                phase = ScanPhase.Saving,
+                seconds = 177f,
+                points = 224_000,
+                label = "Room",
+                room = ScanWallsState(),
+                floorShare = 0.6f,
+            )
+        }
+        composeRule.onNodeWithText("2:57", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithTag(SCAN_POINTS_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(SCAN_ROOM_GAUGE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the save card names its step and fills a bar as far as the save is`() {
+        val progress = ScanSaveProgress(ScanSaveStep.Fusing)
+        composeRule.setContent { ScanSavingCard(progress, points = 224_000) }
+        composeRule.onNodeWithText("Step 2 of 5 · Fusing 224k points…").assertIsDisplayed()
+        composeRule.onNodeWithTag(SCAN_SAVING_PROGRESS_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0.2f, 0f..1f)))
     }
 }

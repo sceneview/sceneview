@@ -528,6 +528,9 @@ object ScanCopy {
      */
     const val ROOM_DONE = "Room complete — tap Stop and review"
 
+    /** The Live Room's chevron at the screen's edge, said aloud ([GapChevron]). */
+    const val GAP_CHEVRON = "The largest gap is this way"
+
     /**
      * Walls closed, floor still hatched on the map ([CaptureChrome.complete]): never "Room
      * complete" over a floor the map says is still to scan.

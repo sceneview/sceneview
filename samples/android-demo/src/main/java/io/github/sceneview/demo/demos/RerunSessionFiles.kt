@@ -84,6 +84,7 @@ internal object RerunCaptureBuilder {
      * With a [device] the scan is a `.svscan` v2: its [dense] cloud (tier `depth`), when it has a
      * surfel, goes into the archive as `dense/points.bin` (SVPC, [SvpcCodec]) — never an empty
      * blob; a sparse-tier v2 carries no `dense` key and reads exactly like a v1 scan.
+     * [painted] hears the share of the planes painted so far, `0..1`, on the build's thread.
      */
     suspend fun build(
         events: List<ArDebugEvent>,
@@ -94,6 +95,7 @@ internal object RerunCaptureBuilder {
         denseVoxelM: Float = DenseFusion.VOXEL_M,
         denseMs: Long = 0L,
         camera: String? = null,
+        painted: (Float) -> Unit = {},
     ): RerunCapturePack = withContext(Dispatchers.Default) {
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         val whole = trace.frameAt(trace.duration)
@@ -109,7 +111,9 @@ internal object RerunCaptureBuilder {
         val poses = photos.map { it.pose }
         val picks = rects.map { rect -> rect?.let { PlaneBake.pickPhotos(it, poses, lens) }.orEmpty() }
         val cache = BakePhotoCache(picks) { decodePhoto(photos[it], reads::add) }
-        val baked = planes.indices.mapNotNull { i -> bakePlane(planes[i], rects[i], lens, occlusion, cache.photosFor(i)) }
+        val baked = planes.indices.mapNotNull { i ->
+            bakePlane(planes[i], rects[i], lens, occlusion, cache.photosFor(i)).also { painted((i + 1f) / planes.size) }
+        }
         // `adb logcat -s RerunCaptureBuilder`: what the visibility test costs on a real phone (#4697),
         // and at what size the bake read the photos it painted from.
         // The JVM tests build scans too, and their android.util.Log is a stub that throws.

@@ -283,4 +283,18 @@ class DenseCloudTest {
             )
         }
     }
+
+    @Test
+    fun `the live atlas over a room's camera is see-through, a saved one opaque`() {
+        val cloud = DenseCloud(FloatArray(6), intArrayOf(0xFF102030.toInt(), 0))
+        val opaque = DenseSurfels.atlas(cloud, fallback = 0xFF808080.toInt())
+        assertEquals(0xFF, opaque[3].toInt() and 0xFF)
+        val live = DenseSurfels.atlas(cloud, fallback = 0xFF808080.toInt(), alpha = DenseSurfels.LIVE_ROOM_ALPHA)
+        for (i in 0 until cloud.count) {
+            assertEquals((DenseSurfels.LIVE_ROOM_ALPHA * 255f).toInt().toFloat(), (live[i * 4 + 3].toInt() and 0xFF).toFloat(), 1f)
+        }
+        // The colour itself is kept: the material premultiplies it.
+        assertEquals(0x10, live[0].toInt() and 0xFF)
+        assertTrue("well short of opaque", DenseSurfels.LIVE_ROOM_ALPHA <= 0.7f)
+    }
 }

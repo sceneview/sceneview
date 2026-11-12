@@ -9,6 +9,7 @@ import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
+import io.github.sceneview.demo.demos.internal.ScanSaveStep
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
@@ -37,6 +38,7 @@ import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanCutoff
 import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
 import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanProjection
 import io.github.sceneview.demo.demos.internal.ScanSharpPicker
@@ -115,7 +117,12 @@ internal class ScanCapture private constructor(
     // one runs is skipped, never queued, so a slow phone thins the depth instead of lagging.
     // The map keeps a whole flat or house within this phone's budget: past it, it coarsens the
     // regions the camera has left instead of dropping what is new (#4629).
-    private val dense = if (rawDepth) ScanDenseMap() else null
+    // A room is scanned in first person (the Live Room): its capture is drawn see-through over the camera.
+    private val dense = if (rawDepth) {
+        ScanDenseMap(liveAlpha = if (preset == ScanPreset.ROOM) DenseSurfels.LIVE_ROOM_ALPHA else 1f)
+    } else {
+        null
+    }
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
@@ -426,8 +433,11 @@ internal class ScanCapture private constructor(
      * Stops the scan, waits for the last photos, and builds it into the capture the sessions list
      * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
+     * [onStep] hears each step of it as it starts ([ScanSaveStep]) and how far the painting is,
+     * from the painting's own thread.
      */
-    suspend fun finish(): RerunCapturePack? {
+    suspend fun finish(onStep: (ScanSaveStep, Float) -> Unit = { _, _ -> }): RerunCapturePack? {
+        onStep(ScanSaveStep.Finishing, 0f)
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
         model?.join()
@@ -452,6 +462,7 @@ internal class ScanCapture private constructor(
             val pose = poses[image.path] ?: return@mapNotNull null
             ScanPhoto(image.path, jpeg, pose)
         }
+        onStep(ScanSaveStep.Fusing, 0f)
         val started = System.nanoTime()
         val map = dense
         val cloud = map?.takeIf { it.fusion.count > 0 }
@@ -473,8 +484,10 @@ internal class ScanCapture private constructor(
             depthSource = if (cloud != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
         val camera = "${RerunScanCamera.line}; images ${intrinsics.width}x${intrinsics.height}"
-        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera)
-            .also { model?.keepFor(it) }
+        onStep(ScanSaveStep.Painting, 0f)
+        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera) {
+            onStep(ScanSaveStep.Painting, it)
+        }.also { model?.keepFor(it) }
     }
 
     private fun manifest(spans: Map<String, MediaSpan>) = ReplayManifest(
