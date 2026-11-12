@@ -129,6 +129,15 @@ internal class ScanDenseMap(
         return stats
     }
 
+    /**
+     * One depth frame through the fusion: [project] then [add]. The scan's path on the phone and the
+     * replay's of a recorded scan ([ScanDepthReplay]) alike, so both give the same cloud. On the worker.
+     */
+    fun fuse(frame: DepthFrame, nanos: Long, farM: Float): Pair<DenseSamples, DenseFuseStats> {
+        val samples = project(frame, nanos, farM)
+        return samples to add(samples)
+    }
+
     /** What the coaching line says of the map at [nowNanos] ([clock]'s time). */
     fun detail(nowNanos: Long = clock()): ScanDetail = when {
         full -> ScanDetail.Full

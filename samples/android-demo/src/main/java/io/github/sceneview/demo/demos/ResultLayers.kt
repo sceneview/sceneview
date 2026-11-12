@@ -83,9 +83,9 @@ internal enum class ResultLayer(val key: String) {
  * of the stage colour ([veil]) so the switch is never a cut.
  */
 @Stable
-internal class ResultLayers(val offered: Boolean) {
+internal class ResultLayers(val offered: Boolean, photoFirst: Boolean = false) {
     /** Photo picked over Model (the Plan position is the screen's own `plan`). */
-    var photoPicked by mutableStateOf(false)
+    var photoPicked by mutableStateOf(photoFirst)
 
     /** The splats of the scan's surfels; `null` until built, or when it has none. */
     var splats by mutableStateOf<SplatCloud?>(null)
@@ -160,10 +160,18 @@ internal fun rememberResultLayers(
     surfels: DenseCloud?,
     key: Any?,
     settled: Boolean,
+    /**
+     * A room's result (Live Room): the layers are always offered and open on Photo, the scan as
+     * it was taken, never worse than it; the screen moves to Model when its finished model
+     * passed the quality gate.
+     */
+    photoFirst: Boolean = false,
+    /** Whether the layers are offered whatever the QA mode: a room's result, on its shell or not. */
+    offer: Boolean = photoFirst,
 ): ResultLayers {
     // Debug builds only until it is measured on a device: QA mode can be switched on in the store app.
-    val offered = BuildConfig.DEBUG && DemoSettings.qaMode && photoOffered(source, surfels)
-    val layers = remember(source, surfels, key, offered) { ResultLayers(offered) }
+    val offered = (offer || BuildConfig.DEBUG && DemoSettings.qaMode) && photoOffered(source, surfels)
+    val layers = remember(source, surfels, key, offered) { ResultLayers(offered, photoFirst = photoFirst && offered) }
     LaunchedEffect(layers, settled) {
         if (!layers.offered || !settled || layers.splats != null || layers.unavailable) return@LaunchedEffect
         val started = System.nanoTime()
@@ -237,6 +245,8 @@ internal fun ResultLayerPicker(
     ready: Boolean,
     onPlan: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /** The model first, Photo second: a room's shell, which the result opens on. */
+    modelFirst: Boolean = false,
 ) {
     if (!layers.offered) return
     // The dock's Plan leaves Photo too: the plan is read on the model.
@@ -285,7 +295,7 @@ internal fun ResultLayerPicker(
             border = BorderStroke(pill.outlineWidth, pill.outline),
         ) {
             ConnectedChoiceRow(
-                options = ResultLayer.entries,
+                options = if (modelFirst) MODEL_FIRST else ResultLayer.entries,
                 selected = layers.selected(plan),
                 onSelect = { picked ->
                     if (!ready) return@ConnectedChoiceRow
@@ -374,6 +384,9 @@ internal fun ResultLayerVeil(layers: ResultLayers, ground: Color, modifier: Modi
     val veil = layers.veil.value
     if (veil > 0f) Box(modifier.alpha(veil).background(ground))
 }
+
+/** The switch's order when the result opens on the model: Model, Photo, Plan. */
+private val MODEL_FIRST = listOf(ResultLayer.Model, ResultLayer.Photo, ResultLayer.Plan)
 
 /** Test tag of the [ResultLayerPicker]. */
 internal const val RESULT_LAYERS_TAG = "result-layers"

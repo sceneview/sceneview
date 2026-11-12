@@ -23,6 +23,8 @@ import io.github.sceneview.demo.demos.internal.CaptureCue
 import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
+import io.github.sceneview.demo.demos.internal.ScanSaveCopy
+import io.github.sceneview.demo.demos.internal.ScanSaveProgress
 import io.github.sceneview.demo.demos.internal.ScanTurn
 import io.github.sceneview.math.Position
 import io.github.sceneview.demo.demos.internal.OrbitPose
@@ -68,6 +70,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -136,6 +140,8 @@ internal fun ScanHud(
     covered: Float? = null,
     complete: Boolean = room != null && CaptureChrome.complete(room.done, floorShare),
     trackingLost: Boolean = false,
+    /** Live Room: the floor scanned, m²; the detail line then reads `0:42 · 6.2 m² floor · 12,345 points`. */
+    floor: Float? = null,
 ) {
     val clock = ArDebugFormat.clock(seconds)
     val share = room?.let { CaptureChrome.share(it.completion, it.done, floorShare, complete) }
@@ -157,14 +163,14 @@ internal fun ScanHud(
             // the room is, the floor covered, stuck or paused; past the capture, what it is doing.
             val now = activity ?: if (phase.integrates) ScanActivity.Working else ScanActivity.Paused
             Text(
-                text = CaptureChrome.headline(label, phase, now, share, covered.takeIf { room == null }, trackingLost),
+                text = CaptureChrome.headline(label, phase, now, share, covered.takeIf { room == null && floor == null }, trackingLost),
                 style = ScanLineStyle.copy(color = ArOverlay.onScrim),
                 modifier = Modifier.weight(1f),
             )
         }
         // One line under it (#4807): `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured`.
         Text(
-            text = CaptureChrome.detail(clock, room?.wallCount, points),
+            text = floor?.let { CaptureChrome.honestDetail(clock, it, points) } ?: CaptureChrome.detail(clock, room?.wallCount, points),
             style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -526,17 +532,38 @@ internal fun HomeReviewCard(
  * capture's [points] (#4719), while the view turns round the cloud ([ScanLiveView]'s `saving`).
  */
 @Composable
-internal fun ScanSavingCard(points: Int = 0) {
+internal fun ScanSavingCard(points: Int = 0, progress: ScanSaveProgress? = null) {
     OverlayCard(testTag = SCAN_SAVING_TAG) {
         ScanStepRow(ScanStep.Model)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(Space.md + Space.xs / 2),
-                color = ArOverlay.onScrim,
-                strokeWidth = Space.xs / 2,
+        if (progress == null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(Space.md + Space.xs / 2),
+                    color = ArOverlay.onScrim,
+                    strokeWidth = Space.xs / 2,
+                )
+                Spacer(Modifier.width(Space.sm))
+                Text(text = ScanCopy.fusing(points), style = OnScrimTitle)
+            }
+        } else {
+            // Live Room: the step the save is really in, over a bar driven by the save's own steps
+            // ([ScanSaveProgress]) — it moves between two real values only, never on a timer.
+            val shown by animateFloatAsState(
+                targetValue = progress.fraction,
+                animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+                label = "saveProgress",
             )
-            Spacer(Modifier.width(Space.sm))
-            Text(text = ScanCopy.fusing(points), style = OnScrimTitle)
+            Text(
+                text = ScanSaveCopy.line(progress, ScanCopy.fusing(points).takeIf { points > 0 }),
+                style = OnScrimTitle,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            LinearProgressIndicator(
+                progress = { shown },
+                modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth(),
+                color = ArOverlay.accentProgress,
+                trackColor = ArOverlay.meterTrack,
+            )
         }
     }
 }
@@ -707,6 +734,8 @@ internal fun ScanLiveView(
     walls: ScanWallsState? = null,
     reviewing: Boolean = false,
     reviewPose: (() -> OrbitPose?)? = null,
+    /** Live Room's stop: the camera is covered at once, not faded, as the saving orbit takes the view. */
+    cameraOff: Boolean = false,
 ) {
     // Review before you leave: the view leaves the phone and flies to each part still to fix
     // ([reviewPose], the part of the moment), over the room with its lid off, as the save does.
@@ -753,7 +782,7 @@ internal fun ScanLiveView(
     }
     Box(modifier = Modifier.fillMaxSize().testTag(SCAN_STAGE_TAG)) {
         // Only the camera is dimmed: the cloud is drawn by its own view, above the veil.
-        Box(Modifier.fillMaxSize().background(veil))
+        Box(Modifier.fillMaxSize().background(if (cameraOff) LocalStageChrome.current.ground else veil))
         ArDebugSceneView(
             session = session,
             orbit = orbit,

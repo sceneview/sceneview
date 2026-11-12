@@ -81,6 +81,8 @@ import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
+import io.github.sceneview.demo.demos.internal.PoseContinuity
+import io.github.sceneview.demo.demos.internal.PoseStep
 import io.github.sceneview.demo.demos.internal.PlaneWallSource
 import io.github.sceneview.demo.demos.internal.livePlanesOf
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
@@ -174,6 +176,17 @@ internal class ArDebugRecorder {
     private var recordedFor: ArDebugTrace? = null
 
     /**
+     * A room scan's pose continuity guard: ARCore can teleport the pose in one frame while still
+     * reporting TRACKING (a walk of 2026-11-10 slipped 57 cm and 86° for 3 s), and every photo
+     * and depth image fused meanwhile lands in the wrong place. A slipped frame integrates nothing.
+     */
+    private val continuity = PoseContinuity()
+
+    /** Whether the scan is held off a slipped pose, and whether long enough to offer a restart. */
+    val slipped: Boolean get() = continuity.isSlipped
+    val stuck: Boolean get() = continuity.isStuck
+
+    /**
      * Records [frame] into [trace]. With a [scan] recording into that same trace, the new feature
      * points also take their colour from the frame's camera image, and the frame gives the scan a
      * photo when the camera has moved enough since the last one.
@@ -190,9 +203,17 @@ internal class ArDebugRecorder {
         if (nanos <= 0L || frame.camera.trackingState != TrackingState.TRACKING) return
 
         val display = frame.camera.displayOrientedPose.toDebugPose()
+        val capture = scan?.takeIf { it.trace === trace }
+        // Checked before anything is added: a slipped pose, photo or depth image is never fused —
+        // only its raw depth recorded, flagged, so the guard itself replays off the phone.
+        val step = if (capture != null) continuity.step(nanos, display) else PoseStep.Continuous
+        if (capture != null && step != PoseStep.Continuous) capture.notePoseStep(nanos, display, step)
+        if (capture != null && !step.integrates) {
+            capture.holdDepth(frame, display, step)
+            return
+        }
         trace.addPose(nanos, display)
 
-        val capture = scan?.takeIf { it.trace === trace }
         capture?.recordDepthStats(nanos)
         val pointsDue = pointsGate.isDue(nanos)
         val photoDue = capture?.wantsPhoto(nanos, display) == true
@@ -207,7 +228,7 @@ internal class ArDebugRecorder {
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
-            if (capture != null && depth != null) capture.fuseDepth(depth, image)
+            if (capture != null && depth != null) capture.fuseDepth(depth, image, display, step)
         } finally {
             image?.close()
             depth?.close()
@@ -290,6 +311,7 @@ internal class ArDebugRecorder {
         planeIds.clear()
         livePlanes.clear()
         anchorIds.clear()
+        continuity.reset()
     }
 
     private companion object {

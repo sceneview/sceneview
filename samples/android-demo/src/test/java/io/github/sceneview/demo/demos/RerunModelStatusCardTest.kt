@@ -42,6 +42,23 @@ class RerunModelStatusCardTest {
     val rule = createComposeRule()
 
     @Test
+    fun `a result with no model shows determinate progress from its first composition`() {
+        var progress by mutableStateOf(0f)
+        val loading = checkNotNull(ModelStatus.slot(null, settled = false, rawShownFirst = false))
+        rule.setContent {
+            SceneViewDemoTheme(darkTheme = true) {
+                Box(Modifier.width(CARD_WIDTH.dp)) { ModelStatusLine(loading, progress = progress) }
+            }
+        }
+        fun share(): Float = rule.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo), useUnmergedTree = true,
+        ).fetchSemanticsNodes().single().config[SemanticsProperties.ProgressBarRangeInfo].current
+        assertEquals(0f, share(), 0f)
+        rule.runOnIdle { progress = 0.65f }
+        assertEquals(0.65f, share(), 0f)
+    }
+
+    @Test
     fun `the line is the one indicator and the only thing announced`() {
         val finishing = checkNotNull(ModelStatus.slot(mesh(finished = false), settled = false, rawShownFirst = false))
         rule.setContent {

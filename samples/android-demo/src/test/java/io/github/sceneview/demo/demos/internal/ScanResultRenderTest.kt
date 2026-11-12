@@ -18,59 +18,12 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * The scan result's picture: the turntable it opens on, the dollhouse cut of a room, the QA
+ * The scan result's picture: the dollhouse cut of a room, the QA
  * shading A/B, the finish's crop, the model the result is framed by and the `.glb` cache's
  * pipeline key.
  */
 class ScanResultRenderTest {
-    private val fov = 46.4
-    private val zone = FramingInsets(left = 0.04f, top = 0.14f, right = 0.04f, bottom = 0.22f)
     private val room = ScanResultFrame(20f, floatArrayOf(-2f, 0f, -1.5f, 2f, 2.5f, 1.5f), 0f, 1f)
-
-    // ── Turntable ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `the turntable turns slowly from the opening, at its distance, until it is stopped`() {
-        val turntable = ScanResultTurntable()
-        val area = RerunResultView.area(zone)
-        val opening = room.pose(40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, area)
-        assertEquals("not turned yet", opening, turntable.pose(room, opening, 40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, zone))
-        // The first frame only starts the clock; a second later it has turned a few degrees.
-        turntable.advanceTo(1_000_000_000L)
-        assertEquals(0f, turntable.angle, 0f)
-        turntable.advanceTo(1_016_000_000L)
-        repeat(61) { turntable.advanceTo(1_016_000_000L + (it + 1) * 16_000_000L) }
-        assertEquals(ScanResultTurntable.DEGREES_PER_SECOND, turntable.angle, 0.1f)
-        val turned = turntable.pose(room, opening, 40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, zone)
-        assertEquals(opening.azimuthDegrees + turntable.angle, turned.azimuthDegrees, 1e-3f)
-        assertEquals("gravity kept: the same pitch", opening.elevationDegrees, turned.elevationDegrees, 1e-3f)
-        assertTrue("never closer than the opening", turned.distance >= opening.distance - 1e-4f)
-        // A pause — the app away — is not time to turn through.
-        val before = turntable.angle
-        turntable.advanceTo(60_000_000_000L)
-        assertEquals(before, turntable.angle, 0f)
-        turntable.stop()
-        assertFalse(turntable.running)
-        assertEquals(opening, turntable.pose(room, opening, 40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, zone))
-        turntable.advance(1f)
-        assertEquals("stopped for good", 0f, turntable.angle, 0f)
-    }
-
-    @Test
-    fun `all the way round the turntable keeps the room whole in the zone, at a steady distance`() {
-        assertTurnsSteadily(room, elevation = 40f, offset = ScanResultFraming.THREE_QUARTER)
-    }
-
-    @Test
-    fun `a room turns on the screen's own settings, square on and from above, on its cut box`() {
-        val elevation = ScanResultFraming.elevation(ScanScope.Room)
-        val offset = ScanResultFraming.offset(ScanScope.Room)
-        assertEquals(38f, elevation, 0f)
-        assertEquals(0f, offset, 0f)
-        // As the screen frames it: the box cut where its walls are, opened on its widest side.
-        val shown = room.cappedAt(ScanResultCut.HEIGHT_M).widestSide(elevation, fov, 0.46f, RerunResultView.area(zone))
-        assertTurnsSteadily(shown, elevation, offset)
-    }
 
     // ── The dollhouse cut ─────────────────────────────────────────────────────
 
@@ -287,26 +240,6 @@ class ScanResultRenderTest {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /**
-     * Turns [frame] all the way round from the opening at [elevation], [offset] off its front: at
-     * the opening's pitch, never closer than it, and backed off at most where the box needs it to
-     * stay in the zone — within a fifth of the opening's distance.
-     */
-    private fun assertTurnsSteadily(frame: ScanResultFrame, elevation: Float, offset: Float) {
-        val turntable = ScanResultTurntable(degreesPerSecond = 15f)
-        val opening = frame.pose(elevation, offset, fov, 0.46f, RerunResultView.area(zone))
-        val distances = ArrayList<Float>()
-        repeat(24) {
-            turntable.advance(1f)
-            val turned = turntable.pose(frame, opening, elevation, offset, fov, 0.46f, zone)
-            assertEquals("gravity kept", opening.elevationDegrees, turned.elevationDegrees, 1e-3f)
-            assertEquals(opening.azimuthDegrees + turntable.angle, turned.azimuthDegrees, 1e-3f)
-            distances += turned.distance
-        }
-        assertTrue("never closer: ${distances.min()} < ${opening.distance}", distances.min() >= opening.distance - 1e-4f)
-        assertTrue("distances ${distances.min()}..${distances.max()}", distances.max() <= opening.distance * 1.2f)
-    }
 
     private fun <T : Any> assertNotNullAnd(value: T?): T {
         assertNotNull(value)
