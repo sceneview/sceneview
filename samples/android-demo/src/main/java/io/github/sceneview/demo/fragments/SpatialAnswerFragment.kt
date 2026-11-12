@@ -17,7 +17,7 @@ object SpatialAnswerFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.ViewInAr,
         order = 23,
-        addedIn = "4.69.0",
+        addedIn = "4.70.0",
         tags = setOf("spatial", "dimensions", "assistant", "box", "ar"),
     )
 
