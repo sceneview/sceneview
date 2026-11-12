@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v4.69.1 — 2026-11-12
+
+### Added
+
+- **Demo app: Matter (#5002).** A tactile material studio at the top of Play & feel. Six samples are shaded with physically based materials: memory foam, amber gel, velvet, leather, Carrara marble and brushed steel. Each one deforms under the finger and answers with its own haptic pattern, driven by the simulated rebound. Memory foam keeps the trace of the finger and recovers slowly, gel springs back, velvet and leather fold, and marble and steel stay rigid. The demo opens with the SceneView cube dropping into the foam, which is skipped on first touch, with reduced motion and in QA builds. Deep links: `sceneview://demo/matter` (alias `feel`). No public SDK API change.
+
+### Changed
+
+- Play listing: the phone Home and Model Viewer screenshots and both tablet sets are re-captured on 4.69.0, and no listing image shows the CC-BY-NC Damaged Helmet any more.
+- **Demo app: the 4.68 Home is back.** The full-bleed live hero (the night circuit in the rain), its four-page pager and the large Featured cards return while the Home is redesigned. The six-section catalogue, Matter and every 4.69 fix stay, and a featured demo still keeps its place in its category.
+
+### Fixed
+
+- **3D Scan (demo): an L-shaped room whose wing walls were never seen keeps a clean outline ([#4784](https://github.com/sceneview/sceneview/issues/4784)).** The plan no longer doubles back along the inner wall in a 9 cm spur of three extra sides: the wing's two unseen walls are the only deduced sides, and the area is given as an estimate.
+- **Android teardown deferral (#4969).** The five-second warning no longer authorizes destruction on a stale fence. Retiring engines accept a reached fence regardless of polling cadence, so slow loopers do not retain an engine and EGL context per screen; shared engines still require freshness. Teardowns share one poll and probe per engine, back off at a bounded cadence after a single warning, reset their wait state when the queue drains, and replace errored fences. Off-main callers log and retain the previous calling-thread fallback. Native destruction and command submission remain synchronous and can still block; this does not guarantee an ANR-free teardown or establish the cause of the reported ANRs.
+- **`Engine.destroyRendererWhenBackendIdle` is public (#4969).** An app that creates its own `Renderer` on SceneView's engine can hand it to the same deferred teardown instead of calling `destroyRenderer` on the main thread. The demo's showroom reflection did the latter, and its blocking destroy was an ANR seen when a viewer screen closed under load.
+
 ## v4.69.0 — 2026-11-12
 
 ### Added
