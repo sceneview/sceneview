@@ -569,6 +569,17 @@ sceneview-core (Kotlin Multiplatform)
 | `samples/flutter-demo` | Flutter | `cd samples/flutter-demo && flutter run` |
 | `samples/react-native-demo` | React Native | See its README |
 
+## Used in
+
+Declared in their public source code or published build files (checked November 12, 2026):
+
+- **[Meshtastic](https://github.com/meshtastic/Meshtastic-Android/blob/main/feature/node/build.gradle.kts)**: the Android app's 3D and AR device viewer (SceneView 4.68.0).
+- **[Bitkey by Block](https://github.com/proto-at-block/bitkey/blob/main/app/gradle/libs.versions.toml)**: 3D rendering of the hardware wallet in the Android app (SceneView 2.3.0).
+- **[Vocable AAC by WillowTree](https://github.com/willowtreeapps/vocable-android/blob/main/gradle/libs.versions.toml)**: head tracking for hands-free communication (ARSceneView 2.3.3).
+- **[Niantic Spatial](https://github.com/nianticspatial/nsdk-samples-kotlin/blob/main/NsdkSamples/NsdkSamples/build.gradle.kts)**: the Kotlin samples of its spatial SDK (ARSceneView 2.3.1).
+- **[GeneXus](https://central.sonatype.com/artifact/com.genexus.android/AugmentedReality)**: its Android augmented reality module, in the Maven Central POM (SceneView 2.3.0).
+- **[TruVideo](https://central.sonatype.com/artifact/com.truvideo.com/sdk-camera)**: its camera SDK, in the Maven Central POM (ARSceneView 2.3.0).
+
 ## Built with SceneView
 
 - **[3D AR Model Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
