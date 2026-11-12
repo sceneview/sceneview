@@ -12,13 +12,13 @@ import io.github.sceneview.model.ModelInstance
  */
 internal object FilamentWithoutJni {
 
-    fun engine(): Engine {
+    fun engine(nativeObject: Long = 1L): Engine {
         val constructor = Engine::class.java.getDeclaredConstructor(
             Long::class.javaPrimitiveType,
             Engine.Config::class.java
         )
         constructor.isAccessible = true
-        return constructor.newInstance(1L, null)
+        return constructor.newInstance(nativeObject, null)
     }
 
     /** A glTF instance of [engine]: no entity, no skin, animations of zero length. */

@@ -1,90 +1,92 @@
 package io.github.sceneview
 
 /**
- * How old a fence may be when it is found reached and still count as fresh: two
- * [BACKEND_IDLE_POLL_MS] polls plus one of slack for a late `Handler`.
+ * Maximum age of a reached fence on a shared engine: two polls plus one of slack for a late
+ * Handler. This bounds main-thread queuing time, not backend work. A shader compilation queued
+ * in these 48 ms still costs its full price when a native destructor waits for it.
  *
- * This bounds main-thread time, not backend work: a fresh fence was reached at most this long after
- * it was created, so what can still be queued behind it is what the main thread queued in those
- * 48 ms. That is usually a frame or two, but a single expensive command — a shader compilation —
- * queued in that window still costs its full price when the release waits. The window narrows the
- * chance of a blocking release; it does not rule it out.
- *
- * Fixed, and measured on the clock rather than in polls. A window that widened with the observed
- * gap between polls let a fence armed before a long main-thread pass — the next screen composing
- * and queuing its shaders — pass for fresh at the poll right after it, whenever the pass was not
- * much longer than the usual gap. So when the main thread polls less often than every 48 ms (a
- * steady 15 fps jank), no fence is ever fresh and teardowns wait for [FRESH_FENCE_GIVE_UP_MS]:
- * usually a late release rather than one that blocks — a shader compilation queued just before
- * the give-up is still waited for.
+ * Keep this window fixed: widening it with the observed poll gap accepts the very backlog a long
+ * main-thread pass just queued. Steady polls more than 48 ms apart cannot satisfy it; an engine
+ * retiring after its producers stop instead accepts any reached fence, regardless of its age.
  */
 internal const val FRESH_FENCE_MAX_AGE_MS = 3 * BACKEND_IDLE_POLL_MS
 
-/**
- * After this long, counted from the probe's first poll, [FreshFenceProbe] accepts any reached
- * fence, fresh or not: a backend that never catches up must not hold a teardown forever. That is
- * the behaviour before the probe existed.
- */
-internal const val FRESH_FENCE_GIVE_UP_MS = 5_000L
+/** Diagnostic threshold only: elapsed time never makes a stale fence safe. */
+internal const val FRESH_FENCE_WARN_AFTER_MS = 5_000L
 
 /**
- * Answers, poll after poll, "would a release that waits for everything queued on the backend
- * return at once right now?" for a teardown deferred by `Engine.whenBackendIdle`.
+ * Polls the backend backlog on the engine's thread, without waiting for a fence.
  *
- * A fence created when the teardown was deferred only says the backend executed what was queued
- * *before* it. `Engine.destroyRenderer` and gltfio's `asyncCancelLoad` wait for everything queued
- * *when they run* — on a shared engine, the next screen's shader compilations queued in between.
- * Releasing as soon as that first fence is reached moved the wait instead of removing it: the
- * release still blocked the main thread, now from a `Handler` callback.
+ * A dispose-time fence covers commands queued before it. `destroyRenderer` and `asyncCancelLoad`
+ * wait for everything queued when they run, including a new screen's shaders on a shared engine.
+ * Accepting an old fence there merely moves the blocking wait into a Handler callback. A reached
+ * fence older than [maxFreshAgeMs] is therefore replaced. Freshness narrows that gap; it cannot
+ * bound native destruction, or command submission itself, which can block on a full stream.
  *
- * So a reached fence only counts when it is found reached soon after it was created, on [now]'s
- * monotonic clock: within [maxFreshAgeMs], 48 ms ([FRESH_FENCE_MAX_AGE_MS]). Behind it there is
- * then at most what the main thread queued in that time. An older one is replaced by a new one and
- * the probe keeps polling; how far apart the polls are is not up to the probe (a janking main
- * thread, a slow main-thread pass, or a caller that skips polls while something else holds the
- * teardown). Polls steadily more than 48 ms apart never find a fresh fence, and only [giveUpMs]
- * ends them.
+ * Once the owner marks the engine RETIRING, its producers must have stopped. [isBusy] can then
+ * accept a plain reached fence: main-thread cadence must not retain the engine and EGL context.
+ * The owner invalidates the fence when another teardown is registered or runs, so subsequent
+ * releases cover that teardown's commands too. Other conditions, such as decoders, still apply.
  *
- * [giveUpMs] runs from the probe's first poll, not from its creation: a caller that only starts
- * polling once something else has settled (a model load, which may take seconds) still gets the
- * freshness check for that long, rather than a fallback already expired. After it any reached
- * fence counts, so a backend that never catches up gets the previous behaviour, never a leak.
+ * After [warnAfterMs], counted from the first poll rather than construction (a load may delay
+ * polling), [onStillBusy] runs once. This never authorizes destruction. The owner backs off,
+ * keeping occasional short confirmation polls for shared engines to observe a fresh fence.
+ * Missing fences remain busy; an errored fence ([isReached] returns null) is replaced.
  *
- * Filament-free so the ordering can be pinned in a JVM test; `Engine.whenBackendIdle` binds it to
- * Filament fences. Main thread only.
+ * Filament-free for JVM tests. The owner must release the probe before destroying its engine,
+ * or abandon it without calling [release] after a raw engine destruction.
  */
 internal class FreshFenceProbe<F : Any>(
     private val createFence: () -> F?,
-    private val isReached: (F) -> Boolean,
+    private val isReached: (F) -> Boolean?,
     private val destroyFence: (F) -> Unit,
     private val now: () -> Long,
     private val maxFreshAgeMs: Long = FRESH_FENCE_MAX_AGE_MS,
-    private val giveUpMs: Long = FRESH_FENCE_GIVE_UP_MS,
+    private val warnAfterMs: Long = FRESH_FENCE_WARN_AFTER_MS,
+    private val onStillBusy: () -> Unit = {},
 ) {
     private var fence: F? = null
     private var armedAt = 0L
     private var firstPollAt = NOT_POLLED
+    var hasWarned = false
+        private set
 
     /**
-     * `true` while the backend has not recently caught up with what is queued on it. Never waits.
-     * `false` when no fence can be created: the caller then releases at once, as it did before.
+     * `true` while the backend has not recently caught up with what is queued on it.
+     * Failure to create a fence is not evidence that the backend is idle. Fence waits use a zero
+     * timeout, but submitting commands can still block in Filament.
      */
-    fun isBusy(): Boolean {
+    fun isBusy(): Boolean = isBusy(requireFresh = true)
+
+    fun isBusy(requireFresh: Boolean): Boolean {
         val at = now()
         if (firstPollAt == NOT_POLLED) firstPollAt = at
-        val current = fence ?: arm(at) ?: return false
-        if (!isReached(current)) return true
-        if (at - armedAt <= maxFreshAgeMs || at - firstPollAt >= giveUpMs) return false
-        // Reached, but found so long after it was queued that the backend may have taken on
-        // more since: that is still ahead of the release. Measure again from here.
+        if (!hasWarned && at - firstPollAt >= warnAfterMs) {
+            hasWarned = true
+            onStillBusy()
+        }
+        val current = fence ?: arm(at) ?: return true
+        when (isReached(current)) {
+            false -> return true
+            true -> if (!requireFresh || at - armedAt <= maxFreshAgeMs) return false
+            null -> Unit // ERROR is not a pending fence: retry with a new one.
+        }
+        // A stale or errored fence cannot establish readiness. Measure again from here.
         release()
-        return arm(at) != null
+        arm(at)
+        return true
     }
 
     /** Destroys the fence still held, if any. Call once the probe is no longer polled. */
     fun release() {
         fence?.let { runCatching { destroyFence(it) } }
         fence = null
+    }
+
+    /** Ends a wait episode without touching JNI (the engine may already be gone). */
+    fun resetWait() {
+        firstPollAt = NOT_POLLED
+        hasWarned = false
     }
 
     private fun arm(at: Long): F? = createFence()?.also {

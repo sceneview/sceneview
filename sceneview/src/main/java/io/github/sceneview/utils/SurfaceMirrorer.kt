@@ -325,8 +325,15 @@ class SurfaceMirrorer {
         }
         this.engine = null
         if (engine != null) release(engine, swapChains, waitBudget)
-        // Renderer destruction has an unbounded native wait. Defer it until a fresh fence is
-        // reached (any reached fence after the 5 s fallback). The engine must outlive the release.
+        // Not `destroyRenderer` on the spot: Filament's renderer teardown first waits, with no
+        // bound, for every command already queued on the backend — the scene's last mirror passes
+        // and, right after it appeared, its shader links. A recorded scene disposed then parked the
+        // main thread on that whole queue (#3799). The release is polled until the backend has
+        // caught up recently (`Engine.whenBackendIdle`), or reached the fence of a retiring
+        // engine. After 5 s polling backs off, without forcing a release. The engine outlives it.
+        // `FRenderer::terminate` still creates and waits on its own fence. On a shared engine,
+        // that includes whatever was queued in the last 48 ms, potentially an expensive shader
+        // compilation: the same unbounded native wait as the scene's own renderer (#3854).
         if (renderer != null) engine?.destroyRendererWhenBackendIdle(renderer)
         onHostLost?.invoke()
     }
