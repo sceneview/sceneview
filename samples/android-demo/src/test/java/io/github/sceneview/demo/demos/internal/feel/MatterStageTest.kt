@@ -21,7 +21,7 @@ class MatterStageTest {
     private fun hit(stage: MatterStage, x: Float, y: Float, z: Float) = stage.pointOnSlab(
         stage.eyeX, stage.eyeY, stage.eyeZ, x - stage.eyeX, y - stage.eyeY, z - stage.eyeZ)
 
-    @Test fun heroFillsAbout90PercentOfPortraitWidthAndFitsShortWindows() {
+    @Test fun heroFillsAbout75PercentOfPortraitWidthAndFitsShortWindows() {
         val mesh = MatterMeshes.slab()
         for ((width, height) in listOf(1080 to 1600, 360 to 400, 900 to 300)) {
             val stage = stage(width, height)
@@ -34,7 +34,7 @@ class MatterStageTest {
             }
             if (height > width) {
                 val occupied = (points.maxOf { it.first } - points.minOf { it.first }) / width
-                assertTrue("hero width is $occupied", occupied in .89f.. .91f)
+                assertTrue("hero width is $occupied", occupied in .74f.. .76f)
             }
             val centreY = (points.maxOf { it.second } + points.minOf { it.second }) / 2f
             assertEquals("silhouette centres with room for its contact shadow", height * .48f, centreY, height * .012f)

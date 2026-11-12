@@ -37,7 +37,7 @@ material {
             "name": "radius"
         },
         {
-            "type": "float4",
+            "type": "float2",
             "name": "profile"
         },
         {
@@ -126,7 +126,6 @@ material {
     "specularAntiAliasing": true
 }
 vertex {
-    #define MATTER_FOLDS
     #include "matter_deformation.vs"
 }
 fragment {

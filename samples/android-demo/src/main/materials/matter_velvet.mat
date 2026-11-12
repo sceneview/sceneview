@@ -37,7 +37,7 @@ material {
             "name": "radius"
         },
         {
-            "type": "float4",
+            "type": "float2",
             "name": "profile"
         },
         {
@@ -127,7 +127,6 @@ material {
 }
 vertex {
     #define MATTER_PILE_TRAIL
-    #define MATTER_FOLDS
     #include "matter_deformation.vs"
 }
 fragment {
@@ -138,19 +137,15 @@ fragment {
         float compressed = variable_rest.w;
         float crushed = max(compressed, variable_bentNormal.w * 0.65);
         vec3 colour = materialParams.albedo;
-        float occlusion = 1.0, height = 0.0;
         vec3 n = normalize(variable_bentNormal.xyz);
         vec2 nap = p.xz + p.y * vec2(0.31, 0.73);
         float pile = detail.r;
         float resolved = 1.0 - smoothstep(0.35, 1.4, length(fwidth(nap * vec2(65.0, 240.0))));
         float facing = clamp(dot(n, getWorldViewVector()), 0.0, 1.0);
-        colour *= (0.48 + 0.24 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * crushed);
-        height = (detail.g - 0.5) * 0.0018 * resolved;
-        vec3 t = normalize(variable_bentTangent.xyz);
-        t = normalize(t - n * dot(t, n));
-        vec3 b = cross(n, t);
-        float sweep = (pile - 0.5) * 0.30;
-        n = normalize(n + t * (sweep + crushed * 0.22) + b * sweep * 0.45);
+        // Low-frequency nap varies tint slightly, never the surface normal. The old
+        // pile-noise normal tilt made an undeformed, planar top look like lumpy modelling.
+        colour *= (0.60 + 0.04 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * crushed);
+        float height = (detail.g - 0.5) * 0.00035 * resolved;
         vec3 detailed = matterBump(n, height);
         mat3 toTangent = transpose(getWorldTangentFrame());
         material.normal = toTangent * detailed;
@@ -161,11 +156,11 @@ fragment {
         // Cloth uses roughness for its sole Charlie sheen lobe. Preserve the nap response
         // without also evaluating a dielectric GGX base lobe and a second IBL lookup.
         material.roughness = clamp(materialParams.sheenRoughness - crushed * 0.13 +
-            (pile - 0.5) * 0.10, 0.2, 1.0);
-        material.ambientOcclusion = occlusion * (1.0 - 0.72 * cavity);
+            (detail.g - 0.5) * 0.02, 0.2, 1.0);
+        material.ambientOcclusion = 1.0 - 0.72 * cavity;
         vec3 pileTint = sqrt(materialParams.albedo);
         pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
-        material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + crushed * 0.2), 0.0, 1.0);
+        material.sheenColor = clamp(pileTint * materialParams.sheen * (0.91 + pile * 0.03 + crushed * 0.2), 0.0, 1.0);
         // Velvet has no rigid contact ring; keep that fragment branch out of this family.
     }
 }

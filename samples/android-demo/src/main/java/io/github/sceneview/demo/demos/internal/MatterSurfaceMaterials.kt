@@ -68,7 +68,7 @@ internal class MatterSurfaceMaterials(
             setParameter("bounce", 0f)
             setParameter("squash", 0f)
             setParameter("radius", kind.radius)
-            setParameter("profile", finish.falloff, finish.bulge, finish.wrinkles, finish.foldCount)
+            setParameter("profile", finish.falloff, finish.bulge)
             setParameter("rimShape", finish.rimRadius, finish.rimWidth)
             setParameter("trailMode", 0f)
             setParameter("trail", MaterialInstance.FloatElement.FLOAT4,
@@ -105,10 +105,9 @@ internal class MatterSurfaceMaterials(
         val material = loader.createMaterial(payload)
         val instance = create(kind, material)
         compiling = true
-        // Warm the studio key, local fill/rim and soft-shadow receiver variants.
+        // Warm the single studio key and opening-mark shadow receiver variants.
         material.compile(Material.CompilerPriorityQueue.LOW,
-            Material.UserVariantFilterBit.DIRECTIONAL_LIGHTING or Material.UserVariantFilterBit.SHADOW_RECEIVER or
-                Material.UserVariantFilterBit.DYNAMIC_LIGHTING,
+            Material.UserVariantFilterBit.DIRECTIONAL_LIGHTING or Material.UserVariantFilterBit.SHADOW_RECEIVER,
             Handler(Looper.getMainLooper()), Runnable {
                 if (!destroyed) {
                     compiling = false

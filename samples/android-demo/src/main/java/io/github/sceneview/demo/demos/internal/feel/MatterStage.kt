@@ -51,13 +51,14 @@ internal class MatterStage {
                         if (depth <= NEAR) return false
                         val right = x * COS_AZIMUTH - z * SIN_AZIMUTH
                         val up = x * UP_X + cy * COS + z * UP_Z
-                        if (abs(right) > depth * TAN_HALF_FOV * .957f ||
+                        if (abs(right) > depth * TAN_HALF_FOV * .79f ||
                             abs(up) > depth * TAN_HALF_FOV / aspect * .78f) return false
                     }
             return true
         }
         // Re-centre the projected silhouette, not the origin: perspective lifts the far edge.
-        // The rounded silhouette fills ~90% width; the silhouette and soft shadow together centre in the free stage.
+        // The rounded silhouette fills ~75% of portrait width, with space for the contact
+        // shadow. The 0.79 frustum allowance includes the box corners outside the bevel.
         repeat(5) {
             var low = 3f; var high = 100f
             repeat(30) {

@@ -1,4 +1,4 @@
-// Matte studio floor; the analytic contact shadow also works without a shadow-map pass.
+// Lit matte studio floor; analytic contact shadow avoids a dense slab shadow-map pass.
 // matc 1.77.3: --optimize-size -p mobile -a opengl -a vulkan
 material {
     name: "Matter floor",
@@ -8,7 +8,7 @@ material {
     ],
     requires: [position],
     variables: [floorPosition],
-    shadingModel: unlit
+    shadingModel: lit
 }
 vertex {
     void materialVertex(inout MaterialVertexInputs material) {
@@ -24,6 +24,11 @@ fragment {
         float outside = max(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.10, 0.0);
         float shadow = (0.38 * exp(-outside * outside / 0.09) +
             0.30 * exp(-outside * outside / 0.70)) * materialParams.contact.z;
-        material.baseColor = vec4(vec3(0.12) * (1.0 - shadow), 1.0);
+        // Neutral diffuse studio surface. The shared key lights it and the refracted
+        // floor consistently; the dark footprint fixes the slab to its supported bottom.
+        material.baseColor = vec4(vec3(0.42) * (1.0 - shadow), 1.0);
+        material.roughness = 0.95;
+        material.metallic = 0.0;
+        material.reflectance = 0.25;
     }
 }

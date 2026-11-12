@@ -54,7 +54,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.android.filament.LightManager
 import com.google.android.filament.Skybox
 import com.google.android.filament.Camera
 import com.google.android.filament.RenderableManager
@@ -164,14 +163,15 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val camera = rememberCameraNode(engine)
     // A single studio for all samples and both app themes. The IBL only fills reflections.
-    val skybox = remember(engine) { Skybox.Builder().color(.12f, .12f, .12f, 1f).build(engine) }
+    val skybox = remember(engine) { Skybox.Builder().color(.28f, .28f, .28f, 1f).build(engine) }
     DisposableEffect(skybox) { onDispose { engine.destroySkybox(skybox) } }
     val hdr = rememberHDREnvironment(environmentLoader, ShowroomMath.DARK_HDR, createSkybox = false)
     val environment = remember(hdr, skybox) { (hdr ?: Environment()).copy(skybox = skybox) }
     val light = rememberMainLightNode(engine) {
-        lightDirection = Direction(.16f, -1f, -.10f)
-        color = colorOf(1f, .88f, .72f)
-        intensity = 55_000f
+        // One neutral key from upper left/front reveals the well without tinting the gel.
+        lightDirection = Direction(.45f, -1f, -.55f)
+        color = colorOf(1f, 1f, 1f)
+        intensity = 70_000f
         isShadowCaster = true
     }
     LaunchedEffect(engine, light) {
@@ -317,7 +317,7 @@ fun FeelDemo(onBack: () -> Unit) {
             materials.mark[face].setParameter("color", linear[0], linear[1], linear[2], 1f)
         }
         hdr?.indirectLight?.apply {
-            intensity = 4_000f
+            intensity = 8_000f
             setRotation(MatterStage.STUDIO_ROTATION)
         }
         materials.samples.forEach { (kind, instance) ->
@@ -490,18 +490,10 @@ fun FeelDemo(onBack: () -> Unit) {
                             -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
                         } else MatterTransition.incomingTravel(progress) * direction * .28f
                         val shadowKind = if (outgoing != null && progress < .40f) outgoing!! else displayed
-                        // Local fill/rim lights: Filament supports one directional key per scene.
-                        LightNode(type = LightManager.Type.POINT, position = Position(5f, 3f, 4f),
-                            color = colorOf(.64f, .78f, 1f), intensity = 750_000f,
-                            apply = { falloff(12f); castShadows(false) })
-                        LightNode(type = LightManager.Type.SPOT, position = Position(1f, 4f, -4f),
-                            direction = Direction(-1f, -3f, 4f), color = colorOf(.82f, .90f, 1f),
-                            intensity = 500_000f,
-                            apply = { falloff(12f); spotLightCone(.45f, .95f); castShadows(false) })
                         SideEffect {
                             materials.floor.setParameter("contact", shadowOffset * MatterStage.COS_AZIMUTH,
                                 -shadowOffset * MatterStage.SIN_AZIMUTH,
-                                MatterTransition.shadow(progress) * if (shadowKind == FeelMaterial.Gel) .25f else 1f)
+                                MatterTransition.shadow(progress) * if (shadowKind == FeelMaterial.Gel) .35f else 1f)
                         }
                         PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = floorY - .003f),
                             materialInstance = materials.floor, apply = {
