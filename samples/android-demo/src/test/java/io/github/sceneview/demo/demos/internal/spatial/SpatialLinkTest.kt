@@ -17,6 +17,8 @@ class SpatialLinkTest {
             SpatialResult.Success(desk.copy(label = "Desk")),
             SpatialLink.decode(mcp),
         )
+        // The app and the MCP tool emit the same compact link for the same answer.
+        assertEquals(mcp, SpatialLink.encode(desk.copy(label = "Desk")))
     }
 
     @Test fun boxAndAssetRoundTrip() {

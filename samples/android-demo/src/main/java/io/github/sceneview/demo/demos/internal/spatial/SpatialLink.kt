@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.util.Base64
 
-/** Portable v1 answer links: UTF-8 SpatialPayload JSON in unpadded base64url. */
+/** Portable v1 answer links: compact UTF-8 SpatialPayload JSON in unpadded base64url. */
 object SpatialLink {
     const val MAX_PAYLOAD_CHARS = 2048
     private val alphabet = Regex("[A-Za-z0-9_-]+")
@@ -12,7 +12,7 @@ object SpatialLink {
     fun encode(spec: SpatialAnswerSpec): String {
         require(spec.validate() == null) { "Invalid spatial answer" }
         return Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(SpatialPayload.encode(spec).toByteArray(Charsets.UTF_8))
+            .encodeToString(SpatialPayload.encodeCompact(spec).toByteArray(Charsets.UTF_8))
             .also { require(it.length <= MAX_PAYLOAD_CHARS) { "Spatial answer is too large" } }
     }
 

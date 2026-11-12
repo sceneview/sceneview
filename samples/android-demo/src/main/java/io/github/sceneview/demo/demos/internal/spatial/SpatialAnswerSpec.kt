@@ -62,7 +62,11 @@ sealed interface SpatialResult {
 
 object SpatialPayload {
     private val json = Json { classDiscriminator = "kind"; prettyPrint = true }
+    private val compactJson = Json { classDiscriminator = "kind" }
     fun encode(spec: SpatialAnswerSpec): String = json.encodeToString(spec)
+
+    /** One-line JSON for links: same fields as [encode], without the indentation. */
+    fun encodeCompact(spec: SpatialAnswerSpec): String = compactJson.encodeToString(spec)
     fun decode(payload: String): SpatialResult = try {
         val spec = json.decodeFromString<SpatialAnswerSpec>(payload)
         spec.validate()?.let { SpatialResult.Error(it) } ?: SpatialResult.Success(spec)
