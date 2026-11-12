@@ -9,7 +9,7 @@
 //   trail[8], trailMode  — XZ, strength, inverse width²; 0 off, 1 foam groove, 2 velvet pile.
 //   releaseWave          — gel release XZ, age in seconds, damped amplitude.
 //   dimensions           — half width, thickness, half length, bevel radius.
-//   bounce               — rigid whole-sample vertical offset, in model space.
+//   bounce, squash       — rigid vertical offset and supported opening compression, in model space.
 //   albedo, roughness    — linear physical constants from MatterSurfaces, never UI tokens.
 //   surface              — FeelMaterial ordinal (0 foam, 2 velvet, 3 leather, 4 marble, 5 steel).
 //   metallic, coat, coatRoughness, sheen, sheenRoughness, anisotropy — physical finish constants.
@@ -19,6 +19,7 @@
 material {
     "name": "Matter surface",
     "parameters": [
+        { "type": "float", "name": "squash" },
         { "type": "float2", "name": "rimShape" },
         { "type": "float4[8]", "name": "trail", "precision": "high" },
         { "type": "float", "name": "trailMode" },
@@ -199,8 +200,9 @@ vertex {
         float weight = clamp(1.0 + p.y / materialParams.dimensions.y, 0.0, 1.0);
         vec4 deformation = vec4(0.0);
         if (abs(materialParams.depth) > 0.000001 || materialParams.trailMode > 0.5 ||
-            materialParams.releaseWave.w > 0.00001) {
+            materialParams.releaseWave.w > 0.00001 || abs(materialParams.squash) > 0.000001) {
             deformation = dentField(p.xz);
+            deformation.x -= materialParams.squash;
             float gx = deformation.y * weight, gz = deformation.z * weight;
             float gy = max(0.15, 1.0 + deformation.x / materialParams.dimensions.y);
             // Inverse-transpose Jacobian for N, Jacobian for the brushing tangent.
@@ -303,35 +305,35 @@ fragment {
                 (noise2(vec2(along * 2.1, 18.4)) - 0.5) * 0.18;
             highp float across = stone.x + meander;
             float cloud = fbm(stone * 0.95 + 3.4);
-            float broadWidth = mix(0.09, 0.28, cloud);
-            float softVein = exp(-pow((across + 1.15) / broadWidth, 2.0));
-            float secondVein = exp(-pow((across - 1.05 + 0.22 * sin(along * 1.6)) /
-                (broadWidth * 1.8), 2.0));
-            // Shared low-frequency phases keep seven vein layers from repeating the noise evaluation.
+            float broadWidth = mix(0.22, 0.46, cloud);
+            float softVein = exp(-pow((across + 0.85) / broadWidth, 2.0));
+            float secondVein = exp(-pow((across - 1.0 + 0.18 * sin(along * 1.6)) /
+                (broadWidth * 1.35), 2.0));
+            // Eighteen secondary streams across the ~6-unit diagonal span. All share the
+            // same warp and feather into the cloud; no hard thresholds that read as cracks.
             vec2 flow = vec2(sin(along * 1.2), cos(along * 1.2));
             vec2 fadeFlow = vec2(sin(along * 0.85), cos(along * 0.85));
-            float hairlines = 0.0;
-            float forks = 0.0;
-            for (int i = 0; i < 7; i++) {
-                float seed = float(i);
+            float fineVeins = 0.0;
+            // Only the three neighbouring streams can contribute at this fragment. Each
+            // has a fixed ID/centre: changing neighbourhood drops only negligible Gaussian
+            // tails, never changes a vein's position at a band boundary.
+            highp float stream = floor((across + 2.9) / 0.34);
+            for (int i = -1; i <= 1; i++) {
+                highp float seed = stream + float(i);
+                if (seed < 0.0 || seed > 17.0) continue;
                 vec3 h = hash3(vec3(seed, 3.1, 9.7));
-                highp float centre = -3.1 + seed * 0.98 + (h.x - 0.5) * 0.65;
+                highp float centre = -2.9 + seed * 0.34 + (h.x - 0.5) * 0.14;
                 vec2 direction = h.yz * 2.0 - 1.0;
-                highp float offset = across - centre + 0.18 * dot(flow, direction);
-                float life = clamp(0.5 + 0.42 * dot(fadeFlow, direction.yx) +
-                    0.25 * (cloud - 0.5), 0.0, 1.0);
-                float fade = smoothstep(0.22, 0.60, life);
-                float width = mix(0.004, 0.024, life * life);
-                float aa = max(fwidth(offset), 0.001);
-                hairlines += (1.0 - smoothstep(width, width + aa, abs(offset))) * fade;
-                if (i < 3) {
-                    float forkOffset = 0.10 + 0.25 * sin(along * 0.9 + seed);
-                    float fork = 1.0 - smoothstep(0.003, 0.008 + aa, abs(offset - forkOffset));
-                    forks += fork * fade * smoothstep(0.0, 0.45, forkOffset);
-                }
+                highp float offset = across - centre + 0.10 * dot(flow, direction);
+                float life = 0.65 + 0.25 * dot(fadeFlow, direction.yx);
+                float width = mix(0.018, 0.045, h.y) + fwidth(offset) * 0.6;
+                fineVeins += exp(-pow(offset / width, 2.0)) * life;
             }
-            colour *= 1.0 - 0.09 * cloud - 0.20 * softVein - 0.12 * secondVein -
-                0.26 * min(hairlines, 1.0) - 0.12 * min(forks, 1.0);
+            // Blue-grey mineral tint in linear light. Even overlaps stay well above black.
+            float haze = 0.10 + 0.22 * cloud;
+            float mineral = clamp(haze + 0.34 * softVein + 0.22 * secondVein +
+                0.25 * min(fineVeins, 1.0), 0.0, 0.72);
+            colour = mix(colour, vec3(0.36, 0.41, 0.47), mineral);
             rough += cloud * 0.018;
         } else {
             // Visible long brushing plus subpixel micro-grooves, both running along X.

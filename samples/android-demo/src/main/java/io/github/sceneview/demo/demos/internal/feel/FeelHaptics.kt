@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 
 /** Semantic primitives; Android IDs and device capability queries belong to the player. */
 internal enum class FeelPrimitive(val durationMillis: Long) {
-    LowTick(12), Tick(8), Click(20), SlowRise(500), QuickRise(150),
+    LowTick(12), Tick(8), Click(20), SlowRise(500), QuickRise(150), Thud(60),
 }
 internal data class FeelPulse(val kind: FeelPrimitive, val scale: Float, val pauseMillis: Int = 0)
 internal data class FeelEffect(val pulses: List<FeelPulse>) {
@@ -15,13 +15,14 @@ internal data class FeelEffect(val pulses: List<FeelPulse>) {
 }
 internal data class FeelWaveform(val timings: LongArray, val amplitudes: IntArray)
 
-/** Same per-primitive strengths and pauses when composition is unavailable. No full-strength buzz. */
+/** Waveform motors need an audible floor; composition scales remain untouched. */
 internal fun FeelEffect.waveform(): FeelWaveform {
     val times = mutableListOf<Long>()
     val amplitudes = mutableListOf<Int>()
     for (pulse in pulses) {
         times += pulse.pauseMillis.toLong(); amplitudes += 0
         val segments = when (pulse.kind) {
+            FeelPrimitive.Thud -> listOf(12L to 1f, 18L to .65f, 30L to .15f)
             FeelPrimitive.SlowRise -> listOf(80L to .08f, 120L to .25f, 140L to .55f, 100L to 1f, 60L to .35f)
             FeelPrimitive.QuickRise -> listOf(20L to .15f, 30L to .4f, 50L to 1f, 50L to .3f)
             FeelPrimitive.Click -> listOf(6L to 1f, 6L to .5f, 8L to .15f)
@@ -30,7 +31,8 @@ internal fun FeelEffect.waveform(): FeelWaveform {
         }
         for ((duration, strength) in segments) {
             times += duration
-            amplitudes += (255 * pulse.scale * strength).roundToInt().coerceIn(0, 255)
+            val drive = (pulse.scale * strength).coerceIn(0f, 1f)
+            amplitudes += if (drive > 0f) (255 * (.25f + .55f * drive)).roundToInt() else 0
         }
     }
     return FeelWaveform(times.toLongArray(), amplitudes.toIntArray())

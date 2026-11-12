@@ -4,6 +4,7 @@ import com.google.android.filament.MaterialInstance
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
+import io.github.sceneview.demo.demos.internal.feel.MatterTransition
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.loaders.MaterialLoader
 import kotlin.math.exp
@@ -19,6 +20,7 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
             setParameter("finger", 0f, 0f)
             setParameter("depth", 0f)
             setParameter("bounce", 0f)
+            setParameter("squash", 0f)
             setParameter("radius", kind.radius)
             setParameter("profile", finish.falloff, finish.bulge, finish.wrinkles, finish.foldCount)
             setParameter("rimShape", finish.rimRadius, finish.rimWidth)
@@ -62,11 +64,15 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
         setParameter("emissive", 0f, 0f, 0f)
     }
 
-    fun update(kind: FeelMaterial, simulation: FeelSimulation, now: Long, motion: Boolean, ringWidth: Float) {
+    fun update(kind: FeelMaterial, simulation: FeelSimulation, now: Long, motion: Boolean, ringWidth: Float,
+               landingAge: Float = -1f) {
         val i = kind.ordinal
         samples[i].apply {
             setParameter("finger", simulation.dentX[i], simulation.dentZ[i])
-            setParameter("depth", MatterSurfaces.visualDepth(simulation.pads[i].depthMm, kind))
+            val settling = if (motion && simulation.active != kind) MatterTransition.settleDepth(kind, landingAge) else 0f
+            setParameter("radius", simulation.radius(kind))
+            setParameter("depth", MatterSurfaces.visualDepth(simulation.pads[i].depthMm, kind) + settling)
+            setParameter("squash", if (kind == FeelMaterial.MemoryFoam) simulation.opening.squash else 0f)
             if (kind == FeelMaterial.MemoryFoam || kind == FeelMaterial.Velvet) {
                 val trail = simulation.trails[i]
                 val hasTrail = (0 until FeelSimulation.TRAIL_POINTS).any { trail[it * 4 + 2] > 0f }

@@ -131,18 +131,25 @@ class FeelHapticsTest {
         for (now in 510L..1000L step 10) assertNull(h.advance(Indentation(2f), 1f, 0f, 0f, .01f, now))
     }
 
-    @Test fun waveformFallbackPreservesScalesPausesAndDurations() {
+    @Test fun waveformFallbackRemapsOnlyActiveSegmentsAndPreservesOrderingPausesAndDurations() {
         for (kind in FeelPrimitive.entries) {
             val low = FeelEffect(kind, .1f).waveform()
             val high = FeelEffect(kind, .7f).waveform()
             assertEquals(kind.durationMillis, low.timings.sum())
             assertTrue(low.amplitudes.max() < high.amplitudes.max())
-            assertTrue(low.amplitudes.all { it in 0..255 })
+            assertTrue(low.amplitudes.all { it == 0 || it in 64..204 })
+            assertTrue(high.amplitudes.all { it == 0 || it in 64..204 })
+            assertEquals(204, FeelEffect(kind, 1f).waveform().amplitudes.max())
         }
         val steel = contact(FeelMaterial.BrushedSteel)!!
         val wave = steel.waveform()
         assertEquals(steel.durationMillis, wave.timings.sum())
         assertEquals(2, wave.timings.indices.count { wave.timings[it] == 12L && wave.amplitudes[it] == 0 })
-        assertTrue(wave.amplitudes.max() <= 217)
+        assertTrue(wave.amplitudes.max() <= 204)
+        assertTrue(FeelEffect(FeelPrimitive.LowTick, .035f).waveform().amplitudes.filter { it > 0 }.all { it >= 64 })
+        assertTrue(contact(FeelMaterial.MemoryFoam)!!.waveform().amplitudes.max() <
+            contact(FeelMaterial.Leather)!!.waveform().amplitudes.max())
+        assertTrue(contact(FeelMaterial.Leather)!!.waveform().amplitudes.max() <
+            contact(FeelMaterial.Marble)!!.waveform().amplitudes.max())
     }
 }

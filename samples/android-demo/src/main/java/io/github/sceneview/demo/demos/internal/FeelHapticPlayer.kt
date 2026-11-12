@@ -71,7 +71,7 @@ internal class FeelHapticPlayer(private val view: View) {
         // No amplitude control: let the platform choose its touch effect rather than a loud buzz.
         val feedback = when (effect.pulses.first().kind) {
             FeelPrimitive.Click -> HapticFeedbackConstants.CONTEXT_CLICK
-            FeelPrimitive.SlowRise, FeelPrimitive.QuickRise -> HapticFeedbackConstants.LONG_PRESS
+            FeelPrimitive.Thud, FeelPrimitive.SlowRise, FeelPrimitive.QuickRise -> HapticFeedbackConstants.LONG_PRESS
             else -> HapticFeedbackConstants.CLOCK_TICK
         }
         if (view.performHapticFeedback(feedback)) {
@@ -80,6 +80,7 @@ internal class FeelHapticPlayer(private val view: View) {
     }
 
     private fun primitiveId(kind: FeelPrimitive): Int? = when (kind) {
+        FeelPrimitive.Thud -> VibrationEffect.Composition.PRIMITIVE_THUD
         FeelPrimitive.LowTick -> if (Build.VERSION.SDK_INT >= 31) VibrationEffect.Composition.PRIMITIVE_LOW_TICK else null
         FeelPrimitive.Tick -> VibrationEffect.Composition.PRIMITIVE_TICK
         FeelPrimitive.Click -> VibrationEffect.Composition.PRIMITIVE_CLICK

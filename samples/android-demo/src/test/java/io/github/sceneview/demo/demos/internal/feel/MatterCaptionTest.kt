@@ -39,9 +39,39 @@ class MatterCaptionTest {
                 assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.MemoryFoam, state, false))
             }
         }
-        for (depth in listOf(-.49f, 0f, .49f)) for (pressed in listOf(false, true)) {
+        for (depth in listOf(-.3f, 0f, .3f)) for (pressed in listOf(false, true)) {
             assertEquals(false, MatterSurfaces.showsDisplacement(FeelMaterial.Gel, Indentation(depth, 4f), pressed))
         }
+    }
+
+    @Test fun contactCaptionUsesTheShadersAmplifiedPeakInSceneMillimetres() {
+        for (material in FeelMaterial.entries) for (depth in listOf(.1f, .5f, 1f, 3f, 12f, 24f)) {
+            val expected = MatterSurfaces.visualDepth(depth, material) / FeelMaterial.WORLD_PER_MM
+            assertEquals(expected, MatterSurfaces.captionDepthMm(depth, material), .00001f)
+            assertEquals(!material.rigid && expected >= .5f,
+                MatterSurfaces.showsDisplacement(material, Indentation(depth), true))
+        }
+        assertEquals(14f, MatterSurfaces.captionDepthMm(2.4f, FeelMaterial.MemoryFoam), .1f)
+        assertEquals(3f, MatterSurfaces.captionDepthMm(1f, FeelMaterial.Leather), .00001f)
+        assertEquals(29.64f, MatterSurfaces.captionDepthMm(100f, FeelMaterial.MemoryFoam), 1f)
+    }
+
+    @Test fun shallowFoamContactReportsADeeperOldTroughInsteadOfTheNewSmallWell() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.MemoryFoam, -1f, 0f, .1f, 0f, 0)
+        simulation.pads[0] = Indentation(.05f)
+        val trail = simulation.trails[0]
+        // A far-away deep, overlapping trace has the shader's bounded union depth.
+        for (slot in 0..2) {
+            trail[slot * 4] = 1f
+            trail[slot * 4 + 1] = 0f
+            trail[slot * 4 + 2] = 1f
+            trail[slot * 4 + 3] = 1f / (.46f * .46f)
+        }
+        val expected = .22f * (1f - kotlin.math.exp(-3f)) / FeelMaterial.WORLD_PER_MM
+        val actual = simulation.captionDepthMm(FeelMaterial.MemoryFoam)
+        assertEquals(expected, actual, .2f) // The main well's raised rim slightly lifts the old groove.
+        assertTrue(actual > MatterSurfaces.captionDepthMm(.05f, FeelMaterial.MemoryFoam) * 10f)
     }
 
     @Test fun everyExistingMatterLocaleHasSixNamesCharacterCaptionsAndMillimetreReadouts() {

@@ -37,17 +37,10 @@ class MatterStageTest {
                 assertTrue("hero width is $occupied", occupied in .89f.. .91f)
             }
             val centreY = (points.maxOf { it.second } + points.minOf { it.second }) / 2f
-            assertEquals("silhouette centres with room for its contact shadow", height * .445f, centreY, height * .012f)
+            assertEquals("silhouette centres with room for its contact shadow", height * .48f, centreY, height * .012f)
             if (width == 1080) {
-                val top = points.minOf { it.second } / height
-                assertTrue("top edge is near the upper third: $top", top in .30f.. .32f)
-                assertTrue("closer than v6's 8.77", stage.distance < 7.5f)
-                assertTrue("lower than v6's 3.16", stage.eyeY < 2.3f)
-                // The outer corner of the broad showroom shadow (3.33 x half-extents).
-                val floor = project(stage, FeelSimulation.PAD_HALF_WIDTH * 3.33f / 2f,
-                    -FeelSimulation.PAD_THICKNESS, FeelSimulation.PAD_HALF_LENGTH * 3.33f / 2f)
-                assertTrue("shadow reaches roughly 75% of the stage: ${floor.second / height}",
-                    floor.second / height in .72f.. .76f)
+                assertEquals(30f, MatterStage.ELEVATION, 0f)
+                assertTrue("dent view is more top-down", stage.eyeY / stage.distance > .30f)
             }
             assertFalse(stage.frame())
             stage.heightPx += 40
@@ -80,22 +73,16 @@ class MatterStageTest {
         }
     }
 
-    @Test fun dentIsVisibleAtPhoneResolutionAndOpeningFitsTheHeroViewport() {
+    @Test fun dentIsVisibleAtPhoneResolutionAndOpeningLiftsOutOfTheViewport() {
         val stage = stage()
         val rest = project(stage, 0f, 0f, 0f)
         val pressed = project(stage, 0f, -MatterSurfaces.visualDepth(3f, FeelMaterial.MemoryFoam), 0f)
         assertTrue(pressed.second - rest.second > 45f)
         assertFalse(MatterOpening.SHOW_BRACKETS)
-        val simulation = FeelSimulation(openingEnabled = true)
-        for (now in 0L..2000L step 16L) {
-            simulation.advance(now)
-            val y = simulation.opening.heightAbovePad -
-                MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam)
-            for (x in listOf(-MatterOpening.MARK_WIDTH / 2f, MatterOpening.MARK_WIDTH / 2f))
-                for (py in listOf(y, y + MatterOpening.MARK_WIDTH)) {
-                    val p = project(stage, x, py, 0f)
-                    assertTrue(p.first in 0f..stage.widthPx.toFloat() && p.second in 0f..stage.heightPx.toFloat())
-                }
+        for ((width, height) in listOf(1080 to 1600, 360 to 1200, 900 to 300)) {
+            val framed = stage(width, height)
+            val bottom = project(framed, 0f, framed.openingTravel - FeelSimulation.PAD_THICKNESS, 0f)
+            assertTrue("mark clears top at $width x $height", bottom.second <= .001f)
         }
     }
 }

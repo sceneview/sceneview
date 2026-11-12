@@ -9,7 +9,7 @@
 //   trail[8], trailMode  — XZ, strength, inverse width²; 0 off, 1 foam groove, 2 velvet pile.
 //   releaseWave          — gel release XZ, age in seconds, damped amplitude.
 //   dimensions           — half width, thickness, half length, bevel radius.
-//   bounce               — rigid whole-sample vertical offset, in model space.
+//   bounce, squash       — rigid vertical offset and supported opening compression, in model space.
 //   albedo, roughness    — linear physical constants from MatterSurfaces, never UI tokens.
 //   ior, transmission    — physical gel constants. No sheen: Filament forbids it with refraction.
 //   absorption           — Beer-Lambert RGB coefficients per model-space unit.
@@ -19,6 +19,7 @@
 material {
     "name": "Matter gel",
     "parameters": [
+        { "type": "float", "name": "squash" },
         { "type": "float2", "name": "rimShape" },
         { "type": "float4[8]", "name": "trail", "precision": "high" },
         { "type": "float", "name": "trailMode" },
@@ -172,8 +173,9 @@ vertex {
         float weight = clamp(1.0 + p.y / materialParams.dimensions.y, 0.0, 1.0);
         vec4 deformation = vec4(0.0);
         if (abs(materialParams.depth) > 0.000001 || materialParams.trailMode > 0.5 ||
-            materialParams.releaseWave.w > 0.00001) {
+            materialParams.releaseWave.w > 0.00001 || abs(materialParams.squash) > 0.000001) {
             deformation = dentField(p.xz);
+            deformation.x -= materialParams.squash;
             float gx = deformation.y * weight, gz = deformation.z * weight;
             float gy = max(0.15, 1.0 + deformation.x / materialParams.dimensions.y);
             // Inverse-transpose Jacobian for N, Jacobian for the brushing tangent.
@@ -228,12 +230,14 @@ fragment {
         material.roughness = materialParams.roughness + bubbles * 0.10;
         material.ior = materialParams.ior;
         material.transmission = materialParams.transmission * (1.0 - bubbles * 0.65);
-        // Filament's solid refraction uses a sphere approximation. Bound its optical path
-        // on this thin slab, especially at the concave wall's grazing angles.
-        float top = smoothstep(-materialParams.dimensions.w * 2.0, 0.0, p.y);
-        float compressed = variable_rest.w * top;
-        material.absorption = materialParams.absorption * mix(0.75, 0.25, compressed);
-        material.thickness = mix(min(thickness, 0.28), min(thickness, 0.10), compressed);
+        // Beer-Lambert colour follows the remaining local thickness, including rounded edges.
+        // Limit the sphere approximation's ray travel, not its colour: no contact darkening,
+        // compressed multiplier, AO or opaque receiving shadow in the concave well.
+        float edge = min(materialParams.dimensions.x - abs(p.x),
+            materialParams.dimensions.z - abs(p.z));
+        float edgePath = mix(0.22, 1.0, smoothstep(0.0, materialParams.dimensions.w * 2.0, edge));
+        material.absorption = materialParams.absorption;
+        material.thickness = min(thickness * edgePath, 0.95);
         material.ambientOcclusion = 1.0;
     }
 }

@@ -146,18 +146,18 @@ class FeelSimulationTest {
         assertTrue(simulation.pads[0].depthMm in 0.1f..dent)
     }
 
-    @Test fun openingLoadsOnlyFoamAndUsesTheSameSpringWithoutHaptics() {
+    @Test fun openingLoadsOnlyFoamThudsOnceAndThenUsesTheSameRecoverySpring() {
         val simulation = FeelSimulation(openingEnabled = true)
-        for (time in 0L..1200L step 10) assertNull(simulation.advance(time))
-        assertTrue(simulation.pads[0].depthMm > 10f)
-        assertEquals(0f, simulation.pads[1].depthMm, 0f)
-        assertEquals(0f, simulation.pads[2].depthMm, 0f)
+        val effects = (0L..900L step 10).mapNotNull { simulation.advance(it) }
+        assertEquals(listOf(FeelPrimitive.Thud), effects.map { it.pulses.single().kind })
+        assertTrue(simulation.pads[0].depthMm > 12f)
+        for (pad in simulation.pads.drop(1)) assertEquals(0f, pad.depthMm, 0f)
         assertTrue(simulation.opening.visible)
         assertEquals(0f, simulation.opening.heightAbovePad, 0f)
-        for (time in 1210L..2000L step 10) assertNull(simulation.advance(time))
+        for (time in 910L..2220L step 10) assertNull(simulation.advance(time))
         assertTrue(simulation.opening.finished)
         assertTrue(simulation.pads[0].depthMm > 0f)
-        for (time in 2010L..13000L step 10) simulation.advance(time)
+        for (time in 2230L..13000L step 10) simulation.advance(time)
         assertTrue(simulation.pads[0].depthMm < 0.001f)
     }
 

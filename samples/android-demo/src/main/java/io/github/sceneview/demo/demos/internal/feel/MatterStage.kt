@@ -14,11 +14,24 @@ internal class MatterStage {
         private set
     val halfWidth get() = distance * TAN_HALF_FOV
     val halfHeight get() = halfWidth * heightPx / widthPx.coerceAtLeast(1)
-    val eyeX get() = distance * BACK_X
+    private var orbitSin = SIN_AZIMUTH
+    private var orbitCos = COS_AZIMUTH
+    fun orbit(yawDegrees: Float) {
+        val radians = Math.toRadians((AZIMUTH + yawDegrees).toDouble())
+        orbitSin = sin(radians).toFloat()
+        orbitCos = cos(radians).toFloat()
+    }
+    val eyeX get() = distance * orbitSin * COS
     var targetY = TARGET_Y
         private set
     val eyeY get() = targetY + distance * SIN
-    val eyeZ get() = distance * BACK_Z
+    // Bottom of the mark clears the viewport before it becomes invisible, even in tall windows.
+    val openingTravel get(): Float {
+        val verticalTan = TAN_HALF_FOV * heightPx / widthPx.coerceAtLeast(1)
+        return maxOf(MatterOpening.TRAVEL,
+            targetY + distance * verticalTan / (COS + verticalTan * SIN) + FeelSimulation.PAD_THICKNESS)
+    }
+    val eyeZ get() = distance * orbitCos * COS
     // Enough travel to put the complete silhouette off screen before the next settles.
     val slideDistance get() = halfWidth * 2f + FeelSimulation.PAD_HALF_WIDTH * 2f
     private var framedWidth = -1
@@ -63,7 +76,7 @@ internal class MatterStage {
                             val projected = (x * UP_X + cy * COS + z * UP_Z) / depth
                             bottom = minOf(bottom, projected); top = maxOf(top, projected)
                         }
-                targetY += ((bottom + top) * .5f - TAN_HALF_FOV / aspect * .11f) * distance / COS
+                targetY += ((bottom + top) * .5f - TAN_HALF_FOV / aspect * .04f) * distance / COS
             }
         }
         return true
@@ -114,7 +127,7 @@ internal class MatterStage {
         const val HORIZONTAL_FOV = 48.0
         const val NEAR = 0.1
         const val FAR = 150.0
-        const val ELEVATION = 24f
+        const val ELEVATION = 30f
         const val AZIMUTH = 24f
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()

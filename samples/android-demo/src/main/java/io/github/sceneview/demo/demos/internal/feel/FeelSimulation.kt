@@ -49,6 +49,46 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     val contactZ = FloatArray(pads.size)
     val contactMillis = LongArray(pads.size) { Long.MIN_VALUE }
     private var foamReleasedAt: Long? = null
+    private var openingLoaded = false
+    fun radius(material: FeelMaterial): Float = if (material == FeelMaterial.MemoryFoam &&
+        openingLoaded && !hasPressed) MatterOpening.WELL_RADIUS else material.radius
+
+    /** Peak top-surface depth in scene mm. Usually the main well is the exact maximum:
+     * the shader's bounded trail union cannot beat it once depth >= 0.22 units.
+     * Only a shallow foam drag needs a small top-grid search for a deeper old groove.
+     * At 0.10-unit spacing the smooth 0.46-unit trail is resolved well within rounding to mm.
+     */
+    fun captionDepthMm(material: FeelMaterial): Float {
+        val i = material.ordinal
+        val depth = MatterSurfaces.visualDepth(pads[i].depthMm, material)
+        if (material != FeelMaterial.MemoryFoam || active != material || depth >= .22f) {
+            return depth / FeelMaterial.WORLD_PER_MM
+        }
+        val trail = trails[i]
+        var sum = 0f
+        for (slot in 0 until TRAIL_POINTS) sum += trail[slot * 4 + 2]
+        if (.22f * (1f - exp(-sum)) <= depth) return depth / FeelMaterial.WORLD_PER_MM
+        val finish = MatterSurfaces[material]
+        var peak = depth
+        for (row in 0..28) for (column in 0..48) {
+            val x = -PAD_HALF_WIDTH + column * (PAD_HALF_WIDTH * 2f / 48f)
+            val z = -PAD_HALF_LENGTH + row * (PAD_HALF_LENGTH * 2f / 28f)
+            val dx = x - dentX[i]; val dz = z - dentZ[i]
+            val r = hypot(dx, dz) / radius(material)
+            val bowl = exp(-2f * r * r) // Foam falloff is exactly 2.
+            val gateT = ((r - .20f) / .35f).coerceIn(0f, 1f)
+            val gate = gateT * gateT * (3f - 2f * gateT)
+            val rimQ = (r - finish.rimRadius) / finish.rimWidth
+            var memory = 0f
+            for (slot in 0 until TRAIL_POINTS) {
+                val tx = x - trail[slot * 4]; val tz = z - trail[slot * 4 + 1]
+                memory += trail[slot * 4 + 2] * exp(-(tx * tx + tz * tz) * trail[slot * 4 + 3])
+            }
+            peak = maxOf(peak, depth * bowl - depth * finish.bulge * exp(-rimQ * rimQ) * gate +
+                .22f * (1f - exp(-memory)) * (1f - bowl))
+        }
+        return peak / FeelMaterial.WORLD_PER_MM
+    }
 
     fun select(material: FeelMaterial, now: Long) {
         opening.cancel()
@@ -122,7 +162,8 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         val dt = lastFrameMillis?.let { ((now - it) / 1000f).coerceIn(0f, 0.05f) } ?: 0f
         lastFrameMillis = now
         val previousLoad = opening.loadKg
-        if (startOpening) opening.advance(now)
+        val impact = startOpening && opening.advance(now)
+        if (opening.loadKg > 0f) openingLoaded = true
         if (previousLoad > 0f && opening.loadKg == 0f) {
             foamReleasedAt = now
             pads[0] = pads[0].copy(velocity = 0f)
@@ -183,6 +224,9 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
             if (material == FeelMaterial.MemoryFoam && pressure == 0f &&
                 foamReleasedAt?.let { now - it < 140L } == true
             ) return@forEach
+            if (material == FeelMaterial.MemoryFoam && opening.impactDepthMm > pads[i].depthMm) {
+                pads[i] = Indentation(opening.impactDepthMm)
+            }
             pads[material.ordinal] = stepIndentation(
                 pads[material.ordinal], material, pressure, dt,
             )
@@ -190,7 +234,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         val effect = haptics.advance(pads[selected.ordinal], filteredPressure,
             travelXmm, travelZmm, dt, now)
         travelXmm = 0f; travelZmm = 0f
-        return effect
+        return if (impact) FeelEffect(FeelPrimitive.Thud, 1f) else effect
     }
 
     companion object {

@@ -50,9 +50,9 @@ internal object MatterSurfaces {
     const val GEL_IOR = 1.45f
     const val GEL_TRANSMISSION = 1f
     // Beer-Lambert coefficients per model-space unit: colour lives INSIDE the gel.
-    const val GEL_ABSORPTION_RED = .06f
-    const val GEL_ABSORPTION_GREEN = .42f
-    const val GEL_ABSORPTION_BLUE = 1.65f
+    const val GEL_ABSORPTION_RED = .08f
+    const val GEL_ABSORPTION_GREEN = 1.25f
+    const val GEL_ABSORPTION_BLUE = 5.5f
     operator fun get(material: FeelMaterial): Surface = surfaces[material.ordinal]
 
     /** Signed for gel's overshoot; always leaves a supported layer under the deepest dent. */
@@ -66,8 +66,13 @@ internal object MatterSurfaces {
         return depth.coerceIn(-FeelSimulation.PAD_THICKNESS * .25f, FeelSimulation.PAD_THICKNESS * .78f)
     }
 
+    /** The shader's signed peak displacement, converted with the same scene millimetre scale. */
+    fun captionDepthMm(depthMm: Float, material: FeelMaterial): Float =
+        visualDepth(depthMm, material) / FeelMaterial.WORLD_PER_MM
+
     /** At rest, sub-2 mm recovery reads as character; contact still reports whole millimetres. */
-    fun showsDisplacement(material: FeelMaterial, state: Indentation, pressed: Boolean): Boolean =
-        !material.rigid && kotlin.math.abs(state.depthMm) >= (if (pressed) .5f else 2f) &&
+    fun showsDisplacement(material: FeelMaterial, state: Indentation, pressed: Boolean,
+                          peakDepthMm: Float = captionDepthMm(state.depthMm, material)): Boolean =
+        !material.rigid && (if (pressed) kotlin.math.abs(peakDepthMm) >= .5f else kotlin.math.abs(state.depthMm) >= 2f) &&
             (pressed || kotlin.math.abs(visualDepth(state.depthMm, material)) > .003f)
 }
