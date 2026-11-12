@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- **Demo: 3D Scan shows a scan's result from its first second — the place itself, growing as it was scanned, while its model is built — on a real, dense example; the result films itself again as a short video to share, and the Photo layer is offered to everyone ([#5028](https://github.com/sceneview/sceneview/pull/5028)).**
 - Loading a glTF that uses `KHR_materials_volume` no longer aborts the app (regression since 4.66.0).
 
 ## v4.69.1 — 2026-11-12
