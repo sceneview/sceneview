@@ -136,7 +136,8 @@ kotlin {
 ### Imports — copy these, do not guess packages
 Every top-level SceneView function lives in `io.github.sceneview` (3D) or `io.github.sceneview.ar` (AR). Node
 composables (`ModelNode`, `AnchorNode`, `CubeNode`, `LightNode`…) are members of the `SceneView { }` /
-`ARSceneView { }` content scope: they need **no import**.
+`ARSceneView { }` content scope: they need **no import**. Do not write `import io.github.sceneview.ModelNode` (nor `io.github.sceneview.ar.AnchorNode`):
+no such top-level function exists, and the build fails with *Unresolved reference 'ModelNode'*.
 ```kotlin
 import io.github.sceneview.SceneView
 import io.github.sceneview.rememberCameraManipulator
@@ -206,6 +207,7 @@ fun ModelViewerScreen() {
         engine = engine,
         modelLoader = modelLoader,
     ) {
+        // ModelNode is a member of this block: no import for it
         // null while the file loads, then the model appears
         rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1f)
