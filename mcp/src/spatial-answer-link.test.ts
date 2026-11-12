@@ -11,7 +11,7 @@ import { dispatchTool } from "./tools/handler.js";
 const desk = { widthCm: 80, heightCm: 75, depthCm: 40, label: "Desk" };
 const expected: SpatialAnswerSpec = {
   v: 1,
-  object: { type: "box", sizeM: [0.8, 0.75, 0.4] },
+  object: { kind: "box", sizeM: [0.8, 0.75, 0.4] },
   dimensionSource: "user",
   placement: "floor",
   label: "Desk",
@@ -74,7 +74,7 @@ describe("spatial answer links", () => {
     ).toThrow(/v must be 1/);
     for (const size of [0.01, 10.001, NaN]) {
       expect(() =>
-        encodeSpatialAnswer({ ...expected, object: { type: "box", sizeM: [size, 1, 1] } })
+        encodeSpatialAnswer({ ...expected, object: { kind: "box", sizeM: [size, 1, 1] } })
       ).toThrow(/metres/);
     }
     expect(decode(encodeSpatialAnswer({ ...expected, dimensionSource: "measured" }))).toMatchObject(

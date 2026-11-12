@@ -1,7 +1,7 @@
 /** Spatial answer v1: metres, Y-up, box dimensions in width/height/depth order. */
 export interface SpatialAnswerSpec {
   v: 1;
-  object: { type: "box"; sizeM: [number, number, number] };
+  object: { kind: "box"; sizeM: [number, number, number] };
   dimensionSource: "user" | "estimated" | "measured";
   placement: "floor" | "table";
   label: string;
@@ -19,7 +19,7 @@ export interface SpatialAnswerInput {
 function validateSpec(spec: SpatialAnswerSpec): void {
   if (spec.v !== 1) throw new Error("Spatial answer v must be 1.");
   if (
-    spec.object?.type !== "box" ||
+    spec.object?.kind !== "box" ||
     !Array.isArray(spec.object.sizeM) ||
     spec.object.sizeM.length !== 3 ||
     spec.object.sizeM.some(
@@ -56,7 +56,7 @@ export function buildSpatialAnswerSpec(input: SpatialAnswerInput): SpatialAnswer
   const spec: SpatialAnswerSpec = {
     v: 1,
     object: {
-      type: "box",
+      kind: "box",
       sizeM: sizes.map((s) => (s as number) / 100) as [number, number, number],
     },
     dimensionSource,
