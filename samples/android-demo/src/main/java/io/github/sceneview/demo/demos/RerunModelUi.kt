@@ -7,7 +7,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -67,11 +65,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -733,7 +729,6 @@ internal fun RerunModelScreen(
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
     photo: SplatFaces? = null,
-    still: ScanStill? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -910,12 +905,9 @@ internal fun RerunModelScreen(
     var risen by remember(stageKey, entersLow) { mutableStateOf(!entersLow) }
     // Photo | Model | Plan (ResultLayers.kt): the scan's surfels as splats.
     val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
-    // The picture the result opens on, when it has one and is entered as the picture was taken:
-    // the place is then whole from the first live frame, as the picture shows it.
-    val opensOnStill = still?.takeIf { preview != null && photo != null && animateReveal }
     val layers = rememberResultLayers(
         source, surfels, stageKey, settled,
-        photoFirst = preview != null, prebuilt = photo, whole = opensOnStill != null,
+        photoFirst = preview != null, prebuilt = photo,
     )
     // The film (ResultFilm): each take plays the reveal again, one turn and the look from above,
     // recorded off the scene's own surface — the chrome is not in it — then handed to the share
@@ -1351,21 +1343,6 @@ internal fun RerunModelScreen(
                         .alpha(veil)
                         .background(chrome.ground)
                         .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
-                )
-            }
-            // On that ground, a picture of the opening until the scene has drawn it: the place is
-            // there from the first frame, and the live scene takes over as the ground fades.
-            opensOnStill?.takeIf { veil > 0f && maxWidth < maxHeight }?.let { picture ->
-                val zoneCentre = (insets.top + 1f - insets.bottom) / 2f
-                Image(
-                    painter = painterResource(if (darkStage) picture.dark else picture.light),
-                    contentDescription = null,
-                    contentScale = ContentScale.FillWidth,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(maxWidth / picture.aspect)
-                        .offset(y = maxHeight * picture.topOn(aspect, zoneCentre))
-                        .alpha(veil),
                 )
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())

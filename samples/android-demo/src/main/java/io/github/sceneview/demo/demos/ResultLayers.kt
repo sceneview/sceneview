@@ -1,7 +1,6 @@
 package io.github.sceneview.demo.demos
 
 import android.util.Log
-import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -85,7 +84,7 @@ internal enum class ResultLayer(val key: String) {
  * of the stage colour ([veil]) so the switch is never a cut.
  */
 @Stable
-internal class ResultLayers(val offered: Boolean, photoFirst: Boolean = false, whole: Boolean = false) {
+internal class ResultLayers(val offered: Boolean, photoFirst: Boolean = false) {
     /**
      * Photo picked over Model (the Plan position is the screen's own `plan`). Picked from the
      * start on a result that opens on its Photo layer ([photoFirstCloud]).
@@ -103,10 +102,7 @@ internal class ResultLayers(val offered: Boolean, photoFirst: Boolean = false, w
      * the map's insertion order): a result that opens on its Photo layer grows on the stage the
      * way it was scanned ([grow]), instead of standing there whole on the first frame.
      */
-    var grown by mutableFloatStateOf(if (photoFirst && !whole) 0f else 1f)
-
-    /** A Photo layer the result opens on whole, until it is shown: its first showing is no swap. */
-    internal var opensWhole = photoFirst && whole
+    var grown by mutableFloatStateOf(if (photoFirst) 0f else 1f)
 
     /** The [grow] that owns [grown]: a newer one takes it over. */
     internal var growRun = 0
@@ -189,13 +185,11 @@ internal fun rememberResultLayers(
     settled: Boolean,
     photoFirst: Boolean = false,
     prebuilt: SplatFaces? = null,
-    whole: Boolean = false,
 ): ResultLayers {
     val offered = photoOffered(source, surfels)
     val layers = remember(source, surfels, key, offered) {
-        ResultLayers(offered, photoFirst, whole).also { layers ->
-            // Splats the caller built ahead (the example's, while its landing is read): drawn
-            // from the first frame instead of half a second later.
+        ResultLayers(offered, photoFirst).also { layers ->
+            // Reuse any splats the caller prepared before opening the result.
             prebuilt?.takeIf { it.all.count > 0 }?.let {
                 layers.faces = it
                 layers.splats = it.all
@@ -234,11 +228,9 @@ internal fun rememberResultLayers(
  */
 internal suspend fun ResultLayers.swapUnderVeil() {
     snapshotFlow { photoPicked && splats != null }.collectLatest { photo ->
-        if (photo && !photoShown && (grown < 1f || opensWhole)) {
+        if (photo && !photoShown && grown < 1f) {
             // A result that opens on its Photo layer: nothing is drawn yet for a veil to hide.
-            // The layer grows from nothing ([grow]), or is there whole under the result's own
-            // opening veil.
-            opensWhole = false
+            // The layer grows from nothing ([grow]).
             photoShown = true
         } else if (photo != photoShown) {
             veil.animateTo(VEIL_PEAK, tween(SceneViewTokens.Duration.handoverMillis, easing = FastOutSlowInEasing))
@@ -521,33 +513,3 @@ private const val DEFAULT_LAYER = 0x01
 
 private const val NS_PER_MS = 1_000_000L
 private const val LAYERS_TAG = "ResultLayers"
-
-/**
- * A picture of a scan's result as it opens ([ScanOpening.start]): the scene alone, a whole screen
- * of it, [light] and [dark] by the stage. [aspect] wide for one high, the place framed round
- * [zoneCentre] of its height. Shown the instant the result is opened, laid where the place is
- * framed, and faded into the live scene at its first frame — the second the renderer takes to
- * draw one is no longer an empty stage.
- */
-internal class ScanStill(
-    @DrawableRes val light: Int,
-    @DrawableRes val dark: Int,
-    val aspect: Float,
-    val zoneCentre: Float,
-) {
-    /**
-     * Where its top goes, in heights of a screen [screenAspect] wide for one high whose framing
-     * zone is centred at [centre]: as wide as that screen, its place on that centre.
-     */
-    fun topOn(screenAspect: Float, centre: Float): Float = centre - zoneCentre * screenAspect / aspect
-
-    companion object {
-        /** The example's garden, taken on a Pixel 4a (2026-11-12) with the opening held still. */
-        val Example = ScanStill(
-            light = R.drawable.scan_example_still_light,
-            dark = R.drawable.scan_example_still_dark,
-            aspect = 720f / 1560f,
-            zoneCentre = 0.4427f,
-        )
-    }
-}

@@ -205,7 +205,7 @@ internal class ReplayDenseLayer(
     }
 }
 
-/** Loads the bundled sparse room (QA's capture feed) from the assets. Call off the main thread's back: it is IO. */
+/** Loads the bundled room replay (also QA's capture feed) from the assets. Call off the main thread's back: it is IO. */
 internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia =
     loadBundledScan(context, RerunReplayAssets.MANIFEST, RerunReplayAssets.LOG, RerunReplayAssets.MEDIA)
 

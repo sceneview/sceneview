@@ -155,7 +155,7 @@ internal object ScanOpening {
         startDistanceFactor = START_DISTANCE_FACTOR,
     )
 
-    /** Where the path starts: what a picture of the opening ([ScanStill]) shows. */
+    /** The camera pose at the start of the rise. */
     fun start(home: CameraShot): CameraShot = path(home).keyframes.first().shot
 
     /** Long enough to be a flight, short enough that the model's wait is not a camera move. */
