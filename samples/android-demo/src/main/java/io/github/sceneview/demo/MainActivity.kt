@@ -611,7 +611,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         activity?.consumePendingPushDemo()
     }
 
-    PendingDemoNavigation(navController, pendingId) { activity?.consumePendingDemo() }
+    PendingDemoNavigation(navController, pendingId, DeepLinkRouter.parseAnswer(activity?.intent?.data)) { activity?.consumePendingDemo() }
 
     // The NavHost and the bug-report sheet share one Box. The Play update
     // snackbar is RootScreen's own — its Scaffold places it above the bottom
@@ -702,14 +702,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 }
             }
             composable(
-                route = "demo/{id}?model={model}",
+                route = "demo/{id}?model={model}&answer={answer}",
                 arguments = listOf(
                     navArgument("id") { type = NavType.StringType },
                     navArgument("model") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    navArgument("answer") { type = NavType.StringType; nullable = true; defaultValue = null },
                 ),
             ) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 DemoSettings.requestedModel = backStackEntry.arguments?.getString("model")
+                DemoSettings.requestedAnswer = if (id == "spatial-answer") backStackEntry.arguments?.getString("answer") else null
                 val onBack: () -> Unit = { navController.popBackStack() }
                 CompositionLocalProvider(LocalNavAnimatedScope provides this) {
                     Box(
@@ -835,11 +837,13 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
 internal fun PendingDemoNavigation(
     navController: NavHostController,
     pendingId: String?,
+    answer: String? = null,
     onConsumed: () -> Unit,
 ) {
-    LaunchedEffect(pendingId) {
+    LaunchedEffect(pendingId, answer) {
         val id = pendingId ?: return@LaunchedEffect
-        navController.navigate("demo/$id") { popUpTo("list") }
+        val query = if (id == "spatial-answer" && answer != null) "?answer=${android.net.Uri.encode(answer)}" else ""
+        navController.navigate("demo/$id$query") { popUpTo("list") }
         onConsumed()
     }
 }
