@@ -42,7 +42,7 @@ object RollingBallsFragment : DemoFragment {
         subtitleRes = R.string.demo_rolling_balls_subtitle,
         category = DemoCategory.PLAY,
         icon = Icons.Filled.Workspaces,
-        order = 16,
+        order = 17,
         addedIn = "4.48.0",
         updatedIn = "4.57.0",
         tags = setOf(

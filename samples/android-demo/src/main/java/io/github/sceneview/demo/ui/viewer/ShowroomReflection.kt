@@ -35,7 +35,12 @@ import kotlin.math.sin
  * the eye: [onFrame] says when the eye or the subject moved, and the caller asks for the frame
  * that shows the new image. A parked scene renders nothing.
  */
-internal class ShowroomReflection(private val engine: Engine, private val mainView: View) {
+internal class ShowroomReflection(
+    private val engine: Engine,
+    private val mainView: View,
+    private val resolutionScale: Float = ShowroomMath.REFLECTION_SCALE,
+    private val skipMovingFrames: Boolean = true,
+) {
 
     /** Where the subject stands, set from the composition. `null` = no reflection. */
     data class Pose(
@@ -55,6 +60,8 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
         /** How far the settle spring still holds the subject above its resting pose, in metres. */
         val lift: Float,
         val isDark: Boolean,
+        /** Shader-only deformation is invisible to the camera/pose cache (Matter). */
+        val contentVersion: Long = 0L,
     )
 
     private val renderer: Renderer = engine.createRenderer().apply {
@@ -141,7 +148,7 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
         if (!moved) return false
         // While the eye moves, every other frame: the image and its matrix stay paired, one
         // frame later than the subject, and the frame after the eye stops is always drawn.
-        if (lit && skipped.not() && pose == lastPose) {
+        if (skipMovingFrames && lit && skipped.not() && pose == lastPose) {
             skipped = true
             return true
         }
@@ -206,8 +213,8 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
     }
 
     private fun ensureTarget(viewportWidth: Int, viewportHeight: Int, material: MaterialInstance) {
-        val w = max(1, (viewportWidth * ShowroomMath.REFLECTION_SCALE).roundToInt())
-        val h = max(1, (viewportHeight * ShowroomMath.REFLECTION_SCALE).roundToInt())
+        val w = max(1, (viewportWidth * resolutionScale).roundToInt())
+        val h = max(1, (viewportHeight * resolutionScale).roundToInt())
         if (w == width && h == height && target != null) return
         destroyTarget()
         width = w
@@ -230,6 +237,7 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
         depth = depthTexture
         view.renderTarget = target
         view.viewport = Viewport(0, 0, w, h)
+        lit = false // A resize discards the image even if the eye and subject stayed still.
         material.setParameter(
             PARAM_TEXTURE,
             colorTexture,
@@ -295,8 +303,14 @@ internal class ShowroomReflection(private val engine: Engine, private val mainVi
 
 /** The [ShowroomReflection] of [view], freed with the composition. */
 @Composable
-internal fun rememberShowroomReflection(engine: Engine, view: View): ShowroomReflection {
-    val reflection = remember(engine, view) { ShowroomReflection(engine, view) }
+internal fun rememberShowroomReflection(
+    engine: Engine, view: View,
+    resolutionScale: Float = ShowroomMath.REFLECTION_SCALE,
+    skipMovingFrames: Boolean = true,
+): ShowroomReflection {
+    val reflection = remember(engine, view, resolutionScale, skipMovingFrames) {
+        ShowroomReflection(engine, view, resolutionScale, skipMovingFrames)
+    }
     DisposableEffect(reflection) {
         onDispose { reflection.destroy() }
     }

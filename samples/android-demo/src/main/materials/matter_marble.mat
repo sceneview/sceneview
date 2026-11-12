@@ -1,0 +1,162 @@
+// Matter marble — Filament 1.77.3. Sample-only; see matter_deformation.vs and MatterDetailAtlas.kt.
+material {
+    "name": "Matter marble",
+    "parameters": [
+        {
+            "type": "float",
+            "name": "squash"
+        },
+        {
+            "type": "float2",
+            "name": "rimShape"
+        },
+        {
+            "type": "float4[8]",
+            "name": "trail",
+            "precision": "high"
+        },
+        {
+            "type": "float",
+            "name": "trailMode"
+        },
+        {
+            "type": "float4",
+            "name": "releaseWave",
+            "precision": "high"
+        },
+        {
+            "type": "float2",
+            "name": "finger"
+        },
+        {
+            "type": "float",
+            "name": "depth"
+        },
+        {
+            "type": "float",
+            "name": "radius"
+        },
+        {
+            "type": "float4",
+            "name": "profile"
+        },
+        {
+            "type": "float4",
+            "name": "dimensions"
+        },
+        {
+            "type": "float",
+            "name": "bounce"
+        },
+        {
+            "type": "float3",
+            "name": "albedo"
+        },
+        {
+            "type": "float",
+            "name": "roughness"
+        },
+        {
+            "type": "float",
+            "name": "metallic"
+        },
+        {
+            "type": "float",
+            "name": "coat"
+        },
+        {
+            "type": "float",
+            "name": "coatRoughness"
+        },
+        {
+            "type": "float",
+            "name": "sheen"
+        },
+        {
+            "type": "float",
+            "name": "sheenRoughness"
+        },
+        {
+            "type": "float",
+            "name": "anisotropy"
+        },
+        {
+            "type": "float4",
+            "name": "ripple"
+        },
+        {
+            "type": "float3",
+            "name": "rippleColor"
+        },
+        {
+            "type": "float",
+            "name": "rippleWidth"
+        },
+        {
+            "type": "float",
+            "name": "detailBlend"
+        },
+        {
+            "type": "sampler2d",
+            "name": "detail",
+            "precision": "medium"
+        }
+    ],
+    "requires": [
+        "position",
+        "uv0"
+    ],
+    "variables": [
+        "rest",
+        {
+            "name": "bentNormal",
+            "precision": "medium"
+        },
+        {
+            "name": "bentTangent",
+            "precision": "medium"
+        }
+    ],
+    // Atlas rows already follow the uploaded RG8 buffer; Filament otherwise flips V.
+    "flipUV": false,
+    "shadingModel": "lit",
+    "blending": "opaque",
+    "postLightingBlending": "transparent",
+    "doubleSided": false,
+    "specularAntiAliasing": true
+}
+vertex {
+    #define MATTER_RIGID
+    #include "matter_deformation.vs"
+}
+fragment {
+    #include "matter_detail.fs"
+    void material(inout MaterialInputs material) {
+        highp vec3 p = variable_rest.xyz;
+        mediump vec2 detail = mix(vec2(0.5), texture(materialParams_detail, getUV0()).rg, materialParams.detailBlend);
+        float compressed = variable_rest.w;
+        float crushed = max(compressed, variable_bentNormal.w * 0.65);
+        vec3 colour = materialParams.albedo;
+        float rough = materialParams.roughness;
+        float occlusion = 1.0, height = 0.0;
+        vec3 n = normalize(variable_bentNormal.xyz);
+        colour = mix(colour, vec3(0.36, 0.41, 0.47), detail.r);
+        rough += detail.g * 0.018;
+        vec3 detailed = n;
+        mat3 toTangent = transpose(getWorldTangentFrame());
+        material.normal = toTangent * detailed;
+        // Keep the polish on the same smooth frame as the stone (as in v9).
+        material.clearCoatNormal = material.normal;
+        prepareMaterial(material);
+        // Cavity stays legible under direct light; AO separately attenuates the IBL.
+        float cavity = variable_bentTangent.w;
+        material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
+        material.roughness = clamp(rough, 0.045, 1.0);
+        material.metallic = materialParams.metallic;
+        material.reflectance = 0.5;
+        material.ambientOcclusion = occlusion * (1.0 - 0.72 * cavity);
+        material.clearCoat = materialParams.coat;
+        material.clearCoatRoughness = materialParams.coatRoughness;
+        material.postLightingColor = matterRipple(p);
+    }
+}

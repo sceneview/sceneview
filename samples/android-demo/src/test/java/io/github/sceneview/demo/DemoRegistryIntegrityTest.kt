@@ -285,7 +285,7 @@ class DemoRegistryIntegrityTest {
                 "materials", "lighting", "contact-shadow-preview", "custom-geometry", "geometry",
                 "lines-paths", "spatial-audio", "two-d-in-three-d",
             ),
-            DemoCategory.PLAY to listOf("cosmos", "rolling-balls", "finger-drawing"),
+            DemoCategory.PLAY to listOf("matter", "cosmos", "rolling-balls", "finger-drawing"),
             DemoCategory.PLACE_AR to listOf("ar-placement", "ar-orbital", "ar-pool", "ar-image"),
             DemoCategory.UNDERSTAND to listOf(
                 "ar-rerun", "ar-splat-room", "ar-measure", "ar-depth-occlusion", "ar-people-occlusion",

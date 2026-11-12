@@ -10,10 +10,10 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (46 mats → 46 filamats), across THREE pinned toolchains:
+# Inventory (52 mats → 52 filamats), across THREE pinned toolchains:
 #   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (8) → arsceneview/src/main/assets/materials/
-#   samples/android-demo/src/main/materials/ (19) → samples/android-demo/src/main/assets/materials/
+#   samples/android-demo/src/main/materials/ (25) → samples/android-demo/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
 #   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
 #
@@ -31,8 +31,8 @@
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 46 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 46 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 52 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 52 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -165,6 +165,13 @@ MATS=(
     "sceneview:video_texture_chroma_key:sceneview/src/main/materials/video_texture_chroma_key.mat:sceneview/src/main/assets/materials/video_texture_chroma_key.filamat:-p all -a all"
     "sceneview:view_texture_lit:sceneview/src/main/materials/view_texture_lit.mat:sceneview/src/main/assets/materials/view_texture_lit.filamat:-p all -a all"
     "sceneview:view_texture_unlit:sceneview/src/main/materials/view_texture_unlit.mat:sceneview/src/main/assets/materials/view_texture_unlit.filamat:-p all -a all"
+    "android-demo:matter_floor:samples/android-demo/src/main/materials/matter_floor.mat:samples/android-demo/src/main/assets/materials/matter_floor.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_soft:samples/android-demo/src/main/materials/matter_soft.mat:samples/android-demo/src/main/assets/materials/matter_soft.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_velvet:samples/android-demo/src/main/materials/matter_velvet.mat:samples/android-demo/src/main/assets/materials/matter_velvet.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_leather:samples/android-demo/src/main/materials/matter_leather.mat:samples/android-demo/src/main/assets/materials/matter_leather.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_marble:samples/android-demo/src/main/materials/matter_marble.mat:samples/android-demo/src/main/assets/materials/matter_marble.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_steel:samples/android-demo/src/main/materials/matter_steel.mat:samples/android-demo/src/main/assets/materials/matter_steel.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:matter_gel:samples/android-demo/src/main/materials/matter_gel.mat:samples/android-demo/src/main/assets/materials/matter_gel.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:studio_pbr:samples/android-demo/src/main/materials/studio_pbr.mat:samples/android-demo/src/main/assets/materials/studio_pbr.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:studio_glass:samples/android-demo/src/main/materials/studio_glass.mat:samples/android-demo/src/main/assets/materials/studio_glass.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_sprite:samples/android-demo/src/main/materials/cosmos_sprite.mat:samples/android-demo/src/main/assets/materials/cosmos_sprite.filamat:--optimize-size -p mobile -a opengl -a vulkan"

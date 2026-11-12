@@ -1,0 +1,171 @@
+// Matter velvet — Filament 1.77.3. Sample-only; see matter_deformation.vs and MatterDetailAtlas.kt.
+material {
+    "name": "Matter velvet",
+    "parameters": [
+        {
+            "type": "float",
+            "name": "squash"
+        },
+        {
+            "type": "float2",
+            "name": "rimShape"
+        },
+        {
+            "type": "float4[8]",
+            "name": "trail",
+            "precision": "high"
+        },
+        {
+            "type": "float",
+            "name": "trailMode"
+        },
+        {
+            "type": "float4",
+            "name": "releaseWave",
+            "precision": "high"
+        },
+        {
+            "type": "float2",
+            "name": "finger"
+        },
+        {
+            "type": "float",
+            "name": "depth"
+        },
+        {
+            "type": "float",
+            "name": "radius"
+        },
+        {
+            "type": "float4",
+            "name": "profile"
+        },
+        {
+            "type": "float4",
+            "name": "dimensions"
+        },
+        {
+            "type": "float",
+            "name": "bounce"
+        },
+        {
+            "type": "float3",
+            "name": "albedo"
+        },
+        {
+            "type": "float",
+            "name": "roughness"
+        },
+        {
+            "type": "float",
+            "name": "metallic"
+        },
+        {
+            "type": "float",
+            "name": "coat"
+        },
+        {
+            "type": "float",
+            "name": "coatRoughness"
+        },
+        {
+            "type": "float",
+            "name": "sheen"
+        },
+        {
+            "type": "float",
+            "name": "sheenRoughness"
+        },
+        {
+            "type": "float",
+            "name": "anisotropy"
+        },
+        {
+            "type": "float4",
+            "name": "ripple"
+        },
+        {
+            "type": "float3",
+            "name": "rippleColor"
+        },
+        {
+            "type": "float",
+            "name": "rippleWidth"
+        },
+        {
+            "type": "float",
+            "name": "detailBlend"
+        },
+        {
+            "type": "sampler2d",
+            "name": "detail",
+            "precision": "medium"
+        }
+    ],
+    "requires": [
+        "position",
+        "uv0"
+    ],
+    "variables": [
+        "rest",
+        {
+            "name": "bentNormal",
+            "precision": "medium"
+        },
+        {
+            "name": "bentTangent",
+            "precision": "medium"
+        }
+    ],
+    // Atlas rows already follow the uploaded RG8 buffer; Filament otherwise flips V.
+    "flipUV": false,
+    "shadingModel": "cloth",
+    "blending": "opaque",
+    "postLightingBlending": "transparent",
+    "doubleSided": false,
+    "specularAntiAliasing": true
+}
+vertex {
+    #define MATTER_PILE_TRAIL
+    #define MATTER_FOLDS
+    #include "matter_deformation.vs"
+}
+fragment {
+    #include "matter_detail.fs"
+    void material(inout MaterialInputs material) {
+        highp vec3 p = variable_rest.xyz;
+        mediump vec2 detail = mix(vec2(0.5), texture(materialParams_detail, getUV0()).rg, materialParams.detailBlend);
+        float compressed = variable_rest.w;
+        float crushed = max(compressed, variable_bentNormal.w * 0.65);
+        vec3 colour = materialParams.albedo;
+        float occlusion = 1.0, height = 0.0;
+        vec3 n = normalize(variable_bentNormal.xyz);
+        vec2 nap = p.xz + p.y * vec2(0.31, 0.73);
+        float pile = detail.r;
+        float resolved = 1.0 - smoothstep(0.35, 1.4, length(fwidth(nap * vec2(65.0, 240.0))));
+        float facing = clamp(dot(n, getWorldViewVector()), 0.0, 1.0);
+        colour *= (0.48 + 0.24 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * crushed);
+        height = (detail.g - 0.5) * 0.0018 * resolved;
+        vec3 t = normalize(variable_bentTangent.xyz);
+        t = normalize(t - n * dot(t, n));
+        vec3 b = cross(n, t);
+        float sweep = (pile - 0.5) * 0.30;
+        n = normalize(n + t * (sweep + crushed * 0.22) + b * sweep * 0.45);
+        vec3 detailed = matterBump(n, height);
+        mat3 toTangent = transpose(getWorldTangentFrame());
+        material.normal = toTangent * detailed;
+        prepareMaterial(material);
+        // Cavity stays legible under direct light; AO separately attenuates the IBL.
+        float cavity = variable_bentTangent.w;
+        material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
+        // Cloth uses roughness for its sole Charlie sheen lobe. Preserve the nap response
+        // without also evaluating a dielectric GGX base lobe and a second IBL lookup.
+        material.roughness = clamp(materialParams.sheenRoughness - crushed * 0.13 +
+            (pile - 0.5) * 0.10, 0.2, 1.0);
+        material.ambientOcclusion = occlusion * (1.0 - 0.72 * cavity);
+        vec3 pileTint = sqrt(materialParams.albedo);
+        pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
+        material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + crushed * 0.2), 0.0, 1.0);
+        // Velvet has no rigid contact ring; keep that fragment branch out of this family.
+    }
+}

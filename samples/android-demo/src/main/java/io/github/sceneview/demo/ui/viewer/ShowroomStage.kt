@@ -666,7 +666,8 @@ internal fun showroomIsDark(): Boolean = themedStageChrome() === StageChrome.Med
  * The showroom's floor and contact shadows under a subject whose bounding box is centred on
  * [center], rests on [floorY] and has bounding radius [radius]. The shadows follow the subject's
  * footprint ([halfWidth] × [halfDepth], turned by [yawDegrees]) and fade in with [shadowAlpha];
- * the floor is drawn only while [showFloor].
+ * the floor is drawn only while [showFloor]. [shadowCenter] lets a changing subject move
+ * its contact shadows without translating the floor or its reflection coordinates.
  */
 @Composable
 @Suppress("LongParameterList")
@@ -680,6 +681,7 @@ internal fun SceneScope.ShowroomFloor(
     yawDegrees: Float,
     showFloor: Boolean,
     shadowAlpha: Float,
+    shadowCenter: Position = center,
 ) {
     val r = radius.takeIf { it.isFinite() && it > 0f } ?: return
     if (showFloor) {
@@ -705,7 +707,7 @@ internal fun SceneScope.ShowroomFloor(
         )
     }
     val alpha = shadowAlpha.coerceIn(0f, 1f)
-    val shadowPosition = Position(center.x, floorY, center.z)
+    val shadowPosition = Position(shadowCenter.x, floorY, shadowCenter.z)
     val shadowRotation = Rotation(y = yawDegrees)
     ContactShadow(
         size = Size(1f, 0f, 1f),

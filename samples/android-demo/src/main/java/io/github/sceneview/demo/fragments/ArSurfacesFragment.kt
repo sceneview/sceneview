@@ -22,7 +22,7 @@ object ArSurfacesFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_surfaces_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Grain,
-        order = 35,
+        order = 36,
         addedIn = "4.16.0",
         updatedIn = "4.57.0",
         tags = setOf("surfaces", "ar", "plane", "surface", "wall", "floor", "renderer"),

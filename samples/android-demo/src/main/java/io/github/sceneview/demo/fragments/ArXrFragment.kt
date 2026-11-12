@@ -36,7 +36,7 @@ object ArXrFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_xr_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.BackHand,
-        order = 43,
+        order = 44,
         addedIn = "4.13.0",
         tags = setOf("android xr (preview)", "ar", "xr", "hand", "tracking", "skeleton", "face", "mesh", "headset"),
         // Live hand and face tracking need an Android XR device — none in the audit matrix and

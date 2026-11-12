@@ -17,7 +17,7 @@ object ArImageFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_image_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Image,
-        order = 21,
+        order = 22,
         addedIn = "4.0.0",
         tags = setOf("image tracking", "ar", "image", "tracking", "augmented-image", "marker"),
     )

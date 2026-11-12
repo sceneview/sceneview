@@ -17,7 +17,7 @@ object ArBodyTrackerFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_body_tracker_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Accessibility,
-        order = 28,
+        order = 29,
         addedIn = "4.14.0",
         tags = setOf("ar", "body", "pose", "mediapipe", "skeleton", "ml", "squat", "fitness", "workout", "coach"),
     )

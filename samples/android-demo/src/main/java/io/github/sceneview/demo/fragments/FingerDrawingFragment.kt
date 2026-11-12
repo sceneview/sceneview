@@ -33,7 +33,7 @@ object FingerDrawingFragment : DemoFragment {
         subtitleRes = R.string.demo_finger_drawing_subtitle,
         category = DemoCategory.PLAY,
         icon = Icons.Filled.Gesture,
-        order = 17,
+        order = 18,
         addedIn = "4.56.0",
         updatedIn = "4.64.0",
         tags = setOf(
