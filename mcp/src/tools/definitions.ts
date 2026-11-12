@@ -843,12 +843,44 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        widthCm: { type: "number", exclusiveMinimum: 1, maximum: 1000, description: "Width in centimetres, left to right as you face the object (a desk's length)." },
-        heightCm: { type: "number", exclusiveMinimum: 1, maximum: 1000, description: "Height in centimetres, from the floor or table up." },
-        depthCm: { type: "number", exclusiveMinimum: 1, maximum: 1000, description: "Depth in centimetres, front to back." },
-        label: { type: "string", maxLength: 60, description: "Short name shown with the box, e.g. \"Desk\" or \"55-inch TV\"." },
-        placement: { type: "string", enum: ["floor", "table"], default: "floor", description: "Where the object stands: on the floor (furniture) or on a table (a parcel, a speaker)." },
-        dimensionSource: { type: "string", enum: ["user", "estimated"], default: "user", description: "\"user\" when the user gave the sizes, \"estimated\" when you estimated them (say so in your answer)." },
+        widthCm: {
+          type: "number",
+          exclusiveMinimum: 1,
+          maximum: 1000,
+          description:
+            "Width in centimetres, left to right as you face the object (a desk's length).",
+        },
+        heightCm: {
+          type: "number",
+          exclusiveMinimum: 1,
+          maximum: 1000,
+          description: "Height in centimetres, from the floor or table up.",
+        },
+        depthCm: {
+          type: "number",
+          exclusiveMinimum: 1,
+          maximum: 1000,
+          description: "Depth in centimetres, front to back.",
+        },
+        label: {
+          type: "string",
+          maxLength: 60,
+          description: 'Short name shown with the box, e.g. "Desk" or "55-inch TV".',
+        },
+        placement: {
+          type: "string",
+          enum: ["floor", "table"],
+          default: "floor",
+          description:
+            "Where the object stands: on the floor (furniture) or on a table (a parcel, a speaker).",
+        },
+        dimensionSource: {
+          type: "string",
+          enum: ["user", "estimated"],
+          default: "user",
+          description:
+            '"user" when the user gave the sizes, "estimated" when you estimated them (say so in your answer).',
+        },
       },
       required: ["widthCm", "heightCm", "depthCm", "label"],
       additionalProperties: false,

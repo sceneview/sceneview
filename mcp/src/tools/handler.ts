@@ -66,8 +66,8 @@ import { getPlatformSetup, type Platform, type SetupType } from "../platform-set
 import { buildPreviewUrl, formatPreviewResponse, validatePreviewInput } from "../preview.js";
 import { getSample, SAMPLE_IDS, SAMPLES } from "../samples.js";
 import { formatSearchResults, searchModels } from "../search-models.js";
-import { formatValidationReport, validateCode } from "../validator.js";
 import { buildSpatialAnswerSpec, spatialAnswerUrl } from "../spatial-answer-link.js";
+import { formatValidationReport, validateCode } from "../validator.js";
 import { WIDGET_3D_VIEWER_URI } from "../widgets.js";
 import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 

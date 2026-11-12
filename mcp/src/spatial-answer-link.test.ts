@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpatialAnswerSpec,
   encodeSpatialAnswer,
-  spatialAnswerUrl,
   type SpatialAnswerSpec,
+  spatialAnswerUrl,
 } from "./spatial-answer-link.js";
 import { TOOL_DEFINITIONS } from "./tools/definitions.js";
 import { dispatchTool } from "./tools/handler.js";
