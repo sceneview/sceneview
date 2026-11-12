@@ -127,14 +127,23 @@ fun SpatialAnswer(
                 decorFitsSystemWindows = false),
         ) {
             BackHandler { returnToCard() }
-            Surface(Modifier.fillMaxSize()) {
-                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    TextButton(onClick = ::returnToCard) { Text(stringResource(R.string.spatial_back_to_card)) }
-                    Text(stringResource(if (spec.placement == SpatialPlacement.FLOOR) R.string.spatial_place_floor else R.string.spatial_place_table),
-                        Modifier.padding(SceneViewTokens.Space.md), style = MaterialTheme.typography.bodyLarge)
-                    SpatialViewport(spec, Modifier.fillMaxWidth().weight(1f), ar = true, onEvent = onEvent)
-                    Text(stringResource(R.string.spatial_ar_note), Modifier.padding(SceneViewTokens.Space.md),
-                        style = MaterialTheme.typography.bodySmall)
+            // Full-bleed camera; the instructions float over it on a surface, like the other AR demos.
+            Box(Modifier.fillMaxSize()) {
+                SpatialViewport(spec, Modifier.fillMaxSize(), ar = true, onEvent = onEvent)
+                Column(
+                    Modifier.align(Alignment.TopStart).fillMaxWidth().safeDrawingPadding()
+                        .padding(SceneViewTokens.Space.md),
+                    verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                ) {
+                    FilledTonalButton(onClick = ::returnToCard) { Text(stringResource(R.string.spatial_back_to_card)) }
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                        Column(Modifier.padding(SceneViewTokens.Space.md)) {
+                            Text(stringResource(if (spec.placement == SpatialPlacement.FLOOR) R.string.spatial_place_floor else R.string.spatial_place_table),
+                                style = MaterialTheme.typography.bodyLarge)
+                            Text(stringResource(R.string.spatial_ar_note), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }
@@ -179,12 +188,12 @@ private fun SpatialViewport(spec: SpatialAnswerSpec, modifier: Modifier, ar: Boo
             )
             FilledTonalButton(
                 onClick = { placement?.clear() }, enabled = (placement?.count ?: 0) > 0,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(SceneViewTokens.Space.md),
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(SceneViewTokens.Space.md),
             ) { Text(stringResource(R.string.spatial_clear)) }
         }
     } else {
         val dimensions = size ?: Size(1f)
-        val radius = maxOf(dimensions.x, dimensions.y, dimensions.z) * 2.6f
+        val radius = maxOf(dimensions.x, dimensions.y, dimensions.z) * 1.7f
         val camera = rememberCameraNode(engine)
         val manipulator = remember(radius) {
             createDefaultCameraManipulator(eyePosition = Position(radius, radius * 0.8f, radius),
@@ -193,7 +202,7 @@ private fun SpatialViewport(spec: SpatialAnswerSpec, modifier: Modifier, ar: Boo
         SceneView(modifier = modifier, surfaceType = SurfaceType.TextureSurface, engine = engine,
             modelLoader = loader, materialLoader = materials, cameraNode = camera,
             cameraManipulator = manipulator, autoCenterContent = false, isOpaque = false) {
-            PlaneNode(size = Size(maxOf(dimensions.x, dimensions.z) * 1.8f),
+            PlaneNode(size = Size(maxOf(dimensions.x, dimensions.z) * 1.4f),
                 normal = Position(y = 1f), materialInstance = ground, position = Position(y = -0.002f))
             if (size != null) DimensionedObject(size, instance, fill, edge, { camera.worldPosition }, ar = false)
         }
@@ -222,12 +231,12 @@ private fun SceneScope.DimensionedObject(
     val edges = listOf(0 to 1, 1 to 2, 2 to 3, 3 to 0, 4 to 5, 5 to 6, 6 to 7, 7 to 4, 0 to 4, 1 to 5, 2 to 6, 3 to 7)
     edges.forEach { (a, b) -> TubeNode(points = listOf(corners[a], corners[b]), radius = annotationScale * 0.003f, materialInstance = edge) }
     val labels = listOf(
-        w to Position(0f, h + annotationScale * 0.05f, d/2),
-        h to Position(-w/2 - annotationScale * 0.10f, h/2, d/2),
-        d to Position(w/2 + annotationScale * 0.10f, annotationScale * 0.05f, 0f),
+        w to Position(0f, h + annotationScale * 0.08f, d/2),
+        h to Position(-w/2 - annotationScale * 0.22f, h/2, d/2),
+        d to Position(w/2 + annotationScale * 0.22f, annotationScale * 0.07f, 0f),
     )
     labels.forEach { (value, position) ->
-        TextNode(text = dimensionLabel(value), position = position, widthMeters = annotationScale * 0.22f, heightMeters = annotationScale * 0.07f,
+        TextNode(text = dimensionLabel(value), position = position, widthMeters = annotationScale * 0.40f, heightMeters = annotationScale * 0.13f,
             textColor = colors.onSurface.toArgb(), backgroundColor = colors.surface.toArgb(), cameraPositionProvider = camera)
     }
 }
