@@ -15,6 +15,7 @@ import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
 import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
+import io.github.sceneview.demo.demos.internal.feel.MatterStage
 import io.github.sceneview.loaders.MaterialLoader
 import java.nio.ByteBuffer
 import kotlin.math.exp
@@ -43,6 +44,7 @@ internal class MatterSurfaceMaterials(
         fun asset(kind: FeelMaterial) = "materials/matter_${listOf("soft", "gel", "velvet", "leather", "marble", "steel")[kind.ordinal]}.filamat"
     }
     val floor = loader.createInstance(loader.createMaterial(floorPayload)).apply {
+        setParameter("background", MatterStage.STUDIO_GREY, MatterStage.STUDIO_GREY, MatterStage.STUDIO_GREY)
         setParameter("contact", 0f, 0f, 1f)
         setParameter("halfSize", FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_LENGTH)
     }

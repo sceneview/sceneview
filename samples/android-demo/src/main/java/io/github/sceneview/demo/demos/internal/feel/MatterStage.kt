@@ -21,7 +21,10 @@ internal class MatterStage {
         orbitSin = sin(radians).toFloat()
         orbitCos = cos(radians).toFloat()
     }
-    val eyeX get() = distance * orbitSin * COS
+    private var targetRight = 0f
+    val targetX get() = targetRight * orbitCos
+    val targetZ get() = -targetRight * orbitSin
+    val eyeX get() = targetX + distance * orbitSin * COS
     var targetY = TARGET_Y
         private set
     val eyeY get() = targetY + distance * SIN
@@ -31,7 +34,7 @@ internal class MatterStage {
         return maxOf(MatterOpening.TRAVEL,
             targetY + distance * verticalTan / (COS + verticalTan * SIN) + FeelSimulation.PAD_THICKNESS)
     }
-    val eyeZ get() = distance * orbitCos * COS
+    val eyeZ get() = targetZ + distance * orbitCos * COS
     // Enough travel to put the complete silhouette off screen before the next settles.
     val slideDistance get() = halfWidth * 2f + FeelSimulation.PAD_HALF_WIDTH * 2f
     private var framedWidth = -1
@@ -42,6 +45,7 @@ internal class MatterStage {
         framedWidth = widthPx; framedHeight = heightPx
         val aspect = widthPx.toFloat() / heightPx.coerceAtLeast(1)
         targetY = TARGET_Y
+        targetRight = 0f
         fun fits(d: Float): Boolean {
             for (x in listOf(-FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH))
                 for (y in listOf(-FeelSimulation.PAD_THICKNESS, 0f))
@@ -49,26 +53,28 @@ internal class MatterStage {
                         val cy = y - targetY
                         val depth = d - (x * BACK_X + cy * SIN + z * BACK_Z)
                         if (depth <= NEAR) return false
-                        val right = x * COS_AZIMUTH - z * SIN_AZIMUTH
+                        val right = x * COS_AZIMUTH - z * SIN_AZIMUTH - targetRight
                         val up = x * UP_X + cy * COS + z * UP_Z
-                        if (abs(right) > depth * TAN_HALF_FOV * .79f ||
+                        if (abs(right) > depth * TAN_HALF_FOV * .77f ||
                             abs(up) > depth * TAN_HALF_FOV / aspect * .78f) return false
                     }
             return true
         }
-        // Re-centre the projected silhouette, not the origin: perspective lifts the far edge.
-        // The rounded silhouette fills ~75% of portrait width, with space for the contact
-        // shadow. The 0.79 frustum allowance includes the box corners outside the bevel.
-        repeat(5) {
+        // Centre BOTH projected axes, not the world origin. Perspective made the old
+        // silhouette 15 px left on a 4a; the old .48 vertical target put it 37 px high.
+        // The .77 box allowance leaves ~.75 for the actual rounded silhouette.
+        repeat(8) {
             var low = 3f; var high = 100f
             repeat(30) {
                 val mid = (low + high) / 2f
                 if (fits(mid)) high = mid else low = mid
             }
             distance = high
-            if (it < 4) {
+            if (it < 7) {
                 var bottom = Float.POSITIVE_INFINITY
                 var top = Float.NEGATIVE_INFINITY
+                var left = Float.POSITIVE_INFINITY
+                var right = Float.NEGATIVE_INFINITY
                 for (x in listOf(-FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_WIDTH))
                     for (y in listOf(-FeelSimulation.PAD_THICKNESS, 0f))
                         for (z in listOf(-FeelSimulation.PAD_HALF_LENGTH, FeelSimulation.PAD_HALF_LENGTH)) {
@@ -76,8 +82,11 @@ internal class MatterStage {
                             val depth = distance - (x * BACK_X + cy * SIN + z * BACK_Z)
                             val projected = (x * UP_X + cy * COS + z * UP_Z) / depth
                             bottom = minOf(bottom, projected); top = maxOf(top, projected)
+                            val horizontal = (x * COS_AZIMUTH - z * SIN_AZIMUTH - targetRight) / depth
+                            left = minOf(left, horizontal); right = maxOf(right, horizontal)
                         }
-                targetY += ((bottom + top) * .5f - TAN_HALF_FOV / aspect * .04f) * distance / COS
+                targetY += (bottom + top) * .5f * distance / COS
+                targetRight += (left + right) * .5f * distance
             }
         }
         return true
@@ -131,6 +140,8 @@ internal class MatterStage {
         const val ELEVATION = 30f
         const val AZIMUTH = 24f
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
+        // Unlit scene-linear grey before PBR Neutral: ~22% sRGB, shared by floor and sky.
+        const val STUDIO_GREY = .08f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
         val SIN = sin(Math.toRadians(ELEVATION.toDouble())).toFloat()
         val COS = cos(Math.toRadians(ELEVATION.toDouble())).toFloat()

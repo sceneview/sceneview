@@ -140,7 +140,7 @@ fragment {
         float rough = materialParams.roughness;
         float occlusion = 1.0, height = 0.0;
         vec3 n = normalize(variable_bentNormal.xyz);
-        colour = mix(colour, vec3(0.36, 0.41, 0.47), detail.r);
+        colour = mix(colour, vec3(0.32, 0.34, 0.35), detail.r);
         rough += detail.g * 0.018;
         vec3 detailed = n;
         mat3 toTangent = transpose(getWorldTangentFrame());

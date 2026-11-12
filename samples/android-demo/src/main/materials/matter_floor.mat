@@ -1,14 +1,15 @@
-// Lit matte studio floor; analytic contact shadow avoids a dense slab shadow-map pass.
+// Neutral studio sweep; analytic contact shadow avoids a dense slab shadow-map pass.
 // matc 1.77.3: --optimize-size -p mobile -a opengl -a vulkan
 material {
     name: "Matter floor",
     parameters: [
         { type: float3, name: contact },
-        { type: float2, name: halfSize }
+        { type: float2, name: halfSize },
+        { type: float3, name: background }
     ],
     requires: [position],
     variables: [floorPosition],
-    shadingModel: lit
+    shadingModel: unlit
 }
 vertex {
     void materialVertex(inout MaterialVertexInputs material) {
@@ -24,11 +25,11 @@ fragment {
         float outside = max(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.10, 0.0);
         float shadow = (0.38 * exp(-outside * outside / 0.09) +
             0.30 * exp(-outside * outside / 0.70)) * materialParams.contact.z;
-        // Neutral diffuse studio surface. The shared key lights it and the refracted
-        // floor consistently; the dark footprint fixes the slab to its supported bottom.
-        material.baseColor = vec4(vec3(0.42) * (1.0 - shadow), 1.0);
-        material.roughness = 0.95;
-        material.metallic = 0.0;
-        material.reflectance = 0.25;
+        // Match the solid skybox exactly before reaching either the plane edge or far clip.
+        // The sweep is 22–25% display grey under PBR Neutral, independent of key exposure.
+        // Only the local studio pool and contact penumbra vary; no hard horizon can remain.
+        float pool = 1.0 - smoothstep(6.0, 18.0, length(variable_floorPosition.xz));
+        vec3 colour = materialParams.background * (1.0 + 0.12 * pool) * (1.0 - shadow);
+        material.baseColor = vec4(colour, 1.0);
     }
 }

@@ -144,7 +144,7 @@ fragment {
         float facing = clamp(dot(n, getWorldViewVector()), 0.0, 1.0);
         // Low-frequency nap varies tint slightly, never the surface normal. The old
         // pile-noise normal tilt made an undeformed, planar top look like lumpy modelling.
-        colour *= (0.60 + 0.04 * pile + 0.28 * (1.0 - facing)) * (1.0 + 1.1 * crushed);
+        colour *= (0.60 + 0.04 * pile + 0.18 * (1.0 - facing)) * (1.0 + 0.5 * crushed);
         float height = (detail.g - 0.5) * 0.00035 * resolved;
         vec3 detailed = matterBump(n, height);
         mat3 toTangent = transpose(getWorldTangentFrame());
@@ -155,11 +155,12 @@ fragment {
         material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
         // Cloth uses roughness for its sole Charlie sheen lobe. Preserve the nap response
         // without also evaluating a dielectric GGX base lobe and a second IBL lookup.
-        material.roughness = clamp(materialParams.sheenRoughness - crushed * 0.13 +
+        material.roughness = clamp(materialParams.sheenRoughness - crushed * 0.06 +
             (detail.g - 0.5) * 0.02, 0.2, 1.0);
         material.ambientOcclusion = 1.0 - 0.72 * cavity;
-        vec3 pileTint = sqrt(materialParams.albedo);
-        pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
+        // Pale, low-chroma fibre reflection over a dark matte core. Normalising green to
+        // one made the old sheen read as another saturated plastic highlight in the well.
+        vec3 pileTint = mix(vec3(0.78), sqrt(materialParams.albedo), 0.22);
         material.sheenColor = clamp(pileTint * materialParams.sheen * (0.91 + pile * 0.03 + crushed * 0.2), 0.0, 1.0);
         // Velvet has no rigid contact ring; keep that fragment branch out of this family.
     }

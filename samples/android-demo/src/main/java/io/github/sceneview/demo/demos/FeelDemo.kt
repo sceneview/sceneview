@@ -45,7 +45,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -99,7 +98,8 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.Node
-import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.node.CameraNode
+import io.github.sceneview.rememberNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMainLightNode
@@ -161,9 +161,27 @@ fun FeelDemo(onBack: () -> Unit) {
             interval = 1
         }
     }
-    val camera = rememberCameraNode(engine)
+    val stage = remember { MatterStage() }
+    val camera = rememberNode {
+        object : CameraNode(engine) {
+            // SceneView calls this on attachment AND native surface recreation, even when
+            // Compose reports the same size. Keep the horizontal FOV instead of its 28 mm lens.
+            override fun updateProjection(focalLength: Double, near: Float, far: Float, aspect: Double) {
+                val viewport = viewport ?: return
+                if (viewport.width <= 0 || viewport.height <= 0) return
+                stage.widthPx = viewport.width
+                stage.heightPx = viewport.height
+                setProjection(MatterStage.HORIZONTAL_FOV,
+                    viewport.width.toDouble() / viewport.height,
+                    MatterStage.NEAR, MatterStage.FAR, Camera.Fov.HORIZONTAL)
+            }
+        }
+    }
     // A single studio for all samples and both app themes. The IBL only fills reflections.
-    val skybox = remember(engine) { Skybox.Builder().color(.28f, .28f, .28f, 1f).build(engine) }
+    val skybox = remember(engine) {
+        val grey = MatterStage.STUDIO_GREY
+        Skybox.Builder().color(grey, grey, grey, 1f).build(engine)
+    }
     DisposableEffect(skybox) { onDispose { engine.destroySkybox(skybox) } }
     val hdr = rememberHDREnvironment(environmentLoader, ShowroomMath.DARK_HDR, createSkybox = false)
     val environment = remember(hdr, skybox) { (hdr ?: Environment()).copy(skybox = skybox) }
@@ -209,7 +227,6 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     // Wait for the actual lit scene before starting; reduced motion/QA dismiss it permanently.
     val simulation = remember { FeelSimulation(openingEnabled = true) }
-    val stage = remember { MatterStage() }
     val idle = remember { MatterIdle() }
     val haptics = remember(touchView) { FeelHapticPlayer(touchView) }
     val touch = remember(simulation, view, haptics, stage, touchView) {
@@ -312,6 +329,10 @@ fun FeelDemo(onBack: () -> Unit) {
     val hairlinePx = with(LocalDensity.current) { SceneViewTokens.Layout.hairlineWidth.toPx() }
     val floorY = -FeelSimulation.PAD_THICKNESS
     SideEffect {
+        // The cloth's Charlie lobe needs a grazing key (~16 degrees above the top).
+        // Other samples keep v15's lighting, including the clear gel's reflections.
+        light.lightDirection = if (displayed == FeelMaterial.Velvet) Direction(.65f, -.28f, -.75f)
+            else Direction(.45f, -1f, -.55f)
         MatterIdentity.colours(dark = colors.surface.luminance() < .5f).forEachIndexed { face, rgb ->
             val linear = MatterIdentity.linearBeforeToneMap(rgb)
             materials.mark[face].setParameter("color", linear[0], linear[1], linear[2], 1f)
@@ -344,12 +365,9 @@ fun FeelDemo(onBack: () -> Unit) {
         val cameraMoved = idle.advance(now, motion && focused && simulation.opening.finished && !switching)
         if (cameraMoved) stage.orbit(idle.yawDegrees)
         val reframed = stage.frame()
-        if (reframed) camera.setProjection(MatterStage.HORIZONTAL_FOV,
-            stage.widthPx.toDouble() / stage.heightPx.coerceAtLeast(1),
-            MatterStage.NEAR, MatterStage.FAR, Camera.Fov.HORIZONTAL)
         if (cameraMoved || reframed) {
             camera.position = Position(stage.eyeX, stage.eyeY, stage.eyeZ)
-            camera.lookAt(Position(y = stage.targetY))
+            camera.lookAt(Position(stage.targetX, stage.targetY, stage.targetZ))
         }
         simulation.opening.travel = stage.openingTravel
         if (!motion && !simulation.opening.finished) simulation.opening.cancel()
@@ -466,9 +484,9 @@ fun FeelDemo(onBack: () -> Unit) {
             themedStage = true, actionsMenu = true, recorder = recorder, dockHidden = true,
         ) {
             Column(Modifier.fillMaxSize().background(colors.surface).padding(LocalDemoSceneCover.current)) {
-                Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged {
-                    stage.widthPx = it.width; stage.heightPx = it.height
-                }) {
+                // This is the actual SceneView surface, ABOVE FeelControls. Native viewport
+                // dimensions (not the full window or dynamic-resolution buffer) frame the slab.
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     SceneView(
                         modifier = Modifier.fillMaxSize(), engine = engine, materialLoader = loader,
                         environmentLoader = environmentLoader, view = view, cameraNode = camera,
