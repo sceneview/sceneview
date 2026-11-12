@@ -410,4 +410,5 @@
     <string name="spatial_error_label">Use a label of at most 60 characters.</string>
     <string name="spatial_error_version">Unsupported payload version. Expected version 1.</string>
     <string name="spatial_error_payload">Invalid spatial payload. Check the version, fields and object kind.</string>
+    <string name="spatial_share_link">Share link</string>
 </resources>

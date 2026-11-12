@@ -22,5 +22,5 @@ object SpatialAnswerFragment : DemoFragment {
     )
 
     @Composable
-    override fun Screen(onBack: () -> Unit) = SpatialAnswerDemo(onBack)
+    override fun Screen(onBack: () -> Unit) = SpatialAnswerDemo(onBack, io.github.sceneview.demo.DemoSettings.requestedAnswer)
 }

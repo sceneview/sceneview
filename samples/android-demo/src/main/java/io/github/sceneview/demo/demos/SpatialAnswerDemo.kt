@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Share
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -39,15 +42,33 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpatialAnswerDemo(onBack: () -> Unit) {
+fun SpatialAnswerDemo(onBack: () -> Unit, initialAnswer: String? = null) {
+    val context = LocalContext.current
     val example = stringResource(R.string.spatial_sentence)
-    var sentence by rememberSaveable { mutableStateOf(example) }
-    var result by remember { mutableStateOf(SpatialSentenceParser.parse(example)) }
+    val initialResult = remember(initialAnswer, example) {
+        initialAnswer?.let(SpatialLink::decode) ?: SpatialSentenceParser.parse(example)
+    }
+    var sentence by rememberSaveable(initialAnswer) {
+        mutableStateOf(if (initialAnswer != null) (initialResult as? SpatialResult.Success)?.spec?.label.orEmpty() else example)
+    }
+    var result by remember(initialAnswer) { mutableStateOf(initialResult) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.demo_spatial_answer)) }, navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.spatial_back))
+            }
+        }, actions = {
+            val spec = (result as? SpatialResult.Success)?.spec
+            IconButton(enabled = spec != null, onClick = {
+                spec?.let {
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, SpatialLink.httpsUri(it))
+                    }, null))
+                }
+            }) {
+                Icon(Icons.Filled.Share, stringResource(R.string.spatial_share_link))
             }
         })
     }) { insets ->
