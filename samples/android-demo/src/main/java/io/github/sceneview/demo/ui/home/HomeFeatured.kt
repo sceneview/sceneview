@@ -26,6 +26,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,7 +35,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.painter.Painter
@@ -108,33 +108,7 @@ object FeaturedTestTags {
     const val INDICATOR = "home-featured-indicator"
 }
 
-/**
- * The Showcase's featured banner — now a **horizontal pager** (#3567).
- *
- * It has always looked like a carousel: full-bleed image, scrim, display title,
- * "Open" pill — the exact shape every store app uses for a swipeable featured
- * row. It had no horizontal gesture, no second page and no indicator, so the
- * affordance the layout promised was not there and one slot out of 51 demos was
- * permanently spent on the same card.
- *
- * Each page keeps the hero's visual contract unchanged (design spec §2):
- * `radius-xl` clip, media cropped to fill, a vertical scrim from transparent at
- * 50 % to `stage-scrim-end`, bottom-left copy — `type-display` title,
- * `type-body` subtitle at 80 % white, one 44 dp pill. Light: `shadow-md`; dark:
- * 1 dp `outline-subtle`. Pages stay dark in both themes by design, which is why
- * their text colours are fixed [SceneViewTokens.HomeColor] tokens rather than
- * `colorScheme` roles.
- *
- * The whole pager is one grid item, so the Showcase's vertical scroll is
- * untouched; each page is one merged semantics node, so a screen reader
- * announces a page rather than four fragments.
- *
- * The first page is a **window, not a card** (#3948, #3949): the flagship demo's
- * page draws no field, no still and no shadow — only its scrim, copy and pill — over
- * the live flight [HomeScreen] keeps composed *under* the grid. The scene is not this
- * page's child, so neither the grid recycling this item nor the pager recycling the
- * page can dispose it; it does not flash on the way back because nothing reloads.
- */
+/** Featured pages with opaque themed captions and a standard pager indicator. */
 @Composable
 fun HomeFeaturedPager(
     pages: List<FeaturedPage>,
@@ -205,19 +179,7 @@ fun HomeFeaturedPager(
     }
 }
 
-/**
- * One featured page. [media] is the demo's own capture — the same
- * `preview_<id>_{light,dark}.webp` pair the grid cards use, so adding a featured
- * entry needs no new artwork. When it is absent the page falls back to the flat
- * `hero-field` stage colour, optionally carrying [glyph] — which is what the
- * What's new page uses, deliberately, so it does not masquerade as a demo.
- *
- * A [window] page draws no field, no still, no scrim, no shadow, no outline and no
- * rounded corners, and does not shrink under the thumb: it is copy over the live stage
- * behind the grid, and a card that scaled would slide against a scene that does not.
- * The legibility scrim is the stage's own, painted full-bleed under the whole band
- * (see `HomeHeroStage`), so no card edge cuts through the landscape.
- */
+/** A preview with a flat surface behind its title and supporting copy. */
 @Composable
 private fun FeaturedCard(
     height: Dp,
@@ -245,9 +207,9 @@ private fun FeaturedCard(
                 role = Role.Button,
                 onClick = onClick,
             ),
-        shape = if (window) RectangleShape else RoundedCornerShape(SceneViewTokens.Radius.xl),
-        color = if (window) Color.Transparent else heroField(),
-        shadowElevation = if (dark || window) 0.dp else SceneViewTokens.Elevation.md,
+        shape = if (window) RectangleShape else MaterialTheme.shapes.medium,
+        color = if (window) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        shadowElevation = 0.dp,
         border = if (dark && !window) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -257,18 +219,6 @@ private fun FeaturedCard(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
-                )
-            }
-            if (!window) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                home.heroScrimStart to SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                                1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
-                            ),
-                        ),
                 )
             }
             if (glyph) {
@@ -285,18 +235,20 @@ private fun FeaturedCard(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .padding(home.heroPadding),
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
                 Text(
                     text = title,
                     style = SceneViewTokens.Type.display,
-                    color = colors.heroTitle,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = subtitle,
                     style = SceneViewTokens.Type.body,
-                    color = colors.heroSubtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     modifier = Modifier.widthIn(max = home.heroSubtitleMaxWidth),
                 )
@@ -305,8 +257,8 @@ private fun FeaturedCard(
                         .padding(top = SceneViewTokens.Space.sm)
                         .height(home.heroPillHeight),
                     shape = RoundedCornerShape(SceneViewTokens.Radius.full),
-                    color = colors.heroPillBackground,
-                    contentColor = colors.heroPillText,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
                     // Label then arrow (#4622): a bare "Open" over the live stage read as a
                     // caption. The arrow is decorative — the page is one merged button node.
@@ -319,12 +271,12 @@ private fun FeaturedCard(
                             text = actionLabel,
                             style = SceneViewTokens.Type.body,
                             fontWeight = FontWeight.SemiBold,
-                            color = colors.heroPillText,
+                            color = MaterialTheme.colorScheme.onPrimary,
                         )
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = null,
-                            tint = colors.heroPillText,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(home.heroPillIconSize),
                         )
                     }

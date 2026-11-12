@@ -5,20 +5,18 @@ listing-sync job uploads this directory to the Play Console (#1710).
 
 This is the Android counterpart of
 [`samples/ios-demo/appstore-screenshots/README.md`](../../../../../ios-demo/appstore-screenshots/README.md).
-Both stores are *meant* to show the same demos framed the same way (#2773) — but
-they are **not in sync today**: the phone class and both iOS classes carry the
-captioned v4/v3 set, the two **tablet classes still carry the uncaptioned
-5-slot v3**. The tablet AVDs they were shot on were deleted (one AVD survives,
-`Pixel_7a`), so re-capturing them needs an AVD recreated first — that is the
-one open gap. Read the next section before assuming parity.
+Both stores are *meant* to show the same demos framed the same way (#2773). Since
+4.69.0 every Android class shows the current app: the phone class carries the
+captioned set, and both tablet classes carry four uncaptioned frames of the
+4.69.0 release APK. The iOS classes still carry their own captioned v3 set.
 
 ## What each class actually ships right now
 
 | Class | Files | Set |
 |---|---|---|
-| `phone-screenshot-*` | 7 | **v5, captioned, light and dark** (2026-10-30, the 4.63.0 release APK on `emulator-5554`, 1080x2400, 96 px status bar cropped, launched without `qa_mode`) — `Fly through a galaxy` (Cosmos, dark) · `Scan a room in 3D` (3D Scan sample replay, light) · `Real size, your room` (the AR composite, unchanged, see below) · `Nearly 50 demos, with source` (the cinematic home, light) · `Open any 3D file` (Model Viewer, dark) · `Room size, measured` (3D Scan replay, dark) · `A few lines of Compose` (snippet beside the Model Viewer frame). Slot 2 is the only one not re-captured: its room layer and chrome live in `raw/`, which is not committed |
-| `tablet7-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet7_QA` in #3350 |
-| `tablet10-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet10_QA` in #3350 |
+| `phone-screenshot-*` | 7 | **v5, captioned, light and dark** (2026-10-30, the 4.63.0 release APK; slots 3, 4 and 6 re-captured on the 4.69.0 release APK on 2026-11-12: the new Home, and the Model Viewer on the CC0 Flight Helmet on `emulator-5554`, 1080x2400, 96 px status bar cropped, launched without `qa_mode`) — `Fly through a galaxy` (Cosmos, dark) · `Scan a room in 3D` (3D Scan sample replay, light) · `Real size, your room` (the AR composite, unchanged, see below) · `Nearly 50 demos, with source` (the cinematic home, light) · `Open any 3D file` (Model Viewer, dark) · `Room size, measured` (3D Scan replay, dark) · `A few lines of Compose` (snippet beside the Model Viewer frame). Slot 2 is the only one not re-captured: its room layer and chrome live in `raw/`, which is not committed |
+| `tablet7-screenshot-*` | 4 | **4.69.0, uncaptioned** (2026-11-12): Model Viewer (Flight Helmet, dark) · Cosmos · Rolling balls · Materials. Shot on `emulator-5554` with its display overridden to a 7" tablet (`wm size 1200x1920`, `wm density 240`), status bar (105 px) cropped, launched by deep link without `qa_mode` |
+| `tablet10-screenshot-*` | 4 | **4.69.0, uncaptioned** (2026-11-12): the same four frames at `wm size 1600x2560`, `wm density 320`, status bar (140 px) cropped |
 | iOS (`appstore-screenshots/`) | 6 + 6 | **v3, captioned** — the same six promises, `iphone-6.9` and `ipad-13`, captured on the simulator and composited by the same script. Slot 2 is the generated AR visual; see that directory's README |
 
 ## The AR slot is half generated, half captured (#2844)
@@ -69,15 +67,15 @@ bar says `Sheen Chair` over a photo of anything else would be the #3454 defect
 (a card showing a model the app never loads) one surface further out. Change the
 subject and you must re-capture the chrome with that model armed.
 
-The two tablet slot-1 files remain **pure** generated visuals with no app chrome
-at all. `feature-graphic.png` has been a real capture since 2026-10-30.
+The tablet classes no longer carry a generated visual: their slot 1 was
+retired in 4.69.0 (see below). `feature-graphic.png` has been a real capture since 2026-10-30.
 
 | File | Source reference | Prompt | Generated |
 |---|---|---|---|
 | `feature-graphic.png` (1024×500) | `raw/banner-art.png` — a crop (x 40–1080, y 820–1900) of the dark 3D Scan replay capture, not a generated image | composited by `tools/store-screenshots/compose.py` (`kind: banner`): `Scan, view and place in 3D` / `Open-source 3D & AR for Compose, SwiftUI and the web` | 2026-10-30 |
 | `phone-screenshot-2.png` (1080×2304), room layer only | `tools/demo-previews/refs/sheen_chair.webp` — a crop of the app's own picker thumbnail for the `Sheen Chair` model | `store.json` → `ar-phone-chair-room` (9:16 raw, the chair on a real oak floor at its real ~75 cm height) — then composited with the captured chrome, see above | 2026-09-09 |
 | `raw/ar-room-phone.png` (the icosahedron on a desk) | `refs/printed_icosahedron.webp` | `store.json` → `ar-phone-room`; still the source of the iOS `01-ar.png` | 2026-09-09 |
-| `tablet7-screenshot-1.png` (1200×1872) · `tablet10-screenshot-1.png` (1600×2512) | same | `store.json` → `ar-tablet` (3:4 raw, shared with the iOS `ipad-13/00-ar.png`) | 2026-09-05, #3461 |
+| Former `tablet7-screenshot-1.png` · `tablet10-screenshot-1.png`, **off the listing since 4.69.0** | same | `store.json` → `ar-tablet` (3:4 raw, shared with the iOS `ipad-13/00-ar.png`) | 2026-09-05, #3461 |
 
 Until #3461 these were drawn from `refs/hero.webp`, a stylised rusty helmet the
 app never renders — the same defect #3454 fixed on the catalog cards, one
@@ -87,12 +85,12 @@ Model Viewer showed on the app's first screen.
 
 **That helmet left the app (#4947):** its original sculpt is CC-BY-NC 4.0,
 so it may not appear on a store listing. The Model Viewer now opens on the
-CC-BY 4.0 Phoenix Bird. Still showing the helmet, and to be regenerated before
-the next listing sync: `tablet7-screenshot-1..4.png` and
-`tablet10-screenshot-1..4.png` (slot 1 is the generated `ar-tablet` item, whose
-`store.json` prompt and `refs/damaged_helmet.webp` reference must move to a
-CC-BY subject first; slots 2–4 are tablet captures, and the tablet AVDs they
-came from were deleted).
+CC-BY 4.0 Phoenix Bird. The 4.69.0 captures removed it from every Android
+listing slot: phone slots 4 and 6 now show the CC0 Flight Helmet, and the
+tablet classes dropped the generated `ar-tablet` slot 1 (its `store.json` prompt
+and `refs/damaged_helmet.webp` reference must move to a CC-BY subject before it
+can return). No tablet AVD is needed any more: the phone AVD with a `wm size`
+override renders the app's tablet layout.
 
 Why generated: a real AR capture needs a device camera. ARCore's emulator
 recording/playback path fails on the QA AVDs — session creation probes camera

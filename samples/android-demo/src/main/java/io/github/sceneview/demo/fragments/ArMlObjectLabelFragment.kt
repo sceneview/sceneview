@@ -22,11 +22,11 @@ object ArMlObjectLabelFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARMLObjectLabelDemo.kt",
         titleRes = R.string.demo_ar_ml_title,
         subtitleRes = R.string.demo_ar_ml_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Label,
-        order = 47,
+        order = 43,
         addedIn = "4.12.0",
-        tags = setOf("ar", "ml", "mlkit", "object-detection", "label", "hit-test"),
+        tags = setOf("ml kit object labels", "ar", "ml", "mlkit", "object-detection", "label", "hit-test"),
         // Coarse ML Kit categories only, and the scene is dated (samples audit, 2026-10-02):
         // it no longer has a card, only Point & Ask's fallback reaches it.
         status = DemoStatus.KnownIssue,

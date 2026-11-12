@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
+    <string name="demo_ar_depth_visualization_title">Depth map</string>
     <string name="demo_ar_depth_visualization_subtitle">False-color depth map blended with camera</string>
     <!-- Depth source pill: ARCore's Depth API or the on-device ML estimate. -->
     <string name="demo_ar_depth_source_arcore">ARCore</string>

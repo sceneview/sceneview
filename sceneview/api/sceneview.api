@@ -181,6 +181,7 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun destroyGeometry (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Geometry;)V
 	public static final fun destroyLight (Lcom/google/android/filament/Engine;I)V
 	public static final fun destroyRenderable (Lcom/google/android/filament/Engine;I)V
+	public static final fun destroyRendererWhenBackendIdle (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Renderer;)V
 	public static final fun destroyTransformable (Lcom/google/android/filament/Engine;I)V
 	public static final fun drainFramePipeline (Lcom/google/android/filament/Engine;)V
 	public static final fun isValid (Lcom/google/android/filament/Engine;)Z

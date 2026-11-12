@@ -1,0 +1,29 @@
+// Matte studio floor; the analytic contact shadow also works without a shadow-map pass.
+// matc 1.77.3: --optimize-size -p mobile -a opengl -a vulkan
+material {
+    name: "Matter floor",
+    parameters: [
+        { type: float3, name: contact },
+        { type: float2, name: halfSize }
+    ],
+    requires: [position],
+    variables: [floorPosition],
+    shadingModel: unlit
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.floorPosition = vec4(getPosition().xyz, 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        highp vec2 p = variable_floorPosition.xz - materialParams.contact.xy;
+        // Rounded rectangular footprint, with a tight contact core and soft penumbra.
+        highp vec2 q = abs(p) - materialParams.halfSize + 0.10;
+        float outside = max(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.10, 0.0);
+        float shadow = (0.38 * exp(-outside * outside / 0.09) +
+            0.30 * exp(-outside * outside / 0.70)) * materialParams.contact.z;
+        material.baseColor = vec4(vec3(0.12) * (1.0 - shadow), 1.0);
+    }
+}

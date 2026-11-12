@@ -5,8 +5,8 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_depth_occlusion_title">Depth Occlusion</string>
-    <string name="demo_ar_depth_occlusion_subtitle">Real-world depth hides virtual objects</string>
+    <string name="demo_ar_depth_occlusion_title">Objects hide objects</string>
+    <string name="demo_ar_depth_occlusion_subtitle">Real surfaces hide virtual content</string>
     <string name="ar_depth_comparison">Real objects in front of the helmet hide it when occlusion is on.</string>
     <string name="ar_depth_requirement">Requires ARCore Depth API.</string>
     <string name="ar_comparison_unavailable">This feature isn’t available on this device.</string>

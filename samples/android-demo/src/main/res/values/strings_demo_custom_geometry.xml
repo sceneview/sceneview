@@ -4,7 +4,7 @@
      `custom-mesh` and `shape` ids still deep-link here through
      `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
-    <string name="demo_custom_geometry_title">Custom Geometry</string>
+    <string name="demo_custom_geometry_title">Custom geometry</string>
     <string name="demo_custom_geometry_subtitle">A knot generated vertex by vertex</string>
     <string name="demo_custom_geometry_explainer">Every position, normal and UV of this trefoil knot is computed in Kotlin, uploaded to a Filament vertex buffer and drawn by a MeshNode. Move a slider and the mesh is rebuilt live.</string>
 </resources>

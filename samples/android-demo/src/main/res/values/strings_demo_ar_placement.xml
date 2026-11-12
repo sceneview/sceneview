@@ -8,7 +8,7 @@
      #3405 folded `ar-instant-placement` into this demo; the placement-mode copy it brought
      went again when placement became automatic (no cursor, no tap — plan §2.1). -->
 <resources>
-    <string name="demo_ar_placement_title">AR Placement</string>
+    <string name="demo_ar_placement_title">Place a model</string>
     <string name="demo_ar_placement_subtitle">Place objects on a floor or mount a TV on a wall</string>
 
     <!-- Pre-AR chooser (#3405). The whole point of this screen is that the subject is

@@ -41,10 +41,11 @@ object ArPlacementFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_placement_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.ViewInAr,
-        order = 17,
+        order = 19,
         addedIn = "4.0.0",
         updatedIn = "4.52.0",
         tags = setOf(
+            "ar placement",
             "ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv",
             "pose", "transform", "gesture", "tap-to-place", "sceneform",
         ),

@@ -17,9 +17,10 @@ object LinesPathsFragment : DemoFragment {
         subtitleRes = R.string.demo_lines_paths_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Timeline,
-        order = 6,
+        order = 12,
         addedIn = "4.0.1",
         tags = setOf(
+            "lines & paths",
             "line", "polyline", "path", "spline", "curve", "bezier", "catmull-rom",
             "tube", "stroke", "dashed", "points", "point cloud", "trail",
         ),

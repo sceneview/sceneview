@@ -17,7 +17,7 @@ object DebugOverlayFragment : DemoFragment {
         subtitleRes = R.string.demo_debug_overlay_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Speed,
-        order = 15,
+        order = 34,
         addedIn = "4.0.1",
         // #4479: the stress test runs its whole ramp, to 1,000 spheres.
         updatedIn = "4.56.0",

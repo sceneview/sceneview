@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure-JVM pins for #3799 and #3885: no teardown may park the main thread on the backend backlog
- * long enough to ANR, and the engine must outlive every teardown it defers.
+ * Pure-JVM pins for #3799 and #3885: defer releases while their readiness checks report busy,
+ * and keep the engine alive until every dependent release has run. Native waits remain unbounded.
  *
  * [BackendIdleTeardowns] is the Filament-free core of `Engine.whenBackendIdle()`, behind
  * `rememberEngine` (`Engine.destroy()` joins the driver thread after the whole backlog),
@@ -30,6 +30,7 @@ class BackendIdleTeardownTest {
             while (pending.isNotEmpty()) runNext()
         }
         val hasPending get() = pending.isNotEmpty()
+        val pendingCount get() = pending.size
     }
 
     /** One deferred teardown's observable outcome. */
@@ -78,6 +79,105 @@ class BackendIdleTeardownTest {
         assertEquals("ran exactly once, flagged as deferred", listOf(true), outcome.runs)
         assertEquals(List(4) { BACKEND_IDLE_POLL_MS }, scheduler.delays)
         assertEquals(0, teardowns.size)
+    }
+
+    @Test
+    fun pendingTeardownsShareOneScheduledPoll() {
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        var busy = true
+        var runs = 0
+        repeat(20) {
+            teardowns.defer(
+                isEngineAlive = { true },
+                isBackendBusy = { busy },
+                schedule = scheduler.schedule,
+                teardown = { runs++ },
+            )
+        }
+        assertEquals(listOf(BACKEND_IDLE_POLL_MS), scheduler.delays)
+        scheduler.runNext()
+        assertEquals(2, scheduler.delays.size)
+        busy = false
+        scheduler.runAll()
+        assertEquals(20, runs)
+        assertEquals(0, teardowns.size)
+    }
+
+    @Test
+    fun repeatedWarningsKeepOneBoundedPollAndResetAfterEachWait() {
+        var clock = 0L
+        var reached = false
+        var warnings = 0
+        var fences = 0
+        var runs = 0
+        val probe = FreshFenceProbe(
+            createFence = { ++fences },
+            isReached = { reached },
+            destroyFence = { fences-- },
+            now = { clock },
+            onStillBusy = { warnings++ },
+        )
+        // Reuse the registry to check its reset, independently of Engine's registry eviction.
+        val teardowns = BackendIdleTeardowns(probe)
+        val scheduler = RecordingScheduler()
+        val schedule: (Long, () -> Unit) -> Boolean = { delay, block ->
+            scheduler.schedule(delay) { clock += delay; block() }
+        }
+
+        repeat(3) { episode ->
+            reached = false
+            teardowns.defer(
+                isEngineAlive = { true },
+                schedule = schedule,
+                teardown = { runs++ },
+                runsLast = episode == 0,
+            )
+            assertFalse("a new wait gets its own diagnostic window", probe.hasWarned)
+            assertEquals(BACKEND_IDLE_POLL_MS, scheduler.delays.last())
+            while (!probe.hasWarned) scheduler.runNext()
+            repeat(100) {
+                assertEquals(1, scheduler.pendingCount)
+                assertEquals(1, teardowns.size)
+                assertEquals(1, fences)
+                assertTrue(scheduler.delays.last() in BACKEND_IDLE_POLL_MS..BACKEND_IDLE_BACKOFF_MS)
+                scheduler.runNext()
+            }
+            assertEquals("one warning for the whole wait", episode + 1, warnings)
+            assertEquals(episode, runs)
+
+            reached = true
+            clock += 2_000
+            scheduler.runNext()
+            assertEquals("retirement does not leak into the next shared wait",
+                if (episode == 0) episode + 1 else episode, runs)
+            scheduler.runAll()
+            assertEquals(episode + 1, runs)
+            assertEquals(0, teardowns.size)
+            assertEquals(0, fences)
+            assertEquals(0, scheduler.pendingCount)
+            assertFalse("completion resets the warning and timer", probe.hasWarned)
+            clock += 60_000
+        }
+    }
+
+    @Test
+    fun explicitCleanupAlsoKeepsTheEngineAfterLateRegisteredChildren() {
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        val order = mutableListOf<String>()
+        for (name in listOf("engine", "child")) {
+            teardowns.defer(
+                isEngineAlive = { true },
+                isBackendBusy = { true },
+                schedule = scheduler.schedule,
+                teardown = { order += name },
+                runsLast = name == "engine",
+            )
+        }
+        teardowns.runPending()
+        scheduler.runAll()
+        assertEquals(listOf("child", "engine"), order)
     }
 
     @Test
@@ -234,7 +334,7 @@ class BackendIdleTeardownTest {
 
     /** `Handler.postDelayed` returns `false` once its looper is quitting: nothing would ever poll. */
     @Test
-    fun aTeardownThatCannotBeScheduledRunsAtOnceInsteadOfNever() {
+    fun aRefusedPollRetainsTheTeardownUntilExplicitEngineCleanup() {
         val teardowns = BackendIdleTeardowns()
         val refused = Outcome()
         teardowns.defer(
@@ -243,8 +343,10 @@ class BackendIdleTeardownTest {
             schedule = { _, _ -> false },
             teardown = refused.teardown,
         )
-        // Refused at the first scheduling: run before defer returns, so not deferred.
-        assertEquals(listOf(false), refused.runs)
+        assertTrue(refused.runs.isEmpty())
+        assertEquals(1, teardowns.size)
+        teardowns.runPending()
+        assertEquals(listOf(true), refused.runs)
         assertEquals(0, teardowns.size)
 
         // Refused at a later re-check, once the looper started quitting.
@@ -259,6 +361,9 @@ class BackendIdleTeardownTest {
         )
         assertTrue(later.runs.isEmpty())
         pending.removeFirst().invoke()
+        assertTrue(later.runs.isEmpty())
+        assertEquals(1, teardowns.size)
+        teardowns.runPending()
         assertEquals(listOf(true), later.runs)
         assertEquals(0, teardowns.size)
     }

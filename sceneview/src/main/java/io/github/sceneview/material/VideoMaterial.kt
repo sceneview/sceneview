@@ -74,8 +74,9 @@ class VideoMaterial(
      * renderable uses it, so an [instance] left alive once its [texture] is gone aborts the process
      * ("Invalid texture still bound to MaterialInstance"). The [instance] is destroyed first, and
      * the [texture] and the [stream] only once the backend has executed that destroy: polled on
-     * the calling thread's looper every 16 ms, giving up after 5 s (at once, after a blocking
-     * drain, on a thread without a [Looper]).
+     * the calling thread's looper, sharing one poll per engine. After 5 s polling backs off;
+     * elapsed time never authorizes a release. A retiring engine accepts a reached fence without
+     * freshness. On a thread without a [Looper], release follows a blocking drain.
      *
      * Remove [instance] from every renderable that uses it, or destroy those renderables, before
      * calling this: a renderable keeps drawing with the instance it was given and would read it

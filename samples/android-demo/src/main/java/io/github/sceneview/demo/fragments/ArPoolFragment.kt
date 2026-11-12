@@ -20,7 +20,7 @@ object ArPoolFragment : DemoFragment {
         icon = Icons.Filled.Pool,
         order = 21,
         addedIn = "4.57.0",
-        tags = setOf("ar", "pool", "occlusion", "water", "garden", "real-size"),
+        tags = setOf("pool in the garden", "ar", "pool", "occlusion", "water", "garden", "real-size"),
         // Ships unverified on AR hardware: whether the pool reads as dug into a real lawn
         // can only be judged on a phone outdoors. Flip to Working after that pass.
         status = DemoStatus.InReview,

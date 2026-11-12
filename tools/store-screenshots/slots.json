@@ -1,5 +1,5 @@
 {
-  "_comment": "Captions are the listing's promises, in order; light and dark captures of the 4.63.0 demo (emulator, 1080x2400, status bar cropped). `src` paths are the raw captures described in README.md; `out` paths are what .claude/scripts/store-sync/play_listing.py globs and uploads. Slot 2 (AR) and the banner art need raw files that are not in git.",
+  "_comment": "Captions are the listing's promises, in order; light and dark captures of the 4.63.0 demo, slots 3, 4 and 6 of the 4.69.0 demo (emulator, 1080x2400, status bar cropped). `src` paths are the raw captures described in README.md; `out` paths are what .claude/scripts/store-sync/play_listing.py globs and uploads. Slot 2 (AR) and the banner art need raw files that are not in git.",
   "snippet": [
     [
       0,

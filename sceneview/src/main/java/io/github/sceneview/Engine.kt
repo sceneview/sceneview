@@ -29,6 +29,7 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.material.materialRegistry
 import io.github.sceneview.model.Model
+import java.util.Collections
 import java.util.WeakHashMap
 
 typealias Entity = Int
@@ -99,8 +100,8 @@ internal fun Engine.drainFramePipeline(timeoutNanos: Long): Boolean {
 internal const val BACKEND_IDLE_POLL_MS = 16L
 
 /**
- * Destroys this engine once its backend has executed everything already queued, **without
- * blocking the calling thread on that drain**.
+ * Destroys this engine once its backend has executed everything already queued, polling the backlog first.
+ * Native destruction itself still has no timeout.
  *
  * [Engine.destroy] joins the driver thread after it has run every pending command
  * (`FEngine::shutdown`: "wait for all pending commands to be executed and the thread to exit").
@@ -108,8 +109,9 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
  * shader compilation, and the join blocks the main thread for as long as that takes — an ANR on
  * an emulator (#3799). Instead the engine is destroyed through [whenBackendIdle], on the calling
  * thread (Filament requires it). When the backend is already idle — the usual case — the destroy
- * happens one poll later, once a fence has made the round trip to the backend, exactly as
- * [safeDestroy] would.
+ * happens after a fence has made the round trip to the backend. This marks the engine RETIRING:
+ * its producers must have stopped, and all pending releases accept a reached fence regardless of
+ * its age. Slow main-thread polling therefore cannot retain the engine and its EGL context.
  *
  * @param onDestroyed runs right after the engine is destroyed — release whatever must outlive
  * it (its shared EGL context, say) here.
@@ -127,8 +129,8 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
 }
 
 /**
- * Destroys [renderer] once this engine's backend has executed everything already queued, **without
- * blocking the calling thread on that drain**.
+ * Destroys [renderer] once this engine's backend has executed everything already queued, polling the backlog first.
+ * Native destruction itself still has no timeout.
  *
  * [Engine.destroyRenderer] is not a plain handle release: `FRenderer::terminate` first waits for
  * "all pending commands" to execute (`Fence::waitAndDestroy(engine.createFence())`, Filament
@@ -143,13 +145,14 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * without ruling it out.
  * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
  * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
- * A main thread polling less often than every 48 ms never finds a fence fresh: the destroy then
- * waits for the 5 s fallback ([FRESH_FENCE_GIVE_UP_MS]).
+ * On a shared engine, polling less often than every 48 ms keeps the destroy pending. Once the
+ * engine is retiring, a reached fence suffices. Five seconds triggers a warning and slower polls,
+ * never permission to destroy behind a busy fence.
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
  */
-internal fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
+fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
     val startedAt = SystemClock.uptimeMillis()
     whenBackendIdle { deferred ->
         safeDestroyRenderer(renderer)
@@ -162,85 +165,69 @@ internal fun logDeferredTeardown(what: String, startedAt: Long) = Log.i(
     "$what destroyed after its backend drained (${SystemClock.uptimeMillis() - startedAt} ms, #3799)"
 )
 
-/**
- * The deferred teardowns of each live engine, run by [safeDestroy] before the engine goes.
- * Weak keys: a registry holds no reference to its engine once its teardowns have run.
- */
-private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
+/** Pending registries are removed when empty: their probe callbacks capture the engine. */
+private val backendIdleTeardowns = Collections.synchronizedMap(
+    WeakHashMap<Engine, BackendIdleTeardowns>()
+)
+
+private fun Engine.teardowns(): BackendIdleTeardowns = backendIdleTeardowns.getOrPut(this) {
+    BackendIdleTeardowns(
+        probe = freshFenceProbe(),
+        onEmpty = { empty -> backendIdleTeardowns.remove(this, empty) },
+    )
+}
+
+/** The same fence check used by deferred releases and stalled model loads. */
+internal fun Engine.isBackendBusy(): Boolean = teardowns().isBackendBusy()
 
 /**
- * Runs [onIdle] on the calling thread once this engine's backend has caught up with everything
- * queued on it, polling fences from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]
- * instead of waiting on them (#3799). "Caught up" means a fence was found reached at most 48 ms
- * after it was created ([FreshFenceProbe]), so whatever [onIdle] waits for in turn is what the main
- * thread queued in those 48 ms, even when more work was queued after this call. That bounds
- * main-thread queuing time, not backend work: a shader compilation queued in that window is still
- * waited for. See [BackendIdleTeardowns] for the contract.
+ * Runs [onIdle] on the engine's calling thread after its backend fence is reached. Shared engines
+ * also require freshness: subsequent screens may have queued more work. `runsLast` marks the
+ * engine RETIRING (producers must have stopped), dropping freshness for all its pending releases
+ * while preserving other conditions such as decoder completion. See [BackendIdleTeardowns].
  *
- * [onIdle] receives `deferred = false` when it ran before this function returned, which is now the
- * exception — the old blocking behaviour, when the thread has no [Looper] or the fence could not be
- * created. Even an idle backend defers it by one poll: a fence just created is not reached yet by
- * the zero-timeout check made right after. A deferred [onIdle] is run by [safeDestroy] at the
- * latest, so the engine always outlives it. [onEngineGone] runs instead of [onIdle] only when the
- * engine is already destroyed, or is destroyed without [safeDestroy] while the fence is pending;
- * the fence is not touched then.
- * With `runsLast`, [onIdle] also waits for every other pending teardown of this engine to have run
- * (see [BackendIdleTeardowns.defer]) — the engine's own destroy.
+ * One poll and probe are shared per engine. After five seconds polling backs off, with occasional
+ * short confirmation polls for freshness. There is no timeout-triggered destruction. Neither a
+ * reached nor a fresh fence bounds native destruction or command submission time.
+ *
+ * [onIdle] receives `deferred = false` if it runs before this call returns. [onEngineGone] runs
+ * instead after a raw engine destruction, without touching the fence. [safeDestroy] explicitly
+ * runs pending releases before freeing the engine and may block.
+ *
+ * Main thread expected. For compatibility an off-main caller is logged and keeps its own looper;
+ * with no looper it falls back to synchronous release, which may block. No thread handoff occurs.
  */
 internal fun Engine.whenBackendIdle(
     onEngineGone: () -> Unit = {},
     runsLast: Boolean = false,
     onIdle: (deferred: Boolean) -> Unit,
-) {
-    if (!isValid) {
-        onEngineGone()
-        return
-    }
-    if (Looper.myLooper() == null) {
-        onIdle(false)
-        return
-    }
-    // A fence created now only covers what is queued now; [onIdle]'s own wait covers what is
-    // queued when it runs. The probe waits until the backend has recently caught up instead.
-    val probe = freshFenceProbe()
-    whenIdle(
-        isBusy = probe::isBusy,
-        onEngineGone = onEngineGone,
-        runsLast = runsLast,
-    ) { deferred ->
-        probe.release()
-        onIdle(deferred)
-    }
-}
+) = whenIdle(
+    isBusy = { isBackendBusy() },
+    onEngineGone = onEngineGone,
+    runsLast = runsLast,
+    onIdle = onIdle,
+)
 
-/**
- * A [FreshFenceProbe] on this engine's fences: busy until the backend has caught up with what is
- * queued on it: a fence reached within 48 ms of its creation. Never waits. Not busy when no fence
- * can be created.
- */
-internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
+/** Zero-timeout fence polling; FLUSH itself can still block on a full command stream. */
+private fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     createFence = { runCatching { createFence() }.getOrNull() },
-    isReached = { !isFenceBusy(it) },
+    isReached = { fence ->
+        when (runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull()) {
+            Fence.FenceStatus.CONDITION_SATISFIED -> true
+            Fence.FenceStatus.TIMEOUT_EXPIRED -> false
+            else -> null // ERROR (or a failed wait) must re-arm, not poll a broken fence forever.
+        }
+    },
     destroyFence = { destroyFence(it) },
     now = SystemClock::uptimeMillis,
+    onStillBusy = {
+        Log.w("Sceneview", "Backend teardown still pending after 5 s; backing off polls (#4969)")
+    },
 )
 
 /**
- * Whether [fence] has not been reached by the backend yet — a zero-timeout wait. Its `FLUSH` can
- * still wait for room in a full command stream.
- */
-internal fun isFenceBusy(fence: Fence): Boolean =
-    runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
-
-/**
- * Runs [onIdle] on the calling thread once [isBusy] returns `false`, polling it from the calling
- * thread's [Looper] every [BACKEND_IDLE_POLL_MS] instead of waiting — the general form of
- * [whenBackendIdle], for a release whose "would block" condition is not a fence (#3981).
- *
- * Same contract as [whenBackendIdle]: [onIdle] gets `deferred = false` when it ran before this
- * function returned (nothing was busy, or the thread has no [Looper]), it runs at the latest from
- * [safeDestroy], and [onEngineGone] replaces it once the engine is gone — [isBusy] is then never
- * called again. Main thread only.
+ * General form of [whenBackendIdle] for other readiness conditions, such as model decoders.
+ * Shares the engine's scheduler and preserves the calling thread on the off-main fallback.
  */
 internal fun Engine.whenIdle(
     isBusy: () -> Boolean,
@@ -253,20 +240,20 @@ internal fun Engine.whenIdle(
         return
     }
     val looper = Looper.myLooper()
+    if (looper != Looper.getMainLooper()) {
+        Log.w("Sceneview", "Filament teardown called off main; using the calling thread for compatibility")
+    }
     if (looper == null) {
         onIdle(false)
         return
     }
     val handler = Handler(looper)
-    backendIdleTeardowns.getOrPut(this) { BackendIdleTeardowns() }.defer(
+    teardowns().defer(
         isEngineAlive = { isValid },
         isBackendBusy = isBusy,
-        // `false` once the looper is quitting: the teardown then runs at once instead of never.
+        // A refused post retains the teardown; it never authorizes a blocking release.
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
-        teardown = { deferred ->
-            // Checked again here: whatever path runs a teardown, it never touches a dead engine.
-            if (isValid) onIdle(deferred) else onEngineGone()
-        },
+        teardown = onIdle,
         onEngineGone = onEngineGone,
         runsLast = runsLast,
     )

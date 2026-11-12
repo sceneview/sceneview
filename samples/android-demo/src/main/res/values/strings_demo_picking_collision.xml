@@ -4,6 +4,6 @@
      and `view-node` demos (#2239 Batch 1). Old ids continue to deep-link
      through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
-    <string name="demo_picking_collision_title">Picking &amp; Collision</string>
+    <string name="demo_picking_collision_title">Select objects</string>
     <string name="demo_picking_collision_subtitle">Tap objects to select and inspect them</string>
 </resources>

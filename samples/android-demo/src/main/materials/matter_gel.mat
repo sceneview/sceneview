@@ -1,0 +1,141 @@
+// matter_gel.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Glossy, tinted refractive gel with sparse suspended micro-bubbles.
+// Used by:    samples/android-demo FeelDemo (Matter); no SDK consumers.
+// Parameters:
+//   finger, depth, radius — local XZ contact, signed visual depth and well radius.
+//   profile              — falloff exponent, bulge ratio, wrinkle ratio, fold count.
+//   rimShape             — radial peak and width, relative to the dent radius.
+//   trail[8], trailMode  — XZ, strength, inverse width²; 0 off, 1 foam groove, 2 velvet pile.
+//   releaseWave          — gel release XZ, age in seconds, damped amplitude.
+//   dimensions           — half width, thickness, half length, bevel radius.
+//   bounce, squash       — rigid vertical offset and supported opening compression, in model space.
+//   albedo, roughness    — linear physical constants from MatterSurfaces, never UI tokens.
+//   ior, transmission    — physical gel constants. No sheen: Filament forbids it with refraction.
+//   absorption           — Beer-Lambert RGB coefficients per model-space unit.
+// Screen-space transmission includes the showroom floor; absorption colours the volume.
+// Cost: Filament scene-colour resolve/mips for refraction; two analytic bubble layers, no ray march.
+// matc profile: --optimize-size -p mobile -a opengl -a vulkan (Filament 1.77.3).
+material {
+    "name": "Matter gel",
+    "parameters": [
+        { "type": "float", "name": "squash" },
+        { "type": "float2", "name": "rimShape" },
+        { "type": "float4[8]", "name": "trail", "precision": "high" },
+        { "type": "float", "name": "trailMode" },
+        { "type": "float4", "name": "releaseWave", "precision": "high" },
+        {
+            "type": "float2",
+            "name": "finger"
+        },
+        {
+            "type": "float",
+            "name": "depth"
+        },
+        {
+            "type": "float",
+            "name": "radius"
+        },
+        {
+            "type": "float4",
+            "name": "profile"
+        },
+        {
+            "type": "float4",
+            "name": "dimensions"
+        },
+        {
+            "type": "float",
+            "name": "bounce"
+        },
+        {
+            "type": "float3",
+            "name": "albedo"
+        },
+        {
+            "type": "float",
+            "name": "roughness"
+        },
+        {
+            "type": "float",
+            "name": "ior"
+        },
+        {
+            "type": "float",
+            "name": "transmission"
+        },
+        {
+            "type": "float3",
+            "name": "absorption"
+        }
+    ],
+    "requires": [
+        "position",
+        "uv0"
+    ],
+    "variables": [
+        "rest",
+        "bentNormal",
+        "bentTangent"
+    ],
+    "shadingModel": "lit",
+    "blending": "transparent",
+    "doubleSided": false,
+    "specularAntiAliasing": true,
+    "refractionMode": "screenspace",
+    "refractionType": "solid"
+}
+vertex {
+    #define MATTER_RELEASE_WAVE
+    #include "matter_deformation.vs"
+}
+fragment {
+    highp vec3 bubbleHash(highp vec3 p) {
+        p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+        p += dot(p, p.yxz + 33.33);
+        return fract((p.xxy + p.yxx) * p.zyx);
+    }
+    void material(inout MaterialInputs material) {
+        highp vec3 p = variable_rest.xyz;
+        vec3 n = normalize(variable_bentNormal.xyz);
+        // Matter only translates its slabs: world and rest-space axes coincide.
+        // Two physical depths give the suspended bubbles different refracted parallax.
+        vec3 ray = refract(-getWorldViewVector(), n, 1.0 / materialParams.ior);
+        float bubbles = 0.0;
+        float thickness = max(0.04, materialParams.dimensions.y * (1.0 - variable_rest.w));
+        for (int layer = 0; layer < 2; layer++) {
+            float depth = 0.14 + float(layer) * 0.24;
+            float travel = (-depth - p.y) / min(ray.y, -0.15);
+            vec2 samplePoint = p.xz + ray.xz * travel;
+            vec2 q = samplePoint * 10.0;
+            vec3 h = bubbleHash(vec3(floor(q), float(layer)));
+            vec2 delta = fract(q) - mix(vec2(0.2), vec2(0.8), h.xy);
+            float d = length(delta);
+            float radius = mix(0.045, 0.10, h.x);
+            float aa = max(fwidth(d), 0.012);
+            float rim = 1.0 - smoothstep(0.014, 0.014 + aa, abs(d - radius));
+            float glint = 1.0 - smoothstep(radius * 0.18, radius * 0.48 + aa,
+                length(delta + vec2(radius * 0.35)));
+            float inside = step(abs(samplePoint.x), materialParams.dimensions.x - 0.12) *
+                step(abs(samplePoint.y), materialParams.dimensions.z - 0.12) * step(0.0, travel);
+            bubbles += (rim * 0.65 + glint) * step(0.91, h.z) * inside *
+                exp(-depth * 1.4) * smoothstep(depth, depth + 0.08, thickness);
+        }
+        bubbles = clamp(bubbles, 0.0, 1.0);
+        material.normal = transpose(getWorldTangentFrame()) * n;
+        prepareMaterial(material);
+        material.baseColor = vec4(materialParams.albedo, 1.0);
+        material.metallic = 0.0;
+        material.roughness = materialParams.roughness + bubbles * 0.10;
+        material.ior = materialParams.ior;
+        material.transmission = materialParams.transmission * (1.0 - bubbles * 0.65);
+        // Beer-Lambert colour follows the remaining local thickness, including rounded edges.
+        // Keep transmission clear; cavity only occludes a little of the reflected IBL.
+        float edge = min(materialParams.dimensions.x - abs(p.x),
+            materialParams.dimensions.z - abs(p.z));
+        float edgePath = mix(0.22, 1.0, smoothstep(0.0, materialParams.dimensions.w * 2.0, edge));
+        material.absorption = materialParams.absorption;
+        material.thickness = min(thickness * edgePath, 0.95);
+        material.ambientOcclusion = 1.0 - 0.12 * variable_bentTangent.w;
+    }
+}

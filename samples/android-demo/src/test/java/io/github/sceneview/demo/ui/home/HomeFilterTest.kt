@@ -12,13 +12,13 @@ import org.junit.Test
 class HomeFilterTest {
 
     private val viewer = entry("model-viewer", "Model Viewer", "Any glTF, HDR lighting, one tap to AR",
-        DemoCategory.VIEW_3D, "View in 3D", setOf("gltf", "hdr", "ar"), order = 1)
+        DemoCategory.VIEW_3D, "Models & cameras", setOf("gltf", "hdr", "ar"), order = 1)
     private val lighting = entry("lighting", "Lighting", "Light types with a movable orbiting light",
-        DemoCategory.CREATE, "Create & record", setOf("light", "shadow"), order = 2)
-    private val placement = entry("ar-placement", "AR Placement", "Tap a plane to place and move a model",
+        DemoCategory.CREATE, "Materials & scenes", setOf("light", "shadow"), order = 2)
+    private val placement = entry("ar-placement", "Place a model", "Tap a plane to place and move a model",
         DemoCategory.PLACE_AR, "Place in AR", setOf("ar", "plane", "anchor"), order = 6)
     private val fog = entry("fog", "Fog", "Linear, exponential and height fog",
-        DemoCategory.CREATE, "Create & record", setOf("fog", "atmosphere"), order = 13)
+        DemoCategory.CREATE, "Materials & scenes", setOf("fog", "atmosphere"), order = 13)
 
     // Deliberately out of editorial order: the filter must restore it.
     private val all = listOf(fog, placement, viewer, lighting)
@@ -52,9 +52,9 @@ class HomeFilterTest {
 
     @Test
     fun `query matches category label`() {
-        // Neither demo carries "record" in its title, subtitle or tags — the only
+        // Neither demo carries "scenes" in its title, subtitle or tags — the only
         // thing that can match it is the category label, which is the point.
-        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, "record")))
+        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, "scenes")))
     }
 
     @Test

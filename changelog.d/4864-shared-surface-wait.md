@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Android recording disposal (#4864).** Window detach and mirror teardown share one second of backend waits within the same main-thread message, including Compose detaching the view before disposal. Window detach reserves 250 ms of that budget for mirrors before the recorder surface is released (#4860). Recorder finalisation and other teardown work are excluded; busy-window warnings report both the last and cumulative wait durations.

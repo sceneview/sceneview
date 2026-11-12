@@ -22,6 +22,14 @@ import org.robolectric.RobolectricTestRunner
  */
 @RunWith(RobolectricTestRunner::class)
 class DeepLinkRouterTest {
+    @Test
+    fun `feel links redirect to matter with no tab`() {
+        assertEquals("matter", DeepLinkRouter.parse(Uri.parse("sceneview://demo/feel")))
+        assertEquals("matter", DeepLinkRouter.parse(Uri.parse("sceneview://demo/matter")))
+        assertNull(DeepLinkRouter.resolveInitialTab("feel", null))
+        assertTrue(ALL_DEMOS.none { it.id == "feel" })
+    }
+
 
     @Test
     fun `retired wall link opens placement with wall selected`() {
@@ -504,10 +512,10 @@ class DeepLinkRouterTest {
         // 42 since #4603 folded `lighting-lab` into `lighting`, plus Finger Drawing (#4082) and
         // Pool in the garden; 41 since wave 1 of the AR catalogue clean-up retired three AR ids
         // and hid a fourth (`ar-ml-object-label`, registered but unlisted as Point & Ask's
-        // on-device fallback); 42 with Camera Path; 43 with Model Thumbnails.
+        // on-device fallback); 42 with Camera Path; 43 with Model Thumbnails; 44 with Matter.
         assertEquals(
-            "Android registers 43 demos after step 0, #4603, Finger Drawing, Pool in the garden, wave 1, Camera Path and Model Thumbnails",
-            43,
+            "Android registers 44 demos after step 0, #4603, Finger Drawing, Pool in the garden, wave 1, Camera Path, Model Thumbnails and Matter",
+            44,
             ALL_DEMOS.size,
         )
     }

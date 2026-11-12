@@ -5,7 +5,7 @@
      `strings.xml` — see #1870. -->
 <resources>
 
-    <string name="demo_ar_pool_title">Pool in the garden</string>
+    <string name="demo_ar_pool_title">Pool in your garden</string>
     <string name="demo_ar_pool_subtitle">A real-size pool dug into your lawn</string>
 
     <!-- Sheet intro: what the user sees and what to do. -->

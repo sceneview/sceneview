@@ -15,11 +15,11 @@ object ArPointCloudFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPointCloudDemo.kt",
         titleRes = R.string.demo_ar_point_cloud_title,
         subtitleRes = R.string.demo_ar_point_cloud_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.BlurOn,
-        order = 45,
+        order = 38,
         addedIn = "4.13.0",
-        tags = setOf("ar", "point-cloud", "feature-points", "tracking"),
+        tags = setOf("point cloud", "ar", "point-cloud", "feature-points", "tracking"),
     )
 
     @Composable

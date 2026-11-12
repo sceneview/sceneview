@@ -45,11 +45,8 @@ import com.google.android.filament.IndexBuffer
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
-import com.google.android.filament.Texture
-import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import dev.romainguy.kotlin.math.Quaternion
-import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
@@ -69,12 +66,16 @@ import io.github.sceneview.demo.demos.internal.CosmosSystem
 import io.github.sceneview.demo.demos.internal.CosmosVoyage
 import io.github.sceneview.demo.demos.internal.CosmosVoyageCamera
 import io.github.sceneview.demo.demos.internal.GlowMesh
+import io.github.sceneview.demo.demos.internal.GpuSheet
 import io.github.sceneview.demo.demos.internal.RIBBON_STRIDE
 import io.github.sceneview.demo.demos.internal.SpacetimeField
 import io.github.sceneview.demo.demos.internal.SpacetimeTransition
 import io.github.sceneview.demo.demos.internal.VoyageExit
 import io.github.sceneview.demo.demos.internal.VoyageState
+import io.github.sceneview.demo.demos.internal.bindHorizon
 import io.github.sceneview.demo.demos.internal.orbitPose
+import io.github.sceneview.demo.demos.internal.stagedSheet
+import io.github.sceneview.demo.demos.internal.uploadSheet
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -94,9 +95,6 @@ import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -1494,92 +1492,4 @@ private class FabricFrame {
             world.setParameter("intensity", CosmosSpacetime.arrival(body, sequence) * reveal)
         }
     }
-}
-
-/**
- * The sheet's grid and horizon map copied into direct buffers, ready for Filament — built off
- * the main thread.
- */
-private class StagedSheet(val vertices: ByteBuffer, val indices: ByteBuffer, val horizon: ByteBuffer)
-
-private suspend fun CosmosSpacetime.Grid.stagedSheet(): StagedSheet = coroutineScope {
-    val v = ByteBuffer.allocateDirect(vertices.size * Float.SIZE_BYTES).order(ByteOrder.nativeOrder())
-    v.asFloatBuffer().put(vertices)
-    val i = ByteBuffer.allocateDirect(indices.size * Short.SIZE_BYTES).order(ByteOrder.nativeOrder())
-    i.asShortBuffer().put(indices)
-    // The horizon map is the long part (a march per texel): one band of rows per core.
-    val n = CosmosSpacetime.HORIZON_MAP_SIZE
-    val map = ByteArray(n * n)
-    val bands = Runtime.getRuntime().availableProcessors().coerceIn(1, MAX_BAKE_BANDS)
-    (0 until bands).map { band ->
-        async { CosmosSpacetime.horizonRows(map, band * n / bands, (band + 1) * n / bands) }
-    }.awaitAll()
-    val h = ByteBuffer.allocateDirect(map.size).order(ByteOrder.nativeOrder())
-    h.put(map).flip()
-    StagedSheet(v, i, h)
-}
-
-/** At most this many cores bake the horizon map at once. */
-private const val MAX_BAKE_BANDS = 8
-
-/** Spacetime's sheet on the GPU: its grid and the horizon map its material samples. */
-private class GpuSheet(val mesh: GpuMesh, val horizon: Texture) {
-    fun destroy(engine: Engine) {
-        mesh.destroy(engine)
-        // Queued, not destroyed here: the sheet's material instance still samples this map when
-        // the sheet goes. It belongs to the material loader, which is remembered before the sheet
-        // and so disposed after it. The sheet is built once and never rebuilt while its material
-        // stays, so there is no replacement map to bind an instance to first (#4360).
-        EngineDestroyQueue.of(engine).enqueueTexture(horizon)
-    }
-}
-
-/**
- * Binds the horizon map: bilinear, clamped (past the map's edge the light is clear, as on its
- * border texels). The sampler is made here, not in a top-level val: it is a JNI call, and this
- * file's statics load before Filament's native library.
- */
-private fun MaterialInstance.bindHorizon(horizon: Texture) = setParameter(
-    "horizon",
-    horizon,
-    TextureSampler(
-        TextureSampler.MinFilter.LINEAR,
-        TextureSampler.MagFilter.LINEAR,
-        TextureSampler.WrapMode.CLAMP_TO_EDGE,
-    ),
-)
-
-/**
- * Main thread only. Position (x, 0, z) per vertex, 16-bit indices (39 520 vertices); the
- * horizon map as one R8 texture. The box is static: y spans every well depth and lift the entry
- * passes through.
- */
-private fun StagedSheet.uploadSheet(engine: Engine): GpuSheet {
-    val strideBytes = CosmosSpacetime.GRID_STRIDE * Float.SIZE_BYTES
-    val vertexBuffer = VertexBuffer.Builder()
-        .bufferCount(1)
-        .vertexCount(CosmosSpacetime.GRID_VERTICES)
-        .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3, 0, strideBytes)
-        .build(engine)
-    vertexBuffer.setBufferAt(engine, 0, vertices)
-    val indexBuffer = IndexBuffer.Builder()
-        .indexCount(CosmosSpacetime.GRID_TRIANGLES * 3)
-        .bufferType(IndexBuffer.Builder.IndexType.USHORT)
-        .build(engine)
-    indexBuffer.setBuffer(engine, indices)
-    val r = CosmosSpacetime.SHEET_RADIUS
-    val box = FilamentBox(
-        0f, (CosmosSpacetime.BOX_MIN_Y + CosmosSpacetime.BOX_MAX_Y) / 2f, 0f,
-        r, (CosmosSpacetime.BOX_MAX_Y - CosmosSpacetime.BOX_MIN_Y) / 2f, r,
-    )
-    val n = CosmosSpacetime.HORIZON_MAP_SIZE
-    val texture = Texture.Builder()
-        .width(n)
-        .height(n)
-        .levels(1)
-        .sampler(Texture.Sampler.SAMPLER_2D)
-        .format(Texture.InternalFormat.R8)
-        .build(engine)
-    texture.setImage(engine, 0, Texture.PixelBufferDescriptor(horizon, Texture.Format.R, Texture.Type.UBYTE, 1))
-    return GpuSheet(GpuMesh(vertexBuffer, indexBuffer, box), texture)
 }

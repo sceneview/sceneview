@@ -40,9 +40,9 @@ object RollingBallsFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/RollingBallsDemo.kt",
         titleRes = R.string.demo_rolling_balls_title,
         subtitleRes = R.string.demo_rolling_balls_subtitle,
-        category = DemoCategory.VIEW_3D,
+        category = DemoCategory.PLAY,
         icon = Icons.Filled.Workspaces,
-        order = 30,
+        order = 17,
         addedIn = "4.48.0",
         updatedIn = "4.57.0",
         tags = setOf(

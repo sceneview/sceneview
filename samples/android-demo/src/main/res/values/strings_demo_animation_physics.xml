@@ -5,7 +5,7 @@
      The retired `animation` and `physics` ids continue to deep-link through
      `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
-    <string name="demo_animation_physics_title">Animation</string>
+    <string name="demo_animation_physics_title">Character animation</string>
     <string name="demo_animation_physics_subtitle">Play character animations under cinematic camera shots</string>
     <string name="demo_animation_physics_subject_fox_bundled">Fox</string>
     <string name="demo_animation_physics_subject_ranger">Ranger</string>

@@ -7,7 +7,6 @@ import io.github.sceneview.demo.demos.internal.Vec3
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.util.Random
 import kotlin.math.abs
@@ -267,13 +266,19 @@ class RoomStructureRealScanTest {
         }
     }
 
-    @Ignore("A 9 cm spur along the inner wall: https://github.com/sceneview/sceneview/issues/4784")
     @Test
     fun `an L's two walls never seen at the end of its stem are deduced as two sides`() {
         val structure = RoomStructure.read(capture(L_STEM).scan())
         val summary = summary(L_STEM, structure)
         assertTrue("$summary: ${structure.walls.size} sides", structure.walls.size <= L_STEM.room.x.size)
         assertTrue(summary, structure.walls.count { it.deduced } <= 2)
+        // No side doubles back along the inner wall, and the area is the L's, as an estimate.
+        val room = L_STEM.room
+        for (i in room.x.indices) {
+            val off = structure.walls.minOf { hypot(it.ax - room.x[i], it.az - room.z[i]) }
+            assertTrue("$summary: corner $i ${"%.2f".format(off)} m off", off < CORNER_NEAR_M)
+        }
+        check(L_STEM)
     }
 
     @Test
