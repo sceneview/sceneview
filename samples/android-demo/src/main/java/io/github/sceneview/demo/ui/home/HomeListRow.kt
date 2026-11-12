@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.isSpecified
@@ -36,8 +35,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -45,7 +42,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoFreshness
 import io.github.sceneview.demo.DemoPreviews
@@ -66,7 +62,6 @@ fun DemoListRow(
 ) {
     val dark = isSystemInDarkTheme()
     val accent = DemoCategoryAccent[demo.category, dark]
-    val resources = LocalContext.current.resources
     val res = DemoPreviews.resourceFor(demo.id, dark)
     val tint = MaterialTheme.colorScheme.surfaceContainerLow
     val alignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center
@@ -86,7 +81,6 @@ fun DemoListRow(
         HomeRowStyle.Fused -> FusedRow(
             title = stringResource(demo.titleRes),
             subtitle = stringResource(demo.subtitleRes),
-            tint = tint,
             onClick = onClick,
             media = media,
             badges = badges,
@@ -95,7 +89,6 @@ fun DemoListRow(
         HomeRowStyle.Banner -> BannerRow(
             title = stringResource(demo.titleRes),
             subtitle = stringResource(demo.subtitleRes),
-            tint = tint,
             onClick = onClick,
             media = media,
             badges = badges,
@@ -119,7 +112,6 @@ fun BrowseOnlineRow(
     FusedRow(
         title = stringResource(R.string.home_browse_title),
         subtitle = stringResource(R.string.home_browse_subtitle),
-        tint = tint,
         onClick = onClick,
         media = { GlyphPanel(icon = Icons.Filled.Language, accent = accent, tint = tint, modifier = it) },
         modifier = modifier,
@@ -145,18 +137,13 @@ fun WhatsNewRow(
     leadDemoId: String? = null,
 ) {
     val dark = isSystemInDarkTheme()
-    val resources = LocalContext.current.resources
     val res = leadDemoId?.let { DemoPreviews.resourceFor(it, dark) }
     val title = stringResource(R.string.home_whats_new_title)
     if (res != null) {
-        // The picture's trailing edge is its left one when the row is mirrored.
-        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         WholePictureRow(
             title = title,
             subtitle = subtitle,
-            tint = remember(res, dark) { HomeAmbient.tint(resources, res, dark) },
             picture = painterResource(res),
-            pictureEdge = remember(res, rtl) { HomeAmbient.edge(resources, res, leftEdge = rtl) },
             alignment = FEATURED_MEDIA_ALIGNMENT[leadDemoId] ?: Alignment.Center,
             onClick = onClick,
             modifier = modifier,
@@ -167,7 +154,6 @@ fun WhatsNewRow(
         FusedRow(
             title = title,
             subtitle = subtitle,
-            tint = tint,
             onClick = onClick,
             media = { GlyphPanel(icon = Icons.Filled.AutoAwesome, accent = accent, tint = tint, modifier = it) },
             modifier = modifier,
@@ -180,9 +166,7 @@ fun WhatsNewRow(
 private fun WholePictureRow(
     title: String,
     subtitle: String,
-    tint: Color,
     picture: Painter,
-    pictureEdge: Color,
     alignment: Alignment,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -252,7 +236,6 @@ private fun WholePictureRow(
 private fun FusedRow(
     title: String,
     subtitle: String,
-    tint: Color,
     onClick: () -> Unit,
     media: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
@@ -300,7 +283,6 @@ private fun FusedRow(
 private fun BannerRow(
     title: String,
     subtitle: String,
-    tint: Color,
     onClick: () -> Unit,
     media: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
