@@ -2,6 +2,7 @@ package io.github.sceneview.node
 
 import com.google.android.filament.Engine
 import com.google.android.filament.Material
+import com.google.android.filament.MaterialInstance
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.geometries.Plane
 import io.github.sceneview.loaders.MaterialLoader
@@ -139,12 +140,13 @@ open class ContactShadowNode private constructor(
     size: Size,
     normal: Direction,
     context: ContactShadowContext,
-    intensity: Float
+    intensity: Float,
+    private val shadowMaterialInstance: MaterialInstance = materialLoader.createInstance(material)
 ) : PlaneNode(
     engine = engine,
     size = size,
     normal = normal,
-    materialInstance = material.defaultInstance,
+    materialInstance = shadowMaterialInstance,
     builderApply = {
         // A contact shadow is a decal: it neither casts nor receives. Skipping the shadow path
         // entirely also sidesteps the degenerate-AABB crash a flat receiver hits (#2620) — that
@@ -179,8 +181,7 @@ open class ContactShadowNode private constructor(
             val coerced = value.coerceIn(0.0f, 1.0f)
             if (field != coerced) {
                 field = coerced
-                materialInstances.firstOrNull()
-                    ?.setParameter(MATERIAL_INTENSITY, coerced)
+                shadowMaterialInstance.setParameter(MATERIAL_INTENSITY, coerced)
             }
         }
 
@@ -202,7 +203,9 @@ open class ContactShadowNode private constructor(
     }
 
     private fun applyContext(context: ContactShadowContext) {
-        val instance = materialInstances.firstOrNull() ?: return
+        // The inherited material binding is caller-replaceable. Always update our own instance,
+        // never an unrelated material read back from the renderable's first primitive.
+        val instance = shadowMaterialInstance
         instance.setParameter(MATERIAL_INTENSITY, intensity.coerceIn(0.0f, 1.0f))
         instance.setParameter(MATERIAL_CENTER, context.centerU, context.centerV)
         instance.setParameter(MATERIAL_RADIUS, context.radiusU, context.radiusV)
@@ -218,6 +221,7 @@ open class ContactShadowNode private constructor(
         // Children and the renderable first — never destroy a Material while an instance of it is
         // still bound to a live renderable.
         super.destroy()
+        materialLoader.destroyMaterialInstance(shadowMaterialInstance)
         materialLoader.destroyMaterial(material)
     }
 
