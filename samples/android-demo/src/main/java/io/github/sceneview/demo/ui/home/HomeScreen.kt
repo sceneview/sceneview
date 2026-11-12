@@ -2,10 +2,8 @@
 
 package io.github.sceneview.demo.ui.home
 
-import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
@@ -34,8 +32,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as rowItems
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -56,6 +54,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -77,21 +80,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlurEffect
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -107,7 +100,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.BuildConfig
@@ -343,7 +335,6 @@ fun HomeScreen(
     var cascadeIndex = 0
 
     val heroHeight = home.discoverySceneHeight
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     val columns = homeListColumns(LocalConfiguration.current.screenWidthDp)
 
@@ -363,39 +354,16 @@ fun HomeScreen(
     // The pinned header covers the grid's top band: a section lands just under it.
     val headerHeightPx = with(LocalDensity.current) { home.headerHeight.roundToPx() }
 
-    // The header's glass: the page under it, recorded once per frame and drawn again,
-    // blurred, behind the header (API 31+, where `RenderEffect` exists).
-    val backdrop = rememberGraphicsLayer()
-    val glass = HEADER_GLASS_SUPPORTED
-
     Box(modifier = modifier.fillMaxSize()) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (glass) {
-                        Modifier.drawWithContent {
-                            backdrop.record { this@drawWithContent.drawContent() }
-                            drawLayer(backdrop)
-                        }
-                    } else {
-                        Modifier
-                    },
-                ),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            // The stage: composed once, under the grid, alive as long as this screen is
-            // (#3948, #3949). It starts above the Scaffold's status-bar inset so the sky
-            // runs to the top edge, covers the header band and the featured band, and
-            // bleeds a little further before fading into the page. Its vertical travel
-            // follows the band's grid item, read at draw time — no recomposition per
-            // scrolled pixel — with the sky and the flight lagging a touch behind for depth.
+            // Keep the renderer alive while its bounded card follows the grid placeholder.
             if (!searching) {
                 HomeHeroStage(
                     gridState = gridState,
                     active = heroActive,
-                    height = statusBarTop + home.headerHeight + home.heroTopGap + heroHeight +
-                        home.heroStageBleed,
-                    topInset = statusBarTop,
+                    height = heroHeight,
                     restTop = home.headerHeight + home.heroTopGap,
                     inspectionMode = inspectionMode,
                 )
@@ -428,10 +396,11 @@ fun HomeScreen(
                 }
                 if (!searching && outcomes.isNotEmpty()) {
                     item(key = "outcomes", span = { GridItemSpan(maxLineSpan) }) {
-                        Column {
+                        Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                             outcomes.forEach { outcome ->
                                 DiscoveryRow(
                                     label = stringResource(outcome.labelRes),
+                                    supportingText = stringResource(outcome.supportingRes),
                                     demo = byId.getValue(outcome.demoId),
                                     onClick = { openDemo(outcome.demoId) },
                                     modifier = Modifier.testTag(HomeTestTags.outcome(outcome.demoId)),
@@ -571,19 +540,9 @@ fun HomeScreen(
             }
         }
 
-        if (glass) {
-            HeaderGlass(
-                backdrop = backdrop,
-                visible = scrolled,
-                height = statusBarTop + home.headerHeight + home.cardOutlineWidth,
-                topInset = statusBarTop,
-            )
-        }
-
         HomeHeader(
-            glass = glass,
             scrolled = scrolled,
-            overStage = !scrolled && !searching,
+            overStage = false,
             query = query,
             onQueryChange = onQueryChange,
             // The discreet re-proposal: a "since" list dismissed without
@@ -600,33 +559,42 @@ fun HomeScreen(
     }
 }
 
-/**
- * A discovery shortcut: icon, then a label that wraps instead of clipping at large font
- * scales. A plain row rather than `ListItem`, whose headline slot clipped at 130 % text.
- */
+/** An accessible, full-width discovery tile with room for growing text. */
 @Composable
 private fun DiscoveryRow(
     label: String,
     demo: DemoEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    supportingText: String = stringResource(demo.subtitleRes),
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+    OutlinedCard(
+        onClick = onClick,
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         modifier = modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = SceneViewTokens.Layout.touchTarget)
-            .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
+            .semantics { contentDescription = "$label. $supportingText" },
     ) {
-        Icon(demo.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+            modifier = Modifier.padding(SceneViewTokens.Space.md),
+        ) {
+            Icon(demo.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+            ) {
+                Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                Text(
+                    supportingText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 
@@ -676,132 +644,42 @@ private const val HERO_ITEM_KEY = "hero"
 /** Grid key of the release highlights below discovery. */
 private const val WHATS_NEW_ITEM_KEY = "whats-new"
 
-/**
- * The layer under the grid that carries the sky and the night circuit (#3948).
- *
- * Geometry: [height] tall from `-topInset` — the Scaffold pads the status bar and this
- * undoes it, so the sky reaches the top of the display and the status bar rides on it
- * ([HomeHeader] flips its icons to light meanwhile). At rest the featured band's grid
- * item sits at [restTop] below the content's top edge; as the grid scrolls, the stage
- * follows that item one-for-one, read in `graphicsLayer` at draw time so the scroll
- * costs no recomposition. Inside, the sky and the circuit lag the band by a fraction
- * ([HERO_PARALLAX]), which reads as depth; the stage clips its bounds so the lag never
- * leaks below the band, where the grid is transparent over the page. When the item has
- * left the viewport the layer is fully transparent and [active] is false, so the loop
- * is parked on its last frame — the frame that shows again, unchanged, on the way back.
- *
- * In inspection mode the sky is painted and the circuit is not: `@Preview` and Robolectric
- * have no GPU to render it with.
- */
+/** Persistent live scene, clipped to the exact bounds of its grid placeholder. */
 @Composable
 private fun HomeHeroStage(
     gridState: LazyGridState,
     active: Boolean,
     height: Dp,
-    topInset: Dp,
     restTop: Dp,
     inspectionMode: Boolean,
 ) {
     val home = SceneViewTokens.Home
-    val colors = SceneViewTokens.HomeColor
-    val density = LocalDensity.current
-    val restTopPx = with(density) { restTop.toPx() }
-    val heroTravel: () -> Float? = {
-        gridState.layoutInfo.visibleItemsInfo
-            .firstOrNull { it.key == HERO_ITEM_KEY }
-            ?.let { (it.offset.y - restTopPx).coerceAtMost(0f) }
-    }
-    val surface = MaterialTheme.colorScheme.surface
-    val bandTop = topInset + restTop
-    val bandHeight = height - bandTop - home.heroStageBleed
-    val bandFraction = bandHeight.value / (bandHeight + home.heroStageBleed).value
-    val bandHeightPx = with(density) { bandHeight.toPx() }.coerceAtLeast(1f)
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = home.contentPadding)
             .height(height)
-            .offset(y = -topInset)
+            .offset(y = restTop)
             .graphicsLayer {
-                val travel = heroTravel()
-                translationY = travel ?: 0f
-                alpha = if (travel == null) 0f else 1f
+                val item = gridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == HERO_ITEM_KEY }
+                translationY = (item?.offset?.y ?: 0).toFloat() - restTop.toPx()
+                alpha = if (item == null) 0f else 1f
             }
-            .clipToBounds()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clearAndSetSemantics { },
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    translationY = -(heroTravel() ?: 0f) * HERO_PARALLAX
-                }
-                .background(
-                    Brush.verticalGradient(
-                        0f to colors.heroSkyTop,
-                        home.heroSkyHorizon * 0.45f to colors.heroSkyDusk,
-                        home.heroSkyHorizon to colors.heroSkyHorizon,
-                        home.heroSkyHorizon + 0.1f to colors.heroSkyGround,
-                        1f to colors.heroSkyTop,
-                    ),
-                ),
-        ) {
-            if (!inspectionMode) {
-                HomeHeroScene(
-                    active = active,
-                    modifier = Modifier.fillMaxSize(),
-                    // The scroll is the camera's: as the band leaves, the camera turns
-                    // further round the car and pushes in.
-                    scroll = {
-                        val travel = -(heroTravel() ?: 0f)
-                        (travel / bandHeightPx).coerceIn(0f, 1f)
-                    },
-                    // Actions are below the stage; reserve only its header and bleed.
-                    contentPadding = PaddingValues(
-                        top = bandTop,
-                        bottom = home.heroStageBleed,
-                    ),
-                )
-            }
+        if (!inspectionMode) {
+            HomeHeroScene(active = active, modifier = Modifier.fillMaxSize())
         }
-        // The legibility scrim under the band's copy — the hero's usual gradient, painted
-        // here full-bleed rather than by the page, so no card edge cuts the landscape —
-        // running on into `surface`: the stage ends on the page, not on an edge.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = bandTop)
-                .height(bandHeight + home.heroStageBleed)
-                .background(
-                    Brush.verticalGradient(
-                        home.heroScrimStart * bandFraction to
-                            SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                        bandFraction to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
-                        1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(home.heroStageBleed + home.gridGutter)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(listOf(surface.copy(alpha = 0f), surface)),
-                ),
-        )
     }
 }
-
-/** Fraction of the band's scroll travel the stage's content lags behind. */
-private const val HERO_PARALLAX = 0.35f
 
 /** Destination of the first discovery action beneath the compact live scene. */
 const val HERO_DEMO_ID = "model-viewer"
 
 @Composable
 private fun HomeHeader(
-    /** A blurred copy of the page is drawn under the header: its fill is `header-glass`. */
-    glass: Boolean,
     scrolled: Boolean,
     /** The stage's sky is behind the row: white type, light status-bar icons. */
     overStage: Boolean,
@@ -823,19 +701,8 @@ private fun HomeHeader(
     // otherwise — requested, not written, so leaving the screen or scrolling the sky
     // away cannot race a demo's own request (#3984).
     RequestLightStatusBarIcons(active = overStage)
-    val overlay by animateColorAsState(
-        targetValue = if (scrolled) {
-            val alpha = if (glass) headerGlassAlpha() else SceneViewTokens.HomeColor.headerOverlayAlpha
-            MaterialTheme.colorScheme.surface.copy(alpha = alpha)
-        } else {
-            Color.Transparent
-        },
-        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
-        label = "headerOverlay",
-    )
-    // The stage runs up under the status bar (see `HomeHeroStage`), so once the page has
-    // scrolled the overlay has to cover that strip too: painted only behind the row, it left
-    // the strip showing the stage — the top of the sun disc peeking above a white bar (#4066).
+    val overlay = MaterialTheme.colorScheme.surface
+    // Carry the opaque header surface through the status-bar inset.
     val statusBarPx = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
     // The wordmark row and the search row are not the same height, so the swap used to
     // step the grid underneath it. `animateContentSize` makes the header carry that
@@ -1137,55 +1004,3 @@ private fun EmptySearchState(query: String, onClear: () -> Unit) {
         }
     }
 }
-
-/**
- * The header's backdrop: the page under the header — list, and the stage while it is
- * still there — drawn again from [backdrop] and blurred `header-glass-blur`, from the top
- * of the display to the header's hairline. The header's own `header-glass` fill sits on it.
- */
-@Composable
-private fun HeaderGlass(
-    backdrop: GraphicsLayer,
-    visible: Boolean,
-    height: Dp,
-    topInset: Dp,
-) {
-    val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
-        label = "headerGlass",
-    )
-    val density = LocalDensity.current
-    val blurPx = with(density) { SceneViewTokens.Home.headerGlassBlur.toPx() }
-    val topInsetPx = with(density) { topInset.toPx() }
-    // The grid is transparent over the page, so the recorded copy is too: the page goes
-    // under it first, or the sharp list would show through the blurred one's thin spots.
-    val page = MaterialTheme.colorScheme.surface
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .offset(y = -topInset)
-            .graphicsLayer {
-                this.alpha = alpha
-                clip = true
-                renderEffect = if (alpha > 0f) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
-            }
-            .drawBehind {
-                if (alpha > 0f) {
-                    drawRect(page)
-                    translate(top = topInsetPx) { drawLayer(backdrop) }
-                }
-            }
-            .clearAndSetSemantics { },
-    )
-}
-
-/** `header-glass` for the current scheme. */
-@Composable
-private fun headerGlassAlpha(): Float =
-    if (isSystemInDarkTheme()) SceneViewTokens.HomeColor.headerGlassAlphaDark
-    else SceneViewTokens.HomeColor.headerGlassAlphaLight
-
-/** `RenderEffect` blur exists from API 31; below it the header stays opaque `surface`. */
-private val HEADER_GLASS_SUPPORTED = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S

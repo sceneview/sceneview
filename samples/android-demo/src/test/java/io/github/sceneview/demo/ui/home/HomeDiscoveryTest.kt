@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
@@ -83,31 +85,54 @@ class HomeDiscoveryTest {
     }
 
     private fun assertOutcomes() {
+        val hero = rule.onNodeWithTag(HomeTestTags.HERO).assertHeightIsEqualTo(192.dp)
+        val firstChoice = rule.onNodeWithTag(HomeTestTags.outcome("model-viewer"))
+        assertTrue(
+            "The first choice must sit below the live scene",
+            firstChoice.getUnclippedBoundsInRoot().top > hero.getUnclippedBoundsInRoot().bottom,
+        )
         val expected = listOf(
             "model-viewer" to "View a model",
             "ar-placement" to "Place in your room",
             "ar-rerun" to "Explore a scan",
         )
         expected.forEach { (id, label) ->
+            rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.outcome(id)))
             val row = rule.onNodeWithTag(HomeTestTags.outcome(id)).assertIsDisplayed()
+            val outcome = HOME_OUTCOMES.single { it.demoId == id }
+            val supportingText = androidx.test.core.app.ApplicationProvider
+                .getApplicationContext<android.content.Context>().getString(outcome.supportingRes)
+            row.assertContentDescriptionEquals("$label. $supportingText")
             assertTrue(row.getUnclippedBoundsInRoot().height >= 48.dp)
             val layouts = mutableListOf<TextLayoutResult>()
             rule.onNodeWithText(label, useUnmergedTree = true).assertIsDisplayed()
                 .fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
             val layout = layouts.single()
-            assertFalse("$label must fit without clipping", layout.hasVisualOverflow)
+            assertFalse(
+                "$label must fit without clipping: size=${layout.size}, paragraph=${layout.multiParagraph.width}x${layout.multiParagraph.height}, lines=${layout.lineCount}, widthOverflow=${layout.didOverflowWidth}, heightOverflow=${layout.didOverflowHeight}",
+                layout.hasVisualOverflow,
+            )
             assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
             row.performClick()
         }
         assertEquals(expected.map { it.first }, opened)
-        rule.onNodeWithTag(HomeTestTags.featured("materials")).assertIsDisplayed()
-        rule.onNodeWithTag(HomeTestTags.featured("cosmos")).assertIsDisplayed()
+        listOf("materials", "cosmos").forEach { id ->
+            rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.featured(id)))
+            rule.onNodeWithTag(HomeTestTags.featured(id)).assertIsDisplayed()
+        }
         rule.onNodeWithTag(HomeTestTags.WHATS_NEW_ROW).assertDoesNotExist()
+        rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.row("model-viewer")))
+        val catalogueRow = rule.onNodeWithTag(HomeTestTags.row("model-viewer")).assertIsDisplayed()
+        assertTrue(
+            "A catalogue picture must not inflate its row beyond the live hero height",
+            catalogueRow.getUnclippedBoundsInRoot().height < 192.dp,
+        )
     }
 
     @Test
     fun `Materials shortcut keeps its row when jumping to Materials and scenes`() {
         showHome(darkTheme = false)
+        rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.featured("materials")))
         rule.onNodeWithTag(HomeTestTags.featured("materials")).assertIsDisplayed()
         val chip = HomeTestTags.sectionChip(DemoCategory.CREATE)
         rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.CATEGORY_CHIPS))

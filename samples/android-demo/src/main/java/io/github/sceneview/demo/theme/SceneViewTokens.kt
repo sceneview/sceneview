@@ -399,7 +399,7 @@ object SceneViewTokens {
         /** Gap between the header's leading glyph (mark or back arrow) and its title. */
         val markGap = 10.dp
         val searchFieldHeight = 48.dp
-        val contentPadding = 20.dp
+        val contentPadding = Space.md
         val gridGutter = 12.dp
         /** Compact live discovery window; action labels grow outside it. */
         val discoverySceneHeight = 192.dp
@@ -477,7 +477,7 @@ object SceneViewTokens {
         val rowRadius = 20.dp
 
         /** `home-row-gap` — page between two rows. */
-        val rowGap = 10.dp
+        val rowGap = Space.sm
 
         /** `home-row-media` — the share of the row's width its picture fills, top to bottom. */
         const val rowMediaFraction = 0.5f

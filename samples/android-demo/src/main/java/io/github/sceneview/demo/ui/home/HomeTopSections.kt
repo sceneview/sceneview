@@ -4,12 +4,16 @@ import androidx.annotation.StringRes
 import io.github.sceneview.demo.R
 
 /** A one-tap discovery action, resolved against the same registry as the catalogue. */
-internal data class HomeOutcome(val demoId: String, @StringRes val labelRes: Int)
+internal data class HomeOutcome(
+    val demoId: String,
+    @StringRes val labelRes: Int,
+    @StringRes val supportingRes: Int,
+)
 
 internal val HOME_OUTCOMES = listOf(
-    HomeOutcome(HERO_DEMO_ID, R.string.home_view_model),
-    HomeOutcome("ar-placement", R.string.home_place_in_room),
-    HomeOutcome("ar-rerun", R.string.home_explore_scan),
+    HomeOutcome(HERO_DEMO_ID, R.string.home_view_model, R.string.home_view_model_supporting),
+    HomeOutcome("ar-placement", R.string.home_place_in_room, R.string.home_place_in_room_supporting),
+    HomeOutcome("ar-rerun", R.string.home_explore_scan, R.string.home_explore_scan_supporting),
 )
 
 /** Try next shortcuts. Feel joins here when its demo is registered. */

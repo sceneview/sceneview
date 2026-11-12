@@ -28,14 +28,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.isSpecified
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -58,23 +53,9 @@ import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.sample.ui.DemoCategoryAccent
-import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.roundToInt
 
-/**
- * One demo on the Home list (`home-row` / `home-banner` in `DESIGN.md`).
- *
- * The picture is the row. It runs to the row's own edges — no inset, no frame, no radius
- * of its own — and dissolves into the row's colour, which is the picture's colour
- * ([HomeAmbient]): a night capture carries on as a deep navy under the text, the fox as a
- * warm brown. Nothing reads as a thumbnail pasted on a grey tile.
- *
- * [HomeRowStyle.Fused] puts the picture on the leading half, full height, dissolving
- * sideways under the start of the text: the catalogue stays a list you scan by title.
- * [HomeRowStyle.Banner] gives the picture the full width and lets it dissolve down into
- * its caption — the Featured group, where the pictures are the point.
- */
+/** Home catalogue media and captions on flat Material surfaces with hard picture edges. */
 @Composable
 fun DemoListRow(
     demo: DemoEntry,
@@ -87,11 +68,7 @@ fun DemoListRow(
     val accent = DemoCategoryAccent[demo.category, dark]
     val resources = LocalContext.current.resources
     val res = DemoPreviews.resourceFor(demo.id, dark)
-    val tint = if (res != null) {
-        remember(res, dark) { HomeAmbient.tint(resources, res, dark) }
-    } else {
-        glyphTint(accent, dark)
-    }
+    val tint = MaterialTheme.colorScheme.surfaceContainerLow
     val alignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center
     val media: @Composable (Modifier) -> Unit = { mediaModifier ->
         if (res != null) {
@@ -198,22 +175,7 @@ fun WhatsNewRow(
     }
 }
 
-/**
- * `home-row-whole`: a row whose [picture] is shown whole instead of filling half the row.
- * The picture keeps its own shape at the row's height, against the leading edge, solid
- * across the band a card holds its subject in. The melt into [tint] takes most of its
- * room after the picture, not from it: from `home-row-whole-dissolve` on the picture
- * gives way to [pictureEdge], the colour it ends on, which carries on past the picture
- * over `home-row-whole-melt` and fades into the row on one ease from the first point to
- * the last. A dark card on a pale row therefore ends like an illustration, not on a
- * line. The text starts after that strip. The row's width never decides what is left of
- * the picture: a phone and a tablet show the same card.
- *
- * A row its text makes taller widens the picture with it, up to the
- * [SceneViewTokens.Home.rowMediaFraction] a catalogue row gives its own; only past that
- * (a large font on a narrow window) is the picture cropped, from its sides, around
- * [alignment].
- */
+/** A whole picture beside its caption, separated by the normal token spacing. */
 @Composable
 private fun WholePictureRow(
     title: String,
@@ -232,19 +194,19 @@ private fun WholePictureRow(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(home.rowRadius),
-        color = tint,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {},
     ) {
         Layout(
             content = {
-                // Under the picture's dissolving margin and on past it: one melt, one ease.
-                Box(Modifier.dissolve(DissolveEdge.End, start = 0f).background(pictureEdge))
+                // The spacer between the whole picture and its caption uses the card surface.
+                Box(Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow))
                 RowPicture(
                     painter = picture,
                     alignment = alignment,
-                    modifier = Modifier.dissolve(DissolveEdge.End, home.rowWholeDissolveStart),
+                    modifier = Modifier,
                 )
                 RowCaption(
                     title = title,
@@ -285,11 +247,7 @@ private fun WholePictureRow(
     }
 }
 
-/**
- * `home-row`: the picture fills the leading [SceneViewTokens.Home.rowMediaFraction] of the
- * row, top to bottom, and dissolves into [tint] from `home-row-dissolve` on; the text
- * starts where the picture has all but gone.
- */
+/** Leading media beside an opaque, themed caption. */
 @Composable
 private fun FusedRow(
     title: String,
@@ -304,42 +262,40 @@ private fun FusedRow(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(home.rowRadius),
-        color = tint,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier
             .fillMaxWidth()
             // Title, subtitle and chips announce as one node.
             .semantics(mergeDescendants = true) {},
     ) {
-        Box(modifier = Modifier.fillMaxWidth().heightIn(min = home.rowHeight)) {
-            Box(modifier = Modifier.matchParentSize()) {
-                media(
-                    Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(home.rowMediaFraction)
-                        .dissolve(DissolveEdge.End, home.rowDissolveStart),
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth().align(Alignment.CenterStart)) {
-                Spacer(Modifier.weight(home.rowTextStartFraction))
+        Layout(
+            modifier = Modifier.fillMaxWidth(),
+            content = {
+                media(Modifier)
                 RowCaption(
                     title = title,
                     subtitle = subtitle,
                     badges = badges,
                     modifier = Modifier
-                        .weight(1f - home.rowTextStartFraction)
-                        .padding(end = home.rowTextPaddingEnd)
+                        .padding(start = SceneViewTokens.Space.sm, end = home.rowTextPaddingEnd)
                         .padding(vertical = home.rowTextPaddingVertical),
                 )
+            },
+        ) { measurables, constraints ->
+            val width = constraints.maxWidth
+            val mediaWidth = (width * home.rowTextStartFraction).roundToInt()
+            val caption = measurables[1].measure(Constraints(maxWidth = width - mediaWidth))
+            val height = maxOf(home.rowHeight.roundToPx(), caption.height)
+            val picture = measurables[0].measure(Constraints.fixed(mediaWidth, height))
+            layout(width, height) {
+                picture.placeRelative(0, 0)
+                caption.placeRelative(mediaWidth, (height - caption.height) / 2)
             }
         }
     }
 }
 
-/**
- * `home-banner`: the picture across the row at `home-banner-aspect`, dissolving from
- * `home-banner-dissolve` down into [tint]; the caption is pulled up into the dissolve so
- * the title sits where the picture ends, not under an edge.
- */
+/** Full-width media followed by a caption on the card surface. */
 @Composable
 private fun BannerRow(
     title: String,
@@ -354,7 +310,7 @@ private fun BannerRow(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(home.rowRadius),
-        color = tint,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {},
@@ -363,15 +319,14 @@ private fun BannerRow(
             media(
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(home.bannerAspect)
-                    .dissolve(DissolveEdge.Bottom, home.bannerDissolveStart),
+                    .aspectRatio(home.bannerAspect),
             )
             RowCaption(
                 title = title,
                 subtitle = subtitle,
                 badges = badges,
                 modifier = Modifier
-                    .pullUp(home.bannerCaptionOverlap)
+                    .padding(top = home.rowTextPaddingVertical)
                     .padding(horizontal = home.bannerTextPaddingHorizontal)
                     .padding(bottom = home.rowTextPaddingVertical),
             )
@@ -467,53 +422,6 @@ private fun glyphTint(accent: Color, dark: Boolean): Color = ambientTint(accent,
 
 /** Opacity of the accent wash behind a [GlyphPanel]'s glyph. */
 private const val GLYPH_WASH_ALPHA = 0.18f
-
-private enum class DissolveEdge { End, Bottom }
-
-/**
- * Fades the content out towards [edge], fully opaque up to [start] (a fraction of the
- * size along that axis) and gone at the edge, on a cosine ease so the fade has no band
- * where it starts or ends. Drawn in an offscreen layer and masked with `DstIn`, so what
- * shows through is the row's own tint.
- */
-private fun Modifier.dissolve(edge: DissolveEdge, start: Float): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        val stops = dissolveStops(start)
-        val brush = when (edge) {
-            DissolveEdge.Bottom -> Brush.verticalGradient(*stops)
-            DissolveEdge.End -> if (layoutDirection == LayoutDirection.Rtl) {
-                Brush.horizontalGradient(*stops, startX = size.width, endX = 0f)
-            } else {
-                Brush.horizontalGradient(*stops)
-            }
-        }
-        drawRect(brush, blendMode = BlendMode.DstIn)
-    }
-
-/** Opaque to [start], then a cosine ease to transparent at 1. */
-private fun dissolveStops(start: Float): Array<Pair<Float, Color>> {
-    val steps = 8
-    return Array(steps + 2) { i ->
-        if (i == 0) {
-            0f to Color.Black
-        } else {
-            val u = (i - 1) / steps.toFloat()
-            val alpha = (0.5 * (1 + cos(PI * u))).toFloat()
-            (start + (1f - start) * u) to Color.Black.copy(alpha = alpha)
-        }
-    }
-}
-
-/** Lays the content out [by] higher than it would sit, and takes that much off its height. */
-private fun Modifier.pullUp(by: Dp): Modifier = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
-    val shift = by.roundToPx()
-    layout(placeable.width, (placeable.height - shift).coerceAtLeast(0)) {
-        placeable.place(0, -shift)
-    }
-}
 
 /**
  * Columns of the home list for a window [widthDp] wide: one on a phone, then as many

@@ -10,10 +10,13 @@
     <string name="home_search_close">Close search</string>
     <string name="home_whats_new">What\'s new</string>
 
-    <!-- Discovery actions use full-width, wrapping M3 list items. -->
+    <!-- Discovery actions use full-width M3 outlined cards with wrapping text. -->
     <string name="home_view_model">View a model</string>
     <string name="home_place_in_room">Place in your room</string>
     <string name="home_explore_scan">Explore a scan</string>
+    <string name="home_view_model_supporting">Rotate and inspect in 3D</string>
+    <string name="home_place_in_room_supporting">See a model in your space</string>
+    <string name="home_explore_scan_supporting">Replay a room scan</string>
     <string name="home_browse_demos">Browse demos</string>
     <string name="category_short_play">Play &amp; feel</string>
 
