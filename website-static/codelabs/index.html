@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!--
+  Redirect stub for an old root URL that search engines still list and that
+  returned HTTP 404 (12/11/2026: agents searching for SceneView landed on it).
+  Same pattern as /migration/: noindex + canonical, so engines move to the
+  MkDocs page. MkDocs only owns /docs/, so nothing here shadows its output.
+-->
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codelabs — SceneView</title>
+  <meta name="description" content="The codelabs has moved to /docs/codelabs/.">
+  <meta name="robots" content="noindex, follow">
+  <link rel="canonical" href="https://sceneview.github.io/docs/codelabs/">
+  <meta http-equiv="refresh" content="0; url=/docs/codelabs/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    :root { color-scheme: dark light; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #0D2137; color: #f0f4f8;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 16px; text-align: center; line-height: 1.6;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+    p { color: #b8c7d9; font-size: 0.95rem; }
+    a { color: #8ab4f8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>The codelabs has moved</h1>
+    <p>It now lives at <a href="/docs/codelabs/">sceneview.github.io/docs/codelabs/</a>.</p>
+  </main>
+</body>
+</html>
