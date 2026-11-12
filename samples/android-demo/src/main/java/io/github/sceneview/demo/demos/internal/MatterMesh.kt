@@ -11,7 +11,7 @@ import io.github.sceneview.safeDestroyVertexBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** Main-thread GPU boundary: one immutable upload, shared by every sample. No frame upload API. */
+/** Main-thread GPU boundary: immutable uploads shared by the soft and rigid sample families. No frame upload API. */
 internal class MatterMesh(private val engine: Engine, geometry: MatterGeometry) {
     val vertexBuffer: VertexBuffer
     val indexBuffer: IndexBuffer

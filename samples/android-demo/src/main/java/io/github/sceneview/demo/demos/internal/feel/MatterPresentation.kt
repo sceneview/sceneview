@@ -37,13 +37,14 @@ internal object MatterTransition {
     }
 }
 
-/** No idle timer jobs: one phase, evaluated by the existing main-thread frame callback. */
+/** One orbit phase. A single delayed wake lets the renderer park during the four-second wait. */
 internal class MatterIdle {
     private var idleSince: Long? = null
     private var held = false
     private var frozenYaw = 0f
     var yawDegrees = 0f
         private set
+    val wakeAt: Long? get() = if (held) null else idleSince?.plus(DELAY_MILLIS + 1L)
     fun touch(now: Long, down: Boolean) {
         idleSince = now
         held = down

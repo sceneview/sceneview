@@ -21,7 +21,7 @@ internal object MatterMeshes {
     const val RIPPLE_MILLIS = 350L
     private const val BEVEL_STEPS = 6
 
-    fun slab(): MatterGeometry {
+    fun slab(rigid: Boolean = false): MatterGeometry {
         val positions = ArrayList<Float>()
         val normals = ArrayList<Float>()
         val tangents = ArrayList<Float>()
@@ -36,7 +36,8 @@ internal object MatterMeshes {
             for (i in 0..divisions) add(-extent + BEVEL + 2f * (extent - BEVEL) * i / divisions)
             for (i in 1..BEVEL_STEPS) add(extent - BEVEL + BEVEL * i / BEVEL_STEPS)
         }
-        fun face(axis: Int, sign: Float, uAxis: Int, vAxis: Int, columns: Int, rows: Int) {
+        fun face(chart: MatterDetailAtlas.Chart, columns: Int, rows: Int) {
+            val axis = chart.axis; val sign = chart.sign; val uAxis = chart.uAxis; val vAxis = chart.vAxis
             val us = coordinates(half[uAxis], columns)
             val vs = coordinates(half[vAxis], rows)
             val start = positions.size / 3
@@ -51,7 +52,8 @@ internal object MatterMeshes {
                 normals.addAll(n.toList())
                 val t = normalize(FloatArray(3) { (if (it == uAxis) 1f else 0f) - n[it] * n[uAxis] })
                 tangents.addAll(packFrame(t, n).toList())
-                uv.add((u / half[uAxis] + 1f) / 2f); uv.add((v / half[vAxis] + 1f) / 2f)
+                uv.add(chart.u((u / half[uAxis] + 1f) / 2f))
+                uv.add(chart.v((v / half[vAxis] + 1f) / 2f))
             }
             val u = FloatArray(3).apply { this[uAxis] = 1f }
             val v = FloatArray(3).apply { this[vAxis] = 1f }
@@ -63,11 +65,14 @@ internal object MatterMeshes {
                 tri.forEach { indices.add(it.toShort()) }
             }
         }
-        face(1, 1f, 0, 2, TOP_COLUMNS, TOP_ROWS)
-        face(1, -1f, 0, 2, 32, 16)
-        for (sign in listOf(-1f, 1f)) {
-            face(2, sign, 0, 1, TOP_COLUMNS, 12)
-            face(0, sign, 2, 1, TOP_ROWS, 12)
+        val columns = if (rigid) 32 else TOP_COLUMNS
+        val rows = if (rigid) 16 else TOP_ROWS
+        face(MatterDetailAtlas.charts[0], columns, rows)
+        face(MatterDetailAtlas.charts[1], 8, 4)
+        for (i in 2..5) {
+            // Match the top edge's horizontal samples to avoid cracks while denting.
+            // Four vertical strips suffice for the supported, linearly weighted side.
+            face(MatterDetailAtlas.charts[i], if (i % 2 == 0) columns else rows, 4)
         }
         check(positions.size / 3 < 65536)
         return MatterGeometry(positions.toFloatArray(), normals.toFloatArray(), tangents.toFloatArray(),

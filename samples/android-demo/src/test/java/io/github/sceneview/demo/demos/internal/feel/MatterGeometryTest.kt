@@ -9,6 +9,31 @@ import kotlin.math.sqrt
 class MatterGeometryTest {
     private val mesh = MatterMeshes.slab()
 
+    @Test fun denseSoftTopAndRigidSilhouetteFitTheirVertexBudgets() {
+        assertTrue(mesh.positions.size / 3 < 19000)
+        val rigid = MatterMeshes.slab(rigid = true)
+        assertTrue(rigid.positions.size / 3 < 5000)
+        assertEquals(mesh.positions.min(), rigid.positions.min(), .00001f)
+        for (i in rigid.positions.indices step 3) {
+            assertEquals(0f, MatterMeshes.distance(rigid.positions[i], rigid.positions[i + 1],
+                rigid.positions[i + 2]), .00001f)
+        }
+    }
+
+    @Test fun atlasCoordinatesRecoverTheSameRoundedRestPositionOnEveryFace() {
+        val point = FloatArray(3)
+        for (i in mesh.uv0.indices step 2) {
+            val u = mesh.uv0[i]; val v = mesh.uv0[i + 1]
+            val chart = MatterDetailAtlas.charts.single {
+                u >= it.u(0f) - .000001f && u <= it.u(1f) + .000001f &&
+                    v >= it.v(0f) - .000001f && v <= it.v(1f) + .000001f
+            }
+            chart.point((u - chart.u(0f)) / (chart.u(1f) - chart.u(0f)),
+                (v - chart.v(0f)) / (chart.v(1f) - chart.v(0f)), point)
+            for (axis in 0..2) assertEquals(mesh.positions[i / 2 * 3 + axis], point[axis], .00001f)
+        }
+    }
+
     @Test fun denseTopHasAtLeast128By64FlatQuadsPlusASmoothBevel() {
         val top = mesh.positions.indices.step(3).filter { abs(mesh.positions[it + 1]) < .000001f }
         assertTrue(top.size >= 129 * 65)

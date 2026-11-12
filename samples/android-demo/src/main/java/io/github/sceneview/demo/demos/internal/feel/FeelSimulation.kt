@@ -96,6 +96,18 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         selected = material
     }
 
+    /** Only visible dynamics need GPU frames; hidden pads catch up when the scene next ticks. */
+    fun needsFrames(material: FeelMaterial, now: Long, motion: Boolean): Boolean {
+        if (active != null || !opening.finished) return true
+        val i = material.ordinal
+        if (pads[i].depthMm != 0f || pads[i].velocity != 0f) return true
+        if ((0 until TRAIL_POINTS).any { trails[i][it * 4 + 2] > 0f }) return true
+        if (motion && material == FeelMaterial.Gel && gelReleasedAt != Long.MIN_VALUE &&
+            now - gelReleasedAt in 0L..(GEL_WAVE_SECONDS * 1000).toLong()) return true
+        return motion && material.rigid && contactMillis[i] != Long.MIN_VALUE &&
+            now - contactMillis[i] in 0L until MatterMeshes.RIPPLE_MILLIS
+    }
+
     fun begin(material: FeelMaterial, x: Float, z: Float, pressure: Float, size: Float, now: Long) {
         opening.cancel()
         hasPressed = true

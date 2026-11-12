@@ -1,22 +1,38 @@
 package io.github.sceneview.demo.demos.internal
 
+import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
+import com.google.android.filament.Texture
+import com.google.android.filament.TextureSampler
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
+import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.loaders.MaterialLoader
+import java.nio.ByteBuffer
 import kotlin.math.exp
 import kotlin.math.sin
 
 /** Filament material instances, created/updated/destroyed on the composition's main thread. */
-internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
-    private val opaque = loader.createMaterial("materials/matter_surface.filamat")
-    private val gel = loader.createMaterial("materials/matter_gel.filamat")
+internal class MatterSurfaceMaterials(private val engine: Engine, private val loader: MaterialLoader) {
+    private val textures = mutableMapOf<FeelMaterial, Texture>()
+    var detailVersion = 0L
+        private set
+    private val sampler = TextureSampler(TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR,
+        TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE)
+    private val fallback = Texture.Builder().width(1).height(1).levels(1)
+        .format(Texture.InternalFormat.RG8).build(engine).apply {
+            setImage(engine, 0, Texture.PixelBufferDescriptor(
+                ByteBuffer.allocateDirect(2).put(byteArrayOf(128.toByte(), 128.toByte())).flip(),
+                Texture.Format.RG, Texture.Type.UBYTE, 1))
+        }
+    private val packages = listOf("soft", "gel", "velvet", "leather", "marble", "steel")
+        .map { loader.createMaterial("materials/matter_$it.filamat") }
     val samples = FeelMaterial.entries.map { kind ->
         val finish = MatterSurfaces[kind]
-        loader.createInstance(if (kind == FeelMaterial.Gel) gel else opaque).apply {
+        loader.createInstance(packages[kind.ordinal]).apply {
             setParameter("finger", 0f, 0f)
             setParameter("depth", 0f)
             setParameter("bounce", 0f)
@@ -38,7 +54,7 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
                 setParameter("absorption", MatterSurfaces.GEL_ABSORPTION_RED,
                     MatterSurfaces.GEL_ABSORPTION_GREEN, MatterSurfaces.GEL_ABSORPTION_BLUE)
             } else {
-                setParameter("surface", kind.ordinal.toFloat())
+                setParameter("detail", fallback, sampler)
                 setParameter("metallic", finish.metallic)
                 setParameter("coat", finish.coat)
                 setParameter("coatRoughness", finish.coatRoughness)
@@ -50,6 +66,23 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
                 setParameter("rippleWidth", 0.01f)
             }
         }
+    }
+
+    fun hasDetail(kind: FeelMaterial) = kind == FeelMaterial.Gel || kind in textures
+
+    /** Called only from the main-thread LaunchedEffect, after the cancellable CPU bake. */
+    fun uploadDetail(kind: FeelMaterial, pixels: ByteArray) {
+        check(!hasDetail(kind))
+        require(pixels.size == MatterDetailAtlas.WIDTH * MatterDetailAtlas.HEIGHT * 2)
+        val texture = Texture.Builder().width(MatterDetailAtlas.WIDTH).height(MatterDetailAtlas.HEIGHT)
+            .levels(0xff).format(Texture.InternalFormat.RG8)
+            .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE).build(engine)
+        textures[kind] = texture
+        val buffer = ByteBuffer.allocateDirect(pixels.size).put(pixels).apply { flip() }
+        texture.setImage(engine, 0, Texture.PixelBufferDescriptor(buffer, Texture.Format.RG, Texture.Type.UBYTE, 1))
+        texture.generateMipmaps(engine)
+        samples[kind.ordinal].setParameter("detail", texture, sampler)
+        detailVersion++
     }
     val mark: MaterialInstance = loader.createInstance(loader.createMaterial("materials/studio_pbr.filamat")).apply {
         val finish = MatterSurfaces.ceramic
@@ -108,6 +141,8 @@ internal class MatterSurfaceMaterials(private val loader: MaterialLoader) {
     fun destroy() {
         samples.forEach(loader::destroyMaterialInstance)
         loader.destroyMaterialInstance(mark)
-        // MaterialLoader owns the three parent material packages.
+        textures.values.forEach(engine::destroyTexture)
+        engine.destroyTexture(fallback)
+        // MaterialLoader owns the parent material packages.
     }
 }

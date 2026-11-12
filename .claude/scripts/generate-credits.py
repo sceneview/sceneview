@@ -341,12 +341,40 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`",
     },
-    "matter_surface.filamat": {
-        "name": "matter_surface.filamat",
+    "matter_soft.filamat": {
+        "name": "matter_soft.filamat",
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
-        "note": "Compiled from `samples/android-demo/src/main/materials/matter_surface.mat`",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_soft.mat`",
+    },
+    "matter_velvet.filamat": {
+        "name": "matter_velvet.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_velvet.mat`",
+    },
+    "matter_leather.filamat": {
+        "name": "matter_leather.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_leather.mat`",
+    },
+    "matter_marble.filamat": {
+        "name": "matter_marble.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_marble.mat`",
+    },
+    "matter_steel.filamat": {
+        "name": "matter_steel.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`",
     },
     "matter_gel.filamat": {
         "name": "matter_gel.filamat",
