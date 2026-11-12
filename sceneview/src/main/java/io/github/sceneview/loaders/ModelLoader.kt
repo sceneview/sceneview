@@ -1749,7 +1749,8 @@ private class FilamentModelSource(val buffer: Buffer, private val externalWebP: 
  * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF,
  * STL, OBJ and PLY are converted to GLB, then WebP textures are transcoded (#2305): Filament's
  * Android build registers no `image/webp` texture provider and would otherwise render the model
- * untextured. A payload without WebP textures, the common case, is returned untouched.
+ * untextured. Material extensions missing from the Java provider bridge are then removed to
+ * prevent native uniform panics (see [GltfMaterialCompatibility]).
  */
 private fun Buffer.toFilamentModelSource(
     onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
@@ -1761,8 +1762,8 @@ private fun Buffer.toFilamentModelSource(
         ?.let { onUnsupported(UnsupportedGltfExtensionException(it)) }
     return (converted as? ByteBuffer)
         ?.let { WebPTextureTranscoder.transcodeModel(it) }
-        ?.let { FilamentModelSource(it.buffer, it.externalWebP) }
-        ?: FilamentModelSource(converted, emptySet())
+        ?.let { FilamentModelSource(GltfMaterialCompatibility.prepare(it.buffer), it.externalWebP) }
+        ?: FilamentModelSource(GltfMaterialCompatibility.prepare(converted), emptySet())
 }
 
 /**
