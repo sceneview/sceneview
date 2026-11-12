@@ -230,6 +230,7 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 onSessionResumed = { _: Session ->
                     // Anchor the slow-camera grace window on the real session resume,
                     // not on the composition (which fires before ARCore is ready).
+                    sessionFailed = false
                     sessionResumed = true
                 },
                 onSessionFailed = { error: Exception ->

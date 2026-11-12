@@ -148,6 +148,43 @@ class ARSessionResumeFailureTest {
     }
 
     @Test
+    fun `retrying a running session never calls native resume again`() {
+        arCore.resume(context, handler = null)
+        val running = arCore.session!!
+        resumeFailure = CameraNotAvailableException("a second resume would fail")
+
+        arCore.retrySession(context)
+
+        assertSame(running, arCore.session)
+        assertTrue(running.isResumed)
+        assertEquals(1, resumeCalls)
+        assertEquals(1, resumedCallbacks)
+        assertTrue(failures.isEmpty())
+        assertTrue(published.isEmpty())
+    }
+
+    @Test
+    fun `retrying a fatal resume failure recreates the session`() {
+        val failure = FatalException("unrecoverable native session")
+        resumeFailure = failure
+        arCore.resume(context, handler = null)
+        val failed = arCore.session!!
+        resumeFailure = null
+
+        arCore.retryARCoreAvailability()
+
+        assertNotSame(failed, arCore.session)
+        assertTrue(failed.isClosed)
+        assertTrue(arCore.session!!.isResumed)
+        assertEquals(2, creationCalls)
+        assertEquals(2, createdCallbacks)
+        assertEquals(2, resumeCalls)
+        assertEquals(1, resumedCallbacks)
+        assertEquals(listOf<Exception>(failure), failures)
+        assertEquals(listOf(ARCoreAvailability.SessionFailed, null), published)
+    }
+
+    @Test
     fun `retrying a creation failure creates and resumes a session`() {
         val failure = IllegalStateException("session creation failed")
         creationFailure = failure
@@ -238,7 +275,7 @@ class ARSessionResumeFailureTest {
     }
 
     @Test
-    fun `posted hand back logs and reports host exceptions even if the failure callback throws`() {
+    fun `posted hand back logs host exceptions without reporting a session failure`() {
         val hostBug = IllegalStateException("host resumed callback")
         val reportBug = IllegalStateException("host failure callback")
         var failCallback = false
@@ -255,12 +292,12 @@ class ARSessionResumeFailureTest {
             covering.pause()
             ShadowLooper.idleMainLooper()
 
-            assertEquals(listOf<Exception>(hostBug), failures)
+            assertTrue("A host callback error must not invoke the session failure callback", failures.isEmpty())
             assertTrue(arCore.session!!.isResumed)
             assertTrue("Native resume succeeded: no session failure state", published.isEmpty())
             val logs = ShadowLog.getLogsForTag("ARCore")
             assertTrue(logs.any { it.throwable === hostBug })
-            assertTrue(logs.any { it.throwable === reportBug })
+            assertFalse(logs.any { it.throwable === reportBug })
         } finally {
             covering.detachHost()
             covering.session?.close()

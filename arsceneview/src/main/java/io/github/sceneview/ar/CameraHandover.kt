@@ -78,7 +78,7 @@ internal interface CameraClient {
     /** [start] returned [exception]: native resume failed. */
     fun onStartFailed(exception: Exception)
 
-    /** Logs and reports a hand-back exception. Must not throw from the posted callback. */
+    /** Logs a hand-back exception. Must not throw from the posted callback. */
     fun onException(exception: Exception)
 }
 
@@ -102,7 +102,7 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
      */
     @MainThread
     fun resume(client: CameraClient) {
-        if (!client.canRun) return
+        if (!client.canRun || client.isRunning) return
         handover.claim(client)?.takeIf { it.isRunning }?.stop()
         if (!start(client)) {
             handover.release(client)

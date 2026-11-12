@@ -22,6 +22,18 @@ class CameraArbiterTest {
     private val b = FakeSession("B")
 
     @Test
+    fun `retrying a running session never calls native resume again`() {
+        arbiter.resume(a)
+        a.failure = IllegalStateException("a second native resume would fail")
+
+        arbiter.resume(a)
+
+        assertEquals(listOf("A start"), calls)
+        assertTrue(a.isRunning)
+        assertTrue(exceptions.isEmpty())
+    }
+
+    @Test
     fun `a session resuming over a running one pauses it first`() {
         arbiter.resume(a)
         arbiter.resume(b)
@@ -256,7 +268,7 @@ class CameraArbiterTest {
     }
 
     @Test
-    fun `a callback exception during posted hand back is reported and keeps the running claim`() {
+    fun `a callback exception during posted hand back is logged and keeps the running claim`() {
         arbiter.resume(a)
         arbiter.resume(b)
         val bug = IllegalStateException("host callback")
@@ -275,7 +287,7 @@ class CameraArbiterTest {
     }
 
     @Test
-    fun `a callback exception after asynchronous close is reported`() {
+    fun `a callback exception after asynchronous close is logged`() {
         arbiter.resume(a)
         arbiter.resume(b)
         val bug = IllegalStateException("host callback")

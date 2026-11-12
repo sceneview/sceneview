@@ -11,6 +11,7 @@ import com.google.ar.core.Config
 import com.google.ar.core.RecordingStatus
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
+import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.ar.arcore.ARSession
 
 /**
@@ -35,8 +36,7 @@ const val kDefaultHitTestInstantDistance = 2.0f
  * @param onSessionPaused      Called each time the session pauses.
  * @param onArSessionFailed    Called when session creation or resume fails, once per failed
  *                             attempt: every host resume, permission grant or [retrySession]
- *                             that cannot resume the session reports again. Also reports host
- *                             callback exceptions during a posted camera handover.
+ *                             that cannot resume the session reports again.
  * @param onSessionConfigChanged Called when the session configuration changes.
  */
 class ARCore(
@@ -161,6 +161,8 @@ class ARCore(
     /** Context of the last [resume], so a grant that arrives while resumed can start AR. */
     private var resumeContext: Context? = null
 
+    private var sessionNeedsRecreation = false
+
     internal var session: ARSession? = null
         private set
 
@@ -234,6 +236,11 @@ class ARCore(
      * the camera goes back to the session it was taken from.
      */
     private fun resumeSession() {
+        if (sessionNeedsRecreation) {
+            val context = lastContext ?: resumeContext ?: return
+            destroy()
+            createSession(context)
+        }
         cameraArbiter.resume(cameraClient)
     }
 
@@ -261,17 +268,13 @@ class ARCore(
         }
         override fun stop() { session?.takeIf { it.isResumed }?.pause() }
         override fun onStartFailed(exception: Exception) {
+            if (exception is FatalException) sessionNeedsRecreation = true
             publishAvailability(ARCoreAvailability.SessionFailed)
             Log.w("ARCore", "Could not resume the ARCore session; the next resume tries again", exception)
             this@ARCore.onException(exception)
         }
         override fun onException(exception: Exception) {
             Log.w("ARCore", "Exception during camera hand-back", exception)
-            try {
-                this@ARCore.onException(exception)
-            } catch (callbackException: Exception) {
-                Log.w("ARCore", "Exception reporting a camera hand-back failure", callbackException)
-            }
         }
     }
 
@@ -570,13 +573,14 @@ class ARCore(
     }
 
     /**
-     * Retries a failed session while the host is resumed, creating it only if absent or closed.
+     * Retries a failed session while the host is resumed. A fatal native error recreates the
+     * session; other failures reuse it unless it is absent or closed. A running session is a no-op.
      * A paused or detached host does nothing; its next lifecycle resume can try again.
      */
     fun retrySession(context: Context? = lastContext) {
-        if (isHostDetached || !isHostResumed) return
+        if (isHostDetached || !isHostResumed || session?.isResumed == true) return
         // The scene still owns planes and anchors from a live session. Closing it here would
-        // invalidate their native handles (#4026); a failed resume can retry the same session.
+        // invalidate their native handles (#4026); only a fatal native error needs recreation.
         if (session?.isClosed != false) {
             createSession(context ?: return)
         }
@@ -641,6 +645,7 @@ class ARCore(
      */
     @MainThread
     fun destroy() {
+        sessionNeedsRecreation = false
         cameraArbiter.destroy(cameraClient) { onClosed ->
             val closing = session
             session = null

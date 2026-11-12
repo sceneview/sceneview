@@ -264,9 +264,6 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                 },
                 onSessionCreated = { active ->
                     session = active
-                    cameraFailed = false
-                    startupTimedOut = false
-                    if (state.phase == PlacementPhase.CAMERA_ERROR) reset()
                     control.confirmSupport(feature.isSupported(active) && when (feature) {
                         PlacementFeature.DEPTH -> active.config.depthMode == Config.DepthMode.AUTOMATIC
                         PlacementFeature.PEOPLE ->
@@ -274,6 +271,10 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                                 active.config.depthMode == Config.DepthMode.AUTOMATIC
                         PlacementFeature.STABILIZATION -> true
                     })
+                },
+                onSessionResumed = {
+                    cameraFailed = false
+                    startupTimedOut = false
                 },
                 onSessionUpdated = { _, frame ->
                     cameraReady = true

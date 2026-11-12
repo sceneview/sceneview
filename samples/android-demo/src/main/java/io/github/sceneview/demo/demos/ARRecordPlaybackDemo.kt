@@ -550,6 +550,7 @@ private fun TakeScene(
         ARSceneView(
             lifecycle = rememberHostLifecycle(),
             onSessionFailure = { take.sessionFailed = true },
+            onSessionResumed = { take.sessionFailed = false },
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,

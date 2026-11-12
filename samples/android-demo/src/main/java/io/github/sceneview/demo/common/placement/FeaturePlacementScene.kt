@@ -31,6 +31,7 @@ internal fun FeaturePlacementScene(
     playbackDataset: File? = null,
     sessionConfiguration: (Session, Config) -> Unit = { _, _ -> },
     onSessionCreated: (Session) -> Unit = {},
+    onSessionResumed: (Session) -> Unit = {},
     onSessionUpdated: (Session, Frame) -> Unit = { _, _ -> },
     onSessionFailed: (Exception) -> Unit = {},
     onARCoreAvailability: (ARCoreAvailability?) -> Unit = {},
@@ -63,11 +64,10 @@ internal fun FeaturePlacementScene(
         planeFindingMode = Config.PlaneFindingMode.HORIZONTAL,
         instantPlacementMode = Config.InstantPlacementMode.DISABLED,
         sessionConfiguration = sessionConfiguration,
-        onSessionCreated = { session ->
-            // The SDK may retry startup in place; release the controller's startup error
-            // before forwarding the new session, without changing an existing placement.
-            if (state.phase == PlacementPhase.CAMERA_ERROR) state.resetPlacement(SystemClock.uptimeMillis())
-            onSessionCreated(session)
+        onSessionCreated = onSessionCreated,
+        onSessionResumed = { session ->
+            state.cameraResumed()
+            onSessionResumed(session)
         },
         onSessionFailed = { state.cameraFailed(); onSessionFailed(it) },
         onARCoreAvailability = onARCoreAvailability,
