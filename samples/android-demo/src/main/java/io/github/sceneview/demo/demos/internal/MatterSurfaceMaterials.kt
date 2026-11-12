@@ -1,5 +1,10 @@
 package io.github.sceneview.demo.demos.internal
 
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import androidx.compose.runtime.mutableStateMapOf
+import com.google.android.filament.Material
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Texture
@@ -16,7 +21,12 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /** Filament material instances, created/updated/destroyed on the composition's main thread. */
-internal class MatterSurfaceMaterials(private val engine: Engine, private val loader: MaterialLoader) {
+internal class MatterSurfaceMaterials(
+    private val engine: Engine,
+    private val loader: MaterialLoader,
+    foamPayload: ByteBuffer,
+    markPayload: ByteBuffer,
+) {
     private val textures = mutableMapOf<FeelMaterial, Texture>()
     var detailVersion = 0L
         private set
@@ -28,11 +38,25 @@ internal class MatterSurfaceMaterials(private val engine: Engine, private val lo
                 ByteBuffer.allocateDirect(2).put(byteArrayOf(128.toByte(), 128.toByte())).flip(),
                 Texture.Format.RG, Texture.Type.UBYTE, 1))
         }
-    private val packages = listOf("soft", "gel", "velvet", "leather", "marble", "steel")
-        .map { loader.createMaterial("materials/matter_$it.filamat") }
-    val samples = FeelMaterial.entries.map { kind ->
+    companion object {
+        fun asset(kind: FeelMaterial) = "materials/matter_${listOf("soft", "gel", "velvet", "leather", "marble", "steel")[kind.ordinal]}.filamat"
+    }
+    val samples = mutableStateMapOf<FeelMaterial, MaterialInstance>()
+    private val instances = mutableMapOf<FeelMaterial, MaterialInstance>()
+    private val detailUploadedAt = mutableMapOf<FeelMaterial, Long>()
+    private var compiling = false
+    private var destroyed = false
+    val needsWarmup get() = instances.size < FeelMaterial.entries.size || compiling
+    fun hasPrepared(kind: FeelMaterial) = kind in instances
+
+    init {
+        val kind = FeelMaterial.MemoryFoam
+        samples[kind] = create(kind, loader.createMaterial(foamPayload))
+    }
+
+    private fun create(kind: FeelMaterial, material: Material): MaterialInstance {
         val finish = MatterSurfaces[kind]
-        loader.createInstance(packages[kind.ordinal]).apply {
+        return loader.createInstance(material).apply {
             setParameter("finger", 0f, 0f)
             setParameter("depth", 0f)
             setParameter("bounce", 0f)
@@ -54,7 +78,8 @@ internal class MatterSurfaceMaterials(private val engine: Engine, private val lo
                 setParameter("absorption", MatterSurfaces.GEL_ABSORPTION_RED,
                     MatterSurfaces.GEL_ABSORPTION_GREEN, MatterSurfaces.GEL_ABSORPTION_BLUE)
             } else {
-                setParameter("detail", fallback, sampler)
+                setParameter("detail", textures[kind] ?: fallback, sampler)
+                setParameter("detailBlend", if (kind in textures) 1f else 0f)
                 setParameter("metallic", finish.metallic)
                 setParameter("coat", finish.coat)
                 setParameter("coatRoughness", finish.coatRoughness)
@@ -65,8 +90,46 @@ internal class MatterSurfaceMaterials(private val engine: Engine, private val lo
                 setParameter("rippleColor", 0f, 0f, 0f)
                 setParameter("rippleWidth", 0.01f)
             }
-        }
+        }.also { instances[kind] = it }
     }
+
+    /** One family per idle frame, and only one backend compilation in flight. */
+    fun warmOne(kind: FeelMaterial, payload: ByteBuffer, onReady: () -> Unit): Boolean {
+        if (compiling || hasPrepared(kind)) return false
+        val material = loader.createMaterial(payload)
+        val instance = create(kind, material)
+        compiling = true
+        // Includes unshadowed (gel/mirror), directional, PCF receiver and showroom height fog.
+        // No dynamic lights, skinning, VSM, SSR or stereo in this stage.
+        material.compile(Material.CompilerPriorityQueue.LOW,
+            Material.UserVariantFilterBit.DIRECTIONAL_LIGHTING or Material.UserVariantFilterBit.SHADOW_RECEIVER or
+                Material.UserVariantFilterBit.FOG,
+            Handler(Looper.getMainLooper()), Runnable {
+                if (!destroyed) {
+                    compiling = false
+                    samples[kind] = instance
+                    onReady()
+                }
+            })
+        return true
+    }
+
+    /** Blend the field before shading, so tint, roughness and relief arrive together. */
+    fun advanceDetail(now: Long): Boolean {
+        var fading = false
+        for ((kind, uploadedAt) in detailUploadedAt) {
+            val blend = ((now - uploadedAt) / 300f).coerceIn(0f, 1f)
+            val previous = detailBlend[kind] ?: -1f
+            if (previous != blend) {
+                instances[kind]?.setParameter("detailBlend", blend)
+                detailBlend[kind] = blend
+                detailVersion++
+            }
+            if (blend < 1f) fading = true
+        }
+        return fading
+    }
+    private val detailBlend = mutableMapOf<FeelMaterial, Float>()
 
     fun hasDetail(kind: FeelMaterial) = kind == FeelMaterial.Gel || kind in textures
 
@@ -81,10 +144,13 @@ internal class MatterSurfaceMaterials(private val engine: Engine, private val lo
         val buffer = ByteBuffer.allocateDirect(pixels.size).put(pixels).apply { flip() }
         texture.setImage(engine, 0, Texture.PixelBufferDescriptor(buffer, Texture.Format.RG, Texture.Type.UBYTE, 1))
         texture.generateMipmaps(engine)
-        samples[kind.ordinal].setParameter("detail", texture, sampler)
+        instances[kind]?.setParameter("detail", texture, sampler)
+        instances[kind]?.setParameter("detailBlend", 0f)
+        detailUploadedAt[kind] = SystemClock.uptimeMillis()
+        detailBlend[kind] = 0f
         detailVersion++
     }
-    val mark: MaterialInstance = loader.createInstance(loader.createMaterial("materials/studio_pbr.filamat")).apply {
+    val mark: MaterialInstance = loader.createInstance(loader.createMaterial(markPayload)).apply {
         val finish = MatterSurfaces.ceramic
         setParameter("color", finish.red, finish.green, finish.blue, 1f)
         setParameter("metallic", finish.metallic)
@@ -100,7 +166,7 @@ internal class MatterSurfaceMaterials(private val engine: Engine, private val lo
     fun update(kind: FeelMaterial, simulation: FeelSimulation, now: Long, motion: Boolean, ringWidth: Float,
                landingAge: Float = -1f) {
         val i = kind.ordinal
-        samples[i].apply {
+        (samples[kind] ?: return).apply {
             setParameter("finger", simulation.dentX[i], simulation.dentZ[i])
             val settling = if (motion && simulation.active != kind) MatterTransition.settleDepth(kind, landingAge) else 0f
             setParameter("radius", simulation.radius(kind))
@@ -139,7 +205,8 @@ internal class MatterSurfaceMaterials(private val engine: Engine, private val lo
     }
 
     fun destroy() {
-        samples.forEach(loader::destroyMaterialInstance)
+        destroyed = true
+        instances.values.forEach(loader::destroyMaterialInstance)
         loader.destroyMaterialInstance(mark)
         textures.values.forEach(engine::destroyTexture)
         engine.destroyTexture(fallback)

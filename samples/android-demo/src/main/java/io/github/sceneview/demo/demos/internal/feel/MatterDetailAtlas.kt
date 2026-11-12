@@ -17,6 +17,9 @@ import kotlin.math.sqrt
  * 1024×512×2 bytes, ~1.33 MiB including mipmaps per loaded opaque family.
  */
 internal object MatterDetailAtlas {
+    // Bump when fields, quantization, chart layout, dimensions or bevel/rest-space mapping change.
+    // Disk cache keys are <family>-<CACHE_VERSION>.bin; shader-only edits do not invalidate RG8.
+    const val CACHE_VERSION = 1
     const val WIDTH = 1024
     const val HEIGHT = 512
     private const val GUTTER = 4

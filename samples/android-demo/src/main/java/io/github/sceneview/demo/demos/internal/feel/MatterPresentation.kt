@@ -44,6 +44,7 @@ internal class MatterIdle {
     private var frozenYaw = 0f
     var yawDegrees = 0f
         private set
+    val isTouching: Boolean get() = held
     val wakeAt: Long? get() = if (held) null else idleSince?.plus(DELAY_MILLIS + 1L)
     fun touch(now: Long, down: Boolean) {
         idleSince = now

@@ -93,6 +93,10 @@ material {
             "name": "rippleWidth"
         },
         {
+            "type": "float",
+            "name": "detailBlend"
+        },
+        {
             "type": "sampler2d",
             "name": "detail",
             "precision": "medium"
@@ -130,7 +134,7 @@ fragment {
     #include "matter_detail.fs"
     void material(inout MaterialInputs material) {
         highp vec3 p = variable_rest.xyz;
-        mediump vec2 detail = texture(materialParams_detail, getUV0()).rg;
+        mediump vec2 detail = mix(vec2(0.5), texture(materialParams_detail, getUV0()).rg, materialParams.detailBlend);
         float compressed = variable_rest.w;
         float crushed = max(compressed, variable_bentNormal.w * 0.65);
         vec3 colour = materialParams.albedo;

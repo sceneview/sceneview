@@ -32,14 +32,20 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
@@ -66,6 +72,7 @@ import io.github.sceneview.demo.demos.internal.MatterSurfaceMaterials
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
 import io.github.sceneview.demo.demos.internal.feel.MatterCadence
+import io.github.sceneview.demo.demos.internal.feel.MatterDetailCache
 import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterFrameTimes
 import io.github.sceneview.demo.demos.internal.feel.MatterIdle
@@ -107,7 +114,9 @@ import io.github.sceneview.utils.screenToRay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -121,6 +130,18 @@ fun FeelDemo(onBack: () -> Unit) {
         DemoPreviewPlaceholder(title = title, onBack = onBack)
         return
     }
+    val context = LocalContext.current
+    // These two packages are required for the stage/opening. Read bytes off-main, then
+    // construct Filament objects on-main; no other family belongs on this startup path.
+    val openingPayloads by produceState<List<ByteBuffer>?>(null, context) {
+        value = withContext(Dispatchers.IO) {
+            listOf(MatterSurfaceMaterials.asset(FeelMaterial.MemoryFoam), "materials/studio_pbr.filamat").map { path ->
+                val bytes = context.assets.open(path).use { it.readBytes() }
+                ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { flip() }
+            }
+        }
+    }
+    val initialPayloads = openingPayloads ?: return
     val engine = rememberEngine()
     val loader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -217,8 +238,9 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val mesh = remember(engine) { MatterMesh(engine, MatterMeshes.slab()) }
     val rigidMesh = remember(engine) { MatterMesh(engine, MatterMeshes.slab(rigid = true)) }
-    val materials = remember(engine, loader) { MatterSurfaceMaterials(engine, loader) }
-    var initialDetailReady by remember(materials) { mutableStateOf(false) }
+    val materials = remember(engine, loader, initialPayloads) {
+        MatterSurfaceMaterials(engine, loader, initialPayloads[0], initialPayloads[1])
+    }
     DisposableEffect(mesh, rigidMesh, materials) {
         onDispose { mesh.destroy(); rigidMesh.destroy(); materials.destroy() }
     }
@@ -230,28 +252,42 @@ fun FeelDemo(onBack: () -> Unit) {
     val slide = remember { Animatable(1f) }
     var transitionStarted by remember { mutableStateOf<Long?>(null) }
     val switching = selected != displayed || outgoing != null
-    // Detail atlases baked ahead of the first tap; read and written on the main thread only.
-    val prebaked = remember(materials) { mutableMapOf<FeelMaterial, ByteArray>() }
-    LaunchedEffect(materials, initialDetailReady) {
-        if (!initialDetailReady) return@LaunchedEffect
-        for (kind in FeelMaterial.entries) {
-            if (kind == FeelMaterial.Gel || materials.hasDetail(kind) || kind in prebaked) continue
-            val pixels = withContext(Dispatchers.Default) {
+    val selectedNow by rememberUpdatedState(selected)
+    // One worker owns every atlas: rapid selections never duplicate a bake or cancel a cache write.
+    LaunchedEffect(materials, touchView) {
+        snapshotFlow { firstFrame.rendered.value }.first { it }
+        val cache = withContext(Dispatchers.IO) { MatterDetailCache(touchView.context.cacheDir) }
+        val remaining = FeelMaterial.entries.filter { it != FeelMaterial.Gel }.toMutableList()
+        while (remaining.isNotEmpty()) {
+            val kind = selectedNow.takeIf { it in remaining } ?: remaining.first()
+            val cached = withContext(Dispatchers.IO) { cache.read(kind) }
+            val pixels = cached ?: withContext(Dispatchers.Default) {
                 MatterDetailAtlas.bake(kind) { ensureActive() }
             }
-            if (!materials.hasDetail(kind)) prebaked[kind] = pixels
+            // Leave a frame between uploads even when every disk read is a hit.
+            withFrameNanos { }
+            materials.uploadDetail(kind, pixels)
+            wakeRender()
+            if (cached == null) withContext(Dispatchers.IO) { cache.write(kind, pixels) }
+            remaining.remove(kind)
         }
     }
-    LaunchedEffect(selected, motion, materials) {
-        val target = selected
-        if (!materials.hasDetail(target)) {
-            val pixels = prebaked.remove(target) ?: withContext(Dispatchers.Default) {
-                MatterDetailAtlas.bake(target) { ensureActive() }
+    val warmPayloads = remember(materials) { mutableStateMapOf<FeelMaterial, ByteBuffer>() }
+    LaunchedEffect(materials) {
+        snapshotFlow { firstFrame.sceneReady.value }.first { it }
+        for (kind in FeelMaterial.entries.filter { it != FeelMaterial.MemoryFoam }) {
+            val payload = withContext(Dispatchers.IO) {
+                val bytes = touchView.context.assets.open(MatterSurfaceMaterials.asset(kind)).use { it.readBytes() }
+                ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { flip() }
             }
-            // LaunchedEffect resumes on the main thread; no Filament JNI in the CPU bake.
-            materials.uploadDetail(target, pixels)
+            warmPayloads[kind] = payload
+            wakeRender()
         }
-        initialDetailReady = true
+    }
+    val targetReady = selected in materials.samples
+    LaunchedEffect(selected, targetReady, motion, materials) {
+        if (!targetReady) return@LaunchedEffect
+        val target = selected
         wakeRender()
         val previous = displayed
         if (!motion || previous == target) {
@@ -268,7 +304,7 @@ fun FeelDemo(onBack: () -> Unit) {
         }
     }
     val choose: (FeelMaterial) -> Unit = { next ->
-        if (next != selected && !switching) {
+        if (next != selected && outgoing == null) {
             touch.cancel()
             simulation.select(next, SystemClock.uptimeMillis())
             selected = next
@@ -292,8 +328,8 @@ fun FeelDemo(onBack: () -> Unit) {
             exposure = ShowroomMath.exposure(camera.aperture, camera.shutterSpeed, camera.sensitivity),
             lights = true, staged = true, center = center, floorY = floorY, radius = MatterStage.RADIUS,
         ), camera.worldPosition)
-        FeelMaterial.entries.filter { it != FeelMaterial.Gel }.forEach { kind ->
-            materials.samples[kind.ordinal].setParameter("rippleColor", ringColour[0], ringColour[1], ringColour[2])
+        materials.samples.forEach { (kind, instance) ->
+            if (kind != FeelMaterial.Gel) instance.setParameter("rippleColor", ringColour[0], ringColour[1], ringColour[2])
         }
     }
     ShowroomToneMapping(engine, view, neutral = true, requestRender = invalidator::requestRender)
@@ -306,6 +342,7 @@ fun FeelDemo(onBack: () -> Unit) {
     })
     val onFrameNow by rememberUpdatedState<(Long) -> Unit>({ nanos ->
         val now = SystemClock.uptimeMillis()
+        val detailFading = materials.advanceDetail(now)
         if (BuildConfig.DEBUG) frameTimes.frame(nanos)?.let { window ->
             Log.d("MatterPerf", String.format(Locale.US,
                 "material=%s mode=%s avg=%.2fms fps=%.1f intervals=%d",
@@ -413,12 +450,26 @@ fun FeelDemo(onBack: () -> Unit) {
             readout = FeelReadout(displayed, peakMm,
                 MatterSurfaces.showsDisplacement(displayed, indentation, simulation.active == displayed, peakMm))
         }
+        // All Filament work stays in this main-thread callback. Never warm during contact,
+        // the opening, recovery or a slide. Selected families get priority, without hiding the stage.
+        if (focused && firstFrame.sceneReady.value && simulation.opening.finished &&
+            simulation.active == null && !idle.isTouching && outgoing == null &&
+            !simulation.needsFrames(displayed, now, motion)) {
+            val candidate = selected.takeIf { !materials.hasPrepared(it) && it in warmPayloads }
+                ?: FeelMaterial.entries.firstOrNull { !materials.hasPrepared(it) && it in warmPayloads }
+            candidate?.let { kind ->
+                if (materials.warmOne(kind, warmPayloads.getValue(kind)) { wakeRender() }) {
+                    warmPayloads.remove(kind)
+                }
+            }
+        }
         firstFrame.onFrame(nanos)
         val orbitAt = idle.wakeAt
         val settling = motion && transitionStarted?.let { now - it in 0L..1100L } == true
         val next = when {
             !focused -> MatterCadence.Parked
-            !firstFrame.sceneReady.value || switching || settling ||
+            !firstFrame.sceneReady.value || switching || settling || detailFading ||
+                (materials.needsWarmup && warmPayloads.isNotEmpty()) ||
                 simulation.needsFrames(displayed, now, motion) -> MatterCadence.Active
             motion && orbitAt != null && now >= orbitAt -> MatterCadence.Orbit
             else -> MatterCadence.Parked
@@ -430,7 +481,9 @@ fun FeelDemo(onBack: () -> Unit) {
             invalidator.requestRender()
         }
     })
-    firstFrame.holdUntil(hdr?.indirectLight != null && initialDetailReady, "material studio lighting and detail")
+    // Geometry, the neutral foam and the direct studio light exist at composition time.
+    // HDR enrichment and atlases arrive in-stage; neither holds the first presented picture.
+    firstFrame.holdUntil(landed = FeelMaterial.MemoryFoam in materials.samples, what = "material studio stage")
 
     // Observe before the scene/chips/app bar, without consuming their gestures. Even a
     // press on the already-selected chip skips the opening and freezes the idle camera.
@@ -489,29 +542,32 @@ fun FeelDemo(onBack: () -> Unit) {
                             halfDepth = FeelSimulation.PAD_HALF_LENGTH, yawDegrees = 0f,
                             showFloor = true, shadowAlpha = MatterTransition.shadow(progress) * if (shadowKind == FeelMaterial.Gel) .08f else 1f)
                         FeelMaterial.entries.forEach { kind ->
-                            val sampleMesh = if (kind.rigid) rigidMesh else mesh
-                            Node(isVisible = kind == FeelMaterial.MemoryFoam, apply = { pads[kind.ordinal] = this }) {
-                                MeshNode(
-                                    primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
-                                    vertexBuffer = sampleMesh.vertexBuffer, indexBuffer = sampleMesh.indexBuffer,
-                                    boundingBox = sampleMesh.boundingBox, materialInstance = materials.samples[kind.ordinal],
-                                    apply = {
-                                        // A transmissive gel must not receive its own opaque shadow in the well.
-                                        isShadowCaster = kind != FeelMaterial.Gel
-                                        isShadowReceiver = kind != FeelMaterial.Gel
-                                        isTouchable = false
-                                        setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
-                                    },
-                                )
-                                if (kind == FeelMaterial.MemoryFoam) {
-                                    Node(isVisible = false, apply = { mark[0] = this; isTouchable = false }) {
-                                        val side = MatterOpening.MARK_WIDTH / 1.4142136f
-                                        CubeNode(size = Size(side), position = Position(y = side / 2f),
-                                            rotation = Rotation(y = 45f + MatterStage.AZIMUTH),
-                                            materialInstance = materials.mark, apply = {
-                                                isTouchable = false
-                                                setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
-                                            })
+                            val sampleMaterial = materials.samples[kind] ?: return@forEach
+                            key(kind) {
+                                val sampleMesh = if (kind.rigid) rigidMesh else mesh
+                                Node(isVisible = kind == FeelMaterial.MemoryFoam, apply = { pads[kind.ordinal] = this }) {
+                                    MeshNode(
+                                        primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                                        vertexBuffer = sampleMesh.vertexBuffer, indexBuffer = sampleMesh.indexBuffer,
+                                        boundingBox = sampleMesh.boundingBox, materialInstance = sampleMaterial,
+                                        apply = {
+                                            // A transmissive gel must not receive its own opaque shadow in the well.
+                                            isShadowCaster = kind != FeelMaterial.Gel
+                                            isShadowReceiver = kind != FeelMaterial.Gel
+                                            isTouchable = false
+                                            setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
+                                        },
+                                    )
+                                    if (kind == FeelMaterial.MemoryFoam) {
+                                        Node(isVisible = false, apply = { mark[0] = this; isTouchable = false }) {
+                                            val side = MatterOpening.MARK_WIDTH / 1.4142136f
+                                            CubeNode(size = Size(side), position = Position(y = side / 2f),
+                                                rotation = Rotation(y = 45f + MatterStage.AZIMUTH),
+                                                materialInstance = materials.mark, apply = {
+                                                    isTouchable = false
+                                                    setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
+                                                })
+                                        }
                                     }
                                 }
                             }
@@ -537,7 +593,7 @@ fun FeelDemo(onBack: () -> Unit) {
                     }
                 }
                 FeelControls(selected, if (readout.material == selected) readout.depth else 0f,
-                    readout.material == selected && readout.showDisplacement, switching, motion, choose)
+                    readout.material == selected && readout.showDisplacement, outgoing != null, motion, choose)
             }
         }
     }
