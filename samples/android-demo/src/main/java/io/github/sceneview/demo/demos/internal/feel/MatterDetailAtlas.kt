@@ -59,17 +59,13 @@ internal object MatterDetailAtlas {
             for (y in 0 until chart.height) {
                 checkCancelled()
                 for (x in 0 until chart.width) {
-                    var r = 0f; var g = 0f
-                    // Two-by-two box prefilter: the fine cell walls must not alias during orbit.
-                    for (sy in 0..1) for (sx in 0..1) {
-                        chart.point((x - GUTTER + (sx - .5f) * .5f) * du,
-                            (y - GUTTER + (sy - .5f) * .5f) * dv, p)
-                        field.sample(kind, p[0], p[1], p[2])
-                        r += field.red; g += field.green
-                    }
+                    // One sample per texel: the uploaded texture is mipmapped, which filters the fine
+                    // cell walls during orbit. A 2×2 prefilter made each family a 10 s+ bake on a Pixel 4a.
+                    chart.point((x - GUTTER) * du, (y - GUTTER) * dv, p)
+                    field.sample(kind, p[0], p[1], p[2])
                     val offset = ((chart.y + y) * WIDTH + chart.x + x) * 2
-                    pixels[offset] = (r * .25f * 255f + .5f).toInt().coerceIn(0, 255).toByte()
-                    pixels[offset + 1] = (g * .25f * 255f + .5f).toInt().coerceIn(0, 255).toByte()
+                    pixels[offset] = (field.red * 255f + .5f).toInt().coerceIn(0, 255).toByte()
+                    pixels[offset + 1] = (field.green * 255f + .5f).toInt().coerceIn(0, 255).toByte()
                 }
             }
         }

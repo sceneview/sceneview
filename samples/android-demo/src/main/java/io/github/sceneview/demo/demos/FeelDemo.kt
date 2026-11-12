@@ -230,10 +230,22 @@ fun FeelDemo(onBack: () -> Unit) {
     val slide = remember { Animatable(1f) }
     var transitionStarted by remember { mutableStateOf<Long?>(null) }
     val switching = selected != displayed || outgoing != null
+    // Detail atlases baked ahead of the first tap; read and written on the main thread only.
+    val prebaked = remember(materials) { mutableMapOf<FeelMaterial, ByteArray>() }
+    LaunchedEffect(materials, initialDetailReady) {
+        if (!initialDetailReady) return@LaunchedEffect
+        for (kind in FeelMaterial.entries) {
+            if (kind == FeelMaterial.Gel || materials.hasDetail(kind) || kind in prebaked) continue
+            val pixels = withContext(Dispatchers.Default) {
+                MatterDetailAtlas.bake(kind) { ensureActive() }
+            }
+            if (!materials.hasDetail(kind)) prebaked[kind] = pixels
+        }
+    }
     LaunchedEffect(selected, motion, materials) {
         val target = selected
         if (!materials.hasDetail(target)) {
-            val pixels = withContext(Dispatchers.Default) {
+            val pixels = prebaked.remove(target) ?: withContext(Dispatchers.Default) {
                 MatterDetailAtlas.bake(target) { ensureActive() }
             }
             // LaunchedEffect resumes on the main thread; no Filament JNI in the CPU bake.
