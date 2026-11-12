@@ -593,20 +593,15 @@ sceneview-core (Kotlin Multiplatform)
 <!-- Same message as the website home page (#fund) and companies.html#sponsor: edit the three together.
      Generic on purpose: no company is named. Open Collective first, GitHub Sponsors second, nothing else. -->
 
-### SceneView runs in commercial products. Sponsor it or buy support.
+### SceneView runs in commercial products. Sponsor it.
 
-Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, **sponsor it or buy support, now.**
+Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, **sponsor it.**
 
 **Sponsor.** Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.
 
 **[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
-**Commercial support.**
-
-- **Incident, $600.** One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.
-- **2.3 LTS, $1,800 for 90 days.** One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.
-
-Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective's budget. Payment comes before any work. Every version stays under Apache 2.0. Write to [hello@sceneview.dev](mailto:hello@sceneview.dev).
+Questions about SceneView in your product: [hello@sceneview.dev](mailto:hello@sceneview.dev).
 
 <a href="https://opencollective.com/sceneview"><img src="https://opencollective.com/sceneview/organizations.svg?avatarHeight=56&width=830" alt="Logos of the companies sponsoring SceneView on Open Collective"></a>
 
