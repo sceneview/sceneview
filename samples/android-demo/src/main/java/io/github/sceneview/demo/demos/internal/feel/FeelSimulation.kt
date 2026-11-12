@@ -59,7 +59,6 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     private var imprintDwellAt = 0L
     private var imprintDwellX = 0f
     private var imprintDwellZ = 0f
-    private var imprintReleaseDepth = 0f
     private var imprintReleaseStrength = 0f
     private var openingLoaded = false
     fun radius(material: FeelMaterial): Float = if (material == FeelMaterial.MemoryFoam &&
@@ -111,6 +110,7 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     /** Only visible dynamics need GPU frames; hidden pads catch up when the scene next ticks. */
     fun needsFrames(material: FeelMaterial, now: Long, motion: Boolean): Boolean {
         if (active != null || !opening.finished) return true
+        if (material == FeelMaterial.MemoryFoam && imprintStrength > 0f) return true
         val i = material.ordinal
         if (pads[i].depthMm != 0f || pads[i].velocity != 0f) return true
         if ((0 until TRAIL_POINTS).any { trails[i][it * 4 + 2] > 0f }) return true
@@ -182,7 +182,6 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         }
         if (active == FeelMaterial.MemoryFoam) {
             foamReleasedAt = now
-            imprintReleaseDepth = MatterSurfaces.visualDepth(pads[0].depthMm, FeelMaterial.MemoryFoam)
             imprintReleaseStrength = imprintStrength
             imprintX = dentX[0]; imprintZ = dentZ[0]
             pads[0] = pads[0].copy(velocity = 0f)
@@ -273,11 +272,13 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
                 imprintDwellX = lastTravelX; imprintDwellZ = lastTravelZ
             }
             imprintX = dentX[0]; imprintZ = dentZ[0]
-            val dwell = ((now - imprintDwellAt - 650L) / 950f).coerceIn(0f, 1f)
+            val dwell = ((now - imprintDwellAt - 650L) / 650f).coerceIn(0f, 1f)
             imprintStrength = dwell * dwell * (3f - 2f * dwell)
         } else {
-            val depth = MatterSurfaces.visualDepth(pads[0].depthMm, FeelMaterial.MemoryFoam)
-            imprintStrength = imprintReleaseStrength * (depth / imprintReleaseDepth.coerceAtLeast(.001f)).coerceIn(0f, 1f)
+            // Keep the print through the first half-second of lip occlusion, then two visible seconds.
+            val age = foamReleasedAt?.let { now - it } ?: 2500L
+            val fade = ((age - 2000L) / 500f).coerceIn(0f, 1f)
+            imprintStrength = imprintReleaseStrength * (1f - fade * fade * (3f - 2f * fade))
         }
         val effect = haptics.advance(pads[selected.ordinal], filteredPressure,
             travelXmm, travelZmm, dt, now)

@@ -24,7 +24,7 @@ class MatterOpeningTest {
         assertEquals(MatterOpening.TRAVEL, simulation.opening.heightAbovePad, 0f)
     }
 
-    @Test fun gravityImpactRestAndSlowLiftFitWithinTwoAndAHalfSeconds() {
+    @Test fun gravityImpactRestAndSlowLiftFitWithinTwoPointThreeSeconds() {
         val opening = MatterOpening(true)
         opening.advance(0)
         assertEquals(MatterOpening.TRAVEL, opening.heightAbovePad, 0f)
@@ -52,7 +52,7 @@ class MatterOpeningTest {
         assertFalse(opening.visible)
         opening.advance(2220)
         assertTrue(opening.finished)
-        assertTrue(MatterOpening.TOTAL_MILLIS <= 2500)
+        assertTrue(MatterOpening.TOTAL_MILLIS <= 2300)
     }
 
     @Test fun impactThudsOnceMakesAWideDeepWellAndLeavesSlowMemory() {

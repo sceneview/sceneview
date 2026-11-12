@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FeelSimulationTest {
-    @Test fun fingertipImprintRequiresDwellAndFadesWithTheFoam() {
+    @Test fun fingertipImprintRequiresDwellAndFadesAfterRecovery() {
         val simulation = FeelSimulation()
         simulation.begin(FeelMaterial.MemoryFoam, .3f, -.2f, 1f, 0f, 0L)
         for (now in 0L..500L step 10L) simulation.advance(now)
@@ -27,6 +27,19 @@ class FeelSimulationTest {
         }
         assertEquals(0f, simulation.imprintStrength, .001f)
         assertTrue(!simulation.needsFrames(FeelMaterial.MemoryFoam, 16000L, false))
+    }
+
+    @Test fun oneAndAHalfSecondPressKeepsPrintThroughLipRecoveryAndTwoVisibleSeconds() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.MemoryFoam, .3f, -.2f, 1f, 0f, 0L)
+        for (now in 0L..1500L step 10L) simulation.advance(now)
+        simulation.release(1500L)
+        for (now in 1510L..3500L step 10L) simulation.advance(now)
+        assertEquals(1f, simulation.imprintStrength, .001f)
+        for (now in 3510L..3750L step 10L) simulation.advance(now)
+        assertEquals(.5f, simulation.imprintStrength, .001f)
+        for (now in 3760L..4000L step 10L) simulation.advance(now)
+        assertEquals(0f, simulation.imprintStrength, 0f)
     }
 
     @Test fun movingFingerAndOpeningDoNotStampAWhorl() {

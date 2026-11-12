@@ -151,18 +151,18 @@ fragment {
         occlusion = 0.98 + 0.02 * wall;
         height = 0.0030 * wall * (1.0 - 0.65 * compressed);
         if (materialParams.imprint.z > 0.001) {
-            // A 9 x 12 mm pad at WORLD_PER_MM=.025, with a faint off-centre whorl.
+            // A 16 x 20 mm pad at WORLD_PER_MM=.025, with an off-centre whorl.
             // Derivatives suppress ridge detail before it becomes subpixel at dynamic resolution.
-            highp vec2 pad = (p.xz - materialParams.imprint.xy) / vec2(0.1125, 0.15);
+            highp vec2 pad = (p.xz - materialParams.imprint.xy) / vec2(0.20, 0.25);
             float padRadius = length(pad);
             float padMask = (1.0 - smoothstep(0.65, 1.0, padRadius)) *
                 smoothstep(-materialParams.dimensions.w, -0.005, p.y) * materialParams.imprint.z;
             float whorl = length(pad + vec2(0.13 * pad.y * pad.y, 0.10));
-            float phase = whorl * 31.4;
+            float phase = whorl * 25.13;
             float ridgeAA = 1.0 - smoothstep(0.7, 2.5, fwidth(phase));
-            height += padMask * (-0.002 + 0.0012 * sin(phase) * ridgeAA);
-            colour *= 1.0 - 0.045 * padMask;
-            rough -= 0.035 * padMask;
+            height += padMask * (-0.006 + 0.0035 * sin(phase) * ridgeAA);
+            colour *= 1.0 - (0.22 + 0.09 * sin(phase) * ridgeAA) * padMask;
+            rough -= 0.09 * padMask;
         }
         vec3 detailed = matterBump(n, height);
         mat3 toTangent = transpose(getWorldTangentFrame());
@@ -170,7 +170,7 @@ fragment {
         prepareMaterial(material);
         // Cavity stays legible under direct light; AO separately attenuates the IBL.
         float cavity = variable_bentTangent.w;
-        material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
+        material.baseColor = vec4(colour * (1.0 - 0.58 * cavity), 1.0);
         material.roughness = clamp(rough, 0.045, 1.0);
         material.metallic = materialParams.metallic;
         material.reflectance = 0.5;

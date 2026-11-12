@@ -155,17 +155,9 @@ internal class MatterSurfaceMaterials(
         detailBlend[kind] = 0f
         detailVersion++
     }
-    val mark: MaterialInstance = loader.createInstance(loader.createMaterial(markPayload)).apply {
-        val finish = MatterSurfaces.ceramic
-        setParameter("color", finish.red, finish.green, finish.blue, 1f)
-        setParameter("metallic", finish.metallic)
-        setParameter("roughness", finish.roughness)
-        setParameter("reflectance", 0.5f)
-        setParameter("clearCoat", finish.coat)
-        setParameter("clearCoatRoughness", finish.coatRoughness)
-        setParameter("sheenColor", 0f, 0f, 0f)
-        setParameter("sheenRoughness", 1f)
-        setParameter("emissive", 0f, 0f, 0f)
+    private val markMaterial = loader.createMaterial(markPayload)
+    val mark: List<MaterialInstance> = List(3) {
+        loader.createInstance(markMaterial).apply { setParameter("color", 1f, 1f, 1f, 1f) }
     }
 
     fun update(kind: FeelMaterial, simulation: FeelSimulation, now: Long, motion: Boolean, ringWidth: Float,
@@ -215,7 +207,7 @@ internal class MatterSurfaceMaterials(
     fun destroy() {
         destroyed = true
         instances.values.forEach(loader::destroyMaterialInstance)
-        loader.destroyMaterialInstance(mark)
+        mark.forEach(loader::destroyMaterialInstance)
         loader.destroyMaterialInstance(floor)
         textures.values.forEach(engine::destroyTexture)
         engine.destroyTexture(fallback)

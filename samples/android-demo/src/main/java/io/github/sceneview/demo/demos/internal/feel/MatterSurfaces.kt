@@ -12,7 +12,6 @@ package io.github.sceneview.demo.demos.internal.feel
  * Leather         .22 .075 .028            .44        0      .22   0  (coat roughness .30)
  * Carrara marble  .82 .83 .80              .09        0      1     0  (coat roughness .055)
  * Brushed steel   .56 .58 .60              .26        1      0     0  (anisotropy .95)
- * Opening ceramic .025 .03 .04             .16        0      .80   0
  */
 internal object MatterSurfaces {
     data class Surface(
@@ -34,7 +33,7 @@ internal object MatterSurfaces {
     )
 
     private val surfaces = arrayOf(
-        Surface(.70f, .63f, .45f, .94f, bulge = .16f, rimRadius = 1.02f,
+        Surface(.70f, .63f, .45f, .94f, bulge = .22f, rimRadius = 1.02f,
             rimWidth = .23f, visualMm = .032f),
         Surface(1f, 1f, 1f, .045f, falloff = 2.2f, bulge = .48f,
             rimRadius = 1.08f, rimWidth = .22f, visualMm = .036f),
@@ -46,7 +45,6 @@ internal object MatterSurfaces {
         Surface(.82f, .83f, .80f, .09f, coat = 1f, coatRoughness = .055f),
         Surface(.56f, .58f, .60f, .26f, metallic = 1f, anisotropy = .95f),
     )
-    val ceramic = Surface(.025f, .03f, .04f, .16f, coat = .80f)
     const val GEL_IOR = 1.45f
     const val GEL_TRANSMISSION = 1f
     // Beer-Lambert coefficients per model-space unit: colour lives INSIDE the gel.

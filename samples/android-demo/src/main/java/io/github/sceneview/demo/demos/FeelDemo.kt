@@ -41,6 +41,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -79,6 +80,7 @@ import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterFrameTimes
 import io.github.sceneview.demo.demos.internal.feel.MatterIdle
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
+import io.github.sceneview.demo.demos.internal.feel.MatterIdentity
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
@@ -131,7 +133,7 @@ fun FeelDemo(onBack: () -> Unit) {
     // construct Filament objects on-main; no other family belongs on this startup path.
     val openingPayloads by produceState<List<ByteBuffer>?>(null, context) {
         value = withContext(Dispatchers.IO) {
-            listOf(MatterSurfaceMaterials.asset(FeelMaterial.MemoryFoam), "materials/studio_pbr.filamat", "materials/matter_floor.filamat").map { path ->
+            listOf(MatterSurfaceMaterials.asset(FeelMaterial.MemoryFoam), "materials/opaque_unlit_colored.filamat", "materials/matter_floor.filamat").map { path ->
                 val bytes = context.assets.open(path).use { it.readBytes() }
                 ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { flip() }
             }
@@ -155,9 +157,9 @@ fun FeelDemo(onBack: () -> Unit) {
     })
     LaunchedEffect(renderer, cadence) {
         frameTimes.reset()
-        // Filament's dynamic scaler should target 33 ms during the intentional slow orbit.
+        // Active contact and orbit both target the display's 60 Hz cadence.
         renderer.frameRateOptions = renderer.frameRateOptions.apply {
-            interval = if (cadence == MatterCadence.Orbit) 2 else 1
+            interval = 1
         }
     }
     val camera = rememberCameraNode(engine)
@@ -167,14 +169,14 @@ fun FeelDemo(onBack: () -> Unit) {
     val hdr = rememberHDREnvironment(environmentLoader, ShowroomMath.DARK_HDR, createSkybox = false)
     val environment = remember(hdr, skybox) { (hdr ?: Environment()).copy(skybox = skybox) }
     val light = rememberMainLightNode(engine) {
-        lightDirection = Direction(.65f, -1f, -.35f)
+        lightDirection = Direction(.16f, -1f, -.10f)
         color = colorOf(1f, .88f, .72f)
         intensity = 55_000f
         isShadowCaster = true
     }
     LaunchedEffect(engine, light) {
         light.updateShadowOptions {
-            mapSize = 1024
+            mapSize = 512
             shadowCascades = 1
             shadowFar = 20f
             normalBias = 0.008f
@@ -310,6 +312,10 @@ fun FeelDemo(onBack: () -> Unit) {
     val hairlinePx = with(LocalDensity.current) { SceneViewTokens.Layout.hairlineWidth.toPx() }
     val floorY = -FeelSimulation.PAD_THICKNESS
     SideEffect {
+        MatterIdentity.colours(dark = colors.surface.luminance() < .5f).forEachIndexed { face, rgb ->
+            val linear = MatterIdentity.linearBeforeToneMap(rgb)
+            materials.mark[face].setParameter("color", linear[0], linear[1], linear[2], 1f)
+        }
         hdr?.indirectLight?.apply {
             intensity = 4_000f
             setRotation(MatterStage.STUDIO_ROTATION)
@@ -353,6 +359,10 @@ fun FeelDemo(onBack: () -> Unit) {
         touch.followIndentation()
         simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && motion)
             ?.let(haptics::play)
+        // Only the opening mark needs a mapped shadow. Re-rendering the dense, deformed
+        // slab into a shadow atlas doubled its vertex work during every press and orbit.
+        val needsMappedShadow = simulation.opening.visible
+        if (light.isShadowCaster != needsMappedShadow) light.isShadowCaster = needsMappedShadow
         val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
         val progress = if (motion) slide.value else 1f
         FeelMaterial.entries.forEach { kind ->
@@ -468,7 +478,7 @@ fun FeelDemo(onBack: () -> Unit) {
                         surfaceMirrorer = recorder.surfaceMirrorer,
                         frameRatePolicy = when (cadence) {
                             MatterCadence.Active -> FrameRatePolicy.Continuous(maxFps = 60)
-                            MatterCadence.Orbit -> FrameRatePolicy.Continuous(maxFps = 30)
+                            MatterCadence.Orbit -> FrameRatePolicy.Continuous(maxFps = 60)
                             MatterCadence.Parked -> FrameRatePolicy.OnDemand(maxFps = 60)
                         },
                         onTouchEvent = { event, _ -> onTouchNow(event) },
@@ -496,7 +506,7 @@ fun FeelDemo(onBack: () -> Unit) {
                         PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = floorY - .003f),
                             materialInstance = materials.floor, apply = {
                                 isShadowCaster = false
-                                isShadowReceiver = true
+                                isShadowReceiver = false
                                 isTouchable = false
                                 setCulling(false)
                                 axisAlignedBoundingBox = com.google.android.filament.Box(0f, 1f, 0f, 100f, 1f, 100f)
@@ -512,7 +522,7 @@ fun FeelDemo(onBack: () -> Unit) {
                                         boundingBox = sampleMesh.boundingBox, materialInstance = sampleMaterial,
                                         apply = {
                                             // A transmissive gel must not receive its own opaque shadow in the well.
-                                            isShadowCaster = kind != FeelMaterial.Gel
+                                            isShadowCaster = false
                                             isShadowReceiver = kind != FeelMaterial.Gel
                                             isTouchable = false
                                         },
@@ -520,11 +530,28 @@ fun FeelDemo(onBack: () -> Unit) {
                                     if (kind == FeelMaterial.MemoryFoam) {
                                         Node(isVisible = false, apply = { mark[0] = this; isTouchable = false }) {
                                             val side = MatterOpening.MARK_WIDTH / 1.4142136f
-                                            CubeNode(size = Size(side), position = Position(y = side / 2f),
-                                                rotation = Rotation(y = 45f + MatterStage.AZIMUTH),
-                                                materialInstance = materials.mark, apply = {
-                                                    isTouchable = false
-                                                })
+                                            val inset = side * MatterIdentity.FACE_INSET
+                                            val face = side - 2f * inset
+                                            val thickness = side * .006f
+                                            Node(rotation = Rotation(y = MatterIdentity.yaw(MatterStage.AZIMUTH))) {
+                                                // The three identity faces have open joints, with no hidden plate
+                                                // showing through the front gap as a bright fourth face.
+                                                CubeNode(size = Size(face, thickness, face),
+                                                    position = Position(y = side - thickness / 2f),
+                                                    materialInstance = materials.mark[0], apply = {
+                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                    })
+                                                CubeNode(size = Size(face, face, thickness),
+                                                    position = Position(y = side / 2f, z = (side - thickness) / 2f),
+                                                    materialInstance = materials.mark[1], apply = {
+                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                    })
+                                                CubeNode(size = Size(thickness, face, face),
+                                                    position = Position(x = (side - thickness) / 2f, y = side / 2f),
+                                                    materialInstance = materials.mark[2], apply = {
+                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                    })
+                                            }
                                         }
                                     }
                                 }
@@ -537,13 +564,13 @@ fun FeelDemo(onBack: () -> Unit) {
                         view.vignetteOptions = view.vignetteOptions.apply { enabled = false }
                         view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply { enabled = false }
                         view.bloomOptions = view.bloomOptions.apply { enabled = false }
-                        view.shadowType = View.ShadowType.PCSS
-                        // Preserve native pixels when they fit; up to 55% fewer shaded pixels under load.
+                        view.shadowType = View.ShadowType.PCF
+                        // Leave GPU headroom for a sustained press on the Pixel 4a, including the whorl.
                         view.dynamicResolutionOptions = view.dynamicResolutionOptions.apply {
                             enabled = true
                             homogeneousScaling = true
                             minScale = .67f
-                            maxScale = 1f
+                            maxScale = .85f
                             quality = View.QualityLevel.MEDIUM
                         }
                         invalidator.requestRender()
