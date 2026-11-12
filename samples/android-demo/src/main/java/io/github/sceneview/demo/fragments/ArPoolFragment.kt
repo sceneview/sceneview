@@ -18,7 +18,7 @@ object ArPoolFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_pool_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Pool,
-        order = 20,
+        order = 21,
         addedIn = "4.57.0",
         tags = setOf("pool in the garden", "ar", "pool", "occlusion", "water", "garden", "real-size"),
         // Ships unverified on AR hardware: whether the pool reads as dug into a real lawn

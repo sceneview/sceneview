@@ -12,12 +12,13 @@ import io.github.sceneview.demo.demos.FeelDemo
 object FeelFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "matter",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/FeelDemo.kt",
         titleRes = R.string.demo_feel_title,
         subtitleRes = R.string.demo_feel_subtitle,
-        category = DemoCategory.CREATE,
+        category = DemoCategory.PLAY,
         icon = Icons.Filled.TouchApp,
-        order = 2,
-        addedIn = "4.68.0",
+        order = 15,
+        addedIn = "4.70.0",
         status = DemoStatus.InReview,
         tags = setOf("haptics", "touch", "pressure", "material", "foam", "gel", "velvet", "leather", "marble", "steel", "spring", "studio", "firmness", "stiffness", "recovery", "matter"),
     )

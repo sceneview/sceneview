@@ -22,7 +22,7 @@ object CosmosFragment : DemoFragment {
         subtitleRes = R.string.demo_cosmos_subtitle,
         category = DemoCategory.PLAY,
         icon = Icons.Filled.AutoAwesome,
-        order = 15,
+        order = 16,
         addedIn = "4.49.0",
         updatedIn = "4.64.0",
         tags = setOf(

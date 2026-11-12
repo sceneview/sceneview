@@ -17,7 +17,7 @@ object ArDepthVisualizationFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_depth_visualization_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Gradient,
-        order = 36,
+        order = 37,
         addedIn = "4.11.1",
         updatedIn = "4.52.0",
         tags = setOf("depth visualization", "ar", "depth", "visualization", "false-color", "depth-map"),

@@ -29,7 +29,7 @@ object ArCloudAnchorFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_cloud_anchor_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.CloudCircle,
-        order = 40,
+        order = 41,
         addedIn = "4.0.0",
         updatedIn = "4.56.0",
         tags = setOf(
