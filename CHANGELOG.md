@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## v4.69.0 — 2026-11-12
+
+### Added
+
+- **Demo apps: View source.** Every demo screen of the Android and iOS apps offers a View source action that opens its implementation on GitHub.
+
+### Changed
+
+- **SceneView identity:** Redraw the app icon and logo as one flat, separated-face cube across Android, Android TV, Apple and web assets, with themed Android icons and dark and tinted iOS appearances.
+- **Demo app: Start with a model, your room or a scan.** Home opens with a compact live scene and three direct choices, followed by Materials and Cosmos. Release news follows discovery.
+- **Demo app: Find every demo in its category.** Featured shortcuts also remain in the complete catalogue, organised into Models & cameras, Materials & scenes, Play & feel, Place in AR, Scan & understand and Developer tools. Clearer names keep existing links and search terms working.
+- **Demo app: Keep Home discovery clear.** The live scene stays inside a 192 dp rounded card, the three starting choices have accessible outlined tiles, and Home cards use flat themed surfaces without gradient fades or glass.
+- **Sponsors section without prices (#5017).** The README, the website home page and the companies page point to Open Collective, then GitHub Sponsors, and list no support prices.
+
+### Fixed
+
+- **Android AR resume failures (#4756).** Failed resumes show a retryable error; successful retries clear placement and demo errors. Camera-busy retries preserve the session and its anchors, fatal errors recreate the session, and retries of a running session do nothing. Posted camera handover callback exceptions are logged without reporting a session failure.
+- **Android recording disposal (#4864).** Window detach and mirror teardown share one second of backend waits within the same main-thread message, including Compose detaching the view before disposal. Window detach reserves 250 ms of that budget for mirrors before the recorder surface is released (#4860). Recorder finalisation and other teardown work are excluded; busy-window warnings report both the last and cumulative wait durations.
+- **Old website addresses no longer end on a 404.** `/faq`, `/comparison`, `/changelog`, `/samples`, `/codelab.html` and the `/codelabs/` pages, which search engines still list, now redirect to their pages under `/docs/`.
+
+### Removed
+
+- **SceneView for SwiftUI, Flutter and React Native is deprecated.** 4.68.0 is the last release of `SceneViewSwift`, `flutter_sceneview` and `@sceneview-sdk/react-native`, and of the iOS and macOS demo app. Published versions stay installable and the source stays in this repository under Apache 2.0; [DEPRECATION.md](DEPRECATION.md) has the timeline. The release workflow no longer publishes them, and their CI and App Store workflows are retired. Android (`sceneview`, `arsceneview`, `sceneview-core`, `sceneview-compose`), `sceneview-web` and `sceneview-mcp` are unchanged.
+
+### Docs
+
+- **AI assistants get it right on the first try more often.** Three assistants given no context all picked SceneView, then tripped on the toolchain or a guessed import. The requirements now say Kotlin 2.3 or newer (verified: a 2.3 compiler builds against 4.67.0; 2.2 is refused), name `4.18.0` as the newest release that builds on AGP 8 / compileSdk 36 / Kotlin 2.2 instead of the 2.x API generation, and `llms.txt` lists the exact imports (`rememberOnGestureListener` lives in `io.github.sceneview`). The `/migration/` page is a redirect again: a stale copy of the docs page had replaced it and every link on it returned 404.
+- **`llms.txt` opens with two complete Android screens.** A model the user turns with a finger and an AR tap-to-place screen, each one file with its exact imports, now sit right after Setup (in the first 16 kB of a 600 kB file), so an assistant that reads only the top still emits code that compiles. The header no longer states "Kotlin 2.4.21" as if it were a requirement: Kotlin 2.3 or newer, with `4.18.0` for AGP 8.
+- **`llms.txt` says outright that `ModelNode` takes no import.** An assistant that guessed `import io.github.sceneview.ModelNode` got *Unresolved reference*; the Imports section and the Start here viewer now warn against it.
+
 ## v4.68.0 — 2026-11-11
 
 ### Added

@@ -9,10 +9,10 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 
 | Building with | Add | Then write |
 |---|---|---|
-| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.68.0` | `SceneView { }` |
-| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.68.0` | `ARSceneView { }` or `PlacementScene` |
+| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.69.0` | `SceneView { }` |
+| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.69.0` | `ARSceneView { }` or `PlacementScene` |
 | Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
-| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.68.0` | `SceneViewer(model = …)` in `commonMain` |
+| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.0` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
 Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `ARScene`)?
@@ -82,7 +82,7 @@ One minimal, working example per platform. The full reference for each is in
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.68.0")
+implementation("io.github.sceneview:sceneview:4.69.0")
 ```
 
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.3 or newer and JVM
@@ -117,7 +117,7 @@ coroutine: Filament calls must run on the main thread, and `rememberModelInstanc
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.68.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.69.0")   // includes the 3D module
 ```
 
 ```kotlin
@@ -170,8 +170,8 @@ with `tools:replace="android:value"`. Both snippets are in the
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.68.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.68.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
@@ -179,7 +179,7 @@ with `tools:replace="android:value"`. Both snippets are in the
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.68.0")
+implementation("io.github.sceneview:sceneview-compose:4.69.0")
 ```
 
 ```kotlin
@@ -241,10 +241,10 @@ The other platforms in the table below join this section once a capture backs th
 
 | Platform | Coordinate |
 |---|---|
-| Android 3D | `io.github.sceneview:sceneview:4.68.0` |
-| Android AR | `io.github.sceneview:arsceneview:4.68.0` |
-| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.68.0` |
-| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.68.0` |
+| Android 3D | `io.github.sceneview:sceneview:4.69.0` |
+| Android AR | `io.github.sceneview:arsceneview:4.69.0` |
+| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.0` |
+| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.69.0` |
 | Apple (SPM) — deprecated | `https://github.com/sceneview/sceneview.git`, exact `4.68.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
@@ -504,7 +504,7 @@ npm install sceneview-web
 The package expects a `Filament` global and does not include the `SceneView.modelViewer` script
 helpers. A Kotlin Multiplatform project that only needs the shared core (collision, math,
 geometry, animation, physics — no renderer) uses
-`implementation("io.github.sceneview:sceneview-core-js:4.68.0")`.
+`implementation("io.github.sceneview:sceneview-core-js:4.69.0")`.
 
 [Landing page](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [npm](https://www.npmjs.com/package/sceneview-web)
 
