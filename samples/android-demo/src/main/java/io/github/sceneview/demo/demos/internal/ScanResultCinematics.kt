@@ -138,10 +138,13 @@ internal class ScanResultCinematics(
 }
 
 /**
- * How a result that opens on its Photo layer is entered: from inside the place, low — where
- * whoever scanned it stood — and a turn to the side, then up and out to the framing while the
- * place grows. The first second reads as the place itself, a garden seen from its path, before
- * the whole of it is seen from above; the first touch takes the camera, as on every move.
+ * How a result that opens on its Photo layer is entered: from close and low, a turn to the side
+ * — the place as whoever scanned it saw it, large in the frame — then up and out to the framing.
+ * The first picture reads as the place itself before the whole of it is seen from above; the
+ * first touch takes the camera, as on every move.
+ *
+ * Not from inside it, nor from eye height: measured on a Pixel 4a (2026-11-12), half the framing's
+ * distance at 9° showed the place edge-on, a band of splats too close to be anything.
  */
 internal object ScanOpening {
     fun path(home: CameraShot): CameraPath = CameraPath.reveal(
@@ -152,15 +155,21 @@ internal object ScanOpening {
         startDistanceFactor = START_DISTANCE_FACTOR,
     )
 
-    /** Longer than the Photo layer takes to grow (`GROW_MS`): the camera lands on a whole place. */
+    /** Where the path starts: what a picture of the opening ([ScanStill]) shows. */
+    fun start(home: CameraShot): CameraShot = path(home).keyframes.first().shot
+
+    /** Long enough to be a flight, short enough that the model's wait is not a camera move. */
     const val SECONDS = 5f
 
-    /** A quarter turn short of the framing: the place turns into its best side as it rises. */
-    const val TURN_DEGREES = -70f
+    /** How far into the path the camera is well above the ground: what lies flat on it may show. */
+    const val RISEN_SECONDS = 2f
 
-    /** Just above the ground: an eye's height over a place framed from a few metres. */
-    const val START_ELEVATION = 9f
+    /** Round from the framing: the place turns into its best side as the camera rises. */
+    const val TURN_DEGREES = -55f
 
-    /** Half the framing's distance: inside the place's box, its far side filling the frame. */
-    const val START_DISTANCE_FACTOR = 0.5f
+    /** Low over the place, its surface still read as a surface. */
+    const val START_ELEVATION = 20f
+
+    /** Closer than the framing: the place fills the width, its edges still in the frame. */
+    const val START_DISTANCE_FACTOR = 0.8f
 }

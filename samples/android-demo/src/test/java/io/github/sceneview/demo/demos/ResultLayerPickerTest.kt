@@ -123,6 +123,27 @@ class ResultLayerPickerTest {
     }
 
     @Test
+    fun `a Photo layer the result opens on whole is first shown without the swap's veil`() {
+        // Seen on a Pixel 4a (2026-11-12): whole from its first frame, the layer was taken for a
+        // swap, and the veil came up over the picture the result opens on — a garden gone grey.
+        val layers = ResultLayers(offered = true, photoFirst = true, whole = true)
+        assertEquals(1f, layers.grown, 0f)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { LaunchedEffect(layers) { layers.swapUnderVeil() } }
+        rule.mainClock.advanceTimeByFrame()
+        val splats = SplatCloud(0, FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0))
+        rule.runOnUiThread { Snapshot.withMutableSnapshot { layers.splats = splats } }
+        rule.mainClock.advanceTimeBy(MID_RISE_MS)
+        assertTrue(layers.photoShown)
+        assertEquals(0f, layers.veil.value, 0f)
+
+        // From then on it swaps as any layer: Model and back, under the veil.
+        pick(layers, false)
+        rule.mainClock.advanceTimeBy(MID_RISE_MS)
+        assertTrue(layers.veil.value > 0f)
+    }
+
+    @Test
     fun `a scan whose model is read back from its cache still offers Photo, built from its own surfels`() {
         // #4896: reopened from the cache, the scan has its model and its recording but no model
         // source; the splats need only the surfels, so Photo is offered and built from them.

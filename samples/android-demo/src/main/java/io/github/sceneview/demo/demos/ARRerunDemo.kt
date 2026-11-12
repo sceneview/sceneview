@@ -866,6 +866,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             // The Photo layer's splats when the model is read back from the cache (no source, #4896).
             surfels = media?.takeIf { modelSource !is RerunModelSource.Synthetic }?.dense?.cloud,
             photo = examplePhoto.takeIf { !showingScan && qaState == null },
+            still = ScanStill.Example.takeIf { !showingScan && qaState == null },
         )
     }
     val exportable = when (screen) {

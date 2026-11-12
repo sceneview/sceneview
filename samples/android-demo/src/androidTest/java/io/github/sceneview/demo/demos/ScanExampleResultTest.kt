@@ -59,9 +59,17 @@ class ScanExampleResultTest {
             "the example has no result to open, or its result no film to share",
             device.wait(Until.findObject(By.text(VIDEO)), OPEN_TIMEOUT_MS),
         )
+        // No wait at all: the place is there with the screen, a picture of it until the scene draws.
+        val atOnce = capture("result-at-once")
+        val instant = drawnShare(atOnce)
+        assertTrue("the result opened on a bare stage ($instant of it drawn)", instant > MIN_DRAWN_SHARE)
         Thread.sleep(FIRST_PICTURE_MS)
-        val first = drawnShare(capture("result-first"))
-        assertTrue("the result opened on a bare stage ($first of it drawn)", first > MIN_DRAWN_SHARE)
+        val live = capture("result-first")
+        val first = drawnShare(live)
+        assertTrue("the scene never drew the place ($first of it drawn)", first > MIN_DRAWN_SHARE)
+        // The scene has taken the picture's place: the camera is on its way up from where it opened.
+        val moved = changedShare(atOnce, live)
+        assertTrue("the opening picture never gave way to the scene ($moved changed)", moved > MIN_SWAP_SHARE)
 
         // Photo and Model, once the model is there: two pictures of the same place.
         assertNotNull(

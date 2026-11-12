@@ -7,6 +7,7 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +19,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -64,9 +67,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -728,6 +733,7 @@ internal fun RerunModelScreen(
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
     photo: SplatFaces? = null,
+    still: ScanStill? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -899,9 +905,18 @@ internal fun RerunModelScreen(
     var measuring by remember(stageKey) { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var shown by remember(stageKey) { mutableStateOf(false) }
+    // The dark stage's floor pool waits for the camera to rise: from the low entrance it is seen
+    // edge-on, a flat lit band under the place instead of the floor that carries it.
+    var risen by remember(stageKey, entersLow) { mutableStateOf(!entersLow) }
     // Photo | Model | Plan (ResultLayers.kt): the scan's surfels as splats.
-    val layers = rememberResultLayers(source, surfels, stageKey, settled, photoFirst = preview != null, prebuilt = photo)
     val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
+    // The picture the result opens on, when it has one and is entered as the picture was taken:
+    // the place is then whole from the first live frame, as the picture shows it.
+    val opensOnStill = still?.takeIf { preview != null && photo != null && animateReveal }
+    val layers = rememberResultLayers(
+        source, surfels, stageKey, settled,
+        photoFirst = preview != null, prebuilt = photo, whole = opensOnStill != null,
+    )
     // The film (ResultFilm): each take plays the reveal again, one turn and the look from above,
     // recorded off the scene's own surface — the chrome is not in it — then handed to the share
     // sheet. What leaves the phone is the scan as it is drawn, Photo or Model.
@@ -950,12 +965,6 @@ internal fun RerunModelScreen(
         revealOver = true
     }
     var hintVisible by remember(stageKey) { mutableStateOf(true) }
-    LaunchedEffect(shown, hintStays) {
-        if (shown && !hintStays) {
-            delay(HINT_MS)
-            hintVisible = false
-        }
-    }
     // The finished model in a big scan's raw surface's place: framed by the raw one. The line
     // says so once, heard as it changes, then fades as the hint does.
     val rawShownFirst = (state as? ModelState.Ready)?.let { it.opensOn !== it.model } == true
@@ -978,22 +987,34 @@ internal fun RerunModelScreen(
         actionsMenu = true,
         topOverlay = { ScanNameCard(title = title, saved = id != null && settled, onRename = rename) },
         bottomOverlay = {
-            ModelStatus.slot(model, settled, rawShownFirst, finishedSaid)?.let { slot -> ModelStatusLine(slot) }
-            // Laid out from the start and only faded: the model is framed above this slot, and a
-            // hint that came and went would move the model when it goes.
-            val hintShown = shown && hintVisible
+            // One slot for the line and the hint, the line first: while the model is being made
+            // the line says so, and the gesture hint takes its place for a few seconds once it
+            // has been said. Two slots stood the line in the middle of the screen, the hint alone
+            // under it. Both are laid out from the start and only faded: the model is framed
+            // above this slot, and a line that came and went would move it.
+            val slot = ModelStatus.slot(model, settled, rawShownFirst, finishedSaid)
+            val hintShown = shown && hintVisible && slot?.visible != true
+            LaunchedEffect(shown, hintStays, slot?.visible == true) {
+                if (shown && !hintStays && slot?.visible != true) {
+                    delay(HINT_MS)
+                    hintVisible = false
+                }
+            }
             val hintAlpha by animateFloatAsState(if (hintShown) 1f else 0f, label = "hint")
-            ModelHint(
-                text = stringResource(R.string.scan_result_hint),
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .alpha(hintAlpha)
-                    .then(if (hintShown) Modifier else Modifier.clearAndSetSemantics { }),
-            )
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                slot?.let { ModelStatusLine(it) }
+                ModelHint(
+                    text = stringResource(R.string.scan_result_hint),
+                    modifier = Modifier
+                        .alpha(hintAlpha)
+                        .then(if (hintShown) Modifier else Modifier.clearAndSetSemantics { }),
+                )
+            }
             ResultLayerPicker(
                 layers = layers,
                 plan = plan,
                 ready = shown && instance != null && !filming,
+                seen = shown,
                 onPlan = {
                     plan = it
                     cinematics.request(ScanResultCinematics.Request.Recenter)
@@ -1228,6 +1249,10 @@ internal fun RerunModelScreen(
                     val modelDrawn = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
                     val ready = if (preview != null) layers.photoShown || (!layers.photoPicked && modelDrawn) else modelDrawn
                     if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
+                    if (!risen && cinematics.revealed) {
+                        val entrance = cinematics.animator
+                        if (!entrance.isPlaying || entrance.elapsed >= ScanOpening.RISEN_SECONDS) risen = true
+                    }
                     // The turntable, once the model is revealed: the first touch, or the plan, stops it for good.
                     if (!orbit.following || plan) {
                         turntable.stop()
@@ -1266,7 +1291,7 @@ internal fun RerunModelScreen(
                     val shadowY = f.local[1] + if (isObject) SHADOW_LIFT_M else -SHADOW_DROP_M
                     val spread = if (isObject) SHADOW_SPREAD else ROOM_SHADOW_SPREAD
                     // The image plane's size is baked when it is made: a new box, a new plane.
-                    if (darkStage) key(width, depth) {
+                    if (darkStage && risen) key(width, depth) {
                         ImageNode(
                             bitmap = shadowPool,
                             size = Size(x = width * POOL_SPREAD, y = 0f, z = depth * POOL_SPREAD),
@@ -1326,6 +1351,21 @@ internal fun RerunModelScreen(
                         .alpha(veil)
                         .background(chrome.ground)
                         .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
+                )
+            }
+            // On that ground, a picture of the opening until the scene has drawn it: the place is
+            // there from the first frame, and the live scene takes over as the ground fades.
+            opensOnStill?.takeIf { veil > 0f && maxWidth < maxHeight }?.let { picture ->
+                val zoneCentre = (insets.top + 1f - insets.bottom) / 2f
+                Image(
+                    painter = painterResource(if (darkStage) picture.dark else picture.light),
+                    contentDescription = null,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(maxWidth / picture.aspect)
+                        .offset(y = maxHeight * picture.topOn(aspect, zoneCentre))
+                        .alpha(veil),
                 )
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
