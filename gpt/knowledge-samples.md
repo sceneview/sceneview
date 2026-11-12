@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.69.0)
+  Source of truth: /llms.txt  (SceneView 4.69.1)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.69.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.69.1). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -891,6 +891,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Create & record
 
 - `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
+- `matter` — Matter. Touch foam, oak and steel. Compare firmness and recovery.
 - `materials` — Materials. Compare metal, glass, fabric and glow.
 - `lighting` — Lighting. Studio light, daylight, reflections, fog and shading.
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
@@ -904,6 +905,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Developer tools
 
 - `ar-rerun` — 3D Scan. Move around a space and watch it take shape in 3D.
+- `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
 - `debug-overlay` — Performance Test. Find the node budget for smooth 3D rendering on your device.
 
 ### Place in AR
@@ -925,7 +927,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
 - `camera-path` — Camera Path. Play, pause and scrub a keyframed camera orbit.
-- `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 
