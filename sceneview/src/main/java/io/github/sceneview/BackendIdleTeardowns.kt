@@ -58,6 +58,16 @@ internal class BackendIdleTeardowns(
 
     val size: Int get() = pending.size
 
+    private fun finishWait() {
+        // Reset only when the whole queue drains: re-arming a stale fence or registering
+        // another resource during this wait must not restart diagnostics or fast polling.
+        retiring = false
+        backendBusy = null
+        shortConfirmation = false
+        probe?.resetWait()
+        onEmpty(this)
+    }
+
     /** Shared by fence-dependent releases and stalled model loads, at most once per poll. */
     fun isBackendBusy(): Boolean = backendBusy ?: checkNotNull(probe)
         .isBusy(requireFresh = !retiring).also { backendBusy = it }
@@ -84,7 +94,7 @@ internal class BackendIdleTeardowns(
     ) {
         if (!isEngineAlive()) {
             onEngineGone()
-            if (pending.isEmpty()) onEmpty(this)
+            if (pending.isEmpty()) finishWait()
             return
         }
         if (runsLast) retiring = true
@@ -98,7 +108,7 @@ internal class BackendIdleTeardowns(
 
         fun schedulePoll() {
             if (pending.isEmpty()) {
-                onEmpty(this)
+                finishWait()
                 return
             }
             if (pollScheduled || polling) return
@@ -139,6 +149,6 @@ internal class BackendIdleTeardowns(
         while (pending.isNotEmpty()) {
             (pending.firstOrNull { !it.runsLast } ?: pending.first()).run()
         }
-        onEmpty(this)
+        finishWait()
     }
 }

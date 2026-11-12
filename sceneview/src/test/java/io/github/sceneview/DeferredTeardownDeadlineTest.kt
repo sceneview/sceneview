@@ -44,6 +44,8 @@ class DeferredTeardownDeadlineTest {
     @Before
     fun setUp() {
         armed.clear()
+        fenceOwners.clear()
+        busyEngines.clear()
         order.clear()
         nextFence = 0L
         polls = 0
@@ -170,6 +172,55 @@ class DeferredTeardownDeadlineTest {
     }
 
     @Test
+    fun screenOwnedEnginesDrainIndependentlyAndReleaseTheirOwnEglLast() {
+        val second = FilamentWithoutJni.engine(nativeObject = 2L)
+        busyEngines += engine.nativeObject
+        busyEngines += second.nativeObject
+        try {
+            for ((name, owner) in listOf("first" to engine, "second" to second)) {
+                owner.destroyRendererWhenBackendIdle(owner.createRenderer())
+                // Video textures, mirrored renderers and model loaders share this same registry.
+                owner.whenBackendIdle {
+                    assertEquals(Looper.getMainLooper(), Looper.myLooper())
+                    order += "$name-resource"
+                }
+                owner.destroyWhenBackendIdle {
+                    assertEquals(Looper.getMainLooper(), Looper.myLooper())
+                    order += "$name-egl"
+                }
+            }
+            advance(12_000)
+            assertTrue(order.isEmpty())
+            assertEquals("one warning per engine", 2, warnCount())
+            assertEquals("one live probe per engine", 2, armed.size)
+
+            busyEngines -= second.nativeObject
+            // Each release invalidates the probe: allow an arm/check pair for all three.
+            advance(6_000)
+            assertEquals(listOf("renderer", "second-resource", "engine", "second-egl"), order)
+            assertFalse(second.isValid)
+            assertTrue(engine.isValid)
+            assertEquals("destroying the second engine preserves the first's fence", 1, armed.size)
+
+            busyEngines -= engine.nativeObject
+            advance(6_000)
+            assertEquals(
+                listOf("renderer", "second-resource", "engine", "second-egl",
+                    "renderer", "first-resource", "engine", "first-egl"),
+                order,
+            )
+            assertFalse(engine.isValid)
+            assertTrue(armed.isEmpty())
+            assertEquals(2, warnCount())
+            val finalPolls = polls
+            advance(12_000)
+            assertEquals("neither engine keeps polling after destruction", finalPolls, polls)
+        } finally {
+            if (second.isValid) second.destroy()
+        }
+    }
+
+    @Test
     fun rawEngineDestructionAbandonsItsFenceWithoutAnyFurtherJni() {
         engine.whenBackendIdle(onEngineGone = { order += "gone" }) { order += "unexpected" }
         engine.destroy()
@@ -271,12 +322,16 @@ class DeferredTeardownDeadlineTest {
             @JvmStatic @Implementation
             fun nCreateFence(nativeEngine: Long): Long {
                 if (failCreation) return 0L
-                return (++nextFence).also { armed[it] = maxOf(SystemClock.uptimeMillis(), backendBusyUntil) }
+                return (++nextFence).also {
+                    armed[it] = maxOf(SystemClock.uptimeMillis(), backendBusyUntil)
+                    fenceOwners[it] = nativeEngine
+                }
             }
 
             @JvmStatic @Implementation
             fun nDestroyFence(nativeEngine: Long, nativeFence: Long): Boolean {
                 check(armed.remove(nativeFence) != null)
+                assertEquals(nativeEngine, fenceOwners.remove(nativeFence))
                 releases++
                 return true
             }
@@ -295,7 +350,10 @@ class DeferredTeardownDeadlineTest {
             @JvmStatic @Implementation
             fun nDestroyEngine(nativeEngine: Long) {
                 order += "engine"
-                armed.clear()
+                fenceOwners.filterValues { it == nativeEngine }.keys.toList().forEach {
+                    armed.remove(it)
+                    fenceOwners.remove(it)
+                }
             }
         }
     }
@@ -312,7 +370,8 @@ class DeferredTeardownDeadlineTest {
                     errorNextWait = false
                     return Fence.FenceStatus.ERROR.toFilamentNative()
                 }
-                val reached = reachesFence && SystemClock.uptimeMillis() > armed.getValue(nativeFence)
+                val reached = reachesFence && fenceOwners.getValue(nativeFence) !in busyEngines &&
+                    SystemClock.uptimeMillis() > armed.getValue(nativeFence)
                 return (if (reached) Fence.FenceStatus.CONDITION_SATISFIED else {
                     Fence.FenceStatus.TIMEOUT_EXPIRED
                 }).toFilamentNative()
@@ -322,6 +381,8 @@ class DeferredTeardownDeadlineTest {
 
     companion object {
         private val armed = mutableMapOf<Long, Long>()
+        private val fenceOwners = mutableMapOf<Long, Long>()
+        private val busyEngines = mutableSetOf<Long>()
         private val order = mutableListOf<String>()
         private var nextFence = 0L
         private var polls = 0

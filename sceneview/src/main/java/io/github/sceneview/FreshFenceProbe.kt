@@ -83,6 +83,12 @@ internal class FreshFenceProbe<F : Any>(
         fence = null
     }
 
+    /** Ends a wait episode without touching JNI (the engine may already be gone). */
+    fun resetWait() {
+        firstPollAt = NOT_POLLED
+        hasWarned = false
+    }
+
     private fun arm(at: Long): F? = createFence()?.also {
         fence = it
         armedAt = at

@@ -30,6 +30,7 @@ class BackendIdleTeardownTest {
             while (pending.isNotEmpty()) runNext()
         }
         val hasPending get() = pending.isNotEmpty()
+        val pendingCount get() = pending.size
     }
 
     /** One deferred teardown's observable outcome. */
@@ -101,6 +102,63 @@ class BackendIdleTeardownTest {
         scheduler.runAll()
         assertEquals(20, runs)
         assertEquals(0, teardowns.size)
+    }
+
+    @Test
+    fun repeatedWarningsKeepOneBoundedPollAndResetAfterEachWait() {
+        var clock = 0L
+        var reached = false
+        var warnings = 0
+        var fences = 0
+        var runs = 0
+        val probe = FreshFenceProbe(
+            createFence = { ++fences },
+            isReached = { reached },
+            destroyFence = { fences-- },
+            now = { clock },
+            onStillBusy = { warnings++ },
+        )
+        // Reuse the registry to check its reset, independently of Engine's registry eviction.
+        val teardowns = BackendIdleTeardowns(probe)
+        val scheduler = RecordingScheduler()
+        val schedule: (Long, () -> Unit) -> Boolean = { delay, block ->
+            scheduler.schedule(delay) { clock += delay; block() }
+        }
+
+        repeat(3) { episode ->
+            reached = false
+            teardowns.defer(
+                isEngineAlive = { true },
+                schedule = schedule,
+                teardown = { runs++ },
+                runsLast = episode == 0,
+            )
+            assertFalse("a new wait gets its own diagnostic window", probe.hasWarned)
+            assertEquals(BACKEND_IDLE_POLL_MS, scheduler.delays.last())
+            while (!probe.hasWarned) scheduler.runNext()
+            repeat(100) {
+                assertEquals(1, scheduler.pendingCount)
+                assertEquals(1, teardowns.size)
+                assertEquals(1, fences)
+                assertTrue(scheduler.delays.last() in BACKEND_IDLE_POLL_MS..BACKEND_IDLE_BACKOFF_MS)
+                scheduler.runNext()
+            }
+            assertEquals("one warning for the whole wait", episode + 1, warnings)
+            assertEquals(episode, runs)
+
+            reached = true
+            clock += 2_000
+            scheduler.runNext()
+            assertEquals("retirement does not leak into the next shared wait",
+                if (episode == 0) episode + 1 else episode, runs)
+            scheduler.runAll()
+            assertEquals(episode + 1, runs)
+            assertEquals(0, teardowns.size)
+            assertEquals(0, fences)
+            assertEquals(0, scheduler.pendingCount)
+            assertFalse("completion resets the warning and timer", probe.hasWarned)
+            clock += 60_000
+        }
     }
 
     @Test
