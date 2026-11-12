@@ -294,7 +294,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // first frame, not the half second the splats take to build once it is opened.
     val examplePhoto by produceState<SplatFaces?>(null, example) {
         value = example?.dense?.cloud?.takeIf { it.normals != null }?.let { cloud ->
-            withContext(Dispatchers.Default) { runCatching { SplatFaces.of(SurfelSplats.of(cloud)) }.getOrNull() }
+            withContext(Dispatchers.Default) { runCatching { SplatFaces.of(SurfelSplats.ofPlace(cloud)) }.getOrNull() }
         }
     }
     // QA only: the sparse room the staged replay and capture states are fed from.

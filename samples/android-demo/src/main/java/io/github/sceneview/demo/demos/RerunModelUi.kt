@@ -126,6 +126,7 @@ import io.github.sceneview.demo.demos.internal.ResultShading
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
 import io.github.sceneview.demo.demos.internal.ScanPreset
+import io.github.sceneview.demo.demos.internal.ScanOpening
 import io.github.sceneview.demo.demos.internal.ScanResultCinematics
 import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
@@ -886,7 +887,12 @@ internal fun RerunModelScreen(
     // that arrives for a scan already shown, whose finish is run again.
     val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES) }
     // 3D ↔ Plan, the one camera move, and only when the user asks for it; a touch cuts it short.
-    val cinematics = remember(orbit) { ScanResultCinematics(orbit, reveals = false) }
+    // A result that opens on its Photo layer is entered from inside the place, then seen whole
+    // ([ScanOpening]); one that opens on its model stays on its framing, as before.
+    val entersLow = preview != null && (LocalMotionEnabled.current || DemoSettings.qaMotion)
+    val cinematics = remember(orbit, entersLow) {
+        ScanResultCinematics(orbit, reveals = entersLow, entrance = ScanOpening::path)
+    }
     // Read live by the framing below, so a toggle and the frame that flies to it agree.
     var plan by remember(stageKey) { mutableStateOf(false) }
     // More › Measure: the grid, the slab and the room's dimensions, off until asked for.

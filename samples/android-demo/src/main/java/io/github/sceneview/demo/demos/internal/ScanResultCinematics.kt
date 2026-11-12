@@ -30,12 +30,15 @@ internal fun CameraShot.toOrbitPose(): OrbitPose = OrbitPose(
  * Driven from `onFrame`, after each drawn frame, by [frameDrawn]; the buttons only [request].
  *
  * Without [reveals] the camera opens where the framing is and stays there: no crane down onto it
- * (Scan redesign, PR 1: « pas de mouvement de caméra imposé »).
+ * (Scan redesign, PR 1: « pas de mouvement de caméra imposé »). With them, [entrance] is the
+ * path onto the framing: the library's crane by default, [ScanOpening] for a result that opens on
+ * its Photo layer.
  */
 internal class ScanResultCinematics(
     val orbit: ArDebugOrbitCamera,
     val animator: CameraAnimator = CameraAnimator(CameraShot()),
     private val reveals: Boolean = true,
+    private val entrance: (CameraShot) -> CameraPath = { CameraPath.reveal(it) },
 ) {
     /** The `cameraManipulator` for the `SceneView`: the animator while it plays, [orbit] otherwise. */
     val manipulator = CinematicCameraManipulator(animator, orbit)
@@ -73,7 +76,7 @@ internal class ScanResultCinematics(
             opening.aim(orbit, home)
             if (framed) {
                 revealed = true
-                if (reveals) animator.play(CameraPath.reveal(ArDebugFraming.clamp(home).toShot()))
+                if (reveals) animator.play(entrance(ArDebugFraming.clamp(home).toShot()))
             }
             return false
         }
@@ -132,4 +135,32 @@ internal class ScanResultCinematics(
         manipulator.interrupt()
         touring = false
     }
+}
+
+/**
+ * How a result that opens on its Photo layer is entered: from inside the place, low — where
+ * whoever scanned it stood — and a turn to the side, then up and out to the framing while the
+ * place grows. The first second reads as the place itself, a garden seen from its path, before
+ * the whole of it is seen from above; the first touch takes the camera, as on every move.
+ */
+internal object ScanOpening {
+    fun path(home: CameraShot): CameraPath = CameraPath.reveal(
+        home = home,
+        durationSeconds = SECONDS,
+        turnDegrees = TURN_DEGREES,
+        startElevationDegrees = minOf(START_ELEVATION, home.elevationDegrees),
+        startDistanceFactor = START_DISTANCE_FACTOR,
+    )
+
+    /** Longer than the Photo layer takes to grow (`GROW_MS`): the camera lands on a whole place. */
+    const val SECONDS = 5f
+
+    /** A quarter turn short of the framing: the place turns into its best side as it rises. */
+    const val TURN_DEGREES = -70f
+
+    /** Just above the ground: an eye's height over a place framed from a few metres. */
+    const val START_ELEVATION = 9f
+
+    /** Half the framing's distance: inside the place's box, its far side filling the frame. */
+    const val START_DISTANCE_FACTOR = 0.5f
 }

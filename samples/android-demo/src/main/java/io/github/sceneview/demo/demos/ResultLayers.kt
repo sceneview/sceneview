@@ -202,7 +202,7 @@ internal fun rememberResultLayers(
         if (!layers.offered || !build || layers.splats != null || layers.unavailable) return@LaunchedEffect
         val started = System.nanoTime()
         val built = withContext(Dispatchers.Default) {
-            runCatching { photoCloudOf(source, surfels)?.let { SplatFaces.of(SurfelSplats.of(it)) } }
+            runCatching { photoCloudOf(source, surfels)?.let { SplatFaces.of(SurfelSplats.ofPlace(it)) } }
                 .onFailure { if (it is CancellationException) throw it }
                 .onFailure { Log.w(LAYERS_TAG, "photo layer not built", it) }
                 .getOrNull()
