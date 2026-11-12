@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo: the 3D Scan example is on screen with its first frame — a picture of the place that fades into the live scene — then the camera rises from low over it to the framing; the status line sits just above the layer switch instead of the middle of the screen, and the Photo layer no longer shows stray specks round the place ([#5030](https://github.com/sceneview/sceneview/pull/5030)).**
