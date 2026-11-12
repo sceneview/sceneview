@@ -13,7 +13,9 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 **Apple (iOS 18+ / macOS 15+ / visionOS 2+) — Swift Package:**
 - `https://github.com/sceneview/sceneview.git` (from: "4.68.0")
 
-**Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.4.21 | **Compose BOM compatible**
+**Toolchain:** compileSdk 37, AGP 9.4+, Kotlin 2.3 or newer (the AARs are built with **Kotlin:** 2.4.21), minSdk 24, JVM target 21. On AGP 8 / compileSdk 36 / Kotlin 2.2, use `4.18.0` instead (see Setup). Compose BOM compatible.
+
+**Reading this file:** it is long (about 600 kB). For a first Android screen, everything you need is in the first 20 kB: **Setup** and **Start here** (two complete, compiled files). Look up anything else by its `##` heading.
 
 **Which artifact for which app** (all open source, Apache 2.0):
 
@@ -174,6 +176,73 @@ manifest merger fails:
 
 `sceneview` also merges `INTERNET` (models from a URL) and `VIBRATE` (haptics) into the app's
 manifest; remove either with `tools:node="remove"` if the app does not want it.
+
+---
+
+## Start here — two complete Android screens
+
+Both files compile as they are against `io.github.sceneview:arsceneview:4.68.0` (CI builds every
+Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
+
+**A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
+pinch and pans on two-finger drag: no gesture code is needed.
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun ModelViewerScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    SceneView(
+        modifier = Modifier.fillMaxSize(),
+        engine = engine,
+        modelLoader = modelLoader,
+    ) {
+        // null while the file loads, then the model appears
+        rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+            ModelNode(modelInstance = instance, scaleToUnits = 1f)
+        }
+    }
+}
+```
+
+**AR: tap a surface to place the model.** `PlacementScene` brings the plane detection, the reticle,
+the tap handling and the anchor; you declare what rides each anchor.
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.PlacementScene
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun TapToPlaceScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    PlacementScene(
+        modifier = Modifier.fillMaxSize(),
+        engine = engine,
+        modelLoader = modelLoader,
+        onPlaced = { anchor -> // a NAMED parameter: the trailing lambda is `content`
+            AnchorNode(anchor = anchor) {
+                rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+                    ModelNode(modelInstance = instance, scaleToUnits = 0.3f)
+                }
+            }
+        },
+    )
+}
+```
+Nothing else is needed: the AR screen asks for the camera permission itself (and shows its own
+card after a denial), and checks that ARCore is installed. The manifest choices are in Setup above.
 
 ---
 
