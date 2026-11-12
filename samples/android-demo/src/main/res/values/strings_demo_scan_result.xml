@@ -17,6 +17,10 @@
     <!-- The result's one bar (Scan redesign, PR 1): Share, View in AR, More (Plan, Measure, Watch capture) -->
     <string name="scan_result_share">Share</string>
     <string name="scan_result_share_label">Share the scan</string>
+    <string name="scan_result_video">Video</string>
+    <string name="scan_result_video_label">Film the scan as a short video to share</string>
+    <string name="scan_result_filming">Filming…</string>
+    <string name="scan_result_film_interrupted">The video was interrupted. Try again.</string>
     <string name="scan_result_view_ar">View in AR</string>
     <string name="scan_result_view_ar_label">View the scan in AR</string>
     <string name="scan_result_more">More</string>

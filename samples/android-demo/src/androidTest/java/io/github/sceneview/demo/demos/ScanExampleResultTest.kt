@@ -1,0 +1,193 @@
+package io.github.sceneview.demo.demos
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
+import io.github.sceneview.demo.mainActivityComponent
+import org.junit.After
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+import kotlin.math.abs
+
+/**
+ * 3D Scan › See an example, as someone who just installed the app sees it — no QA mode, no state
+ * forced: it opens on a result, the result is on screen at once (its Photo layer, while the model
+ * is built behind it), the finished model takes its place, and Photo and Model are two pictures
+ * of the same place.
+ *
+ * Until 4.69 the example was a sparse recording with no result to open, the Photo layer was
+ * offered in debug builds only, and a scan's result was a bare stage for as long as its model
+ * took. Each step below fails on one of those.
+ */
+@RunWith(AndroidJUnit4::class)
+class ScanExampleResultTest {
+    private lateinit var device: UiDevice
+
+    @Before
+    fun setUp() {
+        device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        device.wakeUp()
+        device.executeShellCommand("wm dismiss-keyguard")
+        device.executeShellCommand("cmd uimode night no")
+    }
+
+    @After
+    fun tearDown() {
+        device.executeShellCommand("cmd uimode night auto")
+    }
+
+    @Test
+    fun theExampleOpensOnAResultSeenAtOnce() {
+        device.executeShellCommand(
+            "am start -n $mainActivityComponent -f 0x14000000 --es demo ar-rerun --es telemetry_consent denied",
+        )
+        val example = device.wait(Until.findObject(By.text(SEE_AN_EXAMPLE)), OPEN_TIMEOUT_MS)
+        assertNotNull("3D Scan never offered its example", example)
+        example.click()
+
+        // It opens on its result, seen at once: the place itself, well before its model is built.
+        assertNotNull(
+            "the example has no result to open, or its result no film to share",
+            device.wait(Until.findObject(By.text(VIDEO)), OPEN_TIMEOUT_MS),
+        )
+        Thread.sleep(FIRST_PICTURE_MS)
+        val first = drawnShare(capture("result-first"))
+        assertTrue("the result opened on a bare stage ($first of it drawn)", first > MIN_DRAWN_SHARE)
+
+        // Photo and Model, once the model is there: two pictures of the same place.
+        assertNotNull(
+            "the result's layer switch never appeared",
+            device.wait(Until.findObject(By.text(MODEL)), MODEL_TIMEOUT_MS),
+        )
+        device.wait(Until.gone(By.textStartsWith(CREATING)), MODEL_TIMEOUT_MS)
+        assertTrue(
+            "the model never finished",
+            device.wait(Until.gone(By.textStartsWith(FINISHING)), MODEL_TIMEOUT_MS) == true,
+        )
+        // The finished model has taken the preview's place by itself; a touch stops the slow turn,
+        // which would make any two captures differ.
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        Thread.sleep(REVEAL_MS)
+        val model = capture("result-model")
+        assertTrue("the model draws next to nothing", drawnShare(model) > MIN_DRAWN_SHARE)
+        assertTrue("Photo never took", pick(PHOTO) { device.hasObject(By.text(PHOTO_NOTE)) })
+        Thread.sleep(SETTLE_MS)
+        val photo = capture("result-photo")
+        assertTrue("the Photo layer draws next to nothing", drawnShare(photo) > MIN_DRAWN_SHARE)
+        val swapped = changedShare(model, photo)
+        assertTrue("Photo and Model are the same picture ($swapped of its pixels differ)", swapped > MIN_SWAP_SHARE)
+
+        // The result films itself: a take is recorded, and a video file is what gets shared.
+        val film = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, FILM_PATH)
+        film.delete()
+        device.findObject(By.text(VIDEO)).click()
+        assertNotNull("Video started no take", device.wait(Until.findObject(By.text(FILMING)), TAP_WAIT_MS))
+        assertTrue("the take never ended", device.wait(Until.gone(By.text(FILMING)), FILM_TIMEOUT_MS) == true)
+        assertTrue("the take left no video (${film.length()} bytes)", film.length() > MIN_FILM_BYTES)
+        device.pressBack()
+    }
+
+    /** Taps [label] until [took], the switch ignoring taps until the model is seen. */
+    private fun pick(label: String, took: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + MODEL_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            device.findObject(By.text(label))?.click()
+            val tapDeadline = System.currentTimeMillis() + TAP_WAIT_MS
+            while (System.currentTimeMillis() < tapDeadline) {
+                if (took()) return true
+                Thread.sleep(POLL_MS)
+            }
+        }
+        return false
+    }
+
+    private fun capture(name: String): Bitmap {
+        val dir = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+        val file = File(dir, "scan-example-$name.png")
+        assertTrue("screenshot $name", device.takeScreenshot(file))
+        return checkNotNull(BitmapFactory.decodeFile(file.absolutePath)) { "decode $name" }
+    }
+
+    /**
+     * Share of the scene band (between the top bar and the bottom band) that is not the stage:
+     * pixels away from the band's own most common colour, which a bare stage is all of.
+     */
+    private fun drawnShare(shot: Bitmap): Float {
+        val pixels = bandPixels(shot)
+        val ground = pixels.groupingBy { it and GROUND_MASK }.eachCount().maxByOrNull { it.value }?.key ?: return 0f
+        return pixels.count { distance(it, ground) > CHANNEL_DIFF }.toFloat() / pixels.size
+    }
+
+    /** Share of the scene band's pixels that differ between [a] and [b]. */
+    private fun changedShare(a: Bitmap, b: Bitmap): Float {
+        val p = bandPixels(a)
+        val q = bandPixels(b)
+        return p.indices.count { distance(p[it], q[it]) > CHANNEL_DIFF }.toFloat() / p.size
+    }
+
+    private fun bandPixels(shot: Bitmap): List<Int> {
+        val y0 = shot.height * SCENE_TOP_PERCENT / 100
+        val y1 = shot.height * SCENE_BOTTOM_PERCENT / 100
+        return buildList {
+            for (y in y0 until y1 step STEP) for (x in 0 until shot.width step STEP) add(shot.getPixel(x, y))
+        }
+    }
+
+    private fun distance(p: Int, q: Int): Int = maxOf(
+        abs(Color.red(p) - Color.red(q)),
+        abs(Color.green(p) - Color.green(q)),
+        abs(Color.blue(p) - Color.blue(q)),
+    )
+
+    private companion object {
+        const val SEE_AN_EXAMPLE = "See an example"
+        const val VIDEO = "Video"
+        const val PHOTO = "Photo"
+        const val MODEL = "Model"
+        const val CREATING = "Creating your model"
+        const val FINISHING = "Finishing your model"
+        const val PHOTO_NOTE = "Photo preview · measures stay on the model"
+        const val FILMING = "Filming…"
+
+        /** Where the take is written, under the app's cache: the share sheet's own folder. */
+        const val FILM_PATH = "rerun-share/film/scan_film.mp4"
+        const val OPEN_TIMEOUT_MS = 30_000L
+
+        /** A ten-second take, its encoder's start and stop, on a slow device. */
+        const val FILM_TIMEOUT_MS = 60_000L
+        const val MIN_FILM_BYTES = 100_000L
+
+        /** The model of a 235 000-surfel garden: 45 s on a Pixel 4a, longer on an emulator. */
+        const val MODEL_TIMEOUT_MS = 240_000L
+
+        /**
+         * How soon the result's first picture is asked for, from the dock being there: the place
+         * is on a Pixel 4a's screen 1.5 s after the tap, its model takes twenty times that.
+         */
+        const val FIRST_PICTURE_MS = 2_500L
+
+        /** The model's reveal, once it takes the preview's place (`ModelReveal.TOTAL_MS`), and its veil. */
+        const val REVEAL_MS = 5_000L
+        const val TAP_WAIT_MS = 5_000L
+        const val POLL_MS = 200L
+        const val SETTLE_MS = 2_500L
+        const val SCENE_TOP_PERCENT = 20
+        const val SCENE_BOTTOM_PERCENT = 65
+        const val STEP = 6
+        const val CHANNEL_DIFF = 24
+
+        /** Colours within 8 levels of each other count as one when the stage's own is looked for. */
+        const val GROUND_MASK = 0xF8F8F8
+        const val MIN_DRAWN_SHARE = 0.08f
+        const val MIN_SWAP_SHARE = 0.02f
+    }
+}

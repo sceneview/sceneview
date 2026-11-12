@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **68**.
+Assets bundled: **71**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -140,6 +140,12 @@ Assets bundled: **68**.
   Compiled from `samples/android-demo/src/main/materials/viewer_grid.mat` (3D viewers' ground grid, #4651)
 - `mediapipe/pose_landmarker_lite.task` — **[MediaPipe Pose Landmarker (lite)](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)** by Google LLC — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (5.8 MB)  
   On-device pose model bundle used by `ARBodyTrackerDemo`
+- `rerun/example/example-manifest.json` — **[example-manifest.json](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (10 KB)  
+  Lens, dense cloud and media index of 3D Scan's example
+- `rerun/example/example-media.bin` — **[example-media.bin](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (6.6 MB)  
+  Dense cloud and camera photos of the same scan, packed for 3D Scan's example
+- `rerun/example/example-session.jsonl` — **[example-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (1.0 MB)  
+  Timeline of a garden path scanned with the demo (camera path, planes, depth totals) — 3D Scan's example
 - `rerun/sample-session.jsonl` — **[sample-session.jsonl](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (176 KB)  
   Synthetic room walk in the Rerun bridge wire format — QA fixture of `ARRerunDemo`'s in-app 3D view (#3950)
 - `rerun/showcase/showcase-manifest.json` — **[showcase-manifest.json](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (11 KB)  
