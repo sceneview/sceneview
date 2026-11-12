@@ -113,14 +113,16 @@ material {
             "precision": "medium"
         }
     ],
-    "shadingModel": "lit",
+    // Atlas rows already follow the uploaded RG8 buffer; Filament otherwise flips V.
+    "flipUV": false,
+    "shadingModel": "cloth",
     "blending": "opaque",
     "postLightingBlending": "transparent",
     "doubleSided": false,
     "specularAntiAliasing": true
 }
 vertex {
-    #define MATTER_TRAIL
+    #define MATTER_PILE_TRAIL
     #define MATTER_FOLDS
     #include "matter_deformation.vs"
 }
@@ -132,7 +134,6 @@ fragment {
         float compressed = variable_rest.w;
         float crushed = max(compressed, variable_bentNormal.w * 0.65);
         vec3 colour = materialParams.albedo;
-        float rough = materialParams.roughness;
         float occlusion = 1.0, height = 0.0;
         vec3 n = normalize(variable_bentNormal.xyz);
         vec2 nap = p.xz + p.y * vec2(0.31, 0.73);
@@ -146,20 +147,19 @@ fragment {
         vec3 b = cross(n, t);
         float sweep = (pile - 0.5) * 0.30;
         n = normalize(n + t * (sweep + crushed * 0.22) + b * sweep * 0.45);
-        rough -= crushed * 0.12;
         vec3 detailed = matterBump(n, height);
         mat3 toTangent = transpose(getWorldTangentFrame());
         material.normal = toTangent * detailed;
         prepareMaterial(material);
         material.baseColor = vec4(colour, 1.0);
-        material.roughness = clamp(rough, 0.045, 1.0);
-        material.metallic = materialParams.metallic;
-        material.reflectance = 0.5;
+        // Cloth uses roughness for its sole Charlie sheen lobe. Preserve the nap response
+        // without also evaluating a dielectric GGX base lobe and a second IBL lookup.
+        material.roughness = clamp(materialParams.sheenRoughness - crushed * 0.13 +
+            (pile - 0.5) * 0.10, 0.2, 1.0);
         material.ambientOcclusion = occlusion;
         vec3 pileTint = sqrt(materialParams.albedo);
         pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
         material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + crushed * 0.2), 0.0, 1.0);
-        material.sheenRoughness = clamp(materialParams.sheenRoughness - crushed * 0.13 + (pile - 0.5) * 0.10, 0.2, 1.0);
-        material.postLightingColor = matterRipple(p);
+        // Velvet has no rigid contact ring; keep that fragment branch out of this family.
     }
 }

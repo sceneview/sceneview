@@ -113,6 +113,8 @@ material {
             "precision": "medium"
         }
     ],
+    // Atlas rows already follow the uploaded RG8 buffer; Filament otherwise flips V.
+    "flipUV": false,
     "shadingModel": "lit",
     "blending": "opaque",
     "postLightingBlending": "transparent",

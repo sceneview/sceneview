@@ -39,6 +39,23 @@ highp vec4 dentField(highp vec2 p) {
     }
     #endif
     float pile = 0.0;
+    #ifdef MATTER_PILE_TRAIL
+    // Velvet only changes nap, so it needs neither the groove gradient nor the foam branch.
+    // Gaussian tails beyond sqrt(9) widths contribute < 0.001 in total for all eight slots.
+    // Evaluate at vertices and interpolate bentNormal.w; never repeat this per fragment.
+    if (materialParams.trailMode > 0.5) {
+        mediump float memory = 0.0;
+        for (int i = 0; i < 8; i++) {
+            highp vec4 samplePoint = materialParams.trail[i];
+            if (samplePoint.z <= 0.0) continue;
+            highp vec2 delta = p - samplePoint.xy;
+            highp float distanceSquared = dot(delta, delta) * samplePoint.w;
+            if (distanceSquared >= 9.0) continue;
+            memory += samplePoint.z * exp(-distanceSquared);
+        }
+        pile = 1.0 - exp(-memory);
+    }
+    #endif
     #ifdef MATTER_TRAIL
     if (materialParams.trailMode > 0.5) {
         float memory = 0.0;

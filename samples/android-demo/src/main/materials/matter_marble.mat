@@ -113,6 +113,8 @@ material {
             "precision": "medium"
         }
     ],
+    // Atlas rows already follow the uploaded RG8 buffer; Filament otherwise flips V.
+    "flipUV": false,
     "shadingModel": "lit",
     "blending": "opaque",
     "postLightingBlending": "transparent",
@@ -139,6 +141,8 @@ fragment {
         vec3 detailed = n;
         mat3 toTangent = transpose(getWorldTangentFrame());
         material.normal = toTangent * detailed;
+        // Keep the polish on the same smooth frame as the stone (as in v9).
+        material.clearCoatNormal = material.normal;
         prepareMaterial(material);
         material.baseColor = vec4(colour, 1.0);
         material.roughness = clamp(rough, 0.045, 1.0);

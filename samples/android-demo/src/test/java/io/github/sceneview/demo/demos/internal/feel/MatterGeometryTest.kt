@@ -3,7 +3,9 @@ package io.github.sceneview.demo.demos.internal.feel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.sqrt
 
 class MatterGeometryTest {
@@ -31,6 +33,40 @@ class MatterGeometryTest {
             chart.point((u - chart.u(0f)) / (chart.u(1f) - chart.u(0f)),
                 (v - chart.v(0f)) / (chart.v(1f) - chart.v(0f)), point)
             for (axis in 0..2) assertEquals(mesh.positions[i / 2 * 3 + axis], point[axis], .00001f)
+        }
+    }
+
+    @Test fun boundedVelvetTrailAndVertexInterpolationStayWithinOnePercentOfTheFullField() {
+        val shader = listOf(File("src/main/materials/matter_deformation.vs"),
+            File("samples/android-demo/src/main/materials/matter_deformation.vs"))
+            .first { it.isFile }.readText()
+        val cutoff = Regex("distanceSquared >= ([0-9.]+)").find(shader)!!.groupValues[1].toFloat()
+        // Worst-case strengths, including eight overlapping points and a trail across a corner.
+        val paths = listOf(
+            List(8) { 0f to 0f },
+            List(8) { (it - 4) * FeelSimulation.TRAIL_SPACING to .2f },
+            List(8) { (1.6f + it * .10f) to (1.4f - it * .16f) },
+        )
+        fun pile(x: Float, y: Float, z: Float, path: List<Pair<Float, Float>>, bounded: Boolean): Float {
+            var memory = 0f
+            for ((tx, tz) in path) {
+                val q = ((x - tx) * (x - tx) + (z - tz) * (z - tz)) / (.34f * .34f)
+                if (!bounded || q < cutoff) memory += exp(-q)
+            }
+            return (1f - exp(-memory)) * (1f + y / FeelSimulation.PAD_THICKNESS).coerceIn(0f, 1f)
+        }
+        for (path in paths) {
+            for (i in mesh.indices.indices step 3) {
+                val indices = IntArray(3) { (mesh.indices[i + it].toInt() and 0xffff) * 3 }
+                val center = FloatArray(3) { axis -> indices.sumOf { mesh.positions[it + axis].toDouble() }.toFloat() / 3f }
+                val exact = pile(center[0], center[1], center[2], path, false)
+                val bounded = pile(center[0], center[1], center[2], path, true)
+                assertEquals("Gaussian tail bound", exact, bounded, .001f)
+                val interpolated = indices.sumOf {
+                    pile(mesh.positions[it], mesh.positions[it + 1], mesh.positions[it + 2], path, true).toDouble()
+                }.toFloat() / 3f
+                assertEquals("triangle=$i interpolated pile", exact, interpolated, .01f)
+            }
         }
     }
 

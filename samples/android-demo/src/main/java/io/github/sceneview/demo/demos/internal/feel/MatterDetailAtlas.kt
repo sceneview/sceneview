@@ -12,7 +12,8 @@ import kotlin.math.sqrt
  * deliberately NOT a repeating projection: the 3D cells and Carrara seams meet across
  * the rounded edges at the same rest-space points. UVs are shared with [MatterMeshes].
  * R/G: foam wall/unused, velvet pile/fibre, leather cell gap/unused, marble mineral/cloud,
- * steel streak/fine. Colours, roughness and deformation remain shader parameters.
+ * steel streak/fine. Materials must set flipUV=false: these UVs address uploaded rows directly.
+ * Colours, roughness and deformation remain shader parameters.
  * 1024×512×2 bytes, ~1.33 MiB including mipmaps per loaded opaque family.
  */
 internal object MatterDetailAtlas {
@@ -101,7 +102,7 @@ internal object MatterDetailAtlas {
         private fun gap(x: Float, y: Float, z: Float): Float {
             val ix = floor(x); val iy = floor(y); val iz = floor(z)
             val fx = x - ix; val fy = y - iy; val fz = z - iz
-            // Adjacent texels and their four subsamples mostly share a neighbourhood.
+            // Adjacent texels mostly share a neighbourhood.
             // Cache its hashes during the bake; this does not change the field at all.
             if (ix != cellX || iy != cellY || iz != cellZ) {
                 cellX = ix; cellY = iy; cellZ = iz
@@ -162,7 +163,7 @@ internal object MatterDetailAtlas {
                         val dx = hy * 2f - 1f; val dy = hz * 2f - 1f
                         val offset = across - centre + .10f * (flowX * dx + flowY * dy)
                         val life = .65f + .25f * (fadeX * dy + fadeY * dx)
-                        // The atlas prefilter/mips replace the old per-fragment derivative width.
+                        // Atlas mipmaps replace the old per-fragment derivative width.
                         fine += gaussian(offset / (.018f + .027f * hy)) * life
                     }
                     red = (.10f + .22f * cloud + .34f * soft + .22f * second +

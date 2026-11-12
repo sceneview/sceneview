@@ -110,9 +110,9 @@ Assets bundled: **67**.
   Compiled from `samples/android-demo/src/main/materials/matter_marble.mat`
 - `materials/matter_soft.filamat` — **[matter_soft.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (384 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_soft.mat`
-- `materials/matter_steel.filamat` — **[matter_steel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (370 KB)  
+- `materials/matter_steel.filamat` — **[matter_steel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (369 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`
-- `materials/matter_velvet.filamat` — **[matter_velvet.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (424 KB)  
+- `materials/matter_velvet.filamat` — **[matter_velvet.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (379 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_velvet.mat`
 - `materials/pool_coping.filamat` — **[pool_coping.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (332 KB)  
   Compiled from `samples/android-demo/src/main/materials/pool_coping.mat` (Pool in the garden)

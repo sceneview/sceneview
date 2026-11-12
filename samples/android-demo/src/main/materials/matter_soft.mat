@@ -113,6 +113,8 @@ material {
             "precision": "medium"
         }
     ],
+    // Atlas rows already follow the uploaded RG8 buffer; Filament otherwise flips V.
+    "flipUV": false,
     "shadingModel": "lit",
     "blending": "opaque",
     "postLightingBlending": "transparent",
@@ -134,7 +136,11 @@ fragment {
         float rough = materialParams.roughness;
         float occlusion = 1.0, height = 0.0;
         vec3 n = normalize(variable_bentNormal.xyz);
-        float resolved = 1.0 - smoothstep(0.65, 1.5, length(fwidth(p * 32.0)));
+        // The wall transition is only 0.175 of a cell. Fade its bump before that band
+        // becomes subpixel; waiting for an entire cell to disappear shimmers with a 1-tap bake.
+        highp vec3 cells = p * 32.0;
+        float footprint = max(length(dFdx(cells)), length(dFdy(cells)));
+        float resolved = 1.0 - smoothstep(0.0875, 0.35, footprint);
         float wall = detail.r * resolved;
         colour *= (0.982 + 0.018 * wall) * (1.0 - 0.035 * compressed);
         occlusion = 0.98 + 0.02 * wall;
