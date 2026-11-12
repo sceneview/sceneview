@@ -31,14 +31,8 @@ object RerunReplayAssets {
 }
 
 /**
- * The scan "See an example" opens: a real scan made with the demo — a garden path, walked for a
- * minute with a Pixel 9 — shipped as the three files every scan is kept as, so it opens through
- * the very code your own scans open by: its dense cloud grows along the camera's path, and its
- * result is the screen your scans land on. Written by `tools/make-scan-example.py`, which leaves
- * out the photos that show more than the garden.
- *
- * [RerunReplayAssets] stays the sparse room the capture screen's QA states and the unit tests are
- * staged from: it has no dense cloud, so it has no result to show.
+ * The dense garden scan retained for stage B, written by `tools/make-scan-example.py`.
+ * "See an example" currently plays the bundled room ([RerunReplayAssets]).
  */
 object RerunExampleAssets {
     const val DIR = "rerun/example"

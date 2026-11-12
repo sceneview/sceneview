@@ -30,12 +30,15 @@ internal fun CameraShot.toOrbitPose(): OrbitPose = OrbitPose(
  * Driven from `onFrame`, after each drawn frame, by [frameDrawn]; the buttons only [request].
  *
  * Without [reveals] the camera opens where the framing is and stays there: no crane down onto it
- * (Scan redesign, PR 1: « pas de mouvement de caméra imposé »).
+ * (Scan redesign, PR 1: « pas de mouvement de caméra imposé »). With them, [entrance] is the
+ * path onto the framing: the library's crane by default, [ScanOpening] for a result that opens on
+ * its Photo layer.
  */
 internal class ScanResultCinematics(
     val orbit: ArDebugOrbitCamera,
     val animator: CameraAnimator = CameraAnimator(CameraShot()),
     private val reveals: Boolean = true,
+    private val entrance: (CameraShot) -> CameraPath = { CameraPath.reveal(it) },
 ) {
     /** The `cameraManipulator` for the `SceneView`: the animator while it plays, [orbit] otherwise. */
     val manipulator = CinematicCameraManipulator(animator, orbit)
@@ -73,7 +76,7 @@ internal class ScanResultCinematics(
             opening.aim(orbit, home)
             if (framed) {
                 revealed = true
-                if (reveals) animator.play(CameraPath.reveal(ArDebugFraming.clamp(home).toShot()))
+                if (reveals) animator.play(entrance(ArDebugFraming.clamp(home).toShot()))
             }
             return false
         }
@@ -132,4 +135,41 @@ internal class ScanResultCinematics(
         manipulator.interrupt()
         touring = false
     }
+}
+
+/**
+ * How a result that opens on its Photo layer is entered: from close and low, a turn to the side
+ * — the place as whoever scanned it saw it, large in the frame — then up and out to the framing.
+ * The first picture reads as the place itself before the whole of it is seen from above; the
+ * first touch takes the camera, as on every move.
+ *
+ * Not from inside it, nor from eye height: measured on a Pixel 4a (2026-11-12), half the framing's
+ * distance at 9° showed the place edge-on, a band of splats too close to be anything.
+ */
+internal object ScanOpening {
+    fun path(home: CameraShot): CameraPath = CameraPath.reveal(
+        home = home,
+        durationSeconds = SECONDS,
+        turnDegrees = TURN_DEGREES,
+        startElevationDegrees = minOf(START_ELEVATION, home.elevationDegrees),
+        startDistanceFactor = START_DISTANCE_FACTOR,
+    )
+
+    /** The camera pose at the start of the rise. */
+    fun start(home: CameraShot): CameraShot = path(home).keyframes.first().shot
+
+    /** Long enough to be a flight, short enough that the model's wait is not a camera move. */
+    const val SECONDS = 5f
+
+    /** How far into the path the camera is well above the ground: what lies flat on it may show. */
+    const val RISEN_SECONDS = 2f
+
+    /** Round from the framing: the place turns into its best side as the camera rises. */
+    const val TURN_DEGREES = -55f
+
+    /** Low over the place, its surface still read as a surface. */
+    const val START_ELEVATION = 20f
+
+    /** Closer than the framing: the place fills the width, its edges still in the frame. */
+    const val START_DISTANCE_FACTOR = 0.8f
 }

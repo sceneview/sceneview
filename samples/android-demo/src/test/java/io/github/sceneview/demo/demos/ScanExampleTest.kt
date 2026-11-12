@@ -2,6 +2,9 @@ package io.github.sceneview.demo.demos
 
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.ReplayManifest
+import io.github.sceneview.demo.demos.internal.RerunReplayAssets
+import io.github.sceneview.demo.demos.internal.RerunCapturePack
+import io.github.sceneview.demo.demos.internal.RerunScanFile
 import io.github.sceneview.demo.demos.internal.RerunExampleAssets
 import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.of
@@ -17,29 +20,52 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/**
- * "See an example" is a real scan, and it opens on everything a scan has: a dense cloud, a
- * result seen at once on its Photo layer, and the model that takes its place once built.
- *
- * The example the demo shipped until 4.69 was a sparse recording: no dense cloud, so no result and
- * no Photo layer, and the Photo layer was offered in debug builds only. Each of these tests fails
- * on that state — the first on the sparse recording, the last on the debug-only layer.
- */
+/** The example is the bundled room replay; dense result checks use a scan opened from a file. */
 class ScanExampleTest {
     private val dir = listOf(
         File("src/main/assets"),
         File("samples/android-demo/src/main/assets"),
     ).first { File(it, RerunExampleAssets.DIR).isDirectory }
 
-    private val manifest = requireNotNull(ReplayManifest.parse(File(dir, RerunExampleAssets.MANIFEST).readText()))
-    private val archive = File(dir, RerunExampleAssets.MEDIA).readBytes()
-    private val trace = ArDebugTrace.of(File(dir, RerunExampleAssets.LOG).useLines { parseArDebugLog(it) })
+    // Keep the dense garden as a real scan fixture, independently of the landing's example.
+    private val fileCapture = run {
+        val file = File.createTempFile("scan-result-", ".svscan")
+        try {
+            file.writeBytes(RerunScanFile.write(RerunCapturePack(
+                File(dir, RerunExampleAssets.MANIFEST).readBytes(),
+                File(dir, RerunExampleAssets.LOG).readBytes(),
+                File(dir, RerunExampleAssets.MEDIA).readBytes(),
+            )))
+            requireNotNull(RerunScanFile.read(file.readBytes()))
+        } finally {
+            file.delete()
+        }
+    }
+    private val manifest = requireNotNull(ReplayManifest.parse(String(fileCapture.manifest)))
+    private val archive = fileCapture.media
+    private val trace = ArDebugTrace.of(parseArDebugLog(fileCapture.log))
     private val dense = ReplayDenseLayer.of(manifest, archive)
     private val media = RerunReplayMedia(trace, manifest, emptyMap(), emptyMap(), archive, dense = dense)
 
     @Test
-    fun `the example is a dense scan with the normals a result is built from`() {
-        val cloud = assertNotNull("the example has no dense cloud", dense).let { dense!!.cloud }
+    fun `the bundled room is a replay with photos and planes rather than a model result`() {
+        val roomManifest = requireNotNull(ReplayManifest.parse(File(dir, RerunReplayAssets.MANIFEST).readText()))
+        val roomArchive = File(dir, RerunReplayAssets.MEDIA).readBytes()
+        val roomTrace = ArDebugTrace.of(File(dir, RerunReplayAssets.LOG).useLines { parseArDebugLog(it) })
+        val room = RerunReplayMedia(roomTrace, roomManifest, emptyMap(), emptyMap(), roomArchive)
+        assertNull(RerunModelSource.of(pack = null, media = room))
+        assertTrue("the room has no video strip", roomTrace.imageCount > 0)
+        assertTrue("the room has no planes to measure", roomTrace.lastPlanes().isNotEmpty())
+        assertNotNull("the room has no floor", roomManifest.floorY)
+        for (i in 0 until roomTrace.imageCount) {
+            val span = requireNotNull(roomManifest.media[roomTrace.imagePath(i)])
+            assertTrue(span.offset + span.length <= roomArchive.size)
+        }
+    }
+
+    @Test
+    fun `the retained garden fixture has the normals a result is built from`() {
+        val cloud = assertNotNull("the retained garden has no dense cloud", dense).let { dense!!.cloud }
         assertTrue("only ${cloud.count} surfels: not a place one recognises", cloud.count >= MIN_SURFELS)
         assertNotNull("surfels without normals build no model", cloud.normals)
         val colours = cloud.colors.toSet().size
@@ -47,14 +73,14 @@ class ScanExampleTest {
     }
 
     @Test
-    fun `the example opens on a result`() {
-        val source = RerunModelSource.of(pack = null, media = media)
+    fun `a real scan opened from a file has a surfel result`() {
+        val source = RerunModelSource.of(pack = fileCapture, media = media)
         assertTrue("no result to open: $source", source is RerunModelSource.Surfels)
     }
 
     @Test
     fun `the result offers its Photo layer in every build, with splats to draw`() {
-        val source = RerunModelSource.of(pack = null, media = media)
+        val source = RerunModelSource.of(pack = fileCapture, media = media)
         assertTrue(photoOffered(source, dense?.cloud))
         val cloud = requireNotNull(photoCloudOf(source, dense?.cloud))
         assertTrue(SurfelSplats.of(cloud).count > 0)
@@ -64,7 +90,7 @@ class ScanExampleTest {
 
     @Test
     fun `the result opens on the scan's own surfels, framed as its model will be`() {
-        val source = RerunModelSource.of(pack = null, media = media)
+        val source = RerunModelSource.of(pack = fileCapture, media = media)
         val cloud = requireNotNull(photoFirstCloud(source, dense?.cloud)) { "the result opens on a bare stage" }
         val frame = requireNotNull(ScanResultFraming.of(cloud))
         // A box a few metres wide, standing on its floor: the garden, not a speck nor the horizon.
@@ -113,7 +139,7 @@ class ScanExampleTest {
     }
 
     @Test
-    fun `every photo the example's timeline names is in its archive`() {
+    fun `every photo the retained garden timeline names is in its archive`() {
         assertTrue("an example without photos has nothing to texture its model", trace.imageCount > 0)
         val missing = (0 until trace.imageCount).map { trace.imagePath(it) }.filterNot { it in manifest.media }
         assertEquals(emptyList<String>(), missing)
@@ -121,14 +147,14 @@ class ScanExampleTest {
     }
 
     @Test
-    fun `the example stays light enough to ship in the app`() {
+    fun `the retained garden stays light enough to ship in the app`() {
         val bytes = listOf(RerunExampleAssets.MANIFEST, RerunExampleAssets.LOG, RerunExampleAssets.MEDIA)
             .sumOf { File(dir, it).length() }
         assertTrue("$bytes bytes", bytes <= MAX_BYTES)
     }
 
     private companion object {
-        /** A place read at a glance: the sparse example had none, a small object has a few thousand. */
+        /** The dense garden has far more surfels than the sparse room replay or a small object. */
         const val MIN_SURFELS = 100_000
 
         /** The camera's own colours, not a fallback tone. */

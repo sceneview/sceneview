@@ -189,8 +189,7 @@ internal fun rememberResultLayers(
     val offered = photoOffered(source, surfels)
     val layers = remember(source, surfels, key, offered) {
         ResultLayers(offered, photoFirst).also { layers ->
-            // Splats the caller built ahead (the example's, while its landing is read): drawn
-            // from the first frame instead of half a second later.
+            // Reuse any splats the caller prepared before opening the result.
             prebuilt?.takeIf { it.all.count > 0 }?.let {
                 layers.faces = it
                 layers.splats = it.all
@@ -202,7 +201,7 @@ internal fun rememberResultLayers(
         if (!layers.offered || !build || layers.splats != null || layers.unavailable) return@LaunchedEffect
         val started = System.nanoTime()
         val built = withContext(Dispatchers.Default) {
-            runCatching { photoCloudOf(source, surfels)?.let { SplatFaces.of(SurfelSplats.of(it)) } }
+            runCatching { photoCloudOf(source, surfels)?.let { SplatFaces.of(SurfelSplats.ofPlace(it)) } }
                 .onFailure { if (it is CancellationException) throw it }
                 .onFailure { Log.w(LAYERS_TAG, "photo layer not built", it) }
                 .getOrNull()
@@ -230,8 +229,8 @@ internal fun rememberResultLayers(
 internal suspend fun ResultLayers.swapUnderVeil() {
     snapshotFlow { photoPicked && splats != null }.collectLatest { photo ->
         if (photo && !photoShown && grown < 1f) {
-            // A result that opens on its Photo layer: nothing is drawn yet for a veil to hide,
-            // and the layer grows from nothing ([grow]).
+            // A result that opens on its Photo layer: nothing is drawn yet for a veil to hide.
+            // The layer grows from nothing ([grow]).
             photoShown = true
         } else if (photo != photoShown) {
             veil.animateTo(VEIL_PEAK, tween(SceneViewTokens.Duration.handoverMillis, easing = FastOutSlowInEasing))
@@ -329,17 +328,24 @@ internal fun ResultLayerPicker(
     ready: Boolean,
     onPlan: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    seen: Boolean = ready,
 ) {
     if (!layers.offered) return
     // The dock's Plan leaves Photo too: the plan is read on the model.
     LaunchedEffect(plan) { if (plan) layers.photoPicked = false }
     // A scan with nothing to splat goes back to the model rather than stay on a Photo it lacks.
     LaunchedEffect(layers.unavailable) { if (layers.unavailable) layers.photoPicked = false }
-    val alpha by animateFloatAsState(if (ready) 1f else 0f, tween(SceneViewTokens.Duration.fadeMillis), label = "layers")
+    // [seen] before it is [ready], it is there but dimmed and deaf: what the result will offer once
+    // its model is built, in the place it will be offered — no hole between the line above and the bar.
+    val alpha by animateFloatAsState(
+        targetValue = if (ready) 1f else if (seen) NOT_READY_ALPHA else 0f,
+        animationSpec = tween(SceneViewTokens.Duration.fadeMillis),
+        label = "layers",
+    )
     val chrome = LocalStageChrome.current
     val pill = SceneViewTokens.ModePill
     val note = when {
-        !layers.photoPicked || plan -> null
+        !ready || !layers.photoPicked || plan -> null
         layers.unavailable -> null
         layers.splats == null -> stringResource(R.string.scan_result_photo_preparing)
         else -> stringResource(R.string.scan_result_photo_preview)
@@ -478,6 +484,9 @@ internal fun ResultLayerVeil(layers: ResultLayers, ground: Color, modifier: Modi
     val veil = layers.veil.value
     if (veil > 0f) Box(modifier.alpha(veil).background(ground))
 }
+
+/** The [ResultLayerPicker] while its model is not there yet: Material's disabled content. */
+private const val NOT_READY_ALPHA = 0.38f
 
 /** Test tag of the [ResultLayerPicker]. */
 internal const val RESULT_LAYERS_TAG = "result-layers"
