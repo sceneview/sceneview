@@ -20,11 +20,11 @@ object SplatPreviewFragment : DemoFragment {
         subtitleRes = R.string.demo_splat_preview_subtitle,
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.FilterCenterFocus,
-        order = 27,
+        order = 6,
         addedIn = "4.23.0",
         // #4459: the scan opens framed and sorted in one step, under its loading cover.
         updatedIn = "4.55.0",
-        tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "scan", "spz", "ply"),
+        tags = setOf("real-world scan", "splat", "gaussian", "radiance-field", "point-cloud", "scan", "spz", "ply"),
     )
 
     @Composable

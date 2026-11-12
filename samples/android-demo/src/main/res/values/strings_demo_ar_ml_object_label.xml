@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_ml_title">ML Kit Object Labels</string>
+    <string name="demo_ar_ml_title">Object labels</string>
     <string name="demo_ar_ml_subtitle">Recognize objects and label them in space</string>
     <string name="demo_ar_ml_explainer">ML Kit\'s bundled model recognizes five broad categories: Home good, Fashion good, Food, Place, and Plant. Indoors, it usually labels objects as \"Home good\".</string>
     <string name="demo_ar_ml_status_warming">Warming up — waiting for camera image…</string>

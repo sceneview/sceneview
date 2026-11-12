@@ -20,7 +20,7 @@ object ModelThumbnailsFragment : DemoFragment {
         subtitleRes = R.string.demo_model_thumbnails_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Collections,
-        order = 13,
+        order = 33,
         addedIn = "4.64.0",
         tags = setOf("thumbnail", "snapshot", "offscreen", "bitmap", "library", "grid", "preview"),
     )

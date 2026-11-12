@@ -743,6 +743,7 @@ internal object RoomOutline {
             runCount.removeAt(shortest)
             mergeEqual(runLabel, runStart, runCount)
         }
+        foldAlongWalls(loop, m, lines, runLabel, runStart, runCount)
         if (runLabel.size < 3) return Trace.Missed(TraceMiss.TooFewSides)
         // Each run as a side: a wall's own line, or a deduced one.
         data class Run(val label: Int, val start: Int, val count: Int)
@@ -951,6 +952,40 @@ internal object RoomOutline {
                 }
                 changed = true
                 break
+            }
+        }
+    }
+
+    /**
+     * A stretch no wall runs along, between two runs of one wall, that never leaves that wall's
+     * line by more than [SAME_SIDE_M] is the wall's own: the floor seen a cell past a wall's free
+     * end comes back along the wall's far face before the edge turns away, and that fold is no
+     * side of the room. Such a stretch takes the wall's label and the three runs become one.
+     */
+    @Suppress("LongParameterList")
+    private fun foldAlongWalls(
+        loop: FloatArray,
+        m: Int,
+        lines: List<WallLine>,
+        label: ArrayList<Int>,
+        start: ArrayList<Int>,
+        count: ArrayList<Int>,
+    ) {
+        var r = 0
+        while (label.size > 2 && r < label.size) {
+            val prev = (r + label.size - 1) % label.size
+            val next = (r + 1) % label.size
+            val line = lines.getOrNull(label[prev])
+            val folded = label[r] == UNLABELED && line != null && label[next] == label[prev] && (0..count[r]).all { k ->
+                val e = (start[r] + k) % m
+                abs(line.oOf(loop[e * 2], loop[e * 2 + 1]) - line.offset) <= SAME_SIDE_M
+            }
+            if (folded) {
+                label[r] = label[prev]
+                mergeEqual(label, start, count)
+                r = 0
+            } else {
+                r++
             }
         }
     }

@@ -96,11 +96,15 @@ class FreshFenceTeardownTest {
         frameWorkMs: Long = 4,
         mainThreadBusy: LongRange = LongRange.EMPTY,
         pollGaps: List<Long> = listOf(BACKEND_IDLE_POLL_MS),
+        recoverAtMs: Long? = null,
         busy: (SimBackend) -> () -> Boolean,
     ): Result {
         val backend = SimBackend()
         backend.mainThreadBusy = mainThreadBusy
         backend.pollGaps = pollGaps
+        recoverAtMs?.let { at ->
+            backend.at(at) { backend.pollGaps = listOf(BACKEND_IDLE_POLL_MS) }
+        }
         var result: Result? = null
         if (backlogMs > 0) backend.enqueue(backlogMs)
         BackendIdleTeardowns().defer(
@@ -128,32 +132,25 @@ class FreshFenceTeardownTest {
 
     /**
      * A renderer and then its engine (`runsLast`, as `destroyWhenBackendIdle` passes it) deferred
-     * at t = 0 on an idle backend, each through its own probe, polled every [pollEveryMs].
+     * at t = 0 after rendering stops, sharing the production registry's probe and retirement policy.
      */
     private fun replayRendererThenEngine(pollEveryMs: Long): Pair<Result, Result> {
         val backend = SimBackend()
         backend.pollGaps = listOf(pollEveryMs)
-        val teardowns = BackendIdleTeardowns()
+        val teardowns = BackendIdleTeardowns(probe = newProbe(backend))
         var renderer: Result? = null
         var engine: Result? = null
         teardowns.defer(
             isEngineAlive = { true },
-            isBackendBusy = freshFence(backend),
             schedule = backend.schedule,
             teardown = { deferred -> renderer = Result(backend.now, backend.drainWaitMs(), deferred) },
         )
         teardowns.defer(
             isEngineAlive = { true },
-            isBackendBusy = freshFence(backend),
             schedule = backend.schedule,
             teardown = { deferred -> engine = Result(backend.now, backend.drainWaitMs(), deferred) },
             runsLast = true,
         )
-        var frame = 8L
-        while (frame < 20_000) {
-            backend.at(frame) { backend.enqueue(4) }
-            frame += pollEveryMs
-        }
         backend.runUntil(20_000)
         return checkNotNull(renderer) { "the renderer never ran" } to
             checkNotNull(engine) { "the engine never ran" }
@@ -161,14 +158,14 @@ class FreshFenceTeardownTest {
 
     private val framesWithinFreshAge = FRESH_FENCE_MAX_AGE_MS / BACKEND_IDLE_POLL_MS
 
-    private val freshFence: (SimBackend) -> () -> Boolean = { backend ->
-        FreshFenceProbe(
-            createFence = backend::createFence,
-            isReached = backend::isReached,
-            destroyFence = {},
-            now = { backend.now },
-        )::isBusy
-    }
+    private fun newProbe(backend: SimBackend) = FreshFenceProbe(
+        createFence = backend::createFence,
+        isReached = backend::isReached,
+        destroyFence = {},
+        now = { backend.now },
+    )
+
+    private val freshFence: (SimBackend) -> () -> Boolean = { backend -> newProbe(backend)::isBusy }
 
     @Test
     fun `a dispose-time fence releases into the next screen's backlog`() {
@@ -189,8 +186,8 @@ class FreshFenceTeardownTest {
         assertTrue("deferred", after.deferred)
         // Released once the backend caught up with the next screen's compilation...
         assertTrue("released after ${after.ranAtMs} ms", after.ranAtMs >= 3_200)
-        // ...and found it fresh, rather than falling back after the give-up delay.
-        assertTrue("gave up at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_GIVE_UP_MS)
+        // ...and found it fresh before the diagnostic delay elapsed.
+        assertTrue("still pending at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_WARN_AFTER_MS)
         // ...so the release's own wait only covers what was queued within the freshness window.
         assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
     }
@@ -215,8 +212,17 @@ class FreshFenceTeardownTest {
         assertTrue("blocked ${before.blockedMs} ms", before.blockedMs >= 800)
         // Released once the backend caught up with the next screen's 1 s of shaders.
         assertTrue("released after ${after.ranAtMs} ms", after.ranAtMs >= 3_900)
-        assertTrue("gave up at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_GIVE_UP_MS)
+        assertTrue("still pending at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_WARN_AFTER_MS)
         assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
+    }
+
+    @Test
+    fun `a fresh fence still cannot bound work queued behind it`() {
+        val after = replay(
+            backlogMs = 0, nextScreenAtMs = 8, nextScreenWorkMs = 3_000, busy = freshFence,
+        )
+        assertEquals(BACKEND_IDLE_POLL_MS, after.ranAtMs)
+        assertTrue("Freshness is not a native timeout", after.blockedMs >= 2_900)
     }
 
     @Test
@@ -228,39 +234,20 @@ class FreshFenceTeardownTest {
         assertEquals(0L, after.blockedMs)
     }
 
-    /**
-     * 15 fps and 10 fps: the gap between polls alone exceeds the 48 ms window, so no fence is ever
-     * found fresh. The release waits for the give-up — late, and here it does not block (see
-     * [FRESH_FENCE_GIVE_UP_MS] for the shader-compilation case that still does).
-     */
     @Test
-    fun `an idle backend polled slower than the freshness window waits for the give-up`() {
-        val runs = listOf(66L, 100L).associateWith { pollEveryMs ->
-            replay(backlogMs = 0, nextScreenWorkMs = 0, pollGaps = listOf(pollEveryMs), busy = freshFence)
-        }
-        runs.forEach { (pollEveryMs, after) ->
-            println("idle backend, a poll every $pollEveryMs ms: released at ${after.ranAtMs} ms")
-        }
-        runs.forEach { (pollEveryMs, after) ->
-            assertTrue(
-                "a poll every $pollEveryMs ms: released at ${after.ranAtMs} ms",
-                after.ranAtMs in FRESH_FENCE_GIVE_UP_MS until FRESH_FENCE_GIVE_UP_MS + pollEveryMs,
+    fun `slow polling waits for recovery instead of giving up`() {
+        listOf(66L, 100L).forEach { gap ->
+            val after = replay(
+                backlogMs = 0, nextScreenWorkMs = 0,
+                pollGaps = listOf(gap), recoverAtMs = 6_000, busy = freshFence,
             )
-            // At most a 4 ms frame queued at that same instant.
-            assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= 4L)
+            assertTrue(after.ranAtMs in 6_000L..6_200L)
+            assertEquals(0L, after.blockedMs)
         }
     }
 
-    /**
-     * The release either found the backend caught up — blocked for at most the frames queued in
-     * the freshness window — or went through the give-up. Never a long block either way.
-     */
     private fun assertNoLongBlock(case: String, after: Result) {
-        assertTrue("$case: blocked ${after.blockedMs} ms", after.blockedMs <= 500)
-        assertTrue(
-            "$case: blocked ${after.blockedMs} ms at ${after.ranAtMs} ms, before the give-up",
-            after.blockedMs <= framesWithinFreshAge * 4L || after.ranAtMs >= FRESH_FENCE_GIVE_UP_MS,
-        )
+        assertTrue("$case: blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
     }
 
     /**
@@ -277,6 +264,7 @@ class FreshFenceTeardownTest {
             nextScreenWorkMs = 2_000,
             mainThreadBusy = 71L..221L,
             pollGaps = listOf(66L),
+            recoverAtMs = 6_000,
             busy = freshFence,
         )
         println("66 ms polls, 150 ms pass: released at ${after.ranAtMs} ms, blocked ${after.blockedMs} ms")
@@ -296,6 +284,7 @@ class FreshFenceTeardownTest {
             nextScreenAtMs = 100,
             nextScreenWorkMs = 3_000,
             pollGaps = listOf(66L),
+            recoverAtMs = 6_000,
             busy = freshFence,
         )
         println("steady 66 ms polls, 3 s at 100 ms: released at ${after.ranAtMs} ms, blocked ${after.blockedMs} ms")
@@ -305,8 +294,8 @@ class FreshFenceTeardownTest {
 
     /**
      * Steady cadences from 60 fps down to 10 fps, the scene's own backlog (0 to 400 ms) times the
-     * instant (0 to 500 ms) the next screen queues 2 s of shaders. Every case either releases on a
-     * fresh fence with a short wait or goes through the give-up, except shaders queued inside the
+     * instant (0 to 500 ms) the next screen queues 2 s of shaders. Polling recovers at 6 s.
+     * Every case releases on a fresh fence, except shaders queued inside the
      * fresh window itself, at most [FRESH_FENCE_MAX_AGE_MS] before the release: the renderer's
      * teardown still waits for those. That residual is counted and kept to the window.
      */
@@ -321,6 +310,7 @@ class FreshFenceTeardownTest {
                         nextScreenAtMs = atMs,
                         nextScreenWorkMs = 2_000,
                         pollGaps = listOf(pollEveryMs),
+                        recoverAtMs = 6_000,
                         busy = freshFence,
                     ))
                 }
@@ -330,12 +320,12 @@ class FreshFenceTeardownTest {
         grid.forEach { (pollEveryMs, runs) ->
             val longBlocks = runs.count { it.third.blockedMs > 500 }
             val inWindow = runs.count { (_, atMs, after) -> after.blockedMs > 500 && queuedInWindow(atMs, after) }
-            val gaveUp = runs.count { it.third.ranAtMs >= FRESH_FENCE_GIVE_UP_MS }
+            val warned = runs.count { it.third.ranAtMs >= FRESH_FENCE_WARN_AFTER_MS }
             println(
                 "grid, a poll every $pollEveryMs ms: ${runs.size} cases, " +
                     "$longBlocks blocked over 500 ms (${100 * longBlocks / runs.size} %, $inWindow queued in the " +
                     "fresh window), max blocked ${runs.maxOf { it.third.blockedMs }} ms, " +
-                    "$gaveUp through the give-up, latest release ${runs.maxOf { it.third.ranAtMs }} ms",
+                    "$warned after the warning, latest release ${runs.maxOf { it.third.ranAtMs }} ms",
             )
         }
 
@@ -344,21 +334,21 @@ class FreshFenceTeardownTest {
                 if (!queuedInWindow(atMs, after)) assertNoLongBlock(case, after)
                 assertTrue(
                     "$case: released at ${after.ranAtMs} ms",
-                    after.ranAtMs < FRESH_FENCE_GIVE_UP_MS + 2 * pollEveryMs,
+                    after.ranAtMs < 6_000L + 2 * pollEveryMs + BACKEND_IDLE_POLL_MS,
                 )
             }
         }
-        // At 60 fps the freshness check itself releases, before the give-up.
+        // At 60 fps the freshness check itself releases, before the warning threshold.
         grid.getValue(16L).forEach { (case, _, after) ->
-            assertTrue("$case: gave up at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_GIVE_UP_MS)
+            assertTrue("$case: still pending at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_WARN_AFTER_MS)
         }
     }
 
     /**
      * A cancelled async load whose progress stalls: [AsyncLoadSettleGate] only asks the probe once
      * the load made no progress for [LOAD_SETTLE_STALL_MS]. Right after, a 150 ms main-thread pass
-     * queues 2 s of shaders. A give-up counted from the probe's creation had long expired by then,
-     * so the stale fence found after that pass was accepted.
+     * queues 2 s of shaders. The former give-up, counted from probe creation, had expired by
+     * then and accepted the stale fence. Elapsed time must never authorize that release.
      */
     @Test
     fun `a probe first polled after a stalled load still checks freshness`() {
@@ -391,7 +381,7 @@ class FreshFenceTeardownTest {
      * the next short gap is taken.
      */
     @Test
-    fun `a main thread alternating short and long frames tears down well before the give-up`() {
+    fun `a main thread alternating short and long frames tears down well before the warning threshold`() {
         val cadences = listOf(listOf(16L, 120L), listOf(120L, 16L))
         val idle = cadences.associateWith { gaps ->
             replay(backlogMs = 0, nextScreenWorkMs = 0, pollGaps = gaps, busy = freshFence)
@@ -413,7 +403,7 @@ class FreshFenceTeardownTest {
         }
         backlog.forEach { (gaps, after) ->
             assertTrue("polls $gaps: released after ${after.ranAtMs} ms", after.ranAtMs >= 3_200)
-            assertTrue("polls $gaps: gave up at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_GIVE_UP_MS)
+            assertTrue("polls $gaps: still pending at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_WARN_AFTER_MS)
             assertTrue("polls $gaps: blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
         }
     }
@@ -447,38 +437,24 @@ class FreshFenceTeardownTest {
 
         runs.forEach { (case, after) ->
             assertTrue("$case: blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
-            assertTrue("$case: gave up at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_GIVE_UP_MS)
+            assertTrue("$case: still pending at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_WARN_AFTER_MS)
         }
     }
 
     @Test
-    fun `an engine destroy waiting for the others keeps its own give-up clock`() {
-        // Polls further apart than the freshness window, at 15 fps or slower: no fence is ever
-        // fresh, both give up. The engine's delay ran alongside the renderer's, from the same
-        // first poll, so it goes in the same poll as the renderer, not 5 s later.
-        val (renderer, engine) = replayRendererThenEngine(pollEveryMs = 66)
-        val (slowRenderer, slowEngine) = replayRendererThenEngine(pollEveryMs = 300)
-        println("a poll every 66 ms: renderer at ${renderer.ranAtMs} ms, engine at ${engine.ranAtMs} ms")
-        println("a poll every 300 ms: renderer at ${slowRenderer.ranAtMs} ms, engine at ${slowEngine.ranAtMs} ms")
-
-        assertEquals(renderer.ranAtMs, engine.ranAtMs)
-        assertTrue("engine at ${engine.ranAtMs} ms", engine.ranAtMs <= 5_016)
-        assertEquals(slowRenderer.ranAtMs, slowEngine.ranAtMs)
-        assertTrue("engine at ${slowEngine.ranAtMs} ms", slowEngine.ranAtMs <= 5_100)
+    fun `a retiring engine releases after its renderer without waiting for polling recovery`() {
+        for (gap in listOf(66L, 300L)) {
+            val (renderer, engine) = replayRendererThenEngine(pollEveryMs = gap)
+            assertEquals(gap, renderer.ranAtMs)
+            assertTrue(engine.ranAtMs > renderer.ranAtMs)
+            assertTrue(engine.ranAtMs <= 3 * gap)
+            assertEquals(0L, renderer.blockedMs)
+            assertEquals(0L, engine.blockedMs)
+        }
     }
 
     @Test
-    fun `a backend that never catches up gets the old behaviour after the give-up delay`() {
-        // Every frame takes 20 ms of backend time but one is queued every 16 ms: the backlog
-        // only grows, so no fence is ever reached within a few polls.
-        val after = replay(nextScreenWorkMs = 0, frameWorkMs = 20, busy = freshFence)
-
-        assertTrue("released after ${after.ranAtMs} ms", after.ranAtMs >= FRESH_FENCE_GIVE_UP_MS)
-        assertTrue("released after ${after.ranAtMs} ms", after.ranAtMs <= FRESH_FENCE_GIVE_UP_MS * 3)
-    }
-
-    @Test
-    fun `a probe that cannot create a fence does not hold the teardown`() {
+    fun `a probe that cannot create a fence keeps the teardown pending`() {
         val probe = FreshFenceProbe<Int>(
             createFence = { null },
             isReached = { true },
@@ -486,7 +462,7 @@ class FreshFenceTeardownTest {
             now = { 0L },
         )
 
-        assertEquals(false, probe.isBusy())
+        assertTrue(probe.isBusy())
     }
 
     @Test

@@ -15,11 +15,11 @@ object ArImageStabilizationFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARImageStabilizationDemo.kt",
         titleRes = R.string.demo_ar_image_stabilization_title,
         subtitleRes = R.string.demo_ar_image_stabilization_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.VideoStable,
-        order = 48,
+        order = 40,
         addedIn = "4.0.8",
-        tags = setOf("ar", "camera", "stabilization", "eis"),
+        tags = setOf("image stabilization", "ar", "camera", "stabilization", "eis"),
     )
 
     @Composable

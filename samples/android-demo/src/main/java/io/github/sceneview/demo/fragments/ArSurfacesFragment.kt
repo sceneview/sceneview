@@ -20,12 +20,12 @@ object ArSurfacesFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARSurfacesDemo.kt",
         titleRes = R.string.demo_ar_surfaces_title,
         subtitleRes = R.string.demo_ar_surfaces_subtitle,
-        category = DemoCategory.PLACE_AR,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Grain,
-        order = 26,
+        order = 36,
         addedIn = "4.16.0",
         updatedIn = "4.57.0",
-        tags = setOf("ar", "plane", "surface", "wall", "floor", "renderer"),
+        tags = setOf("surfaces", "ar", "plane", "surface", "wall", "floor", "renderer"),
     )
 
     @Composable

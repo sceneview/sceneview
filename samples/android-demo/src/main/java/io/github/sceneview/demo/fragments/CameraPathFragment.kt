@@ -18,9 +18,9 @@ object CameraPathFragment : DemoFragment {
         subtitleRes = R.string.demo_camera_path_subtitle,
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Videocam,
-        order = 31,
+        order = 3,
         addedIn = "4.64.0",
-        tags = setOf("camera", "keyframes", "path", "orbit", "cinematic", "timeline", "no-camera"),
+        tags = setOf("camera path", "camera", "keyframes", "path", "orbit", "cinematic", "timeline", "no-camera"),
         status = DemoStatus.InReview,
     )
 

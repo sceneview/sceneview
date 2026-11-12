@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **`llms.txt` opens with two complete Android screens.** A model the user turns with a finger and an AR tap-to-place screen, each one file with its exact imports, now sit right after Setup (in the first 16 kB of a 600 kB file), so an assistant that reads only the top still emits code that compiles. The header no longer states "Kotlin 2.4.21" as if it were a requirement: Kotlin 2.3 or newer, with `4.18.0` for AGP 8.

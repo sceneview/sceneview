@@ -80,6 +80,7 @@ internal object DeepLinkRouter {
      * live registered ids — `DeepLinkRouterTest` asserts this invariant.
      */
     val DEMO_ID_ALIASES: Map<String, String> = mapOf(
+        "feel" to "matter", // #5002 — the tactile prototype is now Matter.
         "wall-placement" to "ar-placement",
         // #4307 — `PlaneRendererV2` became the only plane renderer, so the demo that
         // showed it off stopped being "V2" and is the Surfaces demo.

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings for the `model-thumbnails` demo (registered by `ModelThumbnailsFragment.kt`). -->
 <resources>
-    <string name="demo_model_thumbnails_title">Model Thumbnails</string>
+    <string name="demo_model_thumbnails_title">Model thumbnails</string>
     <string name="demo_model_thumbnails_subtitle">A model library drawn off screen, with no 3D view</string>
     <string name="demo_model_thumbnails_intro">Every image below is a GLB rendered into a bitmap, one at a time, by the engine of this screen. There is no 3D view here: each model is framed whole, lit and drawn on a transparent background.</string>
     <string name="demo_model_thumbnails_front">Three-quarter view</string>

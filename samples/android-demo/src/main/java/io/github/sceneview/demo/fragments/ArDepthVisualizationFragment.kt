@@ -15,12 +15,12 @@ object ArDepthVisualizationFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARDepthVisualizationDemo.kt",
         titleRes = R.string.demo_ar_depth_visualization_title,
         subtitleRes = R.string.demo_ar_depth_visualization_subtitle,
-        category = DemoCategory.UNDERSTAND,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Gradient,
-        order = 40,
+        order = 37,
         addedIn = "4.11.1",
         updatedIn = "4.52.0",
-        tags = setOf("ar", "depth", "visualization", "false-color", "depth-map"),
+        tags = setOf("depth visualization", "ar", "depth", "visualization", "false-color", "depth-map"),
     )
 
     @Composable

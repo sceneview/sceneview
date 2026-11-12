@@ -32,9 +32,9 @@ object ArRerunFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt",
         titleRes = R.string.demo_ar_rerun_title,
         subtitleRes = R.string.demo_ar_rerun_subtitle,
-        category = DemoCategory.DEV_TOOLS,
+        category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Polyline,
-        order = 12,
+        order = 23,
         addedIn = "4.0.1",
         updatedIn = "4.57.0",
         tags = setOf(

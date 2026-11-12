@@ -23,7 +23,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.68.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.69.0")
 ]
 ```
 

@@ -4,7 +4,7 @@
      `camera-controls` and `gesture-editing` demos (#2239 Batch 1). Old ids
      continue to deep-link through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
-    <string name="demo_camera_and_gestures_title">Camera &amp; Gestures</string>
+    <string name="demo_camera_and_gestures_title">Camera &amp; object controls</string>
     <string name="demo_camera_and_gestures_subtitle">Orbit with inertia, fly to a subject, named views</string>
 
     <string name="camera_gestures_loading">Setting the stage…</string>

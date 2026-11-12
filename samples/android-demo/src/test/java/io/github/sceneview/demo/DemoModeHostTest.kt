@@ -114,8 +114,8 @@ class DemoModeHostTest {
     fun `the former early-access demos are listed on every phone, in their own sections`() {
         // SceneView Labs is gone (2026-11-09): its three demos are ordinary catalogue entries.
         val listed = listedDemos(ALL_DEMOS, xrDevice = false).associateBy { it.id }
-        assertEquals(DemoCategory.CREATE, listed.getValue("finger-drawing").category)
+        assertEquals(DemoCategory.PLAY, listed.getValue("finger-drawing").category)
         assertEquals(DemoCategory.PLACE_AR, listed.getValue("ar-pool").category)
-        assertEquals(DemoCategory.UNDERSTAND, listed.getValue("ar-image-stabilization").category)
+        assertEquals(DemoCategory.DEV_TOOLS, listed.getValue("ar-image-stabilization").category)
     }
 }

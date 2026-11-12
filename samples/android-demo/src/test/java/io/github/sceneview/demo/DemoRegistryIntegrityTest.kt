@@ -9,7 +9,7 @@ import java.io.File
 import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
 import io.github.sceneview.demo.ui.home.FEATURED_IDS
-import io.github.sceneview.demo.ui.home.FEATURED_PAGER_IDS
+import io.github.sceneview.demo.ui.home.HOME_OUTCOMES
 import io.github.sceneview.demo.ui.home.HERO_DEMO_ID
 import io.github.sceneview.demo.ui.home.homeTopSections
 
@@ -115,7 +115,7 @@ class DemoRegistryIntegrityTest {
         }
         // The fallback path is still exercised for a genuinely unknown key.
         assertEquals(
-            "Unknown category must fall back to the View in 3D label",
+            "Unknown category must fall back to the Models & cameras label",
             categoryDisplayNameRes("nope"),
             categoryDisplayNameRes(DemoCategory.VIEW_3D),
         )
@@ -224,40 +224,94 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `the featured lists name registered demos, once each, in the common Featured order`() {
-        // The pager and the shelf under it are the home's priority lists. A renamed id
-        // would drop a page or a card silently (both skip what they cannot resolve) and
-        // a repeat would collide on its key.
-        val ids = ALL_DEMOS.map { it.id }.toSet()
-        val unknown = (FEATURED_IDS + FEATURED_PAGER_IDS).filterNot { it in ids }
-        assertTrue("Featured lists name unregistered ids: $unknown", unknown.isEmpty())
-        assertEquals(
-            "The featured pager lists a demo twice",
-            FEATURED_PAGER_IDS.size,
-            FEATURED_PAGER_IDS.toSet().size,
+    fun `the three discovery outcomes resolve to listed demo ids`() {
+        val ids = HOME_OUTCOMES.map { it.demoId }
+        assertEquals(listOf("model-viewer", "ar-placement", "ar-rerun"), ids)
+        assertEquals(HERO_DEMO_ID, ids.first())
+        val phoneDemos = listedDemos(ALL_DEMOS, xrDevice = false)
+        ids.forEach { id ->
+            assertEquals(id, DeepLinkRouter.validate(id, phoneDemos))
+        }
+        assertEquals(3, HOME_OUTCOMES.map { it.labelRes }.distinct().size)
+        assertTrue(HOME_OUTCOMES.all { it.labelRes != 0 })
+    }
+
+    @Test
+    fun `Try next starts with Materials and Cosmos and keeps every shortcut registered`() {
+        assertEquals(listOf("materials", "cosmos", "rolling-balls"), FEATURED_IDS)
+        val top = homeTopSections(HOME_OUTCOMES.map { it.demoId }, FEATURED_IDS, fresh = emptyList())
+        assertEquals(FEATURED_IDS, top.featured)
+        FEATURED_IDS.forEach { id -> assertEquals(id, DeepLinkRouter.validate(id, ALL_DEMOS)) }
+    }
+
+    @Test
+    fun `every listed demo appears in exactly one category of the unfiltered catalogue`() {
+        for (xrDevice in listOf(false, true)) {
+            val listed = listedDemos(ALL_DEMOS, xrDevice)
+            val top = homeTopSections(HOME_OUTCOMES.map { it.demoId }, FEATURED_IDS, fresh = emptyList())
+            val catalogue = top.catalogue(listed.map { it.id })
+            val categories = DEMO_CATEGORIES.associateWith { category ->
+                catalogue.filter { id -> listed.single { it.id == id }.category == category }
+            }
+            assertEquals(listed.map { it.id }, categories.values.flatten())
+            assertEquals(
+                listed.associate { it.id to 1 },
+                categories.values.flatten().groupingBy { it }.eachCount(),
+            )
+        }
+    }
+
+    @Test
+    fun `a featured demo is also in its permanent catalogue category`() {
+        val listed = listedDemos(ALL_DEMOS, xrDevice = false)
+        val top = homeTopSections(HOME_OUTCOMES.map { it.demoId }, FEATURED_IDS, fresh = emptyList())
+        val catalogue = top.catalogue(listed.map { it.id })
+        for (id in top.featured) {
+            val demo = listed.single { it.id == id }
+            val categoryIds = catalogue.filter { entry -> listed.single { it.id == entry }.category == demo.category }
+            assertEquals("$id must still appear once under ${demo.category}", 1, categoryIds.count { it == id })
+        }
+        assertEquals(DemoCategory.CREATE, listed.single { it.id == "materials" }.category)
+        assertEquals(DemoCategory.PLAY, listed.single { it.id == "cosmos" }.category)
+    }
+
+    @Test
+    fun `the catalogue follows the six-section discovery tree`() {
+        val expected = linkedMapOf(
+            DemoCategory.VIEW_3D to listOf(
+                "model-viewer", "animation-physics", "camera-path", "camera-gestures", "picking-collision", "splat-preview",
+            ),
+            DemoCategory.CREATE to listOf(
+                "materials", "lighting", "contact-shadow-preview", "custom-geometry", "geometry",
+                "lines-paths", "spatial-audio", "two-d-in-three-d",
+            ),
+            DemoCategory.PLAY to listOf("matter", "cosmos", "rolling-balls", "finger-drawing"),
+            DemoCategory.PLACE_AR to listOf("ar-placement", "ar-orbital", "ar-pool", "ar-image"),
+            DemoCategory.UNDERSTAND to listOf(
+                "ar-rerun", "ar-splat-room", "ar-measure", "ar-depth-occlusion", "ar-people-occlusion",
+                "ar-face", "ar-body-tracker", "point-and-ask", "ar-scene-semantics", "ar-depth-of-field",
+            ),
+            DemoCategory.DEV_TOOLS to listOf(
+                "model-thumbnails", "debug-overlay", "ar-plane-node", "ar-surfaces", "ar-depth-visualization",
+                "ar-point-cloud", "ar-raw-depth-point-cloud", "ar-image-stabilization", "ar-cloud-anchor",
+                "ar-geospatial-anchors", "ar-ml-object-label", "ar-xr",
+            ),
         )
-        assertEquals("The hero demo opens the pager", HERO_DEMO_ID, FEATURED_PAGER_IDS.first())
-        // The common Featured list of the samples audit (§ 5), the same five ids as iOS.
-        assertEquals(
-            "The Featured list drifted from the one iOS shows",
-            listOf("ar-rerun", "cosmos", "ar-placement", "model-viewer", "materials"),
-            FEATURED_IDS,
+        assertEquals(expected.keys.toList(), DEMO_CATEGORIES)
+        assertEquals(expected, ALL_DEMOS.groupBy { it.category }.mapValues { (_, demos) -> demos.map { it.id } })
+    }
+
+    @Test
+    fun `AR diagnostics retain their camera routing in Developer tools`() {
+        val expected = setOf(
+            "ar-plane-node", "ar-surfaces", "ar-depth-visualization", "ar-point-cloud",
+            "ar-raw-depth-point-cloud", "ar-image-stabilization", "ar-cloud-anchor",
+            "ar-geospatial-anchors", "ar-ml-object-label", "ar-xr",
         )
-        // What the pager pages through never comes back as a banner (#4304), the hero
-        // first of all.
-        val shelf = homeTopSections(FEATURED_PAGER_IDS, FEATURED_IDS, fresh = emptyList()).featured
-        assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in shelf)
-        assertTrue(
-            "A featured pager page repeats as a Featured banner",
-            shelf.none { it in FEATURED_PAGER_IDS },
-        )
-        // The banners are the card the Home is liked for: the pager stays short enough to
-        // leave some.
-        assertEquals(
-            "The Featured banners under the pager",
-            listOf("ar-rerun", "ar-placement", "materials"),
-            shelf,
-        )
+        val diagnostics = ALL_DEMOS.filter { it.category == DemoCategory.DEV_TOOLS && it.isArDemo }
+        assertEquals(expected, diagnostics.map { it.id }.toSet())
+        assertTrue(diagnostics.filterNot { it.id == "ar-xr" }.all { it.opensCameraOnEntry })
+        assertFalse(diagnostics.single { it.id == "ar-xr" }.opensCameraOnEntry)
     }
 
     @Test

@@ -1561,9 +1561,10 @@ fun rememberEngine(
         onDispose {
             // Not `safeDestroy()` inline: Engine.destroy() joins the backend thread after it has
             // run every queued command, and a scene disposed right after it appeared still has
-            // its shader compiles queued — seconds on the main thread, an ANR (#3799). Destroy
-            // once the backend is idle instead, polled from the main looper; on an idle backend
-            // that is one poll after onDispose returns.
+            // its shader compiles queued — seconds on the main thread, an ANR (#3799).
+            // Mark it RETIRING after the scene's producers stop. Pending releases then accept
+            // a reached fence regardless of age, so a slow main looper cannot retain this engine
+            // and its EGL context. Other conditions (model decoders) still delay destruction.
             engine.destroyWhenBackendIdle { eglContext.destroy() }
         }
     }

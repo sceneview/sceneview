@@ -2,7 +2,7 @@
 <!-- Strings for the `finger-drawing` demo (registered by `FingerDrawingFragment.kt`, #4082):
      its 3D mode (`FingerDrawingDemo.kt`) and its AR mode (`FingerDrawingArDemo.kt`). -->
 <resources>
-    <string name="demo_finger_drawing_title">Finger Drawing</string>
+    <string name="demo_finger_drawing_title">Draw in 3D</string>
     <string name="demo_finger_drawing_subtitle">Paint in the air, then walk around it</string>
     <string name="demo_finger_drawing_explainer">Each stroke is a tube generated in Kotlin from the path of your finger and drawn by a MeshNode. Draw, turn the stage with Orbit, then draw again from the new angle.</string>
     <string name="demo_finger_drawing_ar_explainer">Each stroke is a tube generated in Kotlin and hung on an ARCore anchor an arm\'s reach in front of the phone. Hold your finger still and move the phone to draw through the room.</string>

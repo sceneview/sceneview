@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="demo_two_d_in_three_d_title">2D in 3D</string>
+    <string name="demo_two_d_in_three_d_title">Panels &amp; media</string>
     <string name="demo_two_d_in_three_d_subtitle">Live UI, text, images and video in a 3D scene</string>
     <string name="demo_two_d_in_three_d_inspect_hint">Tap the rocket to restyle it</string>
     <string name="demo_two_d_in_three_d_explainer">Everything flat here lives in the 3D scene. The card beside the rocket is live Compose UI (ViewNode): tap a part, then pick a finish. Behind it, ImageNode hangs a picture, VideoNode plays a streamed clip, BillboardNode keeps the badge turned to you and TextNode writes the labels. Drag to walk around them.</string>
