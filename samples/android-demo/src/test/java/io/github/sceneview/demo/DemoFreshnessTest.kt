@@ -24,6 +24,7 @@ class DemoFreshnessTest {
         status: DemoStatus = DemoStatus.Working,
     ) = DemoEntry(
         id = id,
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt",
         titleRes = 1,
         subtitleRes = 2,
         category = DemoCategory.CREATE,

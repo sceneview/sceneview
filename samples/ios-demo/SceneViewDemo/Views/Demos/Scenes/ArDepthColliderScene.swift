@@ -1,4 +1,5 @@
 // @sceneId     ar-depth-collider
+// @source      SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift
 // @title       Depth Collider
 // @subtitle    Virtual balls bounce off the real floor / table (depth-driven physics)
 // @category    ar

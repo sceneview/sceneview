@@ -1,4 +1,5 @@
 // @sceneId     camera-path
+// @source      SceneViewDemo/Views/Demos/CameraPathDemo.swift
 // @title       Camera Path
 // @subtitle    Play, pause and scrub a keyframed camera orbit
 // @category    basics3D

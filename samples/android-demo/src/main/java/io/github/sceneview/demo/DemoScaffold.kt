@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Science
@@ -125,6 +126,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -1804,10 +1806,19 @@ private fun BoxScope.DemoIdentityRow(
     }
 }
 
+/** Shared by both app-action surfaces; the route supplies the canonical sample id. */
+@Composable
+private fun demoSourceAction(): (() -> Unit)? {
+    val sampleId = LocalSampleId.current
+    val sourceUrl = remember(sampleId) { ALL_DEMOS.find { it.id == sampleId }?.sourceUrl }
+    val uriHandler = LocalUriHandler.current
+    return sourceUrl?.let { { uriHandler.openUri(it) } }
+}
+
 /**
  * The app-level actions as a standard overflow menu (#4807): a ⋮ glass button at the end of the
- * identity row, opening a Material menu — Take photo, Record video, Reset, Send feedback, QA mode — in the
- * order the settings sheet lists them. For a screen that owns the whole window (3D Scan's live
+ * identity row, opening a Material menu — Take photo, Record video, Reset, View source,
+ * Send feedback, QA mode — in the order the settings sheet lists them. For a screen that owns the whole window (3D Scan's live
  * capture), where a Settings item in the dock took a dock's height for two rows.
  */
 @Composable
@@ -1818,6 +1829,7 @@ private fun DemoActionsMenu(
     recording: Boolean,
     onPhoto: (() -> Unit)? = null,
 ) {
+    val onViewSource = demoSourceAction()
     var open by remember { mutableStateOf(false) }
     Box {
         GlassIconButton(
@@ -1869,6 +1881,17 @@ private fun DemoActionsMenu(
                         onReset()
                     },
                     modifier = Modifier.testTag(DemoScaffoldTestTags.RESET_ACTION),
+                )
+            }
+            if (onViewSource != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.demo_view_source)) },
+                    leadingIcon = { Icon(Icons.Outlined.Code, null) },
+                    onClick = {
+                        open = false
+                        haptic.selection()
+                        onViewSource()
+                    },
                 )
             }
             DropdownMenuItem(
@@ -2797,6 +2820,19 @@ private fun DemoSettingsSheetColumn(
                     contentDescription = resetCd,
                     onClick = onReset,
                     modifier = Modifier.testTag(DemoScaffoldTestTags.RESET_ACTION),
+                )
+            }
+            val onViewSource = demoSourceAction()
+            if (onViewSource != null) {
+                val sourceLabel = stringResource(R.string.demo_view_source)
+                SheetActionRow(
+                    icon = Icons.Outlined.Code,
+                    label = sourceLabel,
+                    contentDescription = sourceLabel,
+                    onClick = {
+                        haptic.selection()
+                        onViewSource()
+                    },
                 )
             }
             val feedbackCd = stringResource(R.string.feedback_action_cd)

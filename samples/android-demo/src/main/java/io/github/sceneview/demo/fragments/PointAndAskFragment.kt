@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.PointAndAskDemo
 object PointAndAskFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "point-and-ask",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/PointAndAskDemo.kt",
         titleRes = R.string.demo_point_and_ask_title,
         subtitleRes = R.string.demo_point_and_ask_subtitle,
         category = DemoCategory.UNDERSTAND,

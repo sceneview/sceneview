@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.CameraPathDemo
 object CameraPathFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "camera-path",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/CameraPathDemo.kt",
         titleRes = R.string.demo_camera_path_title,
         subtitleRes = R.string.demo_camera_path_subtitle,
         category = DemoCategory.VIEW_3D,

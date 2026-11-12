@@ -1,4 +1,5 @@
 // @sceneId     camera-gestures
+// @source      SceneViewDemo/Views/Demos/CameraControlsDemo.swift
 // @title       Camera & Gestures
 // @subtitle    Orbit, pan and look around, then move a model by hand
 // @category    interaction

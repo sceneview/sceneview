@@ -630,6 +630,7 @@ struct DemoControlsSheet<Controls: View>: View {
     @ViewBuilder let controls: () -> Controls
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.analyticsSampleId) private var sampleId
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
     @State private var peek: CGFloat = 0
     @State private var detent: PresentationDetent = Self.fallback
@@ -710,6 +711,12 @@ struct DemoControlsSheet<Controls: View>: View {
             // The shared Record action (samples audit, step 0): every demo can
             // be filmed, which is what the `ar-record-playback` card used to show.
             DemoRecordRows()
+            if let sourceURL = GeneratedScenes.sourceURL(for: sampleId) {
+                row(icon: "chevron.left.forwardslash.chevron.right", title: "View Source") {
+                    openURL(sourceURL)
+                }
+                .accessibilityIdentifier("demo-view-source")
+            }
             row(icon: "exclamationmark.bubble", title: "Send feedback") {
                 if let url = URL(string: "https://github.com/SceneView/sceneview/issues/new/choose") {
                     openURL(url)

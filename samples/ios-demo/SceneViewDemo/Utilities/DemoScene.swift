@@ -37,6 +37,7 @@ import SwiftUI
 /// # Directives
 ///
 /// ```
+/// // @source      SceneViewDemo/Views/Demos/ModelViewerDemo.swift
 /// // @sceneId     model-viewer
 /// // @title       Model Viewer
 /// // @subtitle    Load and display 3D models
@@ -46,6 +47,9 @@ import SwiftUI
 /// // @status      working           (optional — see below)
 /// // @androidOnlyReason  <reason>   (optional — see below)
 /// ```
+///
+/// `@source` is the Swift implementation path relative to `samples/ios-demo`.
+/// It is required and powers the shared View Source action.
 ///
 /// `@sceneId`, `@title`, `@subtitle`, `@category`, `@section` and `@available` are
 /// required. `@status` is **optional** and mirrors Android's `DemoStatus`
@@ -102,6 +106,7 @@ import SwiftUI
 /// Conforming with `enum` (no cases) is idiomatic Swift for a namespace:
 ///
 /// ```swift
+/// // @source      SceneViewDemo/Views/Demos/ModelViewerDemo.swift
 /// // @sceneId     model-viewer
 /// // @title       Model Viewer
 /// // @subtitle    Load and display 3D models

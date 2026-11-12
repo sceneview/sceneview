@@ -15,6 +15,7 @@ import io.github.sceneview.demo.demos.ModelThumbnailsDemo
 object ModelThumbnailsFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "model-thumbnails",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ModelThumbnailsDemo.kt",
         titleRes = R.string.demo_model_thumbnails_title,
         subtitleRes = R.string.demo_model_thumbnails_subtitle,
         category = DemoCategory.DEV_TOOLS,

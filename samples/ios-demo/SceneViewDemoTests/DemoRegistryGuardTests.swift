@@ -45,6 +45,20 @@ final class DemoRegistryGuardTests: XCTestCase {
         return kebabCase.firstMatch(in: id, options: [], range: range) != nil
     }
 
+    func testEveryRegisteredSourceExistsRelativeToTheModule() {
+        let moduleDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+        XCTAssertEqual(Set(GeneratedScenes.sourcePaths.keys), GeneratedScenes.allowedIds)
+        for (id, path) in GeneratedScenes.sourcePaths {
+            let source = moduleDirectory.appendingPathComponent(path)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: source.path),
+                          "\(id): missing source \(source.path)")
+            XCTAssertTrue(path.hasPrefix("SceneViewDemo/") && path.hasSuffix(".swift"))
+            XCTAssertEqual(GeneratedScenes.sourceURL(for: id)?.absoluteString,
+                           "https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/" + path)
+        }
+    }
+
     // MARK: - Registry shape (non-emptiness, format)
 
     func testPlacementHasOneCanonicalEntry() {

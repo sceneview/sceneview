@@ -1,4 +1,5 @@
 // @sceneId     secondary-camera
+// @source      SceneViewDemo/Views/Demos/SecondaryCameraDemo.swift
 // @title       Secondary Camera (PiP)
 // @subtitle    Add an independent camera inset to a 3D viewer
 // @category    advanced

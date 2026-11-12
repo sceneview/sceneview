@@ -1,4 +1,5 @@
 // @sceneId     ar-orbital
+// @source      SceneViewDemo/Views/Demos/OrbitalARDemo.swift
 // @title       Orbital AR
 // @subtitle    Models orbit around you in a personal solar system
 // @category    ar

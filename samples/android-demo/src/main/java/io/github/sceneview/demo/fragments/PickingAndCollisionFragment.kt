@@ -17,6 +17,7 @@ import io.github.sceneview.demo.demos.PickingAndCollisionDemo
 object PickingAndCollisionFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "picking-collision",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/PickingAndCollisionDemo.kt",
         titleRes = R.string.demo_picking_collision_title,
         subtitleRes = R.string.demo_picking_collision_subtitle,
         category = DemoCategory.VIEW_3D,

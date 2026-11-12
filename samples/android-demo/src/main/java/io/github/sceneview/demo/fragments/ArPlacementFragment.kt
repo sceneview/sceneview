@@ -36,6 +36,7 @@ object ArPlacementFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "ar-placement",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt",
         titleRes = R.string.demo_ar_placement_title,
         subtitleRes = R.string.demo_ar_placement_subtitle,
         category = DemoCategory.PLACE_AR,

@@ -1,4 +1,5 @@
 // @sceneId     ar-depth-visualization
+// @source      SceneViewDemo/Views/Demos/Scenes/ArDepthVisualizationScene.swift
 // @title       Depth Visualization
 // @subtitle    False-color depth map blended with camera
 // @category    ar

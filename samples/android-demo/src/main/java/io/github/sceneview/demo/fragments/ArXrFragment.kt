@@ -31,6 +31,7 @@ object ArXrFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "ar-xr",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARHandTrackingDemo.kt",
         titleRes = R.string.demo_ar_xr_title,
         subtitleRes = R.string.demo_ar_xr_subtitle,
         category = DemoCategory.UNDERSTAND,

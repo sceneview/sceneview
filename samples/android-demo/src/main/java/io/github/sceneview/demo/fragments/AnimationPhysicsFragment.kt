@@ -18,6 +18,7 @@ import io.github.sceneview.demo.demos.AnimationPhysicsDemo
 object AnimationPhysicsFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "animation-physics",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/AnimationPhysicsDemo.kt",
         titleRes = R.string.demo_animation_physics_title,
         subtitleRes = R.string.demo_animation_physics_subtitle,
         category = DemoCategory.VIEW_3D,

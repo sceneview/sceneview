@@ -1,4 +1,5 @@
 // @sceneId     ar-point-cloud
+// @source      SceneViewDemo/Views/Demos/ARPointCloudDemo.swift
 // @title       AR Point Cloud
 // @subtitle    Live ARKit tracking feature points
 // @category    ar

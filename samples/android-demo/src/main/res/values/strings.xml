@@ -337,6 +337,7 @@
     <string name="tracking_failure_camera_unavailable">Camera unavailable — close other camera apps</string>
 
     <!-- In-app bug report — lightweight, permission-free (successor of #1932/#2188) -->
+    <string name="demo_view_source">View source</string>
     <string name="feedback_action_cd">Send feedback</string>
     <!-- Generic close a11y label — also reused by GalleryModelViewerScreen. -->
     <string name="feedback_cd_close">Close</string>

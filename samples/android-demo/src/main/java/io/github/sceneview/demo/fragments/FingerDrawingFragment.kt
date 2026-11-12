@@ -28,6 +28,7 @@ object FingerDrawingFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "finger-drawing",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/FingerDrawingDemo.kt",
         titleRes = R.string.demo_finger_drawing_title,
         subtitleRes = R.string.demo_finger_drawing_subtitle,
         category = DemoCategory.CREATE,

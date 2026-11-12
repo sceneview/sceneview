@@ -1,4 +1,5 @@
 // @sceneId     ar-rerun
+// @source      SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift
 // @title       3D Scan
 // @subtitle    Move around a space and watch it take shape in 3D
 // @category    ar

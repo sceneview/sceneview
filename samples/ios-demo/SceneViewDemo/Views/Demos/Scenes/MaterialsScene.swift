@@ -1,4 +1,5 @@
 // @sceneId     materials
+// @source      SceneViewDemo/Views/Demos/MaterialsDemo.swift
 // @title       Materials
 // @subtitle    Compare metal, glass, fabric and glow
 // @category    advanced

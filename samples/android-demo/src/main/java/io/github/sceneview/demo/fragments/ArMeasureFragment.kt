@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.MeasureScreen
 object ArMeasureFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-measure",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARMeasureDemo.kt",
         titleRes = R.string.demo_ar_measure_title,
         subtitleRes = R.string.demo_ar_measure_subtitle,
         category = DemoCategory.PLACE_AR,

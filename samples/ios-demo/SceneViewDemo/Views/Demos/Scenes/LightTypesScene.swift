@@ -1,4 +1,5 @@
 // @sceneId     lighting
+// @source      SceneViewDemo/Views/Demos/LightTypesDemo.swift
 // @title       Lighting
 // @subtitle    Studio light, daylight and reflections
 // @category    lighting

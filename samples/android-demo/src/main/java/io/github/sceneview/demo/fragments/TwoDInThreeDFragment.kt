@@ -25,6 +25,7 @@ object TwoDInThreeDFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "two-d-in-three-d",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/TwoDInThreeDDemo.kt",
         titleRes = R.string.demo_two_d_in_three_d_title,
         subtitleRes = R.string.demo_two_d_in_three_d_subtitle,
         category = DemoCategory.CREATE,

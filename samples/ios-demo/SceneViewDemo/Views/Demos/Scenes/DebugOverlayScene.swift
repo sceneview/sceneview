@@ -1,4 +1,5 @@
 // @sceneId     debug-overlay
+// @source      SceneViewDemo/Views/Demos/DebugOverlayDemo.swift
 // @title       Performance Test
 // @subtitle    Find the node budget for smooth 3D rendering on your device
 // @category    advanced

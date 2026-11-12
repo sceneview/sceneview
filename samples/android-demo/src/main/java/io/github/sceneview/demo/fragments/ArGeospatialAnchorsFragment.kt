@@ -37,6 +37,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "ar-geospatial-anchors",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARGeospatialAnchorsDemo.kt",
         titleRes = R.string.demo_ar_geospatial_anchors_title,
         subtitleRes = R.string.demo_ar_geospatial_anchors_subtitle,
         category = DemoCategory.PLACE_AR,

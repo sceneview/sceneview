@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARBodyTrackerDemo
 object ArBodyTrackerFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-body-tracker",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARBodyTrackerDemo.kt",
         titleRes = R.string.demo_ar_body_tracker_title,
         subtitleRes = R.string.demo_ar_body_tracker_subtitle,
         category = DemoCategory.UNDERSTAND,

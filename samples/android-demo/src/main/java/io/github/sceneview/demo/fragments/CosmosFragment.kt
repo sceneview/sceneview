@@ -17,6 +17,7 @@ import io.github.sceneview.demo.demos.CosmosDemo
 object CosmosFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "cosmos",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/CosmosDemo.kt",
         titleRes = R.string.demo_cosmos_title,
         subtitleRes = R.string.demo_cosmos_subtitle,
         category = DemoCategory.CREATE,

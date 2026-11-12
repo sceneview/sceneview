@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARImageStabilizationDemo
 object ArImageStabilizationFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-image-stabilization",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARImageStabilizationDemo.kt",
         titleRes = R.string.demo_ar_image_stabilization_title,
         subtitleRes = R.string.demo_ar_image_stabilization_subtitle,
         category = DemoCategory.UNDERSTAND,

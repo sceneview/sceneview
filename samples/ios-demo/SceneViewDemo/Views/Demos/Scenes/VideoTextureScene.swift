@@ -1,4 +1,5 @@
 // @sceneId     video
+// @source      SceneViewDemo/Views/Demos/VideoTextureDemo.swift
 // @title       Video Texture
 // @subtitle    Video playback on a 3D surface
 // @category    content

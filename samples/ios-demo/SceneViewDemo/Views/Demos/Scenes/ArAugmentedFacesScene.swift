@@ -1,4 +1,5 @@
 // @sceneId     ar-face
+// @source      SceneViewDemo/Views/Demos/ARAugmentedFacesDemo.swift
 // @title       Face anchor accessories
 // @subtitle    Pin accessories to a tracked face anchor
 // @category    ar

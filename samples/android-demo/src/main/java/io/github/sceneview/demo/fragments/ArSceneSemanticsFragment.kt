@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARSceneSemanticsDemo
 object ArSceneSemanticsFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-scene-semantics",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARSceneSemanticsDemo.kt",
         titleRes = R.string.demo_ar_scene_semantics_title,
         subtitleRes = R.string.demo_ar_scene_semantics_subtitle,
         category = DemoCategory.UNDERSTAND,

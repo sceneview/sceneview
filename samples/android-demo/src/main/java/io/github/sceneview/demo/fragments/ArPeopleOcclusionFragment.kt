@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARPeopleOcclusionDemo
 object ArPeopleOcclusionFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-people-occlusion",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPeopleOcclusionDemo.kt",
         titleRes = R.string.demo_ar_people_occlusion_title,
         subtitleRes = R.string.demo_ar_people_occlusion_subtitle,
         category = DemoCategory.UNDERSTAND,

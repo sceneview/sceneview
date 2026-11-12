@@ -1,4 +1,5 @@
 // @sceneId     cosmos
+// @source      SceneViewDemo/Views/Demos/CosmosDemo.swift
 // @title       Cosmos
 // @subtitle    Watch a galaxy, a star and particle storms glow
 // @category    advanced

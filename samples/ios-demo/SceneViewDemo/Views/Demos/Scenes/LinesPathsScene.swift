@@ -1,4 +1,5 @@
 // @sceneId     lines-paths
+// @source      SceneViewDemo/Views/Demos/LinesPathsDemo.swift
 // @title       Lines & Paths
 // @subtitle    Follow animated curves and paths
 // @category    content

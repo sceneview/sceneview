@@ -1,4 +1,5 @@
 // @sceneId     ar-placement
+// @source      SceneViewDemo/Views/Demos/ARPlacementDemo.swift
 // @title       AR Placement
 // @subtitle    One object on the first usable surface
 // @category    ar

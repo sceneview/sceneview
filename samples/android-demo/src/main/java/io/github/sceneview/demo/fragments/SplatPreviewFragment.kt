@@ -15,6 +15,7 @@ import io.github.sceneview.demo.demos.SplatPreviewDemo
 object SplatPreviewFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "splat-preview",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/SplatPreviewDemo.kt",
         titleRes = R.string.demo_splat_preview_title,
         subtitleRes = R.string.demo_splat_preview_subtitle,
         category = DemoCategory.VIEW_3D,

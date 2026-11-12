@@ -1,4 +1,5 @@
 // @sceneId     shape
+// @source      SceneViewDemo/Views/Demos/ShapeExtrudeDemo.swift
 // @title       Shape Extrude
 // @subtitle    Extrude 2D polygons into 3D meshes
 // @category    advanced

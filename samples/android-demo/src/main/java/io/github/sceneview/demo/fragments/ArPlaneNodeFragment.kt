@@ -12,6 +12,7 @@ import io.github.sceneview.demo.demos.ARPlaneNodeDemo
 object ArPlaneNodeFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-plane-node",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPlaneNodeDemo.kt",
         titleRes = R.string.demo_ar_plane_node_title,
         subtitleRes = R.string.demo_ar_plane_node_subtitle,
         category = DemoCategory.PLACE_AR,

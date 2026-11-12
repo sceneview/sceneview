@@ -1,4 +1,5 @@
 // @sceneId     collision
+// @source      SceneViewDemo/Views/Demos/CollisionHitTestDemo.swift
 // @title       Collision & Hit Test
 // @subtitle    Hit testing and collision detection
 // @category    interaction

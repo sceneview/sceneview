@@ -29,6 +29,7 @@ object ArRerunFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "ar-rerun",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt",
         titleRes = R.string.demo_ar_rerun_title,
         subtitleRes = R.string.demo_ar_rerun_subtitle,
         category = DemoCategory.DEV_TOOLS,

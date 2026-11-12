@@ -37,6 +37,7 @@ object RollingBallsFragment : DemoFragment {
 
     override val entry: DemoEntry = DemoEntry(
         id = "rolling-balls",
+        sourcePath = "src/main/java/io/github/sceneview/demo/demos/RollingBallsDemo.kt",
         titleRes = R.string.demo_rolling_balls_title,
         subtitleRes = R.string.demo_rolling_balls_subtitle,
         category = DemoCategory.VIEW_3D,
