@@ -40,6 +40,7 @@ import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
+import io.github.sceneview.demo.demos.internal.RerunExampleAssets
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanOpenTop
@@ -204,16 +205,24 @@ internal class ReplayDenseLayer(
     }
 }
 
-/** Loads the bundled replay from the assets. Call off the main thread's back: it is IO. */
-internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia = withContext(Dispatchers.IO) {
-    val assets = context.assets
-    val manifest = assets.open(RerunReplayAssets.MANIFEST).bufferedReader().use { it.readText() }
-        .let(ReplayManifest::parse)
-        ?: error("Unreadable replay manifest")
-    val events = assets.open(RerunReplayAssets.LOG).bufferedReader().useLines { parseArDebugLog(it) }
-    val archive = assets.open(RerunReplayAssets.MEDIA).use { it.readBytes() }
-    openReplay(manifest, events, archive)
-}
+/** Loads the bundled sparse room (QA's capture feed) from the assets. Call off the main thread's back: it is IO. */
+internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia =
+    loadBundledScan(context, RerunReplayAssets.MANIFEST, RerunReplayAssets.LOG, RerunReplayAssets.MEDIA)
+
+/** Loads the example scan ([RerunExampleAssets]) from the assets, as any scan is opened. */
+internal suspend fun loadRerunExample(context: Context): RerunReplayMedia =
+    loadBundledScan(context, RerunExampleAssets.MANIFEST, RerunExampleAssets.LOG, RerunExampleAssets.MEDIA)
+
+private suspend fun loadBundledScan(context: Context, manifestPath: String, logPath: String, mediaPath: String) =
+    withContext(Dispatchers.IO) {
+        val assets = context.assets
+        val manifest = assets.open(manifestPath).bufferedReader().use { it.readText() }
+            .let(ReplayManifest::parse)
+            ?: error("Unreadable replay manifest")
+        val events = assets.open(logPath).bufferedReader().useLines { parseArDebugLog(it) }
+        val archive = assets.open(mediaPath).use { it.readBytes() }
+        openReplay(manifest, events, archive)
+    }
 
 /**
  * Opens a scan saved on the phone ([RerunSessionStore]) — through the very code the bundled

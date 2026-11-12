@@ -80,7 +80,7 @@ import io.github.sceneview.demo.demos.internal.RerunExportScene
 import io.github.sceneview.demo.demos.internal.RerunExportSource
 import io.github.sceneview.demo.demos.internal.RerunGlbWriter
 import io.github.sceneview.demo.demos.internal.RerunPlyWriter
-import io.github.sceneview.demo.demos.internal.RerunReplayAssets
+import io.github.sceneview.demo.demos.internal.RerunExampleAssets
 import io.github.sceneview.demo.demos.internal.RerunResultView
 import io.github.sceneview.demo.demos.internal.RerunRrdWriter
 import io.github.sceneview.demo.demos.internal.RerunScanFile
@@ -111,9 +111,9 @@ import java.util.UUID
 internal fun sampleCapturePack(context: Context): RerunCapturePack {
     val assets = context.assets
     return RerunCapturePack(
-        manifest = assets.open(RerunReplayAssets.MANIFEST).use { it.readBytes() },
-        log = assets.open(RerunReplayAssets.LOG).use { it.readBytes() },
-        media = assets.open(RerunReplayAssets.MEDIA).use { it.readBytes() },
+        manifest = assets.open(RerunExampleAssets.MANIFEST).use { it.readBytes() },
+        log = assets.open(RerunExampleAssets.LOG).use { it.readBytes() },
+        media = assets.open(RerunExampleAssets.MEDIA).use { it.readBytes() },
     )
 }
 
