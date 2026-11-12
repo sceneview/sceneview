@@ -447,6 +447,7 @@ fun AutoPlacementScene(
                 trackingFailure = it
                 onTrackingFailureChanged?.invoke(it)
             },
+            onSessionResumed = { state.cameraResumed() },
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
                 if (!state.hasPlacement && placement != null) {

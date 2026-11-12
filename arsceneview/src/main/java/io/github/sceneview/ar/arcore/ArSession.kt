@@ -156,8 +156,18 @@ class ARSession(
     }
 
     override fun resume() {
+        resumeReportingFailure()?.let { throw it }
+    }
+
+    /** Only native resume failures are returned; geometry and host callbacks may throw. */
+    internal fun resumeReportingFailure(): Exception? {
         check(!isClosed) { "Cannot resume a closed ARCore session (#4026)" }
-        super.resume()
+        try {
+            super.resume()
+        } catch (exception: Exception) {
+            isResumed = false
+            return exception
+        }
         // Only once ARCore did resume: a throw above (camera busy, permission revoked) leaves the
         // session paused, and the frame loop must not call `update()` on it.
         isResumed = true
@@ -168,6 +178,7 @@ class ARSession(
         setDisplayGeometry(displayRotation, displayWidth, displayHeight)
 
         onResumed(this)
+        return null
     }
 
     override fun pause() {

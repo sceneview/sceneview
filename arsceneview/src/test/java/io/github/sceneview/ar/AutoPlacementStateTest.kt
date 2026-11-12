@@ -25,6 +25,27 @@ import org.junit.Test
  */
 class AutoPlacementStateTest {
 
+    @Test
+    fun `successful resume after a cold start failure restores pending placement`() {
+        val state = AutoPlacementState()
+        state.requestPlacement()
+        state.cameraFailed()
+        val frame = FrameInput(0L, tracking = true, surfaceAvailable = true)
+        assertEquals(PlacementPhase.CAMERA_ERROR, state.phase)
+        assertEquals(FrameEffect.NONE, state.onFrame(frame))
+
+        state.cameraResumed()
+
+        assertEquals(PlacementPhase.INITIALIZING, state.phase)
+        assertTrue(state.placementRequested)
+        assertEquals(FrameEffect.PLACE, state.onFrame(frame))
+        assertEquals(1, state.placementsCreated)
+        state.cameraResumed()
+        assertEquals(PlacementPhase.PLACED, state.phase)
+        assertEquals(FrameEffect.NONE, state.onFrame(frame))
+        assertEquals(1, state.placementsCreated)
+    }
+
     // ── One placement per request ─────────────────────────────────────────────────────
 
     @Test

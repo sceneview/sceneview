@@ -40,10 +40,16 @@ class ARSessionLifecycleContractTest {
 
         // The only direct session calls are the ones the arbiter makes through its client.
         val resumeCalls = arCore.lines().withIndex()
-            .filter { (_, line) -> "session?.resume()" in line || "session.resume()" in line }
+            .filter { (_, line) ->
+                "session?.resume()" in line || "session.resume()" in line ||
+                    "session.resumeReportingFailure()" in line
+            }
         assertEquals(1, resumeCalls.size)
+        // The arbiter's client resumes through `resumeReportingFailure` so a native failure
+        // comes back as a value and a host callback exception is never swallowed (#4756).
+        assertTrue("session.resumeReportingFailure()" in resumeCalls.single().value)
         val enclosing = arCore.lines().take(resumeCalls.single().index).last { "fun " in it }.trim()
-        assertEquals("override fun start() {", enclosing)
+        assertEquals("override fun start(): Exception? {", enclosing)
         assertEquals(
             listOf("override fun stop() { session?.takeIf { it.isResumed }?.pause() }"),
             arCore.lines().map(String::trim).filter { "?.pause()" in it || "session.pause()" in it },

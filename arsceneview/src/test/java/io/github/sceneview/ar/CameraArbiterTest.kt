@@ -1,6 +1,8 @@
 package io.github.sceneview.ar
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,11 +14,24 @@ import org.junit.Test
 class CameraArbiterTest {
 
     private val calls = mutableListOf<String>()
+    private val exceptions = mutableListOf<Exception>()
     private val posted = ArrayDeque<() -> Unit>()
     private val arbiter = CameraArbiter { posted.addLast(it) }
 
     private val a = FakeSession("A")
     private val b = FakeSession("B")
+
+    @Test
+    fun `retrying a running session never calls native resume again`() {
+        arbiter.resume(a)
+        a.failure = IllegalStateException("a second native resume would fail")
+
+        arbiter.resume(a)
+
+        assertEquals(listOf("A start"), calls)
+        assertTrue(a.isRunning)
+        assertTrue(exceptions.isEmpty())
+    }
 
     @Test
     fun `a session resuming over a running one pauses it first`() {
@@ -228,6 +243,68 @@ class CameraArbiterTest {
         assertTrue(posted.isEmpty())
     }
 
+    @Test
+    fun `a callback exception during direct resume escapes unchanged`() {
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+
+        assertSame(bug, assertThrows(IllegalStateException::class.java) { arbiter.resume(a) })
+        assertTrue(a.isRunning)
+        assertTrue(exceptions.isEmpty())
+        assertTrue(calls.none { it == "A failed" })
+    }
+
+    @Test
+    fun `a callback exception during synchronous hand back reaches the resume caller`() {
+        arbiter.resume(a)
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+        b.failure = IllegalStateException("camera not available")
+
+        assertSame(bug, assertThrows(IllegalStateException::class.java) { arbiter.resume(b) })
+        assertTrue(a.isRunning)
+        assertTrue(exceptions.isEmpty())
+        assertEquals(listOf("A start", "A stop", "B start", "B failed", "A start"), calls)
+    }
+
+    @Test
+    fun `a callback exception during posted hand back is logged and keeps the running claim`() {
+        arbiter.resume(a)
+        arbiter.resume(b)
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+        arbiter.pause(b)
+
+        runPosted()
+
+        assertEquals(listOf(bug), exceptions)
+        assertTrue(a.isRunning)
+        assertTrue(calls.none { it == "A failed" })
+
+        calls.clear()
+        arbiter.resume(b)
+        assertEquals(listOf("A stop", "B start"), calls)
+    }
+
+    @Test
+    fun `a callback exception after asynchronous close is logged`() {
+        arbiter.resume(a)
+        arbiter.resume(b)
+        val bug = IllegalStateException("host callback")
+        a.afterResumeFailure = bug
+
+        arbiter.destroy(b) { onClosed ->
+            b.close()
+            posted.addLast(onClosed)
+        }
+        assertTrue(exceptions.isEmpty())
+        runPosted()
+
+        assertEquals(listOf(bug), exceptions)
+        assertTrue(a.isRunning)
+        assertTrue(calls.none { it == "A failed" })
+    }
+
     private fun runPosted() {
         while (posted.isNotEmpty()) posted.removeFirst().invoke()
     }
@@ -236,19 +313,22 @@ class CameraArbiterTest {
         override var isRunning = false
         override var canRun = true
         var failure: Exception? = null
+        var afterResumeFailure: Exception? = null
 
         /** Next [start] finds the camera still held by a closing session and returns idle. */
         var waitsForCamera = false
 
-        override fun start() {
+        override fun start(): Exception? {
             if (waitsForCamera) {
                 waitsForCamera = false
                 calls += "$name waits"
-                return
+                return null
             }
             calls += "$name start"
-            failure?.let { throw it }
+            failure?.let { return it }
             isRunning = true
+            afterResumeFailure?.let { throw it }
+            return null
         }
 
         override fun stop() {
@@ -258,6 +338,10 @@ class CameraArbiterTest {
 
         override fun onStartFailed(exception: Exception) {
             calls += "$name failed"
+        }
+
+        override fun onException(exception: Exception) {
+            exceptions += exception
         }
 
         fun close() {

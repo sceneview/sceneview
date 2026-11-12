@@ -305,10 +305,9 @@ private fun PoolSession(choices: PoolChoices, onBack: () -> Unit, onRestart: () 
             sessionConfiguration = { _, config ->
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
             },
-            onSessionCreated = {
+            onSessionResumed = {
                 cameraFailed = false
                 startupTimedOut = false
-                if (state.phase == PlacementPhase.CAMERA_ERROR) reset()
             },
             onSessionUpdated = { _, _ -> cameraReady = true },
             onSessionFailed = { cameraFailed = true },

@@ -734,6 +734,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun acceptsAsset (Lio/github/sceneview/ar/AssetTicket;)Z
 	public final fun beginAdjustment ()Z
 	public final fun cameraFailed ()V
+	public final fun cameraResumed ()V
 	public final fun deselectPlacement ()V
 	public final fun dismiss ()V
 	public final fun endAdjustment ()V

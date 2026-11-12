@@ -69,14 +69,17 @@ internal interface CameraClient {
     /** `true` when there is a session that can be resumed: created, and not closed. */
     val canRun: Boolean
 
-    /** Resumes the session. Throws whatever `Session.resume()` throws. */
-    fun start()
+    /** Returns a native resume failure, or null. Host callback exceptions propagate. */
+    fun start(): Exception?
 
     /** Pauses the session. */
     fun stop()
 
-    /** [start] threw [exception]: the session is not running. */
+    /** [start] returned [exception]: native resume failed. */
     fun onStartFailed(exception: Exception)
+
+    /** Logs a hand-back exception. Must not throw from the posted callback. */
+    fun onException(exception: Exception)
 }
 
 /**
@@ -99,11 +102,11 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
      */
     @MainThread
     fun resume(client: CameraClient) {
-        if (!client.canRun) return
+        if (!client.canRun || client.isRunning) return
         handover.claim(client)?.takeIf { it.isRunning }?.stop()
         if (!start(client)) {
             handover.release(client)
-            handBack()
+            handBack(reportExceptions = false)
         }
     }
 
@@ -120,7 +123,7 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
     fun pause(client: CameraClient) {
         handover.release(client)
         if (client.isRunning) client.stop()
-        if (handover.holder != null) postToMainThread(::handBack)
+        if (handover.holder != null) postToMainThread { handBack() }
     }
 
     /**
@@ -135,7 +138,7 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
     @MainThread
     fun destroy(client: CameraClient, close: (onClosed: () -> Unit) -> Unit) {
         handover.release(client)
-        close(::handBack)
+        close { handBack() }
     }
 
     /**
@@ -143,21 +146,27 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
      * gesture that previews an AR screen and is then cancelled leaves the first screen in place,
      * and its camera has to come back. A session that cannot take it is skipped.
      */
-    private fun handBack() {
+    private fun handBack(reportExceptions: Boolean = true) {
         val next = handover.holder ?: return
         if (next.isRunning) return
-        if (!next.canRun || !start(next)) {
+        if (!next.canRun || !start(next, reportExceptions)) {
             handover.release(next)
-            handBack()
+            handBack(reportExceptions)
         }
     }
 
-    /** @return `false` when the resume threw; the failure went to the session's own host. */
-    private fun start(client: CameraClient): Boolean = try {
-        client.start()
-        true
-    } catch (e: Exception) {
-        client.onStartFailed(e)
-        false
+    /** Direct calls propagate host exceptions; a posted hand-back has no caller to catch them. */
+    private fun start(client: CameraClient, reportExceptions: Boolean = false): Boolean {
+        try {
+            val failure = client.start() ?: return true
+            client.onStartFailed(failure)
+            return false
+        } catch (exception: Exception) {
+            if (!reportExceptions) throw exception
+            client.onException(exception)
+            // A host callback can throw after the camera has resumed. Keep its claim while
+            // it is running so another session cannot take the camera without pausing it.
+            return client.isRunning
+        }
     }
 }

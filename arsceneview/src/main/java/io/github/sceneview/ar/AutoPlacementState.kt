@@ -451,6 +451,11 @@ class AutoPlacementState {
         if (phase == PlacementPhase.INITIALIZING && !hasCameraFrame) phase = PlacementPhase.CAMERA_ERROR
     }
 
+    /** A successful session resume releases a cold-start error without losing the request. */
+    fun cameraResumed() {
+        if (phase == PlacementPhase.CAMERA_ERROR) phase = PlacementPhase.INITIALIZING
+    }
+
     /**
      * A tap that landed on nothing. Deliberately a no-op that returns [FrameEffect.NONE]:
      * the whole point of this flow is that empty space is not a placement affordance.
