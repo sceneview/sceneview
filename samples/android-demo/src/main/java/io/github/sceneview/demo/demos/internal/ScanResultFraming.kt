@@ -198,6 +198,29 @@ object ScanResultFraming {
         sample(glb, maxSamples)?.let { (positions, normals) -> of(positions, normals) }
 
     /**
+     * The frame of [cloud], a scan's surfels, read as a model's is: what the result opens on while
+     * its model is still built, so the model then takes its place in the same frame. From at most
+     * [maxSamples] of them, evenly spread; `null` without normals or without a surfel.
+     */
+    fun of(cloud: DenseCloud, maxSamples: Int = MAX_SAMPLES): ScanResultFrame? {
+        val from = cloud.normals ?: return null
+        val n = cloud.count
+        if (n == 0) return null
+        val step = (n + maxSamples - 1) / maxSamples.coerceAtLeast(1)
+        val count = (n + step - 1) / step
+        val positions = FloatArray(count * 3)
+        val normals = FloatArray(count * 3)
+        for (i in 0 until count) {
+            val v = i * step
+            for (k in 0 until 3) {
+                positions[i * 3 + k] = cloud.positions[v * 3 + k]
+                normals[i * 3 + k] = from[v * 3 + k]
+            }
+        }
+        return of(positions, normals)
+    }
+
+    /**
      * The frame of the vertices [positions] (flat xyz) with their [normals]: turned square to the
      * walls ([yawDegrees]), its box from the [tail] quantile to 1 - [tail] on each turned axis
      * ([RerunResultView.FRAMING_TAIL]: pieces seen through a window do not shrink the room), its

@@ -30,6 +30,23 @@ object RerunReplayAssets {
     const val MEDIA = "$DIR/showcase-media.bin"
 }
 
+/**
+ * The scan "See an example" opens: a real scan made with the demo — a garden path, walked for a
+ * minute with a Pixel 9 — shipped as the three files every scan is kept as, so it opens through
+ * the very code your own scans open by: its dense cloud grows along the camera's path, and its
+ * result is the screen your scans land on. Written by `tools/make-scan-example.py`, which leaves
+ * out the photos that show more than the garden.
+ *
+ * [RerunReplayAssets] stays the sparse room the capture screen's QA states and the unit tests are
+ * staged from: it has no dense cloud, so it has no result to show.
+ */
+object RerunExampleAssets {
+    const val DIR = "rerun/example"
+    const val LOG = "$DIR/example-session.jsonl"
+    const val MANIFEST = "$DIR/example-manifest.json"
+    const val MEDIA = "$DIR/example-media.bin"
+}
+
 /** Where one photo sits in the media archive: [length] bytes from [offset]. */
 data class MediaSpan(val offset: Int, val length: Int)
 

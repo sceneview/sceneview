@@ -175,6 +175,8 @@ import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.ScanDetail
+import io.github.sceneview.demo.demos.internal.model.SplatFaces
+import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.turnedBy
 import kotlin.math.PI
 import kotlin.math.sin
@@ -277,10 +279,27 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     var mode by remember { mutableStateOf(qaReplay?.mode ?: RerunMode.Scene) }
 
-    // The sample lives here, above every screen: the landing turns it, the replay plays it, and
-    // the QA record take is fed from it.
+    // Reading the example takes the landing's first second: asked for before that, it opens the
+    // moment it is read — on its result, not on the replay an example that failed to read falls
+    // back on.
+    var exampleRead by remember { mutableStateOf(false) }
+    var exampleAsked by remember { mutableStateOf(false) }
+    // The example lives here, above every screen: a real scan, read as any scan is, and opened
+    // on its result as your own scans are.
+    val example by produceState<RerunReplayMedia?>(null) {
+        value = runCatching { loadRerunExample(context) }.getOrNull()
+        exampleRead = true
+    }
+    // Its Photo layer, made ready while the landing is read: the example's first picture is its
+    // first frame, not the half second the splats take to build once it is opened.
+    val examplePhoto by produceState<SplatFaces?>(null, example) {
+        value = example?.dense?.cloud?.takeIf { it.normals != null }?.let { cloud ->
+            withContext(Dispatchers.Default) { runCatching { SplatFaces.of(SurfelSplats.of(cloud)) }.getOrNull() }
+        }
+    }
+    // QA only: the sparse room the staged replay and capture states are fed from.
     val sample by produceState<RerunReplayMedia?>(null) {
-        value = runCatching { loadRerunReplay(context) }.getOrNull()
+        if (qaState != null) value = runCatching { loadRerunReplay(context) }.getOrNull()
     }
 
     // The sessions kept on this phone, re-read whenever one is saved, opened from a file or deleted.
@@ -315,9 +334,14 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var opening by remember { mutableStateOf<Job?>(null) }
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
     var openCount by remember { mutableIntStateOf(0) }
-    val media = if (showingScan) scanMedia else sample
+    val media = when {
+        showingScan -> scanMedia
+        qaState != null -> sample
+        else -> example
+    }
     // The scan's result (RerunModelUi.kt): your room as one model, kept with the scan. Picked once
-    // when a scan opens, so the build is not restarted by a recomposition. The sample has none.
+    // when a scan opens, so the build is not restarted by a recomposition. The example's is built
+    // from its surfels as a scan opened from a file is.
     var modelSource by remember {
         mutableStateOf<RerunModelSource?>(
             when (qaState) {
@@ -340,7 +364,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     LaunchedEffect(media, openCount) {
         val replay = media ?: return@LaunchedEffect
         replaySession.trace = replay.trace
-        // Held until the stage is on screen: the sample then plays from its first frame; your own
+        // Held until the stage is on screen: the example then plays from its first frame; your own
         // scan opens whole, on its last frame, ready to be turned with a finger.
         val at = if (showingScan) 1f else qaReplay?.pauseAt ?: 0f
         replaySession.scrubTo(replay.trace.duration * at)
@@ -438,22 +462,38 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             toLanding()
         }
     }
+    // Whether Back from the replay goes to the scan's result: a scan's capture or the example's,
+    // watched from it; never a staged QA replay, which has no result behind it.
+    val replayOfResult = { hasResult && (showingScan || qaState == null) }
     BackHandler(enabled = screen != RerunScreen.Landing) {
         when (screen) {
             RerunScreen.Dollhouse -> leaveDollhouse()
             RerunScreen.Live -> leaveLive()
-            RerunScreen.Replay -> if (showingScan && hasResult) screen = RerunScreen.Model else toLanding()
+            RerunScreen.Replay -> if (replayOfResult()) screen = RerunScreen.Model else toLanding()
             RerunScreen.Plan -> leavePlan()
             RerunScreen.HomePlan -> screen = RerunScreen.Home
             else -> toLanding()
         }
     }
 
+    // The example opens where a scan of yours lands: on its result, the place itself, seen at
+    // once. Its model is built from its surfels, as an opened file's is; its capture is one tap
+    // away (More › Watch capture). An example that could not be read falls back on the replay.
     val openSample = {
         showingScan = false
+        scanId = null
         mode = RerunMode.Scene
         openCount++
-        screen = RerunScreen.Replay
+        modelSource = RerunModelSource.of(null, example)
+        hasResult = modelSource != null
+        resultModel = null
+        screen = if (hasResult) RerunScreen.Model else RerunScreen.Replay
+    }
+    LaunchedEffect(exampleRead, exampleAsked) {
+        if (exampleRead && exampleAsked) {
+            exampleAsked = false
+            if (screen == RerunScreen.Landing) openSample()
+        }
     }
     // A scan, just recorded or reopened: its result when it has one (a model kept with it, or the
     // depth to build one), else its replay. [kept]: the store already holds its model.
@@ -621,7 +661,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             state = RerunLandingState(
                 sessions = sessions,
                 notice = notice,
-                openingFile = openingFile,
+                openingFile = openingFile || exampleAsked,
                 savingScan = RerunScanBuilds.saving > 0,
             ),
             actions = RerunLandingActions(
@@ -631,7 +671,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 },
                 onWatchSample = {
                     notice = null
-                    openSample()
+                    if (exampleRead) openSample() else exampleAsked = true
                 },
                 onOpenFile = { pickFile.launch(arrayOf("*/*")) },
                 onOpen = {
@@ -734,7 +774,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             )
         }
         RerunScreen.Replay -> RerunReplayScreen(
-            onBack = { if (showingScan && hasResult) screen = RerunScreen.Model else toLanding() },
+            onBack = { if (replayOfResult()) screen = RerunScreen.Model else toLanding() },
             mode = mode,
             onMode = { mode = it },
             media = media,
@@ -782,7 +822,11 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         }
         RerunScreen.Model -> RerunModelScreen(
             source = modelSource,
-            title = if (showingScan) scanTitle else ScanCopy.REPLAY_TITLE,
+            title = when {
+                showingScan -> scanTitle
+                example != null && modelSource !is RerunModelSource.Synthetic -> ScanCopy.SAMPLE_TITLE
+                else -> ScanCopy.REPLAY_TITLE
+            },
             store = store.takeIf { scanId != null },
             id = scanId,
             onModel = { resultModel = it },
@@ -797,7 +841,13 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 }
             },
             // The recording behind the model, once it is read: a scan reopened shows its model first.
-            onReplay = scanMedia?.takeIf { showingScan }?.let { { screen = RerunScreen.Replay } },
+            onReplay = media?.takeIf { modelSource !is RerunModelSource.Synthetic }?.let {
+                {
+                    // The example's capture plays from its first frame each time it is watched.
+                    if (!showingScan) openCount++
+                    screen = RerunScreen.Replay
+                }
+            },
             onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
                 { openDollhouse(scanId, scanTitle, scan) }
             },
@@ -808,9 +858,14 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             hintStays = qaState != null,
             opened = resultModel,
             // Framed as what it is (Scan redesign, PR 1): an object on its own box, a room square to its walls.
-            scope = if (showingScan) scanKind else ScanScope.Room,
+            scope = when {
+                showingScan -> scanKind
+                modelSource is RerunModelSource.Synthetic -> ScanScope.Room
+                else -> EXAMPLE_SCOPE
+            },
             // The Photo layer's splats when the model is read back from the cache (no source, #4896).
-            surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
+            surfels = media?.takeIf { modelSource !is RerunModelSource.Synthetic }?.dense?.cloud,
+            photo = examplePhoto.takeIf { !showingScan && qaState == null },
         )
     }
     val exportable = when (screen) {
@@ -820,7 +875,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     if (exporting && exportable) {
         val onModel = screen == RerunScreen.Model
-        val source = remember(showingScan, scanTitle, scanPack, onModel, resultModel, scanKind) {
+        val source = remember(showingScan, scanTitle, scanPack, onModel, resultModel, scanKind, modelSource) {
             val pack = scanPack
             val model = resultModel
             when {
@@ -831,10 +886,17 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     scope = scanKind,
                 )
                 // QA: the synthetic room's model, and no recording to go with it.
-                onModel -> RerunExportSource(title = ScanCopy.REPLAY_TITLE, model = model?.let { { it } })
+                onModel && modelSource is RerunModelSource.Synthetic ->
+                    RerunExportSource(title = ScanCopy.REPLAY_TITLE, model = model?.let { { it } })
+                // The example, from its result or its replay: its files, and its model once built.
                 else -> {
                     val appContext = context.applicationContext
-                    RerunExportSource(ScanCopy.SAMPLE_TITLE, capture = { sampleCapturePack(appContext) })
+                    RerunExportSource(
+                        title = ScanCopy.SAMPLE_TITLE,
+                        capture = { sampleCapturePack(appContext) },
+                        model = model?.takeIf { onModel }?.let { { it } },
+                        scope = EXAMPLE_SCOPE,
+                    )
                 }
             }
         }
@@ -864,6 +926,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
  * capture, what is scanned (#4647); after a whole home, its summary and each room's plan.
  */
 internal enum class RerunScreen { Landing, Choose, Live, Replay, Dollhouse, Model, Plan, Home, HomePlan }
+
+/** The example is a garden path: ground mapped, no walls to draw a floor plan from. */
+internal val EXAMPLE_SCOPE = ScanScope.Area
 
 /**
  * Where Back from the floor plan goes: the screen whose export sheet opened it ([opener]), or —
@@ -1124,7 +1189,7 @@ private fun RerunReplayScreen(
             // With Place as the accent, Export stays one tap away in the dock.
             export.takeIf { onViewInAr != null },
         ),
-        // Your own room stands on a table in AR (#4075); the sample offers its files instead.
+        // Your own room stands on a table in AR (#4075); the example offers its files instead.
         dockAccent = onViewInAr?.let {
             DockItem(
                 icon = Icons.Rounded.ViewInAr,
