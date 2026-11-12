@@ -34,14 +34,11 @@
   <symbol id="i-gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.7 5.38-5.27 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 20s-7.5-4.4-7.5-10.1A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.5 2.6C19.5 15.6 12 20 12 20Z"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.1"/></g></symbol>
-  <symbol id="i-logo" viewBox="0 0 32 32">
-    <polygon points="16,18 7,13 7,22 16,27" fill="#0B4FA8"/>
-    <polygon points="16,18 25,13 25,22 16,27" fill="#2F7BEA"/>
-    <polygon points="16,9 25,14 16,19 7,14" fill="#8AB4FF"/>
-    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
-    <polyline points="4,8 4,4 8,4"/><polyline points="28,8 28,4 24,4"/><polyline points="4,24 4,28 8,28"/><polyline points="28,24 28,28 24,28"/>
-    </g>
-    </symbol>
+  <symbol id="i-logo" viewBox="0 0 108 108">
+    <path style="fill: var(--md-sys-color-on-primary-container, #C9D9FF)" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+    <path style="fill: var(--md-sys-color-primary-container, #005BC1)" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+    <path style="fill: var(--md-sys-color-primary, #004494)" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
+  </symbol>
   <symbol id="i-md" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M6 15V9l2.5 3L11 9v6M15.5 9v6m-2-2 2 2 2-2"/></g></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 8h16M4 16h16"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>

@@ -1,43 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#6446CD"/>
-    </linearGradient>
-    <linearGradient id="tg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#A4C1FF"/>
-      <stop offset="100%" stop-color="#5A8EE8"/>
-    </linearGradient>
-    <linearGradient id="rg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#3D7FD9"/>
-      <stop offset="100%" stop-color="#005BC1"/>
-    </linearGradient>
-    <linearGradient id="lg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#003A7D"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Background -->
-  <rect width="180" height="180" rx="36" fill="url(#bg)"/>
-
-  <!-- Isometric cube -->
-  <g transform="translate(90, 85) scale(1.6)">
-    <!-- Left face -->
-    <polygon points="0,10 -30,-10 -30,20 0,40" fill="url(#lg)"/>
-    <!-- Right face -->
-    <polygon points="0,10 30,-10 30,20 0,40" fill="url(#rg)"/>
-    <!-- Top face -->
-    <polygon points="0,-22 30,-2 0,18 -30,-2" fill="url(#tg)"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 108 108">
+  <!-- DESIGN.md: surface; faces: on-primary-container, primary-container, primary. -->
+  <path fill="#F9F9FF" d="M0 0H108V108H0Z"/>
+  <g transform="translate(54 54) scale(1.2) translate(-54 -54)">
+    <path fill="#C9D9FF" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+    <path fill="#005BC1" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+    <path fill="#004494" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
   </g>
-
-  <!-- Viewport brackets -->
-  <polyline points="30,38 30,28 40,28"
-            fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="150,38 150,28 140,28"
-            fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="30,142 30,152 40,152"
-            fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="150,142 150,152 140,152"
-            fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

@@ -1,6 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" fill="none">
-  <rect width="192" height="192" rx="32" fill="#005bc1"/>
-  <path d="M96 40l48 28v56l-48 28-48-28V68l48-28z" stroke="white" stroke-width="6" fill="none"/>
-  <path d="M96 40v56l48 28M96 96l-48 28" stroke="white" stroke-width="6"/>
-  <circle cx="96" cy="96" r="12" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 108 108">
+  <!-- DESIGN.md: surface; faces: on-primary-container, primary-container, primary. -->
+  <path fill="#F9F9FF" d="M0 0H108V108H0Z"/>
+  <g transform="translate(54 54) scale(1.2) translate(-54 -54)">
+    <path fill="#C9D9FF" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+    <path fill="#005BC1" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+    <path fill="#004494" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
+  </g>
 </svg>

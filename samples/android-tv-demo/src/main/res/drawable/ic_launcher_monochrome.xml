@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same separated faces as branding/logo.svg; DESIGN.md M3 colour roles. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M54 23.6L78.942 38L54 52.4L29.058 38Z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z" />
+</vector>

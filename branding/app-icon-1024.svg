@@ -1,49 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#6446CD"/>
-    </linearGradient>
-    <linearGradient id="cube-top" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#A4C1FF"/>
-      <stop offset="100%" stop-color="#5A8EE8"/>
-    </linearGradient>
-    <linearGradient id="cube-right" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#3D7FD9"/>
-      <stop offset="100%" stop-color="#005BC1"/>
-    </linearGradient>
-    <linearGradient id="cube-left" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#003A7D"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="45%" r="50%">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.08)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-    </radialGradient>
-  </defs>
-
-  <!-- Background with iOS-style rounded rect (clip applied by OS) -->
-  <rect width="1024" height="1024" fill="url(#bg)"/>
-  <ellipse cx="512" cy="440" rx="500" ry="400" fill="url(#glow)"/>
-
-  <!-- Isometric cube — centered -->
-  <g transform="translate(512, 460) scale(5.5)">
-    <!-- Left face -->
-    <polygon points="0,10 -40,-15 -40,25 0,50" fill="url(#cube-left)"/>
-    <!-- Right face -->
-    <polygon points="0,10 40,-15 40,25 0,50" fill="url(#cube-right)"/>
-    <!-- Top face -->
-    <polygon points="0,-30 40,-5 0,20 -40,-5" fill="url(#cube-top)"/>
-
-    <!-- Top face inner highlight -->
-    <polygon points="0,-24 34,-3 0,18 -34,-3" fill="url(#cube-top)" opacity="0.3"/>
-  </g>
-
-  <!-- Viewport brackets -->
-  <g stroke="rgba(255,255,255,0.45)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <polyline points="195,195 195,155 235,155"/>
-    <polyline points="829,195 829,155 789,155"/>
-    <polyline points="195,829 195,869 235,869"/>
-    <polyline points="829,829 829,869 789,869"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 108 108">
+  <!-- DESIGN.md: surface; faces: on-primary-container, primary-container, primary. -->
+  <path fill="#F9F9FF" d="M0 0H108V108H0Z"/>
+  <g transform="translate(54 54) scale(1.2) translate(-54 -54)">
+    <path fill="#C9D9FF" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+    <path fill="#005BC1" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+    <path fill="#004494" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
   </g>
 </svg>
