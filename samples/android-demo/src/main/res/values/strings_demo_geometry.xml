@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_geometry_title">Geometry Primitives</string>
+    <string name="demo_geometry_title">Built-in shapes</string>
     <string name="demo_geometry_subtitle">Show, hide and restyle the seven built-in shapes</string>
 
     <!-- Shape chips over the scene: one switch per primitive. -->

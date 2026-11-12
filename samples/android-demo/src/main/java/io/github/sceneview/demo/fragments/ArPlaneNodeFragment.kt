@@ -15,12 +15,12 @@ object ArPlaneNodeFragment : DemoFragment {
         sourcePath = "src/main/java/io/github/sceneview/demo/demos/ARPlaneNodeDemo.kt",
         titleRes = R.string.demo_ar_plane_node_title,
         subtitleRes = R.string.demo_ar_plane_node_subtitle,
-        category = DemoCategory.PLACE_AR,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.AutoMirrored.Filled.ViewQuilt,
-        order = 25,
+        order = 34,
         addedIn = "4.13.0",
         updatedIn = "4.52.0",
-        tags = setOf("ar", "plane", "planenode", "lifecycle", "callback"),
+        tags = setOf("plane lifecycle", "ar", "plane", "planenode", "lifecycle", "callback"),
     )
 
     @Composable

@@ -2,6 +2,6 @@
 <!-- Strings for the `ar-xr` card (registered by `ArXrFragment.kt`), which hosts the
      Hands (`ar-hand-tracking`) and Face (`ar-xr-face`) modes since samples step 0. -->
 <resources>
-    <string name="demo_ar_xr_title">Android XR (preview)</string>
+    <string name="demo_ar_xr_title">Reference poses (preview)</string>
     <string name="demo_ar_xr_subtitle">Hand skeleton and face mesh on Android XR headsets</string>
 </resources>

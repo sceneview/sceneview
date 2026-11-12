@@ -2,7 +2,7 @@
 <!-- Strings for the `rolling-balls` demo (registered by `RollingBallsFragment.kt`).
      Formerly the Physics tab of `animation-physics` (#4083). -->
 <resources>
-    <string name="demo_rolling_balls_title">Rolling Balls</string>
+    <string name="demo_rolling_balls_title">Rolling balls</string>
     <string name="demo_rolling_balls_subtitle">Tilt a wooden board and send the balls rolling</string>
     <string name="demo_rolling_balls_counts">Bodies: %1$d · impacts: %2$d</string>
     <string name="demo_rolling_balls_reset">Reset</string>

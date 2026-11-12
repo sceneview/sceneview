@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_body_tracker_title">Squat Coach</string>
+    <string name="demo_ar_body_tracker_title">Squat coach</string>
     <string name="demo_ar_body_tracker_subtitle">Counts your squats out loud and tells you when to go lower</string>
     <string name="demo_ar_body_tracker_explainer">Stand the phone up at about hip height with the screen facing you, step back until your whole body is on screen, and squat. Each rep counts — out loud — when your knees bend past about 100° and you stand back up; a squat that stops short gets a “Go lower”. The pose is read on the phone, from the camera image — nothing leaves the device. Reset sets the count back to zero.</string>
     <!-- Camera picker in the controls sheet. -->

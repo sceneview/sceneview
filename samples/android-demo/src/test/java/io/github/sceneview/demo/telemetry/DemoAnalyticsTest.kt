@@ -217,6 +217,7 @@ class DemoAnalyticsTest {
     fun `every demo category has the shared stable slug`() {
         val expected = mapOf(
             DemoCategory.CREATE to "create",
+            DemoCategory.PLAY to "play",
             DemoCategory.DEV_TOOLS to "dev_tools",
             DemoCategory.PLACE_AR to "place_ar",
             DemoCategory.VIEW_3D to "view_3d",

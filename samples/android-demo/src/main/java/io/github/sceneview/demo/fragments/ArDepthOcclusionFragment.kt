@@ -17,9 +17,9 @@ object ArDepthOcclusionFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_depth_occlusion_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Layers,
-        order = 36,
+        order = 25,
         addedIn = "4.0.8",
-        tags = setOf("ar", "depth", "occlusion", "arcore"),
+        tags = setOf("depth occlusion", "ar", "depth", "occlusion", "arcore"),
     )
 
     @Composable

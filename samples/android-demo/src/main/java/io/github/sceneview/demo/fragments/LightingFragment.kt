@@ -25,7 +25,7 @@ object LightingFragment : DemoFragment {
         subtitleRes = R.string.demo_lighting_subtitle,
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Lightbulb,
-        order = 4,
+        order = 8,
         addedIn = "4.0.0",
         updatedIn = "4.57.0",
         tags = setOf(

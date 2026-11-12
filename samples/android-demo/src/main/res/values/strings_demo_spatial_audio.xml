@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_spatial_audio_title">Spatial Audio</string>
+    <string name="demo_spatial_audio_title">Spatial audio</string>
     <string name="demo_spatial_audio_subtitle">Positional sound that pans as you orbit</string>
     <string name="demo_spatial_audio_hint">The purple sphere is the sound source: the bell loop is attached to it, and the shells pulsing out of it are the sound leaving. You are the listener — the camera. Drag to orbit and the bell pans between your ears and changes volume with distance.</string>
     <!-- Legend rows floating over the scene: what each thing on screen is (#3332). -->

@@ -125,21 +125,18 @@ data class DemoEntry(
  * and [DemoEntry.order] keeps a category's demos contiguous (a section that
  * restarts further down the grid is not a section).
  *
- * Five sections, each named for what the reader wants to *do* (#3836). #2239
- * split the catalogue into nine sections named after SDK subsystems — Viewer,
- * Geometry & Materials, Rendering, Interaction and four AR families — which
- * fixed the single 33-card "Augmented Reality" bucket but left a long scroll of
- * small sections, two of them two cards deep, whose names only mean something
- * to a reader who already knows the SDK. Sketchfab's category rows and Apple's
- * sample galleries run a handful of groups; these five are ones a newcomer can
- * choose between without reading the cards first.
+ * Six sections follow the discovery tree. Existing keys and analytics slugs stay
+ * stable; display names come from resources. Play & feel adds its own key.
  */
 object DemoCategory {
-    /** Load a model and look at it — view, orbit, pick, animate. The first thing a newcomer opens. */
+    /** Models & cameras — view, navigate, select and animate. */
     const val VIEW_3D = "View 3D"
 
-    /** Build a scene — geometry, materials, light, 2D panels, sound — and record it. */
+    /** Materials & scenes — geometry, materials, light, panels and sound. */
     const val CREATE = "Create & Record"
+
+    /** Play & feel — interactive worlds, physical play and drawing. */
+    const val PLAY = "Play & Feel"
 
     /** Put virtual content in the real room and keep it there — planes, poses, anchors. */
     const val PLACE_AR = "Place in AR"
@@ -147,12 +144,13 @@ object DemoCategory {
     /** Read the room and the people in it — tracking, depth, point clouds, meshes, semantics. */
     const val UNDERSTAND = "Understand the World"
 
-    /** The plumbing around the renderer — debug overlay, extra cameras, session record and replay. */
+    /** Developer tools — renderer diagnostics, depth inspection and integrations. */
     const val DEV_TOOLS = "Developer Tools"
 
     /** Stable `sample_open.category` value, independent of the user-facing section label. */
     fun slug(category: String): String = when (category) {
         CREATE -> "create"
+        PLAY -> "play"
         DEV_TOOLS -> "dev_tools"
         PLACE_AR -> "place_ar"
         VIEW_3D -> "view_3d"
@@ -161,25 +159,14 @@ object DemoCategory {
     }
 }
 
-/**
- * Ordered list of category keys — controls the home filter-chip and section order.
- *
- * Ordered by how striking each section's lead demo is, not by subsystem: a
- * scrolling thumb meets the most spectacular sample of the app first. Create &
- * Record opens with `cosmos` (the galaxy and the flight through it), Developer
- * Tools with `ar-rerun` (a scanned room rebuilt in 3D), Place in AR with the
- * dollhouse of your own room, View 3D with the Gaussian-splat scan.
- * Understand the World, mostly demos from before 4.35 plus the coming-soon
- * ones, closes the grid. Inside a section the same rule holds: basic and
- * purely technical demos sit at its end. iOS mirrors this order in
- * `DemoSection` and the `@order` of each Scene file.
- */
+/** Ordered category keys for discovery chips and permanent catalogue sections. */
 val DEMO_CATEGORIES = listOf(
-    DemoCategory.CREATE,
-    DemoCategory.DEV_TOOLS,
-    DemoCategory.PLACE_AR,
     DemoCategory.VIEW_3D,
+    DemoCategory.CREATE,
+    DemoCategory.PLAY,
+    DemoCategory.PLACE_AR,
     DemoCategory.UNDERSTAND,
+    DemoCategory.DEV_TOOLS,
 )
 
 /**
@@ -194,21 +181,20 @@ val AR_CATEGORIES: Set<String> = setOf(
 )
 
 /**
- * AR demos that are deliberately filed outside [AR_CATEGORIES].
- *
- * `ar-rerun` sits under [DemoCategory.DEV_TOOLS] because its subject is capture and
- * replay tooling — the plumbing around the session, not what the session sees (since
- * samples step 0 it also holds the former `ar-record-playback` as its Session MP4
- * mode). It still opens an ARCore session, so anything that enumerates AR demos (the
- * AR View tab's list, the replay harness) has to include it or it silently drops a
- * demo that needs the AR device path.
- *
- * Keep this list empty if you can. It exists because a demo's *section* answers
- * "where does a user look for this" and that is not always the same question as
- * "does this need ARCore".
+ * AR diagnostics and integrations retain their AR routing after moving to Developer tools.
+ * Editorial categories must not make their camera-permission gate disappear.
  */
 private val AR_DEMOS_OUTSIDE_AR_SECTIONS: Set<String> = setOf(
-    "ar-rerun",
+    "ar-plane-node",
+    "ar-surfaces",
+    "ar-depth-visualization",
+    "ar-point-cloud",
+    "ar-raw-depth-point-cloud",
+    "ar-image-stabilization",
+    "ar-cloud-anchor",
+    "ar-geospatial-anchors",
+    "ar-ml-object-label",
+    "ar-xr",
 )
 
 /** Whether this demo runs on ARCore — see [AR_CATEGORIES]. */
@@ -253,6 +239,7 @@ val DemoEntry.opensCameraOnEntry: Boolean
 fun categoryDisplayNameRes(category: String): Int = when (category) {
     DemoCategory.VIEW_3D -> R.string.category_view_3d
     DemoCategory.CREATE -> R.string.category_create
+    DemoCategory.PLAY -> R.string.category_play
     DemoCategory.PLACE_AR -> R.string.category_place_ar
     DemoCategory.UNDERSTAND -> R.string.category_understand
     DemoCategory.DEV_TOOLS -> R.string.category_dev_tools
