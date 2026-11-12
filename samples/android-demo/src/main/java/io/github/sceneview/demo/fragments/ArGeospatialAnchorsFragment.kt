@@ -42,7 +42,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_geospatial_anchors_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Explore,
-        order = 42,
+        order = 43,
         addedIn = "4.35.0",
         updatedIn = "4.52.0",
         tags = setOf(

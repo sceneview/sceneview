@@ -16,7 +16,7 @@ object SpatialAnswerFragment : DemoFragment {
         subtitleRes = R.string.demo_spatial_answer_subtitle,
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.ViewInAr,
-        order = 51,
+        order = 23,
         addedIn = "4.69.0",
         tags = setOf("spatial", "dimensions", "assistant", "box", "ar"),
     )
