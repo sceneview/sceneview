@@ -296,6 +296,13 @@ internal data class MeasureAimView(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MeasureScreen(onBack: () -> Unit) {
+    var objectMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (objectMode) ObjectMeasureScreen(onBack = onBack, onRuler = { objectMode = false })
+    else RulerMeasureScreen(onBack = onBack, onObject = { objectMode = true })
+}
+
+@Composable
+private fun RulerMeasureScreen(onBack: () -> Unit, onObject: () -> Unit) {
     var arSessionFailed by remember { mutableStateOf(false) }
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
@@ -627,6 +634,7 @@ fun MeasureScreen(onBack: () -> Unit) {
                 bottomOverlay = {
                     // The camera-app order: the modes, then the one big button that measures (#4732).
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        MeasureObjectModeSelector(objectMode = false, onSelect = { if (it) onObject() })
                         MeasureModePill(
                             mode = board.mode,
                             onSelect = { mode ->
