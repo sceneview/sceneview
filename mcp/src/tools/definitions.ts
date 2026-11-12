@@ -837,6 +837,41 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: "show_in_space",
+    description:
+      "Use when the user wants to see an object of given size in their room at real scale: furniture, a box, a parcel or a TV. Returns one link opening the Spatial answer in the SceneView Android app; without the app, the web page shows the size and offers the app. Represents the object's bounding box using the sizes the user said (dimensionSource: user) or the assistant estimated (estimated). No fit detection and no accuracy claim. Dimensions are width, height, depth in centimetres.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        widthCm: { type: "number", exclusiveMinimum: 1, maximum: 1000, description: "Width in centimetres, left to right as you face the object (a desk's length)." },
+        heightCm: { type: "number", exclusiveMinimum: 1, maximum: 1000, description: "Height in centimetres, from the floor or table up." },
+        depthCm: { type: "number", exclusiveMinimum: 1, maximum: 1000, description: "Depth in centimetres, front to back." },
+        label: { type: "string", maxLength: 60, description: "Short name shown with the box, e.g. \"Desk\" or \"55-inch TV\"." },
+        placement: { type: "string", enum: ["floor", "table"], default: "floor", description: "Where the object stands: on the floor (furniture) or on a table (a parcel, a speaker)." },
+        dimensionSource: { type: "string", enum: ["user", "estimated"], default: "user", description: "\"user\" when the user gave the sizes, \"estimated\" when you estimated them (say so in your answer)." },
+      },
+      required: ["widthCm", "heightCm", "depthCm", "label"],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        label: { type: "string" },
+        sizeCm: { type: "array", items: { type: "number" }, minItems: 3, maxItems: 3 },
+        placement: { type: "string", enum: ["floor", "table"] },
+      },
+      required: ["url", "label", "sizeCm", "placement"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: false,
+      destructiveHint: false,
+      title: "Show in space",
+    },
+  },
+  {
     name: "view_3d_model",
     description:
       "Render an interactive 3D model viewer inline in the conversation. Pass a public GLB / GLTF / 3MF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', after `search_models` to render the chosen result, or to show a `.3mf` you just produced for 3D printing — the widget converts 3MF to glTF in the browser, so a printable model is previewable without any download.",

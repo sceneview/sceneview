@@ -67,6 +67,7 @@ import { buildPreviewUrl, formatPreviewResponse, validatePreviewInput } from "..
 import { getSample, SAMPLE_IDS, SAMPLES } from "../samples.js";
 import { formatSearchResults, searchModels } from "../search-models.js";
 import { formatValidationReport, validateCode } from "../validator.js";
+import { buildSpatialAnswerSpec, spatialAnswerUrl } from "../spatial-answer-link.js";
 import { WIDGET_3D_VIEWER_URI } from "../widgets.js";
 import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 
@@ -1011,6 +1012,40 @@ export async function dispatchTool(
         content: withDisclaimer([{ type: "text", text }]),
         isError: docResult.ok ? undefined : true,
       };
+    }
+
+    case "show_in_space": {
+      try {
+        const spec = buildSpatialAnswerSpec({
+          widthCm: args?.widthCm,
+          heightCm: args?.heightCm,
+          depthCm: args?.depthCm,
+          label: args?.label,
+          placement: args?.placement,
+          dimensionSource: args?.dimensionSource,
+        });
+        const url = spatialAnswerUrl(spec);
+        const sizeCm = [args!.widthCm, args!.heightCm, args!.depthCm];
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${spec.label}: ${sizeCm.join(" × ")} cm — ${url}\nOpens at real scale in the SceneView app on Android; without the app, the page shows the size.`,
+            },
+          ],
+          structuredContent: { url, label: spec.label, sizeCm, placement: spec.placement },
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `show_in_space: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
     }
 
     // ── view_3d_model (MCP Apps widget) ──────────────────────────────────────
