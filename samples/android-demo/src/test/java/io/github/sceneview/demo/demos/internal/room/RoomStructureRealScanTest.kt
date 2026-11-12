@@ -23,8 +23,8 @@ import kotlin.math.min
  * hidden behind furniture, a headboard against a wall, a bedroom whose clutter outweighs its walls,
  * one wall seen along a stretch of it, a garage's storage fronts, walls the depth missed and ARCore
  * found as planes, a side open onto the next room, a wall returned only in shards out of line, a far
- * wall never seen, two walls not followed to their far corners, cupboard fronts out of line or in
- * line before a wall never seen. When a figure is given it is
+ * wall never seen, two walls not followed to their far corners, cupboard fronts out of line before
+ * a wall never seen. When a figure is given it is
  * within [MAX_ERROR] of the room's, or the case's own bound; where the walls seen do not close the
  * room, none is, and the plan is still drawn — but two adjacent walls alone give an area marked as
  * an estimate, the floor seen standing for the other two.
@@ -318,6 +318,19 @@ class RoomStructureRealScanTest {
     }
 
     @Test
+    fun `cupboard fronts in line before a wall never seen do not stand for it`() {
+        val structure = RoomStructure.read(capture(CUPBOARDS_IN_LINE).scan())
+        val summary = summary(CUPBOARDS_IN_LINE, structure)
+        val north = RECTANGLE_Z.max()
+        val fronts = structure.walls.filter {
+            abs(it.az - it.bz) < FRONT_NEAR_M && max(it.az, it.bz) < north - FRONT_NEAR_M && min(it.az, it.bz) > north - 1f
+        }
+        assertTrue("$summary: ${fronts.size} walls along the cupboards' fronts", fronts.isEmpty())
+        // The floor seen stands for the wall unseen: the room's full 20 m², marked as an estimate.
+        check(CUPBOARDS_IN_LINE)
+    }
+
+    @Test
     fun `the live area of two adjacent walls is marked as an estimate`() {
         val live = RoomStructure.live(capture(TWO_LOW).scan())
         assertTrue("live area ${live.area}", live.area?.estimate == true)
@@ -334,19 +347,6 @@ class RoomStructureRealScanTest {
         assertTrue("$summary: ${fronts.size} walls along the cupboards' fronts", fronts.isEmpty())
         // The floor seen stands for the wall unseen: the room's full 20 m², marked as an estimate.
         check(CUPBOARDS)
-    }
-
-    @Test
-    fun `cupboard fronts in line before a wall never seen do not stand for it`() {
-        val structure = RoomStructure.read(capture(CUPBOARDS_IN_LINE).scan())
-        val summary = summary(CUPBOARDS_IN_LINE, structure)
-        val north = RECTANGLE_Z.max()
-        val fronts = structure.walls.filter {
-            abs(it.az - it.bz) < FRONT_NEAR_M && max(it.az, it.bz) < north - FRONT_NEAR_M && min(it.az, it.bz) > north - 1f
-        }
-        assertTrue("$summary: ${fronts.size} walls along the cupboards' fronts", fronts.isEmpty())
-        // The floor seen stands for the wall unseen: the room's full 20 m², marked as an estimate.
-        check(CUPBOARDS_IN_LINE)
     }
 
     /** A case's full reading's median and live reading's best run. */
