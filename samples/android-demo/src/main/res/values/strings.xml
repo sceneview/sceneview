@@ -410,4 +410,27 @@
     <string name="spatial_error_label">Use a label of at most 60 characters.</string>
     <string name="spatial_error_version">Unsupported payload version. Expected version 1.</string>
     <string name="spatial_error_payload">Invalid spatial payload. Check the version, fields and object kind.</string>
+
+    <string name="measure_mode_ruler">Ruler</string>
+    <string name="measure_mode_object">Object</string>
+    <string name="measure_object_support">Tap the surface the object stands on</string>
+    <string name="measure_object_length">Tap two corners along the object\'s long side</string>
+    <string name="measure_object_width">Tap a corner across the short side</string>
+    <string name="measure_object_height">Tap the top of the object</string>
+    <string name="measure_object_label">Measured object</string>
+    <string name="measure_object_tap">Add point</string>
+    <string name="measure_object_result">%1$d × %2$d × %3$d cm, ± %4$d cm each</string>
+    <string name="measure_object_dimension_uncertainty">L ± %1$d cm · W ± %2$d cm · H ± %3$d cm</string>
+    <string name="measure_object_approximate">Approximate, not calibrated.</string>
+    <string name="measure_object_show_answer">Show as 3D answer</string>
+    <string name="measure_object_copy">Copy JSON</string>
+    <string name="measure_object_review">Show result</string>
+    <string name="measure_object_undo">Undo</string>
+    <string name="measure_object_close_points">Points are too close. Try again farther apart.</string>
+    <string name="measure_object_below">That point is below the support. Tap the top of the object.</string>
+    <string name="measure_object_no_surface">Point at a flat table or floor, then try again.</string>
+    <string name="measure_object_no_top">Move slowly to see the top, then try again.</string>
+    <string name="measure_object_move">Move your phone slowly, then try again.</string>
+    <string name="measure_object_remaining_corner">Tap the other corner along the long side</string>
+    <string name="measure_object_too_large">Try again with an object smaller than 10 metres.</string>
 </resources>
