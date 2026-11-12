@@ -53,6 +53,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.filament.LightManager
+import com.google.android.filament.Skybox
 import com.google.android.filament.Camera
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.View
@@ -85,18 +87,12 @@ import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.ui.viewer.ShowroomFloor
 import io.github.sceneview.demo.ui.viewer.ShowroomMath
-import io.github.sceneview.demo.ui.viewer.ShowroomReflection
-import io.github.sceneview.demo.ui.viewer.ShowroomStage
 import io.github.sceneview.demo.ui.viewer.ShowroomToneMapping
-import io.github.sceneview.demo.ui.viewer.ShowroomViewOptions
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
-import io.github.sceneview.demo.ui.viewer.rememberShowroomReflection
-import io.github.sceneview.demo.ui.viewer.rememberShowroomStage
-import io.github.sceneview.demo.ui.viewer.showroomIsDark
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -131,11 +127,11 @@ fun FeelDemo(onBack: () -> Unit) {
         return
     }
     val context = LocalContext.current
-    // These two packages are required for the stage/opening. Read bytes off-main, then
+    // These packages are required for the stage/opening. Read bytes off-main, then
     // construct Filament objects on-main; no other family belongs on this startup path.
     val openingPayloads by produceState<List<ByteBuffer>?>(null, context) {
         value = withContext(Dispatchers.IO) {
-            listOf(MatterSurfaceMaterials.asset(FeelMaterial.MemoryFoam), "materials/studio_pbr.filamat").map { path ->
+            listOf(MatterSurfaceMaterials.asset(FeelMaterial.MemoryFoam), "materials/studio_pbr.filamat", "materials/matter_floor.filamat").map { path ->
                 val bytes = context.assets.open(path).use { it.readBytes() }
                 ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { flip() }
             }
@@ -165,26 +161,24 @@ fun FeelDemo(onBack: () -> Unit) {
         }
     }
     val camera = rememberCameraNode(engine)
-    val showroom = rememberShowroomStage(engine, view, loader)
-    val reflection = rememberShowroomReflection(engine, view,
-        resolutionScale = .125f, skipMovingFrames = false)
-    val dark = showroomIsDark()
-    val palette = if (dark) SceneViewTokens.Showroom.Dark else SceneViewTokens.Showroom.Light
-    val hdrPath = ShowroomMath.hdrPath(dark)
-    val hdr = rememberHDREnvironment(environmentLoader, hdrPath, createSkybox = false)
-    val environment = remember(hdr, showroom) { (hdr ?: Environment()).copy(skybox = showroom.skybox) }
+    // A single studio for all samples and both app themes. The IBL only fills reflections.
+    val skybox = remember(engine) { Skybox.Builder().color(.12f, .12f, .12f, 1f).build(engine) }
+    DisposableEffect(skybox) { onDispose { engine.destroySkybox(skybox) } }
+    val hdr = rememberHDREnvironment(environmentLoader, ShowroomMath.DARK_HDR, createSkybox = false)
+    val environment = remember(hdr, skybox) { (hdr ?: Environment()).copy(skybox = skybox) }
     val light = rememberMainLightNode(engine) {
-        lightDirection = Direction(-0.45f, -1f, -0.35f)
-        intensity = 12_000f
+        lightDirection = Direction(.65f, -1f, -.35f)
+        color = colorOf(1f, .88f, .72f)
+        intensity = 55_000f
         isShadowCaster = true
     }
     LaunchedEffect(engine, light) {
         light.updateShadowOptions {
             mapSize = 1024
             shadowCascades = 1
-            shadowFar = 30f
-            normalBias = 0.02f
-            shadowBulbRadius = 0.08f
+            shadowFar = 20f
+            normalBias = 0.008f
+            shadowBulbRadius = 0.22f
         }
     }
     val recorder = rememberDemoSceneRecorder()
@@ -239,7 +233,7 @@ fun FeelDemo(onBack: () -> Unit) {
     val mesh = remember(engine) { MatterMesh(engine, MatterMeshes.slab()) }
     val rigidMesh = remember(engine) { MatterMesh(engine, MatterMeshes.slab(rigid = true)) }
     val materials = remember(engine, loader, initialPayloads) {
-        MatterSurfaceMaterials(engine, loader, initialPayloads[0], initialPayloads[1])
+        MatterSurfaceMaterials(engine, loader, initialPayloads[0], initialPayloads[1], initialPayloads[2])
     }
     DisposableEffect(mesh, rigidMesh, materials) {
         onDispose { mesh.destroy(); rigidMesh.destroy(); materials.destroy() }
@@ -314,27 +308,19 @@ fun FeelDemo(onBack: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val ringColour = ViewerBackdrop.linearBeforeNeutral(colors.primary)
     val hairlinePx = with(LocalDensity.current) { SceneViewTokens.Layout.hairlineWidth.toPx() }
-    val center = remember { Position(y = -FeelSimulation.PAD_THICKNESS / 2f) }
     val floorY = -FeelSimulation.PAD_THICKNESS
     SideEffect {
         hdr?.indirectLight?.apply {
-            intensity = ShowroomMath.baseIntensity(hdrPath)
+            intensity = 4_000f
             setRotation(MatterStage.STUDIO_ROTATION)
         }
-        showroom.dress(ShowroomStage.Look(
-            palette = palette, isDark = dark, neutral = true,
-            irradiance = ShowroomMath.upwardIrradiance(hdrPath),
-            baseIntensity = ShowroomMath.baseIntensity(hdrPath), slider = 1f,
-            exposure = ShowroomMath.exposure(camera.aperture, camera.shutterSpeed, camera.sensitivity),
-            lights = true, staged = true, center = center, floorY = floorY, radius = MatterStage.RADIUS,
-        ), camera.worldPosition)
         materials.samples.forEach { (kind, instance) ->
             if (kind != FeelMaterial.Gel) instance.setParameter("rippleColor", ringColour[0], ringColour[1], ringColour[2])
         }
     }
     ShowroomToneMapping(engine, view, neutral = true, requestRender = invalidator::requestRender)
     var readout by remember { mutableStateOf(FeelReadout()) }
-    val timing = remember { longArrayOf(0L, 0L, 0L, 0L) }
+    val timing = remember { longArrayOf(0L) }
     // Changing state is read by the FIRST SceneView callbacks through these updated delegates.
     val onTouchNow by rememberUpdatedState<(MotionEvent) -> Boolean>({ event ->
         wakeRender()
@@ -401,47 +387,6 @@ fun FeelDemo(onBack: () -> Unit) {
             isVisible = simulation.opening.visible && displayed == FeelMaterial.MemoryFoam
             if (isVisible) position = Position(y = simulation.opening.heightAbovePad -
                 MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) - simulation.opening.squash)
-        }
-        showroom.onFrame(camera.worldPosition)
-        // Sample the visible state at 30 Hz. An idle sample reuses its reflection indefinitely.
-        // Shader-only deformation, the ripple and opening are invisible to the mirror's pose cache.
-        if (now - timing[1] >= 32L) {
-            timing[1] = now
-            var signature = displayed.ordinal.toLong() * 31 + (hdr?.indirectLight?.hashCode() ?: 0)
-            signature = signature * 31 + materials.detailVersion
-            for (kind in FeelMaterial.entries) if (kind == displayed || kind == outgoing) {
-                val i = kind.ordinal
-                signature = signature * 31 + simulation.pads[i].depthMm.toBits()
-                signature = signature * 31 + simulation.dentX[i].toBits()
-                signature = signature * 31 + simulation.dentZ[i].toBits()
-                for (slot in 0 until FeelSimulation.TRAIL_POINTS) {
-                    signature = signature * 31 + simulation.trails[i][slot * 4 + 2].toBits()
-                }
-                if (kind == FeelMaterial.Gel && motion && simulation.gelReleasedAt != Long.MIN_VALUE &&
-                    now - simulation.gelReleasedAt in 0L..(FeelSimulation.GEL_WAVE_SECONDS * 1000).toLong()
-                ) signature += now / 32L
-                val contactAt = simulation.contactMillis[i]
-                if (kind.rigid && motion && contactAt != Long.MIN_VALUE &&
-                    now - contactAt in 0L until MatterMeshes.RIPPLE_MILLIS) signature += now / 32L
-            }
-            if (motion && transitionStarted?.let { now - it in 0L..1100L } == true) signature += now / 32L
-            signature = signature * 31 + progress.toBits()
-            signature = signature * 31 + simulation.opening.heightAbovePad.toBits()
-            signature = signature * 31 + if (simulation.opening.visible) 1L else 0L
-            timing[2] = signature
-        }
-        reflection.set(showroom.floorMaterial, ShowroomReflection.Pose(
-            center = center, floorY = floorY - ShowroomMath.FLOOR_DROP_RADII * MatterStage.RADIUS,
-            radius = MatterStage.RADIUS, halfWidth = FeelSimulation.PAD_HALF_WIDTH,
-            halfDepth = FeelSimulation.PAD_HALF_LENGTH, height = FeelSimulation.PAD_THICKNESS,
-            yawDegrees = 0f, lift = 0f, isDark = dark, contentVersion = timing[2],
-        ))
-        // Throttle the actual mirror draw, including camera changes. Its image and matrix
-        // remain paired. The existing pose cache still skips completely unchanged content.
-        val reflectionPeriod = if (cadence == MatterCadence.Orbit) 66_000_000L else 32_000_000L
-        if (nanos - timing[3] >= reflectionPeriod) {
-            timing[3] = nanos
-            if (reflection.onFrame()) invalidator.requestRender()
         }
         if (now - timing[0] >= 50L) {
             timing[0] = now
@@ -535,12 +480,27 @@ fun FeelDemo(onBack: () -> Unit) {
                             -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
                         } else MatterTransition.incomingTravel(progress) * direction * .28f
                         val shadowKind = if (outgoing != null && progress < .40f) outgoing!! else displayed
-                        ShowroomFloor(stage = showroom, center = center, floorY = floorY,
-                            shadowCenter = Position(shadowOffset * MatterStage.COS_AZIMUTH,
-                                center.y, -shadowOffset * MatterStage.SIN_AZIMUTH),
-                            radius = MatterStage.RADIUS, halfWidth = FeelSimulation.PAD_HALF_WIDTH,
-                            halfDepth = FeelSimulation.PAD_HALF_LENGTH, yawDegrees = 0f,
-                            showFloor = true, shadowAlpha = MatterTransition.shadow(progress) * if (shadowKind == FeelMaterial.Gel) .08f else 1f)
+                        // Local fill/rim lights: Filament supports one directional key per scene.
+                        LightNode(type = LightManager.Type.POINT, position = Position(5f, 3f, 4f),
+                            color = colorOf(.64f, .78f, 1f), intensity = 750_000f,
+                            apply = { falloff(12f); castShadows(false) })
+                        LightNode(type = LightManager.Type.SPOT, position = Position(1f, 4f, -4f),
+                            direction = Direction(-1f, -3f, 4f), color = colorOf(.82f, .90f, 1f),
+                            intensity = 500_000f,
+                            apply = { falloff(12f); spotLightCone(.45f, .95f); castShadows(false) })
+                        SideEffect {
+                            materials.floor.setParameter("contact", shadowOffset * MatterStage.COS_AZIMUTH,
+                                -shadowOffset * MatterStage.SIN_AZIMUTH,
+                                MatterTransition.shadow(progress) * if (shadowKind == FeelMaterial.Gel) .25f else 1f)
+                        }
+                        PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = floorY - .003f),
+                            materialInstance = materials.floor, apply = {
+                                isShadowCaster = false
+                                isShadowReceiver = true
+                                isTouchable = false
+                                setCulling(false)
+                                axisAlignedBoundingBox = com.google.android.filament.Box(0f, 1f, 0f, 100f, 1f, 100f)
+                            })
                         FeelMaterial.entries.forEach { kind ->
                             val sampleMaterial = materials.samples[kind] ?: return@forEach
                             key(kind) {
@@ -555,7 +515,6 @@ fun FeelDemo(onBack: () -> Unit) {
                                             isShadowCaster = kind != FeelMaterial.Gel
                                             isShadowReceiver = kind != FeelMaterial.Gel
                                             isTouchable = false
-                                            setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
                                         },
                                     )
                                     if (kind == FeelMaterial.MemoryFoam) {
@@ -565,7 +524,6 @@ fun FeelDemo(onBack: () -> Unit) {
                                                 rotation = Rotation(y = 45f + MatterStage.AZIMUTH),
                                                 materialInstance = materials.mark, apply = {
                                                     isTouchable = false
-                                                    setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
                                                 })
                                         }
                                     }
@@ -573,14 +531,13 @@ fun FeelDemo(onBack: () -> Unit) {
                             }
                         }
                     }
-                    ShowroomViewOptions(view, dark, staged = true, showroomLit = true,
-                        radius = MatterStage.RADIUS, requestRender = invalidator::requestRender)
-                    // Apply after showroom/default quality effects, only when the look changes.
-                    LaunchedEffect(view, dark) {
+                    // Apply after SceneView's defaults. No mirror, SSAO, bloom or vignette passes.
+                    LaunchedEffect(view) {
+                        view.fogOptions = view.fogOptions.apply { enabled = false }
+                        view.vignetteOptions = view.vignetteOptions.apply { enabled = false }
                         view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply { enabled = false }
                         view.bloomOptions = view.bloomOptions.apply { enabled = false }
-                        view.shadowType = View.ShadowType.PCF
-                        // The shared stage alone measured 18.5 fps at native resolution on 4a.
+                        view.shadowType = View.ShadowType.PCSS
                         // Preserve native pixels when they fit; up to 55% fewer shaded pixels under load.
                         view.dynamicResolutionOptions = view.dynamicResolutionOptions.apply {
                             enabled = true

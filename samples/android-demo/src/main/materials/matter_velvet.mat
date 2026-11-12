@@ -155,12 +155,14 @@ fragment {
         mat3 toTangent = transpose(getWorldTangentFrame());
         material.normal = toTangent * detailed;
         prepareMaterial(material);
-        material.baseColor = vec4(colour, 1.0);
+        // Cavity stays legible under direct light; AO separately attenuates the IBL.
+        float cavity = variable_bentTangent.w;
+        material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
         // Cloth uses roughness for its sole Charlie sheen lobe. Preserve the nap response
         // without also evaluating a dielectric GGX base lobe and a second IBL lookup.
         material.roughness = clamp(materialParams.sheenRoughness - crushed * 0.13 +
             (pile - 0.5) * 0.10, 0.2, 1.0);
-        material.ambientOcclusion = occlusion;
+        material.ambientOcclusion = occlusion * (1.0 - 0.72 * cavity);
         vec3 pileTint = sqrt(materialParams.albedo);
         pileTint /= max(max(pileTint.r, pileTint.g), max(pileTint.b, 0.001));
         material.sheenColor = clamp(pileTint * materialParams.sheen * (0.85 + pile * 0.15 + crushed * 0.2), 0.0, 1.0);

@@ -26,6 +26,7 @@ internal class MatterSurfaceMaterials(
     private val loader: MaterialLoader,
     foamPayload: ByteBuffer,
     markPayload: ByteBuffer,
+    floorPayload: ByteBuffer,
 ) {
     private val textures = mutableMapOf<FeelMaterial, Texture>()
     var detailVersion = 0L
@@ -40,6 +41,10 @@ internal class MatterSurfaceMaterials(
         }
     companion object {
         fun asset(kind: FeelMaterial) = "materials/matter_${listOf("soft", "gel", "velvet", "leather", "marble", "steel")[kind.ordinal]}.filamat"
+    }
+    val floor = loader.createInstance(loader.createMaterial(floorPayload)).apply {
+        setParameter("contact", 0f, 0f, 1f)
+        setParameter("halfSize", FeelSimulation.PAD_HALF_WIDTH, FeelSimulation.PAD_HALF_LENGTH)
     }
     val samples = mutableStateMapOf<FeelMaterial, MaterialInstance>()
     private val instances = mutableMapOf<FeelMaterial, MaterialInstance>()
@@ -57,6 +62,7 @@ internal class MatterSurfaceMaterials(
     private fun create(kind: FeelMaterial, material: Material): MaterialInstance {
         val finish = MatterSurfaces[kind]
         return loader.createInstance(material).apply {
+            if (kind == FeelMaterial.MemoryFoam) setParameter("imprint", 0f, 0f, 0f)
             setParameter("finger", 0f, 0f)
             setParameter("depth", 0f)
             setParameter("bounce", 0f)
@@ -99,11 +105,10 @@ internal class MatterSurfaceMaterials(
         val material = loader.createMaterial(payload)
         val instance = create(kind, material)
         compiling = true
-        // Includes unshadowed (gel/mirror), directional, PCF receiver and showroom height fog.
-        // No dynamic lights, skinning, VSM, SSR or stereo in this stage.
+        // Warm the studio key, local fill/rim and soft-shadow receiver variants.
         material.compile(Material.CompilerPriorityQueue.LOW,
             Material.UserVariantFilterBit.DIRECTIONAL_LIGHTING or Material.UserVariantFilterBit.SHADOW_RECEIVER or
-                Material.UserVariantFilterBit.FOG,
+                Material.UserVariantFilterBit.DYNAMIC_LIGHTING,
             Handler(Looper.getMainLooper()), Runnable {
                 if (!destroyed) {
                     compiling = false
@@ -167,6 +172,9 @@ internal class MatterSurfaceMaterials(
                landingAge: Float = -1f) {
         val i = kind.ordinal
         (samples[kind] ?: return).apply {
+            if (kind == FeelMaterial.MemoryFoam) {
+                setParameter("imprint", simulation.imprintX, simulation.imprintZ, simulation.imprintStrength)
+            }
             setParameter("finger", simulation.dentX[i], simulation.dentZ[i])
             val settling = if (motion && simulation.active != kind) MatterTransition.settleDepth(kind, landingAge) else 0f
             setParameter("radius", simulation.radius(kind))
@@ -208,6 +216,7 @@ internal class MatterSurfaceMaterials(
         destroyed = true
         instances.values.forEach(loader::destroyMaterialInstance)
         loader.destroyMaterialInstance(mark)
+        loader.destroyMaterialInstance(floor)
         textures.values.forEach(engine::destroyTexture)
         engine.destroyTexture(fallback)
         // MaterialLoader owns the parent material packages.

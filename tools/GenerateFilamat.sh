@@ -165,6 +165,7 @@ MATS=(
     "sceneview:video_texture_chroma_key:sceneview/src/main/materials/video_texture_chroma_key.mat:sceneview/src/main/assets/materials/video_texture_chroma_key.filamat:-p all -a all"
     "sceneview:view_texture_lit:sceneview/src/main/materials/view_texture_lit.mat:sceneview/src/main/assets/materials/view_texture_lit.filamat:-p all -a all"
     "sceneview:view_texture_unlit:sceneview/src/main/materials/view_texture_unlit.mat:sceneview/src/main/assets/materials/view_texture_unlit.filamat:-p all -a all"
+    "android-demo:matter_floor:samples/android-demo/src/main/materials/matter_floor.mat:samples/android-demo/src/main/assets/materials/matter_floor.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:matter_soft:samples/android-demo/src/main/materials/matter_soft.mat:samples/android-demo/src/main/assets/materials/matter_soft.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:matter_velvet:samples/android-demo/src/main/materials/matter_velvet.mat:samples/android-demo/src/main/assets/materials/matter_velvet.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:matter_leather:samples/android-demo/src/main/materials/matter_leather.mat:samples/android-demo/src/main/assets/materials/matter_leather.filamat:--optimize-size -p mobile -a opengl -a vulkan"

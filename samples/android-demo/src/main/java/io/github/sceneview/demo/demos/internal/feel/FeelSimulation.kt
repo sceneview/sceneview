@@ -49,6 +49,18 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
     val contactZ = FloatArray(pads.size)
     val contactMillis = LongArray(pads.size) { Long.MIN_VALUE }
     private var foamReleasedAt: Long? = null
+    // One fingertip pad in scene coordinates; it records a held contact, never the opening prop.
+    var imprintX = 0f
+        private set
+    var imprintZ = 0f
+        private set
+    var imprintStrength = 0f
+        private set
+    private var imprintDwellAt = 0L
+    private var imprintDwellX = 0f
+    private var imprintDwellZ = 0f
+    private var imprintReleaseDepth = 0f
+    private var imprintReleaseStrength = 0f
     private var openingLoaded = false
     fun radius(material: FeelMaterial): Float = if (material == FeelMaterial.MemoryFoam &&
         openingLoaded && !hasPressed) MatterOpening.WELL_RADIUS else material.radius
@@ -135,6 +147,13 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         if (material == FeelMaterial.Gel) gelReleasedAt = Long.MIN_VALUE
         contactX[material.ordinal] = fingerX[material.ordinal]
         contactZ[material.ordinal] = fingerZ[material.ordinal]
+        if (material == FeelMaterial.MemoryFoam) {
+            imprintDwellAt = now
+            imprintX = dentX[0]; imprintZ = dentZ[0]
+            imprintDwellX = lastTravelX; imprintDwellZ = lastTravelZ
+            imprintStrength = 0f
+            imprintReleaseStrength = 0f
+        }
         haptics.begin(material, pads[material.ordinal])
     }
 
@@ -163,6 +182,9 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         }
         if (active == FeelMaterial.MemoryFoam) {
             foamReleasedAt = now
+            imprintReleaseDepth = MatterSurfaces.visualDepth(pads[0].depthMm, FeelMaterial.MemoryFoam)
+            imprintReleaseStrength = imprintStrength
+            imprintX = dentX[0]; imprintZ = dentZ[0]
             pads[0] = pads[0].copy(velocity = 0f)
         }
         active = null
@@ -242,6 +264,20 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
             pads[material.ordinal] = stepIndentation(
                 pads[material.ordinal], material, pressure, dt,
             )
+        }
+        if (pressed == FeelMaterial.MemoryFoam) {
+            // Screen-to-dent reprojection is not finger motion. Only real pointer travel
+            // resets the dwell, otherwise a stationary press could never leave an imprint.
+            if (hypot(lastTravelX - imprintDwellX, lastTravelZ - imprintDwellZ) > 2f * FeelMaterial.WORLD_PER_MM) {
+                imprintDwellAt = now
+                imprintDwellX = lastTravelX; imprintDwellZ = lastTravelZ
+            }
+            imprintX = dentX[0]; imprintZ = dentZ[0]
+            val dwell = ((now - imprintDwellAt - 650L) / 950f).coerceIn(0f, 1f)
+            imprintStrength = dwell * dwell * (3f - 2f * dwell)
+        } else {
+            val depth = MatterSurfaces.visualDepth(pads[0].depthMm, FeelMaterial.MemoryFoam)
+            imprintStrength = imprintReleaseStrength * (depth / imprintReleaseDepth.coerceAtLeast(.001f)).coerceIn(0f, 1f)
         }
         val effect = haptics.advance(pads[selected.ordinal], filteredPressure,
             travelXmm, travelZmm, dt, now)

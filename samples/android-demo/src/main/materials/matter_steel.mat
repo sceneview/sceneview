@@ -152,11 +152,13 @@ fragment {
         material.normal = toTangent * detailed;
         material.anisotropyDirection = normalize(toTangent * variable_bentTangent.xyz);
         prepareMaterial(material);
-        material.baseColor = vec4(colour, 1.0);
+        // Cavity stays legible under direct light; AO separately attenuates the IBL.
+        float cavity = variable_bentTangent.w;
+        material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
         material.roughness = clamp(rough, 0.045, 1.0);
         material.metallic = materialParams.metallic;
         material.reflectance = 0.5;
-        material.ambientOcclusion = occlusion;
+        material.ambientOcclusion = occlusion * (1.0 - 0.72 * cavity);
         material.anisotropy = materialParams.anisotropy;
         material.postLightingColor = matterRipple(p);
     }

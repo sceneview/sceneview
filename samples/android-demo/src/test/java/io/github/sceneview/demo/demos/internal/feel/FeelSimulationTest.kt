@@ -6,6 +6,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FeelSimulationTest {
+    @Test fun fingertipImprintRequiresDwellAndFadesWithTheFoam() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.MemoryFoam, .3f, -.2f, 1f, 0f, 0L)
+        for (now in 0L..500L step 10L) simulation.advance(now)
+        assertEquals(0f, simulation.imprintStrength, 0f)
+        for (now in 510L..2000L step 10L) simulation.advance(now)
+        assertEquals(1f, simulation.imprintStrength, .001f)
+        simulation.release(2000L)
+        val x = simulation.imprintX; val z = simulation.imprintZ
+        for (now in 2010L..2100L step 10L) simulation.advance(now)
+        assertEquals(1f, simulation.imprintStrength, .001f)
+        var previous = simulation.imprintStrength
+        for (now in 2110L..16000L step 10L) {
+            simulation.advance(now)
+            assertTrue(simulation.imprintStrength <= previous + .00001f)
+            assertEquals(x, simulation.imprintX, 0f)
+            assertEquals(z, simulation.imprintZ, 0f)
+            previous = simulation.imprintStrength
+        }
+        assertEquals(0f, simulation.imprintStrength, .001f)
+        assertTrue(!simulation.needsFrames(FeelMaterial.MemoryFoam, 16000L, false))
+    }
+
+    @Test fun movingFingerAndOpeningDoNotStampAWhorl() {
+        val simulation = FeelSimulation()
+        simulation.begin(FeelMaterial.MemoryFoam, -1f, 0f, 1f, 0f, 0L)
+        for (now in 0L..2000L step 10L) {
+            simulation.move(-1f + now / 1000f, 0f, 1f, 0f)
+            simulation.advance(now)
+        }
+        simulation.release(2000L)
+        assertEquals(0f, simulation.imprintStrength, 0f)
+        val opening = FeelSimulation(openingEnabled = true)
+        for (now in 0L..10000L step 10L) opening.advance(now)
+        assertEquals(0f, opening.imprintStrength, 0f)
+    }
+
     @Test fun dragHasMaterialSpecificLagIndependentOfFrameRateAndFreezesOnRelease() {
         for (kind in FeelMaterial.entries) {
             val positions = listOf(10L, 20L).map { step ->

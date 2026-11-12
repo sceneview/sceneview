@@ -126,8 +126,11 @@ void materialVertex(inout MaterialVertexInputs material) {
     #endif
     material.worldPosition.xyz += mat3(getWorldFromModelMatrix()) *
         vec3(0.0, weight * deformation.x + materialParams.bounce, 0.0);
-    material.rest = vec4(p, clamp(-deformation.x / materialParams.dimensions.y, 0.0, 1.0));
+    material.rest = vec4(p, clamp(-deformation.x * weight / materialParams.dimensions.y, 0.0, 1.0));
     material.bentNormal = vec4(normalize(getWorldFromModelNormalMatrix() * n), deformation.w * weight);
-    material.bentTangent = vec4(normalize(mat3(getWorldFromModelMatrix()) * t), 0.0);
+    // Pack cavity with the existing tangent: depth plus crease slope, no extra varying or texture.
+    float cavity = clamp(-deformation.x * weight / materialParams.dimensions.y *
+        (0.65 + 0.55 * length(deformation.yz)), 0.0, 0.85);
+    material.bentTangent = vec4(normalize(mat3(getWorldFromModelMatrix()) * t), cavity);
     // Filament's original TBN maps the deformed world-space frame back in the fragment.
 }
