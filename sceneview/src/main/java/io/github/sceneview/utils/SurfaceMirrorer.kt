@@ -9,6 +9,7 @@ import com.google.android.filament.SwapChain
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
 import io.github.sceneview.SURFACE_DETACH_WAIT_NANOS
+import io.github.sceneview.SurfaceDetachBudget
 import io.github.sceneview.destroyRendererWhenBackendIdle
 
 /**
@@ -236,17 +237,22 @@ class SurfaceMirrorer {
     }
 
     /** [releaseSwapChains] on [engine]'s backend, with a warning when the bound expires. */
-    private fun release(engine: Engine, swapChains: List<SwapChain>) {
+    private fun release(
+        engine: Engine,
+        swapChains: List<SwapChain>,
+        waitBudget: SurfaceDetachBudget = SurfaceDetachBudget(),
+    ) {
         val caughtUp = releaseSwapChains(
             swapChains,
             destroySwapChain = { runCatching { engine.destroySwapChain(it) } },
             flushAndWait = { runCatching { engine.flushAndWait(it) }.getOrDefault(false) },
+            waitBudget = waitBudget,
         )
         if (!caughtUp) {
             android.util.Log.w(
                 "SurfaceMirrorer",
                 "Mirroring stopped, backend still busy after " +
-                    "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+                    "${waitBudget.lastWaitNanos / 1_000_000} ms; not waiting longer"
             )
         }
     }
@@ -306,10 +312,10 @@ class SurfaceMirrorer {
      * mirrored recording ends with the view that feeds it, and [onHostLost] is called. The
      * recording releases its surface from there, so the swap chains must be gone first; a scene
      * disposed with no mirror, or before a mirror's first frame, waits for nothing. Teardown waits
-     * on the backend are bounded (#4828), not banned: this is the same one-second bound as the
-     * scene's own surface detach.
+     * on the backend are bounded (#3799, #3854, #4828), not banned: scene disposal passes the
+     * same one-second [waitBudget] to mirror release and window detach, whichever runs first.
      */
-    internal fun destroy() {
+    internal fun destroy(waitBudget: SurfaceDetachBudget = SurfaceDetachBudget()) {
         val (engine, swapChains, renderer) = synchronized(surfaceMirrors) {
             val swapChains = surfaceMirrors.mapNotNull { mirror ->
                 mirror.swapChain.also { mirror.swapChain = null }
@@ -318,17 +324,9 @@ class SurfaceMirrorer {
             Triple(engine, swapChains, mirrorRenderer.also { mirrorRenderer = null })
         }
         this.engine = null
-        if (engine != null) release(engine, swapChains)
-        // Not `destroyRenderer` on the spot: Filament's renderer teardown first waits, with no
-        // bound, for every command already queued on the backend — the scene's last mirror passes
-        // and, right after it appeared, its shader links. A recorded scene disposed then parked the
-        // main thread on that whole queue (#3799). The release now always runs from a later
-        // main-thread message, at the next poll at the earliest, once the backend is found to have
-        // caught up recently (`Engine.whenBackendIdle`), or after its 5 s fallback; the engine
-        // outlives it (its own destroy runs pending releases first). `FRenderer::terminate` still
-        // creates and waits on its own fence then, so it waits for whatever the main thread queued
-        // in the last 48 ms: usually a frame or two, not the whole backlog — the same limit as the
-        // scene's own renderer (#3854).
+        if (engine != null) release(engine, swapChains, waitBudget)
+        // Renderer destruction has an unbounded native wait. Defer it until a fresh fence is
+        // reached (any reached fence after the 5 s fallback). The engine must outlive the release.
         if (renderer != null) engine?.destroyRendererWhenBackendIdle(renderer)
         onHostLost?.invoke()
     }
@@ -352,9 +350,11 @@ class SurfaceMirrorer {
 }
 
 /**
- * Destroys the [swapChains] of stopped mirrors, then, when there was any, waits up to
- * [SURFACE_DETACH_WAIT_NANOS] for the backend to execute everything queued so far: their creation
- * and their destruction, the two backend commands that use the mirrored surface. Apart from its
+ * Destroys the [swapChains] of stopped mirrors, then, when there was any, waits within the
+ * remaining [waitBudget] for the backend to execute everything queued so far: their creation
+ * and their destruction, the two backend commands that use the mirrored surface. The default
+ * budget is [SURFACE_DETACH_WAIT_NANOS]; scene disposal shares it with window detach and reserves
+ * a mirror-release floor before the recorder surface is released (#4860). Kept apart from its
  * Filament calls so that a JVM test can pin it.
  *
  * @return `false` when the backend was still busy at the bound — the commands still run, in
@@ -364,8 +364,9 @@ internal fun <S> releaseSwapChains(
     swapChains: List<S>,
     destroySwapChain: (S) -> Unit,
     flushAndWait: (timeoutNanos: Long) -> Boolean,
+    waitBudget: SurfaceDetachBudget = SurfaceDetachBudget(),
 ): Boolean {
     if (swapChains.isEmpty()) return true
     swapChains.forEach(destroySwapChain)
-    return flushAndWait(SURFACE_DETACH_WAIT_NANOS)
+    return waitBudget.waitFor(flushAndWait = flushAndWait)
 }

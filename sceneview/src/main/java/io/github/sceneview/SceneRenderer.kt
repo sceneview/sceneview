@@ -3,6 +3,8 @@ package io.github.sceneview
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
 import android.view.MotionEvent
 import android.view.Surface
@@ -382,27 +384,40 @@ class SceneRenderer(
 
     // ── Cleanup ─────────────────────────────────────────────────────────────────────────────────
 
+    // Compose removes the view before onDispose, in the same main-thread message (#3799).
+    // Keep its wait budget until the queue advances so destroy() cannot start a second one.
+    private var surfaceDetachBudget: SurfaceDetachBudget? = null
+    private val surfaceDetachHandler = Handler(Looper.getMainLooper())
+
     /**
      * Detaches from the current surface and releases all native resources.
      *
      * Safe to call multiple times.
      */
     fun destroy() {
-        // Release mirror swap chains first — they were created on the engine the mirrorer
-        // bound at its first mirrored frame.
-        surfaceMirrorer?.destroy()
-        surfaceMirrorer = null
-        renderViewRef = null
-        votableSurfaceRef.set(null)
-        votedFrameRate = 0f
-        uiHelper.detach()
-        swapChainRef.getAndSet(null)?.let {
-            runCatching { engine.destroySwapChain(it) }
-                .onFailure { e -> android.util.Log.w("SceneRenderer", "Failed to destroy SwapChain", e) }
+        // UiHelper.detach invokes onDetachedFromSurface synchronously. Its wait shares the
+        // mirror wait's budget, excluding time spent in onHostLost.
+        val budget = surfaceDetachBudget ?: SurfaceDetachBudget()
+        surfaceDetachBudget = budget
+        try {
+            // Release mirror swap chains first — they were created on the engine the mirrorer
+            // bound at its first mirrored frame.
+            surfaceMirrorer?.destroy(budget)
+            surfaceMirrorer = null
+            renderViewRef = null
+            votableSurfaceRef.set(null)
+            votedFrameRate = 0f
+            uiHelper.detach()
+            swapChainRef.getAndSet(null)?.let {
+                runCatching { engine.destroySwapChain(it) }
+                    .onFailure { e -> android.util.Log.w("SceneRenderer", "Failed to destroy SwapChain", e) }
+            }
+            displayHelper?.detach()
+            displayHelper = null
+            display = null
+        } finally {
+            surfaceDetachBudget = null
         }
-        displayHelper?.detach()
-        displayHelper = null
-        display = null
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────────────────────
@@ -472,11 +487,24 @@ class SceneRenderer(
             // the backlog reaches it; frames queued before it meet an abandoned surface, which
             // PlatformEGL tolerates (a failed eglMakeCurrent is logged, eglSwapBuffers' result
             // is ignored) and which drops those frames — nothing is on screen any more anyway.
-            if (!engine.flushAndWait(SURFACE_DETACH_WAIT_NANOS)) {
+            val budget = surfaceDetachBudget ?: SurfaceDetachBudget().also {
+                surfaceDetachBudget = it
+            }
+            surfaceDetachHandler.post {
+                if (surfaceDetachBudget === budget) surfaceDetachBudget = null
+            }
+            // Reserve 250 ms of the shared second for mirror destruction before onHostLost
+            // releases the recorder Surface. A zero-time mirror flush risks the native abort
+            // in #4860. Window detach may drop queued frames safely (#3799); mirrors must get
+            // a chance to finish first. This is a bounded opportunity, not a completion guarantee.
+            val mirrorReserve = if (surfaceMirrorer != null) MIRROR_RELEASE_RESERVE_NANOS else 0L
+            if (!budget.waitFor(reservedNanos = mirrorReserve) { engine.flushAndWait(it) }) {
                 android.util.Log.w(
                     "SceneRenderer",
                     "Surface detached, backend still busy after " +
-                        "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer (#3799)"
+                        "${budget.lastWaitNanos / 1_000_000} ms " +
+                        "(cumulative wait ${budget.totalWaitNanos / 1_000_000} ms); " +
+                        "not waiting longer (#3799)"
                 )
             }
         }
@@ -506,3 +534,6 @@ internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
 
 /** Upper bound on the main-thread frame-pipeline drain after a surface resize (#3799). */
 internal const val SURFACE_RESIZE_WAIT_NANOS = 250_000_000L
+
+/** Reserved within the shared second for mirror release before the recorder surface (#4860). */
+internal const val MIRROR_RELEASE_RESERVE_NANOS = 250_000_000L
