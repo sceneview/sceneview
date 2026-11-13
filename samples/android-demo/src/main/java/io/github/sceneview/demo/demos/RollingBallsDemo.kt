@@ -69,7 +69,6 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
-import io.github.sceneview.demo.common.updateShadowOptions
 import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.TrayBallDrag
 import io.github.sceneview.demo.demos.internal.TrayMotion
@@ -709,8 +708,6 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                         intensity(PHYSICS_KEY_LIGHT_LUX)
                         castShadows(true)
                     },
-                    // Not Builder.shadowOptions(ShadowOptions()): on Filament 1.77 that zeroes
-                    // every option and loses the shadow (see updateShadowOptions).
                     nodeApply = {
                         updateShadowOptions {
                             mapSize = PHYSICS_SHADOW_MAP_SIZE

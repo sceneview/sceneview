@@ -273,6 +273,34 @@ interface LightComponent : Component {
             onComponentChanged()
         }
 
+    /**
+     * Changes this light's shadow options, starting from the values the light already holds.
+     *
+     * ```kotlin
+     * LightNode(
+     *     type = LightManager.Type.DIRECTIONAL,
+     *     apply = { castShadows(true) },
+     *     nodeApply = { updateShadowOptions { mapSize = 2048; screenSpaceContactShadows = true } },
+     * )
+     * ```
+     *
+     * Prefer this to `LightManager.setShadowOptions(instance, ShadowOptions().apply { … })`:
+     * on Filament 1.77 that raw call starts from all-zero options and stores the `transform`
+     * quaternion in the wrong order, and the directional shadow disappears
+     * (google/filament#10565). [block] receives the light's current options, so every field it
+     * leaves alone keeps its real value, and the write is checked against what Filament stored.
+     * Correct on runtimes with or without the upstream fix.
+     *
+     * Filament JNI — call on the main thread.
+     *
+     * @see LightManager.ShadowOptions
+     */
+    fun updateShadowOptions(block: LightManager.ShadowOptions.() -> Unit) {
+        val instance = lightInstance
+        lightManager.writeShadowOptions(instance, lightManager.getShadowOptions(instance).apply(block))
+        onComponentChanged()
+    }
+
     /** The outer cone angle of this spot light in radians. */
     val outerConeAngle: Float get() = lightManager.getSpotLightOuterCone(lightInstance)
 
