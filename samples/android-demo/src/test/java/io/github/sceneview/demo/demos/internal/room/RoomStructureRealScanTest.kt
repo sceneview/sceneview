@@ -318,6 +318,19 @@ class RoomStructureRealScanTest {
     }
 
     @Test
+    fun `cupboard fronts in line before a wall never seen do not stand for it`() {
+        val structure = RoomStructure.read(capture(CUPBOARDS_IN_LINE).scan())
+        val summary = summary(CUPBOARDS_IN_LINE, structure)
+        val north = RECTANGLE_Z.max()
+        val fronts = structure.walls.filter {
+            abs(it.az - it.bz) < FRONT_NEAR_M && max(it.az, it.bz) < north - FRONT_NEAR_M && min(it.az, it.bz) > north - 1f
+        }
+        assertTrue("$summary: ${fronts.size} walls along the cupboards' fronts", fronts.isEmpty())
+        // The floor seen stands for the wall unseen: the room's full 20 m², marked as an estimate.
+        check(CUPBOARDS_IN_LINE)
+    }
+
+    @Test
     fun `the live area of two adjacent walls is marked as an estimate`() {
         val live = RoomStructure.live(capture(TWO_LOW).scan())
         assertTrue("live area ${live.area}", live.area?.estimate == true)
@@ -566,6 +579,22 @@ class RoomStructureRealScanTest {
                 RECTANGLE_Z,
                 hidden = setOf(2),
                 boxes = listOf(SyntheticBox(0.3f, 0.9f, 3.5f, 4f, 2f), SyntheticBox(4.1f, 4.7f, 3.3f, 4f, 2f)),
+            ),
+            figures = true,
+            estimated = true,
+        )
+
+        /**
+         * [CUPBOARDS], the two fronts in line, both 0.5 m out from the wall never seen: one offset,
+         * 3.2 m apart with nothing seen between them but the floor running on behind their line.
+         */
+        val CUPBOARDS_IN_LINE = Case(
+            "cupboards in line before a wall unseen",
+            SyntheticRoom(
+                RECTANGLE_X,
+                RECTANGLE_Z,
+                hidden = setOf(2),
+                boxes = listOf(SyntheticBox(0.3f, 0.9f, 3.5f, 4f, 2f), SyntheticBox(4.1f, 4.7f, 3.5f, 4f, 2f)),
             ),
             figures = true,
             estimated = true,

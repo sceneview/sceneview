@@ -174,6 +174,13 @@ internal object WallLines {
      * of two things standing before a wall never seen, not one wall.
      */
     private const val SHARD_GAP_M = 1f
+
+    /**
+     * The floor runs on behind a line, between two pieces of it, when it was seen from
+     * [LOW_BEHIND_FROM_M] to [STRIP_M] behind it on this share of the columns between them.
+     */
+    private const val FLOOR_BEHIND_SHARE = 0.5f
+    private const val FLOOR_BAND_M = 0.1f
     private const val QUARTER = 90f
     private const val GAP_FILL_M = 0.15f
     private const val END_NEAR_M = 0.3f
@@ -231,7 +238,8 @@ internal object WallLines {
             candidates += linesOf(cloud, assigned[f].toArray(), f, nu, nv, column, minSupport, standing)
         }
         val merged = mergeLayers(cloud, candidates, column, standing)
-        return withoutFurniture(cloud, shardsJoined(cloud, merged, families, column, standing), column, standing)
+        val joined = shardsJoined(cloud, merged, families, column, standing)
+        return withoutFurniture(cloud, withoutFarFronts(cloud, joined, column, standing), column, standing)
     }
 
     /** What could stand behind a face seen low: surfels from [STANDING_FROM_M] to [STANDING_TO_M] above the floor. */
@@ -627,6 +635,99 @@ internal object WallLines {
         }
         if (joined.isEmpty()) return lines
         return lines.filter { it !in used } + joined
+    }
+
+    /**
+     * Pieces in line are one wall only as far as shards out of line are: two stretches of a line
+     * more than [SHARD_GAP_M] apart, the floor seen running on behind the line between them, are
+     * the fronts of two things standing before a wall never seen — a wall has no floor seen behind
+     * it. The line is cut there, and each part has to be seen along a wall's length on its own,
+     * counted on its columns and measured on its surfels — a front 0.6 m wide can straddle
+     * thirteen 5 cm columns: one that is not is dropped, its columns no longer seen. A line cut
+     * nowhere is left as it is.
+     */
+    @Suppress("NestedBlockDepth", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
+    private fun withoutFarFronts(cloud: FrameCloud, lines: List<WallLine>, column: Float, standing: IntArray): List<WallLine> {
+        val minSeen = MIN_WALL_SEEN_M + column / 2
+        val gapColumns = (SHARD_GAP_M / column).toInt()
+        var floor: IntArray? = null
+        val result = ArrayList<WallLine>(lines.size)
+        for (line in lines) {
+            // The parts the line is cut into: [first, last] seen columns of each.
+            val parts = ArrayList<IntArray>()
+            var first = -1
+            var last = -1
+            for (k in line.seen.indices) {
+                if (!line.seen[k]) continue
+                if (first >= 0 && k - last - 1 > gapColumns) {
+                    val seenFloor = floor ?: floorOf(cloud).also { floor = it }
+                    if (floorBehind(cloud, seenFloor, line, last + 1, k)) {
+                        parts += intArrayOf(first, last)
+                        first = k
+                    }
+                }
+                if (first < 0) first = k
+                last = k
+            }
+            if (first >= 0) parts += intArrayOf(first, last)
+            if (parts.size < 2) {
+                result += line
+                continue
+            }
+            val kept = parts.filter { part ->
+                (part[0]..part[1]).count { line.seen[it] } * column > minSeen && extentOf(cloud, line, part[0], part[1]) > minSeen
+            }
+            if (kept.size == parts.size) {
+                result += line
+                continue
+            }
+            if (kept.isEmpty()) continue
+            val stretches = kept.map { (line.t0 + it[0] * column)..(line.t0 + (it[1] + 1) * column) }
+            // The line's surfels start in its first seen column: the new line's columns count from there.
+            val from = line.from
+            lineOf(cloud, line.members, line.family, line.nu, line.nv, column, { k ->
+                val t = from + (k + HALF) * column
+                stretches.any { t in it }
+            }, standing)?.let { result += it }
+        }
+        return result
+    }
+
+    /** How far along [line] its surfels in columns [first] to [last] reach, from the first of them to the last. */
+    private fun extentOf(cloud: FrameCloud, line: WallLine, first: Int, last: Int): Float {
+        val from = line.t0 + first * line.column
+        val to = line.t0 + (last + 1) * line.column
+        var lo = Float.POSITIVE_INFINITY
+        var hi = Float.NEGATIVE_INFINITY
+        for (i in line.members) {
+            val t = line.tOf(cloud.u[i], cloud.v[i])
+            if (t < from || t > to) continue
+            lo = min(lo, t)
+            hi = max(hi, t)
+        }
+        return if (lo <= hi) hi - lo else 0f
+    }
+
+    /** The floor's surfels: level within [FLOOR_BAND_M] of it, facing up. */
+    private fun floorOf(cloud: FrameCloud): IntArray {
+        val floor = IntArrayList()
+        for (i in 0 until cloud.count) if (abs(cloud.h[i]) <= FLOOR_BAND_M && cloud.ny[i] >= RoomLevels.UP) floor.add(i)
+        return floor.toArray()
+    }
+
+    /**
+     * Whether the [floor] was seen behind [line] — from [LOW_BEHIND_FROM_M] to [STRIP_M] behind
+     * it — on [FLOOR_BEHIND_SHARE] of its columns from [from] until [until].
+     */
+    private fun floorBehind(cloud: FrameCloud, floor: IntArray, line: WallLine, from: Int, until: Int): Boolean {
+        val behind = BooleanArray(until - from)
+        for (i in floor) {
+            val depth = line.offset - line.oOf(cloud.u[i], cloud.v[i])
+            if (depth < LOW_BEHIND_FROM_M || depth > STRIP_M) continue
+            val k = floor((line.tOf(cloud.u[i], cloud.v[i]) - line.t0) / line.column).toInt()
+            if (k in from until until) behind[k - from] = true
+        }
+        return behind.count { it } >= behind.size * FLOOR_BEHIND_SHARE
     }
 
     /** How far apart [a] and [b] stand along the wall of normal ([nu], [nv]): 0 when they overlap. */
