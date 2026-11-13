@@ -1,8 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.material.icons.rounded.OpenInFull
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,7 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -76,39 +76,38 @@ import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
-import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
-import io.github.sceneview.demo.demos.internal.PoseContinuity
-import io.github.sceneview.demo.demos.internal.PlaneWallSource
-import io.github.sceneview.demo.demos.internal.livePlanesOf
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
-import io.github.sceneview.demo.demos.internal.OrbitLimits
+import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.DebugAnchor
 import io.github.sceneview.demo.demos.internal.DebugGroup
 import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
-import io.github.sceneview.demo.demos.internal.OneUploadInFlight
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
+import io.github.sceneview.demo.demos.internal.OneUploadInFlight
+import io.github.sceneview.demo.demos.internal.OrbitLimits
 import io.github.sceneview.demo.demos.internal.OrbitPose
-import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.PlaneLayering
-import io.github.sceneview.demo.demos.internal.Vec3
+import io.github.sceneview.demo.demos.internal.PlaneWallSource
+import io.github.sceneview.demo.demos.internal.PoseContinuity
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.demos.internal.RoomMeasure
-import io.github.sceneview.demo.demos.internal.scanSummary
-import io.github.sceneview.demo.demos.internal.ScanPlanes
 import io.github.sceneview.demo.demos.internal.ScanFollow
 import io.github.sceneview.demo.demos.internal.ScanLens
+import io.github.sceneview.demo.demos.internal.ScanPlanes
+import io.github.sceneview.demo.demos.internal.Vec3
+import io.github.sceneview.demo.demos.internal.livePlanesOf
+import io.github.sceneview.demo.demos.internal.scanSummary
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -128,6 +127,7 @@ import io.github.sceneview.math.toTransform
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.MeshNode
+import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberRenderer
@@ -135,6 +135,7 @@ import io.github.sceneview.rememberView
 import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
+import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.utils.readBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -906,6 +907,8 @@ internal fun ArDebugSceneView(
     drivesSession: Boolean = true,
     /** Capture only: the phone owns the view and projection; no gestures or orbit handoff. */
     captureLens: ScanLens? = null,
+    /** A recorder's mirror, for a photo of this view alone (3D Scan's hand-over to its result). */
+    surfaceMirrorer: SurfaceMirrorer? = null,
     /** More of the scene, in the session's world space: the live 3D map's floor. */
     content: (@Composable SceneScope.() -> Unit)? = null,
 ) {
@@ -963,6 +966,7 @@ internal fun ArDebugSceneView(
             modifier = Modifier.matchParentSize(),
             // A TextureView composes with the chrome and the AR SurfaceView under it.
             surfaceType = SurfaceType.TextureSurface,
+            surfaceMirrorer = surfaceMirrorer,
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,

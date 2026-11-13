@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -28,11 +30,13 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
+import io.github.sceneview.capture.SceneRecorder
 import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
@@ -72,6 +76,10 @@ internal fun ScanModelPreview(
     onShown: (Boolean) -> Unit = {},
     /** The dimensions written on the live model, each time they change: its result keeps them. */
     onMeasured: (RoomMeasure?) -> Unit = {},
+    /** Photographs this view alone at Finish: its result opens on that picture, then fades to its model. */
+    recorder: SceneRecorder? = null,
+    /** Where the model's view stands in the window: the result lays the picture back there. */
+    onViewBounds: (Rect) -> Unit = {},
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
         var previous: ReplayDenseLayer? = null
@@ -119,7 +127,7 @@ internal fun ScanModelPreview(
     // White status icons over the dark stage, in both themes.
     RequestLightStatusBarIcons(active = present)
     // The room's dimensions fitted to the model's own points, squared to the walls the planes
-    // find: one fit per snapshot and heading, not per frame.
+    // find: one fit per snapshot and heading, not per frame, and never smaller than the last.
     val measured = rememberUpdatedState(onMeasured)
     val measureFit = remember(media) {
         var fitFor: Any? = null
@@ -130,8 +138,13 @@ internal fun ScanModelPreview(
             if (points !== fitFor || planned.yaw != fitYaw) {
                 fitFor = points
                 fitYaw = planned.yaw
-                fitted = points?.let { RoomMeasure.ofPoints(it, planned.yaw) }
+                // Grow-only: more of the room seen widens it; a sparser snapshot never narrows it.
+                fitted = RoomMeasure.grow(fitted, points?.let { RoomMeasure.ofPoints(it, planned.yaw) })
                 measured.value(fitted)
+                fitted?.let {
+                    Log.i(MEASURE_TAG, "yaw %.1f°: %.2f × %.2f m over %d points".format(
+                        Math.toDegrees(planned.yaw.toDouble()), it.width, it.depth, (points?.size ?: 0) / 3))
+                }
             }
             fitted
         }
@@ -173,7 +186,8 @@ internal fun ScanModelPreview(
                 materialLoader = materialLoader,
                 replay = drawn,
                 // The model frames between the figures above and the window and Done below.
-                modifier = Modifier.fillMaxSize().padding(top = statusTop + MODEL_TOP, bottom = navBottom + MODEL_BOTTOM),
+                modifier = Modifier.fillMaxSize().padding(top = statusTop + MODEL_TOP, bottom = navBottom + MODEL_BOTTOM)
+                    .onGloballyPositioned { onViewBounds(it.boundsInWindow()) },
                 compact = false,
                 transparent = true,
                 maxFps = 30,
@@ -182,6 +196,7 @@ internal fun ScanModelPreview(
                 stageAxes = false,
                 measureWithoutPlanes = true,
                 measureFit = measureFit,
+                surfaceMirrorer = recorder?.surfaceMirrorer,
                 visible = { it == DebugGroup.Points || it == DebugGroup.Stage },
                 drivesSession = false,
                 follow = {
@@ -220,3 +235,8 @@ private const val MODEL_ELEVATION = 40f
 /** Under the back button and the figures, over the line and the recorder. */
 private val MODEL_TOP = 72.dp
 private val MODEL_BOTTOM = 200.dp
+
+private const val MEASURE_TAG = "ScanMeasure"
+
+/** The live model as the capture last drew it, and where in the window: its result opens on it. */
+internal class ScanStill(val bitmap: Bitmap, val bounds: Rect)

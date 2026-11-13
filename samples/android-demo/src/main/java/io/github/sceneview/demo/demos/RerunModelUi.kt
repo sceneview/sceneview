@@ -7,6 +7,7 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -63,10 +65,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -78,6 +86,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.ColorGrading
@@ -180,6 +189,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -739,6 +749,8 @@ internal fun RerunModelScreen(
     photo: SplatFaces? = null,
     /** The dimensions the capture last showed: the result shows the same, not a second measure. */
     capturedMeasure: RoomMeasure? = null,
+    /** The live model as its capture last drew it: the stage shows it until the model takes over. */
+    openingPhoto: ScanStill? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -828,8 +840,15 @@ internal fun RerunModelScreen(
     // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
     // never beside a big scan's finish ([groundSource]). Until the next settles, the last one stays.
     val groundModel = groundSource(model, settled)
-    val ground by produceState<GroundBuild?>(null, groundModel) {
-        groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
+    // Before it, the capture's own points give the floor (2026-11-13): the grid and the room's
+    // dimensions stand under the Photo layer from its first frame, as they stood under the capture.
+    val ground by produceState<GroundBuild?>(null, groundModel, surfels) {
+        val built = groundModel
+        if (built != null) {
+            value = withContext(Dispatchers.Default) { groundOf(built) }
+        } else if (value == null && surfels != null) {
+            value = withContext(Dispatchers.Default) { groundOf(surfels) }
+        }
     }
     // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
     // out, never drawn but for More › Measure. The coverage is the capture's to show now.
@@ -1365,14 +1384,30 @@ internal fun RerunModelScreen(
                 },
                 label = "veil",
             )
+            var veilOrigin by remember { mutableStateOf(Offset.Zero) }
             if (veil > 0f) {
                 Box(
                     Modifier
                         .matchParentSize()
                         .alpha(veil)
                         .background(chrome.ground)
-                        .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
-                )
+                        .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG))
+                        .onGloballyPositioned { veilOrigin = it.positionInWindow() },
+                ) {
+                    // Laid back where the capture drew it, pixel for pixel: the room does not jump.
+                    openingPhoto?.let { still ->
+                        val at = still.bounds.translate(-veilOrigin)
+                        val density = LocalDensity.current
+                        Image(
+                            still.bitmap.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier
+                                .offset { IntOffset(at.left.roundToInt(), at.top.roundToInt()) }
+                                .size(with(density) { at.width.toDp() }, with(density) { at.height.toDp() }),
+                        )
+                    }
+                }
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
         }
@@ -1641,6 +1676,13 @@ private fun groundOf(model: RerunScanModel): GroundBuild? = runCatching {
         )
     }
 }.onFailure { Log.w(TAG, "ground failed", it) }.getOrNull()
+
+/** [cloud]'s ground, `null` without normals or a floor in it. Off the main thread. */
+private fun groundOf(cloud: DenseCloud): GroundBuild? = runCatching {
+    val normals = cloud.normals ?: return@runCatching null
+    val ground = ScanGround.of(cloud.positions, normals, cloud.count) ?: return@runCatching null
+    GroundBuild(ground, ScanGroundMeshes.of(ground))
+}.onFailure { Log.w(TAG, "capture ground failed", it) }.getOrNull()
 
 /** The one-line gesture hint, a pill that leaves after a few seconds. */
 @Composable

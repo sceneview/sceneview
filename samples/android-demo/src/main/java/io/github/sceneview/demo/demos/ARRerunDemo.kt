@@ -120,6 +120,7 @@ import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
+import io.github.sceneview.capture.rememberSceneRecorder
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
@@ -315,6 +316,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var scanPhoto by remember { mutableStateOf<Pair<RerunReplayMedia, SplatFaces>?>(null) }
     // The room's dimensions as the capture last wrote them: its result shows the same figures.
     var scanMeasure by remember { mutableStateOf<RoomMeasure?>(null) }
+    // The live model as the capture last drew it: its result opens on it, never on an empty stage.
+    var scanStill by remember { mutableStateOf<ScanStill?>(null) }
     // The replay is titled after the session it shows, as the card that opened it is.
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
     // The scan's own files, for the export sheet; the sample's are read from the assets there.
@@ -492,6 +495,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         scanId = id
         scanKind = kind
         scanMeasure = null
+        scanStill = null
         scanMedia = media
         scanTitle = title
         scanPack = pack
@@ -733,7 +737,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         ) {
             RerunLiveScreen(
                 onBack = leaveLive,
-                onScanned = { scan, title, pack, id, photo, measured ->
+                onScanned = { scan, title, pack, id, photo, measured, still ->
                     scanPhoto = photo?.let { scan to it }
                     sessionsVersion++
                     if (recordingForDollhouse) {
@@ -743,6 +747,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                         // Save scan lands on the model, built here and kept with the scan.
                         openResult(scan, title, pack, id, false, scanScope)
                         scanMeasure = measured
+                        scanStill = still
                     }
                 },
                 store = store,
@@ -846,6 +851,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
             photo = scanPhoto?.takeIf { showingScan && it.first === scanMedia }?.second,
             capturedMeasure = scanMeasure.takeIf { showingScan },
+            openingPhoto = scanStill.takeIf { showingScan },
         )
     }
     val exportable = when (screen) {
@@ -1341,8 +1347,11 @@ private fun RerunDeveloperSection() {
 @Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
 private fun RerunLiveScreen(
     onBack: () -> Unit,
-    /** The scan, its title, pack, id, photo layer, and the dimensions its capture last showed. */
-    onScanned: (RerunReplayMedia, String, RerunCapturePack, String?, SplatFaces?, RoomMeasure?) -> Unit,
+    /**
+     * The scan, its title, pack, id, photo layer, and the dimensions and picture of the live model
+     * its capture last showed.
+     */
+    onScanned: (RerunReplayMedia, String, RerunCapturePack, String?, SplatFaces?, RoomMeasure?, ScanStill?) -> Unit,
     store: RerunSessionStore,
     sample: RerunReplayMedia?,
     scanScope: ScanScope,
@@ -1502,6 +1511,9 @@ private fun RerunLiveScreen(
     val recording = scanMedia != null
     // The live model's last dimensions, handed to its result; not state, nothing redraws on it.
     val captureMeasure = remember { MeasureHolder() }
+    val previewRecorder = rememberSceneRecorder()
+    // Whether the live model has come in over the camera.
+    var modelShown by remember { mutableStateOf(false) }
     // Both scopes paint the same dense cloud through the phone's exact lens.
     val scanLens = remember(scanMedia) { ScanLens() }
     val scanCoverage = remember(scanMedia) { ScanCoverageState() }
@@ -1793,7 +1805,15 @@ private fun RerunLiveScreen(
             }
             if (opened == null) return@launch
             when (next) {
-                SaveNext.Open -> onScanned(opened, title, saved, savedId, photo, captureMeasure.value)
+                SaveNext.Open -> {
+                    val bounds = captureMeasure.viewBounds
+                    val still = if (modelShown && bounds != null) {
+                        previewRecorder.takePhoto()?.let { ScanStill(it, bounds) }
+                    } else {
+                        null
+                    }
+                    onScanned(opened, title, saved, savedId, photo, captureMeasure.value, still)
+                }
                 SaveNext.FinishHome -> {
                     onRoomSaved(opened, title, savedId)
                     onFinishHome()
@@ -1904,8 +1924,6 @@ private fun RerunLiveScreen(
     var cameraWindow by remember { mutableStateOf<Rect?>(null) }
     var lastCameraWindow by remember { mutableStateOf<Rect?>(null) }
     var stageOrigin by remember { mutableStateOf(Offset.Zero) }
-    // Whether the live model has come in over the camera.
-    var modelShown by remember { mutableStateOf(false) }
     ScanCaptureLayout(
         onBack = onBackFromLive,
         top = {
@@ -2103,6 +2121,8 @@ private fun RerunLiveScreen(
                     cameraWindow = { cameraWindow },
                     onShown = { modelShown = it },
                     onMeasured = { captureMeasure.value = it },
+                    recorder = previewRecorder,
+                    onViewBounds = { captureMeasure.viewBounds = it },
                 )
             }
 
@@ -2628,7 +2648,8 @@ private fun DenseCloud.floorOnly(): DenseCloud {
 private const val QA_FLOOR_NORMAL_Y = 0.9f
 private const val QA_FLOOR_BAND_M = 0.15f
 
-/** The capture's last [RoomMeasure], read once when the scan is saved. */
+/** The capture's last [RoomMeasure] and its model view's place, read once when the scan is saved. */
 private class MeasureHolder {
     var value: RoomMeasure? = null
+    var viewBounds: Rect? = null
 }

@@ -125,7 +125,42 @@ class RoomMeasure(val corners: FloatArray, val width: Float, val depth: Float, v
             return RoomMeasure(corners, width, depth, yaw)
         }
 
-        private const val FIT_TRIM = 0.02f
+        /**
+         * [next], grown to hold [previous] too when both are squared to the same walls (within
+         * [SAME_WALLS_DEGREES]): a capture's room only grows as more of it is seen, it never
+         * shrinks by a few centimetres between two snapshots (2026-11-13). [next] alone when the
+         * walls turned; [previous] when there is no new measure.
+         */
+        fun grow(previous: RoomMeasure?, next: RoomMeasure?): RoomMeasure? {
+            if (next == null || previous == null) return next ?: previous
+            val turn = Math.toDegrees((next.yaw - previous.yaw).toDouble()).toFloat()
+            val folded = ((turn % QUARTER_TURN) + QUARTER_TURN) % QUARTER_TURN
+            if (min(folded, QUARTER_TURN - folded) > SAME_WALLS_DEGREES) return next
+            val yaw = previous.yaw
+            val c = cos(yaw)
+            val s = sin(yaw)
+            var minA = Float.MAX_VALUE
+            var maxA = -Float.MAX_VALUE
+            var minB = Float.MAX_VALUE
+            var maxB = -Float.MAX_VALUE
+            for (m in arrayOf(previous, next)) for (k in 0 until m.corners.size / 2) {
+                val x = m.corners[k * 2]
+                val z = m.corners[k * 2 + 1]
+                val a = x * c + z * s
+                val b = -x * s + z * c
+                minA = min(minA, a); maxA = max(maxA, a)
+                minB = min(minB, b); maxB = max(maxB, b)
+            }
+            fun corner(a: Float, b: Float) = floatArrayOf(a * c - b * s, a * s + b * c)
+            val corners = corner(minA, minB) + corner(maxA, minB) + corner(maxA, maxB) + corner(minA, maxB)
+            return RoomMeasure(corners, maxA - minA, maxB - minB, yaw)
+        }
+
+        private const val SAME_WALLS_DEGREES = 5f
+        private const val QUARTER_TURN = 90f
+
+        // A wall seen by few points is still the room's: only the farthest 1 % on each side go.
+        private const val FIT_TRIM = 0.01f
         private const val FIT_SAMPLES = 20_000
         private const val FIT_MIN_POINTS = 200
 
