@@ -105,6 +105,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.CameraRig
+import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
@@ -207,7 +208,7 @@ internal sealed interface RerunModelSource {
      * [cloud], the recording's coloured points, is the fallback when meshing finds no surface;
      * [photos], its key photos, texture the model.
      */
-    class Live(tsdf: RerunTsdf, val cloud: DenseCloud?, val photos: ModelPhotos? = null) : RerunModelSource {
+    class Live(tsdf: RerunTsdf, val cloud: DenseCloud?, val photos: ModelPhotos? = null, val planes: List<DebugPlane> = emptyList()) : RerunModelSource {
         @Volatile
         private var held: RerunTsdf? = tsdf
 
@@ -225,7 +226,7 @@ internal sealed interface RerunModelSource {
     }
 
     /** A kept scan's surfel cloud, when its raw depth is gone: the scan reopened later. */
-    class Surfels(val cloud: DenseCloud, val photos: ModelPhotos? = null) : RerunModelSource
+    class Surfels(val cloud: DenseCloud, val photos: ModelPhotos? = null, val planes: List<DebugPlane> = emptyList()) : RerunModelSource
 
     /**
      * QA only: the ray-cast room, the emulator's stand-in for a camera (it cannot run AR). With
@@ -238,8 +239,9 @@ internal sealed interface RerunModelSource {
         fun of(pack: RerunCapturePack?, media: RerunReplayMedia?): RerunModelSource? {
             val cloud = media?.dense?.cloud?.takeIf { it.count > 0 }
             val photos = media?.let(::photosOf)
-            return RerunLiveModels.find(pack)?.let { Live(it, cloud, photos) }
-                ?: cloud?.takeIf { it.normals != null }?.let { Surfels(it, photos) }
+            val planes = media?.trace?.let { it.frameAt(it.duration).planes }.orEmpty()
+            return RerunLiveModels.find(pack)?.let { Live(it, cloud, photos, planes) }
+                ?: cloud?.takeIf { it.normals != null }?.let { Surfels(it, photos, planes) }
         }
 
         /** [media]'s key photos, decoded only when the texture picks them, each bitmap let go once read. */
@@ -411,7 +413,13 @@ internal fun buildRerunModel(
     // Once its .glb is written, the raw surface's own arrays are what the finish works in: a
     // copy of a big scan is the heap a mid-range phone does not have (a Pixel 4a's 192 MB).
     val finish = if (rawTriangles > 0) {
-        finish(raw, photos, rawGlb) { progress(MESH_SHARE + (1f - MESH_SHARE) * it) }
+        finish(raw, photos, rawGlb, if (reconstruction == ReconstructionMethod.Poisson) {
+            when (source) {
+                is RerunModelSource.Live -> source.planes
+                is RerunModelSource.Surfels -> source.planes
+                is RerunModelSource.Synthetic -> emptyList()
+            }
+        } else null) { progress(MESH_SHARE + (1f - MESH_SHARE) * it) }
     } else {
         null
     }
@@ -535,12 +543,12 @@ private fun mesh(
  * With [rawGlb], [raw]'s arrays are worked in and let go, not copied: its `.glb` is already
  * written, and [raw] is not read again. Without, [raw] keeps its surface.
  */
-private fun finish(raw: RawSurface, photos: ModelPhotos?, rawGlb: ByteArray?, progress: (Float) -> Unit): Result<CleanModelResult> =
+private fun finish(raw: RawSurface, photos: ModelPhotos?, rawGlb: ByteArray?, planes: List<DebugPlane>?, progress: (Float) -> Unit): Result<CleanModelResult> =
     runCatching {
         if (rawGlb != null) {
-            CleanModel.build(raw, rawGlb, photos, JpegAtlasEncoder, progress = progress)
+            CleanModel.build(raw, rawGlb, photos, JpegAtlasEncoder, observedPlanes = planes, progress = progress)
         } else {
-            CleanModel.build(raw.mesh, photos, JpegAtlasEncoder, progress = progress)
+            CleanModel.build(raw.mesh, photos, JpegAtlasEncoder, observedPlanes = planes, progress = progress)
         }
     }
         .onFailure { if (it is CancellationException) throw it }

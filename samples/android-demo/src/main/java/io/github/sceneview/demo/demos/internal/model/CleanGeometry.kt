@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal.model
 
+import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.RerunMesh
 
 /** What [CleanGeometry.clean] did to a mesh, for the log and the tests. */
@@ -40,7 +41,7 @@ internal object CleanGeometry {
     const val MAX_TRIANGLES = 500_000
 
     /** [raw] cleaned; [progress] (0–1) is told after each step and pass, and may throw to stop it. */
-    fun clean(raw: WorkMesh, progress: (Float) -> Unit = {}): Pair<WorkMesh, CleanGeometryStats> {
+    fun clean(raw: WorkMesh, observedPlanes: List<DebugPlane>? = null, progress: (Float) -> Unit = {}): Pair<WorkMesh, CleanGeometryStats> {
         require(raw.triangleCount <= MAX_TRIANGLES) { "${raw.triangleCount} triangles: clean takes $MAX_TRIANGLES" }
         val trianglesIn = raw.triangleCount
         val piecesIn = MeshCleanup.pieces(raw)
@@ -66,7 +67,7 @@ internal object CleanGeometry {
         )
         // What the hidden sheet showed through a hole just closed is behind the patch now.
         val (uncovered, covered) = MeshCleanup.removeCovered(filled, firstNew = mesh.triangleCount)
-        mesh = uncovered
+        mesh = if (observedPlanes != null) BoundedPlaneCompletion.complete(uncovered, observedPlanes) else uncovered
         progress(1f)
         val stats = CleanGeometryStats(
             trianglesIn = trianglesIn,

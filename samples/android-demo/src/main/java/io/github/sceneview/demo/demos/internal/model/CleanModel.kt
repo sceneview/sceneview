@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal.model
 
+import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
 import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunMeshGlb
@@ -110,10 +111,11 @@ internal object CleanModel {
         consume: Boolean = false,
         rawGlb: ByteArray? = null,
         budget: TextureBudget = heapBudget(),
+        observedPlanes: List<DebugPlane>? = null,
         progress: (Float) -> Unit = {},
     ): CleanModelResult {
         require(!consume || rawGlb != null) { "a consumed raw surface needs its .glb written first" }
-        return finishOrRaw(RawSurface(raw), photos, encoder, targetTriangles, consume, budget, progress) {
+        return finishOrRaw(RawSurface(raw), photos, encoder, targetTriangles, consume, budget, observedPlanes, progress) {
             rawGlb ?: RerunMeshGlb.write(raw)
         }
     }
@@ -129,8 +131,9 @@ internal object CleanModel {
         encoder: AtlasEncoder?,
         targetTriangles: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
         budget: TextureBudget = heapBudget(),
+        observedPlanes: List<DebugPlane>? = null,
         progress: (Float) -> Unit = {},
-    ): CleanModelResult = finishOrRaw(raw, photos, encoder, targetTriangles, consume = true, budget, progress) { rawGlb }
+    ): CleanModelResult = finishOrRaw(raw, photos, encoder, targetTriangles, consume = true, budget, observedPlanes, progress) { rawGlb }
 
     /** The [TextureBudget] this process's heap affords ([TextureBudget.forHeap]). */
     fun heapBudget(): TextureBudget = TextureBudget.forHeap(Runtime.getRuntime().maxMemory())
@@ -154,6 +157,7 @@ internal object CleanModel {
         targetTriangles: Int,
         consume: Boolean,
         budget: TextureBudget,
+        observedPlanes: List<DebugPlane>?,
         progress: (Float) -> Unit,
         rawGlb: () -> ByteArray,
     ): CleanModelResult {
@@ -162,7 +166,7 @@ internal object CleanModel {
         val rawVertices = raw.vertexCount
         val reached = Reached(budget)
         // Out of memory, what the finish held goes with its frame: the raw surface's .glb fits again.
-        val finished = runCatching { finish(raw, photos, encoder, targetTriangles, consume, reached, progress) }
+        val finished = runCatching { finish(raw, photos, encoder, targetTriangles, consume, reached, observedPlanes, progress) }
         val failure = finished.exceptionOrNull()
         if (failure != null && failure !is OutOfMemoryError) throw failure
         return finished.getOrNull() ?: rawSurface(rawGlb(), rawTriangles, rawVertices, reached)
@@ -180,10 +184,11 @@ internal object CleanModel {
         targetTriangles: Int,
         consume: Boolean,
         reached: Reached,
+        observedPlanes: List<DebugPlane>?,
         progress: (Float) -> Unit,
     ): CleanModelResult {
         val rawTriangles = raw.triangleCount
-        val (clean, geometry) = CleanGeometry.clean(prepared(raw, consume, reached, progress)) {
+        val (clean, geometry) = CleanGeometry.clean(prepared(raw, consume, reached, progress), observedPlanes) {
             progress(PREPARE_SHARE + it * CLEAN_SHARE)
         }
         reached.geometry = geometry
