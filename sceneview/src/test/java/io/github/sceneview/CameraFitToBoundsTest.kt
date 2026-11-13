@@ -1,6 +1,8 @@
 package io.github.sceneview
 
+import com.google.android.filament.Box
 import io.github.sceneview.math.Position
+import io.github.sceneview.model.AnimationEnvelope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -206,6 +208,40 @@ class CameraFitToBoundsTest {
                             min(0.92 - p.halfWidth, 0.84 - p.halfHeight), 2e-3)
                     }
                 }
+    }
+
+    @Test
+    fun everySeparateAnimationPoseFitsForBothProbeModes() {
+        // Extremes occur at different heights/depths. The union's six probes cannot describe them.
+        val envelope = AnimationEnvelope(listOf(
+            Box(-2f, 3f, -1f, 0.5f, 1f, 0.5f),
+            Box(2f, -3f, 1f, 0.75f, 0.5f, 1f),
+            Box(0f, 0f, 0f, 0.5f, 1.5f, 0.5f),
+        ))
+        for (mode in FitMode.entries) for (aspect in aspects)
+            for (azimuth in listOf(0.0, 35.0, 135.0))
+                for (elevation in listOf(-90.0, 0.0, 40.0, 90.0)) {
+                    val fit = fitCameraToBounds(
+                        envelope.bounds.toAabb(), direction(azimuth, elevation), fov, aspect,
+                        0.92f, 0.84f, mode, animationEnvelope = envelope
+                    )!!
+                    envelope.poses.forEach { pose ->
+                        val points = if (mode == FitMode.Silhouette) silhouetteProbes(pose.toAabb())
+                            else pose.toAabb().framingProbes(FitMode.Corners)
+                        val p = picture(points, fit, fov, aspect)
+                        assertTrue("$mode left $p", p.minX >= -0.922)
+                        assertTrue("$mode right $p", p.maxX <= 0.922)
+                        assertTrue("$mode bottom $p", p.minY >= -0.842)
+                        assertTrue("$mode top $p", p.maxY <= 0.842)
+                    }
+                }
+        val look = direction(35.0, 40.0)
+        val fromPoses = fitCameraToBounds(envelope.bounds.toAabb(), look, fov, 0.8,
+            fitMode = FitMode.Silhouette, animationEnvelope = envelope)!!
+        val fromUnion = fitCameraToBounds(envelope.bounds.toAabb(), look, fov, 0.8,
+            fitMode = FitMode.Silhouette)!!
+        assertTrue("The envelope must not silently use the union probes",
+            abs(fromPoses.distance - fromUnion.distance) > 0.01f)
     }
 
     // The `rolling-balls` opening shot (#4180), which this fit replaced a demo-only solver for:

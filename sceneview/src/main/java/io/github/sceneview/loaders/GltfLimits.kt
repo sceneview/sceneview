@@ -231,6 +231,20 @@ internal object GltfLimits {
             }
         }
 
+        /** Copies only animation inputs; never retains the source buffers or samples a pose. */
+        fun animationData(resource: (uri: String) -> Buffer? = { null }): GltfAnimationData? {
+            val json = json ?: return null
+            return try {
+                GltfAnimationData.read(json, Gltf(json, glb, bin, resource)::accessorFloats)
+            } catch (_: JSONException) {
+                null
+            } catch (_: RuntimeException) {
+                null
+            } catch (_: OutOfMemoryError) {
+                null
+            }
+        }
+
         internal companion object {
             val NOT_GLTF = Parsed(null, null, null, null)
         }

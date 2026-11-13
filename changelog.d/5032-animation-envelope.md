@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Android: opt-in animation envelopes for character framing ([#5032](https://github.com/sceneview/sceneview/issues/5032)).** `Model.animationEnvelope(clip, samples)` lazily samples glTF joint transforms in Kotlin, with per-model caching and no extra native instances. Pass `animationEnvelope` to camera fitting or auto-fit to fit each pose separately with `FitMode.Silhouette` or `Corners`. Includes a rest-pose flesh-margin heuristic and safe fallback; framing defaults remain unchanged.

@@ -29,6 +29,7 @@ import io.github.sceneview.isBackendBusy
 import io.github.sceneview.isValid
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.AnimationEnvelopes
 import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
@@ -507,7 +508,10 @@ class ModelLoader(
                 }
                 val cgltfKeys = withContext(Dispatchers.Default) { cgltfKeys(source.buffer, uris) }
                 // Every vertex of a skinned mesh is moved by its joints: off the main thread.
-                val restPose = withContext(Dispatchers.Default) { gltf.restPoseBounds(resources.toMap()::get) }
+                val (restPose, animationData) = withContext(Dispatchers.Default) {
+                    val loaded = resources.toMap()
+                    gltf.restPoseBounds(loaded::get) to gltf.animationData(loaded::get)
+                }
                 if (resources.isNotEmpty()) {
                     // The converted bytes (a PNG for an external WebP image), as gltfio gets them.
                     val loaded = resources.toMap()
@@ -547,6 +551,7 @@ class ModelLoader(
                     // The authored glow AR scales from (#4950): Filament cannot read it back.
                     EmissiveScale.record(model, gltf.emissiveStrengths())
                     RestPoseBounds.record(model, restPose)
+                    AnimationEnvelopes.record(model, animationData)
                     onLoadBegun(model)
                 }
             }
@@ -1103,7 +1108,10 @@ class ModelLoader(
         // The engine went first, or this loader is released: the model's natives went with them,
         // and every gltfio call below would reach into freed memory. Forget the model, nothing else.
         if (!lifecycle.canTouchNatives) {
-            claimAndDestroy(models, model) { recordingProvider.ownership.release(it) }
+            claimAndDestroy(models, model) {
+                recordingProvider.ownership.release(it)
+                AnimationEnvelopes.forget(it)
+            }
             return
         }
         destroyAfterCancellingLoad(
@@ -1120,7 +1128,10 @@ class ModelLoader(
                     // The engine may be gone by the time the load settles: then so is the model.
                     destroy = {
                         if (lifecycle.canTouchNatives) cancelThenDestroy()
-                        else recordingProvider.ownership.release(model)
+                        else {
+                            recordingProvider.ownership.release(model)
+                            AnimationEnvelopes.forget(model)
+                        }
                     },
                 )
             },
@@ -1129,6 +1140,7 @@ class ModelLoader(
             recordingProvider.ownership.release(it)
             EmissiveScale.forget(it)
             RestPoseBounds.forget(it)
+            AnimationEnvelopes.forget(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
@@ -1407,6 +1419,7 @@ class ModelLoader(
         EmissiveScale.record(model, gltf.emissiveStrengths())
         // Read before `releaseSourceData`, while the external buffers are at hand.
         RestPoseBounds.record(model, gltf.restPoseBounds(resolved::get))
+        AnimationEnvelopes.record(model, gltf.animationData(resolved::get))
     }
 
     companion object {

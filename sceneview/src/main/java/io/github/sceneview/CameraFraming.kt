@@ -4,6 +4,7 @@ import com.google.android.filament.Box
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.times
 import io.github.sceneview.math.toPosition
+import io.github.sceneview.model.AnimationEnvelope
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.Node
 import kotlin.math.abs
@@ -258,17 +259,20 @@ fun CameraNode.fitDistanceForContent(
  * @param padding   Extra framing margin — see [fitDistanceForBounds].
  * @param fitMode [FitMode.Corners] preserves the historical swept-box distance. [FitMode.Silhouette]
  *                uses a directional probe fit and can crop box-shaped products at their corners.
+ * @param animationEnvelope Optional poses in world space, replacing [bounds] for the fit. Each
+ *                          pose contributes its own probes, even with [FitMode.Corners].
  * @return `true` if the camera was repositioned, `false` when [bounds] was empty.
  */
 fun CameraNode.frameToBounds(
     bounds: Aabb,
     direction: Position = Position(0f, 0f, -1f),
     padding: Float = DEFAULT_FRAMING_PADDING,
-    fitMode: FitMode = FitMode.Corners
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): Boolean {
-    if (fitMode == FitMode.Silhouette) {
+    if (fitMode == FitMode.Silhouette || animationEnvelope != null) {
         val fill = 1f / (1f + max(0f, padding))
-        val fit = fitToBounds(bounds, direction, fill, fill, fitMode) ?: return false
+        val fit = fitToBounds(bounds, direction, fill, fill, fitMode, animationEnvelope) ?: return false
         frame(fit)
         return true
     }
@@ -384,6 +388,8 @@ data class CameraFit(val eye: Position, val target: Position) {
  * @param fitMode            [FitMode.Corners] fits all eight corners, unchanged. [FitMode.Silhouette]
  *                           fits side mid-lines and top/bottom face centres for organic subjects;
  *                           it can crop box-shaped products with geometry in the corners.
+ * @param animationEnvelope Optional poses in the same coordinate space as [bounds], replacing it
+ *                          for fitting. Fits every pose's probes; the union only sets target depth.
  * @return The pose, or `null` when [bounds] is empty / non-finite — nothing to frame yet.
  */
 fun fitCameraToBounds(
@@ -393,9 +399,11 @@ fun fitCameraToBounds(
     aspect: Double,
     widthFill: Float = DEFAULT_FRAMING_FILL,
     heightFill: Float = DEFAULT_FRAMING_FILL,
-    fitMode: FitMode = FitMode.Corners
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): CameraFit? {
-    if (bounds.isEmpty) return null
+    val framingBounds = animationEnvelope?.bounds?.toAabb() ?: bounds
+    if (framingBounds.isEmpty) return null
     val safeAspect = if (aspect.isFinite() && aspect > 0.0) aspect else 1.0
     val tanY = tan(Math.toRadians(verticalFovDegrees.coerceIn(1.0, 179.0)) / 2.0)
     val slopeX = tanY * safeAspect * widthFill.toDouble().coerceIn(MIN_FRAMING_FILL, 1.0)
@@ -420,7 +428,9 @@ fun fitCameraToBounds(
 
     // Probes in the camera's basis: (along right, along up, along back).
     // Corners preserve the historical order and Float-to-Double conversion bit for bit.
-    val probes = bounds.framingProbes(fitMode)
+    val probes = animationEnvelope?.poseBounds?.flatMap { it.framingProbes(fitMode) }
+        ?: bounds.framingProbes(fitMode)
+    if (probes.isEmpty()) return null
     val xs = DoubleArray(probes.size)
     val ys = DoubleArray(probes.size)
     val zs = DoubleArray(probes.size)
@@ -441,13 +451,13 @@ fun fitCameraToBounds(
     val tightDepth = max(tightX.depth, tightY.depth)
     // Looking along Y, a silhouette's face centre can coincide with the eye while its side
     // probes already fit. Keep every probe strictly in front of the camera in that case.
-    val depth = if (fitMode == FitMode.Silhouette) {
-        max(tightDepth, zs.max() + max(1e-4, bounds.diagonal.toDouble() * 1e-4))
+    val depth = if (fitMode == FitMode.Silhouette || animationEnvelope != null) {
+        max(tightDepth, zs.max() + max(1e-4, framingBounds.diagonal.toDouble() * 1e-4))
     } else tightDepth
     val eyeX = if (tightX.depth >= depth) tightX.offset else centredOffset(xs, zs, slopeX, depth)
     val eyeY = if (tightY.depth >= depth) tightY.offset else centredOffset(ys, zs, slopeY, depth)
 
-    val centre = bounds.center
+    val centre = framingBounds.center
     val centreDepth =
         depth - (centre.x * back[0] + centre.y * back[1] + centre.z * back[2])
     if (!depth.isFinite() || !centreDepth.isFinite() || centreDepth <= 0.0) return null
@@ -470,6 +480,8 @@ fun fitCameraToBounds(
  * [fitMode] defaults to the unchanged eight-corner fit. [FitMode.Silhouette] is an opt-in
  * heuristic for organic subjects and can crop box-shaped products at their corners.
  *
+ * [animationEnvelope], when supplied, replaces [bounds] with separate world-space poses.
+ *
  * **Threading:** reads the camera's viewport and transform — main (render) thread.
  */
 fun CameraNode.fitToBounds(
@@ -477,7 +489,8 @@ fun CameraNode.fitToBounds(
     direction: Position = worldQuaternion * Position(0f, 0f, -1f),
     widthFill: Float = DEFAULT_FRAMING_FILL,
     heightFill: Float = DEFAULT_FRAMING_FILL,
-    fitMode: FitMode = FitMode.Corners
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): CameraFit? = fitCameraToBounds(
     bounds = bounds,
     direction = direction,
@@ -485,7 +498,8 @@ fun CameraNode.fitToBounds(
     aspect = getViewPortAspect(),
     widthFill = widthFill,
     heightFill = heightFill,
-    fitMode = fitMode
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope
 )
 
 /**
@@ -606,21 +620,26 @@ class SceneAutoFitState {
      * @param fitMode      [FitMode.Corners] keeps the historical framing. [FitMode.Silhouette]
      *                     fits the union box's probes along the camera's current direction.
      *                     A change re-arms the pass; no model type is selected automatically.
+     * @param animationEnvelope Optional world-space poses replacing the measured content bounds.
+     *                          Re-arms the pass when changed. Transform a model-space envelope with
+     *                          the model node's world transform after centering/scaling the content.
      * @return `true` if this call performed the framing.
      */
     fun maybeFit(
         cameraNode: CameraNode,
         contentRoot: Node,
         padding: Float = DEFAULT_FRAMING_PADDING,
-        fitMode: FitMode = FitMode.Corners
-    ): Boolean = maybeFit(cameraNode, listOf(contentRoot), padding, fitMode)
+        fitMode: FitMode = FitMode.Corners,
+        animationEnvelope: AnimationEnvelope? = null
+    ): Boolean = maybeFit(cameraNode, listOf(contentRoot), padding, fitMode, animationEnvelope)
 
     /**
      * Runs the auto-fit pass against the union bounds of every node in [contentRoots]. Used when
      * `SceneView`'s content is registered directly with the node manager (no intermediate
      * content-root node, i.e. `autoCenterContent = false`). Each root's bounds are measured in
      * its own local space and unioned in world space via the root's world transform.
-     * [fitMode] has the same opt-in contract as the single-root overload.
+     * [fitMode] and the world-space [animationEnvelope] have the same opt-in contract as the
+     * single-root overload; an envelope describes the entire subject to frame.
      *
      * **Threading:** must run on the main thread — reads and writes Filament state.
      */
@@ -628,7 +647,8 @@ class SceneAutoFitState {
         cameraNode: CameraNode,
         contentRoots: List<Node>,
         padding: Float = DEFAULT_FRAMING_PADDING,
-        fitMode: FitMode = FitMode.Corners
+        fitMode: FitMode = FitMode.Corners,
+        animationEnvelope: AnimationEnvelope? = null
     ): Boolean {
         // No content to frame yet. See [FramingGate.isPending]: this is a wait on a push source
         // (the DSL node sync invalidates and resets the gate when content arrives), never a reason
@@ -640,7 +660,7 @@ class SceneAutoFitState {
         // The framing is computed for the camera's visible area. A padding that changed since the
         // last pass — a panel sliding over the view — leaves the content's diagonal untouched, so
         // the latch has to be told (#4310). Changing the probe mode also re-arms the pass.
-        if (gate.rearmOnChange(cameraNode.contentPadding to fitMode)) fitDistance = 0f
+        if (gate.rearmOnChange(Triple(cameraNode.contentPadding, fitMode, animationEnvelope))) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because
@@ -653,7 +673,7 @@ class SceneAutoFitState {
             gate.recordNoContent()
             return false
         }
-        if (fitMode == FitMode.Silhouette) {
+        if (fitMode == FitMode.Silhouette || animationEnvelope != null) {
             // The union above is reference-local. The directional fit and camera pose are world
             // space: re-box the transformed corners before selecting the silhouette probes.
             val transform = reference.worldTransform
@@ -664,18 +684,20 @@ class SceneAutoFitState {
             )
             val fill = 1f / (1f + max(0f, padding))
             val fit = cameraNode.fitToBounds(
-                worldBounds, widthFill = fill, heightFill = fill, fitMode = fitMode
+                worldBounds, widthFill = fill, heightFill = fill, fitMode = fitMode,
+                animationEnvelope = animationEnvelope
             )
             if (fit == null) {
                 gate.recordNoContent()
                 return false
             }
-            val framed = gate.shouldFrame(bounds.diagonal)
+            val diagonal = animationEnvelope?.bounds?.toAabb()?.diagonal ?: bounds.diagonal
+            val framed = gate.shouldFrame(diagonal)
             if (framed) {
                 cameraNode.frame(fit)
                 fitDistance = fit.distance
             }
-            gate.recordFraming(bounds.diagonal)
+            gate.recordFraming(diagonal)
             return framed
         }
         val distance = fitDistanceForBounds(
