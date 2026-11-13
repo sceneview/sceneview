@@ -70,6 +70,29 @@ SceneView(
 }
 ```
 
+### Change the visible area without resizing
+
+Keep `SceneView` full size and animate `contentPadding`; never resize the composable for a
+full-screen toggle or an animated bar (surface/swap-chain resizing can flash a black band).
+
+```kotlin
+val covered by animateDpAsState(if (panelOpen) panelHeight else 0.dp)
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(bottom = covered),
+    clipToContentPadding = true, // Only if opaque UI covers every padded pixel.
+) { /* nodes */ }
+```
+
+`clipToContentPadding` defaults to `false`: the camera scales/shifts and the whole surface is
+rendered. Opt in to skip hidden GPU pixels, including dynamic resolution and post-processing
+outside the visible rectangle. The viewport uses rounded pixel edges and stays at least 1 × 1;
+its aspect drives framing, with identity camera scaling/shift. Outside pixels are undefined.
+Zero padding restores the full viewport. Picking uses full-view pixels (top-left); camera
+`viewToWorld` / `worldToView` / `viewToRay` retain normalized full-view coordinates (bottom-left).
+AR cameras ignore padding and clipping. The Compose Multiplatform façade does not expose these
+Android options.
+
 ---
 
 ## Automatic placement (recommended)

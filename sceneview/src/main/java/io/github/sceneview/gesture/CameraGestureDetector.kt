@@ -1,5 +1,6 @@
 package io.github.sceneview.gesture
 
+import io.github.sceneview.ViewportCoordinates
 import android.content.res.Resources
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -27,6 +28,15 @@ open class CameraGestureDetector(
     private val viewHeight: () -> Int,
     var cameraManipulator: CameraManipulator?,
 ) {
+    /** SceneView supplies this only when it clips; AR and standalone detectors keep their inputs. */
+    internal var viewportCoordinates: () -> ViewportCoordinates? = { null }
+
+    private fun touchPair(event: MotionEvent): TouchPair {
+        val coordinates = viewportCoordinates()
+        return if (coordinates == null) TouchPair.of(event, viewHeight())
+        else TouchPair.of(event, coordinates.surfaceHeight, coordinates.left, coordinates.bottom)
+    }
+
     /**
      * ## Deprecated: Use CameraGestureDetector.CameraManipulator
      *
@@ -692,14 +702,14 @@ open class CameraGestureDetector(
              * single pointer leaves `pt1 == pt0`; zero pointers yields the same `Float2(0f)`
              * pair and `count == 0`).
              */
-            fun of(me: MotionEvent, height: Int): TouchPair = when {
+            fun of(me: MotionEvent, height: Int, left: Int = 0, bottom: Int = 0): TouchPair = when {
                 me.pointerCount >= 2 -> {
-                    val p0 = Float2(me.getX(0), height - me.getY(0))
-                    TouchPair(p0, Float2(me.getX(1), height - me.getY(1)), 2)
+                    val p0 = Float2(me.getX(0) - left, height - me.getY(0) - bottom)
+                    TouchPair(p0, Float2(me.getX(1) - left, height - me.getY(1) - bottom), 2)
                 }
 
                 me.pointerCount >= 1 -> {
-                    val p0 = Float2(me.getX(0), height - me.getY(0))
+                    val p0 = Float2(me.getX(0) - left, height - me.getY(0) - bottom)
                     TouchPair(p0, p0, 1)
                 }
 
@@ -773,7 +783,7 @@ open class CameraGestureDetector(
     fun onDoubleTap(event: MotionEvent) {
         if (!isDoubleTapZoomEnabled) return
         twoFingerTapCandidate = false
-        val touch = TouchPair.of(event, viewHeight())
+        val touch = touchPair(event)
         requestZoom(touch.x, touch.y, zoomIn = true)
     }
 
@@ -806,7 +816,7 @@ open class CameraGestureDetector(
     private var twoFingerTapDownSeparation = 0f
 
     fun onTouchEvent(event: MotionEvent) {
-        val touch = TouchPair.of(event, viewHeight())
+        val touch = touchPair(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 twoFingerTapCandidate = false

@@ -18,6 +18,7 @@ import io.github.sceneview.math.toDirection
 import io.github.sceneview.math.toFloat4
 import io.github.sceneview.math.toTransform
 import io.github.sceneview.math.worldToView as coreWorldToView
+import io.github.sceneview.ClippedViewports
 import io.github.sceneview.postProjectionTransform
 import kotlin.math.log2
 
@@ -300,16 +301,18 @@ val Camera.forwardDirection: Direction
  * @param z Z is used for the depth between 1 and 0
  * (1 = near, 0 = infinity).
  *
- * The coordinate spans the **whole viewport**, whatever content padding the camera carries: the
- * scaling and the shift of the projection are taken into account, so `(0.5, 0.5)` is the centre
+ * The coordinate spans the **whole SceneView surface**, including when its viewport is clipped.
+ * It keeps the existing normalized, bottom-left convention. The viewport offset and the
+ * projection's scaling/shift are taken into account, so `(0.5, 0.5)` is the centre
  * of the surface, not the optical centre.
  *
  * @return The world position of the point.
  */
 fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
+    val position = ClippedViewports.get(this)?.toViewportNormalized(viewPosition) ?: viewPosition
     val clipSpacePosition = Float4(
         // Normalize between -1 and 1.
-        Float3(x = viewPosition.x, y = viewPosition.y, z = z) * 2.0f - 1.0f,
+        Float3(x = position.x, y = position.y, z = z) * 2.0f - 1.0f,
         w = 1.0f
     )
     // The *rendered* projection: Filament's getter leaves the scaling and the shift out, and a
@@ -341,7 +344,9 @@ fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
  * y = (0 = bottom, 0.5 = center, 1 = top)
  */
 fun Camera.worldToView(worldPosition: Position): Float2? =
-    coreWorldToView(worldPosition, renderedCullingProjectionTransform, viewTransform)
+    coreWorldToView(worldPosition, renderedCullingProjectionTransform, viewTransform)?.let {
+        ClippedViewports.get(this)?.toViewNormalized(it) ?: it
+    }
 
 /**
  * Calculates a ray in world space going from the near-plane of the camera and through a point in

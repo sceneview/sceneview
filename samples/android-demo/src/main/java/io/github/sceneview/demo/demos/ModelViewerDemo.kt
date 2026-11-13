@@ -1,5 +1,9 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size as CanvasSize
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -156,7 +160,6 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.driving
-import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.filamentBackendDrainWait
 import io.github.sceneview.demo.rememberBackendDrainWait
@@ -656,7 +659,6 @@ private const val CAMERA_ENTRANCE_MILLIS = ViewerOpeningMove.DURATION_MILLIS
 private const val FRAMING_SETTLE_MILLIS = 350
 
 /** An upright window frames with the camera's aim alone (see `SingleModelSection`). */
-private val NoContentPadding = PaddingValues(0.dp)
 
 /**
  * The clip a model opens on: the one named "Idle" when the model has one (Blender exports often
@@ -1644,7 +1646,6 @@ private fun SingleModelSection(
         // #4326 — that is the upright window. On a phone held sideways the band is a strip:
         // aiming past the model to lift it there tilts the shot, and the model ended half behind
         // the dock. There the cover goes to the SDK as `contentPadding` instead — see below.
-        val compactHeight = isDemoCompactHeight()
         val topInset = LocalDemoChromeTopInset.current
         val sheetCover = maxOf(
             if (environmentSheetOpen) environmentSheetCover else 0.dp,
@@ -1662,22 +1663,18 @@ private fun SingleModelSection(
             )
         }
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // A phone held sideways (#4326): the lens projects into the area the chrome and the
-            // sheets leave free, wherever they are right now, so the model is drawn — and picked —
-            // there. The scaffold's sheet reports its real position; the Lighting sheet reports
-            // where it settles, eased here over the same time the upright framing takes to follow
-            // it. Read there only: an upright window must not recompose with a moving sheet.
+            // Keep the surface full size in both orientations. LocalDemoSceneCover already
+            // animates the full-screen bands with the scaffold's M3 focus motion; the lens and
+            // viewport follow that padding without rebuilding the surface or swap chain.
             val lightingCover = animateDpAsState(
                 targetValue = if (environmentSheetOpen) environmentSheetCover else 0.dp,
                 animationSpec = tween(FRAMING_SETTLE_MILLIS, easing = FastOutSlowInEasing),
                 label = "lightingCover",
             )
-            val sceneFrame = if (compactHeight) {
-                demoSceneFrame(cover = viewerSceneCover(LocalDemoSceneCover.current, lightingCover.value))
-            } else {
-                null
-            }
-            val restingAspect = sceneFrame?.restingAspect
+            val sceneFrame = demoSceneFrame(
+                cover = viewerSceneCover(LocalDemoSceneCover.current, lightingCover.value),
+            )
+            val restingAspect = sceneFrame.restingAspect
             val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset, restingAspect) {
                 val extents = bounds?.extents ?: return@remember null
                 viewerHomeFraming(
@@ -1909,7 +1906,8 @@ private fun SingleModelSection(
                 fillLightNode = fillLight.takeUnless { showroomLit },
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
-                contentPadding = sceneFrame?.contentPadding ?: NoContentPadding,
+                contentPadding = sceneFrame.contentPadding,
+                clipToContentPadding = true,
                 cameraNode = cameraNode,
                 cameraManipulator = cameraManipulator,
             ) {
@@ -1975,6 +1973,21 @@ private fun SingleModelSection(
                         },
                     )
                 }
+            }
+            // Clipping leaves outside pixels undefined. These opaque, theme-role covers use
+            // exactly the animated padding edges; translucent chrome above them remains legible.
+            val cover = sceneFrame.contentPadding
+            val direction = LocalLayoutDirection.current
+            val coverColor = MaterialTheme.colorScheme.surfaceContainer
+            Canvas(Modifier.matchParentSize()) {
+                val left = cover.calculateLeftPadding(direction).roundToPx().toFloat()
+                val right = cover.calculateRightPadding(direction).roundToPx().toFloat()
+                val top = cover.calculateTopPadding().roundToPx().toFloat()
+                val bottom = cover.calculateBottomPadding().roundToPx().toFloat()
+                drawRect(coverColor, size = CanvasSize(size.width, top))
+                drawRect(coverColor, Offset(0f, size.height - bottom), CanvasSize(size.width, bottom))
+                drawRect(coverColor, size = CanvasSize(left, size.height))
+                drawRect(coverColor, Offset(size.width - right, 0f), CanvasSize(right, size.height))
             }
             // After the scene: it re-applies the SDK's render-quality preset when it starts.
             ShowroomViewOptions(

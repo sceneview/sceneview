@@ -175,6 +175,8 @@ import io.github.sceneview.node.reflectionProbes
  *                              camera projects into what is left — optical centre and field of
  *                              view — without resizing the surface or moving the camera, and
  *                              hit-testing follows. Animable. See the parameter's own KDoc.
+ * @param clipToContentPadding  Opt in to rendering only the visible rectangle. Requires an opaque
+ *                              cover over the padding; pixels outside it are undefined. Ignored by AR.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -360,7 +362,11 @@ fun SceneView(
      * The part of this view that something else covers — a bottom sheet, a side panel, a toolbar —
      * measured inwards from its edges. **What is left is the camera's viewport**: the subject is
      * projected into the visible area, centred on it, while the scene keeps drawing on the whole
-     * surface, under the panel too.
+     * surface, under the panel too unless [clipToContentPadding] is enabled.
+     *
+     * To change the visible area, keep `SceneView(Modifier.fillMaxSize())` full size and animate
+     * this padding; never resize the composable for a full-screen toggle or an animated bar.
+     * Resizing rebuilds the surface/swap chain and can expose a black band for a frame.
      *
      * The surface is not resized and the camera is not moved: only the projection is offset, so
      * an orbit the user dragged to is kept and no bounds have to be known. Because the mapping is
@@ -380,12 +386,24 @@ fun SceneView(
      * Written to [cameraNode] as [CameraNode.contentPadding], which says which projections it
      * rebuilds, and reset to nothing when the camera leaves this view. Left at its default, the
      * parameter writes nothing at all — a [CameraNode.contentPadding] set by hand is kept. The
-     * visible area never goes below a tenth of the view on either axis.
+     * unclipped visible area never goes below a tenth of the view on either axis. Clipping rounds
+     * padding to whole pixels and clamps the remaining rectangle to at least 1 × 1.
      *
      * `ARSceneView` has no such parameter: an AR camera's projection is the device camera's and
      * is never re-framed.
      */
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * Render only the rectangle left by [contentPadding], saving hidden fragment and
+     * post-processing work. Dynamic resolution applies to that rectangle automatically.
+     *
+     * Keep this view full size, animate [contentPadding], and enable this only when the caller
+     * covers every padded pixel with opaque UI. Outside pixels are undefined: do not use it
+     * behind transparent sheets. No extra per-frame clear is added. `false` (the default) renders
+     * the whole surface with camera scaling/shift; `true` uses a viewport with an unshifted lens.
+     * Zero padding restores the whole viewport. AR cameras ignore both padding and clipping.
+     */
+    clipToContentPadding: Boolean = false,
     /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
@@ -569,13 +587,14 @@ fun SceneView(
         view.scene = scene
         frameRateGate.requestRender()
     }
-    LaunchedEffect(view, cameraNode, collisionSystem) {
+    DisposableEffect(view, cameraNode, collisionSystem) {
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
         cameraNode.setView(view)
         // A different camera is a different picture — and the swap happens without anyone moving
         // the new camera, so `onTransformChanged` never fires for it.
         frameRateGate.requestRender()
+        onDispose { cameraNode.clipToContentPadding = false }
     }
     // The visible area, in the pixels of the surface. Keyed on the pixel values so an animated
     // padding writes the camera once per changed frame and an unrelated recomposition writes
@@ -587,8 +606,10 @@ fun SceneView(
     val contentPaddingBinding = remember(cameraNode) {
         ContentPaddingBinding { cameraNode.contentPadding = it }
     }
-    DisposableEffect(contentPaddingBinding, contentPaddingPx) {
+    DisposableEffect(view, collisionSystem, contentPaddingBinding, contentPaddingPx, clipToContentPadding) {
         contentPaddingBinding.apply(contentPaddingPx)
+        cameraNode.clipToContentPadding = clipToContentPadding
+        frameRateGate.requestRender()
         onDispose { }
     }
     // A camera that leaves this view — swapped for another, or the view itself going away — gets
@@ -880,6 +901,13 @@ fun SceneView(
             }
         }
         cameraGestureDetectorRef.get()?.cameraManipulator = cameraManipulator
+        cameraGestureDetectorRef.get()?.viewportCoordinates = { ClippedViewports.get(view) }
+        val vp = view.viewport
+        val viewportSeed = CameraViewportSeed.packViewport(vp.width, vp.height)
+        if (lastViewportRef.get() != viewportSeed) {
+            lastViewportRef.set(viewportSeed)
+            seededManipulatorRef.set(null)
+        }
         // Re-seed the (newly-swapped) manipulator with the current viewport so its pan/raycast
         // math is correct from the first gesture, without waiting for a surface resize. Only when
         // the instance changed — the surface-resize path keeps the same instance in sync.
@@ -888,6 +916,19 @@ fun SceneView(
                 seededManipulatorRef.set(cameraManipulator)
             }
         }
+    }
+
+    SideEffect {
+        cameraNode.onViewportChanged = {
+            val vp = view.viewport
+            val seed = CameraViewportSeed.packViewport(vp.width, vp.height)
+            if (lastViewportRef.getAndSet(seed) != seed) {
+                cameraManipulator?.setViewport(vp.width, vp.height)
+            }
+        }
+    }
+    DisposableEffect(cameraNode) {
+        onDispose { cameraNode.onViewportChanged = null }
     }
 
     // A manipulator swapped at runtime (the Explore viewer rebuilds one after the model loads)
@@ -989,12 +1030,14 @@ fun SceneView(
 
     // Wire resize and surface callbacks.
     SideEffect {
+        sceneRenderer.viewportCamera = cameraNode
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
-        sceneRenderer.onSurfaceResized = { width, height ->
+        sceneRenderer.onSurfaceResized = { _, _ ->
             // Remember the size so a manipulator swapped in later (without a surface resize)
             // can inherit it — see [lastViewportRef] (#2514).
-            lastViewportRef.set(CameraViewportSeed.packViewport(width, height))
-            cameraManipulator?.setViewport(width, height)
+            val vp = view.viewport
+            lastViewportRef.set(CameraViewportSeed.packViewport(vp.width, vp.height))
+            cameraManipulator?.setViewport(vp.width, vp.height)
             cameraNode.updateProjection()
             // The viewport just changed: whatever was on screen is the wrong size, and a parked
             // loop would keep it. Both callbacks run on the main thread (UiHelper), so writing
@@ -1009,6 +1052,7 @@ fun SceneView(
                         viewHeight = viewHeight,
                         cameraManipulator = cameraManipulator
                     ).apply {
+                        viewportCoordinates = { ClippedViewports.get(view) }
                         // The same slop `gestureDetector` uses to tell a tap from a scroll, so a
                         // tap never starts an orbit that cancels its own double-tap zoom (#3641).
                         orbitTouchSlop =
@@ -2465,6 +2509,7 @@ fun Scene(
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -2497,6 +2542,7 @@ fun Scene(
     autoFitContent = autoFitContent,
     framingPadding = framingPadding,
     contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
     renderer = renderer,
     scene = scene,
     environment = environment,

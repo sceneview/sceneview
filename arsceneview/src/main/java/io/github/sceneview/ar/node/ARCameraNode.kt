@@ -125,7 +125,8 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
 
     /**
      * Always [ViewportPadding.Zero]: an AR camera ignores content padding, and writing it does
-     * nothing.
+     * nothing. `SceneView(clipToContentPadding = true)` is also ignored with this camera:
+     * zero padding keeps the full-surface viewport. ARSceneView never enables clipping.
      *
      * The projection here is the physical camera's — ARCore's intrinsics, off-centre principal
      * point included. Moving its optical centre into a "visible area" would draw virtual content

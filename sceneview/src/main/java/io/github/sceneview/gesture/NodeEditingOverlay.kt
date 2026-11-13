@@ -1,5 +1,7 @@
 package io.github.sceneview.gesture
 
+import io.github.sceneview.surfaceWidth
+import io.github.sceneview.surfaceHeight
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -381,7 +383,7 @@ private fun FeedbackBadge(
 /**
  * One frame's world→screen projection of a node's base circle and top anchor.
  *
- * Raw values are in Filament viewport pixels together with the viewport size, so the
+ * Raw values are in full SceneView pixels together with the surface size, so the
  * canvas can rescale them when the composable's size differs from the render surface.
  * `null` anchors mean the point is behind the camera — skip drawing, never approximate.
  *
@@ -421,7 +423,7 @@ internal class NodeScreenAnchors {
         val zM = view.worldToScreen(world(Float3(center.x, baseY, center.z - radius)))
         val topPx = view.worldToScreen(world(center + Float3(0f, halfExtent.y, 0f)))
 
-        viewportSize = Size(view.viewport.width.toFloat(), view.viewport.height.toFloat())
+        viewportSize = Size(view.surfaceWidth.toFloat(), view.surfaceHeight.toFloat())
         top = topPx?.let { Offset(it.x, it.y) }
         // worldToScreen returns null behind the camera; the ellipse needs both full chords.
         val xChord = bothOrNull(xP, xM)

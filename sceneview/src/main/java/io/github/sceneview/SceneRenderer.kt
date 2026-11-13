@@ -377,8 +377,12 @@ class SceneRenderer(
     /**
      * Updates the Filament viewport and notifies the resize callback.
      */
+    internal var viewportCamera: io.github.sceneview.node.CameraNode? = null
+
     fun applyResize(width: Int, height: Int) {
-        view.viewport = Viewport(0, 0, width, height)
+        val camera = viewportCamera
+        if (camera != null) camera.resizeViewport(width, height)
+        else view.viewport = Viewport(0, 0, width, height)
         onSurfaceResized?.invoke(width, height)
     }
 
