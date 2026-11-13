@@ -1,6 +1,6 @@
 {
   "name": "sceneview-web-demo-tests",
-  "version": "4.69.4",
+  "version": "4.69.5",
   "private": true,
   "description": "Playwright device-QA suite for the SceneView web demo",
   "scripts": {

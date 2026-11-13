@@ -20,8 +20,8 @@ and Safie.
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.sceneview:arsceneview:4.69.4")   // AR (includes the 3D module)
-    // implementation("io.github.sceneview:sceneview:4.69.4")  // 3D only, no camera
+    implementation("io.github.sceneview:arsceneview:4.69.5")   // AR (includes the 3D module)
+    // implementation("io.github.sceneview:sceneview:4.69.5")  // 3D only, no camera
 }
 ```
 

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.69.4)
+  Source of truth: /llms.txt  (SceneView 4.69.5)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.69.4). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.69.5). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -55,7 +55,7 @@
 
 ## Start here — two complete Android screens
 
-Both files compile as they are against `io.github.sceneview:arsceneview:4.69.4` (CI builds every
+Both files compile as they are against `io.github.sceneview:arsceneview:4.69.5` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -143,7 +143,10 @@ fun SceneView(
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
-    contentPadding: PaddingValues = PaddingValues(0.dp),   // area a panel covers — see "Content padding"
+    fitMode: FitMode = FitMode.Corners, // opt-in Silhouette for organic subjects; see framing below
+    animationEnvelope: AnimationEnvelope? = null, // opt-in world-space poses for auto-fit
+    contentPadding: PaddingValues = PaddingValues(0.dp),   // animate this, never resize the composable
+    clipToContentPadding: Boolean = false,                 // opaque cover only: skip hidden pixels
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -4654,7 +4657,15 @@ becomes the camera's viewport: the optical centre moves to its centre and the le
 of view spans it. The surface is **not** resized (the scene still draws under the panel),
 the camera pose and the user's orbit are **not** touched, and pixels stay square. The
 mapping is linear in the padding, so animating the padding with the panel's own curve
-makes the subject follow the panel.
+makes the subject follow the panel. **To change the visible area, keep SceneView full size and
+animate `contentPadding`; never resize the composable for a full-screen toggle or animated bar.**
+
+Add `clipToContentPadding = true` only when opaque UI covers every padded pixel. Filament then
+renders only `Viewport(left, bottom, width - left - right, height - top - bottom)`; dynamic
+resolution applies to that rectangle. Camera scaling/shift become identity and projection/framing
+use its aspect. Outside pixels are undefined. No additional per-frame clear is introduced.
+Turning clipping off restores the original full-surface scaling/shift behavior; zero padding
+restores the full viewport in either mode.
 
 ```kotlin
 import androidx.compose.animation.core.animateDpAsState
@@ -4662,7 +4673,18 @@ import androidx.compose.animation.core.animateDpAsState
 var sheetOpen by remember { mutableStateOf(false) }
 // The subject stays centred in what the sheet leaves free, and follows it as it slides.
 val covered by animateDpAsState(if (sheetOpen) 320.dp else 0.dp)
-SceneView(contentPadding = PaddingValues(bottom = covered)) { }
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(bottom = covered),
+) { }
+
+// Opt-in, only when an opaque surface covers every padded pixel (no scrim, no rounded
+// corners showing the scene through): the GPU then skips the hidden pixels.
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(bottom = covered),
+    clipToContentPadding = true,
+) { }
 
 // Imperative form, in pixels of the surface (what the composable sets for you):
 cameraNode.contentPadding = ViewportPadding(bottom = 1200f)
@@ -4678,10 +4700,14 @@ Rules:
 - **The subject gets smaller** by `visibleHeight / height`: the padding centres, it does
   not re-pose. When the bounds are known, win the size back with a fit (below) at the
   visible area's aspect — `CameraNode.getViewPortAspect()` returns it once a padding is set.
-- **A tenth of the view always stays visible.** Two opposite edges that add up to more
+- **Without clipping, a tenth of the view always stays visible.** Two opposite edges that add up to more
   than 90 % of the surface are both reduced in proportion — a sheet dragged over the
   whole view leaves a small picture, never a degenerate projection. Negative and
-  non-finite values read as `0`.
+  non-finite values read as `0`. With clipping, padding is rounded to pixels, constrained to the
+  surface, and the visible rectangle is clamped to at least 1 × 1 instead.
+- **Coordinates keep their contract with clipping.** Touch/screen helpers take full SceneView
+  pixels, top-left origin. Camera helpers retain normalized full-view coordinates, bottom-left
+  origin. Both account for the viewport offset; do not subtract padding yourself.
 - **Left at its default, the parameter writes nothing**: a `cameraNode.contentPadding`
   you set by hand is kept. Once the parameter is non-zero it owns the value, follows it
   back down to zero, and resets it when the camera leaves the `SceneView`.
@@ -4699,9 +4725,11 @@ Rules:
   padding is set on it.
 - **Not in AR.** `ARSceneView` takes no content padding and `ARCameraNode.contentPadding`
   ignores what is written to it: the AR projection is the device camera's and has to
-  stay aligned with the camera feed.
+  stay aligned with the camera feed. Clipping is also ignored for an AR camera, so its viewport
+  stays full size. The Compose Multiplatform façade exposes neither option; this is Android-only.
 - **Recording captures the padded picture.** `SurfaceMirrorer` (and the recorder built on
-  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size.
+  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size by default.
+  With clipping enabled it mirrors the visible rectangle, letterboxed into the destination.
 - iOS twin: `.contentInsets(_:)` on SceneViewSwift's `SceneView` (#4317), in points, with
   the same contract and the same 10 % floor.
 
@@ -4722,7 +4750,9 @@ fun fitCameraToBounds(
     direction: Position = Position(0f, 0f, -1f),
     verticalFovDegrees: Double, aspect: Double,
     widthFill: Float = DEFAULT_FRAMING_FILL,    // 0.8 — share of the half-width the box may span
-    heightFill: Float = DEFAULT_FRAMING_FILL
+    heightFill: Float = DEFAULT_FRAMING_FILL,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): CameraFit?
 ```
 
@@ -4750,6 +4780,105 @@ val manipulator = rememberCameraManipulator(orbitHomePosition = fit.eye, targetP
 On the axis that binds, the projected box spans exactly `±widthFill` (or `±heightFill`)
 of the half-view; on the other it is centred and spans less. The camera is assumed
 upright (world `+Y` up); looking straight down, "right" is world `+X`.
+
+**Opt-in silhouette framing (Android, #5032).** `FitMode.Corners` is the default
+and keeps the existing fit unchanged. Use `FitMode.Silhouette` for a **character or
+creature seen at three quarters from above**: the near bottom corner of its box can
+sit far below its feet, leaving unnecessary space. Silhouette fits six probes: the
+four endpoints shared by the horizontal mid-lines of the side faces, plus the
+centres of the top and bottom faces. It fits those probes, not the actual mesh.
+**Do not use it for boxy products with geometry in the corners: it can crop them.**
+The fit only applies at the requested viewing direction, not throughout an orbit.
+
+```kotlin
+// A 1.8 m character standing on the floor.
+val characterBounds = Aabb(center = Position(0f, 0.9f, 0f), halfExtent = Position(0.3f, 0.9f, 0.2f))
+
+cameraNode.fitToBounds(characterBounds, fitMode = FitMode.Silhouette)
+    ?.let { cameraNode.frame(it) }
+
+SceneView(
+    autoFitContent = true,
+    fitMode = FitMode.Silhouette,
+    cameraManipulator = null
+) { /* Character or creature nodes. */ }
+```
+
+`fitCameraToBounds`, `CameraNode.fitToBounds`, `CameraNode.frameToBounds`,
+`SceneView` (and its deprecated `Scene` alias), and both `SceneAutoFitState.maybeFit`
+overloads accept `fitMode: FitMode = FitMode.Corners`. `frameToBounds` retains its
+historical yaw-invariant swept-box distance in Corners mode without an envelope;
+Silhouette or an explicit envelope uses the
+directional probe fit, converting padding to `1 / (1 + max(0, padding))` fill.
+Auto-fit uses the camera's current direction in Silhouette mode and re-arms when
+`fitMode` or `animationEnvelope` changes. There is no automatic selection by model type.
+
+**Opt-in animation envelopes (Android, #5032).** For a skinned character, call
+`Model.animationEnvelope(clip: Int = 0, samples: Int = 24)` or the overload taking
+`clip: String`. Import `io.github.sceneview.model.animationEnvelope`. The result is
+an `AnimationEnvelope` with `poses: List<Box>` and `bounds: Box`. It keeps the rest
+box and each sampled pose separate: a head and tail reaching their extremes at different
+times must not become one imaginary silhouette. `bounds` is only their union for measuring size.
+
+```kotlin
+import io.github.sceneview.FitMode
+import io.github.sceneview.fitToBounds
+import io.github.sceneview.frame
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+import io.github.sceneview.toAabb
+
+// After the model has loaded. Sampling is pure Kotlin and may run on Dispatchers.Default.
+val envelope = modelInstance.model.animationEnvelope(clip = "Run", samples = 24)
+
+// Main thread: read the model node's transform AFTER positioning/scaling/centering it.
+val worldEnvelope = envelope.transformed(modelNode.worldTransform)
+cameraNode.fitToBounds(
+    bounds = worldEnvelope.bounds.toAabb(),
+    fitMode = FitMode.Silhouette,
+    animationEnvelope = worldEnvelope
+)?.let { cameraNode.frame(it) }
+```
+
+All the framing entry points above also accept `animationEnvelope: AnimationEnvelope? = null`.
+It replaces the single `bounds` argument for fitting: Silhouette fits every pose's six probes,
+Corners fits every pose's eight corners. The union box's probes are never used. Camera helpers
+and auto-fit expect **world-space** poses; the pure function accepts any shared coordinate space.
+An explicit auto-fit envelope describes the entire subject; other scene nodes are not added to it.
+
+```kotlin
+import io.github.sceneview.FitMode
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+
+// The envelope includes the model node's final transform. Keep that transform stable.
+val worldEnvelope = modelInstance.model.animationEnvelope(clip = "Run")
+    .transformed(modelNode.worldTransform)
+SceneView(
+    autoCenterContent = false,
+    autoFitContent = true,
+    fitMode = FitMode.Silhouette,
+    animationEnvelope = worldEnvelope,
+    cameraManipulator = null
+) { /* The character at the same world transform used above. */ }
+```
+
+`ModelLoader` copies only joint ancestor transforms and animation input/output arrays before
+releasing source data; no mesh/texture buffers or native instances are retained. Sampling happens
+only on request, with 2–120 evenly spaced times (including both endpoints), and the last eight
+clip/sample-count results per model are cached. The rest box is always included as a separate pose.
+LINEAR rotations use shortest-path slerp; STEP and CUBICSPLINE use glTF interpolation.
+
+The flesh margin on each face is `max(0, rest mesh overhang beyond rest joints)`, added to that
+face of every sampled joint box. This is a **heuristic**, not animated vertex bounds: morphs,
+rigid attachments, flesh moving beyond the fixed margin, and extrema between samples are not
+proved to fit. Unknown clips, absent skins/animations, or unreadable inputs fall back to the
+rest-pose box. Sparse, meshopt-compressed and embedded data-URI animation accessors currently
+fall back too. No defaults change: an envelope and Silhouette are both explicit choices.
+
+This step is Android-only because it uses Android's glTF load lifecycle and existing rest-pose
+bounds. Web and other platforms keep their existing APIs pending their own parser integration
+and visual validation.
 
 ### Cinematic camera — shots, transitions, paths, reveal, tour (`io.github.sceneview.camera`)
 
@@ -5315,7 +5444,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.69.4` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.69.5` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -5520,7 +5649,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.69.4 — npm `sceneview-web`
+Package: `sceneview-web` v4.69.5 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -6155,7 +6284,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.4")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.5")
 ```
 
 Import: `import SceneViewSwift`

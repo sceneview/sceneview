@@ -29,7 +29,7 @@ If you have not already added SceneViewSwift, follow the same SPM steps from the
 
 1. **File > Add Package Dependencies**
 2. URL: `https://github.com/sceneview/sceneview.git`
-3. Version: from `4.69.4`
+3. Version: from `4.69.5`
 
 ### Camera permission
 
