@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -80,11 +81,17 @@ internal fun ScanInstructionLine(instruction: ScanInstruction, scope: ScanScope 
         modifier = Modifier.testTag(SCAN_HINT_TAG)
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
     ) {
-        Text(
-            text = stringResource(message),
-            style = MaterialTheme.typography.bodyMedium,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
             modifier = Modifier.padding(horizontal = Space.md, vertical = Space.sm),
-        )
+        ) {
+            if (instruction == ScanInstruction.Saving) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.inverseOnSurface)
+            }
+            Text(text = stringResource(message), style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 

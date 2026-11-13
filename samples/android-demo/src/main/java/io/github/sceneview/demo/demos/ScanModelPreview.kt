@@ -47,7 +47,7 @@ import kotlinx.coroutines.withContext
  * A second view of the same captured surface. Its heading is fixed, so the user's turn does
  * not spin the model. Only its bounds grow. The untinted snapshot is rebuilt on a worker at
  * most twice a second; ARCore and the full-screen AR layer remain the capture's only clock.
- * The same view expands while saving, keeping the captured place visible until Photo opens.
+ * The same compact view stays in place while saving, until Photo opens.
  */
 @Composable
 internal fun ScanModelPreview(
@@ -56,7 +56,6 @@ internal fun ScanModelPreview(
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
-    saving: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
@@ -85,14 +84,14 @@ internal fun ScanModelPreview(
     val orbit = remember(media) { ArDebugOrbitCamera(drift = false, band = OrbitBand.CARD) }
     val drawn = remember(media) { media.withLiveDense(overCamera = { false }) { current } }
     val chrome = themedStageChrome()
-    val shape = RoundedCornerShape(if (saving) 0.dp else 24.dp)
-    val placement = if (saving) modifier.fillMaxSize() else modifier
+    val shape = RoundedCornerShape(24.dp)
+    val placement = modifier
         .windowInsetsPadding(WindowInsets.navigationBars)
         .padding(start = 16.dp, end = 16.dp, bottom = 112.dp)
         .width(168.dp).height(152.dp)
     Box(placement.clip(shape)
-        .background(if (saving) chrome.ground else Color(0xFF102A3B).copy(alpha = 0.48f))
-        .then(if (saving) Modifier else Modifier.border(1.dp, Color.White.copy(alpha = 0.3f), shape))
+        .background(Color(0xFF102A3B).copy(alpha = 0.48f))
+        .border(1.dp, Color.White.copy(alpha = 0.3f), shape)
         .testTag("scan_live_model")) {
         CompositionLocalProvider(LocalStageChrome provides chrome) {
         ArDebugSceneView(
@@ -102,9 +101,9 @@ internal fun ScanModelPreview(
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             replay = drawn,
-            modifier = Modifier.fillMaxSize().padding(top = if (saving) 0.dp else 24.dp),
+            modifier = Modifier.fillMaxSize().padding(top = 24.dp),
             compact = true,
-            transparent = !saving,
+            transparent = true,
             maxFps = 20,
             measuresRoom = false,
             visible = { it == DebugGroup.Points },
@@ -117,7 +116,7 @@ internal fun ScanModelPreview(
             },
         )
         }
-        if (!saving) Text(
+        Text(
             stringResource(R.string.scan_capture_live_model),
             color = Color.White,
             style = MaterialTheme.typography.labelMedium,

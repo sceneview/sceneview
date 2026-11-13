@@ -90,6 +90,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -650,7 +652,7 @@ internal fun ScanLiveView(
         engine = engine,
         modelLoader = modelLoader,
         materialLoader = materialLoader,
-        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = CAPTURE_POINTS_ALPHA }.testTag(SCAN_STAGE_TAG),
+        modifier = Modifier.fillMaxSize().blur(10.dp).graphicsLayer { alpha = CAPTURE_POINTS_ALPHA }.testTag(SCAN_STAGE_TAG),
         replay = drawn,
         transparent = true,
         measuresRoom = false,
