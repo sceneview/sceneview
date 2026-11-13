@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v4.69.3 — 2026-11-13
+
+### Changed
+
+- "See an example" in 3D Scan replays the bundled room again, with its mini-map, dimensions and video strip.
+- A real scan's result opens from inside the place and rises, with a cleaner Photo layer. Its status sits right above the layer picker ([#5030](https://github.com/sceneview/sceneview/pull/5030)).
+
+### Fixed
+
+- `ContactShadowNode.intensity` and `context` no longer fail with "uniform named intensity not found" after the node is created: the node updates its own material instance ([#5029](https://github.com/sceneview/sceneview/pull/5029)).
+
 ## v4.69.2 — 2026-11-12
 
 ### Changed
