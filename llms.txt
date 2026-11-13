@@ -4894,6 +4894,9 @@ centres of the top and bottom faces. It fits those probes, not the actual mesh.
 The fit only applies at the requested viewing direction, not throughout an orbit.
 
 ```kotlin
+// A 1.8 m character standing on the floor.
+val characterBounds = Aabb(center = Position(0f, 0.9f, 0f), halfExtent = Position(0.3f, 0.9f, 0.2f))
+
 cameraNode.fitToBounds(characterBounds, fitMode = FitMode.Silhouette)
     ?.let { cameraNode.frame(it) }
 
