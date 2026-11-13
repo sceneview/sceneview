@@ -176,7 +176,7 @@ class RerunScanModel(
          * standing apart from it dropped (ScanTidy). 4: retain medium-confidence depth boundaries.
          * A `model.json` without one is 1.
          */
-        const val PIPELINE = 4
+        const val PIPELINE = 5
 
         private const val EARLIER_PIPELINE = 1
 

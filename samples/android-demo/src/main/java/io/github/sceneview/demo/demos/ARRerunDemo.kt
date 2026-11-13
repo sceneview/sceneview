@@ -832,6 +832,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             // A kept model's Photo layer still comes from the real scan's own surfels.
             surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
             photo = scanPhoto?.takeIf { showingScan && it.first === scanMedia }?.second,
+            openingPhoto = scanMedia?.takeIf { showingScan }?.let { it.thumbnailAt(it.trace.duration) },
         )
     }
     val exportable = when (screen) {
@@ -2042,7 +2043,6 @@ private fun RerunLiveScreen(
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
-                    saving = phase == ScanPhase.Saving,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }

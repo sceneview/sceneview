@@ -7,6 +7,9 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -370,10 +373,11 @@ internal fun buildRerunModel(
     onRaw: ((RerunModelBuild) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
     progress: (Float) -> Unit,
 ): RerunModelBuild {
     val started = System.nanoTime()
-    val meshed = mesh(source, progress, reconstruction)
+    val meshed = mesh(source, progress, reconstruction, reconstructionVoxelM)
     val raw = meshed.surface
     val meshedAt = System.nanoTime()
     val photos = when (source) {
@@ -483,9 +487,10 @@ private fun mesh(
     source: RerunModelSource,
     progress: (Float) -> Unit,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
 ): Meshed {
     val started = System.nanoTime()
-    val reconstructed = reconstructedTsdf(source, reconstruction) { progress(it * FUSE_SHARE) }
+    val reconstructed = reconstructedTsdf(source, reconstruction, reconstructionVoxelM) { progress(it * FUSE_SHARE) }
     val tsdf = reconstructed ?: when (source) {
         is RerunModelSource.Live -> checkNotNull(source.tsdf) { "TSDF released" }
         is RerunModelSource.Surfels -> RerunTsdf().also { t ->
@@ -575,6 +580,7 @@ internal fun buildScanModel(
     onRaw: ((RerunScanModel) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
     progress: (Float) -> Unit,
 ): RerunScanModel? {
     val skipMesh = source is RerunModelSource.Synthetic && source.meshFails
@@ -582,7 +588,7 @@ internal fun buildScanModel(
         null
     } else {
         val raw = onRaw?.let { show -> { build: RerunModelBuild -> show(build.scanModel()) } }
-        runCatching { buildRerunModel(source, raw, shown, reconstruction) { progress(it * MESH_PART) } }
+        runCatching { buildRerunModel(source, raw, shown, reconstruction, reconstructionVoxelM) { progress(it * MESH_PART) } }
             .onFailure { if (it is CancellationException) throw it }
             .onFailure { Log.w(TAG, "meshing failed", it) }
             .getOrNull()
@@ -729,6 +735,7 @@ internal fun RerunModelScreen(
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
     photo: SplatFaces? = null,
+    openingPhoto: Bitmap? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -768,8 +775,16 @@ internal fun RerunModelScreen(
                         value = ModelState.Ready(surface, final = false)
                     }
                 }
-                // The default finish, never asked first: the result opens on the model.
-                runCatching { buildScanModel(from, raw, retry?.glb, ReconstructionMethod.Fused, report) }
+                // Close measured gaps with the bounded Poisson reconstruction (#4805).
+                // It falls back to fused depth when no oriented cloud fits the budget.
+                runCatching {
+                    buildScanModel(from, raw, retry?.glb,
+                        reconstruction = if (scope.hasFloorPlan) ReconstructionMethod.Poisson else ReconstructionMethod.Fused,
+                        // Room depth is sparse: a 5 cm grid bridges small floor gaps and costs
+                        // less than the fine solve. Object and outdoor scans keep fused detail.
+                        reconstructionVoxelM = 0.05f,
+                        progress = report)
+                }
                     .onFailure { if (it is CancellationException) throw it }
                     .onFailure { Log.w(TAG, "model build failed", it) }
                     .getOrNull()
@@ -1343,7 +1358,12 @@ internal fun RerunModelScreen(
                         .alpha(veil)
                         .background(chrome.ground)
                         .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
-                )
+                ) {
+                    openingPhoto?.let { bitmap ->
+                        Image(bitmap.asImageBitmap(), contentDescription = null,
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                }
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
         }
