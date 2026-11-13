@@ -30,7 +30,6 @@ material {
         { "type" : "float", "name" : "captureTint" }
     ],
     "requires" : [ "position", "uv0", "custom0" ],
-    "variables" : [ "surfelOffset" ],
     "shadingModel" : "unlit",
     "blending" : "transparent",
     "culling" : "none"
@@ -45,10 +44,7 @@ vertex {
         highp float side = length(offset) * 1.41421356 * getClipFromViewMatrix()[1][1] / (2.0 * depth);
         highp float fade = min(depth / materialParams.nearFade, 1.0);
         highp float scale = min(fade * fade, materialParams.maxSide / max(side, 1e-6));
-        // A normalized in-plane offset interpolates to zero at the splat centre.
-        material.surfelOffset = float4(offset / max(length(offset), 1e-6), 0.0);
-        highp float roundScale = materialParams.captureTint > 0.5 ? 1.41421356 : 1.0;
-        material.worldPosition.xyz = centre + offset * scale * roundScale;
+        material.worldPosition.xyz = centre + offset * scale;
     }
 }
 fragment {
@@ -60,9 +56,6 @@ fragment {
             ? float4(0.1812, 0.6240, 1.0, 1.0)
             : texture(materialParams_texture, getUV0());
         // As image_texture.mat (#2224): Filament does not premultiply unlit baseColor.
-        if (materialParams.captureTint > 0.5) {
-            material.baseColor.a *= 1.0 - smoothstep(0.45, 0.70710678, length(variable_surfelOffset.xyz));
-        }
         material.baseColor.rgb *= material.baseColor.a;
     }
 }

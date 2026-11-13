@@ -5,4 +5,4 @@ The capture now paints a uniform sky-blue coat and keeps the live model in a com
 
 Room and home scans now use a bounded 5 cm screened Poisson reconstruction before photo texturing; object and outdoor scans keep fused detail. The capture coat uses uniform shader ink with softened edges. Dense captures skip redundant replay-plane texture baking while keeping their original photos and measured polygons. The compact live model stays in place during saving, with animated progress and a camera photo covering the result's first GPU frames. Unobserved regions remain open.
 
-- Complete Room/Home results inside observed ARCore floor and wall polygons and locally supported fused planes, retaining furniture relief and unobserved room boundaries. Round and feather capture splats to soften the blue veil's square edges.
+The fifth device pass restores the opaque uniform capture ink and removes planar completion: ARCore plane extents do not establish observed colour or depth across a polygon.

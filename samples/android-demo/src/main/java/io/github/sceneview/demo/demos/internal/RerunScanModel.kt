@@ -174,9 +174,10 @@ class RerunScanModel(
          * whenever the finish makes a different model of the same scan, so the models kept by an
          * earlier one are built again ([stalePipeline]). 2: cut to the scan's box. 3: the pieces
          * standing apart from it dropped (ScanTidy). 4: retain medium-confidence depth boundaries.
-         * 5: bounded Poisson. 6: observed planar completion. A `model.json` without one is 1.
+         * 5: bounded Poisson. 6: observed planar completion. 7: remove unsupported plane completion.
+         * A `model.json` without one is 1.
          */
-        const val PIPELINE = 6
+        const val PIPELINE = 7
 
         private const val EARLIER_PIPELINE = 1
 
