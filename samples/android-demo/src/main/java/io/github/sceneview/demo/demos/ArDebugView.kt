@@ -891,6 +891,8 @@ internal fun ArDebugSceneView(
      * draws, but neither advances the session's clock nor writes its figures.
      */
     drivesSession: Boolean = true,
+    /** Capture only: the phone owns the view and projection; no gestures or orbit handoff. */
+    captureLens: ScanLens? = null,
     /** More of the scene, in the session's world space: the live 3D map's floor. */
     content: (@Composable SceneScope.() -> Unit)? = null,
 ) {
@@ -936,7 +938,7 @@ internal fun ArDebugSceneView(
     }
     // A tap on an object of the scan boxes it (#4485); the picture-in-picture takes no touch.
     val objectPick =
-        rememberScanObjectPick(replay.takeUnless { compact || !drivesSession }, session, orbit, engine, materialLoader, selection)
+        rememberScanObjectPick(replay.takeUnless { compact || !drivesSession || captureLens != null }, session, orbit, engine, materialLoader, selection)
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
     val clock = remember { FrameClock() }
 
@@ -957,7 +959,7 @@ internal fun ArDebugSceneView(
             frameRatePolicy = FrameRatePolicy.Continuous(maxFps = if (compact) PIP_FPS else maxFps),
             autoCenterContent = false,
             environment = environment,
-            cameraManipulator = orbit,
+            cameraManipulator = orbit.takeIf { captureLens == null },
             onGestureListener = rememberOnGestureListener(
                 onDown = { _, _ -> objectPick?.down() },
                 onSingleTapConfirmed = { event, _ -> objectPick?.tap(event.x, event.y) },
@@ -975,7 +977,19 @@ internal fun ArDebugSceneView(
                 // the AR view under this one, same size, so a point lands on its camera pixel. The
                 // orbit's lens comes back with the orbit, after a drag or a pinch, or eased back
                 // over the hand-off off the phone's eye as a save starts (#4719).
-                if (orbit.firstPerson != null && orbit.customProjection(clock.projection)) {
+                if (captureLens != null) {
+                    // The viewport normally reaches the orbit via the manipulator; capture has
+                    // no manipulator, but the existing point-size calculations still need it.
+                    orbit.setViewport(view.viewport.width, view.viewport.height)
+                    if (captureLens.held) {
+                        cameraNode.transform = captureLens.cameraToWorld.toTransform()
+                        cameraNode.setCustomProjection(
+                            captureLens.projection.toTransform(),
+                            ScanLens.NEAR_M.toDouble(),
+                            ScanLens.FAR_M.toDouble(),
+                        )
+                    }
+                } else if (orbit.firstPerson != null && orbit.customProjection(clock.projection)) {
                     clock.lensApplied = true
                     cameraNode.setCustomProjection(
                         clock.projection.toTransform(),

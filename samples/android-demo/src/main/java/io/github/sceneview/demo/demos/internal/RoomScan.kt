@@ -550,7 +550,6 @@ object ScanCopy {
     const val COACH_FACE_WALLS = "Raise the phone to the walls"
 
     /** Before the first frame tracks: the scan starts by itself, as soon as AR is ready. */
-    const val STARTING = "Getting AR ready — the scan starts by itself"
 
     /**
      * The turn to the part of the room no wall was seen on yet ([ScanGuide.cue]). It names the

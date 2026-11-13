@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.ScanInstruction
 import io.github.sceneview.demo.demos.internal.CaptureChrome
 import io.github.sceneview.demo.demos.internal.CaptureChromeState
 import io.github.sceneview.demo.demos.internal.CaptureCue
@@ -52,6 +56,32 @@ import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.haptic.rememberHapticFeedback
 import kotlinx.coroutines.delay
+
+/** One calm, opaque line: the camera remains untouched outside this small surface. */
+@Composable
+internal fun ScanInstructionLine(instruction: ScanInstruction) {
+    val message = when (instruction) {
+        ScanInstruction.Starting -> R.string.scan_capture_starting
+        ScanInstruction.GoBack -> R.string.scan_capture_go_back
+        ScanInstruction.Slower -> R.string.scan_capture_slower
+        ScanInstruction.MoreLight -> R.string.scan_capture_more_light
+        ScanInstruction.Sweep -> R.string.scan_capture_sweep
+        ScanInstruction.Saving -> R.string.scan_capture_saving
+    }
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        modifier = Modifier.testTag(SCAN_HINT_TAG)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Text(
+            text = stringResource(message),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.sm),
+        )
+    }
+}
 
 /*
  * The 3D Scan capture's chrome legible in sunlight: every line of it sits on a solid fill, so the

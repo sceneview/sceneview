@@ -2,6 +2,56 @@ package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.roundToInt
 
+/** Resource-backed messages for the capture's single instruction line. */
+enum class ScanInstruction { Starting, GoBack, Slower, MoreLight, Sweep, Saving }
+
+/**
+ * One instruction at most, held for at least two seconds, including transitions to silence.
+ * The introductory sweep expires six seconds after capture starts, measured with a monotonic
+ * clock rather than the trace clock (which stops during tracking loss). Saving is a terminal
+ * status and takes precedence over coaching, with the same minimum time between changes.
+ */
+class ScanLiveInstruction {
+    private var startedAt: Long? = null
+    private var changedAt: Long? = null
+    private var shown: ScanInstruction? = null
+
+    fun update(
+        nowMs: Long,
+        started: Boolean = true,
+        trackingLost: Boolean = false,
+        poseSlipped: Boolean = false,
+        tooFast: Boolean = false,
+        tooDark: Boolean = false,
+        saving: Boolean = false,
+    ): ScanInstruction? {
+        if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
+        val elapsed = startedAt?.let { nowMs - it } ?: 0L
+        val wanted = when {
+            saving -> ScanInstruction.Saving
+            !started -> ScanInstruction.Starting
+            trackingLost || poseSlipped -> ScanInstruction.GoBack
+            tooFast -> ScanInstruction.Slower
+            tooDark -> ScanInstruction.MoreLight
+            // Do not introduce Sweep too late to give it its full hold before second six.
+            elapsed < INTRO_MS && (shown == ScanInstruction.Sweep || elapsed <= INTRO_MS - HOLD_MS) ->
+                ScanInstruction.Sweep
+            else -> null
+        }
+        val previousChange = changedAt
+        if (previousChange == null || (wanted != shown && nowMs - previousChange >= HOLD_MS)) {
+            shown = wanted
+            changedAt = nowMs
+        }
+        return shown
+    }
+
+    companion object {
+        const val HOLD_MS = 2_000L
+        const val INTRO_MS = 6_000L
+    }
+}
+
 /** Where the capture is, of its three steps: the step row under the shutter says it. */
 enum class ScanStep(val label: String) {
     Scan("Scan"),

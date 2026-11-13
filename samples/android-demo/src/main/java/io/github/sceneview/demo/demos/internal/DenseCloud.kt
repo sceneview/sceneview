@@ -411,12 +411,11 @@ object DenseSurfels {
     const val MAX_SCREEN_SIDE = 0.25f
 
     /**
-     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height, about the largest a finest
-     * surfel is drawn (at [NEAR_FADE_M]). A surfel the map coarsened keeps its width in the room,
-     * so a wall past about a metre stays whole at every level; nearer, it shrinks to the size of a
-     * fine one instead of growing into a square over the camera.
+     * Fine points over the camera: 0.2% of viewport height, about 2–5 physical pixels on
+     * phone displays (1080–2400 px). Only the live presentation shrinks; saved surfels,
+     * their world positions and the result's surface sizing stay unchanged.
      */
-    const val LIVE_MAX_SCREEN_SIDE = 0.1f
+    const val LIVE_MAX_SCREEN_SIDE = 0.002f
 
     /** The largest side a view draws a surfel at: [LIVE_MAX_SCREEN_SIDE] over the camera ([live]). */
     fun maxScreenSide(live: Boolean): Float = if (live) LIVE_MAX_SCREEN_SIDE else MAX_SCREEN_SIDE
