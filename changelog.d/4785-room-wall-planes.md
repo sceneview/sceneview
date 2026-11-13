@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **3D Scan (demo): walls found only as ARCore planes face the room in an L or a T ([#4785](https://github.com/sceneview/sceneview/issues/4785)).** Each plane now faces the part of the walk that stood in front of it, not the walk's average position, which can lie in the other wing behind the wall: such a wall is drawn as seen and the room's figures are measured, not estimated.
+- **3D Scan (demo): a wall plane running across a doorway no longer closes it ([#4785](https://github.com/sceneview/sceneview/issues/4785)).** Where the floor was seen on through the plane's line the wall is left open; where the floor stops at it (glass, a mirror, a wall the depth missed) the plane still stands for the wall.
