@@ -289,6 +289,7 @@ internal fun ScanControls(
     instruction: ScanInstruction?,
     doneEnabled: Boolean,
     onFinish: () -> Unit,
+    onNextRoom: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth().testTag(SCAN_CONTROLS_TAG),
@@ -296,11 +297,21 @@ internal fun ScanControls(
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         if (instruction != null) ScanInstructionLine(instruction)
-        Button(
-            onClick = onFinish,
-            enabled = doneEnabled,
-            modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).testTag(SCAN_FINISH_TAG),
-        ) { Text(stringResource(R.string.scan_capture_done)) }
+        // A whole home is scanned room by room (#4677): Next room saves this one and goes on.
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
+            if (onNextRoom != null) {
+                FilledTonalButton(
+                    onClick = onNextRoom,
+                    enabled = doneEnabled,
+                    modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).testTag(SCAN_NEXT_ROOM_TAG),
+                ) { Text(stringResource(R.string.scan_capture_next_room)) }
+            }
+            Button(
+                onClick = onFinish,
+                enabled = doneEnabled,
+                modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).testTag(SCAN_FINISH_TAG),
+            ) { Text(stringResource(R.string.scan_capture_done)) }
+        }
     }
 }
 
@@ -680,6 +691,7 @@ internal const val SCAN_POINTS_TAG = "ar_rerun_scan_points"
 internal const val SCAN_CONTROLS_TAG = "ar_rerun_scan_controls"
 internal const val SCAN_PAUSE_TAG = "ar_rerun_scan_pause"
 internal const val SCAN_FINISH_TAG = "ar_rerun_scan_finish"
+internal const val SCAN_NEXT_ROOM_TAG = "ar_rerun_scan_next_room"
 internal const val SCAN_HINT_TAG = "ar_rerun_scan_hint"
 internal const val SCAN_REVIEW_TAG = "ar_rerun_scan_review"
 internal const val SCAN_FIX_NOW_TAG = "ar_rerun_scan_fix_now"

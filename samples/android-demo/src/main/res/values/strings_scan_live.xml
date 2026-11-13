@@ -2,6 +2,7 @@
 <resources>
     <string name="scan_capture_back">Back</string>
     <string name="scan_capture_done">Done</string>
+    <string name="scan_capture_next_room">Next room</string>
     <string name="scan_capture_figures">%1$s · %2$s</string>
     <string name="scan_capture_starting">Move your phone slowly to start</string>
     <string name="scan_capture_go_back">Go back to where you were</string>

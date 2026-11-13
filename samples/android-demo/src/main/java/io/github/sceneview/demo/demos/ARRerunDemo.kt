@@ -1914,6 +1914,11 @@ private fun RerunLiveScreen(
                     instruction = instruction,
                     doneEnabled = recording && !captureEmpty && phase.canKeepScanning,
                     onFinish = onSaveScan,
+                    onNextRoom = if (scanScope.roomByRoom) {
+                        { saveScan(SaveNext.NextRoom) }
+                    } else {
+                        null
+                    },
                 )
             }
         },

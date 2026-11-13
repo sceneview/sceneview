@@ -45,11 +45,12 @@ class ScanLifecycleTest {
     }
 
     @Test
-    fun `finish opens a review that keep scanning leaves for the same capture`() {
-        val reviewing = ScanPhase.Scanning.finish()
-        assertEquals(ScanPhase.Reviewing, reviewing)
-        assertEquals(ScanPhase.Reviewing, ScanPhase.Paused.finish())
-        assertEquals(ScanPhase.Scanning, reviewing.keepScanning())
+    fun `Done saves at once, with no review in between`() {
+        // 2026-11-13: the review step ("parts to fix") is gone from the capture.
+        assertEquals(ScanPhase.Saving, ScanPhase.Scanning.finish())
+        assertEquals(ScanPhase.Saving, ScanPhase.Paused.finish())
+        // A paused capture (Back asked) still goes back to the same capture.
+        assertEquals(ScanPhase.Scanning, ScanPhase.Paused.keepScanning())
     }
 
     @Test

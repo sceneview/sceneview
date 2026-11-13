@@ -19,7 +19,7 @@ import kotlin.math.ceil
  * ([LiveDrawLoad]).
  *
  * The live card draws a bounded number of surfels, the near ones as the map holds them, and
- * still covers what the camera sees; the floor cells the snapshot hands the live map, and the
+ * paints it as fine points that leave the camera seen; the floor cells the snapshot hands the live map, and the
  * cloud the scan saves, are the map's own, whatever the card draws.
  */
 class ScanLiveLodTest {
@@ -44,11 +44,12 @@ class ScanLiveLodTest {
     }
 
     @Test
-    fun `the live view still covers the screen from the eye that scans`() {
+    fun `the live view paints fine points and leaves the camera visible`() {
         val loads = session.loads
         val coverage = loads.map { it.coverage.toDouble() }.pct(P50)
         val overdraw = loads.map { it.overdraw.toDouble() }.pct(P50)
         assertTrue("the live view covered ${"%.3f".format(coverage)} of the screen", coverage >= MIN_COVERAGE)
+        assertTrue("the live view covered ${"%.3f".format(coverage)} of the screen", coverage <= MAX_COVERAGE)
         assertTrue("the live view drew ${"%.2f".format(overdraw)} fragments a pixel", overdraw <= MAX_OVERDRAW)
     }
 
@@ -90,8 +91,12 @@ class ScanLiveLodTest {
         /** At arm's length and closer, the live card draws the map's own surfels. */
         const val NEAR_M = 1f
 
-        /** The stride drawn before left 0.706 of the screen covered (p50) and 1.13 fragments a pixel. */
-        const val MIN_COVERAGE = 0.9
+        /**
+         * The capture paints the scan as fine points on the camera (2026-11-13): 0.015 of the
+         * screen at p50 when these bounds were set. Some points are drawn, the camera stays seen.
+         */
+        const val MIN_COVERAGE = 0.005
+        const val MAX_COVERAGE = 0.2
 
         /**
          * The merged surfels overlap: 3.14 fragments a pixel at p50 when this bound was set (#4792).

@@ -718,11 +718,15 @@ private class ArDebugLayers(engine: Engine, private val materials: Map<DebugLaye
         floorY: Float,
         visible: (DebugGroup) -> Boolean,
         replay: ReplayLayers? = null,
+        livePoints: Boolean = true,
     ) {
         for (part in Part.entries) {
             val style = if (part == Part.Map || part == Part.Live) pointStyle else style
-            // The replay draws its map points in their photo colours, on its own layer.
-            val shown = visible(part.group) && !(part == Part.Map && replay != null)
+            // The replay draws its map points in their photo colours, on its own layer; a scan
+            // capture draws none of ARCore's tracked points, which read as orange specks.
+            val shown = visible(part.group) &&
+                !(part == Part.Map && replay != null) &&
+                !(part == Part.Live && !livePoints)
             part.layers.forEach { nodes.getValue(it).isVisible = shown }
             if (!shown) {
                 keys.remove(part) // rebuilt when shown again
@@ -1114,7 +1118,10 @@ internal fun ArDebugSceneView(
                 // The picture-in-picture packs the room into a few hundred pixels: full-size points
                 // would read as noise there, so they shrink while lines keep their weight.
                 val pointStyle = if (compact) ArDebugStyle(style.metresPerPixel * PIP_POINT_SCALE) else style
-                layers.sync(frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers)
+                layers.sync(
+                    frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers,
+                    livePoints = captureLens == null,
+                )
                 replayLayers?.sync(
                     frame, pointStyle, floorY,
                     ReplayVisibility(

@@ -49,22 +49,18 @@ enum class ScanScope(val key: String) {
     val mapsGround: Boolean get() = this != Object
 
     /**
-     * The card that stands for this scope in the choice (Scan redesign, PR 1): only [Object] and
-     * [Room] are offered; [Home] and [Area] stay for the sessions taken with them, and a choice
-     * remembered as one of them comes back as a room.
+     * The card that stands for this scope in the choice: its own. #4899 had cut the choice down to
+     * [Object] and [Room]; the whole home and the outdoor area are offered again (Thomas,
+     * 2026-11-13: « c'était bien de pouvoir scanner un ground, un extérieur… il y en avait quatre »).
      */
-    val offered: ScanScope
-        get() = when (this) {
-            Object -> Object
-            Room, Home, Area -> Room
-        }
+    val offered: ScanScope get() = this
 
     companion object {
         /** The scope asked first when nothing was chosen before: one object, the quickest to a model. */
         val DEFAULT = Object
 
-        /** The scopes the choice offers, in its order: [Object] first. */
-        val OFFERED: List<ScanScope> = listOf(Object, Room)
+        /** The scopes the choice offers, in its order: [Object] first, as #4677 offered them. */
+        val OFFERED: List<ScanScope> = listOf(Object, Room, Home, Area)
 
         /** The scope remembered under [key]; [DEFAULT] for none, or for a key this build does not know. */
         fun fromKey(key: String?): ScanScope = entries.firstOrNull { it.key == key } ?: DEFAULT

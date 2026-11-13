@@ -83,7 +83,7 @@ internal object ScanScopeStore {
     private const val PREFS = "sceneview_demo_ar_rerun"
     private const val KEY = "ar_rerun_scan_scope"
 
-    /** The last choice, as the card offered for it: a home or an area chosen before comes back as a room. */
+    /** The last choice, as the card offered for it. */
     fun last(context: Context): ScanScope =
         ScanScope.fromKey(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)).offered
 
@@ -93,7 +93,7 @@ internal object ScanScopeStore {
 }
 
 /**
- * The page of the scope choice: a heading, the two kinds offered ([ScanScope.OFFERED], an object
+ * The page of the scope choice: a heading, the four kinds offered ([ScanScope.OFFERED], an object
  * first), and the action that starts that scan.
  * The action is pinned at the bottom, above the navigation bar, and the kinds scroll behind it
  * (#4730): it never moves and is never covered, and the last kind scrolls clear above it.
