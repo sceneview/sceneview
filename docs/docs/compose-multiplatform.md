@@ -9,7 +9,7 @@ description: "Show a 3D model from commonMain in a Kotlin / Compose Multiplatfor
 
 ```kotlin
 // shared module, commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.69.2")
+implementation("io.github.sceneview:sceneview-compose:4.69.3")
 ```
 
 ```kotlin
