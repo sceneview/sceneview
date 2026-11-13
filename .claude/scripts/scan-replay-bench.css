@@ -1,0 +1,45 @@
+/* Material 3 roles from DESIGN.md; only verdict text has semantic colour. */
+:root {
+  color-scheme: light dark;
+  --surface: #F9F9FF; --on-surface: #191B22; --muted: #424753;
+  --outline: #C2C6D5; --container: #F2F3FC; --primary: #004494;
+  --success: #006E2A; --error: #BA1A1A;
+  --space: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #11131A; --on-surface: #E1E2EB; --muted: #C2C6D5;
+    --outline: #424753; --container: #191B22; --primary: #ADC6FF;
+    --success: #73DC82; --error: #FFB4AB;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--on-surface);
+  font: 14px/1.5 system-ui, -apple-system, Roboto, "Segoe UI", sans-serif; }
+header, main { padding: calc(3 * var(--space)); max-width: 1800px; margin: auto; }
+header { border-bottom: 1px solid var(--outline); }
+h1 { font-size: 32px; font-weight: 400; margin: 0; }
+h2 { font-size: 24px; font-weight: 400; margin: 0 0 calc(2 * var(--space)); }
+h3 { font-size: 22px; font-weight: 400; margin: 0; }
+p { margin: var(--space) 0; }
+a { color: var(--primary); }
+section { margin-top: calc(5 * var(--space)); padding-top: calc(3 * var(--space)); border-top: 1px solid var(--outline); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin: calc(2 * var(--space)) 0; }
+td, th { padding: var(--space); border-bottom: 1px solid var(--outline); text-align: left; vertical-align: top; }
+th { font-weight: 500; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: calc(3 * var(--space)); }
+.build { min-width: 0; }
+.frames { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space); }
+figure { margin: var(--space) 0; min-width: 0; }
+img, .missing { display: block; width: 100%; height: auto; object-fit: contain; background: var(--container); }
+.build img[src$="model.png"] { max-height: 640px; }
+.comparison { max-width: 640px; margin: 24px auto; }
+.scroll th { min-width: 160px; }
+.scroll td { min-width: 180px; }
+.missing { padding: var(--space); font-size: 12px; overflow-wrap: anywhere; }
+figcaption { font-size: 12px; margin-top: var(--space); }
+.note { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.better { color: var(--success); }
+.worse { color: var(--error); }
+@media (max-width: 800px) { .pair { grid-template-columns: 1fr; } header, main { padding: 16px; } }

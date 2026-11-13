@@ -1,0 +1,16 @@
+--------- beginning of main
+1794500000.000  1  1 I ScanBench: {"schema":2,"event":"cadence","fps":999}
+1794500000.000  1  1 E AndroidRuntime: FATAL EXCEPTION: old run
+1794500100.200  1  1 I ScanBench: {"schema":2,"event":"geometry","surface_ready":false,"outside_elements":null}
+1794500106.250  1  1 I ScanBench: {"schema":2,"event":"surface_ready","surface_ready":true,"covered_m2":0.2,"outside_elements":null}
+1794500107.000  1  1 I ScanBench: {"schema":2,"event":"cadence","fps":30,"window_start_epoch_ms":1794500106000,"tracking_state":null,"camera_pose_available":true,"points":300,"covered_m2":0.2}
+1794500108.000  1  1 I ScanBench: {"schema":2,"event":"cadence","fps":20,"window_start_epoch_ms":1794500107000}
+1794500110.000  1  1 I ScanBench: {"schema":2,"event":"cadence","fps":0,"window_start_epoch_ms":1794500108000}
+1794500110.001  1  1 I ScanBench: {"schema":2,"event":"geometry","surface_ready":true,"outside_elements":7}
+1794500110.100  1  1 I ScanBench: broken json
+1794500110.200  1  1 I ScanBench: []
+1794500112.000  1  1 I ScanBench: {"schema":2,"event":"cadence","fps":60}
+1794500112.010  1  1 I ScanBench: {"schema":2,"event":"geometry","surface_ready":true,"outside_elements":999}
+1794500113.000  1  1 E AndroidRuntime: FATAL EXCEPTION: main
+1794500114.000  1  1 I am_anr: [0,123,io.github.sceneview.demo.qa]
+1794500114.100  1  1 E ActivityManager: ANR in io.github.sceneview.demo.qa
