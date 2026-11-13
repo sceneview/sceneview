@@ -7,7 +7,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,11 +63,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -129,6 +126,7 @@ import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ResultFilm
 import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.ResultShading
+import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
 import io.github.sceneview.demo.demos.internal.ScanOpening
@@ -739,7 +737,8 @@ internal fun RerunModelScreen(
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
     photo: SplatFaces? = null,
-    openingPhoto: Bitmap? = null,
+    /** The dimensions the capture last showed: the result shows the same, not a second measure. */
+    capturedMeasure: RoomMeasure? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -989,7 +988,7 @@ internal fun RerunModelScreen(
     }
     var renaming by remember { mutableStateOf(false) }
     val rename = onRename?.let { { renaming = true } }
-    val measure = rescan?.measure
+    val measure = capturedMeasure ?: rescan?.measure
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
@@ -1161,8 +1160,10 @@ internal fun RerunModelScreen(
             val elevation = ScanResultFraming.elevation(scope)
             val offset = ScanResultFraming.offset(scope)
             val squareOn = scope != ScanScope.Object
-            val shownFrame = remember(frame, cuts, squareOn, elevation, aspect, area, fov) {
-                val drawnFrame = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+            val shownFrame = remember(frame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
+                val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+                // The dimensions stand outside the walls: a room measured keeps room for them.
+                val drawnFrame = if (measuring && squareOn) cut?.padded(MEASURE_MARGIN_M) else cut
                 if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
             }
             val view3d = remember(shownFrame, elevation, offset, aspect, area, fov) {
@@ -1371,12 +1372,7 @@ internal fun RerunModelScreen(
                         .alpha(veil)
                         .background(chrome.ground)
                         .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
-                ) {
-                    openingPhoto?.let { bitmap ->
-                        Image(bitmap.asImageBitmap(), contentDescription = null,
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    }
-                }
+                )
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
         }
@@ -1714,6 +1710,9 @@ internal const val RERUN_MODEL_HINT_TAG = "rerun_model_hint"
 internal const val RERUN_MODEL_MORE_TAG = "rerun_model_more"
 internal const val RERUN_MODEL_VEIL_TAG = "rerun_model_veil"
 private const val MILLIS_PER_SECOND = 1000f
+
+/** Floor kept round a measured room's frame for the dimensions outside its walls: line and label. */
+private const val MEASURE_MARGIN_M = 0.7f
 
 /** The longest the model's build waits for the Photo preview to be seen before it starts anyway. */
 private const val PREVIEW_HEAD_START_MS = 3_000L

@@ -100,19 +100,26 @@ internal fun rescanOf(source: RerunModelSource?, ground: ScanGround?): RescanBui
     // One survey for both: the zones' walls are the walls the dimensions are read off.
     val survey = RescanSources.surveyOf(cloud)
     val zones = RescanSources.zones(cloud, ground, survey)
-    // Off the walls the survey squared; a scan whose walls it could not square is measured off its
-    // points, squared to the walls they face, as its capture measured it (2026-11-13).
-    val measure = survey?.let(ResultFloor::measureOf) ?: pointsMeasure(cloud, ground)
+    // One measure from capture to result (2026-11-13): off the points, squared to the walls, as
+    // the capture measured them, so Finish never changes the figures by metres. The survey's
+    // walls only when the points cannot be read.
+    val measure = pointsMeasure(cloud, ground, survey?.structure?.yaw) ?: survey?.let(ResultFloor::measureOf)
     Log.i(TAG, "${zones.size} zones from ${cloud.count} points in ${(System.nanoTime() - started) / NS_PER_MS} ms")
     zones.forEach { Log.i(TAG, "  $it") }
     if (zones.isEmpty() && measure == null) null else RescanBuild(zones, RescanZoneMesh.of(zones), cloud, measure = measure)
 }.onFailure { Log.w(TAG, "zones failed", it) }.getOrNull()
 
-/** [cloud]'s width and depth off its points, `null` without normals or a floor to square them on. */
-private fun pointsMeasure(cloud: DenseCloud, ground: ScanGround?): RoomMeasure? {
-    val normals = cloud.normals ?: return null
-    val floorY = ground?.floorY ?: return null
-    return RoomMeasure.ofPoints(cloud.positions, RoomLevels.yawOf(cloud.positions, normals, floorY))
+/**
+ * [cloud]'s width and depth off its points, squared to [wallsYaw] (the survey's walls) or to the
+ * walls its normals face; `null` with neither, or without a floor to read them from.
+ */
+private fun pointsMeasure(cloud: DenseCloud, ground: ScanGround?, wallsYaw: Float?): RoomMeasure? {
+    val yaw = wallsYaw ?: run {
+        val normals = cloud.normals ?: return null
+        val floorY = ground?.floorY ?: return null
+        RoomLevels.yawOf(cloud.positions, normals, floorY)
+    }
+    return RoomMeasure.ofPoints(cloud.positions, yaw)
 }
 
 /**

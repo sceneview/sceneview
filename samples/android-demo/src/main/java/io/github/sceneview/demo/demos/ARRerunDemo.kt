@@ -1,7 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import io.github.sceneview.demo.demos.internal.model.SplatFaces
-import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -18,8 +16,11 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,8 +48,8 @@ import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Videocam
-import androidx.compose.material.icons.rounded._3dRotation
 import androidx.compose.material.icons.rounded.ViewInAr
+import androidx.compose.material.icons.rounded._3dRotation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,47 +68,42 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import kotlin.math.roundToInt
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.zIndex
-import io.github.sceneview.SurfaceType
-import androidx.compose.foundation.Image
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -116,6 +112,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARSceneView
@@ -131,6 +128,7 @@ import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoFullScreen
 import io.github.sceneview.demo.LocalDemoSheetCover
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -139,79 +137,79 @@ import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
-import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugLogPlayer
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
-import io.github.sceneview.demo.demos.internal.OrbitBand
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
+import io.github.sceneview.demo.demos.internal.CaptureChrome
+import io.github.sceneview.demo.demos.internal.CaptureCue
+import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.DollhouseCopy
+import io.github.sceneview.demo.demos.internal.HomeRoom
+import io.github.sceneview.demo.demos.internal.HomeScan
+import io.github.sceneview.demo.demos.internal.OpenedCapture
+import io.github.sceneview.demo.demos.internal.OrbitBand
+import io.github.sceneview.demo.demos.internal.PlanOffer
 import io.github.sceneview.demo.demos.internal.RERUN_DEVELOPER_TITLE
 import io.github.sceneview.demo.demos.internal.RERUN_INTRO
 import io.github.sceneview.demo.demos.internal.RERUN_REPLAY_INTRO
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_STEPS
 import io.github.sceneview.demo.demos.internal.RERUN_SETUP_TITLE
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
-import io.github.sceneview.demo.demos.internal.RerunReplayAssets
-import io.github.sceneview.demo.demos.internal.RerunScanModel
-import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunExportFormat
 import io.github.sceneview.demo.demos.internal.RerunExportSource
 import io.github.sceneview.demo.demos.internal.RerunImportFailure
+import io.github.sceneview.demo.demos.internal.RerunReplayAssets
+import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunSessionSource
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSetupStep
+import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.RerunStatusUx
-import io.github.sceneview.demo.demos.internal.DenseCloud
-import io.github.sceneview.demo.demos.internal.DollhouseCopy
+import io.github.sceneview.demo.demos.internal.RerunSyntheticBedroom
+import io.github.sceneview.demo.demos.internal.RescanRefusal
+import io.github.sceneview.demo.demos.internal.RoomCompletion
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
+import io.github.sceneview.demo.demos.internal.RoomDone
+import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.ScanBack
 import io.github.sceneview.demo.demos.internal.ScanClock
-import io.github.sceneview.demo.demos.internal.CaptureChrome
-import io.github.sceneview.demo.demos.internal.RoomCompletion
-import io.github.sceneview.demo.demos.internal.RoomDone
-import io.github.sceneview.demo.demos.internal.CaptureCue
-import io.github.sceneview.demo.demos.internal.ScanActivity
+import io.github.sceneview.demo.demos.internal.ScanCoach
+import io.github.sceneview.demo.demos.internal.ScanCompletion
 import io.github.sceneview.demo.demos.internal.ScanCopy
-import io.github.sceneview.demo.demos.internal.RescanRefusal
-import io.github.sceneview.demo.demos.internal.ScanSaveFailure
-import io.github.sceneview.demo.demos.internal.OpenedCapture
-import io.github.sceneview.demo.demos.internal.RerunShareCopy
-import io.github.sceneview.demo.demos.internal.ScanWallWalk
-import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.ScanCutoff
 import io.github.sceneview.demo.demos.internal.ScanDetail
-import io.github.sceneview.demo.demos.internal.turnedBy
-import kotlin.math.PI
-import kotlin.math.sin
+import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanFollow
 import io.github.sceneview.demo.demos.internal.ScanLens
 import io.github.sceneview.demo.demos.internal.ScanLiveInstruction
-import io.github.sceneview.demo.demos.internal.ScanCompletion
-import io.github.sceneview.demo.demos.internal.ScanCoach
 import io.github.sceneview.demo.demos.internal.ScanPhase
-import io.github.sceneview.demo.theme.LocalStageChrome
-import io.github.sceneview.demo.demos.internal.ScanCutoff
-import io.github.sceneview.demo.demos.internal.PlanOffer
+import io.github.sceneview.demo.demos.internal.ScanSaveFailure
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
-import io.github.sceneview.demo.demos.internal.HomeScan
-import io.github.sceneview.demo.demos.internal.HomeRoom
-import io.github.sceneview.demo.demos.internal.RerunSyntheticBedroom
-import io.github.sceneview.demo.theme.SceneViewTokens.Type
+import io.github.sceneview.demo.demos.internal.ScanWallWalk
+import io.github.sceneview.demo.demos.internal.model.SplatFaces
+import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
 import io.github.sceneview.demo.demos.internal.rerunSaveFailureMessage
 import io.github.sceneview.demo.demos.internal.rerunShowsSaveAction
 import io.github.sceneview.demo.demos.internal.rerunStatusUx
+import io.github.sceneview.demo.demos.internal.turnedBy
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.demo.theme.SceneViewTokens.Type
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
@@ -219,16 +217,19 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.PI
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 3D Scan (the Rerun demo, id `ar-rerun`): a space scanned with ARCore, rebuilt in 3D.
@@ -312,6 +313,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var showingScan by remember { mutableStateOf(qaState in PLAN_QA_STATES) }
     var scanMedia by remember { mutableStateOf<RerunReplayMedia?>(null) }
     var scanPhoto by remember { mutableStateOf<Pair<RerunReplayMedia, SplatFaces>?>(null) }
+    // The room's dimensions as the capture last wrote them: its result shows the same figures.
+    var scanMeasure by remember { mutableStateOf<RoomMeasure?>(null) }
     // The replay is titled after the session it shows, as the card that opened it is.
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
     // The scan's own files, for the export sheet; the sample's are read from the assets there.
@@ -488,6 +491,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             kind: ScanScope ->
         scanId = id
         scanKind = kind
+        scanMeasure = null
         scanMedia = media
         scanTitle = title
         scanPack = pack
@@ -729,7 +733,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         ) {
             RerunLiveScreen(
                 onBack = leaveLive,
-                onScanned = { scan, title, pack, id, photo ->
+                onScanned = { scan, title, pack, id, photo, measured ->
                     scanPhoto = photo?.let { scan to it }
                     sessionsVersion++
                     if (recordingForDollhouse) {
@@ -738,6 +742,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     } else {
                         // Save scan lands on the model, built here and kept with the scan.
                         openResult(scan, title, pack, id, false, scanScope)
+                        scanMeasure = measured
                     }
                 },
                 store = store,
@@ -840,7 +845,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             // A kept model's Photo layer still comes from the real scan's own surfels.
             surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
             photo = scanPhoto?.takeIf { showingScan && it.first === scanMedia }?.second,
-            openingPhoto = scanMedia?.takeIf { showingScan }?.let { it.thumbnailAt(it.trace.duration) },
+            capturedMeasure = scanMeasure.takeIf { showingScan },
         )
     }
     val exportable = when (screen) {
@@ -1336,7 +1341,8 @@ private fun RerunDeveloperSection() {
 @Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
 private fun RerunLiveScreen(
     onBack: () -> Unit,
-    onScanned: (RerunReplayMedia, String, RerunCapturePack, String?, SplatFaces?) -> Unit,
+    /** The scan, its title, pack, id, photo layer, and the dimensions its capture last showed. */
+    onScanned: (RerunReplayMedia, String, RerunCapturePack, String?, SplatFaces?, RoomMeasure?) -> Unit,
     store: RerunSessionStore,
     sample: RerunReplayMedia?,
     scanScope: ScanScope,
@@ -1494,6 +1500,8 @@ private fun RerunLiveScreen(
     }
     val scanMedia = scan?.live ?: qaScan
     val recording = scanMedia != null
+    // The live model's last dimensions, handed to its result; not state, nothing redraws on it.
+    val captureMeasure = remember { MeasureHolder() }
     // Both scopes paint the same dense cloud through the phone's exact lens.
     val scanLens = remember(scanMedia) { ScanLens() }
     val scanCoverage = remember(scanMedia) { ScanCoverageState() }
@@ -1785,7 +1793,7 @@ private fun RerunLiveScreen(
             }
             if (opened == null) return@launch
             when (next) {
-                SaveNext.Open -> onScanned(opened, title, saved, savedId, photo)
+                SaveNext.Open -> onScanned(opened, title, saved, savedId, photo, captureMeasure.value)
                 SaveNext.FinishHome -> {
                     onRoomSaved(opened, title, savedId)
                     onFinishHome()
@@ -2094,6 +2102,7 @@ private fun RerunLiveScreen(
                     materialLoader = materialLoader,
                     cameraWindow = { cameraWindow },
                     onShown = { modelShown = it },
+                    onMeasured = { captureMeasure.value = it },
                 )
             }
 
@@ -2618,3 +2627,8 @@ private fun DenseCloud.floorOnly(): DenseCloud {
 
 private const val QA_FLOOR_NORMAL_Y = 0.9f
 private const val QA_FLOOR_BAND_M = 0.15f
+
+/** The capture's last [RoomMeasure], read once when the scan is saved. */
+private class MeasureHolder {
+    var value: RoomMeasure? = null
+}

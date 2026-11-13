@@ -1,7 +1,25 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -10,29 +28,12 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
-import io.github.sceneview.demo.theme.SceneViewTokens
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
@@ -41,10 +42,9 @@ import io.github.sceneview.demo.demos.internal.DebugGroup
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.OrbitBand
 import io.github.sceneview.demo.demos.internal.RoomMeasure
-import io.github.sceneview.demo.theme.StageChrome
-import io.github.sceneview.demo.common.RequestLightStatusBarIcons
-import androidx.compose.animation.core.tween
 import io.github.sceneview.demo.theme.LocalStageChrome
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.StageChrome
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +70,8 @@ internal fun ScanModelPreview(
     cameraWindow: () -> Rect?,
     modifier: Modifier = Modifier,
     onShown: (Boolean) -> Unit = {},
+    /** The dimensions written on the live model, each time they change: its result keeps them. */
+    onMeasured: (RoomMeasure?) -> Unit = {},
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
         var previous: ReplayDenseLayer? = null
@@ -118,6 +120,7 @@ internal fun ScanModelPreview(
     RequestLightStatusBarIcons(active = present)
     // The room's dimensions fitted to the model's own points, squared to the walls the planes
     // find: one fit per snapshot and heading, not per frame.
+    val measured = rememberUpdatedState(onMeasured)
     val measureFit = remember(media) {
         var fitFor: Any? = null
         var fitYaw = Float.NaN
@@ -128,6 +131,7 @@ internal fun ScanModelPreview(
                 fitFor = points
                 fitYaw = planned.yaw
                 fitted = points?.let { RoomMeasure.ofPoints(it, planned.yaw) }
+                measured.value(fitted)
             }
             fitted
         }

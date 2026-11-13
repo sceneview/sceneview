@@ -105,6 +105,22 @@ class ScanResultFrame(
     }
 
     /**
+     * This frame with [marginM] metres more floor on every side: room for the dimensions written
+     * outside its walls, so none is cut by the screen's edge (2026-11-13).
+     */
+    fun padded(marginM: Float): ScanResultFrame = ScanResultFrame(
+        yawDegrees,
+        local.copyOf().also {
+            it[0] -= marginM
+            it[2] -= marginM
+            it[3] += marginM
+            it[5] += marginM
+        },
+        frontDegrees,
+        turn,
+    )
+
+    /**
      * This frame opened on the side a room shows largest from, square on, at [elevationDegrees]
      * in the [insets] of a view of [aspect]: its own [frontDegrees], unless a side beside it
      * stands the camera under [SIDE_GAIN] of the distance — a long room seen down its length is
