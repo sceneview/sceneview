@@ -4,9 +4,10 @@ The one design reference for every SceneView surface: the website (`website-stat
 docs (`docs/`), the Android demo (`samples/android-demo`), the iOS demo (`samples/ios-demo`),
 the other samples, store listings and videos.
 
-**SceneView has no visual style of its own.** It follows the platform's published guidelines
-and adds one thing: a source colour. If a screen could not pass for a Google or Apple screen,
-it is wrong, however polished it looks.
+**The controls follow the platform; the 3D is the show.** Buttons, lists, bars and sheets follow
+the platform's published guidelines with one source colour. The screen itself should make
+people say "wow": a live, full-bleed 3D scene, real light, rich imagery, motion. The guidelines
+govern the controls; they are never a reason to flatten the scene or shrink it to a list.
 
 | Surface | Follow | Source |
 |---|---|---|
@@ -23,14 +24,12 @@ gets fixed.
 ## Forbidden
 
 These are the patterns that make a screen look generated. None of them ships, on any surface.
+Platform materials are welcome: Liquid Glass and system materials on Apple, M3 Expressive
+shapes and motion on Android.
 
-- **Gradients of any kind**: backgrounds, text, buttons, icons, halos, glows, borders, and
-  veils that fade a picture into the page. Text over a picture sits on an opaque component or
-  on a flat `scrim` (see *Over the 3D scene and the camera*).
-- **Glass and blur** you add yourself: `backdrop-filter`, `.ultraThinMaterial`,
-  `.glassEffect`, `RenderEffect` blur, translucent "frosted" panels. On Apple platforms the
-  system bars, tab bars, toolbars and sheets keep whatever material the OS gives them; you do
-  not add one.
+- **Decorative gradients on controls**: gradient buttons, gradient text, gradient icons,
+  glowing borders and halos (the generic "AI app" look Thomas rejected on 2026-11-04). A scrim
+  or fade that lets a scene or a photo flow into the page is not decoration and is allowed.
 - **Fonts other than the system font** for UI: no Google Fonts display faces (Bricolage
   Grotesque, Fraunces, Instrument Serif, Space Grotesk, DM Serif, Playfair, Plus Jakarta Sans),
   and no Inter, Geist or JetBrains Mono as a deliberate choice. No serif for big numbers.
@@ -279,12 +278,12 @@ rules as everywhere else, with these additions:
   holds over a white wall and a dark room alike.
 - **Text that must sit directly on the picture** (a full-screen caption, the system bars over
   a bright scene) gets a **flat** band of `scrim` at 60 % behind it, edge to edge, hard-edged, with text
-  in white `#FFFFFF` in both themes. Never a fade, never a vignette.
+  in white `#FFFFFF` in both themes, or a soft fade when contrast still holds.
 - **A sheet you tweak the scene through** is a standard (non-modal) bottom sheet resting low
   enough to keep the subject in view; browsing sheets (pickers, credits) are modal.
 - **The 3D stage background** is a scheme surface (`surface` or `surface-container-low`) or a
   real lit environment (an HDR, a studio floor, fog) rendered by the engine. Light falloff the
-  renderer computes is a scene; a 2D gradient painted behind or over the 3D is forbidden.
+  renderer computes is a scene; a fade that blends the scene into the page is allowed.
   Colours of materials inside a scene (a floor, a ball, a grid) are scene content, live in code
   next to the scene, and are not UI tokens.
 - **AR guidance**: on Apple use `ARCoachingOverlayView`; on Android, the SDK's
@@ -365,9 +364,10 @@ Each demo ships `preview_<demo_id>_light.webp` and `preview_<demo_id>_dark.webp`
 Run on the **capture**, not on the code, in light **and** dark, before anything is shown or
 merged:
 
-1. Put the capture next to a native reference screen — Android Settings, Google Play Console,
-   Files or Fit on Android; Settings, Health or Stocks on iOS. Ask: *could this be a Google or
-   Apple screen?* If the eye can tell at once which one was generated, redo it.
+1. Put the capture next to the visual target and the best previous version of the same screen
+   (for the home: 4.68). Ask: *is this more striking than before, and did it lose anything that
+   worked?* If it lost something, redo it. Native screens are a reference for controls and
+   legibility only, never for the scene.
 2. Read the **Forbidden** list against the capture.
 3. Check the model on screen against *3D models shown*.
 4. Measure contrast on any text over a scene or a camera.
@@ -383,12 +383,11 @@ merged:
 4. Ship light and dark together.
 5. Re-read **Forbidden** before you finish.
 
-Screen-level specs written before this reset (glass dock, ambient home cards, the brand
-gradient, the custom type and radius scales) are retired; code comments that still cite their
-tokens are being migrated surface by surface and are not a reference.
+The cinematic home that shipped up to 4.68 (full-bleed 3D hero under the app bar, its veil,
+the featured carousel, the large illustrated cards) is the reference Thomas validated ("bluffé",
+2026-09-27). Do not remove what made it striking; the custom type and radius scales stay retired.
 
 Known follow-ups, each its own PR: the theme files under *Where the values live*; the logo
-files under *Logo*; `CinematicHero`'s bottom-edge fade (a veil, forbidden above — to be removed
-from the SDK, #4942); the MCP widgets and artifacts (`mcp/src/widgets.ts`, `mcp/src/artifact.ts`:
+files under *Logo*; the MCP widgets and artifacts (`mcp/src/widgets.ts`, `mcp/src/artifact.ts`:
 gradients and `#0d1117`); `branding/social-preview.html`; the Khronos BoomBox model in the
 `CinematicHero` recipe of `llms.txt`.
