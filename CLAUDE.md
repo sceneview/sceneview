@@ -36,9 +36,9 @@ Full API reference: [`llms.txt`](./llms.txt).
 - **Merging to `main` deploys.** Play Store rollout is automatic. The App Store
   submission is automated but Apple's review is not — "submitted" ≠ "live". Maven
   Central / npm / SPM are irreversible once published.
-- **Never QA on a personal device.** One AVD, `Pixel_7a` on `emulator-5554`:
-  `bash .claude/scripts/setup-ar-emulator.sh` boots or recreates it (`--seed-snapshot`
-  re-seeds `qa-clean`); `.claude/scripts/device-qa.sh` drives the harness.
+- **Devices.** AVD `Pixel_7a` on `emulator-5554`: `bash .claude/scripts/setup-ar-emulator.sh`
+  boots or recreates it (`--seed-snapshot` re-seeds `qa-clean`); `.claude/scripts/device-qa.sh`
+  drives the harness. Real AR runs on the Pixel 4a (`09291JEC223501`, lock `/tmp/pixel4a.lock`).
 - **Demo and website 3D assets are not in git.** `assets/manifest.json` lists them;
   `tools/fetch-assets.sh` fetches them from the `assets-v1` release (Gradle and Xcode run
   it on every build). A new model needs `--register` and its upload to `assets-v1` before
@@ -55,7 +55,7 @@ Full API reference: [`llms.txt`](./llms.txt).
   for `gpt/knowledge-*.md` and every `CREDITS.md` (licence compliance).
 - **Public surfaces are English only** — commit messages and PR bodies included.
 - **Codex**: always `.claude/scripts/codex-delegate.sh`, never a raw `codex` or an OpenAI
-  key; commits, merges and releases stay with Claude. Details: [`.claude/scripts/CODEX.md`](.claude/scripts/CODEX.md).
+  key. Codex can carry a task end to end on its own branch; it holds no push credential. Details: [`.claude/scripts/CODEX.md`](.claude/scripts/CODEX.md).
 - **CI**: `.github/workflows/ci.yml` is the one PR workflow; its `changes` job gates
   every other job and `changes-verdict` ("Path filter completed") is the required check.
   Heavy suites and their path gates: [CONTRIBUTING.md](CONTRIBUTING.md).
