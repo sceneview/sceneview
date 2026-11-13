@@ -777,14 +777,14 @@ internal fun RerunModelScreen(
     // The scan the shell on screen is of: a shell stays only over its own scan.
     val shellOf = remember { AtomicReference<Any?>(null) }
     // The scan whose fused surface is on screen (ScanDepthModel.kt): it stays, as a shell does.
-    val depthModelOf = remember { AtomicReference<Any?>(null) }
+    val depthModelShown = remember { AtomicReference<Any?>(null) }
     var buildProgress by remember(source, id, shellInput) { mutableStateOf(ScanModelProgress()) }
     val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput) {
         // A room opens on its shell (RoomShellLayer.kt): read back, or built here, the old finish
         // never run beside it. One already on screen stays: the recording read behind it, or the
         // source, change nothing in it.
         if ((value as? ModelState.Ready)?.objects != null && id != null && shellOf.get() == id) return@produceState
-        if (value is ModelState.Ready && id != null && depthModelOf.get() == id) return@produceState
+        if (value is ModelState.Ready && id != null && depthModelShown.get() == id) return@produceState
         if (preview != null) withTimeoutOrNull(PREVIEW_HEAD_START_MS) { previewSeen.await() }
         // The live TSDF goes once a depth recording is known to read: the recording is the better
         // source, and the two would otherwise sit on the heap together while it fuses.
@@ -838,7 +838,7 @@ internal fun RerunModelScreen(
             }
             if (fused != null) {
                 Log.i(TAG, "depth model: ${fused.triangles} triangles, ${fused.glb.size / 1024} KB")
-                depthModelOf.set(id)
+                depthModelShown.set(id)
                 value = ModelState.Ready(fused)
                 return@produceState
             }
@@ -985,8 +985,8 @@ internal fun RerunModelScreen(
     val turntable = remember(stageKey, spins) { ScanResultTurntable().also { if (!spins) it.stop() } }
     // Which sides of the room its dimensions are written on: the two the camera faces.
     val facing = remember(id ?: source) { FacingSides() }
-    // No idle drift: after the opening quarter-turn the camera stays on the reset frame,
-    // its pitch between a look across and the plan's look down. Kept across a source
+    // No drift and no reveal: the camera opens on the frame and holds still there until the user
+    // moves it, its pitch between a look across and the plan's look down. Kept across a source
     // that arrives for a scan already shown, whose finish is run again.
     val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES) }
     // 3D ↔ Plan, the one camera move, and only when the user asks for it; a touch cuts it short.
@@ -1018,7 +1018,7 @@ internal fun RerunModelScreen(
     }
     // Photo | Model | Plan (ResultLayers.kt): the scan's surfels as splats.
     // Recorded-depth models appear directly: building a large wire must not hide the surface.
-    val animateReveal = (LocalMotionEnabled.current || DemoSettings.qaMotion) && !(id != null && depthModelOf.get() == id)
+    val animateReveal = (LocalMotionEnabled.current || DemoSettings.qaMotion) && !(id != null && depthModelShown.get() == id)
     val layers = rememberResultLayers(
         source, surfels ?: shellInput?.cloud, stageKey, settled,
         photoFirst = preview != null, prebuilt = photo,
@@ -1120,7 +1120,8 @@ internal fun RerunModelScreen(
             }
             ResultLayerPicker(
                 layers = layers,
-                modelFirst = shell,
+                // Model first on a shell the result opens on; one that took a Photo layer's place keeps its order.
+                modelFirst = shell && preview == null,
                 plan = plan,
                 ready = shown && instance != null && !filming,
                 seen = shown,

@@ -17,9 +17,9 @@ import kotlin.math.sqrt
  * (13/11 walk, 26 s on a Pixel 9). Here the floor the depth found is laid on a grid
  * ([CELL_M]): its gaps up to [CLOSE_M] across are closed, every hole inside it filled, its
  * stray patches dropped, and it is drawn flat at the floor's height in the colours it was seen
- * in, its outline smoothed, with a [EDGE_M] edge down from it all round. What stands on the floor
- * — furniture, the foot of a wall — is kept as fused; what lay far from the floor the walk saw is
- * dropped with the stray pieces the floor's removal leaves.
+ * in, its outline smoothed, with a [EDGE_M] edge down from it all round. Everything else is kept
+ * as fused — furniture, walls, what the walk saw across the room — but the stray pieces the
+ * floor's removal leaves, and, under a floor that is known, what lies below it.
  *
  * Pure Kotlin, no Filament: blocking CPU work, off the main thread.
  */
@@ -32,17 +32,19 @@ internal object ScanFloorSlab {
         val areaM2: Float,
         /** The floor's own triangles it took the place of. */
         val floorTriangles: Int,
-        /** Other triangles dropped: far from the floor, under it, or left as stray pieces. */
+        /** Other triangles dropped: under the floor, or left as stray pieces. */
         val droppedTriangles: Int,
     )
 
     /**
-     * [mesh] with its floor as a slab. [floorY] when known (the room's own), else read off the
-     * mesh. `null` when the mesh shows no floor big enough to stand as one ([MIN_AREA_M2]): it
-     * is then shown as fused.
+     * [mesh] with its floor as a slab. [floorY] when known (the room's own, or ARCore's), else
+     * read off the mesh ([floorOf]). With [cutBelow], what lies more than [BELOW_M] under the
+     * floor goes too: only under a floor that is known, as a guessed one may be a bed's top.
+     * `null` when the mesh shows no floor big enough to stand as one ([MIN_AREA_M2]): it is then
+     * shown as fused.
      */
     @Suppress("ReturnCount")
-    fun of(mesh: RerunMesh, floorY: Float? = null): Result? {
+    fun of(mesh: RerunMesh, floorY: Float? = null, cutBelow: Boolean = floorY != null): Result? {
         if (mesh.triangleCount == 0) return null
         val y0 = floorY ?: floorOf(mesh) ?: return null
         val p = mesh.positions
@@ -109,22 +111,12 @@ internal object ScanFloorSlab {
         if (area < MIN_AREA_M2) return null
         val colors = grid.spreadColors(kept, r, g, b, n)
 
-        // What is kept of the fused mesh: off the floor, over it, near the floor the walk saw.
-        val near = grid.dilate(kept, NEAR_CELLS)
+        // What is kept of the fused mesh: all but the floor, and what lies under a known one.
         val keep = BooleanArray(tris) { t ->
             if (onFloor[t]) return@BooleanArray false
-            var cx = 0f
-            var cy = 0f
-            var cz = 0f
-            for (k in 0 until 3) {
-                val v = ix[t * 3 + k]
-                cx += p[v * 3] / 3f
-                cy += p[v * 3 + 1] / 3f
-                cz += p[v * 3 + 2] / 3f
-            }
-            if (cy < y0 - BELOW_M) return@BooleanArray false
-            val c = grid.cellOrNull(cx, cz) ?: return@BooleanArray false
-            near[c]
+            if (!cutBelow) return@BooleanArray true
+            val cy = (p[ix[t * 3] * 3 + 1] + p[ix[t * 3 + 1] * 3 + 1] + p[ix[t * 3 + 2] * 3 + 1]) / 3f
+            cy >= y0 - BELOW_M
         }
         dropSmallPieces(mesh, keep, MIN_PIECE_TRIANGLES)
         val keptCount = keep.count { it }
@@ -177,7 +169,9 @@ internal object ScanFloorSlab {
         val a = ix[t * 3]
         val b = ix[t * 3 + 1]
         val c = ix[t * 3 + 2]
-        for (v in intArrayOf(a, b, c)) if (abs(p[v * 3 + 1] - y0) > FLOOR_BAND_M) return false
+        if (abs(p[a * 3 + 1] - y0) > FLOOR_BAND_M || abs(p[b * 3 + 1] - y0) > FLOOR_BAND_M || abs(p[c * 3 + 1] - y0) > FLOOR_BAND_M) {
+            return false
+        }
         val ux = p[b * 3] - p[a * 3]
         val uy = p[b * 3 + 1] - p[a * 3 + 1]
         val uz = p[b * 3 + 2] - p[a * 3 + 2]
@@ -495,6 +489,7 @@ internal object ScanFloorSlab {
             }
             // A pinch (four outline sides at a corner) stays where it is.
             val movable = next.filterValues { it.size == 2 }
+            val home = movable.keys.associateWith { positions[it * 3] to positions[it * 3 + 2] }
             repeat(SMOOTH_PASSES) {
                 val moved = HashMap<Int, Pair<Float, Float>>(movable.size * 2)
                 for ((v, ns) in movable) {
@@ -502,7 +497,11 @@ internal object ScanFloorSlab {
                     val mz = (positions[ns[0] * 3 + 2] + positions[ns[1] * 3 + 2]) / 2f
                     val x = positions[v * 3]
                     val z = positions[v * 3 + 2]
-                    moved[v] = (x + (mx - x) * SMOOTH_STEP) to (z + (mz - z) * SMOOTH_STEP)
+                    // Never more than a third of a cell from where it was: the quads it shares
+                    // with the inside keep their side, none folds over.
+                    val (hx, hz) = home.getValue(v)
+                    moved[v] = (x + (mx - x) * SMOOTH_STEP).coerceIn(hx - MAX_SHIFT_M, hx + MAX_SHIFT_M) to
+                        (z + (mz - z) * SMOOTH_STEP).coerceIn(hz - MAX_SHIFT_M, hz + MAX_SHIFT_M)
                 }
                 for ((v, xz) in moved) {
                     positions[v * 3] = xz.first
@@ -568,10 +567,6 @@ internal object ScanFloorSlab {
     const val CLOSE_M = 0.4f
     private val CLOSE_CELLS = (CLOSE_M / 2f / CELL_M).roundToInt()
 
-    /** What is kept of the rest stands within a metre of the slab: a wall's foot, the furniture on it. */
-    const val NEAR_M = 1f
-    private val NEAR_CELLS = (NEAR_M / CELL_M).roundToInt()
-
     /** The slab's edge, down from the floor: thick enough to read as an edge from the opening view. */
     const val EDGE_M = 0.03f
     private const val EDGE_SHADE = 0.62f
@@ -598,6 +593,7 @@ internal object ScanFloorSlab {
     private const val FLOOR_SHARE = 0.3f
     private const val SMOOTH_PASSES = 4
     private const val SMOOTH_STEP = 0.5f
+    private const val MAX_SHIFT_M = CELL_M / 3f
     private const val NEUTRAL = 160f
 
     /** 40 × 40 m at 4 cm: past this a walk is no room's. */

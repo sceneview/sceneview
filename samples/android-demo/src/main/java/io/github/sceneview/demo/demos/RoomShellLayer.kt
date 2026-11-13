@@ -53,7 +53,7 @@ internal class RoomShellShown(val model: RerunScanModel, val objects: SplatCloud
  * Bumped whenever the shell's builder makes a different shell of the same scan: a shell kept by
  * an earlier one is built again.
  */
-internal const val ROOM_SHELL_VERSION = 4
+internal const val ROOM_SHELL_VERSION = 5
 
 /**
  * Session [id]'s room shell: read back from [store] when kept, else built from [input] and kept.
@@ -85,7 +85,7 @@ internal suspend fun roomShellOf(
     // The depth fused again first, then the shell: the fusion is the longer part when there is one.
     val fusedShare = if (depth != null) DEPTH_SHARE else 0f
     val fused = depth?.let { file ->
-        runCatching { RoomDepthMesh.fuse(file) { progress(DEPTH_SHARE * it) } }
+        runCatching { RoomDepthMesh.fuse(file, guard = RoomDepthMesh.replayGuard()) { progress(DEPTH_SHARE * it) } }
             .onFailure { if (it is CancellationException) throw it }
             .onFailure { Log.w(SHELL_TAG, "depth not fused: objects as points", it) }
             .getOrNull()

@@ -46,7 +46,13 @@ class ScanPartialWalkTest {
 
     @Test
     fun `a short partial walk stands on one clean floor with an edge, where the raw fusion is lace`() {
-        val raw = checkNotNull(RoomDepthMesh.fuse(recording(), RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M), guard = guard()))
+        val raw = checkNotNull(
+            RoomDepthMesh.fuse(recording(), RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M), guard = RoomDepthMesh.replayGuard()),
+        )
+        // The guard keeps the slip out and nothing else: the walk goes one way, so a guard that
+        // never let go would lose the whole second half.
+        assertEquals("frames the guard kept out", SLIP.count(), raw.guardHeld)
+        assertEquals("frames fused", FRAMES - SLIP.count(), raw.fused)
         val rawFloor = floorOutlines(raw.mesh, band = ScanFloorSlab.FLOOR_BAND_M)
         assertTrue("the fused floor alone is lace: $rawFloor outlines", rawFloor > 2)
 
@@ -72,7 +78,14 @@ class ScanPartialWalkTest {
             furthest = maxOf(furthest, walk.minOf { distance(it.at, x, y, z) })
             if (offTheRoom(x, y, z) > OFF_M) misplaced++
         }
-        assertTrue("furthest vertex ${"%.2f".format(furthest)} m from the walk", furthest <= RoomDepthMesh.RELIABLE_FAR_M + BAND_M)
+        // The sure range is depth along the view axis: in a corner of the image, a point at that
+        // depth lies further from the phone, by the ray's length over its axial part.
+        val frame = scene.render(RerunSyntheticRoom.lookPose(walk[0].at, walk[0].yaw, walk[0].pitch))
+        val halfW = frame.width / 2f / frame.fx
+        val halfH = frame.height / 2f / frame.fy
+        val corner = sqrt(1f + halfW * halfW + halfH * halfH)
+        val reach = RoomDepthMesh.RELIABLE_FAR_M * corner + BAND_M
+        assertTrue("furthest vertex ${"%.2f".format(furthest)} m from the walk, reach ${"%.2f".format(reach)} m", furthest <= reach)
         assertEquals("vertices out of place", 0, misplaced)
     }
 
@@ -114,8 +127,6 @@ class ScanPartialWalkTest {
         val model = checkNotNull(depthModelOf(store, ID, ScanScope.Room, noBox, null))
         return checkNotNull(RerunGlbMesh.read(model.glb))
     }
-
-    private fun guard() = io.github.sceneview.demo.demos.internal.PoseContinuity()
 
     private fun recording(): File {
         val file = File(folder.root, "walk-${System.nanoTime()}.bin")
@@ -294,15 +305,15 @@ class ScanPartialWalkTest {
         )
 
         /**
-         * 26 s in the room's far-left third, chest high: along the wall and back, the phone
-         * sweeping from across the room to the corner, looking down at the floor and across.
+         * 26 s in the room's far-left third, chest high: one way along the wall, never back over
+         * its steps, the phone sweeping from across the room to the corner and tilting slowly
+         * between the floor and across.
          */
         val walk: List<Step> = List(FRAMES) { i ->
             val s = i / (FRAMES - 1f)
-            val leg = if (s < 0.5f) s * 2f else (1f - s) * 2f
-            val at = Vec3(-2.2f + 1.4f * leg, 1.4f, -0.4f - 0.6f * leg)
+            val at = Vec3(-2.2f + 1.4f * s, 1.4f, -0.4f - 0.6f * s)
             val sweep = Math.toRadians(-60.0 + 150.0 * (0.5 + 0.5 * kotlin.math.sin(i * 0.12))).toFloat()
-            val pitch = Math.toRadians(if (i % 3 == 0) -15.0 else -45.0).toFloat()
+            val pitch = Math.toRadians(-30.0 + 15.0 * kotlin.math.sin(i * 0.05)).toFloat()
             Step(at, sweep, pitch)
         }
     }
