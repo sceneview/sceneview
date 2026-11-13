@@ -272,6 +272,7 @@ fun SceneView(
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
+    fitMode: FitMode = FitMode.Corners, // opt-in Silhouette for organic subjects; see framing below
     contentPadding: PaddingValues = PaddingValues(0.dp),   // animate this, never resize the composable
     clipToContentPadding: Boolean = false,                 // opaque cover only: skip hidden pixels
     renderer: Renderer = rememberRenderer(engine),
@@ -4879,7 +4880,8 @@ fun fitCameraToBounds(
     direction: Position = Position(0f, 0f, -1f),
     verticalFovDegrees: Double, aspect: Double,
     widthFill: Float = DEFAULT_FRAMING_FILL,    // 0.8 — share of the half-width the box may span
-    heightFill: Float = DEFAULT_FRAMING_FILL
+    heightFill: Float = DEFAULT_FRAMING_FILL,
+    fitMode: FitMode = FitMode.Corners
 ): CameraFit?
 ```
 
@@ -4907,6 +4909,39 @@ val manipulator = rememberCameraManipulator(orbitHomePosition = fit.eye, targetP
 On the axis that binds, the projected box spans exactly `±widthFill` (or `±heightFill`)
 of the half-view; on the other it is centred and spans less. The camera is assumed
 upright (world `+Y` up); looking straight down, "right" is world `+X`.
+
+**Opt-in silhouette framing (Android, #5032).** `FitMode.Corners` is the default
+and keeps the existing fit unchanged. Use `FitMode.Silhouette` for a **character or
+creature seen at three quarters from above**: the near bottom corner of its box can
+sit far below its feet, leaving unnecessary space. Silhouette fits six probes: the
+four endpoints shared by the horizontal mid-lines of the side faces, plus the
+centres of the top and bottom faces. It fits those probes, not the actual mesh.
+**Do not use it for boxy products with geometry in the corners: it can crop them.**
+The fit only applies at the requested viewing direction, not throughout an orbit.
+
+```kotlin
+// A 1.8 m character standing on the floor.
+val characterBounds = Aabb(center = Position(0f, 0.9f, 0f), halfExtent = Position(0.3f, 0.9f, 0.2f))
+
+cameraNode.fitToBounds(characterBounds, fitMode = FitMode.Silhouette)
+    ?.let { cameraNode.frame(it) }
+
+SceneView(
+    autoFitContent = true,
+    fitMode = FitMode.Silhouette,
+    cameraManipulator = null
+) { /* Character or creature nodes. */ }
+```
+
+`fitCameraToBounds`, `CameraNode.fitToBounds`, `CameraNode.frameToBounds`,
+`SceneView` (and its deprecated `Scene` alias), and both `SceneAutoFitState.maybeFit`
+overloads accept `fitMode: FitMode = FitMode.Corners`. `frameToBounds` retains its
+historical yaw-invariant swept-box distance in Corners mode; Silhouette uses the
+directional probe fit, converting padding to `1 / (1 + max(0, padding))` fill.
+Auto-fit uses the camera's current direction in Silhouette mode and re-arms when
+`fitMode` changes. There is no automatic selection by model type, animation
+sampling, or animation envelope. This step adds the Android framing option only;
+other platforms keep their existing framing APIs.
 
 ### Cinematic camera — shots, transitions, paths, reveal, tour (`io.github.sceneview.camera`)
 

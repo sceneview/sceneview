@@ -43,7 +43,16 @@ class CameraFitToBoundsTest {
     }
 
     /** Projects [bounds] through a look-at camera standing at [fit]. */
-    private fun picture(bounds: Aabb, fit: CameraFit, fovDegrees: Double, aspect: Double): Picture {
+    private fun picture(bounds: Aabb, fit: CameraFit, fovDegrees: Double, aspect: Double): Picture =
+        picture(List(8) { i ->
+            Position(
+                if (i and 1 == 0) bounds.min.x else bounds.max.x,
+                if (i and 2 == 0) bounds.min.y else bounds.max.y,
+                if (i and 4 == 0) bounds.min.z else bounds.max.z
+            )
+        }, fit, fovDegrees, aspect)
+
+    private fun picture(points: List<Position>, fit: CameraFit, fovDegrees: Double, aspect: Double): Picture {
         val forward = normalized(
             doubleArrayOf(
                 (fit.target.x - fit.eye.x).toDouble(),
@@ -60,14 +69,14 @@ class CameraFitToBoundsTest {
         var maxX = -Double.MAX_VALUE
         var minY = Double.MAX_VALUE
         var maxY = -Double.MAX_VALUE
-        for (i in 0 until 8) {
+        for (point in points) {
             val v = doubleArrayOf(
-                (if (i and 1 == 0) bounds.min.x else bounds.max.x).toDouble() - fit.eye.x,
-                (if (i and 2 == 0) bounds.min.y else bounds.max.y).toDouble() - fit.eye.y,
-                (if (i and 4 == 0) bounds.min.z else bounds.max.z).toDouble() - fit.eye.z
+                point.x.toDouble() - fit.eye.x,
+                point.y.toDouble() - fit.eye.y,
+                point.z.toDouble() - fit.eye.z
             )
             val depth = v[0] * forward[0] + v[1] * forward[1] + v[2] * forward[2]
-            assertTrue("a corner is behind the camera", depth > 0.0)
+            assertTrue("a probe is behind the camera", depth > 0.0)
             val x = (v[0] * right[0] + v[1] * right[1] + v[2] * right[2]) / (depth * tanX)
             val y = (v[0] * up[0] + v[1] * up[1] + v[2] * up[2]) / (depth * tanY)
             minX = min(minX, x); maxX = max(maxX, x)
@@ -97,6 +106,31 @@ class CameraFitToBoundsTest {
     )
 
     @Test
+    fun cornersRetainHistoricalFloatBits() {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        for (bounds in subjects) for (aspect in aspects)
+            for (azimuth in listOf(0.0, 30.0, 135.0, -70.0))
+                for (elevation in listOf(0.0, 25.0, 40.0, 75.0)) {
+                    val fit = fitCameraToBounds(
+                        bounds, direction(azimuth, elevation), fov, aspect, 0.92f, 0.84f
+                    )!!
+                    val explicit = fitCameraToBounds(
+                        bounds, direction(azimuth, elevation), fov, aspect, 0.92f, 0.84f,
+                        fitMode = FitMode.Corners
+                    )!!
+                    assertEquals(fit, explicit)
+                    for (value in listOf(fit.eye.x, fit.eye.y, fit.eye.z,
+                        fit.target.x, fit.target.y, fit.target.z, fit.distance)) {
+                        val bits = value.toRawBits()
+                        for (shift in listOf(24, 16, 8, 0)) digest.update((bits ushr shift).toByte())
+                    }
+                }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        // Captured from the unmodified pre-FitMode solver: 192 poses, seven raw Floats each.
+        assertEquals("0e15542bd6f56a279b5a162c869b4aca5c6e59b364f855b5c66d8e1fa50415b6", actual)
+    }
+
+    @Test
     fun theBoxTouchesTheFillOnTheBindingAxisAndIsCentredOnBoth() {
         for (bounds in subjects) for (aspect in aspects)
             for (azimuth in listOf(0.0, 30.0, 135.0, -70.0)) for (elevation in listOf(0.0, 25.0, 40.0, 75.0)) {
@@ -113,6 +147,65 @@ class CameraFitToBoundsTest {
                 val slack = min(0.92 - p.halfWidth, 0.84 - p.halfHeight)
                 assertEquals("one axis binds — $case", 0.0, slack, 2e-3)
             }
+    }
+
+    /** Independent statement of the six silhouette probes, not the production helper. */
+    private fun silhouetteProbes(bounds: Aabb): List<Position> = listOf(
+        Position(bounds.min.x, bounds.center.y, bounds.min.z),
+        Position(bounds.max.x, bounds.center.y, bounds.min.z),
+        Position(bounds.max.x, bounds.center.y, bounds.max.z),
+        Position(bounds.min.x, bounds.center.y, bounds.max.z),
+        Position(bounds.center.x, bounds.min.y, bounds.center.z),
+        Position(bounds.center.x, bounds.max.y, bounds.center.z)
+    )
+
+    @Test
+    fun silhouetteBringsATallSubjectCloserAndIncreasesItsOccupancy() {
+        val bounds = subjects[1]
+        val aspect = 0.81
+        val look = direction(35.0, 40.0)
+        val corners = fitCameraToBounds(bounds, look, fov, aspect)!!
+        val silhouette = fitCameraToBounds(bounds, look, fov, aspect, fitMode = FitMode.Silhouette)!!
+        val probes = silhouetteProbes(bounds)
+        val before = picture(probes, corners, fov, aspect)
+        val after = picture(probes, silhouette, fov, aspect)
+        assertTrue(silhouette.distance < corners.distance)
+        assertTrue(after.halfHeight > before.halfHeight)
+        assertEquals(DEFAULT_FRAMING_FILL.toDouble(), after.halfHeight, 2e-3)
+        // Geometry at the excluded corners really can be cropped: demonstrate the documented risk
+        // with a tangent fit, where the probes consume the full viewport.
+        val tangent = fitCameraToBounds(bounds, look, fov, aspect, 1f, 1f, FitMode.Silhouette)!!
+        val box = picture(bounds, tangent, fov, aspect)
+        assertTrue(box.minY < -1.0 || box.maxY > 1.0 || box.minX < -1.0 || box.maxX > 1.0)
+        println("Tall box: halfExtent=${bounds.halfExtent}, azimuth=35, elevation=40, fov=$fov, aspect=$aspect")
+        println("Corners: distance=${corners.distance}, probe width=${before.halfWidth}, probe height=${before.halfHeight}")
+        println("Silhouette: distance=${silhouette.distance}, probe width=${after.halfWidth}, probe height=${after.halfHeight}")
+    }
+
+    @Test
+    fun everySilhouetteProbeProjectsInsideTheRequestedFill() {
+        for (bounds in subjects) for (aspect in aspects)
+            for (azimuth in listOf(0.0, 35.0, 135.0, -70.0))
+                for (elevation in listOf(-90.0, -25.0, 0.0, 25.0, 40.0, 75.0, 90.0)) {
+                    val fit = fitCameraToBounds(
+                        bounds, direction(azimuth, elevation), fov, aspect, 0.92f, 0.84f,
+                        fitMode = FitMode.Silhouette
+                    )!!
+                    val p = picture(silhouetteProbes(bounds), fit, fov, aspect)
+                    val case = "bounds=$bounds aspect=$aspect az=$azimuth el=$elevation"
+                    assertTrue("left — $case", p.minX >= -0.92 - 2e-3)
+                    assertTrue("right — $case", p.maxX <= 0.92 + 2e-3)
+                    assertTrue("bottom — $case", p.minY >= -0.84 - 2e-3)
+                    assertTrue("top — $case", p.maxY <= 0.84 + 2e-3)
+                    assertEquals("centred in x — $case", 0.0, p.centreX, 2e-3)
+                    assertEquals("centred in y — $case", 0.0, p.centreY, 2e-3)
+                    // Along Y the face centre can constrain depth before either screen axis
+                    // fills: the eye must stay outside the probes even when the picture is small.
+                    if (abs(elevation) < 90.0) {
+                        assertEquals("one axis binds — $case", 0.0,
+                            min(0.92 - p.halfWidth, 0.84 - p.halfHeight), 2e-3)
+                    }
+                }
     }
 
     // The `rolling-balls` opening shot (#4180), which this fit replaced a demo-only solver for:
@@ -206,8 +299,10 @@ class CameraFitToBoundsTest {
 
     @Test
     fun nothingToFrameIsNull() {
-        assertNull(fitCameraToBounds(Aabb(), verticalFovDegrees = fov, aspect = 1.0))
-        val broken = Aabb(halfExtent = Position(Float.POSITIVE_INFINITY, 1f, 1f))
-        assertNull(fitCameraToBounds(broken, verticalFovDegrees = fov, aspect = 1.0))
+        for (mode in FitMode.entries) {
+            assertNull(fitCameraToBounds(Aabb(), verticalFovDegrees = fov, aspect = 1.0, fitMode = mode))
+            val broken = Aabb(halfExtent = Position(Float.POSITIVE_INFINITY, 1f, 1f))
+            assertNull(fitCameraToBounds(broken, verticalFovDegrees = fov, aspect = 1.0, fitMode = mode))
+        }
     }
 }
