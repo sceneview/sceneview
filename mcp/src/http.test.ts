@@ -112,6 +112,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     );
     expect(names).toEqual(expectedRemote);
     expect(names).toContain("view_3d_model");
+    expect(names).toContain("show_in_space");
     expect(names).toContain("get_sample");
 
     for (const local of getLocalOnlyToolNames()) expect(names).not.toContain(local);
@@ -144,6 +145,21 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     const content = body.result?.content as Array<{ type: string; text: string }>;
     expect(content[0]?.type).toBe("text");
     expect(content[0]?.text).toContain("Astronaut");
+  });
+
+  it("tools/call show_in_space builds a link remotely", async () => {
+    const body = await rpc("tools/call", {
+      name: "show_in_space",
+      arguments: { widthCm: 80, heightCm: 75, depthCm: 40, label: "Desk" },
+    });
+    expect(body.error).toBeUndefined();
+    expect(body.result?.isError).toBeFalsy();
+    expect(body.result?.structuredContent).toMatchObject({
+      label: "Desk",
+      sizeCm: [80, 75, 40],
+      placement: "floor",
+      url: expect.stringContaining("https://sceneview.github.io/open?demo=spatial-answer&answer="),
+    });
   });
 
   it("tools/call on a free tool runs the same handler as stdio", async () => {
