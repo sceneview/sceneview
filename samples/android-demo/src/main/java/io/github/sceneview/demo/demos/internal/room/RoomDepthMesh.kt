@@ -54,6 +54,10 @@ internal object RoomDepthMesh {
         val capped: Boolean,
         /** Small holes closed after meshing. */
         val holesClosed: Int,
+        /** The floor ARCore found under the fused frames (their median), `null` when it found none. */
+        val floorPlaneY: Float? = null,
+        /** Frames the phone fused that the [fuse] guard kept out. */
+        val guardHeld: Int = 0,
         val fuseMs: Long,
         val meshMs: Long,
     )
@@ -97,15 +101,25 @@ internal object RoomDepthMesh {
         val tsdf = RerunTsdf(settings.voxelM, settings.truncationM, settings.maxBytes)
         var count = 0
         var fused = 0
+        var guardHeld = 0
+        val floors = ArrayList<Float>()
         val file = CountingInput(BufferedInputStream(depth.inputStream(), STREAM_BUFFER))
         file.use { input ->
             ScanDepthFormat.readHeader(input) ?: return null
             while (true) {
                 val recorded = ScanDepthFormat.readFrame(input) ?: break
                 count++
-                // Every pose goes through the guard, held ones included: it follows the walk.
-                val guarded = guard?.step(recorded.nanos, recorded.display)?.integrates ?: true
-                if (!(integrates?.get(recorded.nanos) ?: !recorded.rejected) || !guarded) {
+                // Every pose goes through the guard, held ones included: it follows the walk. Held
+                // past the time a phone would offer to finish or restart, it takes the walk as it
+                // is from there: a slip it could not see the end of costs at most those seconds.
+                var guarded = guard?.step(recorded.nanos, recorded.display)?.integrates ?: true
+                if (guard != null && guard.isStuck) {
+                    guard.reset()
+                    guarded = guard.step(recorded.nanos, recorded.display).integrates
+                }
+                val phone = integrates?.get(recorded.nanos) ?: !recorded.rejected
+                if (phone && !guarded) guardHeld++
+                if (!phone || !guarded) {
                     progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
                     continue
                 }
@@ -117,6 +131,7 @@ internal object RoomDepthMesh {
                     distanceWeighted = true,
                 )
                 fused++
+                recorded.floorPlaneY?.let { floors += it }
                 progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
             }
         }
@@ -135,6 +150,8 @@ internal object RoomDepthMesh {
         return Result(
             mesh = extraction.mesh,
             holesClosed = 0,
+            floorPlaneY = floors.sorted().getOrNull(floors.size / 2),
+            guardHeld = guardHeld,
             frames = count,
             fused = fused,
             blocks = tsdf.blockCount,
@@ -219,6 +236,17 @@ internal object RoomDepthMesh {
      * where the camera really was.
      */
     const val RELIABLE_FAR_M = 4f
+
+    /**
+     * The pose guard a recording is fused through again, off the phone. Its depth frames come
+     * 100 ms or more apart, not every camera frame: the jump back from a slip carries that much
+     * real motion with it, so it is let to undo the slip within 30 cm and 25°, not the phone's
+     * 20 cm and 10°.
+     */
+    fun replayGuard(): PoseContinuity = PoseContinuity(recoverMetres = REPLAY_RECOVER_M, recoverDegrees = REPLAY_RECOVER_DEG)
+
+    private const val REPLAY_RECOVER_M = 0.3f
+    private const val REPLAY_RECOVER_DEG = 25f
 
     /** A cell is meshed when one corner was seen by about half a near, sure view or more… */
     const val MIN_WEIGHT = 0.5f
