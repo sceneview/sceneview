@@ -448,6 +448,7 @@ internal class ReplayLayers(
             it.setParameter("texture", atlas, nearest)
             it.setParameter("maxSide", denseSide)
             it.setParameter("nearFade", DenseSurfels.NEAR_FADE_M)
+            it.setParameter("captureTint", if (media.liveDense != null && media.overCamera()) 1f else 0f)
             it.setDepthWrite(true)
             materials += it
         }
@@ -523,7 +524,7 @@ internal class ReplayLayers(
         // recording shows its feature points until the first dense snapshot.
         syncDense(frame, show.points)
         val denseDrawn = denseNode != null && (media.liveDense == null || liveDenseShown != null)
-        syncPoints(frame, pointStyle, show.points && !denseDrawn)
+        syncPoints(frame, pointStyle, show.points && !denseDrawn && !(media.liveDense != null && media.overCamera()))
         syncShadows(frame, show.anchors)
         syncPhotos(frame, show.cameras)
     }
@@ -675,6 +676,7 @@ internal class ReplayLayers(
             if (side != denseSide) {
                 denseSide = side
                 denseMaterial?.setParameter("maxSide", side)
+                denseMaterial?.setParameter("captureTint", if (media.overCamera()) 1f else 0f)
             }
             val snapshot = live()
             if (snapshot != null && snapshot !== liveDenseShown) {
