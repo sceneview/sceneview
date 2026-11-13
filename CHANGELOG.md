@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v4.69.5 — 2026-11-13
+
+### Added
+
+- Android: `SceneView(clipToContentPadding = true)` renders only the visible rectangle while
+  `contentPadding` animates on a full-size surface. Projection, framing, picking, node editing,
+  and camera gestures account for the offset viewport. Requires opaque UI over the padded area;
+  disabled by default and ignored by AR cameras. To change the visible area, keep `SceneView`
+  full size and animate `contentPadding` instead of resizing it (no black frame)
+  ([#5035](https://github.com/sceneview/sceneview/pull/5035)).
+- **Opt-in silhouette framing on Android ([#5032](https://github.com/sceneview/sceneview/issues/5032)).** Pass `fitMode = FitMode.Silhouette` to bounds framing or `SceneView` auto-fit for a tighter view of a character or creature seen at three quarters from above. It fits the box's side mid-lines and top/bottom face centres; it can crop box-shaped products with geometry in the corners. `FitMode.Corners` remains the unchanged default. No automatic model selection or animation envelope.
+- **Android: opt-in animation envelopes for character framing ([#5038](https://github.com/sceneview/sceneview/pull/5038)).** `Model.animationEnvelope(clip, samples)` lazily samples glTF joint transforms in Kotlin, with per-model caching and no extra native instances. Pass `animationEnvelope` to camera fitting or auto-fit to fit each pose separately with `FitMode.Silhouette` or `Corners`. Includes a rest-pose flesh-margin heuristic and safe fallback; framing defaults remain unchanged.
+
 ## v4.69.4 — 2026-11-13
 
 ### Fixed
