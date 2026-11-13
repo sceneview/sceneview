@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal.room
 
+import io.github.sceneview.demo.demos.internal.PoseContinuity
 import io.github.sceneview.demo.demos.internal.MeshExtraction
 import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
 import io.github.sceneview.demo.demos.internal.RerunMesh
@@ -59,18 +60,21 @@ internal object RoomDepthMesh {
 
     /**
      * [depth]'s surface. A frame is fused when [integrates] says so for its time, or, without a
-     * verdict, when the phone's pose guard did not hold it back. `null` when [depth] is not a
-     * depth recording, or none of its frames is fused. [progress] (0–1) may throw to stop it.
+     * verdict, when the phone's pose guard did not hold it back — and, with a [guard], when that
+     * guard, handed every recorded pose in turn, lets it through too: a slip the phone missed is
+     * still kept out. `null` when [depth] is not a depth recording, or none of its frames is
+     * fused. [progress] (0–1) may throw to stop it.
      */
     fun fuse(
         depth: File,
         settings: Settings = Settings(),
         integrates: Map<Long, Boolean>? = null,
+        guard: PoseContinuity? = null,
         progress: (Float) -> Unit = {},
     ): Result? {
         // Only extracted arrays and scalar statistics cross this call boundary. The TSDF and
         // its block index are no longer retained when hole closing allocates its topology.
-        val raw = extract(depth, settings, integrates, progress) ?: return null
+        val raw = extract(depth, settings, integrates, guard, progress) ?: return null
         val started = System.nanoTime()
         val (mesh, holes) = if (settings.holeSpanM > 0f) {
             closeHoles(raw.mesh, settings.holeSpanM) { progress(MESH_END + (1f - MESH_END) * it) }
@@ -85,6 +89,7 @@ internal object RoomDepthMesh {
         depth: File,
         settings: Settings,
         integrates: Map<Long, Boolean>?,
+        guard: PoseContinuity?,
         progress: (Float) -> Unit,
     ): Result? {
         val started = System.nanoTime()
@@ -98,7 +103,9 @@ internal object RoomDepthMesh {
             while (true) {
                 val recorded = ScanDepthFormat.readFrame(input) ?: break
                 count++
-                if (!(integrates?.get(recorded.nanos) ?: !recorded.rejected)) {
+                // Every pose goes through the guard, held ones included: it follows the walk.
+                val guarded = guard?.step(recorded.nanos, recorded.display)?.integrates ?: true
+                if (!(integrates?.get(recorded.nanos) ?: !recorded.rejected) || !guarded) {
                     progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
                     continue
                 }
@@ -204,6 +211,14 @@ internal object RoomDepthMesh {
     /** ARCore's confidence, 0–255: the lower half is guessed depth. */
     const val MIN_CONFIDENCE = 128
     const val FAR_M = 5f
+
+    /**
+     * How far a room's fused surface reaches when it stands as no room ([depthModelOf]): past
+     * 4 m ARCore's raw depth on a phone is a lace of sure-looking pixels, and what it builds there
+     * is the shreds a short walk's result was made of. Nothing is drawn further than this from
+     * where the camera really was.
+     */
+    const val RELIABLE_FAR_M = 4f
 
     /** A cell is meshed when one corner was seen by about half a near, sure view or more… */
     const val MIN_WEIGHT = 0.5f
