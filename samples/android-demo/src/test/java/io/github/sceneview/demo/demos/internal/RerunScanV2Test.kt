@@ -41,6 +41,20 @@ class RerunScanV2Test {
     }
 
     @Test
+    fun `dense capture can skip plane baking without losing measured planes or colours`() = runBlocking {
+        val cloud = cloud(300)
+        val pack = RerunCaptureBuilder.build(events, lens, emptyList(), depthDevice, cloud, bakePlanes = false)
+        val manifest = ReplayManifest.parse(String(pack.manifest))!!
+        assertTrue(manifest.textures.isEmpty())
+        val opened = pack.open()!!
+        assertEquals(ArDebugTrace.of(events).lastPlanes().size, opened.trace.lastPlanes().size)
+        val saved = SvpcCodec.decode(opened.bytesOf(ReplayDense.PATH)!!)!!
+        assertEquals(cloud.count, saved.count)
+        assertArrayEquals(cloud.colors, saved.colors)
+        assertEquals(2, manifest.version)
+    }
+
+    @Test
     fun `the bundled v1 sample reads as version 1, with no device and no dense cloud`() {
         val manifest = ReplayManifest.parse(String(showcase.manifest))!!
         assertEquals(1, manifest.version)
