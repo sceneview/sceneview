@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Opt-in silhouette framing on Android ([#5032](https://github.com/sceneview/sceneview/issues/5032)).** Pass `fitMode = FitMode.Silhouette` to bounds framing or `SceneView` auto-fit for a tighter view of a character or creature seen at three quarters from above. It fits the box's side mid-lines and top/bottom face centres; it can crop box-shaped products with geometry in the corners. `FitMode.Corners` remains the unchanged default. No automatic model selection or animation envelope.
