@@ -18,6 +18,10 @@ import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.Preconditions
 import io.github.sceneview.collision.Ray
 import io.github.sceneview.collision.Vector3
+import io.github.sceneview.ClippedViewports
+import io.github.sceneview.clippedViewport
+import io.github.sceneview.surfaceWidth
+import io.github.sceneview.surfaceHeight
 import io.github.sceneview.components.CameraComponent
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.toMatrix
@@ -78,6 +82,66 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         private set
     val viewport get() = view?.viewport
 
+    // A token rather than this node: weak viewport metadata must not retain its own View.
+    private val viewportOwner = Any()
+
+    // ARCameraNode always reports zero padding, so it never acquires a clipped viewport.
+    internal var clipToContentPadding = false
+        set(value) {
+            if (field == value) return
+            field = value
+            refreshContentPadding()
+        }
+
+    /** Keeps manipulator sizing in sync with imperative, as well as Compose, padding writes. */
+    internal var onViewportChanged: (() -> Unit)? = null
+
+    internal fun resizeViewport(width: Int, height: Int) {
+        val view = view ?: return
+        // Preserve the original full-viewport resize path when clipping is disabled (also AR).
+        if (!clipToContentPadding || contentPadding.isZero || !hasCameraComponent) {
+            ClippedViewports.clear(view, viewportOwner)
+            view.viewport = com.google.android.filament.Viewport(0, 0, width, height)
+        } else {
+            applyViewport(width, height)
+        }
+    }
+
+    private fun applyViewport(
+        surfaceWidth: Int = view?.surfaceWidth ?: 0,
+        surfaceHeight: Int = view?.surfaceHeight ?: 0,
+    ) {
+        val view = view ?: return
+        if (surfaceWidth <= 0 || surfaceHeight <= 0 || !hasCameraComponent) return
+        if ((!clipToContentPadding || contentPadding.isZero) && ClippedViewports.get(view) == null) return
+        val clipped = if (clipToContentPadding && !contentPadding.isZero) {
+            clippedViewport(surfaceWidth, surfaceHeight, contentPadding)
+        } else null
+        ClippedViewports.set(view, camera, clipped, viewportOwner)
+        val next = clipped?.toViewport()
+            ?: com.google.android.filament.Viewport(0, 0, surfaceWidth, surfaceHeight)
+        val previous = view.viewport
+        if (previous.left != next.left || previous.bottom != next.bottom ||
+            previous.width != next.width || previous.height != next.height) {
+            view.viewport = next
+            onViewportChanged?.invoke()
+        }
+    }
+
+    private fun releaseViewport() {
+        val view = view ?: return
+        val coordinates = ClippedViewports.owned(view, viewportOwner) ?: return
+        // Camera/model and view teardown have no ordering. Restore while the view is alive,
+        // but always release metadata even if Engine.destroyView already invalidated it.
+        runCatching {
+            view.viewport = com.google.android.filament.Viewport(
+                0, 0, coordinates.surfaceWidth, coordinates.surfaceHeight,
+            )
+            onViewportChanged?.invoke()
+        }
+        ClippedViewports.clear(view, viewportOwner)
+    }
+
     // No rendered object
     override var isTouchable = false
 
@@ -133,7 +197,8 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
     )
     fun hitTestView(xViewPercent: Float = 0.5f, yViewPercent: Float = 0.5f): List<HitResult> {
         val vp = viewport ?: return emptyList()
-        return hitTest(vp.width * xViewPercent, vp.height * yViewPercent)
+        return hitTest((view?.surfaceWidth ?: vp.width) * xViewPercent,
+            (view?.surfaceHeight ?: vp.height) * yViewPercent)
     }
 
     /**
@@ -253,11 +318,11 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
 
         // To screen space.
         val vp = viewport ?: return screenPoint
-        screenPoint.x = screenPoint.x * vp.width
+        screenPoint.x = screenPoint.x * vp.width + vp.left
         screenPoint.y = screenPoint.y * vp.height
 
         // Invert Y because screen Y points down and Sceneform Y points up.
-        screenPoint.y = vp.height - screenPoint.y
+        screenPoint.y = (view?.surfaceHeight ?: vp.height) - vp.bottom - screenPoint.y
         return screenPoint
     }
 
@@ -272,7 +337,8 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
 
         // Invert Y because screen Y points down and Sceneform Y points up.
         val vp = viewport ?: return false
-        y = vp.height - y
+        x -= vp.left
+        y = (view?.surfaceHeight ?: vp.height) - vp.bottom - y
 
         // Normalize between -1 and 1.
         x = x / vp.width * 2.0f - 1.0f
@@ -398,7 +464,13 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
      * The part of the viewport that something else covers, in pixels from each edge. **What is
      * left is this camera's viewport**: the optical centre moves to the centre of the visible
      * area and the lens's field of view spans it, while the scene keeps drawing on the whole
-     * surface, under the padding too.
+     * surface, under the padding too by default.
+     *
+     * To change the visible area, keep SceneView full size and animate `contentPadding`; never
+     * resize the composable for an animated bar or a full-screen toggle. Add
+     * `SceneView(clipToContentPadding = true)` when opaque UI covers the padded pixels and the
+     * GPU should skip them. Then the viewport itself is inset, the lens uses its aspect, and
+     * scaling/shift are identity. Outside pixels are undefined. An AR camera ignores both.
      *
      * This offsets the **projection** — Filament's `Camera.setScaling` / `setShift`, which this
      * property owns while it is not [ViewportPadding.Zero]. The camera's pose is never touched, so
@@ -440,27 +512,33 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         set(value) {
             if (field == value) return
             field = value
-            // Nothing left to write to: `camera` throws once the component is gone, and a glTF
-            // camera's component is torn down with its model, which may happen before the view
-            // that showed it gives the padding back on its way out (#3937).
-            if (!hasCameraComponent) return
-            when (val projection = callerProjection) {
-                null -> updateProjection()
-                is CallerProjection.FieldOfView -> {
-                    if (projection.followsViewport && view != null) {
-                        setProjection(
-                            projection.fovInDegrees,
-                            getViewPortAspect(),
-                            projection.near,
-                            projection.far,
-                            projection.direction
-                        )
-                    }
-                    applyContentPadding()
-                }
-                CallerProjection.Opaque -> applyContentPadding()
-            }
+            refreshContentPadding()
         }
+
+    private fun refreshContentPadding() {
+        // A glTF model may destroy the camera component before its view releases the padding.
+        if (!hasCameraComponent) {
+            releaseViewport()
+            return
+        }
+        applyViewport()
+        when (val projection = callerProjection) {
+            null -> updateProjection()
+            is CallerProjection.FieldOfView -> {
+                if (projection.followsViewport && view != null) {
+                    setProjection(
+                        projection.fovInDegrees,
+                        getViewPortAspect(),
+                        projection.near,
+                        projection.far,
+                        projection.direction
+                    )
+                }
+                applyContentPadding()
+            }
+            CallerProjection.Opaque -> applyContentPadding()
+        }
+    }
 
     /**
      * `false` once this node is destroyed or its Filament camera component was destroyed under it.
@@ -480,7 +558,8 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
     private fun applyContentPadding() {
         if (contentPadding.isZero && !ownsPostProjection) return
         val vp = viewport ?: return
-        val padded = paddedViewport(vp.width, vp.height, contentPadding)
+        val padded = paddedViewport(vp.width, vp.height,
+            if (view?.let(ClippedViewports::get) != null) ViewportPadding.Zero else contentPadding)
         camera.setScaling(padded.scaleX, padded.scaleY)
         camera.setShift(padded.shiftX, padded.shiftY)
         ownsPostProjection = !contentPadding.isZero
@@ -527,23 +606,31 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         // a glTF camera's component (ModelNode.cameraNodes) is torn down by
         // `ModelLoader.destroyModel` — which `rememberModelInstance` may run before this node's
         // own disposal, the two have no ordering (#3937). Filament makes it a no-op when absent.
+        releaseViewport()
+        onViewportChanged = null
         runCatching { engine.destroyCameraComponent(entity) }
 
         super.destroy()
     }
 
     fun setView(view: View) {
+        if (this.view !== view) releaseViewport()
         this.view = view
+        applyViewport()
         updateProjection()
     }
 
     /**
-     * Width / height of the area this camera projects into: the viewport, minus [contentPadding].
+     * Width / height of the visible area: the full viewport minus [contentPadding], or the
+     * clipped viewport itself (padding is never subtracted twice).
      * `1` until the surface has a size. An AR camera has no padding, so this is always its
      * viewport's own ratio.
      */
     fun getViewPortAspect() =
-        viewport?.let { paddedViewport(it.width, it.height, contentPadding).aspect }
+        viewport?.let {
+            if (view?.let(ClippedViewports::get) != null) it.width.toDouble() / it.height
+            else paddedViewport(it.width, it.height, contentPadding).aspect
+        }
             ?.takeIf { it.isFinite() && it > 0.0 }
             ?: 1.0
 }

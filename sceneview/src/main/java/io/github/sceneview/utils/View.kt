@@ -8,6 +8,9 @@ import com.google.android.filament.Viewport
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Ray
+import io.github.sceneview.ClippedViewports
+import io.github.sceneview.surfaceWidth
+import io.github.sceneview.surfaceHeight
 import io.github.sceneview.Entity
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.toFloat3
@@ -36,9 +39,9 @@ import io.github.sceneview.node.Node
 fun View.screenToWorld(xPx: Float, yPx: Float, z: Float = 1.0f): Position? =
     camera?.viewToWorld(
         viewPosition = Float2(
-            x = xPx / viewport.width,
+            x = xPx / surfaceWidth,
             // Invert Y because screen Y points down and ViewPort Y points up.
-            y = 1.0f - (yPx / viewport.height)
+            y = 1.0f - (yPx / surfaceHeight)
         ),
         z = z
     )
@@ -79,9 +82,9 @@ fun View.motionEventToWorld(motionEvent: MotionEvent): Position? = screenToWorld
  */
 fun View.worldToScreen(worldPosition: Position): Float2? =
     camera?.worldToView(worldPosition)?.apply {
-        x *= viewport.width
+        x *= surfaceWidth
         // Invert Y because screen Y points down and ViewPort Y points up.
-        y = (1.0f - y) * viewport.height
+        y = (1.0f - y) * surfaceHeight
     }
 
 /**
@@ -107,9 +110,9 @@ fun View.worldToScreen(worldPosition: Position): Float2? =
  */
 fun View.screenToRay(xPx: Float, yPx: Float): Ray? = camera?.viewToRay(
     Float2(
-        x = xPx / viewport.width,
+        x = xPx / surfaceWidth,
         // Invert Y because screen Y points down and ViewPort Y points up.
-        y = 1.0f - (yPx / viewport.height)
+        y = 1.0f - (yPx / surfaceHeight)
     )
 )
 
@@ -169,10 +172,12 @@ fun View.pick(
 // there is still a possibility of this method being called after the fact but before the
 // sceneview is fully destroyed which would trigger an IllegalStateException and crash the app
     runCatching {
+    val coordinates = ClippedViewports.get(this)
+    val point = coordinates?.toViewportPixels(xPx, yPx)
     pick(
-        xPx.toInt(),
-        // Invert the y coordinate since its origin must be at the bottom
-        (viewport.height - yPx).toInt(),
+        (point?.x ?: xPx).toInt(),
+        // Filament View.pick is relative to the viewport, with a bottom-left origin.
+        (point?.y ?: (surfaceHeight - yPx)).toInt(),
         handler
     ) { result ->
         onCompleted(
@@ -283,9 +288,9 @@ fun View.pickNode(
         fragCoords: Float3
     ) -> Unit
 ) = pickNode(
-    xPx = viewPosition.x * viewport.width,
+    xPx = viewPosition.x * surfaceWidth,
     // Invert Y because screen Y points down and Filament Y points up.
-    yPx = (1.0f - viewPosition.y) * viewport.height,
+    yPx = (1.0f - viewPosition.y) * surfaceHeight,
     nodes = nodes,
     handler = handler,
     onCompleted = onCompleted

@@ -17,7 +17,8 @@ import io.github.sceneview.math.Transform
  *
  * Negative and non-finite values are read as `0`. The visible area never goes below a tenth of
  * the viewport on either axis: two opposite edges that add up to more than 90 % of it are both
- * reduced in proportion.
+ * reduced in proportion when clipping is off. With `SceneView(clipToContentPadding = true)`,
+ * edges are rounded to pixels and clamped to the surface, retaining at least 1 × 1 pixels.
  *
  * @property left   Pixels covered from the left edge.
  * @property top    Pixels covered from the top edge.

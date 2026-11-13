@@ -327,7 +327,7 @@ interface CameraComponent : Component {
     /**
      * Get a world space position from a view space position.
      *
-     * @param viewPosition normalized view coordinate
+     * @param viewPosition normalized full-SceneView coordinate, even with a clipped viewport
      * x = (0 = left, 0.5 = center, 1 = right)
      * y = (0 = bottom, 0.5 = center, 1 = top)
      * @param z Z is used for the depth between 1 and 0
@@ -349,7 +349,7 @@ interface CameraComponent : Component {
      *
      * @param worldPosition The world position to convert.
      *
-     * @return normalized view coordinate, or `null` if [worldPosition] is at or behind the camera's eye plane.
+     * @return normalized full-SceneView coordinate (including clipped padding), or `null` if [worldPosition] is at or behind the camera's eye plane.
      * x = (0 = left, 0.5 = center, 1 = right)
      * y = (0 = bottom, 0.5 = center, 1 = top)
      */
@@ -359,7 +359,7 @@ interface CameraComponent : Component {
      * Calculates a ray in world space going from the near-plane of the camera and through a point in
      * view space.
      *
-     * @param viewPosition normalized view coordinate
+     * @param viewPosition normalized full-SceneView coordinate, even with a clipped viewport
      * x = (0 = left, 0.5 = center, 1 = right)
      * y = (0 = bottom, 0.5 = center, 1 = top)
      *
