@@ -244,6 +244,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="sceneview" android:host="demo" />
+                <data android:scheme="sceneview" android:host="ar" />
+                <data android:scheme="sceneview" android:host="ar-view" />
+                <data android:scheme="sceneview" android:host="ar_view" />
+                <data android:scheme="sceneview" android:host="about" />
+                <data android:scheme="sceneview" android:host="tab" />
+                <data android:scheme="sceneview" android:host="tabs" />
+                <data android:scheme="sceneview" android:host="home" />
             </intent-filter>
 
             <!--

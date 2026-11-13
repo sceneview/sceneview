@@ -5,7 +5,6 @@
      references resolve identically. See issue #1870 and
      `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
-    <string name="app_name">SceneView Demo</string>
     <!-- GlassActionPill with a subject: "<subject> · <label>". The separator keeps its spaces. -->
     <string name="glass_pill_subject_separator">" · "</string>
     <string name="glass_pill_subject_label">%1$s · %2$s</string>
@@ -16,8 +15,6 @@
     <string name="launcher_label">SceneView</string>
 
     <!-- Navigation -->
-    <string name="tab_about">About</string>
-    <string name="tab_ar_view">AR View</string>
 
     <!-- Explore screen -->
     <string name="explore_search_placeholder">Search 3D models on %1$s</string>
@@ -80,22 +77,9 @@
     <!-- AR screen -->
 
     <!-- AR launcher screen -->
-    <string name="ar_experiences_title">AR Experiences</string>
-    <string name="ar_experiences_tagline">Place models, scan faces, anchor to terrain.</string>
-    <string name="ar_status_ready">AR supported on this device.</string>
-    <string name="ar_status_not_installed">AR works on this device — ARCore will install on first launch.</string>
-    <string name="ar_status_apk_old">AR works on this device — an ARCore update is available.</string>
-    <string name="ar_status_unsupported">Live AR is not supported on this device, but you can still explore the AR demos below to see how the SDK is used.</string>
-    <string name="ar_status_unknown_error">Couldn\'t check AR availability. Try one of the demos below to see how the SDK is used.</string>
-    <string name="ar_status_checking">Checking AR availability…</string>
-    <string name="ar_cta_checking">Checking…</string>
-    <string name="ar_cta_grant_camera">Grant Camera Access</string>
-    <string name="ar_cta_start_camera">Start AR Camera</string>
     <!-- Section header above the curated AR demo grid (#2231). -->
-    <string name="ar_featured_section">Featured</string>
     <!-- Section header above the full AR demo list. %d is the total AR demo count
          (featured + remaining) so users see how much there is at a glance (#2231). -->
-    <string name="ar_all_demos_section">All AR demos (%d)</string>
     <string name="ar_pick_a_model">Pick a model</string>
     <!-- Canonical placement picker (PlacementModelPicker.kt) — shared by the AR View
          tab and the `ar-placement` demo (#2482). -->
@@ -112,24 +96,12 @@
     <string name="ar_status_scanning">Scanning for surfaces…</string>
     <!-- Placement coaching copy lives in strings_demo_ar_placement.xml (`ar_place_*`). -->
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
-    <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
     <string name="ar_permission_allow_subtitle">Allow camera access to start this demo.</string>
     <string name="ar_permission_blocked_subtitle">Camera access is off for this app. Turn it on in system settings — the demo starts when you come back.</string>
     <string name="ar_permission_refused_subtitle">This demo draws on the live camera view, so it cannot start without it. Android will ask one more time.</string>
     <string name="ar_permission_allow">Allow camera</string>
     <string name="ar_permission_open_settings">Open settings</string>
 
-    <!-- Featured AR demos on the AR launcher -->
-    <string name="featured_ar_placement_title">Place in AR</string>
-    <string name="featured_ar_placement_subtitle">Point at the floor and the model appears</string>
-    <string name="featured_ar_face_title">Augmented Faces</string>
-    <string name="featured_ar_face_subtitle">Face mesh tracking and overlays</string>
-    <string name="featured_ar_cloud_anchor_title">Cloud Anchors</string>
-    <string name="featured_ar_cloud_anchor_subtitle">Persistent multi-user anchors</string>
-    <string name="featured_ar_geospatial_title">Geospatial</string>
-    <string name="featured_ar_geospatial_subtitle">Anchors on the map, buildings and terrain as meshes</string>
-    <string name="featured_ar_depth_occlusion_title">Depth Occlusion</string>
-    <string name="featured_ar_depth_occlusion_subtitle">Real-world depth masks virtual objects</string>
 
     <!-- Samples screen -->
     <string name="samples_back">Back</string>
@@ -154,7 +126,6 @@
     <string name="show_more_state_expanded">Expanded</string>
     <string name="show_more_state_collapsed">Collapsed</string>
     <string name="whats_new_title">What\'s new</string>
-    <string name="whats_new_card_subtitle_fallback">Recently shipped and fixed in SceneView</string>
     <string name="whats_new_sheet_subtitle">Recently shipped and fixed, straight from the release notes</string>
     <string name="whats_new_in_review_header">New in this build — try them</string>
     <string name="whats_new_release_version">v%s</string>
@@ -175,9 +146,8 @@
     <string name="whats_new_since_subtitle_unknown">Discover the latest improvements</string>
     <string name="whats_new_since_unreleased">New in this update</string>
     <string name="whats_new_since_mark_seen">Got it</string>
-    <string name="whats_new_since_mark_seen_hint">You can revisit these updates from the home screen.</string>
+    <string name="whats_new_since_mark_seen_hint">You can revisit these updates from About.</string>
     <string name="whats_new_since_open_demo">Open %s</string>
-    <string name="whats_new_since_action">What\'s new</string>
 
     <!-- Sample categories (legacy keys kept for accessibility / cross-platform docs) -->
 
@@ -244,16 +214,11 @@
     <string name="consent_dont_share">Don\'t share</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_supporting">New samples and releases, a few times a month at most.</string>
-    <string name="push_prompt_title">Get notified when new samples land</string>
-    <string name="push_prompt_body">A short note when a new sample or a release ships, a few times a month at most. You can turn it off in About › Privacy &amp; notifications at any time.</string>
-    <string name="push_prompt_notify_me">Notify me</string>
-    <string name="push_prompt_not_now">Not now</string>
     <string name="notification_channel_whats_new">What\'s new</string>
     <string name="notification_channel_whats_new_description">New samples and releases of SceneView Demo.</string>
     <string name="push_default_title">New in SceneView Demo</string>
     <string name="push_default_body">A new sample just landed. Tap to try it.</string>
     <string name="about_source_title">Source on GitHub</string>
-    <string name="about_release_notes">Release notes</string>
     <string name="about_license_title">License: Apache-2.0</string>
     <string name="about_credits_attribution">Credits &amp; model attribution</string>
     <string name="about_footer">Made with ♥ by Thomas Gorisse and the SceneView contributors</string>
@@ -262,7 +227,6 @@
     <string name="about_no_browser">No browser installed to open %1$s</string>
     <string name="about_sceneview">SceneView</string>
     <string name="about_card_docs_title">Documentation</string>
-    <string name="about_card_playground_title">3D Playground</string>
     <string name="about_card_feedback_title">Send feedback</string>
 
     <!-- Credits bottom sheet (#1152 Stage 3 — CC-BY attribution surface) -->
@@ -385,4 +349,11 @@
     <string name="ar_placement_wall_model">TV</string>
     <string name="ar_placement_wall_help">Place a TV automatically on a wall. Preview scale — not a real TV\'s size.</string>
     <string name="demo_ar_session_failed">AR could not start. Return to the catalog and reopen this demo to try again.</string>
+    <string name="home_section_models">Models</string>
+    <string name="home_section_ar">AR</string>
+    <string name="home_section_scan">Scan</string>
+    <string name="home_section_materials">Materials</string>
+    <string name="home_section_play">Play</string>
+    <string name="home_section_tools">Tools</string>
+    <string name="about_title">About</string>
 </resources>

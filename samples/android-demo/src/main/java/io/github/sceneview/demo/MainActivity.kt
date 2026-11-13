@@ -30,6 +30,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,7 +58,6 @@ import io.github.sceneview.demo.telemetry.AnalyticsEvent
 import io.github.sceneview.demo.telemetry.ConsentHost
 import io.github.sceneview.demo.telemetry.OpenSource
 import io.github.sceneview.demo.telemetry.PushIntent
-import io.github.sceneview.demo.telemetry.PushPromptHost
 import io.github.sceneview.demo.telemetry.SampleTelemetry
 import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.ui.RootScreen
@@ -65,6 +65,7 @@ import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.QaAppUpdateManager
 import io.github.sceneview.sample.common.update.SharedPreferencesUpdatePromptStore
 import io.github.sceneview.sample.common.update.UpdatePromptController
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -116,6 +117,11 @@ class MainActivity : ComponentActivity() {
      */
     private val pendingDemoId = MutableStateFlow<String?>(null)
     val pendingDemoIdFlow: StateFlow<String?> get() = pendingDemoId.asStateFlow()
+
+    /** A legacy root link, consumed after home applies its section or sheet. */
+    private val pendingHomeDestination = MutableStateFlow<DeepLinkRouter.HomeDestination?>(null)
+    internal val pendingHomeDestinationFlow get() = pendingHomeDestination.asStateFlow()
+    internal fun consumeHomeDestination() { pendingHomeDestination.value = null }
 
     /**
      * A model file another app asked this one to open through `ACTION_VIEW`, or an `ACTION_SEND`
@@ -202,6 +208,9 @@ class MainActivity : ComponentActivity() {
         // Same allow-list (ALL_DEMOS) gates both ingress channels — without it
         // any app could call `am start ... --es demo whatever` and steer
         // navigation through PlaceholderDemo. See #958.
+        if (savedInstanceState == null) {
+            pendingHomeDestination.value = DeepLinkRouter.parseHomeDestination(intent?.data)
+        }
         pendingDemoId.value = DeepLinkRouter.validate(intent?.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent?.data)
         // A push is handled once: a recreation (rotation, process death) or a relaunch from
@@ -264,6 +273,7 @@ class MainActivity : ComponentActivity() {
         // Same dual-ingress policy as onCreate — `--es demo` first, URL second.
         // Both go through DeepLinkRouter.validate / .parse so unknown ids are
         // dropped rather than routed to PlaceholderDemo. See #958.
+        pendingHomeDestination.value = DeepLinkRouter.parseHomeDestination(intent.data)
         pendingDemoId.value = DeepLinkRouter.validate(intent.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent.data)
         handleEntry(intent)
@@ -585,6 +595,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         activity?.consumePendingOpenedModel()
     }
 
+    val homeDestination by (activity?.pendingHomeDestinationFlow?.collectAsState()
+        ?: remember { MutableStateFlow<DeepLinkRouter.HomeDestination?>(null) }.collectAsState())
+    LaunchedEffect(homeDestination) {
+        if (homeDestination != null && navController.currentDestination?.route != "list") {
+            if (!navController.popBackStack("list", inclusive = false)) {
+                navController.navigate("list") { popUpTo(navController.graph.id) { inclusive = true } }
+            }
+        }
+    }
+
     // A push naming a sample this build does not know lands on Home, from any screen.
     val pendingHome by (activity?.pendingHomeFlow?.collectAsState()
         ?: remember { MutableStateFlow(false) }.collectAsState())
@@ -613,10 +633,13 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
 
     PendingDemoNavigation(navController, pendingId) { activity?.consumePendingDemo() }
 
-    // The NavHost and the bug-report sheet share one Box. The Play update
-    // snackbar is RootScreen's own — its Scaffold places it above the bottom
-    // navigation — so it never lands on a demo's dock or AR controls.
-    CompositionLocalProvider(LocalMotionEnabled provides motionEnabled) {
+    // The NavHost and bug-report sheet share one Box. The update snackbar belongs to Home.
+    CompositionLocalProvider(
+        LocalMotionEnabled provides motionEnabled,
+        io.github.sceneview.demo.ui.viewer.LocalOpenModelGallery provides {
+            navController.navigate("models") { launchSingleTop = true }
+        },
+    ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // The layout every shared element of a navigation is measured in: a Home card
         // growing into its demo's screen (container transform, `motion-container`), and
@@ -678,11 +701,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             }
         ) {
             composable("list") {
-                // Three-tab root (Showcase / AR View / About). Demo deep links
-                // (`adb am start ... --es demo <id>`) never land here — they
-                // navigate straight to "demo/<id>" (see the pending-demo
-                // handling above). The Play update snackbar lives in RootScreen's
-                // Scaffold, above the bottom navigation, on every tab.
+                // Demo links open over Home; Back restores its selected section.
                 // Home settled again: the card that grew into a demo has shrunk back
                 // into place, so the next demo — from wherever it is opened — starts
                 // from the plain shared axis unless its own card arms the morph.
@@ -698,6 +717,8 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                             navController.navigate("demo/$id")
                         },
                         updatePrompt = activity?.updatePrompt,
+                        destination = homeDestination,
+                        onDestinationConsumed = { activity?.consumeHomeDestination() },
                     )
                 }
             }
@@ -723,19 +744,40 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                     }
                 }
             }
-            // Note: the legacy `composable("about") { AboutScreen(...) }` route was
-            // removed (alongside `AboutScreen.kt`) because RootScreen's bottom-tab
-            // `RootTab.About → AboutTabContent()` is the only About surface — no
-            // caller ever navigated to "about". Deletion verified via grep:
-            // 0 `navigate("about")` calls anywhere. The @Ignore'd ScreenshotTest
-            // for AboutScreen stays disabled per its own comment.
+            composable("models") {
+                DisposableEffect(Unit) {
+                    CurrentRootScreen.label = "Explore gallery"
+                    Telemetry.analytics.log(AnalyticsEvent.ScreenView("explore", "Gallery"))
+                    onDispose { CurrentRootScreen.label = null }
+                }
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Box(Modifier.safeDrawingPadding()) {
+                        io.github.sceneview.demo.ui.explore.ExploreTabScreen(
+                            curatedSamples = listOf(
+                                "model-viewer", "geometry", "lighting", "ar-placement", "materials", "animation-physics",
+                            ).mapNotNull { id -> ALL_DEMOS.firstOrNull { it.id == id } },
+                            onSampleClick = { sample ->
+                                Telemetry.nextOpenSource = OpenSource.Other
+                                Telemetry.nextEntryId = sample.id to sample.id
+                                navController.navigate("demo/${sample.id}")
+                            },
+                            onBack = { navController.popBackStack() },
+                            enterSettled = transition.currentState == EnterExitState.Visible,
+                        )
+                    }
+                }
+            }
+
         }
         }
         }
 
         // Bug-report entry points (#1930, rebuilt permission-free in #2188's
         // successor):
-        //  - the tab host ("list" — RootScreen, every tab) gets the
+        //  - Home ("list" — RootScreen) gets the
         //    extended FAB rendered below;
         //  - every demo screen gets a top-app-bar feedback action in
         //    DemoScaffold, which raises FeedbackOpenRequest (observed here).
@@ -751,18 +793,8 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // the sheet itself is never in the screenshot. Not rememberSaveable:
         // a Bitmap can't ride a config change; the sheet simply closes, and
         // re-opening re-captures in <100 ms.
-        // Returns to Home after a sample, for the notification pre-prompt (telemetry/PushPrompt.kt).
-        var homeReturns by remember { mutableIntStateOf(0) }
-        var lastRoute by remember { mutableStateOf<String?>(null) }
-        val route = currentEntry?.destination?.route
-        LaunchedEffect(route) {
-            if (route == "list" && lastRoute?.startsWith("demo/") == true) homeReturns++
-            lastRoute = route
-        }
-        // The usage-statistics consent first (EEA, UK, Switzerland), over Home once it shows;
-        // the push pre-prompt waits for a later session (TelemetryConsent.pushPromptAllowed).
+        // Usage-statistics consent is separate from the opt-in notification setting.
         ConsentHost(onHome = onListScreen)
-        PushPromptHost(returnedHomeFromSample = homeReturns, onHome = onListScreen)
 
         var bugReport by remember { mutableStateOf<PendingBugReport?>(null) }
         val reportScope = rememberCoroutineScope()

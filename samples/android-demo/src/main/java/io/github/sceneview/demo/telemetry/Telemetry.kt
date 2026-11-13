@@ -108,10 +108,6 @@ object Telemetry {
     var consentPending by mutableStateOf(false)
         private set
 
-    /** The consent was answered in this process: the push pre-prompt waits for a later session. */
-    @Volatile
-    private var consentAnsweredThisSession: Boolean = false
-
     /** Push on and off; null until Firebase started. */
     @Volatile
     private var push: PushSwitch? = null
@@ -152,23 +148,8 @@ object Telemetry {
 
     private val background by lazy { Executors.newSingleThreadExecutor() }
 
-    fun promptStore(context: Context): PushPromptStore {
-        ensureInit(context)
-        return requireNotNull(prefs)
-    }
-
-    /**
-     * Whether the push pre-prompt may show: the consent is settled, and was not answered in this
-     * session — one question per session, never a second sheet right after the first.
-     */
-    fun consentAllowsPushPrompt(): Boolean {
-        val p = prefs ?: return false
-        return TelemetryConsent.pushPromptAllowed(p.consentState, consentZone, consentAnsweredThisSession)
-    }
-
     /** The consent sheet: "Share" or "Don't share"; dismissing it counts as "Don't share". */
     fun answerConsent(context: Context, granted: Boolean) {
-        consentAnsweredThisSession = true
         setAnalyticsEnabled(context, granted)
     }
 
@@ -231,7 +212,6 @@ object Telemetry {
                 val wasCollecting = collecting
                 forceAsk = true
                 consentZone = true
-                consentAnsweredThisSession = false
                 p.consentState = ConsentState.Unknown
                 p.consentAt = 0L
                 refreshConsent(p)
@@ -243,19 +223,12 @@ object Telemetry {
 
     /**
      * About -> Privacy & notifications -> "Notifications". The system permission is asked by the caller on
-     * API 33+. An explicit choice here also retires the pre-prompt for good.
+     * API 33+.
      */
     fun setNotificationsEnabled(context: Context, enabled: Boolean) {
         ensureInit(context)
-        prefs?.settled = true
         analytics.log(AnalyticsEvent.SettingsChanged("notifications", enabled.toString()))
         applyNotifications(context, enabled)
-    }
-
-    /** The pre-prompt was accepted: the permission granted (API 33+) or "Notify me" (below). */
-    fun acceptPush(context: Context) {
-        ensureInit(context)
-        applyNotifications(context, true)
     }
 
     private fun applyNotifications(context: Context, enabled: Boolean) {

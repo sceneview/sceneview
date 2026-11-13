@@ -46,7 +46,7 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
     get() = BuildConfig.DEBUG
 
 /**
- * One entry in the curated demo list shown on the Showcase (home) tab.
+ * One registered demo, routable by id and listed in a home section.
  *
  * String content is referenced through Android resources to keep literals
  * out of code and defined in a single place. The sample app is English-only
@@ -63,17 +63,8 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    see [categoryDisplayNameRes] for the display header label.
  * @param icon        Material icon used to give the card visual identity
  *                    in the absence of a captured 3D thumbnail.
- * @param order       Editorial position on the home grid — unique, lower
- *                    renders first. Since #2239 it also carries the section
- *                    layout: sections run in [DEMO_CATEGORIES] order and a
- *                    category's demos are contiguous inside it, so the grid
- *                    can draw one header per section by watching for the
- *                    boundary. Within a section, the flagship and most recently
- *                    reworked demos lead, older demos follow, and coming-soon /
- *                    known-issue demos close it.
- *                    `collate-demos.sh` sorts on it and
- *                    [io.github.sceneview.demo.DemoRegistryIntegrityTest]
- *                    asserts uniqueness *and* contiguity.
+ * @param order       Stable editorial order used by the collator and search results.
+ *                    Home section membership and priority live in `HomeSections.kt`.
  * @param tags        Capability keywords ("gltf", "hdr", "depth", …) matched
  *                    by the home search field alongside title, subtitle and
  *                    category. Never shown; never empty.
@@ -117,16 +108,9 @@ data class DemoEntry(
  * shown to the user. Use [categoryDisplayNameRes] to obtain the display
  * header label.
  *
- * A category is also a **section** on the home grid: the grid draws one header
- * per category in [DEMO_CATEGORIES] order, so a category boundary is something
- * the user sees rather than only a filter chip. Two rules follow, and
- * [io.github.sceneview.demo.DemoRegistryIntegrityTest] enforces them: every
- * category holds at least one demo (a header with nothing under it is a lie),
- * and [DemoEntry.order] keeps a category's demos contiguous (a section that
- * restarts further down the grid is not a section).
- *
- * Six sections follow the discovery tree. Existing keys and analytics slugs stay
- * stable; display names come from resources. Play & feel adds its own key.
+ * These keys are retained for AR permission routing, telemetry and shared gallery accents.
+ * The six home sections are independent: `HomeSection` groups demos without changing these
+ * keys or accidentally changing which demos open the camera.
  */
 object DemoCategory {
     /** Models & cameras — view, navigate, select and animate. */
@@ -159,7 +143,7 @@ object DemoCategory {
     }
 }
 
-/** Ordered category keys for discovery chips and permanent catalogue sections. */
+/** Historical category order retained for registry consumers. */
 val DEMO_CATEGORIES = listOf(
     DemoCategory.VIEW_3D,
     DemoCategory.CREATE,

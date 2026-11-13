@@ -44,6 +44,9 @@ import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.home.outlineSubtle
 
+/** The app hosts online discovery as a page opened from this picker. */
+internal val LocalOpenModelGallery = androidx.compose.runtime.staticCompositionLocalOf<() -> Unit> { {} }
+
 /**
  * A model the viewer ships in its APK.
  *
@@ -174,6 +177,13 @@ fun ModelPickerSheet(
                 style = SceneViewTokens.Type.title,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            val openGallery = LocalOpenModelGallery.current
+            androidx.compose.material3.TextButton(onClick = openGallery) {
+                Text(stringResource(R.string.home_browse_title))
+            }
+            if (io.github.sceneview.demo.hdpack.rememberHdPackStore() != null) {
+                io.github.sceneview.demo.hdpack.HdPackSettingsRow()
+            }
             PickerSectionHeader(R.string.demo_model_picker_scenes, top = SceneViewTokens.Space.md)
             CardRow(ViewerScene.entries) { scene ->
                 PickerCard(

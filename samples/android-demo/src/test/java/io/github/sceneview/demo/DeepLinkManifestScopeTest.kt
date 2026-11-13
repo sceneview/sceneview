@@ -74,15 +74,11 @@ class DeepLinkManifestScopeTest {
             .toList()
 
         assertEquals(
-            "Expected exactly one ${DeepLinkRouter.SCHEME_CUSTOM}:// <data> element",
-            1,
-            custom.size,
+            setOf(DeepLinkRouter.HOST_CUSTOM, "ar", "ar-view", "ar_view", "about", "tab", "tabs", "home"),
+            custom.map { attribute(it, "host") }.toSet(),
         )
-        assertEquals(
-            "The custom-scheme filter must match DeepLinkRouter.HOST_CUSTOM",
-            DeepLinkRouter.HOST_CUSTOM,
-            attribute(custom.single(), "host"),
-        )
+        assertEquals("Each accepted custom host is declared once", 8, custom.size)
+
     }
 
     /**

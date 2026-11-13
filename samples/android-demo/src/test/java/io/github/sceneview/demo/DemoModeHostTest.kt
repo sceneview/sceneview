@@ -88,34 +88,10 @@ class DemoModeHostTest {
     }
 
     @Test
-    fun `the XR card is listed only on an XR device`() {
-        val listed = listedDemos(ALL_DEMOS, xrDevice = false).map { it.id }
-        assertFalse("ar-xr" in listed)
-        // So is Point & Ask's on-device fallback, which no catalogue lists.
-        assertEquals(
-            ALL_DEMOS.size - XR_ONLY_DEMO_IDS.size - FALLBACK_ONLY_DEMO_IDS.size,
-            listed.size,
-        )
-        assertTrue("ar-xr" in listedDemos(ALL_DEMOS, xrDevice = true).map { it.id })
-    }
-
-    @Test
-    fun `Point and Ask's on-device fallback is routable but never listed`() {
-        // #4608 x #2648: the ML Kit object labels lost their card, but Point & Ask's
-        // "unavailable" card opens them on a phone without AICore.
-        assertTrue(ALL_DEMOS.any { it.id == "ar-ml-object-label" })
-        assertEquals("ar-ml-object-label", DeepLinkRouter.validate("ar-ml-object-label", ALL_DEMOS))
-        listOf(false, true).forEach { xr ->
-            assertFalse("ar-ml-object-label" in listedDemos(ALL_DEMOS, xrDevice = xr).map { it.id })
+    fun `XR and the on-device fallback remain routable and listed in Tools`() {
+        for (id in listOf("ar-xr", "ar-ml-object-label")) {
+            assertEquals(id, DeepLinkRouter.validate(id, ALL_DEMOS))
+            assertTrue(id in io.github.sceneview.demo.ui.home.HomeSection.Tools.demoIds)
         }
-    }
-
-    @Test
-    fun `the former early-access demos are listed on every phone, in their own sections`() {
-        // SceneView Labs is gone (2026-11-09): its three demos are ordinary catalogue entries.
-        val listed = listedDemos(ALL_DEMOS, xrDevice = false).associateBy { it.id }
-        assertEquals(DemoCategory.PLAY, listed.getValue("finger-drawing").category)
-        assertEquals(DemoCategory.PLACE_AR, listed.getValue("ar-pool").category)
-        assertEquals(DemoCategory.DEV_TOOLS, listed.getValue("ar-image-stabilization").category)
     }
 }

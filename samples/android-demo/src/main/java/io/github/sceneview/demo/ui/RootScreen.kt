@@ -1,970 +1,155 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package io.github.sceneview.demo.ui
 
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.PlayCircleOutline
-import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScaffoldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.SeekableTransitionState
-import androidx.compose.animation.core.rememberTransition
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
-import androidx.compose.animation.EnterExitState
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import io.github.sceneview.demo.ALL_DEMOS
-import io.github.sceneview.demo.rememberListedDemos
-import io.github.sceneview.demo.BuildConfig
-import io.github.sceneview.demo.DemoEntry
-import io.github.sceneview.demo.R
-import io.github.sceneview.demo.hdpack.HdPackSettingsRow
-import io.github.sceneview.demo.hdpack.rememberHdPackStore
+import io.github.sceneview.demo.DeepLinkRouter
 import io.github.sceneview.demo.feedback.CurrentRootScreen
+import io.github.sceneview.demo.freshDemos
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.support.SupportPrompt
 import io.github.sceneview.demo.support.SupportSheet
 import io.github.sceneview.demo.support.SupportSheetMode
-import kotlinx.coroutines.delay
-import io.github.sceneview.demo.telemetry.AnalyticsEvent
-import io.github.sceneview.demo.telemetry.NotificationsSettingsRow
-import io.github.sceneview.demo.telemetry.OpenSource
-import io.github.sceneview.demo.telemetry.SCREEN_CLASS_TAB
-import io.github.sceneview.demo.telemetry.SearchSurface
-import io.github.sceneview.demo.telemetry.Telemetry
-import io.github.sceneview.demo.telemetry.UsageStatisticsSettingsRow
-import io.github.sceneview.demo.telemetry.logOutboundLink
-import io.github.sceneview.demo.feedback.FeedbackOpenRequest
+import io.github.sceneview.demo.telemetry.*
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.theme.LocalMotionEnabled
-import io.github.sceneview.demo.ui.explore.ExploreTabScreen
-import io.github.sceneview.demo.whatsnew.rememberReturningSheetState
 import io.github.sceneview.demo.ui.home.HomeScreen
-import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
-import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
+import io.github.sceneview.demo.ui.home.HomeSection
 import io.github.sceneview.demo.update.UpdatePromptHost
+import io.github.sceneview.demo.whatsnew.*
 import io.github.sceneview.sample.common.update.UpdatePromptController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
-/**
- * Top-level UI scaffold. Hosts the three primary tabs (Showcase, AR View,
- * About) under a single M3 [NavigationBar]. The Showcase tab — the home grid
- * in [HomeScreen] — is the landing experience; the online model gallery
- * ([ExploreTabScreen]) is reached from its closing "Browse online models"
- * card rather than from a tab of its own.
- *
- * Home filter state (selected category + search query) and the gallery
- * open/closed flag are hoisted here and `rememberSaveable`d so a tab switch,
- * rotation or process death lands the user back where they were.
- *
- * Routing back into the existing per-demo screens is delegated to the
- * caller via [onDemoClick] — this composable does not own the NavHost so
- * deep-link replay (`sceneview://demo/<id>`) keeps working unchanged.
- */
+/** One home, with About and release notes as modal sheets. Demo routes belong to the activity. */
 @Composable
-fun RootScreen(
+internal fun RootScreen(
     onDemoClick: (String) -> Unit,
     updatePrompt: UpdatePromptController? = null,
+    destination: DeepLinkRouter.HomeDestination? = null,
+    onDestinationConsumed: () -> Unit = {},
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(RootTab.Showcase) }
-    // Tracks whether the AR View tab is in a live camera session. When `true`
-    // the bottom NavigationBar is hidden so the AR camera goes truly
-    // fullscreen — pre-#2238 the nav bar always stayed visible and ate ~90 px
-    // of the live camera viewport. ArViewTabContent invokes the setter
-    // whenever its internal `sessionStarted` flag flips (start / exit / back
-    // gesture). The flag is intentionally NOT rememberSaveable: a config
-    // change or process death should land the user back on the launcher
-    // screen with the nav bar visible, not on an orphaned immersive shell.
-    var arSessionActive by remember { mutableStateOf(false) }
+    var section by rememberSaveable { mutableStateOf(HomeSection.Models) }
+    var aboutOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var galleryOpen by rememberSaveable { mutableStateOf(false) }
-
-    // Publish the visible screen for the bug reporter (#3390). The tab
-    // selection lives here as local state, while the NavController the reporter
-    // can see has a single "list" destination covering all three tabs — so
-    // without this every report filed from the tab host was screen-less.
-    // The two sub-states matter as much as the tab: "Explore gallery" and a
-    // live AR session are the screens a bug is actually filed against.
-    val reportScreenLabel = when {
-        selectedTab == RootTab.Showcase && galleryOpen -> "Explore gallery"
-        selectedTab == RootTab.ArView && arSessionActive -> "AR View tab · session active"
-        else -> selectedTab.reportLabel
-    }
-    // Manual screen_view for the tab host: one Activity hosts every screen, so the automatic
-    // report would only ever say MainActivity. Re-logged when Home comes back from a sample.
-    val analyticsScreen = when {
-        selectedTab == RootTab.Showcase && galleryOpen -> "explore"
-        else -> selectedTab.analyticsName
-    }
-    LaunchedEffect(analyticsScreen) {
-        Telemetry.analytics.log(AnalyticsEvent.ScreenView(analyticsScreen, SCREEN_CLASS_TAB))
-    }
-    DisposableEffect(reportScreenLabel) {
-        CurrentRootScreen.label = reportScreenLabel
-        // A demo on top removes the tab host from composition; it names itself.
-        onDispose { CurrentRootScreen.label = null }
-    }
-
-    // Updates are available from the home action without interrupting app launch.
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
     val whatsNewSince = rememberWhatsNewSince()
-    // Back from a sample opened in the sheet lands on the sheet again, not on a bare Home.
-    val whatsNewSinceSheet = rememberReturningSheetState(contentReady = whatsNewSince.isLoaded)
-    if (whatsNewSinceSheet.isShown) {
-        WhatsNewSinceSheet(
-            sections = whatsNewSince.unseen,
-            seenVersion = whatsNewSince.seenVersion,
-            onDemoClick = { id ->
-                whatsNewSinceSheet.leaveForSample()
-                Telemetry.nextOpenSource = OpenSource.Other
-                onDemoClick(id)
-            },
-            onMarkSeen = {
-                whatsNewSince.markSeen()
-                whatsNewSinceSheet.dismiss()
-            },
-            onDismiss = { whatsNewSinceSheet.dismiss() },
-        )
+    val context = LocalContext.current
+    val releases by produceState<List<WhatsNewRelease>?>(null) {
+        value = withContext(Dispatchers.IO) { loadWhatsNew(context.assets) }
     }
+    val releaseSheet = rememberReturningSheetState(contentReady = releases != null)
+    val sinceSheet = rememberReturningSheetState(contentReady = whatsNewSince.isLoaded)
 
-    // Only while the gallery is actually on screen. `galleryOpen` is rememberSaveable and
-    // survives a tab switch, so an unconditional handler let Back close the *hidden* gallery
-    // from AR View or About — the visible screen's own back behaviour never ran.
-    //
-    // Predictive: the Home <-> gallery cross-fade runs on a seekable transition, and the back
-    // gesture seeks it under the finger, so the gallery thins out over the Home it returns
-    // to while the finger travels. Released, the rest plays and the gallery closes;
-    // cancelled, it settles back. Tab switches drive the same state with `animateTo`.
-    val rootState = remember { SeekableTransitionState(selectedTab to galleryOpen) }
-    LaunchedEffect(selectedTab, galleryOpen) { rootState.animateTo(selectedTab to galleryOpen) }
-    val settleScope = rememberCoroutineScope()
-    PredictiveBackHandler(enabled = selectedTab == RootTab.Showcase && galleryOpen) { events ->
-        try {
-            events.collect { event ->
-                rootState.seekTo(fraction = event.progress, targetState = RootTab.Showcase to false)
-            }
-            galleryOpen = false
-        } catch (cancelled: CancellationException) {
-            settleScope.launch { rootState.animateTo(RootTab.Showcase to true) }
-            throw cancelled
+    fun selectSection(next: HomeSection) {
+        if (section != next) {
+            section = next
+            Telemetry.analytics.log(AnalyticsEvent.HomeSectionSelected(next.name))
         }
     }
-    val rootTransition = rememberTransition(rootState, label = "root-tab")
-
-    // Support SceneView, the moderated interstitial (support/SupportPrompt.kt): it may follow a
-    // moment of value once the user is back here — never on the AR View tab, never over a
-    // live AR session or another sheet. The short wait lets the screen settle first, so the
-    // sheet does not ride in on the back transition from the sample.
-    val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive && !whatsNewSinceSheet.isShown
+    LaunchedEffect(destination) {
+        when (destination) {
+            DeepLinkRouter.HomeDestination.AR -> {
+                aboutOpen = false
+                releaseSheet.dismiss()
+                sinceSheet.dismiss()
+                query = ""
+                searchOpen = false
+                Telemetry.search.cleared(SearchSurface.Samples)
+                selectSection(HomeSection.AR)
+            }
+            DeepLinkRouter.HomeDestination.About -> {
+                releaseSheet.dismiss()
+                sinceSheet.dismiss()
+                aboutOpen = true
+            }
+            null -> return@LaunchedEffect
+        }
+        onDestinationConsumed()
+    }
+    val screen = if (aboutOpen) "about" else "home"
+    LaunchedEffect(screen) {
+        Telemetry.analytics.log(AnalyticsEvent.ScreenView(screen, "Home"))
+    }
+    DisposableEffect(screen) {
+        CurrentRootScreen.label = if (aboutOpen) "About sheet" else "Home"
+        onDispose { CurrentRootScreen.label = null }
+    }
+    val canAskForSupport = !aboutOpen && !releaseSheet.isShown && !sinceSheet.isShown
     LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
         if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
         delay(SUPPORT_PROMPT_SETTLE_MILLIS)
         SupportPrompt.maybeShow(canShow = true)
     }
     if (SupportPrompt.isShown && canAskForSupport) {
-        SupportSheet(
-            mode = SupportSheetMode.Prompt,
-            onDismiss = SupportPrompt::dismiss,
-            onOptOut = SupportPrompt::optOut,
-        )
+        SupportSheet(SupportSheetMode.Prompt, SupportPrompt::dismiss, SupportPrompt::optOut)
     }
-
-    // Fade-through specs, hoisted: `transitionSpec` is not a composable scope, so it
-    // cannot ask `LocalMotionEnabled` itself.
-    val motionEnabled = LocalMotionEnabled.current
-    val tabExitSpec = remember(motionEnabled) {
-        if (motionEnabled) {
-            tween<Float>(
-                durationMillis = TAB_FADE_OUT_MILLIS,
-                easing = SceneViewTokens.Ease.expressive,
-            )
-        } else {
-            snap()
-        }
-    }
-    val tabEnterSpec = remember(motionEnabled) {
-        if (motionEnabled) {
-            tween<Float>(
-                durationMillis = SceneViewTokens.Duration.mediumMillis - TAB_FADE_OUT_MILLIS,
-                delayMillis = TAB_FADE_OUT_MILLIS,
-                easing = SceneViewTokens.Ease.expressive,
-            )
-        } else {
-            snap()
-        }
-    }
-    // Home and the gallery cross-fade instead (#4622). The gallery is a page of the
-    // Showcase tab, not a peer tab, and the fade-through left a beat where neither
-    // page was drawn: the frame that tears the home's 3D hero down landed in it and
-    // held an empty surface on screen. Cross-fading, the gallery is already opaque
-    // when the home leaves.
-    val galleryFadeSpec = remember(motionEnabled) {
-        if (motionEnabled) {
-            tween<Float>(
-                durationMillis = SceneViewTokens.Duration.mediumMillis,
-                easing = SceneViewTokens.Ease.expressive,
-            )
-        } else {
-            snap()
-        }
-    }
-
-    // Play in-app update: one snackbar that goes "Update available" · Update → "Waiting for
-    // Google Play…" → "Downloading update… 42 %" → "Update ready" · Restart (#3947). It sits
-    // in the Scaffold's snackbar slot, which Scaffold places above the bottom navigation;
-    // it is withdrawn during a live AR session, where the bottom of the screen holds the AR
-    // controls, and comes back when the session ends.
     Scaffold(
-        // A live AR session is immersive: the status bar is hidden, but the display cutout
-        // stays in the default content insets, so the scaffold padded the session down by
-        // 136 px and the window background showed through as a band across the top — white
-        // in light theme (#3991). The session's own DemoScaffold applies `safeDrawing` to its
-        // chrome, so the camera can run edge to edge.
-        contentWindowInsets = if (arSessionActive) {
-            WindowInsets(0, 0, 0, 0)
-        } else {
-            ScaffoldDefaults.contentWindowInsets
-        },
         snackbarHost = {
-            if (updatePrompt != null) {
-                UpdatePromptHost(
-                    controller = updatePrompt,
-                    enabled = !arSessionActive,
-                    modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
-                )
-            }
-        },
-        bottomBar = {
-            // Conditional rendering rather than just `visible = !arSessionActive`
-            // because the bottomBar slot reserves layout space when present —
-            // hiding it via Modifier.alpha or visibility would still steal ~90 px
-            // from the live AR camera viewport (#2238).
-            if (!arSessionActive) {
-                NavigationBar {
-                    RootTab.entries.forEach { tab ->
-                        NavigationBarItem(
-                            selected = selectedTab == tab,
-                            onClick = { selectedTab = tab },
-                            // The badge rides the Showcase tab so a list left
-                            // pending stays visible from every tab, not only
-                            // from the one that hosts its entry point.
-                            icon = {
-                                if (tab == RootTab.Showcase && whatsNewSince.hasUnseen) {
-                                    BadgedBox(badge = { Badge() }) {
-                                        Icon(tab.icon, contentDescription = null)
-                                    }
-                                } else {
-                                    Icon(tab.icon, contentDescription = null)
-                                }
-                            },
-                            label = { Text(stringResource(tab.labelRes)) },
-                        )
-                    }
-                }
+            updatePrompt?.let {
+                UpdatePromptHost(it, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))
             }
         },
     ) { padding ->
-        // Edge to edge at the top: the status-bar band is the tab's own. About draws its
-        // top bar under it (transparent at rest, `surface-container` once content scrolls
-        // beneath); Home and AR View keep it as padding, as they always had. The bottom
-        // stays the Scaffold's — the navigation bar's height, which already includes the
-        // system navigation bar, so nothing below pads for it a second time.
-        val layoutDirection = LocalLayoutDirection.current
-        val statusBand = padding.calculateTopPadding()
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    start = padding.calculateStartPadding(layoutDirection),
-                    end = padding.calculateEndPadding(layoutDirection),
-                    bottom = padding.calculateBottomPadding(),
-                ),
-        ) {
-            // AnimatedContent disposes the screen it leaves, and every `rememberSaveable`
-            // in it — the home list's scroll position among them: back from "Browse
-            // online models" or from another tab, the Home always reopened on its hero.
-            // Each tab (and the gallery) keeps its saved state here instead, for as long
-            // as the tab host lives, process death included.
-            val screenStates = rememberSaveableStateHolder()
-            rootTransition.AnimatedContent(
-                transitionSpec = {
-                    if (initialState.first == targetState.first) {
-                        // Home ↔ gallery, inside the Showcase tab: cross-fade.
-                        fadeIn(galleryFadeSpec) togetherWith
-                            fadeOut(galleryFadeSpec) using SizeTransform(clip = false)
-                    } else {
-                        // Material fade-through: the outgoing surface leaves before the
-                        // incoming one arrives, both shrinking a touch towards the page.
-                        // Not a shared axis — these are peers, and a sideways slide would
-                        // claim a direction the bottom bar does not have. Nothing overlaps
-                        // at full opacity, so the AR tab is never seen through the
-                        // catalogue on its way in.
-                        (
-                            fadeIn(tabEnterSpec) +
-                                scaleIn(tabEnterSpec, initialScale = TAB_FADE_THROUGH_SCALE)
-                            ) togetherWith (
-                            fadeOut(tabExitSpec) +
-                                scaleOut(tabExitSpec, targetScale = TAB_FADE_THROUGH_SCALE)
-                            ) using SizeTransform(clip = false)
-                    }
-                },
-            ) { (tab, gallery) ->
-            screenStates.SaveableStateProvider("${tab.name}-$gallery") {
-            Box(Modifier.padding(top = if (tab == RootTab.About) 0.dp else statusBand)) {
-            when (tab) {
-                RootTab.Showcase -> if (gallery) {
-                    ExploreTabScreen(
-                        onBack = { galleryOpen = false },
-                        enterSettled = transition.currentState == EnterExitState.Visible,
-                        curatedSamples = curatedSamplesForExplore(),
-                        onSampleClick = { sample ->
-                            Telemetry.nextOpenSource = OpenSource.Other
-                            onDemoClick(sample.id)
-                        },
-                    )
-                } else {
-                    HomeScreen(
-                        demos = rememberListedDemos(),
-                        query = query,
-                        onQueryChange = {
-                            if (it.isBlank()) Telemetry.search.cleared(SearchSurface.Samples)
-                            query = it
-                        },
-                        onSearchSettled = { q, count -> Telemetry.search.settled(SearchSurface.Samples, q, count) },
-                        onDemoClick = { id ->
-                            // `sample_open.source`: a tap in filtered results is a search.
-                            Telemetry.nextOpenSource = if (query.isBlank()) OpenSource.Home else OpenSource.Search
-                            onDemoClick(id)
-                        },
-                        onBrowseOnlineClick = { galleryOpen = true },
-                        hasUnseenWhatsNew = whatsNewSince.hasUnseen,
-                        onWhatsNewSinceClick = { whatsNewSinceSheet.open() },
-                    )
-                }
-                RootTab.ArView -> ArViewTabContent(
-                    onDemoClick = { id ->
-                        Telemetry.nextOpenSource = OpenSource.Other
-                        onDemoClick(id)
-                    },
-                    onSessionActiveChange = { arSessionActive = it },
-                )
-                RootTab.About -> AboutTabContent(statusBand = statusBand)
-            }
-            }
-            }
-            }
-        }
-    }
-}
-
-/**
- * @param labelRes localized label shown in the bottom navigation bar.
- * @param reportLabel English name of the tab as it appears in a bug report
- *   (#3390). Deliberately not [labelRes]: issues are read in English whatever
- *   the reporter's device locale, so a localized label would land untranslated
- *   in the tracker.
- */
-/**
- * How much of the fade-through the outgoing tab owns: `motion-fade-through`'s out half,
- * shared with the container transform so the two never drift apart.
- */
-private const val TAB_FADE_OUT_MILLIS = SceneViewTokens.Motion.fadeThroughOutMillis
-
-/** Scale a fading tab starts from / ends at — a hint of depth, never a zoom. */
-private const val TAB_FADE_THROUGH_SCALE = 0.96f
-
-enum class RootTab(
-    @StringRes val labelRes: Int,
-    val icon: ImageVector,
-    val reportLabel: String,
-    /** `screen_view.screen_name` — shared with the iOS demo. */
-    val analyticsName: String,
-) {
-    Showcase(R.string.tab_showcase, Icons.Filled.GridView, "Showcase tab", "home"),
-    ArView(R.string.tab_ar_view, Icons.Filled.ViewInAr, "AR View tab", "ar_view"),
-    About(R.string.tab_about, Icons.Filled.Info, "About tab", "about"),
-}
-
-/**
- * Curated subset of [ALL_DEMOS] surfaced in the gallery's "Try a sample" carousel.
- * Hand-picked across categories so the carousel feels diverse on first
- * launch — same intent as the iOS `featuredModels` list.
- */
-private fun curatedSamplesForExplore(): List<DemoEntry> {
-    val ids = listOf(
-        "model-viewer",
-        "geometry",
-        "lighting",
-        "ar-placement",
-        // #2239 Batch 5 — `multi-model` consolidated into `model-viewer` (already
-        // first in this list). Repointed to the live `materials` umbrella so the
-        // carousel keeps its 6-card diversity rather than silently shrinking when
-        // a retired id is dropped by `mapNotNull` (the Batch 3 footgun).
-        "materials",
-        // #2239 Batch 3 — `animation` consolidated into `animation-physics`.
-        "animation-physics",
-    )
-    return ids.mapNotNull { id -> ALL_DEMOS.firstOrNull { it.id == id } }
-}
-
-/**
- * About tab.
- *
- * Rebuilt from scratch for #3564. What it replaced: eight identical cards in a
- * column — a hero slab plus seven `AboutInfoCard` rows that gave a statement of
- * fact ("Open Source", not even tappable) exactly the weight of the one thing the
- * screen is for. Everything was emphasised, so nothing was.
- *
- * The shape now, taken from the About/Settings screens of Sketchfab, Polycam and
- * Reality Composer: a quiet identity block on the page background, then **one**
- * emphasised surface, then titled groups of plain rows. The emphasised surface is
- * the support card (#3565), placed directly under the identity so it is read
- * without scrolling — and nowhere else in the app, because "non-intrusive" means
- * one card seen once, never a dialog, a launch nag or a badge.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AboutTabContent(statusBand: Dp = 0.dp) {
-    val context = LocalContext.current
-    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
-    if (showSupportSheet) {
-        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showSupportSheet = false })
-    }
-    val noBrowserMessage = stringResource(R.string.about_no_browser)
-    val openLink: (String) -> Unit = { url ->
-        logOutboundLink(url)
-        // Devices without a browser (Android Go, stripped AOSP, uninstalled Chrome)
-        // throw ActivityNotFoundException → the app crashes. #1208
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }.onFailure {
-            android.widget.Toast.makeText(
-                context,
-                noBrowserMessage.format(url),
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
-        }
-    }
-    // The Play Store app first — it opens on the listing with no chooser — then the same
-    // listing through `openLink`, which carries the no-browser fallback. Logged once either
-    // way, as a `store` outbound link like every other one on this screen.
-    val openStoreListing: (String) -> Unit = { packageName ->
-        val marketUrl = "market://details?id=$packageName"
-        val opened = runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(marketUrl)))
-        }.isSuccess
-        if (opened) {
-            logOutboundLink(marketUrl)
-        } else {
-            openLink("https://play.google.com/store/apps/details?id=$packageName")
-        }
-    }
-    // #1152 Stage 3 — CC-BY attribution for every streamed Sketchfab model.
-    var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
-    if (showCreditsSheet) {
-        CreditsSheet(onDismiss = { showCreditsSheet = false })
-    }
-
-    val topBarScroll = TopAppBarDefaults.pinnedScrollBehavior()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(topBarScroll.nestedScrollConnection),
-    ) {
-    ScrollAwareTopBar(
-        title = stringResource(R.string.tab_about),
-        scrollBehavior = topBarScroll,
-        windowInsets = WindowInsets(top = statusBand),
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(
-                start = SceneViewTokens.Space.md,
-                end = SceneViewTokens.Space.md,
-                top = SceneViewTokens.Space.sm,
-                bottom = LIST_BOTTOM_GUTTER,
-            ),
-        // `space-xl` between blocks, `space-sm` between a group label and its card:
-        // the label has to belong to the card under it, not float between two of them.
-        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xl),
-    ) {
-        AboutIdentity()
-        AboutSupportCard(onSupportInApp = { showSupportSheet = true })
-        AboutGroup(title = stringResource(R.string.about_group_more_apps)) {
-            MORE_APPS.forEachIndexed { index, app ->
-                if (index > 0) AboutRowDivider(startInset = SceneViewTokens.About.appDividerInset)
-                AboutAppRow(app = app, onClick = { openStoreListing(app.packageName) })
-            }
-        }
-        AboutGroup(title = stringResource(R.string.about_group_learn)) {
-            AboutActionRow(
-                icon = Icons.Outlined.MenuBook,
-                title = stringResource(R.string.about_card_docs_title),
-                onClick = { openLink("https://sceneview.github.io") },
-            )
-            AboutRowDivider()
-            AboutActionRow(
-                icon = Icons.Outlined.PlayCircleOutline,
-                title = stringResource(R.string.about_card_playground_title),
-                onClick = { openLink("https://sceneview.github.io/playground.html") },
-            )
-            AboutRowDivider()
-            AboutActionRow(
-                icon = Icons.Outlined.Code,
-                title = stringResource(R.string.about_source_title),
-                onClick = { openLink("https://github.com/sceneview/sceneview") },
-            )
-        }
-        AboutGroup(title = stringResource(R.string.about_group_app)) {
-            if (rememberHdPackStore() != null) {
-                HdPackSettingsRow()
-                AboutRowDivider()
-            }
-            AboutActionRow(
-                icon = Icons.Outlined.BugReport,
-                title = stringResource(R.string.about_card_feedback_title),
-                external = false,
-                onClick = { FeedbackOpenRequest.request() },
-            )
-            AboutRowDivider()
-            AboutActionRow(
-                icon = Icons.Outlined.History,
-                title = stringResource(R.string.about_release_notes),
-                onClick = { openLink("https://github.com/sceneview/sceneview/releases") },
-            )
-        }
-        // Only in a build that carries a Firebase config: without one there is nothing to
-        // collect and no push can arrive, so a switch would promise something false.
-        if (Telemetry.firebaseAvailable) {
-            AboutGroup(title = stringResource(R.string.about_group_privacy)) {
-                UsageStatisticsSettingsRow()
-                AboutRowDivider()
-                NotificationsSettingsRow()
-            }
-        }
-        AboutGroup(title = stringResource(R.string.about_group_legal)) {
-            AboutActionRow(
-                icon = Icons.Outlined.Description,
-                title = stringResource(R.string.about_license_title),
-                onClick = { openLink("https://github.com/sceneview/sceneview/blob/main/LICENSE") },
-            )
-            AboutRowDivider()
-            AboutActionRow(
-                icon = Icons.Outlined.Groups,
-                title = stringResource(R.string.about_credits_attribution),
-                external = false,
-                onClick = { showCreditsSheet = true },
-            )
-        }
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-        ) {
-            Text(
-                text = stringResource(R.string.about_footer),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = stringResource(R.string.about_author_positioning),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = stringResource(R.string.about_built_with),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-    }
-}
-
-/**
- * Identity block — the mark, the name, the installed version, one sentence.
- *
- * Deliberately **not** a card. A slab here would be a second emphasised surface
- * competing with the support card directly below it, which is the mistake the old
- * screen made; on the page background the block reads as a masthead instead.
- */
-@Composable
-private fun AboutIdentity() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-    ) {
-        Image(
-            // The launcher icon itself (#3563), not a Material glyph on a gradient —
-            // and not `Icons.Filled.ViewInAr`, which is already the AR View tab's icon.
-            painter = painterResource(R.drawable.ic_sceneview_hero),
-            contentDescription = null,
-            modifier = Modifier
-                .size(SceneViewTokens.About.markSize)
-                .clip(RoundedCornerShape(SceneViewTokens.Radius.xl)),
-        )
-        Text(
-            text = stringResource(R.string.about_sceneview),
-            style = SceneViewTokens.Type.title,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            // Version only. The licence has its own row in the Legal group; naming it
-            // twice on one screen is the redundancy this redesign removes.
-            text = stringResource(R.string.about_identity_version, BuildConfig.VERSION_NAME),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = stringResource(R.string.about_identity_tagline),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-/**
- * The one emphasised surface on the screen (#3565).
- *
- * One button, into the Support sheet: three amounts, one tap each into Google Play, the
- * fastest way to give from a phone. Google Play's policy keeps external donation links away
- * from an in-app purchase, so Open Collective appears only inside the sheet, and only when
- * Play can't take the gift. No urgency copy and nothing about revenue: the card states what
- * funding buys and stops.
- */
-@Composable
-private fun AboutSupportCard(onSupportInApp: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(SceneViewTokens.Radius.lg),
-        // `secondaryContainer`, not `primaryContainer`: the primary container is
-        // #00448D in the dark scheme — a saturated blue slab that reads as a banner
-        // ad, which is the opposite of "non-intrusive" (#3565). The secondary
-        // container is calm in both themes and still the only tinted surface here,
-        // so the card stays the one thing the eye lands on after the mark.
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Column(
-            modifier = Modifier.padding(SceneViewTokens.Space.md),
-            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.FavoriteBorder,
-                    contentDescription = null,
-                    modifier = Modifier.size(SceneViewTokens.About.rowIcon),
-                )
-                Text(
-                    text = stringResource(R.string.about_support_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.semantics { heading() },
-                )
-            }
-            Text(
-                text = stringResource(R.string.about_support_description),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Button(
-                onClick = onSupportInApp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = SceneViewTokens.Layout.touchTarget),
-                shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-            ) {
-                Text(
-                    text = stringResource(R.string.about_support_in_app),
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-/**
- * A titled group of rows, drawn as one `surfaceContainer` card with inset hairlines
- * between its children — so the rows read as a list with a shape, and the label
- * belongs to the card under it rather than floating between two of them.
- */
-@Composable
-private fun AboutGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = title,
-            modifier = Modifier
-                .padding(
-                    start = SceneViewTokens.Space.md,
-                    bottom = SceneViewTokens.Space.sm,
-                )
-                .semantics { heading() },
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-        ) {
-            Column(content = content)
-        }
-    }
-}
-
-/** Hairline between two rows of an [AboutGroup], inset past the leading glyph. */
-@Composable
-private fun AboutRowDivider(startInset: Dp = SceneViewTokens.About.dividerInset) {
-    HorizontalDivider(
-        modifier = Modifier.padding(start = startInset),
-        color = MaterialTheme.colorScheme.outlineVariant,
-    )
-}
-
-/**
- * One tappable row. [external] picks the affordance, which is the row's only
- * promise about what a tap does: open-in-new leaves the app for a browser, a
- * chevron stays inside it (the feedback flow, the credits sheet).
- */
-@Composable
-private fun AboutActionRow(
-    icon: ImageVector,
-    title: String,
-    external: Boolean = true,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
-            .heightIn(min = SceneViewTokens.Layout.touchTarget)
-            .padding(
-                horizontal = SceneViewTokens.Space.md,
-                vertical = SceneViewTokens.Space.sm,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
-    ) {
-        Icon(
-            imageVector = icon,
-            // Decorative: the row merges its children, so the title below is already
-            // the accessible name. A description here would read it twice.
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(SceneViewTokens.About.rowIcon),
-        )
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Icon(
-            imageVector = if (external) {
-                Icons.AutoMirrored.Outlined.OpenInNew
-            } else {
-                Icons.AutoMirrored.Outlined.KeyboardArrowRight
+        HomeScreen(
+            demos = ALL_DEMOS,
+            query = query,
+            onQueryChange = {
+                if (it.isBlank()) Telemetry.search.cleared(SearchSurface.Samples)
+                query = it
             },
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline,
-            // The chevron is a thinner glyph than open-in-new, so it is drawn a step
-            // larger: matched boxes would read as two different icon sets in one column.
-            modifier = Modifier.size(
-                if (external) SceneViewTokens.About.rowAffordance else SceneViewTokens.About.rowIcon,
-            ),
+            selectedSection = section,
+            onSectionSelected = ::selectSection,
+            onDemoClick = {
+                Telemetry.nextOpenSource = if (query.isBlank()) OpenSource.Home else OpenSource.Search
+                onDemoClick(it)
+            },
+            onSearchSettled = { q, count -> Telemetry.search.settled(SearchSurface.Samples, q, count) },
+            hasUnseenWhatsNew = whatsNewSince.hasUnseen,
+            onAboutClick = { aboutOpen = true },
+            searchOpen = searchOpen,
+            onSearchOpenChange = { searchOpen = it },
+            modifier = Modifier.padding(padding),
+        )
+    }
+    if (aboutOpen && releaseSheet.phase == ReturningSheetState.Phase.Closed &&
+        sinceSheet.phase == ReturningSheetState.Phase.Closed) {
+        AboutSheet(
+            onDismiss = { aboutOpen = false },
+            onWhatsNew = { if (whatsNewSince.hasUnseen) sinceSheet.open() else releaseSheet.open() },
+        )
+    }
+    if (sinceSheet.isShown) {
+        WhatsNewSinceSheet(
+            sections = whatsNewSince.unseen,
+            seenVersion = whatsNewSince.seenVersion,
+            onDemoClick = {
+                sinceSheet.leaveForSample()
+                Telemetry.nextOpenSource = OpenSource.Other
+                onDemoClick(it)
+            },
+            onMarkSeen = { whatsNewSince.markSeen(); sinceSheet.dismiss() },
+            onDismiss = sinceSheet::dismiss,
+        )
+    }
+    if (releaseSheet.isShown) {
+        WhatsNewSheet(
+            releases = releases.orEmpty(),
+            inReviewDemos = freshDemos(ALL_DEMOS, BuildConfig.VERSION_NAME),
+            onDemoClick = {
+                releaseSheet.leaveForSample()
+                Telemetry.nextOpenSource = OpenSource.Other
+                onDemoClick(it)
+            },
+            onDismiss = releaseSheet::dismiss,
         )
     }
 }
 
-/**
- * Another published app built with SceneView, as one row of the "More apps" group.
- *
- * [packageName] is the whole link: the row opens that package's Google Play listing.
- */
-private data class MoreApp(
-    val packageName: String,
-    @DrawableRes val icon: Int,
-    @StringRes val name: Int,
-    @StringRes val description: Int,
-)
-
-/**
- * The maintainer's other apps on Google Play, both built on this SDK. Each [MoreApp.icon]
- * is that app's own launcher icon, taken from its listing — never a stand-in glyph.
- */
-private val MORE_APPS = listOf(
-    MoreApp(
-        packageName = "com.gorisse.thomas.arcamera",
-        icon = R.drawable.about_app_ar_model_viewer,
-        name = R.string.about_app_ar_model_viewer_name,
-        description = R.string.about_app_ar_model_viewer_description,
-    ),
-    MoreApp(
-        packageName = "com.gorisse.thomas.willitfit",
-        icon = R.drawable.about_app_will_it_fit,
-        name = R.string.about_app_will_it_fit_name,
-        description = R.string.about_app_will_it_fit_description,
-    ),
-)
-
-/**
- * One app of the "More apps" group: its launcher icon, its name, one line on what it
- * does, and the same open-in-new affordance as every row that leaves the app.
- *
- * It lives in a plain [AboutGroup] on purpose. The support card is the one emphasised
- * surface of the screen (#3565); a second tinted card for these would compete with it,
- * so the only colour here is the icons themselves. No price, no badge, no "new".
- */
-@Composable
-private fun AboutAppRow(app: MoreApp, onClick: () -> Unit) {
-    val iconShape = RoundedCornerShape(SceneViewTokens.Radius.xs)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(
-                role = Role.Button,
-                onClickLabel = stringResource(R.string.about_more_apps_open),
-                onClick = onClick,
-            )
-            .heightIn(min = SceneViewTokens.Layout.touchTarget)
-            // `space-md` on all four sides, where an action row takes `space-sm`
-            // vertically: this row is three lines of text, and at 8 dp the name sits
-            // against the card's rounded corner.
-            .padding(SceneViewTokens.Space.md),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
-    ) {
-        Image(
-            painter = painterResource(app.icon),
-            // Decorative for the same reason as an action row's glyph: the name beside
-            // it is already the row's accessible name.
-            contentDescription = null,
-            modifier = Modifier
-                .size(SceneViewTokens.About.appIcon)
-                // Both icons are dark tiles; on the dark `surface-container` their edge
-                // is a tonal step too small to read, so a hairline draws it. Around the
-                // icon, not over it: painted on top, the light-theme hairline is a pale
-                // ring eating into a dark picture.
-                .border(
-                    width = SceneViewTokens.Layout.hairlineWidth,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    shape = iconShape,
-                )
-                .padding(SceneViewTokens.Layout.hairlineWidth)
-                .clip(iconShape),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(app.name),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(app.description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Icon(
-            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.size(SceneViewTokens.About.rowAffordance),
-        )
-    }
-}
-
-/** How long the tab host settles before the Support interstitial may rise. */
 private const val SUPPORT_PROMPT_SETTLE_MILLIS = 900L

@@ -314,7 +314,7 @@ class DemoFreshnessTest {
         // lower bound ("the registry marks something") turned such a bump PR red
         // inside the release run, after the QA gate, and was only ever fixed by
         // hand-adding an `updatedIn` nobody had earned.
-        val phoneDemos = listedDemos(ALL_DEMOS, xrDevice = false)
+        val phoneDemos = ALL_DEMOS
         val marked = freshDemos(phoneDemos, BuildConfig.VERSION_NAME)
         assertTrue(
             "${marked.size} of ${phoneDemos.size} phone demos are marked — " +

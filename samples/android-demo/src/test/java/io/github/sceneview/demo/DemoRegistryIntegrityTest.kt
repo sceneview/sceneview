@@ -7,11 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
-import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
-import io.github.sceneview.demo.ui.home.FEATURED_IDS
-import io.github.sceneview.demo.ui.home.FEATURED_PAGER_IDS
-import io.github.sceneview.demo.ui.home.HERO_DEMO_ID
-import io.github.sceneview.demo.ui.home.homeTopSections
 
 /**
  * Pure-JVM integrity tests for the demo registry ([ALL_DEMOS]).
@@ -161,163 +156,6 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `every category holds at least one demo`() {
-        // Since #2239 a category is a SECTION HEADER on the home grid, not only a
-        // filter chip. An empty category therefore no longer fails quietly — it
-        // would draw a header with nothing under it. The old form of this test
-        // exempted the AR category; there is no reason to, and with AR now split
-        // across four categories the exemption would hide exactly the mistake it
-        // was written to catch.
-        val populated = ALL_DEMOS.map { it.category }.toSet()
-        for (category in DEMO_CATEGORIES) {
-            assertTrue(
-                "Category '$category' has no demos — it would draw an empty section " +
-                    "header, or a fragment failed to collate",
-                category in populated,
-            )
-        }
-    }
-
-    @Test
-    fun `each category occupies one contiguous run of the editorial order`() {
-        // The home grid draws a section header by watching for "the category
-        // changed" as it walks ALL_DEMOS (HomeScreen.kt). That is only correct
-        // while a category's demos are contiguous: an `order` that sends one AR
-        // Placement demo down among the Platform ones would draw the AR Placement
-        // header twice and split the section in two.
-        val runs = mutableListOf<String>()
-        for (demo in ALL_DEMOS) {
-            if (runs.lastOrNull() != demo.category) runs += demo.category
-        }
-        val split = runs.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
-        assertTrue(
-            "Categories are split across the editorial order and would draw a " +
-                "duplicate section header: $split",
-            split.isEmpty(),
-        )
-    }
-
-    @Test
-    fun `categories run in DEMO_CATEGORIES order`() {
-        // DEMO_CATEGORIES is the chip-row order; the grid's section order comes
-        // from `order`. If the two disagree, tapping the third chip scrolls to the
-        // fifth section — the catalogue would be structured differently depending
-        // on which control you used.
-        val gridOrder = ALL_DEMOS.map { it.category }.distinct()
-        assertEquals(
-            "Section order on the grid must match DEMO_CATEGORIES",
-            DEMO_CATEGORIES.filter { it in gridOrder.toSet() },
-            gridOrder,
-        )
-    }
-
-    @Test
-    fun `every category has a filter chip`() {
-        // A category with no chip is unreachable by filter; a chip for a category
-        // with no demos filters to an empty grid. Both are #2239 regressions the
-        // 9-category split made easy to introduce.
-        assertEquals(
-            "CHIP_CATEGORIES must cover exactly DEMO_CATEGORIES, in the same order",
-            DEMO_CATEGORIES,
-            CHIP_CATEGORY_KEYS,
-        )
-    }
-
-    @Test
-    fun `the featured lists name registered demos, once each, in the common Featured order`() {
-        // The pager and the shelf under it are the home's priority lists. A renamed id
-        // would drop a page or a card silently (both skip what they cannot resolve) and
-        // a repeat would collide on its key.
-        val ids = ALL_DEMOS.map { it.id }.toSet()
-        val unknown = (FEATURED_IDS + FEATURED_PAGER_IDS).filterNot { it in ids }
-        assertTrue("Featured lists name unregistered ids: $unknown", unknown.isEmpty())
-        assertEquals(
-            "The featured pager lists a demo twice",
-            FEATURED_PAGER_IDS.size,
-            FEATURED_PAGER_IDS.toSet().size,
-        )
-        assertEquals("The hero demo opens the pager", HERO_DEMO_ID, FEATURED_PAGER_IDS.first())
-        // The common Featured list of the samples audit (§ 5), the same five ids as iOS.
-        assertEquals(
-            "The Featured list drifted from the one iOS shows",
-            listOf("ar-rerun", "cosmos", "ar-placement", "model-viewer", "materials"),
-            FEATURED_IDS,
-        )
-        // What the pager pages through never comes back as a banner (#4304), the hero
-        // first of all.
-        val shelf = homeTopSections(FEATURED_PAGER_IDS, FEATURED_IDS, fresh = emptyList()).featured
-        assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in shelf)
-        assertTrue(
-            "A featured pager page repeats as a Featured banner",
-            shelf.none { it in FEATURED_PAGER_IDS },
-        )
-        // The banners are the card the Home is liked for: the pager stays short enough to
-        // leave some.
-        assertEquals(
-            "The Featured banners under the pager",
-            listOf("ar-rerun", "ar-placement", "materials"),
-            shelf,
-        )
-    }
-
-    @Test
-    fun `every listed demo appears in exactly one category of the unfiltered catalogue`() {
-        for (xrDevice in listOf(false, true)) {
-            val listed = listedDemos(ALL_DEMOS, xrDevice)
-            val top = homeTopSections(FEATURED_PAGER_IDS, FEATURED_IDS, fresh = emptyList())
-            val catalogue = top.catalogue(listed.map { it.id }, filtered = false)
-            val categories = DEMO_CATEGORIES.associateWith { category ->
-                catalogue.filter { id -> listed.single { it.id == id }.category == category }
-            }
-            assertEquals(listed.map { it.id }, categories.values.flatten())
-            assertEquals(
-                listed.associate { it.id to 1 },
-                categories.values.flatten().groupingBy { it }.eachCount(),
-            )
-        }
-    }
-
-    @Test
-    fun `a featured demo is also in its permanent catalogue category`() {
-        val listed = listedDemos(ALL_DEMOS, xrDevice = false)
-        val top = homeTopSections(FEATURED_PAGER_IDS, FEATURED_IDS, fresh = emptyList())
-        val catalogue = top.catalogue(listed.map { it.id }, filtered = false)
-        for (id in top.featured) {
-            val demo = listed.single { it.id == id }
-            val categoryIds = catalogue.filter { entry -> listed.single { it.id == entry }.category == demo.category }
-            assertEquals("$id must still appear once under ${demo.category}", 1, categoryIds.count { it == id })
-        }
-        assertEquals(DemoCategory.CREATE, listed.single { it.id == "materials" }.category)
-        assertEquals(DemoCategory.PLAY, listed.single { it.id == "cosmos" }.category)
-    }
-
-    @Test
-    fun `the catalogue follows the six-section discovery tree`() {
-        val expected = linkedMapOf(
-            DemoCategory.VIEW_3D to listOf(
-                "model-viewer", "animation-physics", "camera-path", "camera-gestures", "picking-collision", "splat-preview",
-            ),
-            DemoCategory.CREATE to listOf(
-                "materials", "lighting", "contact-shadow-preview", "custom-geometry", "geometry",
-                "lines-paths", "spatial-audio", "two-d-in-three-d",
-            ),
-            DemoCategory.PLAY to listOf("matter", "cosmos", "rolling-balls", "finger-drawing"),
-            DemoCategory.PLACE_AR to listOf("ar-placement", "ar-orbital", "ar-pool", "ar-image"),
-            DemoCategory.UNDERSTAND to listOf(
-                "ar-rerun", "ar-splat-room", "ar-measure", "ar-depth-occlusion", "ar-people-occlusion",
-                "ar-face", "ar-body-tracker", "point-and-ask", "ar-scene-semantics", "ar-depth-of-field",
-            ),
-            DemoCategory.DEV_TOOLS to listOf(
-                "model-thumbnails", "debug-overlay", "ar-plane-node", "ar-surfaces", "ar-depth-visualization",
-                "ar-point-cloud", "ar-raw-depth-point-cloud", "ar-image-stabilization", "ar-cloud-anchor",
-                "ar-geospatial-anchors", "ar-ml-object-label", "ar-xr",
-            ),
-        )
-        assertEquals(expected.keys.toList(), DEMO_CATEGORIES)
-        assertEquals(expected, ALL_DEMOS.groupBy { it.category }.mapValues { (_, demos) -> demos.map { it.id } })
-    }
-
-    @Test
     fun `AR diagnostics retain their camera routing in Developer tools`() {
         val expected = setOf(
             "ar-plane-node", "ar-surfaces", "ar-depth-visualization", "ar-point-cloud",
@@ -332,8 +170,7 @@ class DemoRegistryIntegrityTest {
 
     @Test
     fun `every demo order is unique`() {
-        // `order` is the home-grid position; two demos sharing one would make
-        // the grid order depend on collator internals.
+        // Registry order also ranks search results; ties would depend on collator internals.
         val duplicates = ALL_DEMOS.map { it.order }
             .groupingBy { it }.eachCount().filterValues { it > 1 }.keys
         assertTrue("Demos share an editorial order: $duplicates", duplicates.isEmpty())
@@ -341,9 +178,7 @@ class DemoRegistryIntegrityTest {
 
     @Test
     fun `registry is already in editorial order`() {
-        // The collator sorts on `order` so HomeScreen renders ALL_DEMOS flat,
-        // with no re-sort. If this breaks, the home grid silently falls back to
-        // whatever order the fragments were discovered in.
+        // Keep the collator output deterministic independently of home section order.
         assertEquals(
             "ALL_DEMOS must be sorted by DemoEntry.order",
             ALL_DEMOS.sortedBy { it.order }.map { it.id },

@@ -104,7 +104,7 @@ fun DemoMediaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     freshness: DemoFreshness = DemoFreshness.None,
-    /** Where the picture is anchored when it is cropped — see [FEATURED_MEDIA_ALIGNMENT]. */
+    /** Where the picture is anchored when it is cropped. */
     mediaAlignment: Alignment = Alignment.Center,
     /**
      * The demos laid out beside this one — its grid row. Their

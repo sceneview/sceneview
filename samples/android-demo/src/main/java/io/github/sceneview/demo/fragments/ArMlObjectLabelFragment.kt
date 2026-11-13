@@ -9,13 +9,7 @@ import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.ARMLObjectLabelDemo
 
-/**
- * Append-only fragment for the `ar-ml-object-label` demo. See [DemoFragment].
- *
- * No catalogue card since the AR catalogue clean-up (wave 1, #4608): the id is in
- * [io.github.sceneview.demo.FALLBACK_ONLY_DEMO_IDS]. It stays registered because it is Point &
- * Ask's on-device fallback on phones without Google AICore (#2648), opened by deep link.
- */
+/** Point & Ask's on-device fallback, also listed in Tools. */
 object ArMlObjectLabelFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-ml-object-label",

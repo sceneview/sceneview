@@ -2,25 +2,20 @@
 
 package io.github.sceneview.demo.whatsnew
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +29,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.ui.ExpandableColumn
@@ -42,106 +36,9 @@ import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.IN_REVIEW_BADGE_VISIBLE
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
-import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.sample.ui.demoCategoryAccent
 
-/**
- * The "What's new" surface — a card at the head of the Samples grid plus the
- * modal sheet it opens. Everything rendered here is *derived*: releases come
- * from the bundled `CHANGELOG.md` (see [loadWhatsNew]) and the "try these"
- * demos are whatever the registry currently flags [io.github.sceneview.demo.DemoStatus.InReview].
- * Nothing on this screen is hand-maintained.
- *
- * Layout contract: the card is an ordinary item *inside* the Samples
- * `LazyVerticalGrid` — a sibling of the demo cards that scrolls away with
- * them. Nothing here floats over the list (that class of bug — a chip masking
- * grid content at rest — is what #2194/#2358 spent two rounds fixing). The
- * detail view is a [ModalBottomSheet], the same pattern as `CreditsSheet`.
- *
- * All colors are `MaterialTheme.colorScheme` tokens, so light/dark both come
- * from the theme (DESIGN.md: never hardcode colors).
- */
-@Composable
-fun WhatsNewCard(
-    latest: WhatsNewRelease,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
-        // Same hairline the demo cards carry — in dark mode `surfaceContainer`
-        // bleeds into the particle backdrop without it (#1443).
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                        shape = RoundedCornerShape(12.dp),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.whats_new_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = latest.title
-                        ?: stringResource(R.string.whats_new_card_subtitle_fallback),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    lineHeight = 16.sp,
-                )
-            }
-            VersionPill(version = latest.version)
-        }
-    }
-}
-
-@Composable
-private fun VersionPill(version: String) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Text(
-            text = stringResource(R.string.whats_new_release_version, version),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-        )
-    }
-}
-
-/**
- * Modal sheet listing the latest releases' highlights, newest first, plus a
- * tappable "new in this build" row for every demo the registry flags as
- * [io.github.sceneview.demo.DemoStatus.InReview].
- */
+/** Release notes, reached from the single entry in About. */
 @Composable
 fun WhatsNewSheet(
     releases: List<WhatsNewRelease>,
@@ -352,37 +249,4 @@ private fun categoryLabelRes(category: WhatsNewCategory) = when (category) {
     WhatsNewCategory.Changed -> R.string.whats_new_category_changed
     WhatsNewCategory.Performance -> R.string.whats_new_category_performance
     WhatsNewCategory.Removed -> R.string.whats_new_category_removed
-}
-
-// ── Previews — fixed sample data, light and dark ─────────────────────────
-
-private val previewRelease = WhatsNewRelease(
-    version = "4.30.0",
-    date = "2026-08-12",
-    title = "Cached Filament handles that stop lying, and AR depth occlusion that occludes",
-    highlights = listOf(
-        WhatsNewHighlight(WhatsNewCategory.Added, "Engine.destroyLight / Engine.safeDestroyLight"),
-        WhatsNewHighlight(WhatsNewCategory.Fixed, "Depth occlusion had no visible effect at all", 1617),
-        WhatsNewHighlight(WhatsNewCategory.Fixed, "A resized node now picks at the size it renders at", 3194),
-    ),
-)
-
-@Preview(showBackground = true, name = "WhatsNewCard - Light")
-@Composable
-private fun WhatsNewCardPreview() {
-    SceneViewDemoTheme(dynamicColor = false) {
-        Surface { WhatsNewCard(latest = previewRelease, onClick = {}) }
-    }
-}
-
-@Preview(
-    showBackground = true,
-    name = "WhatsNewCard - Dark",
-    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-private fun WhatsNewCardDarkPreview() {
-    SceneViewDemoTheme(dynamicColor = false) {
-        Surface { WhatsNewCard(latest = previewRelease, onClick = {}) }
-    }
 }

@@ -1,48 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Showcase (home) tab chrome — `ui/home/*`. Demo titles and subtitles live
-     in `strings_demo_<id>.xml`; only the home screen's own strings are here. -->
 <resources>
-    <string name="tab_showcase">Showcase</string>
-
-    <!-- Header -->
-    <string name="home_search">Search demos</string>
     <string name="home_search_placeholder">Search demos</string>
     <string name="home_search_close">Close search</string>
-    <string name="home_whats_new">What\'s new</string>
 
-    <!-- Hero — routes to demo/model-viewer -->
-    <string name="home_hero_open">Open</string>
-    <!-- Featured pager, "What's new" page (#3566 / #3567). The title takes a
-         major.minor such as "4.35"; the subtitle takes the number of samples
-         currently carrying a New/Updated marker. -->
-    <string name="home_featured_whats_new_title">New in %1$s</string>
-    <string name="home_featured_whats_new_action">See what changed</string>
-    <plurals name="home_featured_whats_new_subtitle">
-        <item quantity="one">%1$d sample is new or updated \u2014 tap to see which</item>
-        <item quantity="other">%1$d samples are new or updated \u2014 tap to see which</item>
-    </plurals>
-
-    <!-- Section chips (short labels). One per DemoCategory key; a tap scrolls the
-         catalogue to that section, whose header carries the long form. -->
-
-    <!-- Grid -->
-    <!-- Header of the shelf right under the hero: the samples we push, in priority order. -->
-    <string name="home_section_featured">Featured</string>
     <string name="home_browse_title">Browse online models</string>
-    <string name="home_browse_subtitle">Discover models from online collections</string>
-    <!-- The row under the hero that opens the "What's new" sheet. %1$d is the number of
-         samples marked New or Updated, %2$s the oldest release still marked ("4.49"). -->
-    <string name="home_whats_new_title">What\'s new</string>
-    <plurals name="home_whats_new_subtitle">
-        <item quantity="one">%1$d new or updated since %2$s</item>
-        <item quantity="other">%1$d new or updated since %2$s</item>
-    </plurals>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>
     <string name="home_clear">Clear</string>
-    <string name="category_short_play">Play &amp; feel</string>
-    <string name="category_short_view_3d">Models &amp; cameras</string>
-    <string name="category_short_place_ar">Place in AR</string>
-    <string name="category_short_dev_tools">Dev tools</string>
-    <string name="category_short_create">Materials &amp; scenes</string>
-    <string name="category_short_understand">Scan &amp; understand</string>
 </resources>

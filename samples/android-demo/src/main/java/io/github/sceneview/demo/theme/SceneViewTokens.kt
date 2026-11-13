@@ -280,24 +280,8 @@ object SceneViewTokens {
         val caption = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
     }
 
-    /**
-     * Home screen colours that are NOT Material roles (design spec §2).
-     *
-     * The hero is an image card that stays dark in both themes, so its text and
-     * pill are fixed: `hero-title #FFFFFF`, `hero-subtitle rgba(255,255,255,0.80)`,
-     * `hero-pill-bg #FFFFFF`, `hero-pill-text #1A1A2E`. Filter chips follow
-     * `DESIGN.md` surfaces rather than the M3 ramp, which is why they carry
-     * explicit light/dark pairs: unselected `chip-bg` = `surface-dim`
-     * (#F1F3F5 / #161B22) with `chip-text` = `on-surface-dim` (#3D4654 / #9CA3AF);
-     * selected `chip-selected-bg` = `on-surface` (#1A1A2E / #F3F4F6) with
-     * `chip-selected-text` = `surface` (#FFFFFF / #0D1117). `header-overlay` is
-     * `surface` at 94 %.
-     */
+    /** Legacy gallery-card colours; the home uses Material colour roles directly. */
     object HomeColor {
-        val heroTitle = Color(0xFFFFFFFF)
-        val heroSubtitle = Color(0xCCFFFFFF)
-        val heroPillBackground = Color(0xFFFFFFFF)
-        val heroPillText = Color(0xFF1A1A2E)
         /**
          * Hero placeholder / stage field, `#0B0F16` — matches the viewer stage clear
          * colour. This is the **light** and full-screen value; see
@@ -316,18 +300,6 @@ object SceneViewTokens {
          */
         val heroFieldEmbeddedDark = Color(0xFF232A39)
 
-        /**
-         * `hero-sky-*` — the night Compose paints behind the transparent home stage
-         * (#3948), top to bottom: what shows until the night circuit's own sky dome has
-         * landed, and on a device that shows the still. One gradient in both themes:
-         * [heroSkyTop] is the `stage-background` value, [heroSkyHorizon] is the scene's
-         * haze (its fog colour, in sRGB), so the dome lands on the colour already there.
-         */
-        val heroSkyTop = Color(0xFF0B0F16)
-        val heroSkyDusk = Color(0xFF161C2C)
-        val heroSkyHorizon = Color(0xFF3F4D65)
-        val heroSkyGround = Color(0xFF1D2230)
-
         val chipBackgroundLight = Color(0xFFF1F3F5)
         /**
          * Tracks `surfaceContainerHigh`: a chip is a container and has to read as one.
@@ -336,22 +308,6 @@ object SceneViewTokens {
          * the dark end it is not. 1.54:1 now.
          */
         val chipBackgroundDark = Color(0xFF2C3546)
-        val chipTextLight = Color(0xFF3D4654)
-        /** Tracks `onSurfaceVariant`; 5.33:1 on the chip background above. */
-        val chipTextDark = Color(0xFFA4ABB7)
-        val chipSelectedBackgroundLight = Color(0xFF1A1A2E)
-        val chipSelectedBackgroundDark = Color(0xFFF3F4F6)
-        val chipSelectedTextLight = Color(0xFFFFFFFF)
-        val chipSelectedTextDark = Color(0xFF0D1117)
-
-        /**
-         * `primary-light` — the primary role at 8 % (light) / 10 % (dark), the
-         * "Subtle backgrounds" row of `DESIGN.md`. The hue itself stays the
-         * Material `primary` role so the tint follows the scheme; only the
-         * opacity is a token, because the spec sets a different one per theme.
-         */
-        const val primaryLightAlphaLight = 0.08f
-        const val primaryLightAlphaDark = 0.10f
 
         /**
          * `outline-subtle` — the 1 dp card + header hairline, and the home search
@@ -365,13 +321,7 @@ object SceneViewTokens {
         val outlineSubtleLight = Color(0xFFEBEDF0)
         val outlineSubtleDark = Color(0xFF46516A)
 
-        const val headerOverlayAlpha = 1f
 
-        /** `header-glass`, light: `surface` over a blurred copy of the list under the header. */
-        const val headerGlassAlphaLight = 0.72f
-
-        /** `header-glass`, dark. */
-        const val headerGlassAlphaDark = 0.78f
 
         /**
          * `card-glass`, light — the frosted caption of a home card: `surface-container`
@@ -394,42 +344,16 @@ object SceneViewTokens {
 
     /** Home screen geometry (design spec §2) — `home-*` tokens. */
     object Home {
+        val listThumbnail = 64.dp
         val headerHeight = 56.dp
         val markSize = 24.dp
         /** Gap between the header's leading glyph (mark or back arrow) and its title. */
         val markGap = 10.dp
-        val searchFieldHeight = 48.dp
         val contentPadding = Space.md
-        val gridGutter = 12.dp
-        /** Compact live discovery window; action labels grow outside it. */
-        val discoverySceneHeight = 192.dp
         val heroHeight = 320.dp
         val heroHeightExpanded = 400.dp
-        val heroPadding = 24.dp
-        val heroSubtitleMaxWidth = 260.dp
-        val heroPillHeight = 44.dp
-        val heroPillPaddingHorizontal = 18.dp
-        /**
-         * The arrow after the hero pill's label (#4622): the pill is the page's one action,
-         * and a bare word on a busy live stage read as a caption, not a button.
-         */
-        val heroPillIconSize = 18.dp
-        /** Gap between the hero pill's label and its arrow — `space-sm`. */
-        val heroPillIconGap = 8.dp
         val heroTopGap = 8.dp
-        val chipRowTopGap = 28.dp
-        val chipRowHeight = 40.dp
-        val chipGap = 8.dp
-        val chipPaddingHorizontal = 16.dp
-        val gridTopGap = 20.dp
         val gridBottomInset = 32.dp
-        /**
-         * Space above a catalogue section header (#2239) — `space-lg`. Enough that the
-         * header reads as belonging to the group under it rather than to the one above.
-         */
-        val sectionHeaderTopGap = 24.dp
-        /** Space between a section header and its group of rows. */
-        val sectionHeaderBottomGap = 12.dp
         val cardRadius = 20.dp
         val cardTextPaddingTop = 12.dp
         val cardTextPaddingHorizontal = 14.dp
@@ -438,16 +362,11 @@ object SceneViewTokens {
         val iconTileGlyph = 40.dp
         /** Width from which the hero grows to [heroHeightExpanded]. */
         const val expandedWidthDp = 600
-        const val heroScrimStart = 0.5f
 
         /**
-         * How far the home stage runs past the bottom of the featured band before it
-         * fades into `surface` (#3948) — the sky ends on a gradient, not on a card edge.
+         * Stage overscan retained for the original hero camera framing.
          */
         val heroStageBleed = 48.dp
-
-        /** Where [HomeColor.heroSkyHorizon] sits in the stage, as a fraction of its height. */
-        const val heroSkyHorizon = 0.44f
 
         /**
          * `card-media-aspect` — a catalogue card's picture is square, not 5:4: the caption
@@ -464,7 +383,6 @@ object SceneViewTokens {
          */
         val cardGlassMelt = 28.dp
 
-
         // ── Home list (`home-row-*`, `home-banner-*` in DESIGN.md) ────────────
         // Under the 3D header the Home is a list of pictures: each row is its demo's
         // capture, edge to edge, dissolving into the capture's own colour
@@ -476,47 +394,10 @@ object SceneViewTokens {
         /** `home-row-radius` — every row's four corners (`card-radius`). */
         val rowRadius = 20.dp
 
-        /** `home-row-gap` — page between two rows. */
-        val rowGap = Space.sm
 
-        /** `home-row-media` — the share of the row's width its picture fills, top to bottom. */
-        const val rowMediaFraction = 0.5f
 
-        /**
-         * `home-row-dissolve` — where, across the picture, it starts dissolving into the
-         * row's tint; it is gone at its trailing edge.
-         */
-        const val rowDissolveStart = 0.42f
 
-        /**
-         * Where the text starts, as a share of the row's width: inside the dissolve, where
-         * the picture is down to about a tenth, so the two overlap without the picture
-         * reaching the letters.
-         */
-        const val rowTextStartFraction = 0.44f
 
-        /**
-         * `home-row-whole-dissolve` — the same, for a row that shows its picture whole
-         * (the "What's new" row): the picture stays solid across the band a card holds its
-         * subject in and only its trailing margin dissolves, into its own edge colour.
-         */
-        const val rowWholeDissolveStart = 0.84f
-
-        /**
-         * `home-row-whole-melt` — the strip after a whole picture (`space-xl`) over which
-         * the picture's own edge colour carries on and melts into the row's tint. One
-         * ease runs from `home-row-whole-dissolve` to the end of the strip; the text
-         * starts after it. `space-2xl` breaks the row's subtitle onto a second line on a
-         * 411 dp phone.
-         */
-        val rowWholeMelt = 32.dp
-
-        /** Row text insets: `space-md` at the trailing edge, 14 dp above and below. */
-        val rowTextPaddingEnd = 16.dp
-        val rowTextPaddingVertical = 14.dp
-
-        /** Title-to-subtitle gap inside a row; also the badge line to the title. */
-        val rowTextGap = 4.dp
 
         /**
          * `home-badge` — the "New" / "Updated" / status pill, on its own line above a
@@ -525,29 +406,12 @@ object SceneViewTokens {
         val badgePaddingVertical = 3.dp
         val badgeIcon = 12.dp
 
-        /** Glyph of a row that has no picture (a demo without a capture, a utility row). */
-        val rowGlyph = 40.dp
-
         /** `home-row-min-width` — from two of these across, the list goes multi-column. */
         val rowMinWidth = 340.dp
 
-        /** Gap between two groups that have no section header between them. */
-        val groupGap = 16.dp
 
-        /** `home-banner-aspect` — a Featured row's picture, across the row's width. */
-        const val bannerAspect = 2f
 
-        /** `home-banner-dissolve` — where, down the picture, it starts dissolving. */
-        const val bannerDissolveStart = 0.55f
 
-        /** How far a banner's caption is pulled up into its picture's dissolve. */
-        val bannerCaptionOverlap = 28.dp
-
-        /** A banner caption's side insets. */
-        val bannerTextPaddingHorizontal = 16.dp
-
-        /** `header-glass-blur` — backdrop blur of the sticky header over the scrolled list. */
-        val headerGlassBlur = 24.dp
     }
 
     /**

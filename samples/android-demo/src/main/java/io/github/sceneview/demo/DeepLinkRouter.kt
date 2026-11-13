@@ -30,6 +30,25 @@ import android.net.Uri
  */
 internal object DeepLinkRouter {
 
+    enum class HomeDestination { AR, About }
+
+    /** Legacy root-tab URLs land on home. Demo-id resolution remains independent. */
+    fun parseHomeDestination(data: Uri?): HomeDestination? {
+        if (data == null || !data.scheme.equals("sceneview", ignoreCase = true)) return null
+        val host = data.host?.lowercase() ?: return null
+        val token = when (host) {
+            "ar", "ar-view", "ar_view", "about" -> host.takeIf { data.path.isNullOrEmpty() || data.path == "/" }
+            "tab", "tabs", "demo" -> data.pathSegments.singleOrNull()
+            "home" -> data.getQueryParameter("tab")
+            else -> null
+        }?.lowercase()
+        return when (token) {
+            "ar", "ar-view", "ar_view" -> HomeDestination.AR
+            "about" -> HomeDestination.About
+            else -> null
+        }
+    }
+
     /** Custom URL scheme registered in `AndroidManifest.xml`. */
     const val SCHEME_CUSTOM: String = "sceneview"
 
@@ -214,7 +233,7 @@ internal object DeepLinkRouter {
         // AR catalogue clean-up, wave 1 (samples audit, 2026-10-17). Four AR cards left
         // the catalogue; three old links open the sample that now carries their subject.
         // The fourth, `ar-ml-object-label`, is NOT an alias: it stays a registered id,
-        // hidden from the catalogue (`FALLBACK_ONLY_DEMO_IDS`), because it is Point & Ask's
+        // listed in Tools, and still Point & Ask's
         // on-device fallback on phones without AICore (#2648). Aliasing it to
         // `point-and-ask` would send that fallback straight back to the screen that just
         // said it cannot run here.

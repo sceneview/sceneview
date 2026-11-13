@@ -72,12 +72,7 @@ object TelemetryConsent {
     /** Whether the consent sheet is owed: unanswered, and in the zone. */
     fun mustAsk(state: ConsentState, inZone: Boolean): Boolean = state == ConsentState.Unknown && inZone
 
-    /**
-     * Whether the push pre-prompt may show: never while the consent sheet is owed, and never in
-     * the session that answered it (one question per session).
-     */
-    fun pushPromptAllowed(state: ConsentState, inZone: Boolean, answeredThisSession: Boolean): Boolean =
-        !mustAsk(state, inZone) && !answeredThisSession
+
 }
 
 /** The debug-only `--es telemetry_consent granted|denied|ask` launch extra. */

@@ -31,6 +31,11 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("screen_name" to screenName, "screen_class" to screenClass)
     }
 
+    /** A fixed home section name, never user input. */
+    data class HomeSectionSelected(val section: String) : AnalyticsEvent("home_section_selected") {
+        override fun rawParams() = mapOf("section" to section)
+    }
+
     data class SampleOpen(
         val sampleId: String,
         val category: String,
@@ -95,14 +100,6 @@ sealed class AnalyticsEvent(val name: String) {
             put("target", target.value)
             sampleId?.let { put("sample_id", it) }
         }
-    }
-
-    data object PushPromptShown : AnalyticsEvent("push_prompt_shown") {
-        override fun rawParams() = emptyMap<String, Any>()
-    }
-
-    data class PushPromptResult(val result: PromptResult) : AnalyticsEvent("push_prompt_result") {
-        override fun rawParams() = mapOf("result" to result.value)
     }
 
     data class SupportPromptShown(val source: SupportPromptSource) : AnalyticsEvent("support_prompt_shown") {
@@ -189,13 +186,6 @@ enum class ModelLoadFailure(val value: String) {
     AssetMissing("asset_missing"),
 
     Unknown("unknown"),
-}
-
-/** The answer to the notification pre-prompt, for `push_prompt_result.result`. */
-enum class PromptResult(val value: String) {
-    Granted("granted"),
-    Denied("denied"),
-    NotNow("not_now"),
 }
 
 /** How the support sheet was opened, for `support_prompt_shown.source`. */

@@ -59,7 +59,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.sceneview.demo.rememberListedDemos
+import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
@@ -364,7 +364,7 @@ private fun mentions(haystack: String, title: String): Boolean =
 /** Titles of the demos this device lists, for [mentionedDemos]. */
 @Composable
 private fun rememberDemoTitles(): List<Pair<DemoEntry, String>> =
-    rememberListedDemos().map { it to stringResource(it.titleRes) }
+    ALL_DEMOS.map { it to stringResource(it.titleRes) }
 
 private const val MIN_TITLE_MATCH = 6
 private const val MAX_CHIPS = 2

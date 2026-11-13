@@ -215,7 +215,6 @@ fun logOutboundLink(url: String, sampleId: String? = null) {
 }
 
 const val SCREEN_CLASS_SAMPLE = "Sample"
-const val SCREEN_CLASS_TAB = "Tab"
 private const val MILLIS_PER_SECOND = 1000L
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

@@ -25,7 +25,7 @@ interface PushDisableStore {
  *
  * Main thread only (the cold-start path goes through `@Synchronized` [Telemetry.ensureInit]).
  *
- * @param wanted the user's choice (About -> Privacy & notifications, or the pre-prompt).
+ * @param wanted the user's choice (About -> Privacy & notifications).
  * @param systemAllows whether the system lets the app post (POST_NOTIFICATIONS on API 33+).
  */
 class PushSwitch(

@@ -28,8 +28,6 @@ data class HomeSearchEntry(
  *   A blank query matches everything.
  * - The result keeps the input's editorial [HomeSearchEntry.order].
  *
- * The category chips do not filter: they scroll to their section
- * ([homeSectionStarts]), so nothing but a query ever cuts the catalogue down.
  */
 fun filterDemos(
     entries: List<HomeSearchEntry>,

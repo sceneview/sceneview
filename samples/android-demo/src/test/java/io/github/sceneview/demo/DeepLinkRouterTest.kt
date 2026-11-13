@@ -23,6 +23,30 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DeepLinkRouterTest {
     @Test
+    fun `legacy root links open the home section or About sheet`() {
+        for (url in listOf("sceneview://ar", "sceneview://ar-view", "sceneview://tab/ar_view",
+            "sceneview://demo/ar-view", "sceneview://home?tab=ar")) {
+            assertEquals(url, DeepLinkRouter.HomeDestination.AR, DeepLinkRouter.parseHomeDestination(Uri.parse(url)))
+        }
+        for (url in listOf("sceneview://about", "sceneview://tab/about", "sceneview://demo/about")) {
+            assertEquals(url, DeepLinkRouter.HomeDestination.About, DeepLinkRouter.parseHomeDestination(Uri.parse(url)))
+        }
+        for (url in listOf("other://about", "https://evil.test/about", "sceneview://demo/ar-placement",
+            "sceneview://about/unexpected", "sceneview://tab/about/extra")) {
+            assertNull(url, DeepLinkRouter.parseHomeDestination(Uri.parse(url)))
+        }
+    }
+
+    @Test
+    fun `every current demo link retains its original destination`() {
+        for (demo in ALL_DEMOS) {
+            val uri = Uri.parse("sceneview://demo/${demo.id}")
+            assertEquals(demo.id, DeepLinkRouter.parse(uri))
+            assertNull(DeepLinkRouter.parseHomeDestination(uri))
+        }
+    }
+
+    @Test
     fun `feel links redirect to matter with no tab`() {
         assertEquals("matter", DeepLinkRouter.parse(Uri.parse("sceneview://demo/feel")))
         assertEquals("matter", DeepLinkRouter.parse(Uri.parse("sceneview://demo/matter")))

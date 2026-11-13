@@ -20,8 +20,7 @@ import io.github.sceneview.demo.demos.ARXrFaceDemo
  * the two public APIs keep a demo. The retired ids still open their mode through
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
  *
- * The card is listed only on an Android XR device ([io.github.sceneview.demo.isXrDevice]); on a
- * phone it stays reachable by deep link and shows the static reference hand and face.
+ * Listed in Tools; on a phone it shows the static reference hand and face.
  */
 object ArXrFragment : DemoFragment {
     val modes = listOf(

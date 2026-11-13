@@ -94,7 +94,7 @@ class DemoAnalyticsTest {
                 override fun resetData() = error("boom")
             },
         ) { true }
-        throwing.log(AnalyticsEvent.PushPromptShown)
+        throwing.log(AnalyticsEvent.HomeSectionSelected("AR"))
         throwing.setUserProperty(UserProperty.NotifEnabled, "true")
         throwing.setCrashKey(CrashKey.HeroSurface, "still")
         throwing.recordNonFatal(IllegalStateException("from the AR frame loop"))
@@ -138,19 +138,17 @@ class DemoAnalyticsTest {
                     "category" to "showcase",
                     "source" to "push",
                 )),
+            AnalyticsEvent.HomeSectionSelected("AR") to ("home_section_selected" to mapOf("section" to "AR")),
             AnalyticsEvent.SampleClose("cosmos", 42) to
                 ("sample_close" to mapOf("sample_id" to "cosmos", "duration_s" to 42L)),
             AnalyticsEvent.SampleInteraction("cosmos", "burst") to
                 ("sample_interaction" to mapOf("sample_id" to "cosmos", "control" to "burst")),
             AnalyticsEvent.ModelLoadFailed("model-viewer", ModelLoadFailure.NoBounds) to
                 ("model_load_failed" to mapOf("sample_id" to "model-viewer", "reason" to "no_bounds")),
-            AnalyticsEvent.ArTrackingReady("ar_view") to ("ar_tracking_ready" to mapOf("sample_id" to "ar_view")),
+            AnalyticsEvent.ArTrackingReady("ar-placement") to ("ar_tracking_ready" to mapOf("sample_id" to "ar-placement")),
             AnalyticsEvent.ArSessionFailed("ar-placement", "camera_not_available") to
                 ("ar_session_failed" to mapOf("sample_id" to "ar-placement", "reason" to "camera_not_available")),
             AnalyticsEvent.OutboundLink(LinkTarget.GitHub) to ("outbound_link" to mapOf("target" to "github")),
-            AnalyticsEvent.PushPromptShown to ("push_prompt_shown" to emptyMap()),
-            AnalyticsEvent.PushPromptResult(PromptResult.NotNow) to
-                ("push_prompt_result" to mapOf("result" to "not_now")),
             AnalyticsEvent.PushOpened("launch", "cosmos") to
                 ("push_opened" to mapOf("campaign" to "launch", "sample_id" to "cosmos")),
             AnalyticsEvent.SettingsChanged("analytics", "false") to
