@@ -1513,6 +1513,7 @@ public abstract interface class io/github/sceneview/components/LightComponent : 
 	public fun setSunAngularRadius (F)V
 	public fun setSunHaloFalloff (F)V
 	public fun setSunHaloSize (F)V
+	public fun updateShadowOptions (Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class io/github/sceneview/components/LightComponent$DefaultImpls {
@@ -1547,6 +1548,7 @@ public final class io/github/sceneview/components/LightComponent$DefaultImpls {
 	public static fun setSunAngularRadius (Lio/github/sceneview/components/LightComponent;F)V
 	public static fun setSunHaloFalloff (Lio/github/sceneview/components/LightComponent;F)V
 	public static fun setSunHaloSize (Lio/github/sceneview/components/LightComponent;F)V
+	public static fun updateShadowOptions (Lio/github/sceneview/components/LightComponent;Lkotlin/jvm/functions/Function1;)V
 }
 
 public abstract interface class io/github/sceneview/components/RenderableComponent : io/github/sceneview/components/Component {
@@ -3302,6 +3304,7 @@ public class io/github/sceneview/node/LightNode : io/github/sceneview/node/Node,
 	public fun setSunHaloFalloff (F)V
 	public fun setSunHaloSize (F)V
 	public fun setTouchable (Z)V
+	public fun updateShadowOptions (Lkotlin/jvm/functions/Function1;)V
 }
 
 public class io/github/sceneview/node/LineNode : io/github/sceneview/node/GeometryNode {

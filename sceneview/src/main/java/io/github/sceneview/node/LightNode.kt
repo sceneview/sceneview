@@ -7,6 +7,9 @@ import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.LightComponent
+import io.github.sceneview.components.ShadowSafeLightBuilder
+import io.github.sceneview.components.mergeWithNativeDefaults
+import io.github.sceneview.components.writeShadowOptions
 import io.github.sceneview.lightGeneration
 import io.github.sceneview.safeDestroyLight
 import io.github.sceneview.math.Color
@@ -101,14 +104,33 @@ open class LightNode(
         // `this.entity` — NOT the `entity` parameter, which is the NULL_ENTITY sentinel when
         // the caller let the node allocate its own. Node resolved it; the parameter did not.
         builder.build(engine, this.entity)
+        // `shadowOptions(...)` given to a `LightNode(type) { … }` block was held back from the
+        // broken Filament 1.77 binding (google/filament#10565): write it now, merged with the
+        // native defaults and with the quaternion checked. A caller-built `LightManager.Builder`
+        // reaches Filament as is.
+        (builder as? ShadowSafeLightBuilder)?.requestedShadowOptions?.let { requested ->
+            val instance = lightInstance
+            lightManager.writeShadowOptions(
+                instance,
+                mergeWithNativeDefaults(requested, lightManager.getShadowOptions(instance))
+            )
+        }
     }
 
+    /**
+     * Builds the light from [apply].
+     *
+     * `shadowOptions(LightManager.ShadowOptions().apply { … })` inside [apply] is safe here: the
+     * fields it leaves alone keep Filament's defaults and its `transform` lands as written, which
+     * the raw Filament 1.77 binding gets wrong (google/filament#10565). To change shadow options
+     * after creation, use [updateShadowOptions].
+     */
     constructor(
         engine: Engine,
         type: LightManager.Type,
         entity: Entity = NULL_ENTITY,
         apply: LightManager.Builder.() -> Unit
-    ) : this(engine, entity, LightManager.Builder(type).apply(apply))
+    ) : this(engine, entity, ShadowSafeLightBuilder(type).apply(apply))
 
     override fun destroy() {
         // Once only (#4259): a second call would free handles, material instances and an
