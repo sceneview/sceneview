@@ -415,21 +415,24 @@ internal object MeshCleanup {
      * there, the depth just missed it. A rim on two planes — a hole at a corner, a doorway down
      * to the floor — keeps the small-hole rule. Returns the mesh and how many holes were closed.
      */
-    @Suppress("CyclomaticComplexMethod", "LongMethod")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "LongParameterList")
     fun fillSmallHoles(
         mesh: WorkMesh,
         maxEdges: Int = MAX_HOLE_EDGES,
         maxSpanM: Float = MAX_HOLE_SPAN_M,
         facePlane: IntArray? = null,
         planes: List<Plane> = emptyList(),
+        progress: (Float) -> Unit = {},
     ): Pair<WorkMesh, Int> {
         if (mesh.triangleCount == 0) return mesh to 0
+        progress(0f)
         val topology = MeshTopology(mesh.vertexCount, mesh.indices)
         val idx = mesh.indices
         // Border half-edges, by corner: a loop is followed corner to corner around each vertex's
         // own fan, so lace — holes touching at a vertex — still comes apart into its loops.
         val border = BooleanArray(idx.size)
         for (t in 0 until mesh.triangleCount) {
+            if (t % HOLE_PROGRESS_STRIDE == 0) progress(HOLE_BORDER_SHARE * t / mesh.triangleCount)
             for (k in 0 until 3) {
                 if (topology.neighbours[t * 3 + k] >= 0) continue
                 val a = idx[t * 3 + k]
@@ -447,6 +450,9 @@ internal object MeshCleanup {
         val loop = IntArray(longest + 1)
         val loopFace = IntArray(longest + 1)
         for (start in border.indices) {
+            if (start % HOLE_PROGRESS_STRIDE == 0) {
+                progress(HOLE_BORDER_SHARE + (HOLE_LOOP_SHARE - HOLE_BORDER_SHARE) * start / border.size)
+            }
             if (!border[start] || visited[start]) continue
             var length = 0
             var corner = start
@@ -479,7 +485,11 @@ internal object MeshCleanup {
             if (length > maxEdges || holeSpan > maxSpanM) continue
             loops += loop.copyOf(length)
         }
-        if (loops.isEmpty() && planeHoles == 0) return mesh to 0
+        progress(HOLE_LOOP_SHARE)
+        if (loops.isEmpty() && planeHoles == 0) {
+            progress(1f)
+            return mesh to 0
+        }
         val added = loops.size
         val extraTriangles = loops.sumOf { if (it.size == 3) 1 else it.size } + planeTriangles.size / 3
         val positions = mesh.positions.copyOf(mesh.positions.size + added * 3)
@@ -487,7 +497,10 @@ internal object MeshCleanup {
         val indices = idx.copyOf(idx.size + extraTriangles * 3)
         var vertex = mesh.vertexCount
         var write = idx.size
-        for (rim in loops) {
+        for ((number, rim) in loops.withIndex()) {
+            if (number % HOLE_PROGRESS_STRIDE == 0) {
+                progress(HOLE_LOOP_SHARE + (1f - HOLE_LOOP_SHARE) * number / loops.size)
+            }
             if (rim.size == 3) {
                 // The new triangle runs the rim the other way, as a neighbour would.
                 indices[write++] = rim[2]
@@ -517,6 +530,7 @@ internal object MeshCleanup {
             vertex++
         }
         for (i in 0 until planeTriangles.size) indices[write++] = planeTriangles[i]
+        progress(1f)
         return WorkMesh(positions, colors, indices) to added + planeHoles
     }
 
@@ -741,6 +755,10 @@ internal object MeshCleanup {
 
     /** ...spanning no more than this. */
     const val MAX_HOLE_SPAN_M = 0.25f
+
+    private const val HOLE_PROGRESS_STRIDE = 1024
+    private const val HOLE_BORDER_SHARE = 0.35f
+    private const val HOLE_LOOP_SHARE = 0.9f
 
     /** The longest rim of a hole within one plane that [fillSmallHoles] closes: a wall's lace, not a window. */
     const val MAX_PLANE_HOLE_EDGES = 160

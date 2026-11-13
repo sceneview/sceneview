@@ -8,6 +8,7 @@ import io.github.sceneview.demo.demos.internal.RerunMeshGlb
 import io.github.sceneview.demo.demos.internal.RerunMeshSimplifier
 import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.model.ModelGlb
+import io.github.sceneview.demo.demos.internal.room.RoomShellGlb
 
 /*
  * The 3D model the export sheet saves and shares (#4334): not the full marching-cubes mesh the
@@ -59,6 +60,10 @@ internal fun sharedRerunModel(
     free: Long = freeHeapBytes(),
     progress: (Float) -> Unit = {},
 ): RerunSharedModel {
+    model.exportPoints?.takeIf { it.count > 0 }?.let { points ->
+        val glb = RoomShellGlb.withPoints(model.glb, points)
+        return RerunSharedModel(glb)
+    }
     if (model.kind != RerunScanModel.Kind.Mesh) return RerunSharedModel(model.glb)
     // The finished, photo-textured model is already within a phone's budget: sent as built, on its floor.
     if (ModelGlb.isTextured(model.glb)) return RerunSharedModel(ModelGlb.onFloor(model.glb) ?: model.glb)

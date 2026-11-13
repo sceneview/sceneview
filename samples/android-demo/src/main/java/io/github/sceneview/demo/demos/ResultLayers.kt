@@ -329,6 +329,8 @@ internal fun ResultLayerPicker(
     onPlan: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     seen: Boolean = ready,
+    /** The model first, Photo second: a room's shell, which the result opens on. */
+    modelFirst: Boolean = false,
 ) {
     if (!layers.offered) return
     // The dock's Plan leaves Photo too: the plan is read on the model.
@@ -383,7 +385,7 @@ internal fun ResultLayerPicker(
             border = BorderStroke(pill.outlineWidth, pill.outline),
         ) {
             ConnectedChoiceRow(
-                options = ResultLayer.entries,
+                options = if (modelFirst) MODEL_FIRST else ResultLayer.entries,
                 selected = layers.selected(plan),
                 onSelect = { picked ->
                     if (!ready) return@ConnectedChoiceRow
@@ -487,6 +489,9 @@ internal fun ResultLayerVeil(layers: ResultLayers, ground: Color, modifier: Modi
 
 /** The [ResultLayerPicker] while its model is not there yet: Material's disabled content. */
 private const val NOT_READY_ALPHA = 0.38f
+
+/** The switch's order when the result opens on the model: Model, Photo, Plan. */
+private val MODEL_FIRST = listOf(ResultLayer.Model, ResultLayer.Photo, ResultLayer.Plan)
 
 /** Test tag of the [ResultLayerPicker]. */
 internal const val RESULT_LAYERS_TAG = "result-layers"

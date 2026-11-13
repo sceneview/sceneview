@@ -40,6 +40,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -139,7 +140,9 @@ import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.CleanModel
 import io.github.sceneview.demo.demos.internal.model.CleanModelResult
 import io.github.sceneview.demo.demos.internal.model.ModelPhoto
+import io.github.sceneview.demo.demos.internal.model.MeshFigures
 import io.github.sceneview.demo.demos.internal.model.ModelPhotos
+import io.github.sceneview.demo.demos.internal.model.ModelQualityGate
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
@@ -175,6 +178,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import io.github.sceneview.core.splat.SplatCloud
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -187,6 +191,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicReference
 
 /*
  * The 3D Scan's result: at the end of a scan, the space as one meshed, coloured 3D model — its raw
@@ -234,13 +239,13 @@ internal sealed interface RerunModelSource {
         /** The model [pack] can build: its live TSDF when this process recorded it, else [media]'s surfels. */
         fun of(pack: RerunCapturePack?, media: RerunReplayMedia?): RerunModelSource? {
             val cloud = media?.dense?.cloud?.takeIf { it.count > 0 }
-            val photos = media?.let(::photosOf)
+            val photos = media?.let(::keyPhotosOf)
             return RerunLiveModels.find(pack)?.let { Live(it, cloud, photos) }
                 ?: cloud?.takeIf { it.normals != null }?.let { Surfels(it, photos) }
         }
 
         /** [media]'s key photos, decoded only when the texture picks them, each bitmap let go once read. */
-        private fun photosOf(media: RerunReplayMedia): ModelPhotos? =
+        fun keyPhotosOf(media: RerunReplayMedia): ModelPhotos? =
             ModelPhotos.of(media.trace, media.manifest.lens) { path ->
                 media.decode(path)?.let { bitmap ->
                     try {
@@ -256,6 +261,16 @@ internal sealed interface RerunModelSource {
         /** [ModelPhotos.of] puts each photo at its trace pose; the decoder's pose is not read. */
         private val UNPOSED = DebugPose(0f, 0f, 0f)
     }
+}
+
+/**
+ * The source a model is built from now: a live TSDF let go for its depth recording
+ * ([depthModelOf], [roomShellOf]) gives way to its surfels, so a fusion that then failed still
+ * leaves the model as before; `null` when there is nothing left to build from.
+ */
+internal fun RerunModelSource.usable(): RerunModelSource? = when {
+    this is RerunModelSource.Live && tsdf == null -> cloud?.takeIf { it.normals != null }?.let { RerunModelSource.Surfels(it, photos) }
+    else -> this
 }
 
 /**
@@ -346,6 +361,8 @@ internal class RerunModelBuild(
     val budgetReached: Boolean,
     val finished: Boolean = true,
     val outOfMemoryInHeap: Long? = null,
+    /** A room's finished model the quality gate kept out ([ModelQualityGate]): this is the raw surface. */
+    val qualityHeld: Boolean = false,
 )
 
 /**
@@ -370,12 +387,16 @@ internal fun buildRerunModel(
     onRaw: ((RerunModelBuild) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    /** A room's result (Live Room): the finished model replaces the raw surface only past [ModelQualityGate]. */
+    gate: Boolean = false,
     progress: (Float) -> Unit,
 ): RerunModelBuild {
     val started = System.nanoTime()
     val meshed = mesh(source, progress, reconstruction)
     val raw = meshed.surface
     val meshedAt = System.nanoTime()
+    // Measured before the finish, which works in the raw surface's own arrays.
+    val rawFigures = if (gate && raw.triangleCount > 0) MeshFigures.of(raw.mesh.positions, raw.mesh.indices) else null
     val photos = when (source) {
         is RerunModelSource.Live -> source.photos
         is RerunModelSource.Surfels -> source.photos
@@ -411,7 +432,16 @@ internal fun buildRerunModel(
     } else {
         null
     }
-    val finished = finish?.getOrNull()
+    val built = finish?.getOrNull()
+    // Never worse than the scan: a finished model the gate keeps out leaves the raw surface.
+    val verdict = rawFigures?.let { rawOf ->
+        built?.model?.let { m ->
+            ModelQualityGate.judge(rawOf, MeshFigures.of(m.positions, m.texturedIndices + m.plainIndices, m.vertexCount, rawOf.floorY))
+        }
+    }
+    val qualityHeld = verdict?.passes == false
+    if (verdict != null) Log.i(TAG, "model quality gate: $verdict")
+    val finished = built?.takeUnless { qualityHeld }
     // Out of memory, the finish gives the raw surface back itself; one that throws it is left the same.
     val outOfMemory = finished?.stats?.rawKept == true || finish?.exceptionOrNull() is OutOfMemoryError
     val outOfMemoryInHeap = Runtime.getRuntime().maxMemory().takeIf { outOfMemory }
@@ -447,6 +477,7 @@ internal fun buildRerunModel(
         budgetReached = meshed.droppedBlocks > 0,
         finished = finishedMesh != null,
         outOfMemoryInHeap = outOfMemoryInHeap,
+        qualityHeld = qualityHeld,
     )
 }
 
@@ -546,7 +577,7 @@ private fun syntheticPhotos(): ModelPhotos =
     ModelPhotos(TexturedSyntheticRoom.PHOTO_LENS, TexturedSyntheticRoom.photos().map { shot -> ModelPhoto(shot.pose) { shot } })
 
 /** The texture atlas as the `.glb` embeds it. */
-private object JpegAtlasEncoder : AtlasEncoder {
+internal object JpegAtlasEncoder : AtlasEncoder {
     override fun jpeg(argb: IntArray, width: Int, height: Int): ByteArray? {
         val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
         return try {
@@ -575,6 +606,7 @@ internal fun buildScanModel(
     onRaw: ((RerunScanModel) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    gate: Boolean = false,
     progress: (Float) -> Unit,
 ): RerunScanModel? {
     val skipMesh = source is RerunModelSource.Synthetic && source.meshFails
@@ -582,7 +614,7 @@ internal fun buildScanModel(
         null
     } else {
         val raw = onRaw?.let { show -> { build: RerunModelBuild -> show(build.scanModel()) } }
-        runCatching { buildRerunModel(source, raw, shown, reconstruction) { progress(it * MESH_PART) } }
+        runCatching { buildRerunModel(source, raw, shown, reconstruction, gate) { progress(it * MESH_PART) } }
             .onFailure { if (it is CancellationException) throw it }
             .onFailure { Log.w(TAG, "meshing failed", it) }
             .getOrNull()
@@ -620,6 +652,7 @@ private fun RerunModelBuild.scanModel() = RerunScanModel(
     budgetReached = budgetReached,
     finished = finished,
     outOfMemoryInHeap = outOfMemoryInHeap,
+    qualityHeld = qualityHeld,
 )
 
 /** QA only: the ray-cast room's depth, fused into coloured points as a recording fuses them. */
@@ -645,6 +678,8 @@ private sealed interface ModelState {
         val final: Boolean = true,
         val framedBy: RerunScanModel = model,
         val opensOn: RerunScanModel = framedBy,
+        /** A room's shell ([RoomShellShown]): [model] is its `.glb`, and these its object points. */
+        val objects: SplatCloud? = null,
     ) : ModelState
 
     data object Failed : ModelState
@@ -729,16 +764,86 @@ internal fun RerunModelScreen(
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
     photo: SplatFaces? = null,
+    /** A room's shell input ([RoomShellInput]): the result opens on its shell when it builds one. */
+    shellInput: RoomShellInput? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
     // them (photoFirstCloud): the result is never a bare stage for as long as the model takes.
-    val preview = remember(source, surfels) { photoFirstCloud(source, surfels) }
+    val preview = remember(source, surfels, shellInput) { photoFirstCloud(source, surfels ?: shellInput?.cloud) }
     // Done once that first picture is on screen: the model's build, which takes every core,
     // starts behind it, not beside it.
     val previewSeen = remember(source, id) { CompletableDeferred<Unit>() }
-    val state by produceState<ModelState>(ModelState.Loading, source, id) {
+    // The scan the shell on screen is of: a shell stays only over its own scan.
+    val shellOf = remember { AtomicReference<Any?>(null) }
+    // The scan whose fused surface is on screen (ScanDepthModel.kt): it stays, as a shell does.
+    val depthModelOf = remember { AtomicReference<Any?>(null) }
+    var buildProgress by remember(source, id, shellInput) { mutableStateOf(ScanModelProgress()) }
+    val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput) {
+        // A room opens on its shell (RoomShellLayer.kt): read back, or built here, the old finish
+        // never run beside it. One already on screen stays: the recording read behind it, or the
+        // source, change nothing in it.
+        if ((value as? ModelState.Ready)?.objects != null && id != null && shellOf.get() == id) return@produceState
+        if (value is ModelState.Ready && id != null && depthModelOf.get() == id) return@produceState
         if (preview != null) withTimeoutOrNull(PREVIEW_HEAD_START_MS) { previewSeen.await() }
+        // The live TSDF goes once a depth recording is known to read: the recording is the better
+        // source, and the two would otherwise sit on the heap together while it fuses.
+        val releaseLive = { if (store != null && id != null) (source as? RerunModelSource.Live)?.release() }
+        if (scope == ScanScope.Room) {
+            val shown = (value as? ModelState.Ready)
+            val shell = withContext(Dispatchers.Default) {
+                val job = coroutineContext.job
+                // The model on screen, if any, is shown as being finished while the shell builds.
+                if (shown != null && shellInput != null) {
+                    value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
+                }
+                runCatching {
+                    roomShellOf(store, id, shellInput, releaseLive) {
+                        job.ensureActive()
+                        buildProgress = buildProgress.advance(it)
+                    }
+                }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .onFailure { Log.w(TAG, "room shell failed", it) }
+                    .getOrNull()
+            }
+            if (shell != null) {
+                // The recording's depth is no longer needed: the shell is the result, kept with the scan.
+                if (store != null && id != null) (source as? RerunModelSource.Live)?.release()
+                shellOf.set(id)
+                value = ModelState.Ready(shell.model, objects = shell.objects)
+                return@produceState
+            }
+            // No shell: the model as before, the one on screen kept meanwhile.
+            if (shown != null) value = shown
+        }
+        // A scan with a depth recording that stands as no room opens on its whole fused surface.
+        if (store != null && id != null) {
+            val shown = (value as? ModelState.Ready)
+            val fused = withContext(Dispatchers.Default) {
+                val job = coroutineContext.job
+                runCatching {
+                    depthModelOf(store, id, scope, shellInput?.cloud ?: surfels, shellInput?.floorY, releaseLive) {
+                        // The model on screen, if any, is shown as being finished meanwhile.
+                        if (shown != null && value === shown) {
+                            value = ModelState.Ready(shown.model, final = false, framedBy = shown.framedBy, opensOn = shown.opensOn)
+                        }
+                        job.ensureActive()
+                        buildProgress = buildProgress.advance(it)
+                    }
+                }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .onFailure { Log.w(TAG, "depth model failed", it) }
+                    .getOrNull()
+            }
+            if (fused != null) {
+                Log.i(TAG, "depth model: ${fused.triangles} triangles, ${fused.glb.size / 1024} KB")
+                depthModelOf.set(id)
+                value = ModelState.Ready(fused)
+                return@produceState
+            }
+            if (shown != null) value = shown
+        }
         val stored = opened ?: if (store != null && id != null) {
             withContext(Dispatchers.IO) { runCatching { store.model(id) }.getOrNull() }
         } else {
@@ -753,12 +858,14 @@ internal fun RerunModelScreen(
         val kept = stored?.takeIf { retry == null && stale == null }
         var shownFirst: RerunScanModel? = retry ?: stale
         shownFirst?.let { value = ModelState.Ready(it, final = false) }
-        val built = kept ?: source?.let { from ->
+        val built = kept ?: source?.usable()?.let { from ->
             withContext(Dispatchers.Default) {
                 val job = coroutineContext.job
-                // The line narrates the step without a share (one indicator, `DESIGN.md`): the
-                // share is only where a screen closed meanwhile stops the build.
-                val report = { _: Float -> job.ensureActive() }
+                // Report actual work to the result card and stop when the screen leaves.
+                val report = { fraction: Float ->
+                    job.ensureActive()
+                    buildProgress = buildProgress.advance(fraction)
+                }
                 // A big scan's raw surface is shown while it finishes; the model then takes its place.
                 // Finishing again, the kept one is already shown, its .glb the finish's own: a
                 // second, written again, would hold as much heap once more.
@@ -769,7 +876,9 @@ internal fun RerunModelScreen(
                     }
                 }
                 // The default finish, never asked first: the result opens on the model.
-                runCatching { buildScanModel(from, raw, retry?.glb, ReconstructionMethod.Fused, report) }
+                runCatching {
+                    buildScanModel(from, raw, retry?.glb, ReconstructionMethod.Fused, gate = scope.hasFloorPlan, progress = report)
+                }
                     .onFailure { if (it is CancellationException) throw it }
                     .onFailure { Log.w(TAG, "model build failed", it) }
                     .getOrNull()
@@ -803,21 +912,13 @@ internal fun RerunModelScreen(
     }
     val model = (state as? ModelState.Ready)?.model
     val settled = state.settled
+    // A room's shell: its walls open the box by their own culling, its objects drawn as points.
+    val objects = (state as? ModelState.Ready)?.objects
+    val shell = objects != null
     LaunchedEffect(state) { if (state.settled) onModel(model) }
     val framedBy = (state as? ModelState.Ready)?.framedBy
     // What the user set on the screen is kept across the model that takes the first one's place.
     val opensOn = (state as? ModelState.Ready)?.opensOn
-    // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
-    // never beside a big scan's finish ([groundSource]). Until the next settles, the last one stays.
-    val groundModel = groundSource(model, settled)
-    val ground by produceState<GroundBuild?>(null, groundModel) {
-        groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
-    }
-    // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
-    // out, never drawn but for More › Measure. The coverage is the capture's to show now.
-    val rescan by produceState<RescanBuild?>(null, source, ground) {
-        value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground) } }
-    }
     // Its frame: square to the walls it saw, on its own box (ScanResultFraming), read once off the
     // model it is framed by ([resultFramedBy]). A new frame — a stale model built again — is read
     // behind the one shown, which stays until then: the room is never left undrawn meanwhile.
@@ -840,7 +941,8 @@ internal fun RerunModelScreen(
     // A room is a dollhouse: seen into from outside and above, its walls cut at a fixed height
     // over its floor (ScanResultCut) — none comes and goes as the camera turns. It waits for its
     // frame, which knows the floor; an object is drawn whole at once.
-    val cuts = scope.hasFloorPlan
+    // The shell's single-sided walls need no cut: the ones between the eye and the room are culled.
+    val cuts = scope.hasFloorPlan && !shell
     val cutY = frame?.takeIf { cuts }?.let { it.local[1] + ScanResultCut.HEIGHT_M }
     val drawn = model?.takeIf { !cuts || frame != null }
     // More's QA A/B: every material lit, or unlit, against the model as built (the default).
@@ -883,8 +985,8 @@ internal fun RerunModelScreen(
     val turntable = remember(stageKey, spins) { ScanResultTurntable().also { if (!spins) it.stop() } }
     // Which sides of the room its dimensions are written on: the two the camera faces.
     val facing = remember(id ?: source) { FacingSides() }
-    // No drift and no reveal: the camera opens on the frame and holds still there until the user
-    // moves it, its pitch between a look across and the plan's look down. Kept across a source
+    // No idle drift: after the opening quarter-turn the camera stays on the reset frame,
+    // its pitch between a look across and the plan's look down. Kept across a source
     // that arrives for a scan already shown, whose finish is run again.
     val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES) }
     // 3D ↔ Plan, the one camera move, and only when the user asks for it; a touch cuts it short.
@@ -903,10 +1005,22 @@ internal fun RerunModelScreen(
     // The dark stage's floor pool waits for the camera to rise: from the low entrance it is seen
     // edge-on, a flat lit band under the place instead of the floor that carries it.
     var risen by remember(stageKey, entersLow) { mutableStateOf(!entersLow) }
+    // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
+    // after the first model frame, so analysis cannot compete with its upload and framing.
+    val groundModel = groundSource(model, settled && shown)
+    val ground by produceState<GroundBuild?>(null, groundModel) {
+        groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
+    }
+    // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
+    // out, never drawn but for More › Measure. The coverage is the capture's to show now.
+    val rescan by produceState<RescanBuild?>(null, source, ground) {
+        value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground) } }
+    }
     // Photo | Model | Plan (ResultLayers.kt): the scan's surfels as splats.
-    val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
+    // Recorded-depth models appear directly: building a large wire must not hide the surface.
+    val animateReveal = (LocalMotionEnabled.current || DemoSettings.qaMotion) && !(id != null && depthModelOf.get() == id)
     val layers = rememberResultLayers(
-        source, surfels, stageKey, settled,
+        source, surfels ?: shellInput?.cloud, stageKey, settled,
         photoFirst = preview != null, prebuilt = photo,
     )
     // The film (ResultFilm): each take plays the reveal again, one turn and the look from above,
@@ -943,7 +1057,9 @@ internal fun RerunModelScreen(
     )
     // The model, finished and its wire read, takes the Photo preview's place — and is revealed.
     LaunchedEffect(layers, settled, instance, wirePending, filming) {
-        if (layers.handsOverToModel(modelReady = settled && instance != null && !wirePending, busy = filming)) {
+        // A room's result stays on Photo unless its finished model passed the quality gate.
+        val roomHeld = scope.hasFloorPlan && model?.finished != true
+        if (layers.handsOverToModel(modelReady = settled && instance != null && !wirePending && !roomHeld, busy = filming)) {
             layers.photoPicked = false
         }
     }
@@ -994,7 +1110,7 @@ internal fun RerunModelScreen(
             }
             val hintAlpha by animateFloatAsState(if (hintShown) 1f else 0f, label = "hint")
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-                slot?.let { ModelStatusLine(it) }
+                slot?.let { ModelStatusLine(it, progress = buildProgress.fraction.takeIf { !settled }) }
                 ModelHint(
                     text = stringResource(R.string.scan_result_hint),
                     modifier = Modifier
@@ -1004,6 +1120,7 @@ internal fun RerunModelScreen(
             }
             ResultLayerPicker(
                 layers = layers,
+                modelFirst = shell,
                 plan = plan,
                 ready = shown && instance != null && !filming,
                 seen = shown,
@@ -1323,6 +1440,8 @@ internal fun RerunModelScreen(
                     }
                 }
                 ResultPhotoLayer(layers, instance, live = rendered::live)
+                // The shell's furniture, once its walls are revealed, while Photo is not shown.
+                RoomObjectsLayer(objects, shown = instance != null && revealOver && !layers.photoShown)
             }
             // The ground until the model is drawn on its framing: no pose but that one is seen.
             // Then it fades (`motion-entrance`), never a cut from the save's "Fusing" to the
@@ -1504,6 +1623,9 @@ internal enum class ModelStatus(@StringRes val text: Int) {
     /** Shown as scanned, not kept: the next open tries the finish again. */
     RawUnfinished(R.string.scan_result_raw_unfinished),
 
+    /** Shown as scanned: the finished model came out worse than the scan ([ModelQualityGate]). */
+    RawAsScanned(R.string.scan_result_raw_quality),
+
     /** The finished model in the raw surface's place: said once, then faded ([slot]). */
     Finished(R.string.scan_result_finished),
     ;
@@ -1514,7 +1636,7 @@ internal enum class ModelStatus(@StringRes val text: Int) {
          * finish ends: the line keeps the room of the tallest, whichever it ends on.
          */
         val RAW_LINES: List<ModelStatus>
-            get() = listOf(Finishing, FinishingAgain, Finished, RawOutOfMemory, RawOutOfMemoryRetry, RawUnfinished)
+            get() = listOf(Finishing, FinishingAgain, Finished, RawOutOfMemory, RawOutOfMemoryRetry, RawUnfinished, RawAsScanned)
 
         /** For [model] on screen, `null` while none is; [settled] once it is known for good. `null`: nothing to say. */
         fun of(model: RerunScanModel?, settled: Boolean): ModelStatus? = when {
@@ -1526,6 +1648,7 @@ internal enum class ModelStatus(@StringRes val text: Int) {
             model == null -> Failed
             model.kind == RerunScanModel.Kind.Points -> Partial
             model.finished -> null
+            model.qualityHeld -> RawAsScanned
             model.outOfMemoryInHeap != null -> if (model.retriesFinish) RawOutOfMemoryRetry else RawOutOfMemory
             else -> RawUnfinished
         }
@@ -1555,12 +1678,13 @@ internal class ModelStatusSlot(val status: ModelStatus, val visible: Boolean) {
 
 /** [slot] as the model screen lays it out under the model: faded, and not heard, once it is not [ModelStatusSlot.visible]. */
 @Composable
-internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifier) {
+internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifier, progress: Float? = null) {
     // Faded, not removed, once said: the model is framed above this slot (as the hint).
     val statusAlpha by animateFloatAsState(if (slot.visible) 1f else 0f, motionFade(), label = "status")
     ModelStatusCard(
         text = stringResource(slot.status.text),
         reserve = slot.reserve.map { stringResource(it.text) },
+        progress = progress,
         modifier = modifier
             .alpha(statusAlpha)
             .then(if (slot.visible) Modifier else Modifier.clearAndSetSemantics { }),
@@ -1574,20 +1698,30 @@ internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifie
  * heard — so the card keeps its room whichever of them it ends on.
  */
 @Composable
-internal fun ModelStatusCard(text: String, modifier: Modifier = Modifier, reserve: List<String> = emptyList()) {
+internal fun ModelStatusCard(
+    text: String,
+    modifier: Modifier = Modifier,
+    reserve: List<String> = emptyList(),
+    progress: Float? = null,
+) {
     val chrome = LocalStageChrome.current
     OverlayCard(testTag = RERUN_MODEL_CARD_TAG, modifier = modifier) {
-        Box {
-            // First in the box, so the line keeps its node as it changes, and is heard changing.
-            NarrationText(
-                text,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                color = chrome.onCard,
-                style = SceneViewTokens.Type.card,
-            )
-            // A narrated line in both its forms: as written, and drawn with its three dots.
-            reserve.flatMap { line -> listOfNotNull(line, narrationBase(line)?.let { "$it..." }) }.forEach { line ->
-                Text(line, style = SceneViewTokens.Type.card, modifier = Modifier.alpha(0f).clearAndSetSemantics { })
+        Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Box {
+                // First in the box, so the line keeps its node as it changes, and is heard changing.
+                NarrationText(
+                    text,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    color = chrome.onCard,
+                    style = SceneViewTokens.Type.card,
+                )
+                // A narrated line in both its forms: as written, and drawn with its three dots.
+                reserve.flatMap { line -> listOfNotNull(line, narrationBase(line)?.let { "$it..." }) }.forEach { line ->
+                    Text(line, style = SceneViewTokens.Type.card, modifier = Modifier.alpha(0f).clearAndSetSemantics { })
+                }
+            }
+            progress?.let { fraction ->
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -1599,8 +1733,8 @@ private class GroundBuild(val ground: ScanGround, val meshes: ScanGroundMeshes)
 /** [model]'s ground, `null` when its vertices cannot be read or stand on nothing. Off the main thread. */
 private fun groundOf(model: RerunScanModel): GroundBuild? = runCatching {
     val started = System.nanoTime()
-    val mesh = RerunGlbMesh.read(model.glb) ?: return@runCatching null
-    val ground = ScanGround.of(mesh.positions, mesh.normals, mesh.vertexCount) ?: return@runCatching null
+    val mesh = RerunGlbMesh.readGeometry(model.glb) ?: return@runCatching null
+    val ground = ScanGround.of(mesh.positions, mesh.normals, mesh.vertexCount, shellQuads = mesh.shellQuads) ?: return@runCatching null
     GroundBuild(ground, ScanGroundMeshes.of(ground)).also {
         Log.i(
             TAG,

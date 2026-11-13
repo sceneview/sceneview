@@ -20,39 +20,75 @@ import kotlin.math.tan
  * for any other file: this reads the one layout the scan writes, not glTF at large.
  */
 object RerunGlbMesh {
+    /** Geometry alone, without allocating colours or indices; shell faces are consecutive quads. */
+    class Geometry(val positions: FloatArray, val normals: FloatArray?, val shellQuads: Boolean) {
+        val vertexCount: Int get() = positions.size / 3
+    }
+
+    fun readGeometry(glb: ByteArray, withNormals: Boolean = true): Geometry? = runCatching {
+        Layout(glb).geometry(withNormals)
+    }.getOrNull()
+
     @Suppress("ReturnCount", "MagicNumber")
     fun read(glb: ByteArray): RerunMesh? = runCatching {
-        val buffer = ByteBuffer.wrap(glb).order(ByteOrder.LITTLE_ENDIAN)
-        if (buffer.getInt(0) != GLB_MAGIC) return null
-        val jsonLength = buffer.getInt(HEADER)
-        val json = String(glb, HEADER + CHUNK_HEADER, jsonLength, Charsets.UTF_8)
-        val binStart = HEADER + CHUNK_HEADER + jsonLength + CHUNK_HEADER
-        val root = lenient.parseToJsonElement(json) as JsonObject
-        val accessors = root["accessors"] as JsonArray
-        val views = root["bufferViews"] as JsonArray
-        fun Any?.int(key: String) = ((this as JsonObject)[key] as? JsonPrimitive)?.intOrNull ?: 0
-        fun offsetOf(accessor: Int): Int = binStart + views[accessors[accessor].int("bufferView")].int("byteOffset")
-        val n = accessors[0].int("count")
-        val indexCount = accessors[3].int("count")
-        val positions = FloatArray(n * 3) { buffer.getFloat(offsetOf(0) + it * 4) }
-        val normals = FloatArray(n * 3) { buffer.getFloat(offsetOf(1) + it * 4) }
-        val colorAt = offsetOf(2)
+        val layout = Layout(glb)
+        val geometry = layout.geometry(withNormals = true)
+        val n = geometry.vertexCount
+        val colorAt = layout.offsetOf(2)
         val colors = IntArray(n) { v ->
             val r = SRGB[glb[colorAt + v * 4].toInt() and 0xFF]
             val g = SRGB[glb[colorAt + v * 4 + 1].toInt() and 0xFF]
             val b = SRGB[glb[colorAt + v * 4 + 2].toInt() and 0xFF]
             (0xFF shl 24) or (r shl 16) or (g shl 8) or b
         }
-        val indexAt = offsetOf(3)
-        // 16-bit when the mesh has few enough vertices ([RerunMeshGlb]), 32-bit otherwise.
-        val indices = if (accessors[3].int("componentType") == UNSIGNED_SHORT) {
-            IntArray(indexCount) { buffer.getShort(indexAt + it * 2).toInt() and 0xFFFF }
+        val indexCount = layout.accessors[3].int("count")
+        layout.buffer.position(layout.offsetOf(3))
+        val indices = if (layout.accessors[3].int("componentType") == UNSIGNED_SHORT) {
+            val shorts = ShortArray(indexCount)
+            layout.buffer.asShortBuffer().get(shorts)
+            IntArray(indexCount) { shorts[it].toInt() and 0xFFFF }
         } else {
-            IntArray(indexCount) { buffer.getInt(indexAt + it * 4) }
+            IntArray(indexCount).also { layout.buffer.asIntBuffer().get(it) }
         }
         if (indices.any { it !in 0 until n }) return null
-        RerunMesh(positions, normals, colors, indices)
+        RerunMesh(geometry.positions, checkNotNull(geometry.normals), colors, indices)
     }.getOrNull()
+
+    /** Resolve each accessor once, then copy its contiguous typed buffer in bulk. */
+    private class Layout(glb: ByteArray) {
+        val buffer: ByteBuffer = ByteBuffer.wrap(glb).order(ByteOrder.LITTLE_ENDIAN)
+        val root: JsonObject
+        val accessors: JsonArray
+        private val views: JsonArray
+        private val binStart: Int
+
+        init {
+            require(buffer.getInt(0) == GLB_MAGIC)
+            val jsonLength = buffer.getInt(HEADER)
+            root = lenient.parseToJsonElement(String(glb, HEADER + CHUNK_HEADER, jsonLength, Charsets.UTF_8)) as JsonObject
+            binStart = HEADER + CHUNK_HEADER + jsonLength + CHUNK_HEADER
+            accessors = root["accessors"] as JsonArray
+            views = root["bufferViews"] as JsonArray
+        }
+
+        fun offsetOf(accessor: Int): Int = binStart +
+            views[accessors[accessor].int("bufferView")].int("byteOffset") + accessors[accessor].int("byteOffset")
+
+        fun geometry(withNormals: Boolean): Geometry {
+            val count = accessors[0].int("count") * 3
+            val positions = floats(0, count)
+            val normals = if (withNormals) floats(1, count) else null
+            val shell = (root["extras"] as? JsonObject)?.get("sceneviewRoomShell") == JsonPrimitive(true)
+            return Geometry(positions, normals, shell)
+        }
+
+        private fun floats(accessor: Int, count: Int): FloatArray {
+            buffer.position(offsetOf(accessor))
+            return FloatArray(count).also { buffer.asFloatBuffer().get(it) }
+        }
+    }
+
+    private fun Any?.int(key: String) = ((this as JsonObject)[key] as? JsonPrimitive)?.intOrNull ?: 0
 
     private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
 

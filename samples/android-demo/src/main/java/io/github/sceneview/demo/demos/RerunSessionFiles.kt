@@ -46,6 +46,7 @@ import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanFootprint
 import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
+import io.github.sceneview.demo.demos.internal.ScanDepthRecording
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -94,16 +95,24 @@ internal object RerunCaptureBuilder {
         denseVoxelM: Float = DenseFusion.VOXEL_M,
         denseMs: Long = 0L,
         camera: String? = null,
+        /**
+         * Whether the planes are painted from the photos (the plane layer). A room scan skips it
+         * (Live Room): neither its model nor its photo layer reads a painted plane, and on a
+         * two-minute walk it was most of the 76 s the save took.
+         */
+        bakePlanes: Boolean = true,
+        /** The scan's raw depth, recorded ([ScanDepthRecording]): its file rides with the pack, its lines go in the log. */
+        depth: ScanDepthRecording? = null,
     ): RerunCapturePack = withContext(Dispatchers.Default) {
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         val whole = trace.frameAt(trace.duration)
         val reads = ArrayList<ScanPhotoPolicy.BakeRead>()
 
         val viewpoint = centroid(whole.trail)
-        val planes = trace.lastPlanes()
+        val planes = if (bakePlanes) trace.lastPlanes() else emptyList()
         // What stands in front of a plane hides it from a photo: its own dense cloud and the other planes.
         val bakeStart = System.nanoTime()
-        val occlusion = BakeOcclusion.of(dense, planes)
+        val occlusion = if (bakePlanes) BakeOcclusion.of(dense, planes) else null
         // Each photo decoded on the first plane that paints from it, and let go after the last one.
         val rects = planes.map { PlaneBake.rectOf(it, viewpoint) }
         val poses = photos.map { it.pose }
@@ -140,8 +149,9 @@ internal object RerunCaptureBuilder {
         )
         RerunCapturePack(
             manifest = manifest.toJson().toByteArray(),
-            log = ArDebugLogWriter.writeBytes(events),
+            log = ArDebugLogWriter.writeBytes(events, depth?.logLines.orEmpty()),
             media = archive,
+            depth = depth?.file,
         )
     }
 
