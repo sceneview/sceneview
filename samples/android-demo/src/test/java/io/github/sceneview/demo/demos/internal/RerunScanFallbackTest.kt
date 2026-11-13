@@ -153,14 +153,28 @@ class RerunScanFallbackTest {
     }
 
     @Test
-    fun `a small scan goes straight to its finished model`() {
+    fun `a small scan shows its measured surface before finishing`() {
         val box = Box(0f, 0f, 0f, 1.2f, 0.9f, 1.0f)
         val tsdf = CleanScenes.fuse(Box(-0.2f, -0.2f, -0.2f, 1.4f, 1.1f, 1.2f), NOISE_M, NOISE_M) { x, y, z ->
             box.sdf(x, y, z)
         }
-        var shown = 0
-        val model = assertNotNull(buildScanModel(RerunModelSource.Live(tsdf, cloud = null), onRaw = { shown++ }) {})
-        assertEquals("a raw surface shown for ${model.triangles} triangles", 0, shown)
+        // A short scan sees some strips with medium confidence only. They must remain
+        // connected to the repeatedly observed surface, without inventing unobserved voxels.
+        tsdf.weight.forEach { block ->
+            block.indices.filter { it % 8 in 3..4 }.forEach { block[it] *= 0.6f }
+        }
+        val expected = RerunMarchingCubes.extractWhole(tsdf).mesh
+        val shown = ArrayList<RerunScanModel>()
+        var refining = false
+        val model = assertNotNull(buildScanModel(RerunModelSource.Live(tsdf, cloud = null), onRaw = {
+            assertFalse("already finishing before raw surface", refining)
+            shown += it
+        }) { if (it > FINISHING_FROM) refining = true })
+        val raw = shown.single()
+        assertFalse(raw.finished)
+        assertTrue(raw.triangles < 120_000)
+        assertEquals("medium-confidence strips retained", expected.triangleCount, raw.triangles)
+        RerunTsdfTest.assertClosed(expected)
         assertTrue(model.finished)
     }
 

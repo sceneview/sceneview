@@ -941,9 +941,9 @@ internal fun RerunModelScreen(
         started = shown && !wirePending && instance != null && !layers.photoShown,
         animate = animateReveal,
     )
-    // The model, finished and its wire read, takes the Photo preview's place — and is revealed.
+    // The first mesh takes over from Photo as soon as it can draw. Texturing refines it in place.
     LaunchedEffect(layers, settled, instance, wirePending, filming) {
-        if (layers.handsOverToModel(modelReady = settled && instance != null && !wirePending, busy = filming)) {
+        if (layers.handsOverToModel(modelReady = instance != null && !wirePending, busy = filming)) {
             layers.photoPicked = false
         }
     }
@@ -1748,21 +1748,21 @@ private const val KB = 1024
 private const val NS_PER_MS = 1_000_000L
 
 /**
- * A depth-fused voxel meshes once two medium-confidence views (or one sure one) agree on it:
- * twice the marching cubes' default, so the voxels seen once at the edge of the view or through
- * a window leave no veil on the finished model.
+ * Keep measured, medium-confidence boundary voxels too: requiring a full weight at all eight
+ * corners erased strips between adjacent observations on short scans. Unobserved corners
+ * still cannot mesh; component cleanup removes isolated sensor noise.
  */
-private const val FRAMES_MIN_WEIGHT = 1f
+private const val FRAMES_MIN_WEIGHT = RerunMarchingCubes.DEFAULT_MIN_WEIGHT
 private const val FUSE_SHARE = 0.3f
 
 /** Where meshing ends on the progress bar: finishing the model ([CleanModel]) takes the rest. */
 private const val MESH_SHARE = 0.45f
 
 /**
- * A raw surface this big is shown while it finishes: a Pixel 4a took 23.5 s to finish 192k
- * triangles, so from about this size the finish passes the 20 s a result may keep the user waiting.
+ * Every nonempty surface is shown while it finishes. Even a small room takes several seconds
+ * to clean and texture on a Pixel 4a; triangle count is not a reliable proxy for that wait.
  */
-internal const val RAW_FIRST_TRIANGLES = 120_000
+internal const val RAW_FIRST_TRIANGLES = 1
 private const val ATLAS_JPEG_QUALITY = 85
 
 /** The mesh's share of the progress bar; the points fallback, when needed, takes the rest. */
