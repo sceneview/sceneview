@@ -101,6 +101,7 @@ import io.github.sceneview.demo.demos.internal.PlaneWallSource
 import io.github.sceneview.demo.demos.internal.PoseContinuity
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
+import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanFollow
 import io.github.sceneview.demo.demos.internal.ScanLens
@@ -724,6 +725,7 @@ private class ArDebugLayers(engine: Engine, private val materials: Map<DebugLaye
         replay: ReplayLayers? = null,
         livePoints: Boolean = true,
         axes: Boolean = true,
+        phoneOnly: Boolean = false,
     ) {
         for (part in Part.entries) {
             val style = if (part == Part.Map || part == Part.Live) pointStyle else style
@@ -757,7 +759,11 @@ private class ArDebugLayers(engine: Engine, private val materials: Map<DebugLaye
                 Part.Map -> ArDebugGeometry.buildMapPoints(frame.mapPoints, style, out(DebugLayer.MapPoints))
                 Part.Live -> ArDebugGeometry.buildLivePoints(frame.livePoints, style, out(DebugLayer.LivePoints))
                 Part.Trail -> ArDebugGeometry.buildTrail(frame.trail, style, out)
-                Part.Camera -> if (replay == null) {
+                Part.Camera -> if (phoneOnly) {
+                    frame.camera?.let {
+                        ArDebugGeometry.buildPhone(it, style, out, replay?.lens ?: ReplayLens.Default, PHONE_DEPTH_M)
+                    }
+                } else if (replay == null) {
                     ArDebugGeometry.buildCamera(frame, style, out)
                 } else {
                     ArDebugGeometry.buildCamera(
@@ -890,6 +896,8 @@ internal fun ArDebugSceneView(
     stageAxes: Boolean = true,
     measureWithoutPlanes: Boolean = false,
     measureFit: ((RoomMeasure) -> RoomMeasure?)? = null,
+    /** The room's dimensions over everything, not only seen from overhead. */
+    measureOnTop: Boolean = false,
     onShown: (() -> Unit)? = null,
     transparent: Boolean = false,
     visible: (DebugGroup) -> Boolean = session::isVisible,
@@ -909,6 +917,11 @@ internal fun ArDebugSceneView(
     captureLens: ScanLens? = null,
     /** A recorder's mirror, for a photo of this view alone (3D Scan's hand-over to its result). */
     surfaceMirrorer: SurfaceMirrorer? = null,
+    /**
+     * [DebugGroup.Cameras] as the phone alone: its live view cone, tinted, with neither the
+     * frustums it left behind nor their photos — 3D Scan's « you are here » on the live model.
+     */
+    phoneOnly: Boolean = false,
     /** More of the scene, in the session's world space: the live 3D map's floor. */
     content: (@Composable SceneScope.() -> Unit)? = null,
 ) {
@@ -1136,6 +1149,7 @@ internal fun ArDebugSceneView(
                     frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers,
                     livePoints = captureLens == null,
                     axes = stageAxes,
+                    phoneOnly = phoneOnly,
                 )
                 replayLayers?.sync(
                     frame, pointStyle, floorY,
@@ -1144,9 +1158,9 @@ internal fun ArDebugSceneView(
                         points = visible(DebugGroup.Points),
                         anchors = visible(DebugGroup.Anchors),
                         trail = visible(DebugGroup.Trail),
-                        cameras = visible(DebugGroup.Cameras),
+                        cameras = visible(DebugGroup.Cameras) && !phoneOnly,
                         measure = !compact && measuresRoom,
-                        measureOnTop = orbit.overhead,
+                        measureOnTop = orbit.overhead || measureOnTop,
                         measureAlone = measureWithoutPlanes,
                     ),
                     eye = CameraRig.eye(orbit.pose).let { Vec3(it.x, it.y, it.z) },
@@ -1298,6 +1312,8 @@ internal fun com.google.android.filament.View.configureForDebug(colorGrading: Co
     setShadowingEnabled(false)
 }
 
+/** The phone's view cone on 3D Scan's live model, metres deep: readable from across the room. */
+private const val PHONE_DEPTH_M = 0.45f
 private const val PIP_FPS = 30
 private const val PIP_POINT_SCALE = 0.55f
 private const val FRAME_INTERVAL_NS = 50_000_000L // rebuild the frame at most at 20 Hz

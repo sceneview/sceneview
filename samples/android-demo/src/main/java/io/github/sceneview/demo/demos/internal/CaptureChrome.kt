@@ -3,13 +3,30 @@ package io.github.sceneview.demo.demos.internal
 import kotlin.math.roundToInt
 
 /** Resource-backed messages for the capture's single instruction line. */
-enum class ScanInstruction { Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving }
+enum class ScanInstruction {
+    Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving,
+
+    /** Nothing scanned yet at the floor's nearest empty area, on that side of the phone. */
+    HoleAhead, HoleLeft, HoleRight, HoleBehind,
+    ;
+
+    companion object {
+        /** The line naming an empty area on [turn]'s side of the phone. */
+        fun holeOn(turn: ScanTurn): ScanInstruction = when (turn) {
+            ScanTurn.Ahead -> HoleAhead
+            ScanTurn.Left -> HoleLeft
+            ScanTurn.Right -> HoleRight
+            ScanTurn.Behind -> HoleBehind
+        }
+    }
+}
 
 /**
  * The capture's one line, never empty while it records, held for at least two seconds: the sweep
  * to start with, for six seconds by a monotonic clock (the trace clock stops during tracking
  * loss); then "keep going" — "raise your phone to the walls" while a room's scan looks only at
- * the floor ([floorOnly]) — until the scan is [complete], then "tap to finish". A problem — lost,
+ * the floor ([floorOnly]), or the side an empty area is on ([hole]) — until the scan is
+ * [complete], then "tap to finish". A problem — lost,
  * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
  * precedence over coaching, with the same minimum time between changes.
  */
@@ -28,6 +45,8 @@ class ScanLiveInstruction {
         saving: Boolean = false,
         complete: Boolean = false,
         floorOnly: Boolean = false,
+        /** The side of the phone the floor's nearest empty area is on, `null` with none. */
+        hole: ScanTurn? = null,
     ): ScanInstruction? {
         if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
         val elapsed = startedAt?.let { nowMs - it } ?: 0L
@@ -41,6 +60,9 @@ class ScanLiveInstruction {
             elapsed < INTRO_MS && (shown == ScanInstruction.Sweep || elapsed <= INTRO_MS - HOLD_MS) ->
                 ScanInstruction.Sweep
             complete -> ScanInstruction.Complete
+            // An empty area named where it is beats a general line (2026-11-13, Thomas's
+            // workshop: « Raise your phone to the walls » all the way through, no wall named).
+            hole != null -> ScanInstruction.holeOn(hole)
             floorOnly -> ScanInstruction.Walls
             else -> ScanInstruction.KeepGoing
         }

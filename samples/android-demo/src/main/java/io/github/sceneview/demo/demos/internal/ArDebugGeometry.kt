@@ -564,6 +564,12 @@ object ArDebugGeometry {
         if (face) addFrustumFace(out(DebugLayer.FrustumFace), camera, depth, lens)
     }
 
+    /** The phone alone, [depth] deep: its view cone's edges and its tinted face, no keyframe. */
+    fun buildPhone(camera: DebugPose, style: ArDebugStyle, out: (DebugLayer) -> DebugMesh, lens: ReplayLens, depth: Float) {
+        addFrustumEdges(out(DebugLayer.Frustum), camera, depth, style.frustumEdge, lens)
+        addFrustumFace(out(DebugLayer.FrustumFace), camera, depth, lens)
+    }
+
     fun buildMapPoints(points: FloatArray, style: ArDebugStyle, mesh: DebugMesh) {
         val r = style.mapPointRadius
         for (i in 0 until points.size / 3) addTetra(mesh, points[i * 3], points[i * 3 + 1], points[i * 3 + 2], r)

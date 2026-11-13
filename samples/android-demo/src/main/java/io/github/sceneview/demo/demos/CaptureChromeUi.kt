@@ -78,6 +78,10 @@ internal fun ScanInstructionLine(instruction: ScanInstruction, scope: ScanScope 
             else -> R.string.scan_capture_keep_going
         }
         ScanInstruction.Walls -> R.string.scan_capture_walls
+        ScanInstruction.HoleAhead -> R.string.scan_capture_hole_ahead
+        ScanInstruction.HoleLeft -> R.string.scan_capture_hole_left
+        ScanInstruction.HoleRight -> R.string.scan_capture_hole_right
+        ScanInstruction.HoleBehind -> R.string.scan_capture_hole_behind
         ScanInstruction.Complete -> R.string.scan_capture_complete
         ScanInstruction.Saving -> R.string.scan_capture_saving
     }

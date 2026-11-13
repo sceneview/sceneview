@@ -120,8 +120,8 @@ class ResultPhotoLayerTest {
     private companion object {
         const val PHOTO = "Photo"
         const val MODEL = "Model"
-        const val CREATING = "Creating your model"
-        const val FINISHING = "Finishing your model"
+        const val CREATING = "Turning your points into a surface"
+        const val FINISHING = "Cleaning up walls and floor"
         const val PHOTO_NOTE ="Photo preview · measures stay on the model"
         const val RESULT_TIMEOUT_MS = 120_000L
         const val TAP_WAIT_MS = 5_000L

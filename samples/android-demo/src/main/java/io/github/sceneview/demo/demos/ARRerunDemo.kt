@@ -141,6 +141,8 @@ import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.ScanTurn
+import io.github.sceneview.demo.demos.internal.ScanGuide
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugLogPlayer
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
@@ -1903,6 +1905,15 @@ private fun RerunLiveScreen(
     }
     val dark = (ForcedTrackingFailure.override ?: trackingFailureReason) ==
         TrackingFailureReason.INSUFFICIENT_LIGHT
+    // The floor's empty areas the live model hatches, and the side of the phone the nearest is on.
+    var scanHoles by remember(scanMedia) { mutableStateOf(emptyList<Pair<Float, Float>>()) }
+    val holeSide = remember(scanMedia) { HoleSide() }
+    val hole = scanCoverage.camera?.takeIf { scanScope.hasFloorPlan }?.let { phone ->
+        holeSide.pick(scanHoles, phone)?.let { (x, z) ->
+            ScanGuide.turnOf(ScanGuide.heading(phone, x, z).degrees, holeSide.turn)
+        }
+    }
+    holeSide.turn = hole
     val instruction = instructionState.update(
         nowMs = nowMs,
         started = recording,
@@ -1918,6 +1929,7 @@ private fun RerunLiveScreen(
             floorShare = scanCoverage.floorShare,
         ),
         floorOnly = scanScope.hasFloorPlan && !scanCoverage.facingWall,
+        hole = hole,
     )
 
     // Where the recorder's camera window is: the live model's ground leaves it open.
@@ -2123,6 +2135,8 @@ private fun RerunLiveScreen(
                     onMeasured = { captureMeasure.value = it },
                     recorder = previewRecorder,
                     onViewBounds = { captureMeasure.viewBounds = it },
+                    coverage = scanCoverage,
+                    onHoles = { scanHoles = it },
                 )
             }
 
@@ -2652,4 +2666,26 @@ private const val QA_FLOOR_BAND_M = 0.15f
 private class MeasureHolder {
     var value: RoomMeasure? = null
     var viewBounds: Rect? = null
+}
+
+/**
+ * The empty area the line names and the side last said for it: the same area is kept while it is
+ * still empty, so the line does not hop between areas as the phone moves, and [ScanGuide.turnOf]
+ * keeps the side across a sway.
+ */
+private class HoleSide {
+    var turn: ScanTurn? = null
+    private var target: Pair<Float, Float>? = null
+
+    /** The area of [holes] to name for the phone at [phone]: the one named so far if still there, else the nearest. */
+    fun pick(holes: List<Pair<Float, Float>>, phone: DebugPose): Pair<Float, Float>? {
+        fun gap(a: Pair<Float, Float>, x: Float, z: Float) = (a.first - x) * (a.first - x) + (a.second - z) * (a.second - z)
+        val kept = target?.let { t -> holes.minByOrNull { gap(it, t.first, t.second) }?.takeIf { gap(it, t.first, t.second) <= KEEP_M2 } }
+        return (kept ?: holes.minByOrNull { gap(it, phone.x, phone.z) }).also { target = it }
+    }
+
+    private companion object {
+        /** An area whose centre moved less than ~0.9 m as it filled is the same area. */
+        const val KEEP_M2 = 0.8f
+    }
 }

@@ -19,6 +19,10 @@
     <string name="scan_capture_keep_going_object">Keep circling the object, slowly</string>
     <string name="scan_capture_keep_going_outdoor">Keep walking slowly, the ground in view</string>
     <string name="scan_capture_walls">Raise your phone to the walls</string>
+    <string name="scan_capture_hole_ahead">Keep going ahead, nothing scanned there yet</string>
+    <string name="scan_capture_hole_left">Turn left, nothing scanned there yet</string>
+    <string name="scan_capture_hole_right">Turn right, nothing scanned there yet</string>
+    <string name="scan_capture_hole_behind">Turn around, nothing scanned behind you yet</string>
     <string name="scan_capture_complete">Looks complete. Tap the red button to finish</string>
     <string name="scan_capture_saving">Saving your scan…</string>
     <string name="scan_capture_live_model">Your scan · Live 3D</string>

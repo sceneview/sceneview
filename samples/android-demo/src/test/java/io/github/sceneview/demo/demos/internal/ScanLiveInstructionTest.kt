@@ -76,6 +76,22 @@ class ScanLiveInstructionTest {
     }
 
     @Test
+    fun `an empty area is named on its side, over the walls line, under complete`() {
+        val line = ScanLiveInstruction()
+        line.update(nowMs = 0)
+        val after = ScanLiveInstruction.INTRO_MS + 1
+        assertEquals(ScanInstruction.HoleLeft, line.update(nowMs = after, floorOnly = true, hole = ScanTurn.Left))
+        assertEquals(
+            ScanInstruction.HoleBehind,
+            line.update(nowMs = after + ScanLiveInstruction.HOLD_MS, hole = ScanTurn.Behind),
+        )
+        assertEquals(
+            ScanInstruction.Complete,
+            line.update(nowMs = after + 2 * ScanLiveInstruction.HOLD_MS, complete = true, hole = ScanTurn.Right),
+        )
+    }
+
+    @Test
     fun `a normal slow walk is not too fast`() {
         // Below the raised threshold (1.5 m/s), the ~1 m/s of a scan walk raises no warning.
         assertTrue(ScanCoach.MAX_SPEED_M_PER_S > 1f)

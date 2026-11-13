@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -43,9 +44,16 @@ import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
+import io.github.sceneview.demo.demos.internal.CoverageGrid
+import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
+import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.OrbitBand
+import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
+import io.github.sceneview.demo.demos.internal.ScanLiveMapFraming
+import io.github.sceneview.demo.demos.internal.ScanModelFollow
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.StageChrome
@@ -59,8 +67,9 @@ import kotlinx.coroutines.withContext
  * The scan's main view while capturing: the model being built, in the colours the camera saw,
  * on the stage's own ground (2026-11-13, Thomas: « on s'en fiche de la caméra… on est en train
  * de construire un modèle 3D »). The camera stays in a small window cut in that ground, where
- * the captured points sit on the world. The view's heading is fixed and only its framing grows
- * with the model, so the phone's turns never spin it. The snapshot is rebuilt on a worker at
+ * the captured points sit on the world. The phone stands in the model as its view cone, and the
+ * view follows it from behind and above ([ScanModelFollow]): eased, so its turns swing the view
+ * round over seconds and never spin it, and stepping back as the model grows. The snapshot is rebuilt on a worker at
  * most every [REFRESH_MS]; ARCore stays the capture's clock. The camera owns the whole screen
  * until a surface exists, then the model fades in.
  */
@@ -80,6 +89,10 @@ internal fun ScanModelPreview(
     recorder: SceneRecorder? = null,
     /** Where the model's view stands in the window: the result lays the picture back there. */
     onViewBounds: (Rect) -> Unit = {},
+    /** The floor the scan covers: drawn under the model, what is still empty hatched. */
+    coverage: ScanCoverageState? = null,
+    /** The empty areas of that floor large enough to go back to, centres (x, z): the guidance names one. */
+    onHoles: (List<Pair<Float, Float>>) -> Unit = {},
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
         var previous: ReplayDenseLayer? = null
@@ -90,9 +103,17 @@ internal fun ScanModelPreview(
                     ReplayDenseLayer(
                         cloud = next.cloud,
                         voxelM = next.voxelM,
-                        mesh = DenseSurfels.mesh(next.cloud, next.voxelM, halfSideVoxels = MODEL_HALF_SIDE_VOXELS),
+                        mesh = DenseSurfels.mesh(
+                            next.cloud, next.voxelM,
+                            halfSideVoxels = MODEL_HALF_SIDE_VOXELS, levelCap = MODEL_LEVEL_CAP,
+                        ),
                         atlas = DenseSurfels.atlas(next.cloud, ReplayDenseLayer.DENSE_FALLBACK_COLOR),
                         whole = next.whole,
+                        // Covered where anything is drawn, a surfel one view saw included: the
+                        // map's own cells keep only those seen twice, and striped drawn floor.
+                        coveredCells = (next.coveredCells + CoverageGrid.coveredKeys(
+                            next.cloud.positions, next.cloud.count, minPoints = 1,
+                        )).distinct().toLongArray(),
                     )
                 }
                 previous = next
@@ -150,7 +171,62 @@ internal fun ScanModelPreview(
         }
         fit
     }
-    val orbit = remember(media) { ArDebugOrbitCamera(drift = false, band = OrbitBand.CARD) }
+    // The floor under the model: what the scan covers, and the rest of the room hatched, still
+    // empty (2026-11-13, Thomas's workshop: say which part is missing, and show it).
+    var ground by remember { mutableStateOf<ScanGroundMeshes?>(null) }
+    val holes by rememberUpdatedState(onHoles)
+    if (coverage != null) {
+        LaunchedEffect(coverage, session) {
+            var version = -1
+            var extent: List<Pair<Float, Float>>? = null
+            var layer: ReplayDenseLayer? = null
+            while (true) {
+                val grid = coverage.grid
+                val outline = coverage.extent
+                val dense = current
+                if (grid.version != version || outline !== extent || dense !== layer) {
+                    version = grid.version
+                    extent = outline
+                    layer = dense
+                    // Covered where the model the user sees has surface, not where ARCore's sparse
+                    // points fell: an area drawn full is never called empty.
+                    val keys = dense?.coveredCells?.takeIf { it.isNotEmpty() } ?: LongArray(grid.covered).also { out ->
+                        var n = 0
+                        grid.forEachCovered { cx, cz -> out[n++] = CoverageGrid.key(cx, cz) }
+                    }
+                    val trace = session.trace
+                    val floorY = stageFloorY(trace.frameAt(trace.duration))
+                    val cell = grid.cellMetres
+                    val built = withContext(Dispatchers.Default) {
+                        // Empty means a gap inside what the model already spans, its hull: the
+                        // planes' outline ran metres past the room and striped all of it.
+                        val hull = RoomDollhouse.convexHull(
+                            keys.map { ((CoverageGrid.cxOf(it) + 0.5f) * cell) to ((CoverageGrid.czOf(it) + 0.5f) * cell) },
+                        )
+                        LiveCoverageGround.of(keys, cell, hull, floorY)?.let {
+                            // The empty floor's hatching alone: no slab, no tiles over the model.
+                            ScanGroundMeshes(DebugMesh(), DebugMesh(), hatch = ScanGroundMeshes.of(it, hatchMissing = true).hatch) to
+                                ScanLiveMapFraming.zonesOf(it)
+                        }
+                    }
+                    ground = built?.first
+                    holes(built?.second.orEmpty())
+                }
+                delay(GROUND_REFRESH_MS)
+            }
+        }
+    }
+    // The hatching in the guidance amber, toned into the dark stage: still to scan, never alarming.
+    val groundColors = ScanGroundColors.currentLive().let { base ->
+        base.copy(hatch = lerp(StageChrome.Media.ground, SceneViewTokens.ArOverlay.accentGuidance, HOLE_HATCH_TINT))
+    }
+    val orbit = remember(media) {
+        ArDebugOrbitCamera(
+            drift = false, band = OrbitBand.CARD,
+            approachRate = FOLLOW_APPROACH_RATE, maxTurnDegreesPerSecond = FOLLOW_MAX_TURN,
+        )
+    }
+    val phoneFollow = remember(media) { ScanModelFollow() }
     val drawn = remember(media) { media.withLiveDense(overCamera = { false }) { current } }
     // The replay's dark stage in both themes (2026-11-13, the mother's review of the 4.6x replay
     // Thomas liked): the room in its true colours reads on it, its grid and its dimensions too.
@@ -196,14 +272,24 @@ internal fun ScanModelPreview(
                 stageAxes = false,
                 measureWithoutPlanes = true,
                 measureFit = measureFit,
+                // Over the model: a wall's points hid half of a figure ("10 in" for 13 ft 10 in).
+                measureOnTop = true,
                 surfaceMirrorer = recorder?.surfaceMirrorer,
-                visible = { it == DebugGroup.Points || it == DebugGroup.Stage },
+                // The room, its grid, and the phone in it: its view cone and the path it walked.
+                visible = {
+                    it == DebugGroup.Points || it == DebugGroup.Stage || it == DebugGroup.Cameras || it == DebugGroup.Trail
+                },
+                phoneOnly = true,
                 drivesSession = false,
-                follow = {
-                    ArDebugFraming.home(
-                        currentBounds, ArDebugFraming.HOME_AZIMUTH, orbit.verticalFovDegrees,
-                        orbit.aspect, elevationDegrees = MODEL_ELEVATION, band = OrbitBand.CARD, fill = 1f,
-                    )
+                // From behind and above the phone, eased, stepping back as the room grows.
+                content = { ScanLiveGroundLayer(ground, engine, materialLoader, groundColors) },
+                follow = { frame ->
+                    phoneFollow.poseFor(frame.camera, frame.time, ArDebugFraming.HOME_AZIMUTH) { heading ->
+                        ArDebugFraming.home(
+                            currentBounds, heading, orbit.verticalFovDegrees,
+                            orbit.aspect, elevationDegrees = MODEL_ELEVATION, band = OrbitBand.CARD, fill = 1f,
+                        )
+                    }
                 },
             )
         }
@@ -223,14 +309,31 @@ private fun atLeastRoomSized(bounds: FloatArray): FloatArray = FloatArray(6) { i
 private const val MIN_HALF_WIDE_M = 1.5f
 private const val MIN_HALF_HIGH_M = 1f
 
+/** How much of the guidance amber the empty floor's hatching takes over the dark stage. */
+private const val HOLE_HATCH_TINT = 0.7f
+
+/** How often the floor under the model is rebuilt, at most. */
+private const val GROUND_REFRESH_MS = 1_000L
+
 /** How often the model's snapshot is rebuilt, at most. */
 private const val REFRESH_MS = 600L
 
-/** The model's surfels a little wider than saved, so the growing room reads as one surface. */
-private const val MODEL_HALF_SIDE_VOXELS = 1f
+/**
+ * The model's surfels as fine points, 2 cm on a well-seen wall (2026-11-13, Thomas's workshop
+ * scan: 7 cm squares read as mush). Neighbours of the finest level just touch, so a wall seen
+ * well reads as a surface and one seen thinly as scattered points: more sweeps, more matter.
+ */
+private const val MODEL_HALF_SIDE_VOXELS = 0.5f
 
-/** The model seen from above at this angle, its heading fixed. */
-private const val MODEL_ELEVATION = 40f
+/** Coarse surfels drawn no wider than level 1 (4 cm): a thin wall shows as sparse, not as tiles. */
+private const val MODEL_LEVEL_CAP = 1
+
+/** The model seen from above the phone at this angle. */
+private const val MODEL_ELEVATION = 45f
+
+/** The follow's own ease and turn, gentler than the orbit's: the view drifts after the phone. */
+private const val FOLLOW_APPROACH_RATE = 2f
+private const val FOLLOW_MAX_TURN = 40f
 
 /** Under the back button and the figures, over the line and the recorder. */
 private val MODEL_TOP = 72.dp

@@ -10,3 +10,5 @@ The fifth device pass restores the opaque uniform capture ink and removes planar
 The Pixel 4a comparison retains Poisson: the Live Room v2 depth-only trial produced noisier surfaces, more floor perforations and less readable furniture on the same replay. Its experimental finish is removed, and cached depth-trial models are rebuilt with the retained pipeline.
 
 The fixed result camera retains the sampled preview boundary instead of trimming its sparse furniture as percentile outliers, so the model and plan fit the same measured extent from the start.
+
+While capturing, the phone stands in the live model as its view cone, with the path it walked. The view follows it from behind and above, eased so that a turn swings it round over a couple of seconds, and steps back as the room grows. The model's points are drawn finer (2 cm, coarse ones capped at 4 cm), so a wall seen well reads as a surface and one seen thinly as scattered points. The floor still empty is hatched under the model, and the guidance line names the side it is on ("Turn left, nothing scanned there yet"). The result's progress names its two steps.
