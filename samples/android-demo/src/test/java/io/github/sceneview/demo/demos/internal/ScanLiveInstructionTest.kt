@@ -1,7 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,12 +17,21 @@ class ScanLiveInstructionTest {
     }
 
     @Test
-    fun `the sweep hint shows at the start, then the line goes quiet`() {
+    fun `the sweep hint shows at the start, then keep going, then tap to finish once complete`() {
         val line = ScanLiveInstruction()
         assertEquals(ScanInstruction.Sweep, line.update(nowMs = 0))
         assertEquals(ScanInstruction.Sweep, line.update(nowMs = 3_000))
-        assertNull(line.update(nowMs = ScanLiveInstruction.INTRO_MS + 1))
-        assertNull(line.update(nowMs = 30_000))
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = ScanLiveInstruction.INTRO_MS + 1))
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = 20_000))
+        assertEquals(ScanInstruction.Complete, line.update(nowMs = 30_000, complete = true))
+    }
+
+    @Test
+    fun `a room looks complete once most of its floor is covered after twenty seconds`() {
+        assertFalse(ScanCompletion.complete(ScanScope.Room, seconds = 10f, floorShare = 1f))
+        assertFalse(ScanCompletion.complete(ScanScope.Room, seconds = 40f, floorShare = 0.5f))
+        assertTrue(ScanCompletion.complete(ScanScope.Room, seconds = 40f, floorShare = 0.9f))
+        assertTrue(ScanCompletion.complete(ScanScope.Object, seconds = 31f, floorShare = 0f))
     }
 
     @Test

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import android.content.Context
@@ -26,8 +27,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The capture screen's top and bottom on the device: one pill (duration · floor area), at most one
- * instruction, one Done (with Next room for a whole home), and no review step, pause or breadcrumb.
+ * The capture screen's top and bottom on the device: one pill (a red dot while recording, duration ·
+ * floor area), one instruction line, and a recorder — the camera window, the red stop shutter and
+ * Pause (with Next room for a whole home) — and no review step or breadcrumb.
  * The review card, no longer part of the capture, still builds a model instead of "saving".
  */
 @RunWith(RobolectricTestRunner::class)
@@ -41,14 +43,19 @@ class CaptureChromeUiTest {
         ApplicationProvider.getApplicationContext<Context>().getString(id)
 
     @Test
-    fun `the capture's bottom is one instruction and one Done, nothing else`() {
+    fun `the capture's bottom is one instruction and a recorder, nothing else`() {
+        var paused = 0
         composeRule.setContent {
-            ScanControls(instruction = ScanInstruction.Sweep, doneEnabled = true, onFinish = {})
+            ScanControls(instruction = ScanInstruction.Sweep, doneEnabled = true, onFinish = {}, onTogglePause = { paused++ })
         }
         composeRule.onNodeWithText(text(R.string.scan_capture_sweep)).assertIsDisplayed()
-        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(AR_REC_SHUTTER_TAG).assertIsEnabled()
+        composeRule.onNodeWithTag(SCAN_CAMERA_WINDOW_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCAN_PAUSE_TAG).assertIsDisplayed().performClick()
+        assertEquals(1, paused)
         composeRule.onNodeWithTag(SCAN_NEXT_ROOM_TAG).assertDoesNotExist()
-        // No review step, pause or breadcrumb any more (Thomas, 2026-11-13).
+        // No review step or breadcrumb any more (Thomas, 2026-11-13).
         composeRule.onNodeWithText(CaptureChrome.STOP_AND_REVIEW).assertDoesNotExist()
         for (step in ScanStep.entries) composeRule.onNodeWithText(step.label).assertDoesNotExist()
     }
@@ -58,7 +65,8 @@ class CaptureChromeUiTest {
         composeRule.setContent {
             ScanControls(instruction = null, doneEnabled = false, onFinish = {})
         }
-        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertIsNotEnabled()
+        // The red stop shutter waits for a capture.
+        composeRule.onNodeWithTag(AR_REC_SHUTTER_TAG).assertIsNotEnabled()
         for (id in listOf(R.string.scan_capture_sweep, R.string.scan_capture_slower, R.string.scan_capture_go_back)) {
             composeRule.onNodeWithText(text(id)).assertDoesNotExist()
         }
@@ -113,8 +121,19 @@ class CaptureChromeUiTest {
     }
 
     @Test
-    fun `the top is one pill, duration and floor area`() {
-        composeRule.setContent { ScanHud(seconds = 23f, floorSquareMetres = 14f) }
+    fun `paused, the line says nothing is captured and Pause turns to Resume`() {
+        composeRule.setContent {
+            ScanControls(instruction = ScanInstruction.KeepGoing, doneEnabled = true, onFinish = {}, paused = true, onTogglePause = {})
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_paused)).assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_capture_keep_going)).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(text(R.string.scan_capture_resume)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the top is one pill, a red dot while recording, duration and floor area`() {
+        composeRule.setContent { ScanHud(seconds = 23f, floorSquareMetres = 14f, recording = true) }
+        composeRule.onNodeWithTag(SCAN_REC_DOT_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag(SCAN_HUD_TAG).assertIsDisplayed()
         composeRule.onNodeWithText("0:23", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("14", substring = true).assertIsDisplayed()

@@ -1,5 +1,10 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.border
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -90,7 +95,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -153,25 +157,36 @@ internal fun ScanCaptureLayout(
     }
 }
 
-/** The same quiet duration and floor-area pill in every capture scope, including while saving. */
+/**
+ * The recorder's figures, the same in every scope and while saving: a red dot while it records,
+ * as a camera's, then the duration and the floor area.
+ */
 @Composable
-internal fun ScanHud(seconds: Float, floorSquareMetres: Float, label: String? = null) {
+internal fun ScanHud(seconds: Float, floorSquareMetres: Float, label: String? = null, recording: Boolean = false) {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainer,
         contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.testTag(SCAN_HUD_TAG),
     ) {
-        Text(
-            text = (label?.let { "$it · " } ?: "") + stringResource(
-                R.string.scan_capture_figures,
-                ArDebugFormat.clock(seconds),
-                ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f)),
-            ),
-            style = MaterialTheme.typography.labelLarge,
-            textAlign = TextAlign.Center,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
             modifier = Modifier.padding(horizontal = Space.md, vertical = Space.sm),
-        )
+        ) {
+            if (recording) {
+                Box(Modifier.size(ScanDotSize).background(ArOverlay.accentRecord, CircleShape).testTag(SCAN_REC_DOT_TAG))
+            }
+            Text(
+                text = (label?.let { "$it · " } ?: "") + stringResource(
+                    R.string.scan_capture_figures,
+                    ArDebugFormat.clock(seconds),
+                    ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f)),
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -286,8 +301,16 @@ internal fun BoxScope.ScanGuideArrow(walls: ScanWallsState) {
 
 private const val GAUGE_SEGMENTS = 10
 
-/** One optional instruction and one action, in the same place from the first frame to saving. */
+/**
+ * The recorder (2026-11-13, Thomas: « il y avait un recorder, un vrai recorder »), laid out as a
+ * camera app's: the window on what the camera sees where a camera keeps its last shot, the red
+ * stop shutter in the middle, Pause and Resume across from it — and, for a whole home, Next room
+ * above them. One instruction line at most sits over the row. While saving, only the line stays.
+ * [onCameraWindow] hears where the camera window is, in the window's coordinates, for the live
+ * model's ground to leave it open; `null` once it is gone.
+ */
 @Composable
+@Suppress("LongParameterList", "LongMethod") // the recorder's three controls and their states
 internal fun ScanControls(
     instruction: ScanInstruction?,
     doneEnabled: Boolean,
@@ -296,13 +319,17 @@ internal fun ScanControls(
     onResumeRoom: (() -> Unit)? = null,
     scope: ScanScope = ScanScope.Room,
     limitedDepth: Boolean = false,
+    paused: Boolean = false,
+    onTogglePause: (() -> Unit)? = null,
+    onCameraWindow: (Rect?) -> Unit = {},
 ) {
     Column(
         modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth().testTag(SCAN_CONTROLS_TAG),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Space.sm),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
         if (onResumeRoom != null) {
+            SideEffect { onCameraWindow(null) }
             Text(stringResource(R.string.scan_capture_between_rooms), style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                 FilledTonalButton(onClick = onFinish) { Text(ScanScopeCopy.FINISH_HOME) }
@@ -312,27 +339,128 @@ internal fun ScanControls(
             }
             return@Column
         }
-        if (instruction != null) ScanInstructionLine(instruction, scope)
-        else if (limitedDepth) Text(stringResource(R.string.scan_capture_photos_only), style = MaterialTheme.typography.bodyMedium)
-        // While saving, the captured model owns the stage; no disabled shutter below it.
-        if (instruction == ScanInstruction.Saving) return@Column
+        when {
+            paused && instruction != ScanInstruction.Saving -> ScanPausedLine()
+            instruction != null -> ScanInstructionLine(instruction, scope)
+            limitedDepth -> Text(stringResource(R.string.scan_capture_photos_only), style = MaterialTheme.typography.bodyMedium)
+        }
+        // While saving, the model owns the stage: the line says so, no control under it.
+        if (instruction == ScanInstruction.Saving) {
+            SideEffect { onCameraWindow(null) }
+            return@Column
+        }
         // A whole home is scanned room by room (#4677): Next room saves this one and goes on.
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
-            if (onNextRoom != null) {
-                FilledTonalButton(
-                    onClick = onNextRoom,
-                    enabled = doneEnabled,
-                    modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).testTag(SCAN_NEXT_ROOM_TAG),
-                ) { Text(stringResource(R.string.scan_capture_next_room)) }
-            }
-            Button(
-                onClick = onFinish,
+        if (onNextRoom != null) {
+            FilledTonalButton(
+                onClick = onNextRoom,
                 enabled = doneEnabled,
-                modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).testTag(SCAN_FINISH_TAG),
-            ) { Text(stringResource(R.string.scan_capture_done)) }
+                modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).testTag(SCAN_NEXT_ROOM_TAG),
+            ) { Text(stringResource(R.string.scan_capture_next_room)) }
+        }
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                ScanCameraWindow(onCameraWindow)
+            }
+            ScanRecorderLabelled(stringResource(R.string.scan_capture_finish_short)) {
+                RecordShutter(
+                    isRecording = true,
+                    startEnabled = true,
+                    onStart = {},
+                    onStop = onFinish,
+                    // On a dark disc in both themes: the white ring is lost on the light stage otherwise.
+                    modifier = Modifier.testTag(SCAN_FINISH_TAG).background(ArOverlay.scrimDark, CircleShape),
+                    stopLabel = stringResource(R.string.scan_capture_finish),
+                    stopEnabled = doneEnabled,
+                )
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                if (onTogglePause != null) {
+                    ScanRecorderLabelled(
+                        stringResource(if (paused) R.string.scan_capture_resume else R.string.scan_capture_pause),
+                    ) { ScanPauseButton(paused = paused, onClick = onTogglePause) }
+                }
+            }
         }
     }
 }
+
+/**
+ * The camera's window: a frame the live model's ground leaves open, the camera seen through it
+ * with the captured points on the world. It holds nothing itself; it reports where it is.
+ */
+@Composable
+private fun ScanCameraWindow(onCameraWindow: (Rect?) -> Unit) {
+    val chrome = LocalStageChrome.current
+    DisposableEffect(Unit) { onDispose { onCameraWindow(null) } }
+    Box(
+        Modifier
+            .size(CameraWindowWidth, CameraWindowHeight)
+            .onGloballyPositioned { onCameraWindow(it.boundsInWindow()) }
+            .border(SceneViewTokens.Layout.hairlineWidth, chrome.edgeRing, RoundedCornerShape(CameraWindowCorner))
+            .testTag(SCAN_CAMERA_WINDOW_TAG),
+    )
+}
+
+/**
+ * A recorder control with what it does under it, in a small pill readable over the camera as
+ * over the stage. The control keeps its own spoken name; the pill is not read twice.
+ */
+@Composable
+private fun ScanRecorderLabelled(label: String, control: @Composable () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+        control()
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.clearAndSetSemantics {},
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.xs / 2),
+            )
+        }
+    }
+}
+
+/** Pause and Resume, the recorder's secondary: a tonal disc across from the shutter. */
+@Composable
+private fun ScanPauseButton(paused: Boolean, onClick: () -> Unit) {
+    val label = stringResource(if (paused) R.string.scan_capture_resume else R.string.scan_capture_pause)
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(SceneViewTokens.Layout.touchTarget + Space.sm).testTag(SCAN_PAUSE_TAG),
+    ) {
+        Icon(
+            imageVector = if (paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+            contentDescription = label,
+            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize + Space.xs),
+        )
+    }
+}
+
+/** The line while paused: what Pause means, on the instruction line's own ground. */
+@Composable
+private fun ScanPausedLine() {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        modifier = Modifier.testTag(SCAN_HINT_TAG),
+    ) {
+        Text(
+            text = stringResource(R.string.scan_capture_paused),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.sm),
+        )
+    }
+}
+
+/** The camera window, 3:4 as the camera's own frame. */
+internal val CameraWindowWidth = 72.dp
+internal val CameraWindowHeight = 96.dp
+internal val CameraWindowCorner = SceneViewTokens.Radius.md
 
 /**
  * Finish's review: the capture frozen, nothing built yet. Keep scanning returns to the same
@@ -652,7 +780,7 @@ internal fun ScanLiveView(
         engine = engine,
         modelLoader = modelLoader,
         materialLoader = materialLoader,
-        modifier = Modifier.fillMaxSize().blur(10.dp).graphicsLayer { alpha = CAPTURE_POINTS_ALPHA }.testTag(SCAN_STAGE_TAG),
+        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = CAPTURE_POINTS_ALPHA }.testTag(SCAN_STAGE_TAG),
         replay = drawn,
         transparent = true,
         measuresRoom = false,
@@ -667,8 +795,12 @@ internal fun ScanLiveView(
     )
 }
 
-/** Enough of the real camera texture remains visible between and beneath the colour points. */
-internal const val CAPTURE_POINTS_ALPHA = 0.42f
+/**
+ * The captured points over the recorder's camera window, in the colours the camera saw, sharp —
+ * no blur, no ink — and light enough that the window stays a viewfinder: the model above is
+ * where the scan is seen.
+ */
+internal const val CAPTURE_POINTS_ALPHA = 0.4f
 internal const val SCAN_CAPTURE_TAG = "scan_capture"
 
 /** Shown once a drag or a pinch has left the follow view: back to following the phone. */
@@ -702,6 +834,8 @@ private const val SCAN_LIVE_FPS = 30
 private val ScanDotSize = Space.md - Space.xs / 2
 
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
+internal const val SCAN_REC_DOT_TAG = "ar_rerun_scan_rec_dot"
+internal const val SCAN_CAMERA_WINDOW_TAG = "ar_rerun_scan_camera_window"
 internal const val SCAN_ROOM_GAUGE_TAG = "ar_rerun_scan_room_gauge"
 internal const val SCAN_TURN_TAG = "ar_rerun_scan_turn"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"

@@ -72,6 +72,13 @@ internal fun ScanInstructionLine(instruction: ScanInstruction, scope: ScanScope 
             ScanScope.Area -> R.string.scan_capture_sweep_outdoor
             else -> R.string.scan_capture_sweep
         }
+        ScanInstruction.KeepGoing -> when (scope) {
+            ScanScope.Object -> R.string.scan_capture_keep_going_object
+            ScanScope.Area -> R.string.scan_capture_keep_going_outdoor
+            else -> R.string.scan_capture_keep_going
+        }
+        ScanInstruction.Walls -> R.string.scan_capture_walls
+        ScanInstruction.Complete -> R.string.scan_capture_complete
         ScanInstruction.Saving -> R.string.scan_capture_saving
     }
     Surface(

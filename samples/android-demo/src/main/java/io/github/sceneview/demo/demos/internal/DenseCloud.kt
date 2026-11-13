@@ -508,36 +508,9 @@ object DenseSurfels {
     fun atlas(cloud: DenseCloud, fallback: Int): ByteArray = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
 
     /**
-     * The colours the capture paints over the camera: each surfel's own colour mixed
-     * [LIVE_TINT_SHARE] toward [LIVE_TINT]. In their true colours alone the surfels vanish into
-     * the camera pixels they came from; tinted, what is captured stands out from what is not,
-     * the way LiDAR scanners coat the world while it is scanned.
+     * The half side, in voxels, the capture draws a surfel at over the camera: the saved size,
+     * so in the camera window the captured points sit on the world as fine points, never as a
+     * coat of tiles (2026-11-13, Thomas: « carreaux », « c'est horrible »).
      */
-    fun liveAtlas(cloud: DenseCloud, fallback: Int): ByteArray {
-        val tinted = IntArray(cloud.colors.size) { i -> tint(cloud.colors[i].takeIf { it != 0 } ?: fallback) }
-        return PointColorAtlas.pixels(tinted, fallback, ATLAS_SIZE)
-    }
-
-    /** [argb] mixed [LIVE_TINT_SHARE] toward [LIVE_TINT], opaque. */
-    fun tint(argb: Int): Int {
-        fun mix(shift: Int): Int {
-            val c = argb shr shift and 0xFF
-            val t = LIVE_TINT shr shift and 0xFF
-            return (c + (t - c) * LIVE_TINT_SHARE).toInt().coerceIn(0, 0xFF)
-        }
-        return (0xFF shl 24) or (mix(16) shl 16) or (mix(8) shl 8) or mix(0)
-    }
-
-    /**
-     * The half side, in voxels, the capture draws a surfel at over the camera: a little over
-     * twice [HALF_SIDE_VOXELS], so neighbouring surfels overlap into one coat on the surface
-     * instead of a scatter of tiles. The saved cloud and the result keep [HALF_SIDE_VOXELS].
-     */
-    const val LIVE_HALF_SIDE_VOXELS = 1.5f
-
-    /** The capture's coat: a light sky blue, seen on wood, white walls and dark fabric alike. */
-    const val LIVE_TINT = 0xFF76CFFF.toInt()
-
-    /** Uniform ink avoids seams between overlapping samples. Camera texture shows through the layer alpha. */
-    const val LIVE_TINT_SHARE = 1f
+    const val LIVE_HALF_SIDE_VOXELS = HALF_SIDE_VOXELS
 }

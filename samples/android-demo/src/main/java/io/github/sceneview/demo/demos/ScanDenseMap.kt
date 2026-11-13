@@ -136,8 +136,8 @@ internal class ScanDenseMap(
         else -> ScanDetail.Fine
     }
 
-    /** The cloud the scan saves: every voxel at least [DenseFusion.MIN_VIEWS] depth frames saw. */
-    fun savedCloud(): DenseCloud = fusion.cloud(minViews = DenseFusion.MIN_VIEWS)
+    /** The cloud the scan saves ([DenseFusion.savedCloud]): what the live view showed, less the dust. */
+    fun savedCloud(): DenseCloud = fusion.savedCloud()
 
     /**
      * [events] with each [ArDebugEvent.DepthStats] total turned into the prefix of [savedCloud]
@@ -145,7 +145,7 @@ internal class ScanDenseMap(
      * a replay reveals, exact through a compaction, and its last value the saved count.
      */
     fun revealed(events: List<ArDebugEvent>, atFrames: IntArray): List<ArDebugEvent> {
-        val totals = fusion.revealCounts(atFrames)
+        val totals = fusion.savedRevealCounts(atFrames)
         var k = 0
         return events.map { e ->
             if (e !is ArDebugEvent.DepthStats || k >= totals.size) e else {
@@ -190,7 +190,7 @@ internal class ScanDenseMap(
             cloud = drawn,
             voxelM = fusion.voxelM,
             mesh = DenseSurfels.mesh(drawn, fusion.voxelM, halfSideVoxels = DenseSurfels.LIVE_HALF_SIDE_VOXELS),
-            atlas = DenseSurfels.liveAtlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
+            atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
             // The floor cells are found here too, on the worker, from the map as before: the
             // live map and the area read them, however far the drawn surfels are merged.
             coveredCells = covered,

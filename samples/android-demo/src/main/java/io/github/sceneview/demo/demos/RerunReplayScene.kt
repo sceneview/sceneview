@@ -448,7 +448,9 @@ internal class ReplayLayers(
             it.setParameter("texture", atlas, nearest)
             it.setParameter("maxSide", denseSide)
             it.setParameter("nearFade", DenseSurfels.NEAR_FADE_M)
-            it.setParameter("captureTint", if (media.liveDense != null && media.overCamera()) 1f else 0f)
+            // The capture paints the surfels in the colours the camera saw, never a flat ink
+            // (2026-11-13, Thomas on the blue coat: « c'est horrible »).
+            it.setParameter("captureTint", 0f)
             it.setDepthWrite(true)
             materials += it
         }
@@ -676,7 +678,6 @@ internal class ReplayLayers(
             if (side != denseSide) {
                 denseSide = side
                 denseMaterial?.setParameter("maxSide", side)
-                denseMaterial?.setParameter("captureTint", if (media.overCamera()) 1f else 0f)
             }
             val snapshot = live()
             if (snapshot != null && snapshot !== liveDenseShown) {

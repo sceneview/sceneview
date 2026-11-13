@@ -217,10 +217,9 @@ object ScanResultFraming {
                 normals[i * 3 + k] = from[v * 3 + k]
             }
         }
-        // This frame stays fixed when the finished mesh replaces the preview. Keep the
-        // measured boundary: percentile trimming can exclude a small piece of furniture
-        // that remains visible in the final model and would then be clipped by the screen.
-        return of(positions, normals, tail = 0f)
+        // Trimmed like every other framing: a stray far patch must not shrink the room to a
+        // speck in the middle of the screen (2026-11-13, Pixel 4a).
+        return of(positions, normals)
     }
 
     /**

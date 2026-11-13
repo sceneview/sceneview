@@ -3,13 +3,15 @@ package io.github.sceneview.demo.demos.internal
 import kotlin.math.roundToInt
 
 /** Resource-backed messages for the capture's single instruction line. */
-enum class ScanInstruction { Starting, GoBack, Slower, MoreLight, Sweep, Saving }
+enum class ScanInstruction { Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving }
 
 /**
- * One instruction at most, held for at least two seconds, including transitions to silence.
- * The introductory sweep expires six seconds after capture starts, measured with a monotonic
- * clock rather than the trace clock (which stops during tracking loss). Saving is a terminal
- * status and takes precedence over coaching, with the same minimum time between changes.
+ * The capture's one line, never empty while it records, held for at least two seconds: the sweep
+ * to start with, for six seconds by a monotonic clock (the trace clock stops during tracking
+ * loss); then "keep going" — "raise your phone to the walls" while a room's scan looks only at
+ * the floor ([floorOnly]) — until the scan is [complete], then "tap to finish". A problem — lost,
+ * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
+ * precedence over coaching, with the same minimum time between changes.
  */
 class ScanLiveInstruction {
     private var startedAt: Long? = null
@@ -24,6 +26,8 @@ class ScanLiveInstruction {
         tooFast: Boolean = false,
         tooDark: Boolean = false,
         saving: Boolean = false,
+        complete: Boolean = false,
+        floorOnly: Boolean = false,
     ): ScanInstruction? {
         if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
         val elapsed = startedAt?.let { nowMs - it } ?: 0L
@@ -36,7 +40,9 @@ class ScanLiveInstruction {
             // Do not introduce Sweep too late to give it its full hold before second six.
             elapsed < INTRO_MS && (shown == ScanInstruction.Sweep || elapsed <= INTRO_MS - HOLD_MS) ->
                 ScanInstruction.Sweep
-            else -> null
+            complete -> ScanInstruction.Complete
+            floorOnly -> ScanInstruction.Walls
+            else -> ScanInstruction.KeepGoing
         }
         val previousChange = changedAt
         if (previousChange == null || (wanted != shown && nowMs - previousChange >= HOLD_MS)) {
@@ -307,4 +313,19 @@ object CaptureChrome {
     fun hapticWaitMs(nowMs: Long, playedAtMs: Long): Long = (HAPTIC_GAP_MS - (nowMs - playedAtMs)).coerceAtLeast(0L)
 
     private const val PERCENT = 100
+}
+
+/**
+ * When the capture's line says the scan looks complete: a room or a home once most of its floor
+ * is covered after a full turn's time, an object or an outdoor area after half a minute.
+ */
+object ScanCompletion {
+    const val ROOM_FLOOR_SHARE = 0.85f
+    const val ROOM_MIN_SECONDS = 20f
+    const val OPEN_MIN_SECONDS = 30f
+
+    fun complete(scope: ScanScope, seconds: Float, floorShare: Float): Boolean = when {
+        scope.hasFloorPlan -> seconds >= ROOM_MIN_SECONDS && floorShare >= ROOM_FLOOR_SHARE
+        else -> seconds >= OPEN_MIN_SECONDS
+    }
 }

@@ -75,6 +75,12 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.animation.core.animateFloatAsState
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.zIndex
 import io.github.sceneview.SurfaceType
 import androidx.compose.foundation.Image
@@ -183,6 +189,7 @@ import kotlin.math.sin
 import io.github.sceneview.demo.demos.internal.ScanFollow
 import io.github.sceneview.demo.demos.internal.ScanLens
 import io.github.sceneview.demo.demos.internal.ScanLiveInstruction
+import io.github.sceneview.demo.demos.internal.ScanCompletion
 import io.github.sceneview.demo.demos.internal.ScanCoach
 import io.github.sceneview.demo.demos.internal.ScanPhase
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -1876,8 +1883,20 @@ private fun RerunLiveScreen(
             trackingFailureReason == TrackingFailureReason.EXCESSIVE_MOTION,
         tooDark = dark,
         saving = phase == ScanPhase.Saving,
+        complete = ScanCompletion.complete(
+            scope = scanScope,
+            seconds = scan?.elapsedSeconds() ?: 0f,
+            floorShare = scanCoverage.floorShare,
+        ),
+        floorOnly = scanScope.hasFloorPlan && !scanCoverage.facingWall,
     )
 
+    // Where the recorder's camera window is: the live model's ground leaves it open.
+    var cameraWindow by remember { mutableStateOf<Rect?>(null) }
+    var lastCameraWindow by remember { mutableStateOf<Rect?>(null) }
+    var stageOrigin by remember { mutableStateOf(Offset.Zero) }
+    // Whether the live model has come in over the camera.
+    var modelShown by remember { mutableStateOf(false) }
     ScanCaptureLayout(
         onBack = onBackFromLive,
         top = {
@@ -1885,6 +1904,7 @@ private fun RerunLiveScreen(
                 seconds = scan?.elapsedSeconds() ?: qaLong?.shownSeconds ?: stats.duration,
                 floorSquareMetres = scanCoverage.coveredSquareMetres,
                 label = ScanScopeCopy.label(scanScope, roomNumber),
+                recording = recording && phase == ScanPhase.Scanning,
             )
         },
         bottom = {
@@ -1935,6 +1955,9 @@ private fun RerunLiveScreen(
                     onResumeRoom = if (betweenRooms) ({ betweenRooms = false; moveTo(ScanPhase.Scanning) }) else null,
                     scope = scanScope,
                     limitedDepth = scan?.rawDepth == false,
+                    paused = phase == ScanPhase.Paused,
+                    onTogglePause = { moveTo(phase.togglePause()) }.takeIf { recording && phase.canKeepScanning },
+                    onCameraWindow = { cameraWindow = it },
                     onNextRoom = if (scanScope.roomByRoom) {
                         { saveScan(SaveNext.NextRoom) }
                     } else {
@@ -1948,7 +1971,30 @@ private fun RerunLiveScreen(
         // QA camera backdrop (#3308): the emulator delivers no camera frame.
         val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.fillMaxSize().onSizeChanged { stageSize = it }) {
+            // Once the live model owns the screen, the camera — the whole of its field — goes
+            // into the recorder's window, a viewfinder; until then it fills the screen.
+            val toWindow by animateFloatAsState(
+                targetValue = if (modelShown && cameraWindow != null) 1f else 0f,
+                animationSpec = SceneViewTokens.Motion.focus(),
+                label = "camera-to-window",
+            )
+            cameraWindow?.let { lastCameraWindow = it }
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .onGloballyPositioned { stageOrigin = it.positionInWindow() }
+                    .layout { measurable, constraints ->
+                        val full = Rect(0f, 0f, constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+                        val window = lastCameraWindow?.translate(-stageOrigin) ?: full
+                        val at = androidx.compose.ui.geometry.lerp(full, window, toWindow)
+                        val w = at.width.roundToInt().coerceAtLeast(1)
+                        val h = at.height.roundToInt().coerceAtLeast(1)
+                        val placeable = measurable.measure(Constraints.fixed(w, h))
+                        layout(constraints.maxWidth, constraints.maxHeight) {
+                            placeable.place(at.left.roundToInt(), at.top.roundToInt())
+                        }
+                    }
+                    .onSizeChanged { stageSize = it },
+            ) {
                 val photo = qaPhoto
                 if (qaBackdrop && photo != null) {
                     Image(
@@ -2043,7 +2089,8 @@ private fun RerunLiveScreen(
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
-                    modifier = Modifier.align(Alignment.BottomEnd),
+                    cameraWindow = { cameraWindow },
+                    onShown = { modelShown = it },
                 )
             }
 

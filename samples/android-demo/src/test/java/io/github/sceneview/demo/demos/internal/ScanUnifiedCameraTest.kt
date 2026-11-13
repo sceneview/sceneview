@@ -28,15 +28,12 @@ class ScanUnifiedCameraTest {
     }
 
     @Test
-    fun `capture tint leaves the saved colours untouched`() {
+    fun `the capture paints the colours the camera saw, untinted`() {
         val colours = intArrayOf(0xFFBE7E4D.toInt())
         val cloud = DenseCloud(floatArrayOf(0f, 0f, 0f), colours)
-        val saved = DenseSurfels.atlas(cloud, 0xFF777777.toInt())
-        val coat = DenseSurfels.liveAtlas(cloud, 0xFF777777.toInt())
-        assertEquals(0xFFBE7E4D.toInt(), cloud.colors[0])
-        assertTrue(!saved.contentEquals(coat))
-        // Dark and bright observations of the same surface must not leave a patchwork.
-        assertEquals(DenseSurfels.tint(0xFF000000.toInt()), DenseSurfels.tint(0xFFFFFFFF.toInt()))
-        assertTrue((DenseSurfels.tint(0xFF000000.toInt()) and 0xFF) >= 200)
+        val atlas = DenseSurfels.atlas(cloud, 0xFF777777.toInt())
+        assertEquals(0xBE.toByte(), atlas[0])
+        assertEquals(0x7E.toByte(), atlas[1])
+        assertEquals(0x4D.toByte(), atlas[2])
     }
 }
