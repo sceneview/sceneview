@@ -640,7 +640,12 @@ class SceneAutoFitState {
         // The framing is computed for the camera's visible area. A padding that changed since the
         // last pass — a panel sliding over the view — leaves the content's diagonal untouched, so
         // the latch has to be told (#4310). Changing the probe mode also re-arms the pass.
-        if (gate.rearmOnChange(cameraNode.contentPadding to fitMode)) fitDistance = 0f
+        // Clipping can change the integer aspect without changing the requested padding (a
+        // toggle or a surface resize); the unclipped key keeps its previous behavior.
+        val framingKey = if (cameraNode.clipToContentPadding) {
+            cameraNode.contentPadding to cameraNode.getViewPortAspect()
+        } else cameraNode.contentPadding
+        if (gate.rearmOnChange(framingKey to fitMode)) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because

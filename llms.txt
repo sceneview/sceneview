@@ -273,7 +273,8 @@ fun SceneView(
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
     fitMode: FitMode = FitMode.Corners, // opt-in Silhouette for organic subjects; see framing below
-    contentPadding: PaddingValues = PaddingValues(0.dp),   // area a panel covers — see "Content padding"
+    contentPadding: PaddingValues = PaddingValues(0.dp),   // animate this, never resize the composable
+    clipToContentPadding: Boolean = false,                 // opaque cover only: skip hidden pixels
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -4786,7 +4787,15 @@ becomes the camera's viewport: the optical centre moves to its centre and the le
 of view spans it. The surface is **not** resized (the scene still draws under the panel),
 the camera pose and the user's orbit are **not** touched, and pixels stay square. The
 mapping is linear in the padding, so animating the padding with the panel's own curve
-makes the subject follow the panel.
+makes the subject follow the panel. **To change the visible area, keep SceneView full size and
+animate `contentPadding`; never resize the composable for a full-screen toggle or animated bar.**
+
+Add `clipToContentPadding = true` only when opaque UI covers every padded pixel. Filament then
+renders only `Viewport(left, bottom, width - left - right, height - top - bottom)`; dynamic
+resolution applies to that rectangle. Camera scaling/shift become identity and projection/framing
+use its aspect. Outside pixels are undefined. No additional per-frame clear is introduced.
+Turning clipping off restores the original full-surface scaling/shift behavior; zero padding
+restores the full viewport in either mode.
 
 ```kotlin
 import androidx.compose.animation.core.animateDpAsState
@@ -4794,7 +4803,18 @@ import androidx.compose.animation.core.animateDpAsState
 var sheetOpen by remember { mutableStateOf(false) }
 // The subject stays centred in what the sheet leaves free, and follows it as it slides.
 val covered by animateDpAsState(if (sheetOpen) 320.dp else 0.dp)
-SceneView(contentPadding = PaddingValues(bottom = covered)) { }
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(bottom = covered),
+) { }
+
+// Opt-in, only when an opaque surface covers every padded pixel (no scrim, no rounded
+// corners showing the scene through): the GPU then skips the hidden pixels.
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(bottom = covered),
+    clipToContentPadding = true,
+) { }
 
 // Imperative form, in pixels of the surface (what the composable sets for you):
 cameraNode.contentPadding = ViewportPadding(bottom = 1200f)
@@ -4810,10 +4830,14 @@ Rules:
 - **The subject gets smaller** by `visibleHeight / height`: the padding centres, it does
   not re-pose. When the bounds are known, win the size back with a fit (below) at the
   visible area's aspect — `CameraNode.getViewPortAspect()` returns it once a padding is set.
-- **A tenth of the view always stays visible.** Two opposite edges that add up to more
+- **Without clipping, a tenth of the view always stays visible.** Two opposite edges that add up to more
   than 90 % of the surface are both reduced in proportion — a sheet dragged over the
   whole view leaves a small picture, never a degenerate projection. Negative and
-  non-finite values read as `0`.
+  non-finite values read as `0`. With clipping, padding is rounded to pixels, constrained to the
+  surface, and the visible rectangle is clamped to at least 1 × 1 instead.
+- **Coordinates keep their contract with clipping.** Touch/screen helpers take full SceneView
+  pixels, top-left origin. Camera helpers retain normalized full-view coordinates, bottom-left
+  origin. Both account for the viewport offset; do not subtract padding yourself.
 - **Left at its default, the parameter writes nothing**: a `cameraNode.contentPadding`
   you set by hand is kept. Once the parameter is non-zero it owns the value, follows it
   back down to zero, and resets it when the camera leaves the `SceneView`.
@@ -4831,9 +4855,11 @@ Rules:
   padding is set on it.
 - **Not in AR.** `ARSceneView` takes no content padding and `ARCameraNode.contentPadding`
   ignores what is written to it: the AR projection is the device camera's and has to
-  stay aligned with the camera feed.
+  stay aligned with the camera feed. Clipping is also ignored for an AR camera, so its viewport
+  stays full size. The Compose Multiplatform façade exposes neither option; this is Android-only.
 - **Recording captures the padded picture.** `SurfaceMirrorer` (and the recorder built on
-  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size.
+  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size by default.
+  With clipping enabled it mirrors the visible rectangle, letterboxed into the destination.
 - iOS twin: `.contentInsets(_:)` on SceneViewSwift's `SceneView` (#4317), in points, with
   the same contract and the same 10 % floor.
 
