@@ -14,6 +14,8 @@ import androidx.compose.ui.test.performClick
 import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.demos.internal.model.SplatFaces
+import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
@@ -165,6 +167,26 @@ class ResultLayerPickerTest {
         } finally {
             DemoSettings.qaMode = qa
         }
+    }
+
+    @Test
+    fun `a captured scan arrives whole instead of regrowing from an empty result`() {
+        val cloud = DenseCloud(
+            positions = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f),
+            colors = IntArray(3) { 0xFF808080.toInt() },
+            normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f),
+        )
+        val prepared = SplatFaces.of(SurfelSplats.ofPlace(cloud))
+        lateinit var layers: ResultLayers
+        rule.setContent {
+            layers = rememberResultLayers(null, cloud, "just captured", settled = false,
+                photoFirst = true, prebuilt = prepared)
+        }
+        rule.waitForIdle()
+        assertTrue(layers.photoShown)
+        assertTrue(layers.faces === prepared)
+        assertEquals(1f, layers.grown, 0f)
+        assertEquals(0f, layers.veil.value, 0f)
     }
 
     @Test

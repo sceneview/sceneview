@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.demo.demos.internal.model.SplatFaces
+import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -301,6 +303,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // What the replay shows: the sample, or one of your scans — the same view either way.
     var showingScan by remember { mutableStateOf(qaState in PLAN_QA_STATES) }
     var scanMedia by remember { mutableStateOf<RerunReplayMedia?>(null) }
+    var scanPhoto by remember { mutableStateOf<Pair<RerunReplayMedia, SplatFaces>?>(null) }
     // The replay is titled after the session it shows, as the card that opened it is.
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
     // The scan's own files, for the export sheet; the sample's are read from the assets there.
@@ -718,7 +721,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         ) {
             RerunLiveScreen(
                 onBack = leaveLive,
-                onScanned = { scan, title, pack, id ->
+                onScanned = { scan, title, pack, id, photo ->
+                    scanPhoto = photo?.let { scan to it }
                     sessionsVersion++
                     if (recordingForDollhouse) {
                         recordingForDollhouse = false
@@ -827,6 +831,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             scope = if (showingScan) scanKind else ScanScope.Room,
             // A kept model's Photo layer still comes from the real scan's own surfels.
             surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
+            photo = scanPhoto?.takeIf { showingScan && it.first === scanMedia }?.second,
         )
     }
     val exportable = when (screen) {
@@ -1322,7 +1327,7 @@ private fun RerunDeveloperSection() {
 @Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
 private fun RerunLiveScreen(
     onBack: () -> Unit,
-    onScanned: (RerunReplayMedia, String, RerunCapturePack, String?) -> Unit,
+    onScanned: (RerunReplayMedia, String, RerunCapturePack, String?, SplatFaces?) -> Unit,
     store: RerunSessionStore,
     sample: RerunReplayMedia?,
     scanScope: ScanScope,
@@ -1752,6 +1757,17 @@ private fun RerunLiveScreen(
                 failed("write", error, failure, saved)
                 return@launch
             }
+            // Prepare Photo while the live model still fills the saving screen. Otherwise the
+            // result opens on an empty stage while these splats are built on a slower phone.
+            val photo = if (next == SaveNext.Open && attached.get()) {
+                withContext(Dispatchers.Default) {
+                    runCatching {
+                        opened?.dense?.cloud?.let { SplatFaces.of(SurfelSplats.ofPlace(it)) }
+                    }.onFailure { if (it is CancellationException) throw it }
+                        .onFailure { Log.w(SCAN_SAVE_LOG_TAG, "Photo preview preparation failed", it) }
+                        .getOrNull()
+                }
+            } else null
             dropCapture()
             if (!attached.get()) {
                 // The screen was left while it saved: the scan is kept and listed, nothing opens.
@@ -1760,7 +1776,7 @@ private fun RerunLiveScreen(
             }
             if (opened == null) return@launch
             when (next) {
-                SaveNext.Open -> onScanned(opened, title, saved, savedId)
+                SaveNext.Open -> onScanned(opened, title, saved, savedId, photo)
                 SaveNext.FinishHome -> {
                     onRoomSaved(opened, title, savedId)
                     onFinishHome()
