@@ -1,8 +1,11 @@
 package io.github.sceneview.demo.demos.internal.model
 
+import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.model.CleanScenes.flatnessRms
 import io.github.sceneview.demo.demos.internal.model.CleanScenes.openEdges
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -134,6 +137,17 @@ class CleanGeometryTest {
         val mesh = WorkMesh(positions, IntArray(positions.size / 3) { CleanScenes.GREY }, indices.toIntArray())
         val before = openEdges(mesh)
         val (filled, holes) = MeshCleanup.fillSmallHoles(mesh)
+        // Replay owns its extracted mesh: borrowing these arrays avoids a full input copy.
+        val source = RerunMesh(mesh.positions, FloatArray(mesh.positions.size), mesh.colors, mesh.indices)
+        val owned = CleanGeometry.consuming(source)
+        assertSame(source.positions, owned.positions)
+        assertSame(source.colors, owned.colors)
+        assertSame(source.indices, owned.indices)
+        val (ownedFilled, ownedHoles) = MeshCleanup.fillSmallHoles(owned)
+        assertEquals(holes, ownedHoles)
+        assertArrayEquals(filled.positions, ownedFilled.positions, 0f)
+        assertArrayEquals(filled.colors, ownedFilled.colors)
+        assertArrayEquals(filled.indices, ownedFilled.indices)
         println("holes: closed $holes, open edges $before -> ${openEdges(filled)}")
         assertEquals(1, holes)
         // Left open: the patch's outline (400 edges) and the opening's (120).

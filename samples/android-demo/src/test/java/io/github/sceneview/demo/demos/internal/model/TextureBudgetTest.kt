@@ -24,6 +24,21 @@ import org.junit.Test
  */
 class TextureBudgetTest {
     @Test
+    fun `sixty new widescreen photos keep all 640 pixels within the existing large budget`() {
+        val budget = TextureBudget.LARGE
+        val photo = BakePhoto(ORIGIN, 640, 360, IntArray(640 * 360))
+        var used = 0L
+        repeat(PhotoTexturing.MAX_PHOTOS) { i ->
+            val kept = PhotoTexturing.downscaled(photo, budget.photoCap(used, PhotoTexturing.MAX_PHOTOS - i - 1))
+            assertEquals(640, kept.width)
+            assertEquals(360, kept.height)
+            used += kept.width.toLong() * kept.height
+        }
+        assertTrue(used <= budget.totalPhotoPixels)
+        assertEquals(100_000L, TextureBudget.BASE.photoPixels)
+    }
+
+    @Test
     fun `the heap picks the budget, a 192 MB heap keeping the small one`() {
         assertEquals(TextureBudget.BASE, TextureBudget.forHeap(192L * MB, GPU_4096))
         assertEquals(TextureBudget.BASE, TextureBudget.forHeap(255L * MB, GPU_4096))

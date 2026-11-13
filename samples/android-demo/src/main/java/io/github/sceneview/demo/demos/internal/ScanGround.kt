@@ -122,10 +122,17 @@ class ScanGround private constructor(
         /**
          * The ground under the [count] vertices of [positions] (xyz triples), their [normals]
          * (unit, xyz triples; `null` when there are none — no floor is found then, the model
-         * stands on its lowest point). `null` when there is nothing to stand.
+         * stands on its lowest point). `null` when there is nothing to stand. With [shellQuads],
+         * vertices are ordered in groups of four around rectangular shell pieces; upward pieces
+         * provide the complete floor footprint, including its interior and excluding its notches.
          */
         @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
-        fun of(positions: FloatArray, normals: FloatArray?, count: Int = positions.size / 3): ScanGround? {
+        fun of(
+            positions: FloatArray,
+            normals: FloatArray?,
+            count: Int = positions.size / 3,
+            shellQuads: Boolean = false,
+        ): ScanGround? {
             val n = count.coerceIn(0, positions.size / 3)
             if (n == 0) return null
             var minX = Float.POSITIVE_INFINITY
@@ -147,7 +154,7 @@ class ScanGround private constructor(
                 maxZ = maxOf(maxZ, z)
             }
             if (!minX.isFinite()) return null
-            val floorY = floorOf(positions, normals, n, minY, maxY)
+            val floorY = if (shellQuads) minY else floorOf(positions, normals, n, minY, maxY)
             val side = max(maxX - minX, maxZ - minZ)
             val cellM = max(max(ROOM_CELL_M.coerceAtMost(side / 24f), MIN_CELL_M), side / MAX_CELLS_PER_SIDE)
             // A rim of empty cells all round, so closing and the outside flood never reach an edge.
@@ -156,6 +163,41 @@ class ScanGround private constructor(
             val originZ = floor(minZ / cellM) * cellM - rim * cellM
             val columns = ceil((maxX - originX) / cellM).toInt() + rim + 1
             val rows = ceil((maxZ - originZ) / cellM).toInt() + rim + 1
+            if (shellQuads) {
+                // Shell floors have only four vertices per rectangular piece. Mark their area,
+                // not their corners, and retain the unoccupied notch of an L/T-shaped shell.
+                val cells = ByteArray(columns * rows)
+                for (v in 0 until n - 3 step 4) {
+                    if ((normals?.getOrNull(v * 3 + 1) ?: 0f) < UP_NORMAL ||
+                        kotlin.math.abs(positions[v * 3 + 1] - floorY) > FLOOR_BAND_M
+                    ) continue
+                    val x = positions[v * 3]
+                    val z = positions[v * 3 + 2]
+                    val ux = positions[(v + 1) * 3] - x
+                    val uz = positions[(v + 1) * 3 + 2] - z
+                    val vx = positions[(v + 3) * 3] - x
+                    val vz = positions[(v + 3) * 3 + 2] - z
+                    val uu = ux * ux + uz * uz
+                    val vv = vx * vx + vz * vz
+                    if (uu == 0f || vv == 0f) continue
+                    val x0 = minOf(x, x + ux, x + vx, x + ux + vx)
+                    val x1 = maxOf(x, x + ux, x + vx, x + ux + vx)
+                    val z0 = minOf(z, z + uz, z + vz, z + uz + vz)
+                    val z1 = maxOf(z, z + uz, z + vz, z + uz + vz)
+                    val c0 = ((x0 - originX) / cellM).toInt().coerceIn(0, columns - 1)
+                    val c1 = ((x1 - originX) / cellM).toInt().coerceIn(0, columns - 1)
+                    val r0 = ((z0 - originZ) / cellM).toInt().coerceIn(0, rows - 1)
+                    val r1 = ((z1 - originZ) / cellM).toInt().coerceIn(0, rows - 1)
+                    for (r in r0..r1) for (c in c0..c1) {
+                        val dx = originX + (c + HALF) * cellM - x
+                        val dz = originZ + (r + HALF) * cellM - z
+                        val u = (dx * ux + dz * uz) / uu
+                        val w = (dx * vx + dz * vz) / vv
+                        if (u in 0f..1f && w in 0f..1f) cells[r * columns + c] = SEEN
+                    }
+                }
+                return ScanGround(floorY, cellM, originX, originZ, columns, rows, cells)
+            }
             val occupied = BooleanArray(columns * rows)
             val ground = BooleanArray(columns * rows)
             for (i in 0 until n) {

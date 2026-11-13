@@ -184,6 +184,57 @@ internal object SurfelSplats {
         return SplatCloud(n, positions, scales, rotations, colors, opacities)
     }
 
+    /**
+     * [cloud]'s points as small round opaque dots — the room shell's objects
+     * ([io.github.sceneview.demo.demos.internal.room.RoomShell]): every splat [sigmaM] wide on
+     * all three axes, so it reads the same from any side, at [opacity], about 2 cm across on
+     * screen — crisp points, not the soft sheets of the Photo layer. At most [maxSplats], kept
+     * evenly and widened as [of] widens them. Colours as [of] gives them ([linearView]).
+     */
+    fun points(
+        cloud: DenseCloud,
+        sigmaM: Float = POINT_SIGMA_M,
+        opacity: Float = POINT_OPACITY,
+        maxSplats: Int = MAX_SPLATS,
+        linearView: Boolean = true,
+    ): SplatCloud {
+        val coloured = (0 until cloud.count).count { cloud.colors[it] != 0 }
+        val n = minOf(coloured, maxSplats)
+        val positions = FloatArray(n * 3)
+        val scales = FloatArray(n * 3)
+        val rotations = FloatArray(n * 4)
+        val colors = FloatArray(n * 3)
+        val opacities = FloatArray(n)
+        if (n == 0) return SplatCloud(0, positions, scales, rotations, colors, opacities)
+        val sigma = sigmaM * sqrt(coloured.toFloat() / n)
+        val rgb = FloatArray(3)
+        var seen = 0
+        var o = 0
+        for (i in 0 until cloud.count) {
+            val argb = cloud.colors[i]
+            if (argb == 0) continue
+            val keep = (seen + 1).toLong() * n / coloured > seen.toLong() * n / coloured
+            seen++
+            if (!keep || o >= n) continue
+            for (a in 0 until 3) {
+                positions[o * 3 + a] = cloud.positions[i * 3 + a]
+                scales[o * 3 + a] = sigma
+            }
+            rotations[o * 4 + 3] = 1f
+            colour(argb, linearView, rgb)
+            for (c in 0 until 3) colors[o * 3 + c] = rgb[c]
+            opacities[o] = opacity
+            o++
+        }
+        return SplatCloud(n, positions, scales, rotations, colors, opacities)
+    }
+
+    /** A point splat's standard deviation: drawn out to about two of them, it is ~2 cm across. */
+    const val POINT_SIGMA_M = 0.006f
+
+    /** A point splat's opacity: opaque, a solid dot. */
+    const val POINT_OPACITY = 1f
+
     /** A surfel's opacity for its [confidence] (0–255), [MAX_OPACITY] when unknown (`null`). */
     fun opacity(confidence: Int?): Float {
         confidence ?: return MAX_OPACITY

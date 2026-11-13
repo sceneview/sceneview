@@ -76,6 +76,8 @@ internal object CleanModelCorpus {
 
         // The floor as scanned, measured before a big scan's finish takes its raw surface over.
         val rawFloor = FloorArea.of(raw.mesh.positions, raw.mesh.indices)
+        // What the result screen's quality gate measures of it (Live Room).
+        val rawFigures = MeshFigures.of(raw.mesh.positions, raw.mesh.indices)
 
         // As the result screen finishes it: a big scan handed over and let go, its .glb written first.
         val photos = ModelPhotos.of(capture.trace, capture.manifest.lens) { path -> decode(capture, path) }
@@ -100,6 +102,12 @@ internal object CleanModelCorpus {
         }
         afterThumbnail?.let { File(out, "after.png").writeBytes(it) }
         val problems = GlbCheck.problems(result.glb)
+        val gate = result.model?.let { m ->
+            ModelQualityGate.judge(
+                rawFigures,
+                MeshFigures.of(m.positions, m.texturedIndices + m.plainIndices, m.vertexCount, rawFigures.floorY),
+            )
+        }
         val finalFloor = result.model?.takeIf { rawFloor.area > 0f }?.let {
             FloorArea.of(it.positions, it.texturedIndices + it.plainIndices, rawFloor.height)
         }
@@ -158,6 +166,8 @@ internal object CleanModelCorpus {
                     put("pipeline_ms", s.totalMs)
                     put("ms", meshed.fuseMs + meshed.meshMs + s.totalMs)
                     put("glb_problems", problems.joinToString("; "))
+                    // Whether the result screen lets this model replace the raw surface.
+                    put("quality_gate", gate?.name ?: "none")
                 },
             )
             put(
