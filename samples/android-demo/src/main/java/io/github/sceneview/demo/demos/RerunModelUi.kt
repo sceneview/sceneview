@@ -107,7 +107,6 @@ import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
-import io.github.sceneview.demo.demos.internal.ScanDepthSurface
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.DepthFrame
@@ -270,7 +269,7 @@ internal sealed interface RerunModelSource {
 internal class RerunLiveModel(private val preset: ScanPreset = ScanPreset.ROOM) {
     /** The TSDF while it records; `null` once [keepFor] has handed it on, so only its slot holds it. */
     @Volatile
-    private var tsdf: RerunTsdf? = RerunTsdf(voxelM = if (preset == ScanPreset.ROOM) 0.02f else preset.modelVoxelM)
+    private var tsdf: RerunTsdf? = RerunTsdf(voxelM = preset.modelVoxelM)
     private val busy = AtomicBoolean(false)
 
     @Volatile
@@ -282,9 +281,7 @@ internal class RerunLiveModel(private val preset: ScanPreset = ScanPreset.ROOM) 
         if (!busy.compareAndSet(false, true)) return
         job = scope.launch(Dispatchers.Default) {
             try {
-                val room = preset == ScanPreset.ROOM
-                val step = tsdf.integrate(frame, farM = preset.farM,
-                    truncationShare = if (room) 0.03f else 0f, distanceWeighted = room)
+                val step = tsdf.integrate(frame, farM = preset.farM)
                 if (tsdf.frames % LOG_EVERY_FRAMES == 1 || step.dropped > 0) {
                     Log.i(
                         TAG,
@@ -584,28 +581,8 @@ internal fun buildScanModel(
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
     reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
-    depthSurface: Boolean = false,
     progress: (Float) -> Unit,
 ): RerunScanModel? {
-    if (depthSurface && source is RerunModelSource.Live) {
-        val tsdf = source.tsdf
-        if (tsdf != null) {
-            val started = System.nanoTime()
-            val surface = ScanDepthSurface.extract(tsdf, progress)
-            if (surface.triangleCount > 0) {
-                val bytes = tsdf.bytes
-                val budgetReached = tsdf.budgetReached
-                source.release()
-                val glb = RerunMeshGlb.write(surface)
-                Log.i(TAG, "depth surface v2: ${surface.triangleCount} triangles, " +
-                    "${tsdf.frames} frames, ${bytes / MB} MB, " +
-                    "${(System.nanoTime() - started) / NS_PER_MS} ms, dropped ${tsdf.droppedBlocks}")
-                return RerunScanModel(kind = RerunScanModel.Kind.Mesh, glb = glb,
-                    bounds = surface.bounds(), triangles = surface.triangleCount,
-                    vertices = surface.vertexCount, budgetReached = budgetReached)
-            }
-        }
-    }
     val skipMesh = source is RerunModelSource.Synthetic && source.meshFails
     val mesh = if (skipMesh) {
         null
@@ -798,15 +775,14 @@ internal fun RerunModelScreen(
                         value = ModelState.Ready(surface, final = false)
                     }
                 }
-                // Keep Live Room v2 depth detail for live room captures. Older surfel-only
-                // recordings retain bounded Poisson; saved models preserve the chosen surface.
+                // Close measured gaps with the bounded Poisson reconstruction (#4805).
+                // It falls back to fused depth when no oriented cloud fits the budget.
                 runCatching {
                     buildScanModel(from, raw, retry?.glb,
                         reconstruction = if (scope.hasFloorPlan) ReconstructionMethod.Poisson else ReconstructionMethod.Fused,
                         // Room depth is sparse: a 5 cm grid bridges small floor gaps and costs
                         // less than the fine solve. Object and outdoor scans keep fused detail.
                         reconstructionVoxelM = 0.05f,
-                        depthSurface = scope.hasFloorPlan,
                         progress = report)
                 }
                     .onFailure { if (it is CancellationException) throw it }

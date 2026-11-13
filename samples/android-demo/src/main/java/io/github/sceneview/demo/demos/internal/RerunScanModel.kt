@@ -177,7 +177,7 @@ class RerunScanModel(
          * 5: bounded Poisson. 6: observed planar completion. 7: measured depth surface without plane completion.
          * A `model.json` without one is 1.
          */
-        const val PIPELINE = 7
+        const val PIPELINE = 8
 
         private const val EARLIER_PIPELINE = 1
 

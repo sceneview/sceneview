@@ -85,32 +85,23 @@ class RerunTsdf(
      * [[DepthBackProjection.NEAR_M], [farM]] (by default [DepthBackProjection.FAR_M]) or under [minConfidence] are
      * skipped. Voxel-centric: every voxel of every block a ray ends in is projected into the
      * depth image, and takes the projective distance `depth − z` of the pixel it lands on.
-     *
-     * With a [truncationShare] over 0, a pixel's band is `max(truncationM, share · depth)`: the
-     * depth's own noise grows with distance, and a far wall needs a wider band to fuse into one
-     * surface. With [distanceWeighted], a pixel's weight is its confidence times `min(1, 1/depth²)`
-     * (metres): near views shape the surface, far ones only fill it. Both off by default.
      */
     @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements")
     fun integrate(
         frame: DepthFrame,
         minConfidence: Int = DepthBackProjection.MIN_CONFIDENCE,
         farM: Float = DepthBackProjection.FAR_M,
-        truncationShare: Float = 0f,
-        distanceWeighted: Boolean = false,
     ): TsdfIntegration {
         val w = frame.width
         val h = frame.height
         val depth = FloatArray(w * h)
         val conf = FloatArray(w * h)
-        val band = FloatArray(w * h)
         for (i in 0 until w * h) {
             val d = (frame.depthMm[i].toInt() and 0xFFFF) / MM_PER_M
             val c = frame.confidence?.let { it[i].toInt() and 0xFF } ?: FULL_CONFIDENCE
             if (d in DepthBackProjection.NEAR_M..farM && c >= minConfidence) {
                 depth[i] = d
-                conf[i] = c / FULL_CONFIDENCE.toFloat() * if (distanceWeighted) minOf(1f, 1f / (d * d)) else 1f
-                band[i] = maxOf(truncationM, truncationShare * d)
+                conf[i] = c / FULL_CONFIDENCE.toFloat()
             }
         }
         val pose = Rigid.of(frame.pose)
@@ -119,16 +110,15 @@ class RerunTsdf(
         val touched = LongIntMap()
         var touchedList = LongArray(INITIAL_BLOCKS)
         var touchedCount = 0
+        val steps = ceil(2f * truncationM / (blockM * 0.5f)).toInt().coerceAtLeast(1)
         for (py in 0 until h) {
             for (px in 0 until w) {
                 val d = depth[py * w + px]
                 if (d == 0f) continue
-                val reach = band[py * w + px]
-                val steps = ceil(2f * reach / (blockM * 0.5f)).toInt().coerceAtLeast(1)
                 val rx = (px - frame.cx) / frame.fx
                 val ry = -(py - frame.cy) / frame.fy
                 for (s in 0..steps) {
-                    val t = d - reach + 2f * reach * s / steps
+                    val t = d - truncationM + 2f * truncationM * s / steps
                     val wx = pose.x(rx * t, ry * t, -t)
                     val wy = pose.y(rx * t, ry * t, -t)
                     val wz = pose.z(rx * t, ry * t, -t)
@@ -188,15 +178,14 @@ class RerunTsdf(
                 val d = depth[pixel]
                 if (d == 0f) continue
                 val distance = d - z
-                val reach = band[pixel]
-                if (distance < -reach) continue // behind the surface: never seen
-                val tsdf = minOf(distance, reach)
+                if (distance < -truncationM) continue // behind the surface: never seen
+                val tsdf = minOf(distance, truncationM)
                 val wNew = conf[pixel]
                 val wOld = weights[v]
                 val total = wOld + wNew
                 sdfs[v] = (sdfs[v] * wOld + tsdf * wNew) / total
                 weights[v] = minOf(total, MAX_WEIGHT)
-                if (abs(distance) < reach * COLOR_BAND) blendColor(colours, colourWeights, v, frame.colors[pixel])
+                if (abs(distance) < truncationM * COLOR_BAND) blendColor(colours, colourWeights, v, frame.colors[pixel])
                 voxels++
             }
         }

@@ -92,18 +92,15 @@ object RerunMarchingCubes {
      * triangles are dropped; extraction stops at [maxTriangles]. [stride] meshes cells of that
      * many voxels a side (1, 2 or 4, a divisor of the block), sampling the field every [stride]
      * voxels: about a quarter of the triangles per doubling, the same surface. [progress] gets
-     * the share done. With [weakestCorner] under [minWeight], a cell is meshed when one corner
-     * reaches [minWeight] and the others at least [weakestCorner]: a surface's edge, seen by fewer
-     * views, closes instead of fraying.
+     * the share done.
      */
-    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements", "LongParameterList")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements")
     fun extract(
         tsdf: RerunTsdf,
         minWeight: Float = DEFAULT_MIN_WEIGHT,
         minComponentTriangles: Int = MIN_COMPONENT_TRIANGLES,
         maxTriangles: Int = MAX_TRIANGLES,
         stride: Int = 1,
-        weakestCorner: Float = minWeight,
         progress: (Float) -> Unit = {},
     ): MeshExtraction {
         require(stride > 0 && RerunTsdf.BLOCK % stride == 0) { "stride $stride" }
@@ -125,14 +122,11 @@ object RerunMarchingCubes {
                 for (ly in 0 until RerunTsdf.BLOCK step stride) {
                     cells@ for (lx in 0 until RerunTsdf.BLOCK step stride) {
                         var cube = 0
-                        var sure = false
                         for (c in 0 until 8) {
                             val x = lx + CORNER_X[c] * stride
                             val y = ly + CORNER_Y[c] * stride
                             val z = lz + CORNER_Z[c] * stride
-                            val w = cache.weight(x, y, z)
-                            if (w < weakestCorner) continue@cells
-                            if (w >= minWeight) sure = true
+                            if (cache.weight(x, y, z) < minWeight) continue@cells
                             val v = cache.sdf(x, y, z)
                             value[c] = v
                             cornerX[c] = x
@@ -141,7 +135,7 @@ object RerunMarchingCubes {
                             if (v < 0f) cube = cube or (1 shl c)
                         }
                         val row = TRIANGLES[cube]
-                        if (row.isEmpty() || !sure) continue
+                        if (row.isEmpty()) continue
                         if (out.triangles + row.size / 3 > maxTriangles) {
                             capped = true
                             break@blocks
@@ -180,14 +174,11 @@ object RerunMarchingCubes {
      * [maxTriangles] cut an extraction short it was the walls scanned last that went missing,
      * and a noisy room's rough surfaces reach the cap. Cut short, it meshes again with cells
      * twice as coarse, up to [MAX_STRIDE] voxels: the whole room a little smoother, never half of it.
-     * Pieces under [minComponentTriangles] are dropped, and [weakestCorner] read, as [extract] does.
      */
     fun extractWhole(
         tsdf: RerunTsdf,
         minWeight: Float = DEFAULT_MIN_WEIGHT,
         maxTriangles: Int = MAX_TRIANGLES,
-        minComponentTriangles: Int = MIN_COMPONENT_TRIANGLES,
-        weakestCorner: Float = minWeight,
         progress: (Float) -> Unit = {},
     ): MeshExtraction {
         var done = 0f
@@ -199,10 +190,10 @@ object RerunMarchingCubes {
             }
         }
         var stride = 1
-        var extraction = extract(tsdf, minWeight, minComponentTriangles, maxTriangles, stride, weakestCorner, monotone)
+        var extraction = extract(tsdf, minWeight, maxTriangles = maxTriangles, stride = stride, progress = monotone)
         while (extraction.capped && stride < MAX_STRIDE) {
             stride *= 2
-            extraction = extract(tsdf, minWeight, minComponentTriangles, maxTriangles, stride, weakestCorner, monotone)
+            extraction = extract(tsdf, minWeight, maxTriangles = maxTriangles, stride = stride, progress = monotone)
         }
         return extraction
     }
