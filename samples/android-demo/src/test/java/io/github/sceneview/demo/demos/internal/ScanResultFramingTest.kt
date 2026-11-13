@@ -96,6 +96,22 @@ class ScanResultFramingTest {
     }
 
     @Test
+    fun `the fixed preview frame retains sparse furniture outside the dense floor`() {
+        val cloud = room(yaw = 0f)
+        cloud.add(-3.5f, 0.5f, 0f, 1f, 0f, 0f)
+        val positions = cloud.positions.toFloatArray()
+        val frame = req(ScanResultFraming.of(DenseCloud(
+            positions, IntArray(positions.size / 3), cloud.normals.toFloatArray(),
+        )))
+        assertEquals(-3.5f, frame.local[0], 0.05f)
+        for (elevation in listOf(ScanResultFraming.ROOM_ELEVATION, ArDebugFraming.MAP_ELEVATION)) {
+            val pose = frame.pose(elevation, 0f, FOV, ASPECT, FramingInsets.None)
+            assertTrue(pose.distance.isFinite())
+            assertTrue(pose.distance > 0f)
+        }
+    }
+
+    @Test
     fun `the view opens on the room's fullest wall, from outside the missing one`() {
         // The near wall (+b) half scanned: the eye stands on its side, the full wall at the back.
         val frame = req(room(yaw = 0f, nearShare = 0.4f).frame())

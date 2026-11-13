@@ -217,7 +217,10 @@ object ScanResultFraming {
                 normals[i * 3 + k] = from[v * 3 + k]
             }
         }
-        return of(positions, normals)
+        // This frame stays fixed when the finished mesh replaces the preview. Keep the
+        // measured boundary: percentile trimming can exclude a small piece of furniture
+        // that remains visible in the final model and would then be clipped by the screen.
+        return of(positions, normals, tail = 0f)
     }
 
     /**

@@ -8,3 +8,5 @@ Room and home scans now use a bounded 5 cm screened Poisson reconstruction befor
 The fifth device pass restores the opaque uniform capture ink and removes planar completion: ARCore plane extents do not establish observed colour or depth across a polygon.
 
 The Pixel 4a comparison retains Poisson: the Live Room v2 depth-only trial produced noisier surfaces, more floor perforations and less readable furniture on the same replay. Its experimental finish is removed, and cached depth-trial models are rebuilt with the retained pipeline.
+
+The fixed result camera retains the sampled preview boundary instead of trimming its sparse furniture as percentile outliers, so the model and plan fit the same measured extent from the start.
