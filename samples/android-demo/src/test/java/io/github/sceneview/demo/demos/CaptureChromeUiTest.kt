@@ -7,13 +7,17 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import android.content.Context
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ApplicationProvider
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.CaptureChrome
-import io.github.sceneview.demo.demos.internal.CaptureCue
-import io.github.sceneview.demo.demos.internal.ScanActivity
-import io.github.sceneview.demo.demos.internal.ScanBlocker
 import io.github.sceneview.demo.demos.internal.ScanCopy
-import io.github.sceneview.demo.demos.internal.ScanPhase
+import io.github.sceneview.demo.demos.internal.ScanInstruction
 import io.github.sceneview.demo.demos.internal.ScanStep
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -22,9 +26,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The capture screen's top and bottom on the device: the primary action reads as the step it leads
- * to, the step row says where the capture is, one line says either what blocks or what comes next,
- * never both, and the review card builds a model instead of "saving".
+ * The capture screen's top and bottom on the device: one pill (duration · floor area), at most one
+ * instruction, one Done (with Next room for a whole home), and no review step, pause or breadcrumb.
+ * The review card, no longer part of the capture, still builds a model instead of "saving".
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -33,38 +37,57 @@ class CaptureChromeUiTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    private fun text(id: Int): String =
+        ApplicationProvider.getApplicationContext<Context>().getString(id)
+
     @Test
-    fun `the capture's bottom names its next step and its primary action`() {
+    fun `the capture's bottom is one instruction and one Done, nothing else`() {
         composeRule.setContent {
-            ScanControls(
-                phase = ScanPhase.Scanning,
-                cue = CaptureCue.Next(ScanCopy.FLOOR_LEFT),
-                onTogglePause = {},
-                onFinish = {},
-            )
+            ScanControls(instruction = ScanInstruction.Sweep, doneEnabled = true, onFinish = {})
         }
-        composeRule.onNodeWithText(CaptureChrome.STOP_AND_REVIEW).assertIsDisplayed()
-        composeRule.onNodeWithText(ScanCopy.FLOOR_LEFT, substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("${CaptureChrome.NEXT}:", substring = true).assertIsDisplayed()
-        for (step in ScanStep.entries) composeRule.onNodeWithText(step.label).assertIsDisplayed()
-        composeRule.onNodeWithText(ScanCopy.FINISH_SCAN).assertDoesNotExist()
+        composeRule.onNodeWithText(text(R.string.scan_capture_sweep)).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithTag(SCAN_NEXT_ROOM_TAG).assertDoesNotExist()
+        // No review step, pause or breadcrumb any more (Thomas, 2026-11-13).
+        composeRule.onNodeWithText(CaptureChrome.STOP_AND_REVIEW).assertDoesNotExist()
+        for (step in ScanStep.entries) composeRule.onNodeWithText(step.label).assertDoesNotExist()
     }
 
     @Test
-    fun `a blocker shows its cause and its way out, and no next line`() {
+    fun `with nothing to say there is no instruction line, and Done waits for a capture`() {
         composeRule.setContent {
-            ScanControls(
-                phase = ScanPhase.Scanning,
-                cue = CaptureCue.Blocked(ScanBlocker.TooFast),
-                onTogglePause = {},
-                onFinish = {},
-            )
+            ScanControls(instruction = null, doneEnabled = false, onFinish = {})
         }
-        composeRule.onNodeWithText(ScanBlocker.TooFast.cause).assertIsDisplayed()
-        composeRule.onNodeWithText(ScanBlocker.TooFast.wayOut).assertIsDisplayed()
-        composeRule.onNodeWithText("${CaptureChrome.NEXT}:", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithTag(SCAN_BLOCKER_TAG)
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion))
+        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertIsNotEnabled()
+        for (id in listOf(R.string.scan_capture_sweep, R.string.scan_capture_slower, R.string.scan_capture_go_back)) {
+            composeRule.onNodeWithText(text(id)).assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun `a whole home offers Next room beside Done`() {
+        var next = 0
+        composeRule.setContent {
+            ScanControls(instruction = null, doneEnabled = true, onFinish = {}, onNextRoom = { next++ })
+        }
+        composeRule.onNodeWithTag(SCAN_NEXT_ROOM_TAG).assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertIsDisplayed()
+        assertEquals(1, next)
+    }
+
+    @Test
+    fun `a home waits for Start between rooms and can finish without an empty scan`() {
+        var started = false
+        var finished = false
+        composeRule.setContent {
+            ScanControls(instruction = null, doneEnabled = false,
+                onFinish = { finished = true }, onResumeRoom = { started = true })
+        }
+        composeRule.onNodeWithTag("scan_start_next_room").assertIsEnabled().performClick()
+        composeRule.onNodeWithText("Finish").assertIsEnabled().performClick()
+        composeRule.onNodeWithTag(SCAN_FINISH_TAG).assertDoesNotExist()
+        assertTrue(started)
+        assertTrue(finished)
     }
 
     @Test
@@ -90,11 +113,11 @@ class CaptureChromeUiTest {
     }
 
     @Test
-    fun `while the model builds, the top card says so and never paused`() {
-        composeRule.setContent {
-            ScanHud(phase = ScanPhase.Saving, seconds = 42f, points = 1200, label = "Room", activity = ScanActivity.Paused)
-        }
-        composeRule.onNodeWithText("Building the model", substring = true).assertIsDisplayed()
+    fun `the top is one pill, duration and floor area`() {
+        composeRule.setContent { ScanHud(seconds = 23f, floorSquareMetres = 14f) }
+        composeRule.onNodeWithTag(SCAN_HUD_TAG).assertIsDisplayed()
+        composeRule.onNodeWithText("0:23", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("14", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText(ScanCopy.PAUSED, substring = true).assertDoesNotExist()
     }
 }

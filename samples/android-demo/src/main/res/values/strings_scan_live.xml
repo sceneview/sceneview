@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="scan_capture_back">Back</string>
+    <string name="scan_capture_done">Done</string>
+    <string name="scan_capture_next_room">Next room</string>
+    <string name="scan_capture_figures">%1$s · %2$s</string>
+    <string name="scan_capture_starting">Move your phone slowly to start</string>
+    <string name="scan_capture_go_back">Go back to where you were</string>
+    <string name="scan_capture_slower">Move a little slower</string>
+    <string name="scan_capture_more_light">More light needed</string>
+    <string name="scan_capture_sweep">Sweep the floor and the walls</string>
+    <string name="scan_capture_saving">Saving your scan…</string>
+    <string name="scan_capture_live_model">Your scan · Live 3D</string>
+    <string name="scan_capture_sweep_object">Move slowly around the object</string>
+    <string name="scan_capture_sweep_outdoor">Move slowly with the ground in view</string>
+    <string name="scan_capture_between_rooms">Room saved. Move to the next room, then tap Start.</string>
+    <string name="scan_capture_photos_only">This phone captures photos and feature points, without a dense surface.</string>
+</resources>

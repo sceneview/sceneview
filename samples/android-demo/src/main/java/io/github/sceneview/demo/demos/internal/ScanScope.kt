@@ -49,22 +49,18 @@ enum class ScanScope(val key: String) {
     val mapsGround: Boolean get() = this != Object
 
     /**
-     * The card that stands for this scope in the choice (Scan redesign, PR 1): only [Object] and
-     * [Room] are offered; [Home] and [Area] stay for the sessions taken with them, and a choice
-     * remembered as one of them comes back as a room.
+     * The card that stands for this scope in the choice: its own. #4899 had cut the choice down to
+     * [Object] and [Room]; the whole home and the outdoor area are offered again (Thomas,
+     * 2026-11-13: « c'était bien de pouvoir scanner un ground, un extérieur… il y en avait quatre »).
      */
-    val offered: ScanScope
-        get() = when (this) {
-            Object -> Object
-            Room, Home, Area -> Room
-        }
+    val offered: ScanScope get() = this
 
     companion object {
         /** The scope asked first when nothing was chosen before: one object, the quickest to a model. */
         val DEFAULT = Object
 
-        /** The scopes the choice offers, in its order: [Object] first. */
-        val OFFERED: List<ScanScope> = listOf(Object, Room)
+        /** The scopes the choice offers, in its order: [Object] first, as #4677 offered them. */
+        val OFFERED: List<ScanScope> = listOf(Object, Room, Home, Area)
 
         /** The scope remembered under [key]; [DEFAULT] for none, or for a key this build does not know. */
         fun fromKey(key: String?): ScanScope = entries.firstOrNull { it.key == key } ?: DEFAULT
@@ -178,10 +174,10 @@ object ScanScopeCopy {
     }
 
     fun detail(scope: ScanScope): String = when (scope) {
-        ScanScope.Object -> "One item on a table or the floor, like a chair or a vase."
-        ScanScope.Room -> "One room, with its walls, floor and ceiling."
-        ScanScope.Home -> "Several rooms, one after the other, without stopping."
-        ScanScope.Area -> "A garden, a yard or a terrace: the ground and what stands on it."
+        ScanScope.Object -> "One item, from 30 cm to 1.5 m away."
+        ScanScope.Room -> "Floor, walls and the details inside."
+        ScanScope.Home -> "Add rooms one at a time."
+        ScanScope.Area -> "A garden, a yard or a terrace."
     }
 
     /** How the scan goes, and what it gives: what a tradesperson needs to know before starting. */

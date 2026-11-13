@@ -81,6 +81,7 @@ import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
+import io.github.sceneview.demo.demos.internal.PoseContinuity
 import io.github.sceneview.demo.demos.internal.PlaneWallSource
 import io.github.sceneview.demo.demos.internal.livePlanesOf
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
@@ -174,6 +175,17 @@ internal class ArDebugRecorder {
     private var recordedFor: ArDebugTrace? = null
 
     /**
+     * A room scan's pose continuity guard: ARCore can teleport the pose in one frame while still
+     * reporting TRACKING (a walk of 2026-11-10 slipped 57 cm and 86° for 3 s), and every photo
+     * and depth image fused meanwhile lands in the wrong place. A slipped frame integrates nothing.
+     */
+    private val continuity = PoseContinuity()
+
+    /** Whether the scan is held off a slipped pose, and whether long enough to offer a restart. */
+    val slipped: Boolean get() = continuity.isSlipped
+    val stuck: Boolean get() = continuity.isStuck
+
+    /**
      * Records [frame] into [trace]. With a [scan] recording into that same trace, the new feature
      * points also take their colour from the frame's camera image, and the frame gives the scan a
      * photo when the camera has moved enough since the last one.
@@ -190,9 +202,11 @@ internal class ArDebugRecorder {
         if (nanos <= 0L || frame.camera.trackingState != TrackingState.TRACKING) return
 
         val display = frame.camera.displayOrientedPose.toDebugPose()
+        val capture = scan?.takeIf { it.trace === trace }
+        // Checked before anything is added: a slipped pose, photo or depth image is never fused.
+        if (capture != null && !continuity.step(nanos, display).integrates) return
         trace.addPose(nanos, display)
 
-        val capture = scan?.takeIf { it.trace === trace }
         capture?.recordDepthStats(nanos)
         val pointsDue = pointsGate.isDue(nanos)
         val photoDue = capture?.wantsPhoto(nanos, display) == true
@@ -290,6 +304,7 @@ internal class ArDebugRecorder {
         planeIds.clear()
         livePlanes.clear()
         anchorIds.clear()
+        continuity.reset()
     }
 
     private companion object {
@@ -703,11 +718,15 @@ private class ArDebugLayers(engine: Engine, private val materials: Map<DebugLaye
         floorY: Float,
         visible: (DebugGroup) -> Boolean,
         replay: ReplayLayers? = null,
+        livePoints: Boolean = true,
     ) {
         for (part in Part.entries) {
             val style = if (part == Part.Map || part == Part.Live) pointStyle else style
-            // The replay draws its map points in their photo colours, on its own layer.
-            val shown = visible(part.group) && !(part == Part.Map && replay != null)
+            // The replay draws its map points in their photo colours, on its own layer; a scan
+            // capture draws none of ARCore's tracked points, which read as orange specks.
+            val shown = visible(part.group) &&
+                !(part == Part.Map && replay != null) &&
+                !(part == Part.Live && !livePoints)
             part.layers.forEach { nodes.getValue(it).isVisible = shown }
             if (!shown) {
                 keys.remove(part) // rebuilt when shown again
@@ -876,6 +895,8 @@ internal fun ArDebugSceneView(
      * draws, but neither advances the session's clock nor writes its figures.
      */
     drivesSession: Boolean = true,
+    /** Capture only: the phone owns the view and projection; no gestures or orbit handoff. */
+    captureLens: ScanLens? = null,
     /** More of the scene, in the session's world space: the live 3D map's floor. */
     content: (@Composable SceneScope.() -> Unit)? = null,
 ) {
@@ -921,7 +942,7 @@ internal fun ArDebugSceneView(
     }
     // A tap on an object of the scan boxes it (#4485); the picture-in-picture takes no touch.
     val objectPick =
-        rememberScanObjectPick(replay.takeUnless { compact || !drivesSession }, session, orbit, engine, materialLoader, selection)
+        rememberScanObjectPick(replay.takeUnless { compact || !drivesSession || captureLens != null }, session, orbit, engine, materialLoader, selection)
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
     val clock = remember { FrameClock() }
 
@@ -942,7 +963,7 @@ internal fun ArDebugSceneView(
             frameRatePolicy = FrameRatePolicy.Continuous(maxFps = if (compact) PIP_FPS else maxFps),
             autoCenterContent = false,
             environment = environment,
-            cameraManipulator = orbit,
+            cameraManipulator = orbit.takeIf { captureLens == null },
             onGestureListener = rememberOnGestureListener(
                 onDown = { _, _ -> objectPick?.down() },
                 onSingleTapConfirmed = { event, _ -> objectPick?.tap(event.x, event.y) },
@@ -960,7 +981,19 @@ internal fun ArDebugSceneView(
                 // the AR view under this one, same size, so a point lands on its camera pixel. The
                 // orbit's lens comes back with the orbit, after a drag or a pinch, or eased back
                 // over the hand-off off the phone's eye as a save starts (#4719).
-                if (orbit.firstPerson != null && orbit.customProjection(clock.projection)) {
+                if (captureLens != null) {
+                    // The viewport normally reaches the orbit via the manipulator; capture has
+                    // no manipulator, but the existing point-size calculations still need it.
+                    orbit.setViewport(view.viewport.width, view.viewport.height)
+                    if (captureLens.held) {
+                        cameraNode.transform = captureLens.cameraToWorld.toTransform()
+                        cameraNode.setCustomProjection(
+                            captureLens.projection.toTransform(),
+                            ScanLens.NEAR_M.toDouble(),
+                            ScanLens.FAR_M.toDouble(),
+                        )
+                    }
+                } else if (orbit.firstPerson != null && orbit.customProjection(clock.projection)) {
                     clock.lensApplied = true
                     cameraNode.setCustomProjection(
                         clock.projection.toTransform(),
@@ -1085,7 +1118,10 @@ internal fun ArDebugSceneView(
                 // The picture-in-picture packs the room into a few hundred pixels: full-size points
                 // would read as noise there, so they shrink while lines keep their weight.
                 val pointStyle = if (compact) ArDebugStyle(style.metresPerPixel * PIP_POINT_SCALE) else style
-                layers.sync(frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers)
+                layers.sync(
+                    frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers,
+                    livePoints = captureLens == null,
+                )
                 replayLayers?.sync(
                     frame, pointStyle, floorY,
                     ReplayVisibility(

@@ -19,7 +19,7 @@ import kotlin.math.ceil
  * ([LiveDrawLoad]).
  *
  * The live card draws a bounded number of surfels, the near ones as the map holds them, and
- * still covers what the camera sees; the floor cells the snapshot hands the live map, and the
+ * paints a translucent coat that leaves the camera seen; the floor cells the snapshot hands the live map, and the
  * cloud the scan saves, are the map's own, whatever the card draws.
  */
 class ScanLiveLodTest {
@@ -44,11 +44,14 @@ class ScanLiveLodTest {
     }
 
     @Test
-    fun `the live view still covers the screen from the eye that scans`() {
+    fun `the live coat covers measured surfaces within its fragment budget`() {
         val loads = session.loads
         val coverage = loads.map { it.coverage.toDouble() }.pct(P50)
         val overdraw = loads.map { it.overdraw.toDouble() }.pct(P50)
         assertTrue("the live view covered ${"%.3f".format(coverage)} of the screen", coverage >= MIN_COVERAGE)
+        println("Live coat: p50 coverage=$coverage, overdraw=$overdraw, alpha=$CAPTURE_POINTS_ALPHA")
+        // Even a fully covered image keeps at least 40% of the real camera underneath.
+        assertTrue(CAPTURE_POINTS_ALPHA <= 0.6f)
         assertTrue("the live view drew ${"%.2f".format(overdraw)} fragments a pixel", overdraw <= MAX_OVERDRAW)
     }
 
@@ -90,8 +93,11 @@ class ScanLiveLodTest {
         /** At arm's length and closer, the live card draws the map's own surfels. */
         const val NEAR_M = 1f
 
-        /** The stride drawn before left 0.706 of the screen covered (p50) and 1.13 fragments a pixel. */
-        const val MIN_COVERAGE = 0.9
+        /**
+         * A surface coat should fill the measured room instead of vanishing into tiny points.
+         * Transparency is tested separately: uncovered area is not the camera visibility metric.
+         */
+        const val MIN_COVERAGE = 0.5
 
         /**
          * The merged surfels overlap: 3.14 fragments a pixel at p50 when this bound was set (#4792).

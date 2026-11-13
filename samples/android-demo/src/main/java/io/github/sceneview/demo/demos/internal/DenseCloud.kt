@@ -411,10 +411,10 @@ object DenseSurfels {
     const val MAX_SCREEN_SIDE = 0.25f
 
     /**
-     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height, about the largest a finest
-     * surfel is drawn (at [NEAR_FADE_M]). A surfel the map coarsened keeps its width in the room,
-     * so a wall past about a metre stays whole at every level; nearer, it shrinks to the size of a
-     * fine one instead of growing into a square over the camera.
+     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height. Surfels keep their width in
+     * the room, so what the scan has captured reads as a coat on the world (2026-11-13, Thomas:
+     * the capture must show, at a glance, what is taken), and only a surfel right by the lens is
+     * capped.
      */
     const val LIVE_MAX_SCREEN_SIDE = 0.1f
 
@@ -468,12 +468,12 @@ object DenseSurfels {
      * Two triangles and four vertices per surfel, surfel `i` at indices `6i until 6i + 6`; a
      * surfel of level L ([DenseCloud.levelOf]) 2^L times as wide, so a coarsened wall stays whole.
      */
-    fun mesh(cloud: DenseCloud, voxelM: Float): DebugMesh {
+    fun mesh(cloud: DenseCloud, voxelM: Float, halfSideVoxels: Float = HALF_SIDE_VOXELS): DebugMesh {
         val n = minOf(cloud.count, MAX_SURFELS)
         val mesh = DebugMesh(maxOf(n * 4, 1))
         val normals = cloud.normals
         for (i in 0 until n) {
-            val half = voxelM * HALF_SIDE_VOXELS * (1 shl cloud.levelOf(i).coerceAtMost(DenseFusion.LEVEL_LIMIT))
+            val half = voxelM * halfSideVoxels * (1 shl cloud.levelOf(i).coerceAtMost(DenseFusion.LEVEL_LIMIT))
             val x = cloud.positions[i * 3]
             val y = cloud.positions[i * 3 + 1]
             val z = cloud.positions[i * 3 + 2]
@@ -506,4 +506,38 @@ object DenseSurfels {
 
     /** The atlas's RGBA bytes: surfel `i` is texel `i`, row-major; no colour → [fallback]. */
     fun atlas(cloud: DenseCloud, fallback: Int): ByteArray = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
+
+    /**
+     * The colours the capture paints over the camera: each surfel's own colour mixed
+     * [LIVE_TINT_SHARE] toward [LIVE_TINT]. In their true colours alone the surfels vanish into
+     * the camera pixels they came from; tinted, what is captured stands out from what is not,
+     * the way LiDAR scanners coat the world while it is scanned.
+     */
+    fun liveAtlas(cloud: DenseCloud, fallback: Int): ByteArray {
+        val tinted = IntArray(cloud.colors.size) { i -> tint(cloud.colors[i].takeIf { it != 0 } ?: fallback) }
+        return PointColorAtlas.pixels(tinted, fallback, ATLAS_SIZE)
+    }
+
+    /** [argb] mixed [LIVE_TINT_SHARE] toward [LIVE_TINT], opaque. */
+    fun tint(argb: Int): Int {
+        fun mix(shift: Int): Int {
+            val c = argb shr shift and 0xFF
+            val t = LIVE_TINT shr shift and 0xFF
+            return (c + (t - c) * LIVE_TINT_SHARE).toInt().coerceIn(0, 0xFF)
+        }
+        return (0xFF shl 24) or (mix(16) shl 16) or (mix(8) shl 8) or mix(0)
+    }
+
+    /**
+     * The half side, in voxels, the capture draws a surfel at over the camera: a little over
+     * twice [HALF_SIDE_VOXELS], so neighbouring surfels overlap into one coat on the surface
+     * instead of a scatter of tiles. The saved cloud and the result keep [HALF_SIDE_VOXELS].
+     */
+    const val LIVE_HALF_SIDE_VOXELS = 1.05f
+
+    /** The capture's coat: a light sky blue, seen on wood, white walls and dark fabric alike. */
+    const val LIVE_TINT = 0xFF6FA8FF.toInt()
+
+    /** How far a captured surfel's colour moves toward [LIVE_TINT]: its texture still shows. */
+    const val LIVE_TINT_SHARE = 0.35f
 }

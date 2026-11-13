@@ -879,18 +879,18 @@ internal fun RerunModelScreen(
     val instance = rendered.instance
     // The slow turn the result opens on (ScanResultTurntable), until the first touch; never
     // under reduced motion, nor in QA mode's still pictures unless their motion is asked for.
-    val spins = (LocalMotionEnabled.current && !DemoSettings.qaMode) || DemoSettings.qaMotion
+    val spins = false // The result moves only after a gesture or an explicit Video / Plan action.
     val turntable = remember(stageKey, spins) { ScanResultTurntable().also { if (!spins) it.stop() } }
     // Which sides of the room its dimensions are written on: the two the camera faces.
     val facing = remember(id ?: source) { FacingSides() }
     // No drift and no reveal: the camera opens on the frame and holds still there until the user
     // moves it, its pitch between a look across and the plan's look down. Kept across a source
     // that arrives for a scan already shown, whose finish is run again.
-    val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES) }
+    val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES, allowPan = false, maxCoastDegrees = 8f) }
     // 3D ↔ Plan, the one camera move, and only when the user asks for it; a touch cuts it short.
     // A result that opens on its Photo layer is entered from inside the place, then seen whole
     // ([ScanOpening]); one that opens on its model stays on its framing, as before.
-    val entersLow = preview != null && (LocalMotionEnabled.current || DemoSettings.qaMotion)
+    val entersLow = false
     val cinematics = remember(orbit, entersLow) {
         ScanResultCinematics(orbit, reveals = entersLow, entrance = ScanOpening::path)
     }
