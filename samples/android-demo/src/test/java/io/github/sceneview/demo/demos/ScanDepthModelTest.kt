@@ -189,7 +189,9 @@ class ScanDepthModelTest {
             File(dir, ScanDepthFormat.FILE).outputStream().buffered().use { out ->
                 out.write(ScanDepthFormat.header(header))
                 recordedFrames.forEachIndexed { i, f ->
-                    out.write(ScanDepthFormat.encode(RecordedDepthFrame(i.toLong(), i.toLong(), PoseStep.Continuous, 128, f, f.pose, 0f, null)))
+                    // A second apart: the guard the fused surface runs again reads a turn between stops, not a slip.
+                    val nanos = i * FRAME_NANOS
+                    out.write(ScanDepthFormat.encode(RecordedDepthFrame(nanos, nanos, PoseStep.Continuous, 128, f, f.pose, 0f, null)))
                 }
             }
         }
@@ -198,6 +200,7 @@ class ScanDepthModelTest {
 
     private companion object {
         const val ID = "scan"
+        const val FRAME_NANOS = 1_000_000_000L
         const val MIN_TRIANGLES = 5_000
         const val FLOOR_M = 0.05f
         const val GROUND_POINTS = 1_600
