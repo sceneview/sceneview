@@ -29,7 +29,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Kotlin (Android)"
 
     ```kotlin
-    // build.gradle: implementation("io.github.sceneview:sceneview:4.69.2")
+    // build.gradle: implementation("io.github.sceneview:sceneview:4.69.3")
 
     SceneView(modifier = Modifier.fillMaxSize()) {
         val model = rememberModelInstance(modelLoader, "models/helmet.glb")
@@ -51,7 +51,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Swift (iOS / macOS / visionOS)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.69.2")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.69.3")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -91,7 +91,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:sceneview:4.69.2")
+        implementation("io.github.sceneview:sceneview:4.69.3")
     }
     ```
 
@@ -100,7 +100,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:arsceneview:4.69.2")
+        implementation("io.github.sceneview:arsceneview:4.69.3")
     }
     ```
 
@@ -108,7 +108,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.69.2")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.69.3")
     ```
 
 === "Web"
