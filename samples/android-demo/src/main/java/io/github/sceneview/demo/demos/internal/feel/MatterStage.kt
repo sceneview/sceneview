@@ -142,6 +142,19 @@ internal class MatterStage {
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
         // Unlit scene-linear grey before PBR Neutral: ~22% sRGB, shared by floor and sky.
         const val STUDIO_GREY = .08f
+        // Shared by the physical spot and the analytic floor transmitted by the gel.
+        const val FLOOR_Y = -FeelSimulation.PAD_THICKNESS - .003f
+        const val KEY_X = -3f
+        const val KEY_Y = 6f
+        const val KEY_Z = 4f
+        const val KEY_TARGET_Z = -.5f
+        const val KEY_CANDELA = 4_500_000f
+        const val KEY_INNER_DEGREES = 8f
+        const val KEY_OUTER_DEGREES = 32f
+        const val KEY_RANGE = 20f
+        const val POOL_STRENGTH = .40f
+        const val GEL_CONTACT_SHADOW = .12f
+        const val RIM_LUX = 18_000f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
         val SIN = sin(Math.toRadians(ELEVATION.toDouble())).toFloat()
         val COS = cos(Math.toRadians(ELEVATION.toDouble())).toFloat()

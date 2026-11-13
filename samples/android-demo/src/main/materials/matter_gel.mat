@@ -11,14 +11,23 @@
 //   dimensions           — half width, thickness, half length, bevel radius.
 //   bounce, squash       — rigid vertical offset and supported opening compression, in model space.
 //   albedo, roughness    — linear physical constants from MatterSurfaces, never UI tokens.
-//   ior, transmission    — physical gel constants. No sheen: Filament forbids it with refraction.
+//   ior, transmission    — dielectric interface and transmitted fraction.
 //   absorption           — Beer-Lambert RGB coefficients per model-space unit.
-// Screen-space transmission includes the showroom floor; absorption colours the volume.
-// Cost: the existing Filament scene-colour resolve/mips and an analytic box exit; no ray march.
+//   background, key*, contact — same analytic studio radiance as matter_floor.mat.
+// The studio floor is the only transmitted object in this demo. Intersect it in world
+// space instead of projecting a box exit into the opaque screen-colour buffer. That
+// projection folds the contact footprint into the well when the exit changes planes.
+// Cost: one analytic floor sample; no scene-colour resolve/mips, texture or ray march.
 // matc profile: --optimize-size -p mobile -a opengl -a vulkan (Filament 1.77.3).
 material {
     "name": "Matter gel",
     "parameters": [
+        { "type": "float3", "name": "background" },
+        { "type": "float3", "name": "keyPosition", "precision": "high" },
+        { "type": "float3", "name": "keyTarget", "precision": "high" },
+        { "type": "float2", "name": "keyCone" },
+        { "type": "float2", "name": "keyPool" },
+        { "type": "float3", "name": "contact" },
         { "type": "float", "name": "squash" },
         { "type": "float2", "name": "rimShape" },
         { "type": "float4[8]", "name": "trail", "precision": "high" },
@@ -79,11 +88,9 @@ material {
         "bentTangent"
     ],
     "shadingModel": "lit",
-    "blending": "transparent",
+    "blending": "opaque",
     "doubleSided": false,
-    "specularAntiAliasing": true,
-    "refractionMode": "screenspace",
-    "refractionType": "solid"
+    "specularAntiAliasing": true
 }
 vertex {
     #define MATTER_GEL
@@ -91,32 +98,39 @@ vertex {
     #include "matter_deformation.vs"
 }
 fragment {
+    #include "matter_studio.fs"
     void material(inout MaterialInputs material) {
         highp vec3 p = variable_rest.xyz;
         p.y += variable_rest.w;
         vec3 n = normalize(variable_bentNormal.xyz);
-        // Matter only translates its slabs: world and rest-space axes coincide.
-        // Find the refracted ray's exit from the supported slab with three plane distances.
-        // The displaced entry includes the well and raised rim. Retain the full path through
-        // the sides instead of artificially thinning every edge to 22% as in v14.
-        vec3 ray = refract(-getWorldViewVector(), n, 1.0 / materialParams.ior);
-        highp vec3 halfSize = vec3(materialParams.dimensions.x,
-            materialParams.dimensions.y * 0.5, materialParams.dimensions.z);
-        highp vec3 centred = p + vec3(0.0, halfSize.y, 0.0);
-        highp vec3 exitDistance = (halfSize - sign(ray) * centred) / max(abs(ray), vec3(0.0001));
-        float path = max(0.02, min(exitDistance.x, min(exitDistance.y, exitDistance.z)));
+        vec3 v = getWorldViewVector();
+        vec3 ray = refract(-v, n, 1.0 / materialParams.ior);
+        // A single supported plane gives the well one continuous lens. Signed rest.w
+        // is still required: dents shorten the optical column and raised rims lengthen it.
+        // The grazing guard only bounds nearly horizontal rays on the vertical bevel.
+        float down = max(-ray.y, 0.25);
+        float path = max(p.y + materialParams.dimensions.y, 0.002) / down;
+        highp vec3 world = getWorldPosition();
+        float floorDistance = max(world.y - materialParams.keyTarget.y, 0.002) / down;
+        highp vec2 floorXZ = world.xz + ray.xz * floorDistance;
+        highp vec3 floorPoint = vec3(floorXZ.x, materialParams.keyTarget.y, floorXZ.y);
+        vec3 transmitted = matterStudioFloor(floorPoint, materialParams.background,
+            materialParams.keyPosition, materialParams.keyTarget, materialParams.keyCone,
+            materialParams.keyPool, materialParams.contact, materialParams.dimensions.xz);
+        transmitted *= exp(-materialParams.absorption * path) * materialParams.albedo;
+        float f0 = (materialParams.ior - 1.0) / (materialParams.ior + 1.0);
+        f0 *= f0;
+        float fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(n, v), 0.0), 5.0);
         material.normal = transpose(getWorldTangentFrame()) * n;
         prepareMaterial(material);
-        material.baseColor = vec4(materialParams.albedo, 1.0);
+        // Opaque depth selects the nearest surface of the concave well. Transmission
+        // is the actual analytic floor radiance, not overlapping transparent layers.
+        material.baseColor = vec4(0.0, 0.0, 0.0, 1.0);
         material.metallic = 0.0;
         material.roughness = materialParams.roughness;
         material.ior = materialParams.ior;
-        material.transmission = materialParams.transmission;
-        material.absorption = materialParams.absorption;
-        // Filament 1.77 solid refraction uses d = thickness * -dot(n, ray). Convert the
-        // slab path to that convention, so both absorption and the floor lookup use it.
-        // The smooth concave normal gathers the key reflection into a bright well highlight.
-        material.thickness = path / max(-dot(n, ray), 0.2);
+        // w=0 keeps the pre-exposed floor sample identical to the unlit floor outside.
+        material.emissive = vec4(transmitted * ((1.0 - fresnel) * materialParams.transmission), 0.0);
         material.ambientOcclusion = 1.0;
     }
 }
