@@ -29,6 +29,7 @@ import io.github.sceneview.isBackendBusy
 import io.github.sceneview.isValid
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.AnimationEnvelopes
 import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
@@ -547,6 +548,7 @@ class ModelLoader(
                     // The authored glow AR scales from (#4950): Filament cannot read it back.
                     EmissiveScale.record(model, gltf.emissiveStrengths())
                     RestPoseBounds.record(model, restPose)
+                    AnimationEnvelopes.record(model) { createInstance(model) }
                     onLoadBegun(model)
                 }
             }
@@ -1128,6 +1130,7 @@ class ModelLoader(
             // Its material instances go with it, whether or not there are natives left to free.
             recordingProvider.ownership.release(it)
             EmissiveScale.forget(it)
+            AnimationEnvelopes.forget(it)
             RestPoseBounds.forget(it)
             if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
@@ -1407,6 +1410,7 @@ class ModelLoader(
         EmissiveScale.record(model, gltf.emissiveStrengths())
         // Read before `releaseSourceData`, while the external buffers are at hand.
         RestPoseBounds.record(model, gltf.restPoseBounds(resolved::get))
+        AnimationEnvelopes.record(model) { createInstance(model) }
     }
 
     companion object {

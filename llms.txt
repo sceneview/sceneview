@@ -4853,7 +4853,9 @@ fun fitCameraToBounds(
     direction: Position = Position(0f, 0f, -1f),
     verticalFovDegrees: Double, aspect: Double,
     widthFill: Float = DEFAULT_FRAMING_FILL,    // 0.8 — share of the half-width the box may span
-    heightFill: Float = DEFAULT_FRAMING_FILL
+    heightFill: Float = DEFAULT_FRAMING_FILL,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): CameraFit?
 ```
 
@@ -4881,6 +4883,68 @@ val manipulator = rememberCameraManipulator(orbitHomePosition = fit.eye, targetP
 On the axis that binds, the projected box spans exactly `±widthFill` (or `±heightFill`)
 of the half-view; on the other it is centred and spans less. The camera is assumed
 upright (world `+Y` up); looking straight down, "right" is world `+X`.
+
+### Animated skin framing — clip envelopes and Silhouette (#5032, Android)
+
+`FitMode.Corners` keeps the historical eight-corner fit for explicit bounds and static
+models. `FitMode.Silhouette` uses the four endpoints of the side-face horizontal mid-lines
+(at mid-height), plus the top and bottom face centres. It avoids charging an organic
+subject for the empty near-bottom corners of its box. `fitCameraToBounds`,
+`CameraNode.fitToBounds` and `CameraNode.frameToBounds` accept `fitMode` and an optional
+`animationEnvelope`. The envelope overrides `bounds`; both must be in the camera's space.
+
+```kotlin
+import io.github.sceneview.FitMode
+import io.github.sceneview.model.animationEnvelope
+
+// Suspending: one pose per display frame; Filament JNI is dispatched to Main.
+val localEnvelope = instance.animationEnvelope(clip = 0, samples = 24)
+// Also accepts the exact glTF animation name: instance.animationEnvelope("Run").
+val worldEnvelope = localEnvelope.transformed(modelNode.worldTransform)
+val fit = cameraNode.fitToBounds(
+    bounds = worldEnvelope.bounds,
+    fitMode = FitMode.Silhouette,
+    animationEnvelope = worldEnvelope
+)
+fit?.let { cameraNode.frame(it) }  // with a manipulator, seed it with fit.eye / fit.target
+
+// Default rule in the SDK auto-fit (no camera manipulator):
+SceneView(autoFitContent = true, cameraManipulator = null) { /* ModelNode(...) */ }
+// Null fitMode is automatic: ONLY skinned, animated models get Silhouette + envelope.
+// Static siblings still contribute their corners. Explicit Corners restores the old path:
+SceneView(autoFitContent = true, fitMode = FitMode.Corners, cameraManipulator = null) { }
+```
+
+The rest box and each sampled pose remain **separate**. The fit contains every pose's
+probes, rather than making a fictitious silhouette out of extrema reached at different
+moments. The default auto-fit samples the ModelNode's playing clips (clip 0 if none),
+then latches; reset `SceneAutoFitState` when manually switching clips. Simultaneous clip
+blends, morph deformation and motion between the samples are not bounded. A directional
+Silhouette fit is valid at the chosen angle; fit again after changing the viewing angle.
+Explicit `frameToBounds(..., fitMode = Corners)` without an envelope keeps its historical
+rotation-invariant distance.
+
+The flesh heuristic takes the six non-negative gaps between the rest-pose joint extent
+and `restPoseBoundingBox`, and adds those gaps to each sampled joint extent. It is not
+vertex skinning: increasing `samples` (2..120) improves temporal coverage, not the flesh
+approximation. Rest itself is always included. Assets with no skin or animation return
+the rest box. Assets loaded outside ModelLoader also fall back to the rest box.
+
+Cache key: asset identity, clip and sample count; instances of an asset share the result.
+Cold cost: one pose per display frame, at least ~400 ms elapsed for 24 poses at 60 Hz,
+with O(samples × (nodes + joints)) CPU work. Cache hits do no sampling. ModelLoader
+reserves one private hidden instance **per clip** before releasing source data
+(additional nodes, renderables and Animator data per clip, even with auto-fit disabled);
+these are freed with the asset. Separate
+instances preserve the visible animator, including paused/blended/morph poses, and avoid
+Filament's private TRS cache leaking one clip into another. Device CPU cost is logged by
+`AnimationEnvelopeRenderTest`; run it on the target device to budget native frame time.
+
+The Android Model Viewer uses this SDK fit for animated skins; open
+`sceneview://demo/model-viewer`, then **Models → Fox** and choose a clip in the animation
+bar. Static products retain the existing viewer framing. This API is Android-only:
+Filament Animator/joint transforms and its asset cache are not shared with RealityKit
+or the Web bindings; no cross-platform parity is implied.
 
 ### Cinematic camera — shots, transitions, paths, reveal, tour (`io.github.sceneview.camera`)
 

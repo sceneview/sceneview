@@ -5,6 +5,10 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.toPosition
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.RenderableNode
+import io.github.sceneview.model.AnimationEnvelopes
+import io.github.sceneview.math.times
 import kotlin.math.abs
 import kotlin.math.asin
 import kotlin.math.atan
@@ -255,13 +259,26 @@ fun CameraNode.fitDistanceForContent(
  * @param bounds    Content bounding box, in this camera's parent space.
  * @param direction Unit look direction from camera to content. Default front view `(0, 0, -1)`.
  * @param padding   Extra framing margin — see [fitDistanceForBounds].
+ * @param fitMode [FitMode.Corners] preserves the historical swept-box distance. [FitMode.Silhouette]
+ *                uses the precise directional fit; it is guaranteed only at [direction].
+ * @param animationEnvelope Optional separate poses, in the same space as [bounds].
  * @return `true` if the camera was repositioned, `false` when [bounds] was empty.
  */
 fun CameraNode.frameToBounds(
     bounds: Aabb,
     direction: Position = Position(0f, 0f, -1f),
-    padding: Float = DEFAULT_FRAMING_PADDING
+    padding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): Boolean {
+    if (fitMode != FitMode.Corners || animationEnvelope != null) {
+        val fit = fitToBounds(bounds, direction,
+            widthFill = 1f / (1f + max(0f, padding)),
+            heightFill = 1f / (1f + max(0f, padding)),
+            fitMode = fitMode, animationEnvelope = animationEnvelope) ?: return false
+        frame(fit)
+        return true
+    }
     val normalized = normalizeOrDefault(direction)
     val distance = fitDistanceForBounds(
         bounds = bounds,
@@ -370,6 +387,9 @@ data class CameraFit(val eye: Position, val target: Position) {
  * @param aspect             Width / height of the area to frame in.
  * @param widthFill          Share of the half-width the box may span, `(0, 1]`.
  * @param heightFill         Share of the half-height the box may span, `(0, 1]`.
+ * @param fitMode Corners by default; Silhouette fits side mid-lines and top/bottom face centres.
+ * @param animationEnvelope Optional poses in the same space as [bounds]. Fits all their probes,
+ *                          never probes of their union. Overrides [bounds] when supplied.
  * @return The pose, or `null` when [bounds] is empty / non-finite — nothing to frame yet.
  */
 fun fitCameraToBounds(
@@ -378,7 +398,24 @@ fun fitCameraToBounds(
     verticalFovDegrees: Double,
     aspect: Double,
     widthFill: Float = DEFAULT_FRAMING_FILL,
-    heightFill: Float = DEFAULT_FRAMING_FILL
+    heightFill: Float = DEFAULT_FRAMING_FILL,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
+): CameraFit? = fitCameraToProbes(
+    animationEnvelope?.bounds ?: bounds,
+    animationEnvelope?.let { if (fitMode == FitMode.Corners) it.corners else it.silhouette }
+        ?: bounds.framingProbes(fitMode),
+    direction, verticalFovDegrees, aspect, widthFill, heightFill
+)
+
+internal fun fitCameraToProbes(
+    bounds: Aabb,
+    probes: List<Position>,
+    direction: Position,
+    verticalFovDegrees: Double,
+    aspect: Double,
+    widthFill: Float,
+    heightFill: Float
 ): CameraFit? {
     if (bounds.isEmpty) return null
     val safeAspect = if (aspect.isFinite() && aspect > 0.0) aspect else 1.0
@@ -403,16 +440,15 @@ fun fitCameraToBounds(
         back[0] * right[1] - back[1] * right[0]
     )
 
-    // The eight corners, in the camera's basis: (along right, along up, along back).
-    val lowest = bounds.min
-    val highest = bounds.max
-    val xs = DoubleArray(8)
-    val ys = DoubleArray(8)
-    val zs = DoubleArray(8)
-    for (i in 0 until 8) {
-        val x = (if (i and 1 == 0) lowest.x else highest.x).toDouble()
-        val y = (if (i and 2 == 0) lowest.y else highest.y).toDouble()
-        val z = (if (i and 4 == 0) lowest.z else highest.z).toDouble()
+    // Every pose's probes, expressed in the camera basis. Corners keep the original order
+    // and Float-to-Double conversion, so the historical fit is bit-for-bit unchanged.
+    val xs = DoubleArray(probes.size)
+    val ys = DoubleArray(probes.size)
+    val zs = DoubleArray(probes.size)
+    for (i in probes.indices) {
+        val x = probes[i].x.toDouble()
+        val y = probes[i].y.toDouble()
+        val z = probes[i].z.toDouble()
         if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return null
         xs[i] = x * right[0] + y * right[1] + z * right[2]
         ys[i] = x * up[0] + y * up[1] + z * up[2]
@@ -447,20 +483,25 @@ fun fitCameraToBounds(
  * the viewport minus [CameraNode.contentPadding] — and, by default, the direction it is looking
  * in now. Nothing is written: apply the result with [frame], or hand it to a camera manipulator.
  *
+ * [fitMode] chooses the probes; [animationEnvelope] supplies separate poses in world space.
  * **Threading:** reads the camera's viewport and transform — main (render) thread.
  */
 fun CameraNode.fitToBounds(
     bounds: Aabb,
     direction: Position = worldQuaternion * Position(0f, 0f, -1f),
     widthFill: Float = DEFAULT_FRAMING_FILL,
-    heightFill: Float = DEFAULT_FRAMING_FILL
+    heightFill: Float = DEFAULT_FRAMING_FILL,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): CameraFit? = fitCameraToBounds(
     bounds = bounds,
     direction = direction,
     verticalFovDegrees = verticalFovDegreesForFocalLength(focalLength),
     aspect = getViewPortAspect(),
     widthFill = widthFill,
-    heightFill = heightFill
+    heightFill = heightFill,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope
 )
 
 /**
@@ -578,26 +619,32 @@ class SceneAutoFitState {
      * @param cameraNode   Camera to reposition.
      * @param contentRoot  Subtree whose bounds drive the framing.
      * @param padding      Extra framing margin — see [fitDistanceForBounds].
+     * @param fitMode `null`: skinned animated models use a sampled Silhouette envelope, static
+     *                geometry keeps Corners. Explicit Corners forces the historical path, with
+     *                no sampling. Envelopes are collected one pose per clip per frame before fitting.
      * @return `true` if this call performed the framing.
      */
     fun maybeFit(
         cameraNode: CameraNode,
         contentRoot: Node,
-        padding: Float = DEFAULT_FRAMING_PADDING
-    ): Boolean = maybeFit(cameraNode, listOf(contentRoot), padding)
+        padding: Float = DEFAULT_FRAMING_PADDING,
+        fitMode: FitMode? = null
+    ): Boolean = maybeFit(cameraNode, listOf(contentRoot), padding, fitMode)
 
     /**
      * Runs the auto-fit pass against the union bounds of every node in [contentRoots]. Used when
      * `SceneView`'s content is registered directly with the node manager (no intermediate
      * content-root node, i.e. `autoCenterContent = false`). Each root's bounds are measured in
      * its own local space and unioned in world space via the root's world transform.
+     * [fitMode] follows the single-root overload's automatic rule; Corners disables sampling.
      *
      * **Threading:** must run on the main thread — reads and writes Filament state.
      */
     fun maybeFit(
         cameraNode: CameraNode,
         contentRoots: List<Node>,
-        padding: Float = DEFAULT_FRAMING_PADDING
+        padding: Float = DEFAULT_FRAMING_PADDING,
+        fitMode: FitMode? = null
     ): Boolean {
         // No content to frame yet. See [FramingGate.isPending]: this is a wait on a push source
         // (the DSL node sync invalidates and resets the gate when content arrives), never a reason
@@ -609,8 +656,12 @@ class SceneAutoFitState {
         // The framing is computed for the camera's visible area. A padding that changed since the
         // last pass — a panel sliding over the view — leaves the content's diagonal untouched, so
         // the latch has to be told (#4310).
-        if (gate.rearmOnChange(cameraNode.contentPadding)) fitDistance = 0f
+        if (gate.rearmOnChange(cameraNode.contentPadding to fitMode)) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
+        if (fitMode != FitMode.Corners && (fitMode == FitMode.Silhouette ||
+                contentRoots.any { it.hasAnimatedSkin() })) {
+            return maybeFitEnvelope(cameraNode, contentRoots, padding, fitMode)
+        }
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because
         // `computeContentBounds` re-expresses each subtree in the reference's local space.
@@ -645,6 +696,60 @@ class SceneAutoFitState {
         return framed
     }
 
+    private fun maybeFitEnvelope(
+        camera: CameraNode, roots: List<Node>, padding: Float, mode: FitMode?
+    ): Boolean {
+        val probes = mutableListOf<Position>()
+        val boxes = mutableListOf<Aabb>()
+        var pending = false
+        fun visit(node: Node) {
+            if (!node.isVisible) return
+            if (node is ModelNode) {
+                if (node.isModelDestroyed) return
+                val animated = node.skinCount > 0 && node.animationCount > 0
+                val envelope = if (animated) {
+                    // ModelNode's default plays every clip: keep every clip's poses, separately.
+                    // When nothing is playing yet, clip zero is the predictable default.
+                    val clips = node.playingAnimations.keys.toList().ifEmpty { listOf(0) }
+                    val results = clips.map { clip ->
+                        AnimationEnvelopes.sampler(node.modelInstance, clip).also { it.step() }.result
+                    }
+                    if (results.any { it == null }) { pending = true; null }
+                    else results.filterNotNull()
+                } else listOf(AnimationEnvelope(listOf(node.boundingBox.toAabb())))
+                envelope?.forEach {
+                    val world = it.transformed(node.worldTransform)
+                    boxes += world.bounds
+                    probes += if (mode == FitMode.Silhouette || animated) world.silhouette else world.corners
+                }
+                // Internal mesh nodes are already measured by the model envelope; user children
+                // still participate, including independently animated attached models.
+                val internalEntities = node.modelInstance.entities.toSet()
+                node.childNodes.filter { it.entity !in internalEntities }.forEach { visit(it) }
+                return
+            }
+            if (node is RenderableNode) {
+                val world = AnimationEnvelope(listOf(node.axisAlignedBoundingBox.toAabb()))
+                    .transformed(node.worldTransform)
+                boxes += world.bounds
+                probes += if (mode == FitMode.Silhouette) world.silhouette else world.corners
+            }
+            node.childNodes.forEach { visit(it) }
+        }
+        roots.forEach { visit(it) }
+        if (pending) return false // Keep the gate pending until all sampled poses are available.
+        val bounds = boxes.union()
+        val fill = 1f / (1f + max(0f, padding))
+        val fit = fitCameraToProbes(bounds, probes,
+            camera.worldQuaternion * Position(0f, 0f, -1f),
+            verticalFovDegreesForFocalLength(camera.focalLength), camera.getViewPortAspect(), fill, fill)
+        if (fit == null) { gate.recordNoContent(); return false }
+        val framed = gate.shouldFrame(bounds.diagonal)
+        if (framed) { camera.frame(fit); fitDistance = fit.distance }
+        gate.recordFraming(bounds.diagonal)
+        return framed
+    }
+
     /**
      * Resets the gate so the next frame re-runs the auto-fit pass from scratch. Call this when the
      * scene content is *replaced* so a shrinking union still re-frames — a growing union already
@@ -655,3 +760,7 @@ class SceneAutoFitState {
         fitDistance = 0f
     }
 }
+
+private fun Node.hasAnimatedSkin(): Boolean = isVisible &&
+    ((this is ModelNode && !isModelDestroyed && skinCount > 0 && animationCount > 0) ||
+        childNodes.any { it.hasAnimatedSkin() })

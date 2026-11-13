@@ -164,6 +164,9 @@ import io.github.sceneview.node.reflectionProbes
  *                              so subsequent user zoom / pan is never fought. Default `false` so
  *                              callers that position [cameraNode] explicitly keep full control;
  *                              opt in for model-viewer style scenes.
+ * @param fitMode Automatic when null: skinned animated models use Silhouette and a sampled clip
+ *                envelope; static models keep Corners. Explicit Corners opts out of sampling and
+ *                restores historical framing. Only applies when autoFitContent is enabled.
  * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
  *                              *fraction* of the fit distance — `0.15` (the default,
  *                              [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames the
@@ -356,6 +359,7 @@ fun SceneView(
      * [autoFitContent] is `true`.
      */
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode? = null,
     /**
      * The part of this view that something else covers — a bottom sheet, a side panel, a toolbar —
      * measured inwards from its edges. **What is left is the camera's viewport**: the subject is
@@ -730,7 +734,7 @@ fun SceneView(
 
     // Enabling auto-fit at runtime has to wake the loop too: the fit pass only runs from inside a
     // presented frame, so a parked scene would keep the old framing until something else woke it.
-    LaunchedEffect(autoFitContent, framingPadding) {
+    LaunchedEffect(autoFitContent, framingPadding, fitMode) {
         autoFitState.reset()
         frameRateGate.requestRender()
     }
@@ -1057,6 +1061,7 @@ fun SceneView(
     // And `framingPadding` — a per-scene change re-arms the pass so the new air is applied
     // instead of staying latched on the previous framing.
     val currentFramingPadding = rememberUpdatedState(framingPadding)
+    val currentFitMode = rememberUpdatedState(fitMode)
     // The `reset()` and the wake-up for both of these live in one keyed effect next to the
     // auto-fit state above.
 
@@ -1216,12 +1221,15 @@ fun SceneView(
                         ) {
                             if (currentAutoCenterContent.value) {
                                 autoFitState.maybeFit(
-                                    cameraNode, contentRoot, padding = currentFramingPadding.value
+                                    cameraNode, contentRoot,
+                                    padding = currentFramingPadding.value,
+                                    fitMode = currentFitMode.value
                                 )
                             } else {
                                 autoFitState.maybeFit(
                                     cameraNode, childNodesRef.get(),
-                                    padding = currentFramingPadding.value
+                                    padding = currentFramingPadding.value,
+                                    fitMode = currentFitMode.value
                                 )
                             }
                         }
@@ -2464,6 +2472,7 @@ fun Scene(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
@@ -2496,6 +2505,7 @@ fun Scene(
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
     framingPadding = framingPadding,
+    fitMode = fitMode,
     contentPadding = contentPadding,
     renderer = renderer,
     scene = scene,

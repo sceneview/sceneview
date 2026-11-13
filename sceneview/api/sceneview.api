@@ -25,6 +25,14 @@ public final class io/github/sceneview/Aabb$Companion {
 	public final fun fromMinMax (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/Aabb;
 }
 
+public final class io/github/sceneview/AnimationEnvelope {
+	public static final field $stable I
+	public fun <init> (Ljava/util/List;)V
+	public final fun getBounds ()Lio/github/sceneview/Aabb;
+	public final fun getPoses ()Ljava/util/List;
+	public final fun transformed (Ldev/romainguy/kotlin/math/Mat4;)Lio/github/sceneview/AnimationEnvelope;
+}
+
 public final class io/github/sceneview/BuildConfig {
 	public static final field BUILD_TYPE Ljava/lang/String;
 	public static final field DEBUG Z
@@ -52,17 +60,17 @@ public final class io/github/sceneview/CameraFramingKt {
 	public static final field DEFAULT_FRAMING_ELEVATION_DEGREES D
 	public static final field DEFAULT_FRAMING_FILL F
 	public static final field DEFAULT_FRAMING_PADDING F
-	public static final fun fitCameraToBounds (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFF)Lio/github/sceneview/CameraFit;
-	public static synthetic fun fitCameraToBounds$default (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFFILjava/lang/Object;)Lio/github/sceneview/CameraFit;
+	public static final fun fitCameraToBounds (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFFLio/github/sceneview/FitMode;Lio/github/sceneview/AnimationEnvelope;)Lio/github/sceneview/CameraFit;
+	public static synthetic fun fitCameraToBounds$default (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFFLio/github/sceneview/FitMode;Lio/github/sceneview/AnimationEnvelope;ILjava/lang/Object;)Lio/github/sceneview/CameraFit;
 	public static final fun fitDistanceForBounds (Lio/github/sceneview/Aabb;DDFDZ)F
 	public static synthetic fun fitDistanceForBounds$default (Lio/github/sceneview/Aabb;DDFDZILjava/lang/Object;)F
 	public static final fun fitDistanceForContent (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;F)F
 	public static synthetic fun fitDistanceForContent$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;FILjava/lang/Object;)F
-	public static final fun fitToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FF)Lio/github/sceneview/CameraFit;
-	public static synthetic fun fitToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FFILjava/lang/Object;)Lio/github/sceneview/CameraFit;
+	public static final fun fitToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/FitMode;Lio/github/sceneview/AnimationEnvelope;)Lio/github/sceneview/CameraFit;
+	public static synthetic fun fitToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/FitMode;Lio/github/sceneview/AnimationEnvelope;ILjava/lang/Object;)Lio/github/sceneview/CameraFit;
 	public static final fun frame (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/CameraFit;)V
-	public static final fun frameToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;F)Z
-	public static synthetic fun frameToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Z
+	public static final fun frameToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FLio/github/sceneview/FitMode;Lio/github/sceneview/AnimationEnvelope;)Z
+	public static synthetic fun frameToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FLio/github/sceneview/FitMode;Lio/github/sceneview/AnimationEnvelope;ILjava/lang/Object;)Z
 	public static final fun frameToContent (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;F)Z
 	public static synthetic fun frameToContent$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Z
 	public static final fun toAabb (Lcom/google/android/filament/Box;)Lio/github/sceneview/Aabb;
@@ -235,6 +243,14 @@ public final class io/github/sceneview/EngineWarmUpInitializer : androidx/startu
 }
 
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
+}
+
+public final class io/github/sceneview/FitMode : java/lang/Enum {
+	public static final field Corners Lio/github/sceneview/FitMode;
+	public static final field Silhouette Lio/github/sceneview/FitMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/FitMode;
+	public static fun values ()[Lio/github/sceneview/FitMode;
 }
 
 public final class io/github/sceneview/FrameRateGate {
@@ -429,10 +445,10 @@ public final class io/github/sceneview/SceneAutoFitState {
 	public final fun getDidFit ()Z
 	public final fun getFitDistance ()F
 	public final fun isFramingPending ()Z
-	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;F)Z
-	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Ljava/util/List;F)Z
-	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FILjava/lang/Object;)Z
-	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Ljava/util/List;FILjava/lang/Object;)Z
+	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FLio/github/sceneview/FitMode;)Z
+	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Ljava/util/List;FLio/github/sceneview/FitMode;)Z
+	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FLio/github/sceneview/FitMode;ILjava/lang/Object;)Z
+	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Ljava/util/List;FLio/github/sceneview/FitMode;ILjava/lang/Object;)Z
 	public final fun reset ()V
 }
 
@@ -492,8 +508,8 @@ public final class io/github/sceneview/SceneFrameDispatch {
 }
 
 public final class io/github/sceneview/SceneKt {
-	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLandroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
-	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLandroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIII)V
+	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Landroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
+	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Landroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
 	public static final fun rememberARView (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/View;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Ljava/lang/Object;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
@@ -3004,6 +3020,13 @@ public final class io/github/sceneview/math/SceneviewMathKt {
 	public static final fun setCenterPosition (Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Float3;)V
 	public static final fun setHalfExtentSize (Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Float3;)V
 	public static final fun toVector3Box (Lcom/google/android/filament/Box;)Lio/github/sceneview/collision/Box;
+}
+
+public final class io/github/sceneview/model/AnimationEnvelopeKt {
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentInstance;IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/String;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentInstance;IILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/String;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public final class io/github/sceneview/model/ModelInstanceKt {

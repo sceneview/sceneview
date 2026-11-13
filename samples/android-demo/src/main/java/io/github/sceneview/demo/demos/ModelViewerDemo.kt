@@ -199,6 +199,11 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.animation.core.Animatable
 import io.github.sceneview.model.restPoseBoundingBox
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.AnimationEnvelope
+import io.github.sceneview.FitMode
+import io.github.sceneview.fitCameraToBounds
+import io.github.sceneview.math.Transform
 
 /**
  * Unified "Models" demo — consolidates the retired `multi-model` and
@@ -294,6 +299,7 @@ private val BUNDLED_VIEWER_MODELS = listOf(
     bundledProduct("rivet-sloane-sofa", "Rivet Sloane sofa", R.string.demo_model_desc_hd_rivet_sloane_sofa),
     bundledProduct("wishbone-chair", "Wishbone dining chair", R.string.demo_model_desc_hd_wishbone_chair),
     bundledProduct("rivet-arc-floor-lamp", "Rivet arc floor lamp", R.string.demo_model_desc_hd_rivet_arc_floor_lamp),
+    BundledViewerModel("models/khronos_fox.glb", "Fox", frontYaw = 90f),
 )
 
 /**
@@ -1147,6 +1153,23 @@ private fun SingleModelSection(
             }
     }
     val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
+    val animatedSkin = remember(activeModelInstance) {
+        activeModelInstance?.let { it.skinCount > 0 && it.animator.animationCount > 0 } == true
+    }
+    var clipEnvelope by remember(activeModelInstance, selectedAnimation) {
+        mutableStateOf<AnimationEnvelope?>(null)
+    }
+    LaunchedEffect(activeModelInstance, selectedAnimation) {
+        if (animatedSkin) clipEnvelope = activeModelInstance?.animationEnvelope(selectedAnimation)
+    }
+    // The viewer rotates about the scaled rest centre. Keep each pose's actual probes through
+    // those transforms; a new enclosing AABB would re-introduce the empty corners.
+    val framingEnvelope = remember(clipEnvelope, bounds, modelScale, frontYaw, animatedSkin) {
+        if (!animatedSkin) null else clipEnvelope?.transformed(Transform(scale = Scale(modelScale)))
+            ?.transformed(Transform(position = -modelCenter))
+            ?.transformed(Transform(rotation = Rotation(y = frontYaw)))
+            ?: bounds?.let { AnimationEnvelope(listOf(Aabb(halfExtent = it.halfExtent))) }
+    }
     // The showroom under the subject: its floor at the box's base, its contact shadows on the
     // UNTURNED footprint (the shadow quads turn with the model), every size in its radius.
     val footprint = remember(activeModelInstance, modelScale) {
@@ -1678,7 +1701,7 @@ private fun SingleModelSection(
                 null
             }
             val restingAspect = sceneFrame?.restingAspect
-            val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset, restingAspect) {
+            val framing = remember(bounds, framingEnvelope, maxWidth, maxHeight, topInset, bottomInset, restingAspect) {
                 val extents = bounds?.extents ?: return@remember null
                 viewerHomeFraming(
                     extents = extents,
@@ -1687,6 +1710,7 @@ private fun SingleModelSection(
                     topInset = topInset.value,
                     bottomInset = bottomInset.value,
                     restingAspect = restingAspect,
+                    animationEnvelope = framingEnvelope,
                 )
             }
             // Published for the "Camera distance" slider. A `SideEffect`, not a
@@ -1909,7 +1933,9 @@ private fun SingleModelSection(
                 fillLightNode = fillLight.takeUnless { showroomLit },
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
-                contentPadding = sceneFrame?.contentPadding ?: NoContentPadding,
+                contentPadding = sceneFrame?.contentPadding ?: if (animatedSkin) {
+                    PaddingValues(top = topInset, bottom = bottomInset)
+                } else NoContentPadding,
                 cameraNode = cameraNode,
                 cameraManipulator = cameraManipulator,
             ) {
@@ -2945,9 +2971,28 @@ internal fun viewerHomeFraming(
     topInset: Float,
     bottomInset: Float,
     restingAspect: Float?,
+    animationEnvelope: AnimationEnvelope? = null,
 ): DemoMath.ViewerFraming {
     // Low for a car, higher for a watch: the pitch follows the subject's longest side.
     val pitch = ShowroomMath.pitchDegrees(maxOf(extents.x, extents.y, extents.z))
+    if (animationEnvelope != null) {
+        val radians = Math.toRadians(pitch.toDouble())
+        val aspect = restingAspect ?: (viewportWidth /
+            (viewportHeight - topInset - bottomInset).coerceAtLeast(viewportHeight * 0.1f))
+        val fit = fitCameraToBounds(
+            bounds = animationEnvelope.bounds,
+            direction = Position(0f, -kotlin.math.sin(radians).toFloat(), -kotlin.math.cos(radians).toFloat()),
+            verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+            aspect = aspect.toDouble(),
+            widthFill = DemoMath.VIEWER_HORIZONTAL_FILL,
+            heightFill = DemoMath.VIEWER_FILL,
+            fitMode = FitMode.Silhouette,
+            animationEnvelope = animationEnvelope,
+        )
+        if (fit != null) return DemoMath.ViewerFraming(fit.distance,
+            Triple(fit.target.x, fit.target.y, fit.target.z),
+            Triple(fit.eye.x, fit.eye.y, fit.eye.z))
+    }
     return if (restingAspect != null) {
         DemoMath.viewerFraming(
             extentX = extents.x, extentY = extents.y, extentZ = extents.z,
