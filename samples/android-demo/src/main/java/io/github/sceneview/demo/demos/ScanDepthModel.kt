@@ -13,7 +13,6 @@ import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.room.RoomBox
 import io.github.sceneview.demo.demos.internal.room.RoomDepthMesh
 import io.github.sceneview.demo.demos.internal.room.ScanFloorSlab
-import io.github.sceneview.demo.demos.internal.PoseContinuity
 import java.io.File
 
 /*
@@ -96,9 +95,15 @@ internal fun depthModelOf(
     // A room or a garden reaches as far as the depth is sure; an object as far as it was scanned.
     val settings = RoomDepthMesh.Settings(farM = if (scope == ScanScope.Object) header.farM else RoomDepthMesh.RELIABLE_FAR_M)
     // The pose guard runs again over the recording: a slip the phone let through is kept out too.
-    val fused = RoomDepthMesh.fuse(depth, settings, guard = PoseContinuity()) { progress(it * FUSE_SHARE) } ?: return null
-    // A room that stands as no room — a short walk, part of a room — stands on a clean slab of floor.
-    val slab = if (scope.hasFloorPlan) ScanFloorSlab.of(fused.mesh, floorY) else null
+    val fused = RoomDepthMesh.fuse(depth, settings, guard = RoomDepthMesh.replayGuard()) { progress(it * FUSE_SHARE) } ?: return null
+    // A room that stands as no room — a short walk, part of a room — stands on a clean slab of
+    // floor, at the room's floor or ARCore's; a Home's levels and stairs are left as fused.
+    val slab = if (scope == ScanScope.Room) {
+        val sure = floorY ?: fused.floorPlaneY
+        ScanFloorSlab.of(fused.mesh, sure, cutBelow = sure != null)
+    } else {
+        null
+    }
     val surface = slab?.mesh ?: fused.mesh
     val mesh = capped(surface, consume = true) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
     if (mesh.triangleCount == 0) return null
