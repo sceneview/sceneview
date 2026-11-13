@@ -12,6 +12,8 @@ import io.github.sceneview.demo.demos.internal.ScanDepthFormat
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.room.RoomBox
 import io.github.sceneview.demo.demos.internal.room.RoomDepthMesh
+import io.github.sceneview.demo.demos.internal.room.ScanFloorSlab
+import io.github.sceneview.demo.demos.internal.PoseContinuity
 import java.io.File
 
 /*
@@ -48,7 +50,7 @@ internal fun resultKindOf(scope: ScanScope, hasRecording: Boolean, standsAsRoom:
  * Bumped whenever [depthModelOf] makes a different surface of the same recording: a surface kept
  * by an earlier one is built again.
  */
-internal const val DEPTH_MODEL_VERSION = 2
+internal const val DEPTH_MODEL_VERSION = 3
 
 /**
  * The most triangles the fused surface is shown with: past it, it is simplified down to it. 250k
@@ -91,9 +93,14 @@ internal fun depthModelOf(
     val header = runCatching { depth.inputStream().buffered().use(ScanDepthFormat::readHeader) }.getOrNull() ?: return null
     onRecording()
     progress(0f)
-    val settings = RoomDepthMesh.Settings(farM = if (scope == ScanScope.Object) header.farM else RoomDepthMesh.FAR_M)
-    val fused = RoomDepthMesh.fuse(depth, settings) { progress(it * FUSE_SHARE) } ?: return null
-    val mesh = capped(fused.mesh, consume = true) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
+    // A room or a garden reaches as far as the depth is sure; an object as far as it was scanned.
+    val settings = RoomDepthMesh.Settings(farM = if (scope == ScanScope.Object) header.farM else RoomDepthMesh.RELIABLE_FAR_M)
+    // The pose guard runs again over the recording: a slip the phone let through is kept out too.
+    val fused = RoomDepthMesh.fuse(depth, settings, guard = PoseContinuity()) { progress(it * FUSE_SHARE) } ?: return null
+    // A room that stands as no room — a short walk, part of a room — stands on a clean slab of floor.
+    val slab = if (scope.hasFloorPlan) ScanFloorSlab.of(fused.mesh, floorY) else null
+    val surface = slab?.mesh ?: fused.mesh
+    val mesh = capped(surface, consume = true) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
     if (mesh.triangleCount == 0) return null
     progress(WRITE_START)
     val glb = RerunMeshGlb.write(mesh, generator = "SceneView depth model")

@@ -1833,9 +1833,10 @@ private const val SHADOW_INTENSITY = 0.75f
 
 /**
  * A room's shadow, tighter and lighter: a scan's floor is ragged, so a dark core under it shows
- * through every gap and a wide rim reads as a slab on the light stage — just a rim round it.
+ * through every gap. Its ellipse stays inside the room's own box (1.0): at 1.15 it stood out past
+ * a short walk's floor on every side, a grey disc bigger than the room it was under.
  */
-private const val ROOM_SHADOW_SPREAD = 1.15f
+internal const val ROOM_SHADOW_SPREAD = 1f
 private const val ROOM_SHADOW_INTENSITY = 0.4f
 
 /** How much of its shadow a Photo layer [grown] that far stands on: [SHADOW_STEPS] steps to whole. */
