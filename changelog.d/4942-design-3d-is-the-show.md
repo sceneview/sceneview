@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **DESIGN.md: style rules removed, theme facts kept ([#4942](https://github.com/sceneview/sceneview/issues/4942)).** The Forbidden list, the review test, the style and taste guidance and the product rules are gone from `DESIGN.md`, `CLAUDE.md` and `AGENTS.md`. What remains is factual: the source colour and generated M3 roles, where the theme values live, the type scale, elevation and shape tokens, WCAG and platform accessibility references, asset licensing and the logo files.

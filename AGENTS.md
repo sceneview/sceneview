@@ -120,10 +120,7 @@ seems to require a secret, stop and say so instead of improvising.
 | `samples/` | One demo app per platform |
 | `mcp/` | `sceneview-mcp` server + packages |
 
-`DESIGN.md` is the design reference — read it before generating any UI: Material 3
-(Android, web) or Apple HIG (Apple), the system font, colours only from its M3 role
-table, light and dark, and nothing from its Forbidden list (gradients, glass, custom
-fonts, decorative pills or callouts).
+`DESIGN.md` describes the theme and its tokens.
 
 ## Verification
 
