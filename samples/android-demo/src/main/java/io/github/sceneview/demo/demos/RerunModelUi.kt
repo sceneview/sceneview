@@ -8,8 +8,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +45,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
@@ -65,9 +64,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -98,6 +99,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
@@ -129,8 +131,8 @@ import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.ResultShading
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
-import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanOpening
+import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanResultCinematics
 import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
@@ -155,6 +157,7 @@ import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.demo.theme.StageChrome
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.NarrationText
 import io.github.sceneview.demo.ui.narrationBase
@@ -911,8 +914,9 @@ internal fun RerunModelScreen(
     }
     // Read live by the framing below, so a toggle and the frame that flies to it agree.
     var plan by remember(stageKey) { mutableStateOf(false) }
-    // More › Measure: the grid, the slab and the room's dimensions, off until asked for.
-    var measuring by remember(stageKey) { mutableStateOf(false) }
+    // The grid, the slab and the room's dimensions: a room's result opens with them, as its capture
+    // showed them; More › Measure takes them away and back.
+    var measuring by remember(stageKey) { mutableStateOf(scope.hasFloorPlan) }
     var more by remember { mutableStateOf(false) }
     var shown by remember(stageKey) { mutableStateOf(false) }
     // The dark stage's floor pool waits for the camera to rise: from the low entrance it is seen
@@ -1099,7 +1103,12 @@ internal fun RerunModelScreen(
             ),
         ),
     ) {
-        val chrome = LocalStageChrome.current
+        // The capture's scene, kept (2026-11-13): the model stands on the same dark stage in both
+        // themes, its grid and dimensions with it, so Finish never cuts to another room. Only the
+        // controls round it — the name card, the layer pill and the bar — follow the app theme.
+        val chrome = StageChrome.Media
+        RequestLightStatusBarIcons()
+        CompositionLocalProvider(LocalStageChrome provides chrome) {
         val environment = rememberModelEnvironment(engine, chrome.ground)
         val darkStage = chrome.ground.luminance() < HALF_LUMINANCE
         val shadowPool = remember { radialPool(LightingStage.FLOOR_COLOR) }
@@ -1366,6 +1375,7 @@ internal fun RerunModelScreen(
                 }
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
+        }
         }
     }
     if (renaming && onRename != null) {

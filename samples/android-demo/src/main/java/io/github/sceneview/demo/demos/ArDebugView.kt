@@ -682,6 +682,9 @@ private class LayerMaterials(private val materialLoader: MaterialLoader, private
     }
 }
 
+/** The stage's three axes at the origin, left out where only its grid is wanted. */
+private val AXES = setOf(DebugLayer.AxisX, DebugLayer.AxisY, DebugLayer.AxisZ)
+
 /** The parts rebuilt independently, each when its own inputs change. */
 private enum class Part(val layers: List<DebugLayer>, val group: DebugGroup) {
     Stage(
@@ -719,6 +722,7 @@ private class ArDebugLayers(engine: Engine, private val materials: Map<DebugLaye
         visible: (DebugGroup) -> Boolean,
         replay: ReplayLayers? = null,
         livePoints: Boolean = true,
+        axes: Boolean = true,
     ) {
         for (part in Part.entries) {
             val style = if (part == Part.Map || part == Part.Live) pointStyle else style
@@ -727,7 +731,7 @@ private class ArDebugLayers(engine: Engine, private val materials: Map<DebugLaye
             val shown = visible(part.group) &&
                 !(part == Part.Map && replay != null) &&
                 !(part == Part.Live && !livePoints)
-            part.layers.forEach { nodes.getValue(it).isVisible = shown }
+            part.layers.forEach { nodes.getValue(it).isVisible = shown && (axes || it !in AXES) }
             if (!shown) {
                 keys.remove(part) // rebuilt when shown again
                 continue
@@ -880,6 +884,11 @@ internal fun ArDebugSceneView(
     compact: Boolean = false,
     replay: RerunReplayMedia? = null,
     measuresRoom: Boolean = true,
+    // The stage's axes at the origin, with its grid; the room's dimensions only with the planes.
+    // 3D Scan's live model draws the grid alone, and its dimensions without a plane.
+    stageAxes: Boolean = true,
+    measureWithoutPlanes: Boolean = false,
+    measureFit: ((RoomMeasure) -> RoomMeasure?)? = null,
     onShown: (() -> Unit)? = null,
     transparent: Boolean = false,
     visible: (DebugGroup) -> Boolean = session::isVisible,
@@ -939,6 +948,7 @@ internal fun ArDebugSceneView(
     SideEffect {
         materials.paint(palette)
         replayLayers?.setMeasureColors(measureInk, measureHalo)
+        replayLayers?.measureFit = measureFit
     }
     // A tap on an object of the scan boxes it (#4485); the picture-in-picture takes no touch.
     val objectPick =
@@ -1121,6 +1131,7 @@ internal fun ArDebugSceneView(
                 layers.sync(
                     frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers,
                     livePoints = captureLens == null,
+                    axes = stageAxes,
                 )
                 replayLayers?.sync(
                     frame, pointStyle, floorY,
@@ -1132,6 +1143,7 @@ internal fun ArDebugSceneView(
                         cameras = visible(DebugGroup.Cameras),
                         measure = !compact && measuresRoom,
                         measureOnTop = orbit.overhead,
+                        measureAlone = measureWithoutPlanes,
                     ),
                     eye = CameraRig.eye(orbit.pose).let { Vec3(it.x, it.y, it.z) },
                 )

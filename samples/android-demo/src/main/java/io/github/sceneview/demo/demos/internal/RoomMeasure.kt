@@ -90,6 +90,46 @@ class RoomMeasure(val corners: FloatArray, val width: Float, val depth: Float, v
         }
 
         /**
+         * The rectangle squared to [yaw] that holds the body of [positions] (flat xyz): on each
+         * of the room's axes, from its [trim] quantile to the opposite one, read on at most
+         * [FIT_SAMPLES] points. What 3D Scan's live model measures — the place it has seen,
+         * not every plane ARCore found past a door (2026-11-13). `null` under [MIN_SIDE_M].
+         */
+        fun ofPoints(positions: FloatArray, yaw: Float, trim: Float = FIT_TRIM): RoomMeasure? {
+            val count = positions.size / 3
+            if (count < FIT_MIN_POINTS) return null
+            val samples = min(count, FIT_SAMPLES)
+            val c = cos(yaw)
+            val s = sin(yaw)
+            val along = FloatArray(samples)
+            val across = FloatArray(samples)
+            for (i in 0 until samples) {
+                val index = (i.toLong() * count / samples).toInt()
+                val x = positions[index * 3]
+                val z = positions[index * 3 + 2]
+                along[i] = x * c + z * s
+                across[i] = -x * s + z * c
+            }
+            along.sort()
+            across.sort()
+            val cut = (samples * trim).toInt()
+            val minA = along[cut]
+            val maxA = along[samples - 1 - cut]
+            val minB = across[cut]
+            val maxB = across[samples - 1 - cut]
+            val width = maxA - minA
+            val depth = maxB - minB
+            if (width < MIN_SIDE_M || depth < MIN_SIDE_M) return null
+            fun corner(a: Float, b: Float) = floatArrayOf(a * c - b * s, a * s + b * c)
+            val corners = corner(minA, minB) + corner(maxA, minB) + corner(maxA, maxB) + corner(minA, maxB)
+            return RoomMeasure(corners, width, depth, yaw)
+        }
+
+        private const val FIT_TRIM = 0.02f
+        private const val FIT_SAMPLES = 20_000
+        private const val FIT_MIN_POINTS = 200
+
+        /**
          * The floor's height: [floorY], unless a floor patch of at least [MIN_GROUND_M2] lies up
          * to [GROUND_RISE_M] over it and covers more than the patches at [floorY] together — the
          * floor is where most of it was found, not its lowest stray patch. A table top is smaller

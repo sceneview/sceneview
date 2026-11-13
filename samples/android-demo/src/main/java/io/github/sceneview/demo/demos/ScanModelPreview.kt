@@ -40,7 +40,10 @@ import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.OrbitBand
-import io.github.sceneview.demo.theme.themedStageChrome
+import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.theme.StageChrome
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
+import androidx.compose.animation.core.tween
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -104,16 +107,37 @@ internal fun ScanModelPreview(
     val currentBounds by rememberUpdatedState(bounds?.let(::atLeastRoomSized))
     val shown by animateFloatAsState(
         targetValue = if (bounds != null) 1f else 0f,
-        animationSpec = SceneViewTokens.Motion.focus(),
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
         label = "scan-model-in",
     )
     val present = bounds != null
     LaunchedEffect(present) { onShown(present) }
     DisposableEffect(Unit) { onDispose { onShown(false) } }
     if (shown == 0f) return
+    // White status icons over the dark stage, in both themes.
+    RequestLightStatusBarIcons(active = present)
+    // The room's dimensions fitted to the model's own points, squared to the walls the planes
+    // find: one fit per snapshot and heading, not per frame.
+    val measureFit = remember(media) {
+        var fitFor: Any? = null
+        var fitYaw = Float.NaN
+        var fitted: RoomMeasure? = null
+        val fit: (RoomMeasure) -> RoomMeasure? = { planned ->
+            val points = current?.whole
+            if (points !== fitFor || planned.yaw != fitYaw) {
+                fitFor = points
+                fitYaw = planned.yaw
+                fitted = points?.let { RoomMeasure.ofPoints(it, planned.yaw) }
+            }
+            fitted
+        }
+        fit
+    }
     val orbit = remember(media) { ArDebugOrbitCamera(drift = false, band = OrbitBand.CARD) }
     val drawn = remember(media) { media.withLiveDense(overCamera = { false }) { current } }
-    val chrome = themedStageChrome()
+    // The replay's dark stage in both themes (2026-11-13, the mother's review of the 4.6x replay
+    // Thomas liked): the room in its true colours reads on it, its grid and its dimensions too.
+    val chrome = StageChrome.Media
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // This view's place in the window, to read the recorder's camera window in its own space.
@@ -149,8 +173,12 @@ internal fun ScanModelPreview(
                 compact = false,
                 transparent = true,
                 maxFps = 30,
-                measuresRoom = false,
-                visible = { it == DebugGroup.Points },
+                // The floor's grid, a line every metre, and the room's dimensions as the replay drew them.
+                measuresRoom = true,
+                stageAxes = false,
+                measureWithoutPlanes = true,
+                measureFit = measureFit,
+                visible = { it == DebugGroup.Points || it == DebugGroup.Stage },
                 drivesSession = false,
                 follow = {
                     ArDebugFraming.home(

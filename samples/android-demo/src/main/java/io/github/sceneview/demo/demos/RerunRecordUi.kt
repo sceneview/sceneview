@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
+import io.github.sceneview.demo.theme.StageChrome
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
@@ -163,10 +165,11 @@ internal fun ScanCaptureLayout(
  */
 @Composable
 internal fun ScanHud(seconds: Float, floorSquareMetres: Float, label: String? = null, recording: Boolean = false) {
+    // Opaque and inverse, as the instruction line: legible over a sunlit wall and over the stage.
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
         modifier = Modifier.testTag(SCAN_HUD_TAG),
     ) {
         Row(
@@ -322,6 +325,7 @@ internal fun ScanControls(
     paused: Boolean = false,
     onTogglePause: (() -> Unit)? = null,
     onCameraWindow: (Rect?) -> Unit = {},
+    cameraWindowShown: Boolean = true,
 ) {
     Column(
         modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth().testTag(SCAN_CONTROLS_TAG),
@@ -359,7 +363,7 @@ internal fun ScanControls(
         }
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                ScanCameraWindow(onCameraWindow)
+                ScanCameraWindow(onCameraWindow, shown = cameraWindowShown)
             }
             ScanRecorderLabelled(stringResource(R.string.scan_capture_finish_short)) {
                 RecordShutter(
@@ -389,14 +393,19 @@ internal fun ScanControls(
  * with the captured points on the world. It holds nothing itself; it reports where it is.
  */
 @Composable
-private fun ScanCameraWindow(onCameraWindow: (Rect?) -> Unit) {
-    val chrome = LocalStageChrome.current
+private fun ScanCameraWindow(onCameraWindow: (Rect?) -> Unit, shown: Boolean) {
     DisposableEffect(Unit) { onDispose { onCameraWindow(null) } }
+    // Its frame only once the camera is in it: no empty box over the full-screen camera.
+    val ring by animateColorAsState(
+        targetValue = if (shown) StageChrome.Media.edgeRing else Color.Transparent,
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+        label = "scanCameraWindowRing",
+    )
     Box(
         Modifier
             .size(CameraWindowWidth, CameraWindowHeight)
             .onGloballyPositioned { onCameraWindow(it.boundsInWindow()) }
-            .border(SceneViewTokens.Layout.hairlineWidth, chrome.edgeRing, RoundedCornerShape(CameraWindowCorner))
+            .border(SceneViewTokens.Layout.hairlineWidth, ring, RoundedCornerShape(CameraWindowCorner))
             .testTag(SCAN_CAMERA_WINDOW_TAG),
     )
 }
@@ -411,8 +420,8 @@ private fun ScanRecorderLabelled(label: String, control: @Composable () -> Unit)
         control()
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.inverseSurface,
+            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
             modifier = Modifier.clearAndSetSemantics {},
         ) {
             Text(

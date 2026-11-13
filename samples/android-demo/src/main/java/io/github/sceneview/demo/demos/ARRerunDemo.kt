@@ -76,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.positionInWindow
@@ -1958,6 +1959,7 @@ private fun RerunLiveScreen(
                     paused = phase == ScanPhase.Paused,
                     onTogglePause = { moveTo(phase.togglePause()) }.takeIf { recording && phase.canKeepScanning },
                     onCameraWindow = { cameraWindow = it },
+                    cameraWindowShown = modelShown,
                     onNextRoom = if (scanScope.roomByRoom) {
                         { saveScan(SaveNext.NextRoom) }
                     } else {
@@ -1975,7 +1977,8 @@ private fun RerunLiveScreen(
             // into the recorder's window, a viewfinder; until then it fills the screen.
             val toWindow by animateFloatAsState(
                 targetValue = if (modelShown && cameraWindow != null) 1f else 0f,
-                animationSpec = SceneViewTokens.Motion.focus(),
+                // The same time as the model's stage comes in over it: one move, not two.
+                animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
                 label = "camera-to-window",
             )
             cameraWindow?.let { lastCameraWindow = it }
