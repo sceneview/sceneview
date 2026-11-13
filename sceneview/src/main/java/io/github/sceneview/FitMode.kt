@@ -5,7 +5,7 @@ import io.github.sceneview.math.Position
 /**
  * Chooses which points of a bounding box [fitCameraToBounds] fits to the viewport.
  * The default is [Corners]; callers must explicitly opt in to [Silhouette].
- * No model type is inferred and no animation poses are sampled.
+ * No model type is inferred; animation poses are only fitted when an envelope is supplied.
  */
 enum class FitMode {
     /** All eight box corners: the unchanged fit, suitable for box-shaped products. */

@@ -273,6 +273,7 @@ fun SceneView(
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
     fitMode: FitMode = FitMode.Corners, // opt-in Silhouette for organic subjects; see framing below
+    animationEnvelope: AnimationEnvelope? = null, // opt-in world-space poses for auto-fit
     contentPadding: PaddingValues = PaddingValues(0.dp),   // animate this, never resize the composable
     clipToContentPadding: Boolean = false,                 // opaque cover only: skip hidden pixels
     renderer: Renderer = rememberRenderer(engine),
@@ -4881,7 +4882,8 @@ fun fitCameraToBounds(
     verticalFovDegrees: Double, aspect: Double,
     widthFill: Float = DEFAULT_FRAMING_FILL,    // 0.8 — share of the half-width the box may span
     heightFill: Float = DEFAULT_FRAMING_FILL,
-    fitMode: FitMode = FitMode.Corners
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null
 ): CameraFit?
 ```
 
@@ -4936,12 +4938,78 @@ SceneView(
 `fitCameraToBounds`, `CameraNode.fitToBounds`, `CameraNode.frameToBounds`,
 `SceneView` (and its deprecated `Scene` alias), and both `SceneAutoFitState.maybeFit`
 overloads accept `fitMode: FitMode = FitMode.Corners`. `frameToBounds` retains its
-historical yaw-invariant swept-box distance in Corners mode; Silhouette uses the
+historical yaw-invariant swept-box distance in Corners mode without an envelope;
+Silhouette or an explicit envelope uses the
 directional probe fit, converting padding to `1 / (1 + max(0, padding))` fill.
 Auto-fit uses the camera's current direction in Silhouette mode and re-arms when
-`fitMode` changes. There is no automatic selection by model type, animation
-sampling, or animation envelope. This step adds the Android framing option only;
-other platforms keep their existing framing APIs.
+`fitMode` or `animationEnvelope` changes. There is no automatic selection by model type.
+
+**Opt-in animation envelopes (Android, #5032).** For a skinned character, call
+`Model.animationEnvelope(clip: Int = 0, samples: Int = 24)` or the overload taking
+`clip: String`. Import `io.github.sceneview.model.animationEnvelope`. The result is
+an `AnimationEnvelope` with `poses: List<Box>` and `bounds: Box`. It keeps the rest
+box and each sampled pose separate: a head and tail reaching their extremes at different
+times must not become one imaginary silhouette. `bounds` is only their union for measuring size.
+
+```kotlin
+import io.github.sceneview.FitMode
+import io.github.sceneview.fitToBounds
+import io.github.sceneview.frame
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+import io.github.sceneview.toAabb
+
+// After the model has loaded. Sampling is pure Kotlin and may run on Dispatchers.Default.
+val envelope = modelInstance.model.animationEnvelope(clip = "Run", samples = 24)
+
+// Main thread: read the model node's transform AFTER positioning/scaling/centering it.
+val worldEnvelope = envelope.transformed(modelNode.worldTransform)
+cameraNode.fitToBounds(
+    bounds = worldEnvelope.bounds.toAabb(),
+    fitMode = FitMode.Silhouette,
+    animationEnvelope = worldEnvelope
+)?.let { cameraNode.frame(it) }
+```
+
+All the framing entry points above also accept `animationEnvelope: AnimationEnvelope? = null`.
+It replaces the single `bounds` argument for fitting: Silhouette fits every pose's six probes,
+Corners fits every pose's eight corners. The union box's probes are never used. Camera helpers
+and auto-fit expect **world-space** poses; the pure function accepts any shared coordinate space.
+An explicit auto-fit envelope describes the entire subject; other scene nodes are not added to it.
+
+```kotlin
+import io.github.sceneview.FitMode
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+
+// The envelope includes the model node's final transform. Keep that transform stable.
+val worldEnvelope = modelInstance.model.animationEnvelope(clip = "Run")
+    .transformed(modelNode.worldTransform)
+SceneView(
+    autoCenterContent = false,
+    autoFitContent = true,
+    fitMode = FitMode.Silhouette,
+    animationEnvelope = worldEnvelope,
+    cameraManipulator = null
+) { /* The character at the same world transform used above. */ }
+```
+
+`ModelLoader` copies only joint ancestor transforms and animation input/output arrays before
+releasing source data; no mesh/texture buffers or native instances are retained. Sampling happens
+only on request, with 2–120 evenly spaced times (including both endpoints), and the last eight
+clip/sample-count results per model are cached. The rest box is always included as a separate pose.
+LINEAR rotations use shortest-path slerp; STEP and CUBICSPLINE use glTF interpolation.
+
+The flesh margin on each face is `max(0, rest mesh overhang beyond rest joints)`, added to that
+face of every sampled joint box. This is a **heuristic**, not animated vertex bounds: morphs,
+rigid attachments, flesh moving beyond the fixed margin, and extrema between samples are not
+proved to fit. Unknown clips, absent skins/animations, or unreadable inputs fall back to the
+rest-pose box. Sparse, meshopt-compressed and embedded data-URI animation accessors currently
+fall back too. No defaults change: an envelope and Silhouette are both explicit choices.
+
+This step is Android-only because it uses Android's glTF load lifecycle and existing rest-pose
+bounds. Web and other platforms keep their existing APIs pending their own parser integration
+and visual validation.
 
 ### Cinematic camera — shots, transitions, paths, reveal, tour (`io.github.sceneview.camera`)
 

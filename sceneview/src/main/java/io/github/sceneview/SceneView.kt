@@ -71,6 +71,7 @@ import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
+import io.github.sceneview.model.AnimationEnvelope
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
@@ -164,6 +165,9 @@ import io.github.sceneview.node.reflectionProbes
  *                              so subsequent user zoom / pan is never fought. Default `false` so
  *                              callers that position [cameraNode] explicitly keep full control;
  *                              opt in for model-viewer style scenes.
+ * @param animationEnvelope   Optional world-space pose boxes for [autoFitContent]. Compute with
+ *                            `Model.animationEnvelope`, then transform by the model node's world
+ *                            transform after centering/scaling. No poses are sampled by default.
  * @param fitMode              Points fitted by [autoFitContent]. Defaults to [FitMode.Corners],
  *                              preserving historical framing. Opt in to [FitMode.Silhouette] for
  *                              organic subjects; it can crop box-shaped products at their corners.
@@ -362,6 +366,7 @@ fun SceneView(
      */
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
     fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
     /**
      * The part of this view that something else covers — a bottom sheet, a side panel, a toolbar —
      * measured inwards from its edges. **What is left is the camera's viewport**: the subject is
@@ -755,7 +760,7 @@ fun SceneView(
 
     // Enabling auto-fit at runtime has to wake the loop too: the fit pass only runs from inside a
     // presented frame, so a parked scene would keep the old framing until something else woke it.
-    LaunchedEffect(autoFitContent, framingPadding, fitMode) {
+    LaunchedEffect(autoFitContent, framingPadding, fitMode, animationEnvelope) {
         autoFitState.reset()
         frameRateGate.requestRender()
     }
@@ -1106,6 +1111,7 @@ fun SceneView(
     // instead of staying latched on the previous framing.
     val currentFramingPadding = rememberUpdatedState(framingPadding)
     val currentFitMode = rememberUpdatedState(fitMode)
+    val currentAnimationEnvelope = rememberUpdatedState(animationEnvelope)
     // The `reset()` and wake-up for these framing inputs live in one keyed effect next to the
     // auto-fit state above.
 
@@ -1266,13 +1272,15 @@ fun SceneView(
                             if (currentAutoCenterContent.value) {
                                 autoFitState.maybeFit(
                                     cameraNode, contentRoot, padding = currentFramingPadding.value,
-                                    fitMode = currentFitMode.value
+                                    fitMode = currentFitMode.value,
+                                    animationEnvelope = currentAnimationEnvelope.value
                                 )
                             } else {
                                 autoFitState.maybeFit(
                                     cameraNode, childNodesRef.get(),
                                     padding = currentFramingPadding.value,
-                                    fitMode = currentFitMode.value
+                                    fitMode = currentFitMode.value,
+                                    animationEnvelope = currentAnimationEnvelope.value
                                 )
                             }
                         }
@@ -2516,6 +2524,7 @@ fun Scene(
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
     fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     clipToContentPadding: Boolean = false,
     renderer: Renderer = rememberRenderer(engine),
@@ -2550,6 +2559,7 @@ fun Scene(
     autoFitContent = autoFitContent,
     framingPadding = framingPadding,
     fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
     contentPadding = contentPadding,
     clipToContentPadding = clipToContentPadding,
     renderer = renderer,
