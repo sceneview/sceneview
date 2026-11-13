@@ -49,6 +49,10 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.OrbitBand
+import io.github.sceneview.demo.demos.internal.RescanHole
+import io.github.sceneview.demo.demos.internal.RescanSources
+import io.github.sceneview.demo.demos.internal.ScanGround
+import io.github.sceneview.demo.demos.internal.ScanHoleMarks
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
@@ -93,6 +97,8 @@ internal fun ScanModelPreview(
     coverage: ScanCoverageState? = null,
     /** The empty areas of that floor large enough to go back to, centres (x, z): the guidance names one. */
     onHoles: (List<Pair<Float, Float>>) -> Unit = {},
+    /** The centre of the area the guidance names, drawn brighter than the rest. */
+    target: () -> Pair<Float, Float>? = { null },
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
         var previous: ReplayDenseLayer? = null
@@ -171,15 +177,21 @@ internal fun ScanModelPreview(
         }
         fit
     }
-    // The floor under the model: what the scan covers, and the rest of the room hatched, still
-    // empty (2026-11-13, Thomas's workshop: say which part is missing, and show it).
+    // The floor still empty under the model (2026-11-13, Thomas's workshop: say which part is
+    // missing, and show it): a quiet hairline hatching on every gap, and a bright one on the gap
+    // the guidance names alone (the review of u25: half the floor in amber read as site tape).
     var ground by remember { mutableStateOf<ScanGroundMeshes?>(null) }
     val holes by rememberUpdatedState(onHoles)
+    val named by rememberUpdatedState(target)
     if (coverage != null) {
         LaunchedEffect(coverage, session) {
             var version = -1
             var extent: List<Pair<Float, Float>>? = null
             var layer: ReplayDenseLayer? = null
+            var floor: ScanGround? = null
+            var gaps: List<RescanHole> = emptyList()
+            var markedFor: Pair<Float, Float>? = null
+            var markedOn: ScanGround? = null
             while (true) {
                 val grid = coverage.grid
                 val outline = coverage.extent
@@ -197,28 +209,47 @@ internal fun ScanModelPreview(
                     val trace = session.trace
                     val floorY = stageFloorY(trace.frameAt(trace.duration))
                     val cell = grid.cellMetres
-                    val built = withContext(Dispatchers.Default) {
+                    floor = withContext(Dispatchers.Default) {
                         // Empty means a gap inside what the model already spans, its hull: the
                         // planes' outline ran metres past the room and striped all of it.
                         val hull = RoomDollhouse.convexHull(
                             keys.map { ((CoverageGrid.cxOf(it) + 0.5f) * cell) to ((CoverageGrid.czOf(it) + 0.5f) * cell) },
                         )
-                        LiveCoverageGround.of(keys, cell, hull, floorY)?.let {
-                            // The empty floor's hatching alone: no slab, no tiles over the model.
-                            ScanGroundMeshes(DebugMesh(), DebugMesh(), hatch = ScanGroundMeshes.of(it, hatchMissing = true).hatch) to
-                                ScanLiveMapFraming.zonesOf(it)
-                        }
+                        LiveCoverageGround.of(keys, cell, hull, floorY)
                     }
-                    ground = built?.first
-                    holes(built?.second.orEmpty())
+                    gaps = floor?.let { f ->
+                        withContext(Dispatchers.Default) {
+                            RescanSources.holes(f).filter { it.area >= ScanLiveMapFraming.MIN_ZONE_M2 }
+                        }
+                    }.orEmpty()
+                    holes(gaps.map(::centreOf))
                 }
-                delay(GROUND_REFRESH_MS)
+                // Rebuilt when the floor changes or the guidance names another gap.
+                val aim = named()
+                if (floor !== markedOn || aim != markedFor) {
+                    markedOn = floor
+                    markedFor = aim
+                    val f = floor
+                    ground = if (f == null) null else withContext(Dispatchers.Default) {
+                        val box = aim?.let { (x, z) ->
+                            gaps.minByOrNull { gap(centreOf(it), x, z) }?.takeIf { gap(centreOf(it), x, z) <= SAME_GAP_M2 }?.bounds()
+                        }
+                        val marks = ScanHoleMarks.of(f, box)
+                        // The ground layer's hatch and weak layers carry the quiet and the bright marks.
+                        ScanGroundMeshes(DebugMesh(), DebugMesh(), hatch = marks.faint, weakFill = marks.strong)
+                    }
+                }
+                delay(MARKS_REFRESH_MS)
             }
         }
     }
-    // The hatching in the guidance amber, toned into the dark stage: still to scan, never alarming.
+    // The guidance amber, toned into the dark stage: quiet on every gap, bright on the one named.
     val groundColors = ScanGroundColors.currentLive().let { base ->
-        base.copy(hatch = lerp(StageChrome.Media.ground, SceneViewTokens.ArOverlay.accentGuidance, HOLE_HATCH_TINT))
+        val amber = SceneViewTokens.ArOverlay.accentGuidance
+        base.copy(
+            hatch = lerp(StageChrome.Media.ground, amber, FAINT_HATCH_TINT),
+            weak = lerp(StageChrome.Media.ground, amber, NAMED_HATCH_TINT),
+        )
     }
     val orbit = remember(media) {
         ArDebugOrbitCamera(
@@ -309,11 +340,29 @@ private fun atLeastRoomSized(bounds: FloatArray): FloatArray = FloatArray(6) { i
 private const val MIN_HALF_WIDE_M = 1.5f
 private const val MIN_HALF_HIGH_M = 1f
 
-/** How much of the guidance amber the empty floor's hatching takes over the dark stage. */
-private const val HOLE_HATCH_TINT = 0.7f
+/** How much of the guidance amber the quiet hatching takes over the dark stage, and the named gap's. */
+private const val FAINT_HATCH_TINT = 0.35f
+private const val NAMED_HATCH_TINT = 0.75f
 
-/** How often the floor under the model is rebuilt, at most. */
-private const val GROUND_REFRESH_MS = 1_000L
+/** How often the floor's marks are checked for a new floor or a newly named gap. */
+private const val MARKS_REFRESH_MS = 500L
+
+/** A gap whose centre lies within ~0.7 m of the one named is the one named. */
+private const val SAME_GAP_M2 = 0.5f
+
+private fun centreOf(hole: RescanHole): Pair<Float, Float> {
+    val o = hole.outline
+    var x = 0f
+    var z = 0f
+    val n = o.size / 2
+    for (i in 0 until n) {
+        x += o[i * 2]
+        z += o[i * 2 + 1]
+    }
+    return x / n to z / n
+}
+
+private fun gap(a: Pair<Float, Float>, x: Float, z: Float) = (a.first - x) * (a.first - x) + (a.second - z) * (a.second - z)
 
 /** How often the model's snapshot is rebuilt, at most. */
 private const val REFRESH_MS = 600L
