@@ -68,6 +68,7 @@ internal class LiveDrawLoad(
             voxelM: Float,
             eye: DebugPose,
             maxSide: Float = DenseSurfels.LIVE_MAX_SCREEN_SIDE,
+            halfSideVoxels: Float = DenseSurfels.HALF_SIDE_VOXELS,
         ): LiveDrawLoad {
             val cols = ceil(VIEW_LONG_PX / CELL_PX.toFloat()).toInt()
             val rows = ceil(VIEW_SHORT_PX / CELL_PX.toFloat()).toInt()
@@ -75,7 +76,7 @@ internal class LiveDrawLoad(
             var inView = 0
             var tiny = 0
             var fragments = 0.0
-            forEachSplat(cloud, voxelM, eye, maxSide) { _, u, v, _, area ->
+            forEachSplat(cloud, voxelM, eye, maxSide, halfSideVoxels) { _, u, v, _, area ->
                 inView++
                 fragments += area
                 if (area < TINY_AREA_PX) tiny++
@@ -106,6 +107,7 @@ internal class LiveDrawLoad(
             voxelM: Float,
             eye: DebugPose,
             maxSide: Float = DenseSurfels.LIVE_MAX_SCREEN_SIDE,
+            halfSideVoxels: Float = DenseSurfels.HALF_SIDE_VOXELS,
             action: (index: Int, u: Float, v: Float, depth: Float, area: Float) -> Unit,
         ) {
             val normals = cloud.normals
@@ -117,7 +119,7 @@ internal class LiveDrawLoad(
                 val (cx, cy, cz) = inverseRotate(eye, wx, wy, wz)
                 val depth = -cz
                 if (depth < NEAR_M) continue
-                val half = voxelM * DenseSurfels.HALF_SIDE_VOXELS *
+                val half = voxelM * halfSideVoxels *
                     (1 shl cloud.levelOf(i).coerceAtMost(DenseFusion.LEVEL_LIMIT))
                 val scale = DenseSurfels.screenScale(
                     halfDiagonal = half * SQRT_2,

@@ -4,6 +4,7 @@ import io.github.sceneview.demo.demos.internal.CoverageGrid
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanWalkthrough
 import org.junit.Assert.assertArrayEquals
@@ -100,12 +101,12 @@ class ScanLiveLodTest {
         const val MIN_COVERAGE = 0.5
 
         /**
-         * The merged surfels overlap: 3.14 fragments a pixel at p50 when this bound was set (#4792).
-         * The walkthrough is synthetic and has no noise, so the figure moves only when the code
-         * does. The bound stays 10 % above it on purpose: a change that makes the live view draw
-         * more fragments than this is measured on a phone before the bound is raised.
+         * The continuous coat intentionally overlaps more than the original small surfels.
+         * Count its actual 1.5-voxel half side, not the replay's 0.65: this is a conservative
+         * pre-depth-test fragment estimate, not shaded GPU fragments or measured frame rate.
+         * The Pixel 4a replay is inspected separately; the 50k-surface vertex cap stays fixed.
          */
-        const val MAX_OVERDRAW = 3.5
+        const val MAX_OVERDRAW = 20.0
 
         const val P50 = 0.5
 
@@ -131,7 +132,7 @@ class ScanLiveLodTest {
                 dense.add(dense.project(frame, now, farM = farM))
                 val live = dense.live ?: continue
                 if (snapshotEverySecond && live !== before) snapshots += snapshot(dense, live, frame.pose)
-                if (snapshotEverySecond) loads += LiveDrawLoad.of(live.cloud, live.voxelM, frame.pose)
+                if (snapshotEverySecond) loads += LiveDrawLoad.of(live.cloud, live.voxelM, frame.pose, halfSideVoxels = DenseSurfels.LIVE_HALF_SIDE_VOXELS)
             }
             return Session(snapshots, loads, dense.savedCloud())
         }
