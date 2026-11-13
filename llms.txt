@@ -4952,7 +4952,13 @@ and auto-fit expect **world-space** poses; the pure function accepts any shared 
 An explicit auto-fit envelope describes the entire subject; other scene nodes are not added to it.
 
 ```kotlin
-// worldEnvelope already includes the model node's final transform. Keep that transform stable.
+import io.github.sceneview.FitMode
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+
+// The envelope includes the model node's final transform. Keep that transform stable.
+val worldEnvelope = modelInstance.model.animationEnvelope(clip = "Run")
+    .transformed(modelNode.worldTransform)
 SceneView(
     autoCenterContent = false,
     autoFitContent = true,
