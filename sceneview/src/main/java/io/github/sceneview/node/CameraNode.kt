@@ -99,7 +99,7 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
     internal fun resizeViewport(width: Int, height: Int) {
         val view = view ?: return
         // Preserve the original full-viewport resize path when clipping is disabled (also AR).
-        if (!clipToContentPadding || contentPadding.isZero) {
+        if (!clipToContentPadding || contentPadding.isZero || !hasCameraComponent) {
             ClippedViewports.clear(view, viewportOwner)
             view.viewport = com.google.android.filament.Viewport(0, 0, width, height)
         } else {

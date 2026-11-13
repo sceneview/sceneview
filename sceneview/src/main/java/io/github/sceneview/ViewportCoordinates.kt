@@ -49,7 +49,8 @@ internal fun clippedViewport(width: Int, height: Int, padding: ViewportPadding):
 }
 
 /**
- * Main-thread metadata only while clipping. Filament has no surface dimensions on View, and
+ * Metadata held only while clipping, written on the main thread; reads may come from any
+ * thread (coordinate helpers), hence the synchronisation. Filament has no surface dimensions on View, and
  * Engine.getCameraComponent returns a fresh Java wrapper each time, so cameras use native ids.
  * Weak view references and explicit release on detach prevent retaining a renderer or camera.
  */
@@ -58,8 +59,10 @@ internal object ClippedViewports {
     private val views = WeakHashMap<View, Entry>()
     private val cameras = mutableMapOf<Long, WeakReference<View>>()
 
+    @Synchronized
     fun set(view: View, camera: Camera, coordinates: ViewportCoordinates?, owner: Any) {
         clear(view)
+        cameras.values.removeAll { it.get() == null }
         if (coordinates != null) {
             val id = camera.nativeObject
             views[view] = Entry(owner, id, coordinates)
@@ -67,6 +70,7 @@ internal object ClippedViewports {
         }
     }
 
+    @Synchronized
     fun clear(view: View, owner: Any? = null) {
         if (owner != null && views[view]?.owner !== owner) return
         views.remove(view)?.let { entry ->
@@ -74,10 +78,13 @@ internal object ClippedViewports {
         }
     }
 
+    @Synchronized
     fun owned(view: View, owner: Any): ViewportCoordinates? =
         views[view]?.takeIf { it.owner === owner }?.coordinates
 
+    @Synchronized
     fun get(view: View): ViewportCoordinates? = views[view]?.coordinates
+    @Synchronized
     fun get(camera: Camera): ViewportCoordinates? = cameras[camera.nativeObject]?.get()?.let(::get)
 }
 

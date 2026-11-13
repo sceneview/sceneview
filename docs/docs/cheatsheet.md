@@ -80,9 +80,11 @@ val covered by animateDpAsState(if (panelOpen) panelHeight else 0.dp)
 SceneView(
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(bottom = covered),
-    clipToContentPadding = true, // Only if opaque UI covers every padded pixel.
 ) { /* nodes */ }
 ```
+
+When an opaque surface covers every padded pixel (no scrim, no rounded corners showing the
+scene through), add `clipToContentPadding = true` so the GPU skips the hidden pixels.
 
 `clipToContentPadding` defaults to `false`: the camera scales/shifts and the whole surface is
 rendered. Opt in to skip hidden GPU pixels, including dynamic resolution and post-processing

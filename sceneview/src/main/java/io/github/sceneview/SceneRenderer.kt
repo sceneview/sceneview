@@ -380,7 +380,9 @@ class SceneRenderer(
     internal var viewportCamera: io.github.sceneview.node.CameraNode? = null
 
     fun applyResize(width: Int, height: Int) {
-        val camera = viewportCamera
+        // Only the camera drawn by *this* view may size it: a CameraNode hoisted into two
+        // SceneViews is bound to the last one, and must not receive the other's resize.
+        val camera = viewportCamera?.takeIf { it.view === view }
         if (camera != null) camera.resizeViewport(width, height)
         else view.viewport = Viewport(0, 0, width, height)
         onSurfaceResized?.invoke(width, height)

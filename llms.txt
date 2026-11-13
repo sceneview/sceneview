@@ -4805,7 +4805,14 @@ val covered by animateDpAsState(if (sheetOpen) 320.dp else 0.dp)
 SceneView(
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(bottom = covered),
-    clipToContentPadding = true, // Only when an opaque cover fills the padded area.
+) { }
+
+// Opt-in, only when an opaque surface covers every padded pixel (no scrim, no rounded
+// corners showing the scene through): the GPU then skips the hidden pixels.
+SceneView(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(bottom = covered),
+    clipToContentPadding = true,
 ) { }
 
 // Imperative form, in pixels of the surface (what the composable sets for you):
