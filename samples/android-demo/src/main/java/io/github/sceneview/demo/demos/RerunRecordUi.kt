@@ -654,7 +654,7 @@ internal fun ScanLiveView(
         replay = drawn,
         transparent = true,
         measuresRoom = false,
-        visible = { lens.ready && it in SCAN_LIVE_GROUPS },
+        visible = { lens.ready && media.liveDense?.invoke() != null && it in SCAN_LIVE_GROUPS },
         observe = { frame ->
             val cells = media.liveDense?.invoke()?.coveredCells
             if (observed.isNew(frame, frame.camera, cells)) {
@@ -666,7 +666,7 @@ internal fun ScanLiveView(
 }
 
 /** Enough of the real camera texture remains visible between and beneath the colour points. */
-internal const val CAPTURE_POINTS_ALPHA = 0.55f
+internal const val CAPTURE_POINTS_ALPHA = 0.42f
 internal const val SCAN_CAPTURE_TAG = "scan_capture"
 
 /** Shown once a drag or a pinch has left the follow view: back to following the phone. */

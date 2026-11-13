@@ -2043,7 +2043,7 @@ private fun RerunLiveScreen(
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
                     saving = phase == ScanPhase.Saving,
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
 

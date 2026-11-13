@@ -533,11 +533,11 @@ object DenseSurfels {
      * twice [HALF_SIDE_VOXELS], so neighbouring surfels overlap into one coat on the surface
      * instead of a scatter of tiles. The saved cloud and the result keep [HALF_SIDE_VOXELS].
      */
-    const val LIVE_HALF_SIDE_VOXELS = 1.05f
+    const val LIVE_HALF_SIDE_VOXELS = 1.5f
 
     /** The capture's coat: a light sky blue, seen on wood, white walls and dark fabric alike. */
-    const val LIVE_TINT = 0xFF6FA8FF.toInt()
+    const val LIVE_TINT = 0xFF76CFFF.toInt()
 
-    /** How far a captured surfel's colour moves toward [LIVE_TINT]: its texture still shows. */
-    const val LIVE_TINT_SHARE = 0.35f
+    /** Uniform ink avoids seams between overlapping samples. Camera texture shows through the layer alpha. */
+    const val LIVE_TINT_SHARE = 1f
 }

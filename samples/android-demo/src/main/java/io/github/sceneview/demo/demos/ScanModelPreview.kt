@@ -1,10 +1,11 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,15 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -34,6 +33,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.OrbitBand
 import io.github.sceneview.demo.theme.themedStageChrome
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -64,7 +64,14 @@ internal fun ScanModelPreview(
         while (true) {
             val next = media.liveDense?.invoke() ?: media.dense
             if (next != null && next !== previous) {
-                value = withContext(Dispatchers.Default) { ReplayDenseLayer.of(next.cloud, next.voxelM) }
+                value = withContext(Dispatchers.Default) {
+                    ReplayDenseLayer(
+                        cloud = next.cloud,
+                        voxelM = next.voxelM,
+                        mesh = DenseSurfels.mesh(next.cloud, next.voxelM, halfSideVoxels = 1f),
+                        atlas = DenseSurfels.atlas(next.cloud, ReplayDenseLayer.DENSE_FALLBACK_COLOR),
+                    )
+                }
                 previous = next
             }
             delay(600)
@@ -78,12 +85,14 @@ internal fun ScanModelPreview(
     val orbit = remember(media) { ArDebugOrbitCamera(drift = false, band = OrbitBand.CARD) }
     val drawn = remember(media) { media.withLiveDense(overCamera = { false }) { current } }
     val chrome = themedStageChrome()
-    val previewHeight = (LocalConfiguration.current.screenHeightDp * 0.23f).dp
+    val shape = RoundedCornerShape(if (saving) 0.dp else 24.dp)
     val placement = if (saving) modifier.fillMaxSize() else modifier
         .windowInsetsPadding(WindowInsets.navigationBars)
-        .padding(start = 16.dp, end = 16.dp, bottom = 140.dp)
-        .fillMaxWidth().height(previewHeight)
-    Box(placement.clip(RoundedCornerShape(if (saving) 0.dp else 24.dp)).background(chrome.ground)
+        .padding(start = 16.dp, end = 16.dp, bottom = 112.dp)
+        .width(168.dp).height(152.dp)
+    Box(placement.clip(shape)
+        .background(if (saving) chrome.ground else Color(0xFF102A3B).copy(alpha = 0.48f))
+        .then(if (saving) Modifier else Modifier.border(1.dp, Color.White.copy(alpha = 0.3f), shape))
         .testTag("scan_live_model")) {
         CompositionLocalProvider(LocalStageChrome provides chrome) {
         ArDebugSceneView(
@@ -93,8 +102,10 @@ internal fun ScanModelPreview(
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             replay = drawn,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(top = if (saving) 0.dp else 24.dp),
             compact = true,
+            transparent = !saving,
+            maxFps = 20,
             measuresRoom = false,
             visible = { it == DebugGroup.Points },
             drivesSession = false,
@@ -108,7 +119,7 @@ internal fun ScanModelPreview(
         }
         if (!saving) Text(
             stringResource(R.string.scan_capture_live_model),
-            color = chrome.onGlass,
+            color = Color.White,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
         )

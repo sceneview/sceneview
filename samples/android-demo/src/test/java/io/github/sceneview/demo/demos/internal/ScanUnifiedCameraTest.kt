@@ -35,6 +35,8 @@ class ScanUnifiedCameraTest {
         val coat = DenseSurfels.liveAtlas(cloud, 0xFF777777.toInt())
         assertEquals(0xFFBE7E4D.toInt(), cloud.colors[0])
         assertTrue(!saved.contentEquals(coat))
-        assertTrue(DenseSurfels.LIVE_TINT_SHARE < 0.5f)
+        // Dark and bright observations of the same surface must not leave a patchwork.
+        assertEquals(DenseSurfels.tint(0xFF000000.toInt()), DenseSurfels.tint(0xFFFFFFFF.toInt()))
+        assertTrue((DenseSurfels.tint(0xFF000000.toInt()) and 0xFF) >= 200)
     }
 }
