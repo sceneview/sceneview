@@ -214,6 +214,17 @@ object CaptureChrome {
         return label?.let { "$it · $state" } ?: state
     }
 
+    /**
+     * Live Room's second line, what was really captured and nothing it cannot know: the time,
+     * the floor scanned and the points — `0:42 · 6.2 m² floor · 12,345 points`. No share of a
+     * room whose extent the scan does not know.
+     */
+    fun honestDetail(clock: String, floorSquareMetres: Float, points: Int, floorLabel: String, pointsLabel: String): String {
+        val n = points.coerceAtLeast(0)
+        return "$clock · ${ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f))} $floorLabel · " +
+            "${ArDebugFormat.count(n)} $pointsLabel"
+    }
+
     /** The second line: `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured` elsewhere. */
     fun detail(clock: String, walls: Int?, points: Int): String = when {
         walls == null -> "$clock · ${ScanCopy.pointsCaptured(points)}"

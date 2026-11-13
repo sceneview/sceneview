@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="scan_live_slipped_title">The scan lost its place</string>
+    <string name="scan_live_slipped_body">Your phone\'s position jumped, so nothing is being added. Finish here, or restart.</string>
+    <string name="scan_live_slipped_finish">Finish here</string>
+    <string name="scan_live_slipped_restart">Restart</string>
+    <string name="scan_live_floor">floor</string>
+    <plurals name="scan_live_points">
+        <item quantity="one">point</item>
+        <item quantity="other">points</item>
+    </plurals>
+</resources>

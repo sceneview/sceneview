@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.material3.Icon
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DebugGroup
@@ -136,6 +137,8 @@ internal fun ScanHud(
     covered: Float? = null,
     complete: Boolean = room != null && CaptureChrome.complete(room.done, floorShare),
     trackingLost: Boolean = false,
+    /** Live Room: the floor scanned, m²; the detail line then reads `0:42 · 6.2 m² floor · 12,345 points`. */
+    floor: Float? = null,
 ) {
     val clock = ArDebugFormat.clock(seconds)
     val share = room?.let { CaptureChrome.share(it.completion, it.done, floorShare, complete) }
@@ -157,14 +160,20 @@ internal fun ScanHud(
             // the room is, the floor covered, stuck or paused; past the capture, what it is doing.
             val now = activity ?: if (phase.integrates) ScanActivity.Working else ScanActivity.Paused
             Text(
-                text = CaptureChrome.headline(label, phase, now, share, covered.takeIf { room == null }, trackingLost),
+                text = CaptureChrome.headline(label, phase, now, share, covered.takeIf { room == null && floor == null }, trackingLost),
                 style = ScanLineStyle.copy(color = ArOverlay.onScrim),
                 modifier = Modifier.weight(1f),
             )
         }
         // One line under it (#4807): `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured`.
         Text(
-            text = CaptureChrome.detail(clock, room?.wallCount, points),
+            text = floor?.let {
+                CaptureChrome.honestDetail(
+                    clock, it, points,
+                    stringResource(R.string.scan_live_floor),
+                    pluralStringResource(R.plurals.scan_live_points, points.coerceAtLeast(0)),
+                )
+            } ?: CaptureChrome.detail(clock, room?.wallCount, points),
             style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
