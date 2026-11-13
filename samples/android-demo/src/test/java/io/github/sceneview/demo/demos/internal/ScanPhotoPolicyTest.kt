@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.demos.internal.model.PhotoTexturing
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,18 +16,42 @@ class ScanPhotoPolicyTest {
     private val portrait = ReplayLens(0.6f, 0.8f)
 
     @Test
-    fun `sharp photos preserve portrait and landscape framing without upscaling sources`() {
-        assertEquals(720 to 960, ScanPhotoPolicy.targetSize(true, portrait, 1920, 1440))
-        assertEquals(960 to 720, ScanPhotoPolicy.targetSize(true, ReplayLens(0.8f, 0.6f), 1920, 1440))
-        assertEquals(480 to 640, ScanPhotoPolicy.targetSize(true, portrait, 640, 480))
-        assertEquals(240 to 320, ScanPhotoPolicy.targetSize(false, portrait, 1920, 1440))
+    fun `normalised lens projects the same ray in old and new photos`() {
+        val lens = ReplayLens(0.8f, 0.45f)
+        val pose = DebugPose(0f, 0f, 0f)
+        val old = PhotoTexturing.Camera(pose, lens, 320, 181)
+        val larger = PhotoTexturing.Camera(pose, lens, 640, 360)
+        assertTrue(old.project(0.2f, 0.1f, -1f))
+        assertTrue(larger.project(0.2f, 0.1f, -1f))
+        assertEquals(old.pixelX / 320, larger.pixelX / 640, 1e-6f)
+        assertEquals(old.pixelY / 181, larger.pixelY / 360, 1e-6f)
     }
 
     @Test
-    fun `budget is 8760 KiB and ordinary photos keep room above the old average`() {
-        assertEquals(8760 * 1024, ScanPhotoPolicy.PHOTO_BUDGET_BYTES)
-        // The old pipeline averaged about 16.7 KB a photo (5 MB over 300): well under the new limit.
-        assertTrue(ScanPhotoPolicy.REPLAY_BYTES >= 24 * 1024)
+    fun `sharp photos preserve portrait and landscape framing without upscaling sources`() {
+        assertEquals(480 to 640, ScanPhotoPolicy.targetSize(true, portrait, 1920, 1440))
+        assertEquals(640 to 480, ScanPhotoPolicy.targetSize(true, ReplayLens(0.8f, 0.6f), 1920, 1440))
+        assertEquals(480 to 640, ScanPhotoPolicy.targetSize(true, portrait, 640, 480))
+        assertEquals(480 to 640, ScanPhotoPolicy.targetSize(false, portrait, 1920, 1440))
+    }
+
+    @Test
+    fun `ordinary photos use camera detail up to 640 and never upscale a small source`() {
+        val wide = ReplayLens(0.8f, 0.45f)
+        assertEquals(640 to 360, ScanPhotoPolicy.targetSize(false, wide, 1920, 1080))
+        assertEquals(320 to 180, ScanPhotoPolicy.targetSize(false, wide, 320, 180))
+        val encoded = ScanPhotoPolicy.encode(false, 640 to 360) { _, _, quality ->
+            assertEquals(85, quality)
+            ByteArray(92 * 1024)
+        }!!
+        assertEquals(640 to 360, encoded.width to encoded.height)
+    }
+
+    @Test
+    fun `budget is 29280 KiB with four times the ordinary JPEG allowance`() {
+        assertEquals(29280 * 1024, ScanPhotoPolicy.PHOTO_BUDGET_BYTES)
+        // Four times the old 24 KiB cap accommodates roughly four times as many pixels.
+        assertEquals(96 * 1024, ScanPhotoPolicy.REPLAY_BYTES)
     }
 
     @Test
@@ -146,7 +171,7 @@ class ScanPhotoPolicyTest {
     }
 
     @Test
-    fun `a typical ordinary photo is stored as before`() {
+    fun `a small legacy sized photo keeps the existing JPEG quality`() {
         // About 20 KB at 240x320 quality 85: above the old 16 KiB limit, inside the new one.
         val attempts = ArrayList<Int>()
         val encoded = ScanPhotoPolicy.encode(false, 240 to 320) { _, _, quality ->
@@ -279,7 +304,7 @@ class ScanPhotoPolicyTest {
         assertEquals(1, oldOpened.trace.imageCount)
         assertArrayEquals(old.media, oldOpened.media)
         assertEquals(240 to 320, dimensions(oldOpened.firstPhoto()!!))
-        for (sizes in listOf(listOf(240 to 320), listOf(720 to 960, 240 to 320, 720 to 960))) {
+        for (sizes in listOf(listOf(240 to 320), listOf(640 to 360, 320 to 181, 640 to 480))) {
             val pack = capture(sizes)
             val opened = RerunScanFile.read(RerunScanFile.write(pack))!!.open()!!
             val scene = RerunExportAdapter.scene(pack, "Room")!!

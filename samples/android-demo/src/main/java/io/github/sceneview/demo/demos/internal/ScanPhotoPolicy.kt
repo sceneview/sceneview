@@ -7,12 +7,10 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * Keep a few recognisable room views without making every replay frame large. At most
- * [MAX_SHARP] sharp photos at 128 KiB plus the others at 24 KiB (the old pipeline averaged about
- * 16.7 KB, so ordinary photos come out as before): 15 x 128 + 285 x 24 = 8,760 KiB, 8.55 MiB over
- * [KeyframeGate.MAX_PHOTOS] photos. The sharp ones are up to 960 pixels on the long side, never
- * upscaled: the real size is the ARCore camera image's (540x960 or 480x640 on common phones).
- * These are JPEG payload limits, not a limit on the scan's geometry, log or baked plane textures.
+ * Upright scan photos at the CPU camera resolution, capped at 640 on the long side. Keep the
+ * existing JPEG quality policy, bounded by 128 KiB for the calm views and 96 KiB for the rest:
+ * 15 x 128 + 285 x 96 = 29,280 KiB at the 300-photo cap. An unusually noisy JPEG still retries
+ * quality and resolution as before. Neither this nor the photo count limits geometry or depth.
  */
 internal object ScanPhotoPolicy {
     /** A sharp photo comes once at least this many photos after the previous one, when calm. */
@@ -21,7 +19,8 @@ internal object ScanPhotoPolicy {
 
     /** A scan that never calms down still gets one sharp photo, after this many ordinary ones. */
     const val SHARP_GUARANTEE_AFTER = 40
-    const val SHARP_LONG_SIDE = 960
+    const val SHARP_LONG_SIDE = 640
+    const val PHOTO_LONG_SIDE = 640
     const val REPLAY_LONG_SIDE = 320
     const val THUMBNAIL_LONG_SIDE = 160
 
@@ -42,7 +41,7 @@ internal object ScanPhotoPolicy {
     const val MIN_JPEG_QUALITY = 65
     const val QUALITY_STEP = 10
     const val SHARP_BYTES = 128 * 1024
-    const val REPLAY_BYTES = 24 * 1024
+    const val REPLAY_BYTES = 96 * 1024
     const val PHOTO_BUDGET_BYTES =
         MAX_SHARP * SHARP_BYTES + (KeyframeGate.MAX_PHOTOS - MAX_SHARP) * REPLAY_BYTES
     const val MAX_SPEED_MPS = 0.5f
@@ -55,7 +54,7 @@ internal object ScanPhotoPolicy {
     fun targetSize(sharp: Boolean, lens: ReplayLens, sourceWidth: Int, sourceHeight: Int): Pair<Int, Int> =
         ScanProjection.photoSize(
             lens,
-            minOf(if (sharp) SHARP_LONG_SIDE else REPLAY_LONG_SIDE, maxOf(sourceWidth, sourceHeight)),
+            minOf(if (sharp) SHARP_LONG_SIDE else PHOTO_LONG_SIDE, maxOf(sourceWidth, sourceHeight)),
         )
 
     class Encoded(val bytes: ByteArray, val width: Int, val height: Int)
