@@ -155,6 +155,7 @@ import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.recording.shareCapture
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
+import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.StageChrome
@@ -994,6 +995,7 @@ internal fun RerunModelScreen(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
         themedStage = true,
+        sceneChrome = StageChrome.Media,
         // Reset and feedback in the identity row's ⋮: the bar holds the scan's three actions only.
         actionsMenu = true,
         topOverlay = { ScanNameCard(title = title, saved = id != null && settled, onRename = rename) },
@@ -1108,6 +1110,8 @@ internal fun RerunModelScreen(
         // controls round it — the name card, the layer pill and the bar — follow the app theme.
         val chrome = StageChrome.Media
         RequestLightStatusBarIcons()
+        // The floor's slab and every colour the scene reads from the theme: the dark one's.
+        SceneViewDemoTheme(darkTheme = true) {
         CompositionLocalProvider(LocalStageChrome provides chrome) {
         val environment = rememberModelEnvironment(engine, chrome.ground)
         val darkStage = chrome.ground.luminance() < HALF_LUMINANCE
@@ -1375,6 +1379,7 @@ internal fun RerunModelScreen(
                 }
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
+        }
         }
         }
     }

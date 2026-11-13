@@ -607,6 +607,10 @@ fun DemoScaffold(
     overlaysFollowChrome: Boolean = false,
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
+    // The stage a themed demo draws in the same colours in both themes (3D Scan's result keeps
+    // its capture's dark stage, 2026-11-13): the scrims under the bands take its colours, while
+    // the controls standing on them keep the theme's.
+    sceneChrome: StageChrome? = null,
     // The settings sheet's glass lets a scene read through it. Over a stage of text — a table of
     // figures — the rows behind would read through the sheet's own: such a stage asks for the
     // opaque `surface-container` a browsing sheet has.
@@ -626,6 +630,7 @@ fun DemoScaffold(
     // The stage's ground and the chrome over it (#4080): media glass unless the demo draws a
     // themed stage of its own, which then follows the app theme.
     val chrome = if (themedStage) themedStageChrome() else StageChrome.Media
+    val stage = sceneChrome ?: chrome
     val haptic = rememberHapticFeedback()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -1091,7 +1096,7 @@ fun DemoScaffold(
                         // Painted with the stage colour, the chrome sits on one continuous stage.
                         .then(
                             if (bottomOverlayReservesScene) {
-                                Modifier.background(chrome.ground)
+                                Modifier.background(stage.ground)
                             } else {
                                 Modifier
                             }
@@ -1247,7 +1252,7 @@ fun DemoScaffold(
                             Modifier
                                 .fillMaxWidth()
                                 .height(topScrim.height)
-                                .background(topScrim.brush(chrome.scrim, fromBottom = false)),
+                                .background(topScrim.brush(stage.scrim, fromBottom = false)),
                         )
                     }
 
@@ -1287,7 +1292,7 @@ fun DemoScaffold(
                             Modifier
                                 .fillMaxWidth()
                                 .height(bottomScrim.height)
-                                .background(bottomScrim.brush(chrome.scrimDock, fromBottom = true)),
+                                .background(bottomScrim.brush(stage.scrimDock, fromBottom = true)),
                         )
                     }
 
