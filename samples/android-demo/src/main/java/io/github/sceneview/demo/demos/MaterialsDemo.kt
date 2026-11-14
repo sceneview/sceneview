@@ -79,6 +79,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialStudio
@@ -86,6 +88,7 @@ import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
@@ -972,6 +975,13 @@ private fun StudioSection(
             // Project ordinary Compose labels from the actual view, so names follow the sweep.
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val density = LocalDensity.current
+                val sceneHeightPx = with(density) { maxHeight.toPx() }
+                val bottomCoverPx = with(density) {
+                    LocalDemoSceneCover.current.calculateBottomPadding().toPx()
+                }
+                val restingBottomCoverPx = with(density) {
+                    LocalDemoSceneRestingCover.current.calculateBottomPadding().toPx()
+                }
                 val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
                 val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
@@ -1002,6 +1012,16 @@ private fun StudioSection(
                         Text(
                             caption,
                             modifier = Modifier
+                                .then(
+                                    if (comparing) Modifier else Modifier
+                                        .offset {
+                                            @Suppress("UNUSED_EXPRESSION")
+                                            labelFrame
+                                            val point = view.worldToScreen(anchor)
+                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                                        }.width(captionWidth)
+                                )
                                 // #3802: the wall is flat and captioned for a roughly head-on
                                 // view; the orbit itself stays completely free (this demo exists
                                 // to turn a reflection around), so instead of bounding the drag,
@@ -1010,10 +1030,11 @@ private fun StudioSection(
                                 // perspective and overlap. Inspect mode has one subject (or a
                                 // fixed Compare pair) with no neighbour to collide with, so its
                                 // captions stay at full opacity.
+                                // Layer follows offset: partial alpha fades the caption, avoiding offscreen clipping at the Box origin.
                                 .graphicsLayer {
                                     @Suppress("UNUSED_EXPRESSION")
                                     labelFrame
-                                    alpha = if (inspecting) {
+                                    val orbitAlpha = if (inspecting) {
                                         1f
                                     } else {
                                         orbitLabelFadeAlpha(
@@ -1026,17 +1047,15 @@ private fun StudioSection(
                                             ),
                                         )
                                     }
+                                    // Follow the glass during a drag; fade before the caption bottom reaches it.
+                                    alpha = orbitAlpha * materialCaptionCoverAlpha(
+                                        captionBottomY = (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
+                                        sceneHeightPx = sceneHeightPx,
+                                        bottomCoverPx = bottomCoverPx,
+                                        restingBottomCoverPx = restingBottomCoverPx,
+                                        fadeBandPx = size.height,
+                                    )
                                 }
-                                .then(
-                                    if (comparing) Modifier else Modifier
-                                        .offset {
-                                            @Suppress("UNUSED_EXPRESSION")
-                                            labelFrame
-                                            val point = view.worldToScreen(anchor)
-                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                                        }.width(captionWidth)
-                                )
                                 .padding(horizontal = SceneViewTokens.Space.xs)
                                 .background(
                                     if (focused) {
