@@ -147,7 +147,7 @@ open class AnchorNode(
     }
 
     /** Detaches while the session is open; later disposal must not touch the old handle. */
-    internal fun releaseSessionAnchor() {
+    internal open fun releaseSessionAnchor() {
         if (isAnchorSessionClosed) return
         isAnchorSessionClosed = true
         awaitsReleaseAnchor = false

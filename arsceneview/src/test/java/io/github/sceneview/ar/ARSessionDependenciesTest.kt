@@ -1,14 +1,20 @@
 package io.github.sceneview.ar
 
+import android.content.ComponentName
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.view.Display
+import android.view.MotionEvent
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.compose.runtime.State
+import androidx.compose.ui.test.junit4.createComposeRule
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.ar.core.Anchor
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.RecordingStatus
@@ -16,7 +22,10 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.ar.arcore.ARSession
+import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.ar.node.ReticleNode
+import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.ar.scene.OwnedVisualizers
 import io.github.sceneview.ar.scene.PlaneRenderer
 import org.junit.After
@@ -29,9 +38,12 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.Description
 import org.junit.runner.RunWith
+import org.junit.runners.model.Statement
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
@@ -76,6 +88,8 @@ class ARSessionDependenciesTest {
         timestamps.clear()
         detached.clear()
         nextNativeHandle = 1L
+        reportedPlanes.clear()
+        nativeTrackableReads = 0
         updateFailure = null
         nextFrame = null
         val app = RuntimeEnvironment.getApplication()
@@ -214,6 +228,114 @@ class ARSessionDependenciesTest {
         assertThrows(IllegalStateException::class.java) { plane.trackingState }
     }
 
+    @Test
+    fun `ending an automatic drag after a fatal update cancels pending movement safely`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val node = anchorNode(session, automatic = true)
+        node.update(session, frame(session, 1_000_000_000L))
+        val plane = nativeObject(Plane::class.java, session)
+        ReflectionHelpers.setField(node, "pending", AutoPlacementCandidate(plane, Pose.IDENTITY, null))
+        ReflectionHelpers.setField(node, "dragging", true)
+        ReflectionHelpers.setField(node, "offset", floatArrayOf(1f, 0f, 0f))
+        ReflectionHelpers.setField(node, "interruptedMove", true)
+        updateFailure = FatalException("EGL context creation failed")
+        assertNull(arCore.updateSessionOrNull())
+        assertTrue(session.isClosed)
+
+        val detector = MoveGestureDetector(context, object : MoveGestureDetector.SimpleOnMoveListener {})
+        val event = MotionEvent.obtain(0L, 100L, MotionEvent.ACTION_UP, 0f, 0f, 0)
+        val pendingAfterClose = ReflectionHelpers.getField<Any>(node, "pending")
+        val offsetAfterClose = ReflectionHelpers.getField<Any>(node, "offset")
+        val draggingAfterClose = ReflectionHelpers.getField<Boolean>(node, "dragging")
+        val interruptedAfterClose = ReflectionHelpers.getField<Boolean>(node, "interruptedMove")
+        try {
+            node.onMoveEnd(detector, event)
+            assertNull("Invalidation must clear the pending native candidate before the late event", pendingAfterClose)
+            assertNull(offsetAfterClose)
+            assertFalse(draggingAfterClose)
+            assertFalse(interruptedAfterClose)
+            assertNull(ReflectionHelpers.getField<Any>(node, "pending"))
+            assertNull(ReflectionHelpers.getField<Any>(node, "offset"))
+            assertFalse(ReflectionHelpers.getField<Boolean>(node, "dragging"))
+            assertFalse(ReflectionHelpers.getField<Boolean>(node, "interruptedMove"))
+        } finally {
+            event.recycle()
+        }
+    }
+
+    @Test
+    fun `closing a session clears a frozen reticle hit and notifies its callback before close`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val changes = mutableListOf<HitResult?>()
+        val reticle = ReticleNode(engine, 0f, 0f, onHitResultChanged = {
+            assertFalse("The callback must run while its session is open", session.isClosed)
+            changes += it
+        }).apply { update = false }
+        // Seed the retained native hit directly: this test targets the release setter,
+        // without simulating ARCore's raycast or reading the hit's native pose.
+        val hit = allocateWithoutJni(HitResult::class.java)
+        ReflectionHelpers.setField(reticle, "hitResult", hit)
+        reticle.trackable = nativeObject(Plane::class.java, session)
+        arCore.onSessionClosing = {
+            releaseSessionNodes(listOf(reticle))
+            planes.resetSession()
+        }
+        try {
+            updateFailure = FatalException("EGL context creation failed")
+            assertNull(arCore.updateSessionOrNull())
+            assertTrue(session.isClosed)
+            assertNull(reticle.trackable)
+            assertNull(reticle.hitResult)
+            assertEquals(listOf<HitResult?>(null), changes)
+
+            updateFailure = null
+            arCore.retrySession()
+            val replacement = arCore.session!!
+            reticle.update(replacement, frame(replacement, 2_000_000_000L))
+            assertNull("A frozen reticle must not retain a hit from the old session", reticle.hitResult)
+        } finally {
+            reticle.destroy()
+        }
+    }
+
+    @Test
+    fun `plane discovery clears its state and stops native reads after a fatal close`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val plane = nativeObject(Plane::class.java, session)
+        reportedPlanes[session] = listOf(plane)
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).addActivityIfNotPresent(
+            ComponentName(app.packageName, ComponentActivity::class.java.name)
+        )
+        val rule = createComposeRule()
+        var detected: State<List<Plane>>? = null
+        val body = object : Statement() {
+            override fun evaluate() {
+                rule.mainClock.autoAdvance = false
+                rule.setContent { detected = rememberDetectedPlanes(session) }
+                rule.mainClock.advanceTimeByFrame()
+                var readsBeforeClose = 0
+                rule.runOnIdle {
+                    assertEquals(listOf(plane), detected!!.value)
+                    assertTrue(nativeTrackableReads > 0)
+                    readsBeforeClose = nativeTrackableReads
+                    updateFailure = FatalException("EGL context creation failed")
+                    assertNull(arCore.updateSessionOrNull())
+                    assertTrue(session.isClosed)
+                }
+                repeat(3) { rule.mainClock.advanceTimeByFrame() }
+                rule.runOnIdle {
+                    assertTrue(detected!!.value.isEmpty())
+                    assertEquals(readsBeforeClose, nativeTrackableReads)
+                }
+            }
+        }
+        rule.apply(body, Description.createTestDescription(javaClass, "closed plane discovery")).evaluate()
+    }
+
     private fun anchorNode(session: ARSession, automatic: Boolean = false): AnchorNode {
         val anchor = nativeObject(Anchor::class.java, session)
         val node = if (automatic) {
@@ -242,6 +364,13 @@ class ARSessionDependenciesTest {
 
     @Implements(Session::class)
     class NativeSession {
+        @RealObject private lateinit var real: Session
+        @Implementation
+        protected fun <T : com.google.ar.core.Trackable> getAllTrackables(type: Class<T>): Collection<T> {
+            check(!(real as ARSession).isClosed) { "Native getAllTrackables after session close" }
+            nativeTrackableReads++
+            return (reportedPlanes[real] ?: emptyList()).map { requireNotNull(type.cast(it)) }
+        }
         @Suppress("FunctionName", "UNUSED_PARAMETER")
         @Implementation
         protected fun __constructor__(context: Context, features: Set<Session.Feature>) = Unit
@@ -302,6 +431,8 @@ class ARSessionDependenciesTest {
         var nextFrame: Frame? = null
         var updateFailure: Exception? = null
         var nextNativeHandle = 1L
+        val reportedPlanes = IdentityHashMap<Session, List<Plane>>()
+        var nativeTrackableReads = 0
 
         fun <T> open(value: Any, block: () -> T): T {
             check(!owners.getValue(value).isClosed) { "Native access after session close: ${value.javaClass.simpleName}" }

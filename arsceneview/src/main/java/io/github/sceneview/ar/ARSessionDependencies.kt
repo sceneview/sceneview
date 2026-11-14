@@ -2,6 +2,7 @@ package io.github.sceneview.ar
 
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.node.CloudAnchorNode
+import io.github.sceneview.ar.node.HitResultNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.node.TrackableNode
 import io.github.sceneview.node.Node
@@ -28,6 +29,7 @@ internal fun releaseSessionNodes(roots: List<Node>) {
         try {
             when (node) {
                 is AnchorNode -> node.releaseSessionAnchor()
+                is HitResultNode -> node.hitResult = null
                 is TrackableNode<*> -> node.trackable = null
             }
         } catch (exception: Exception) {
