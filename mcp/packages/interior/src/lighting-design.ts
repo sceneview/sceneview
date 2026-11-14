@@ -88,6 +88,7 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
+import io.github.sceneview.model.restPoseBoundingBox
 import kotlin.math.PI
 
 /**
@@ -99,7 +100,7 @@ import kotlin.math.PI
  *
  * Model: src/main/assets/${roomModel}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.69.4")
  */
 @Composable
 fun ${composableName}() {
@@ -128,7 +129,8 @@ ${dimmable ? lights.map((_, i) => `    var light${i}Intensity by remember { muta
                 // Match the fixtures to the room's scaled, bottom-centered bounding box.
                 modelInstance?.let { instance ->
                     val roomSize = remember(instance) {
-                        val halfExtent = instance.asset.boundingBox.halfExtent
+                        // Use the same skinning-corrected bounds as ModelNode.scaleToUnits.
+                        val halfExtent = instance.asset.restPoseBoundingBox.halfExtent
                         val largestDimension = 2f * maxOf(halfExtent[0], halfExtent[1], halfExtent[2])
                         val roomScale = if (largestDimension > 0f) 2f / largestDimension else 1f
                         Position(

@@ -150,21 +150,38 @@ describe("generateLightingDesign", () => {
     });
   });
 
-  it("uses the same scaled bounds for the room and its fixtures, independent of the asset pivot", () => {
+  it("normalizes the room dimensions and bottom-centers the model", () => {
     const code = generateLightingDesign({ lights: ["sconce", "accent"] });
-    expect(code).toContain("val halfExtent = instance.asset.boundingBox.halfExtent");
-    expect(code).toContain("val largestDimension = 2f * maxOf(halfExtent[0], halfExtent[1], halfExtent[2])");
-    expect(code).toContain("val roomScale = if (largestDimension > 0f) 2f / largestDimension else 1f");
     expect(code).toContain("scaleToUnits = 2.0f");
     expect(code).toContain("centerOrigin = Position(0f, -1f, 0f)");
-    const dimensions = code.match(/Position\(\s*(halfExtent[\s\S]+?)\s*\)/)![1].split(",");
     for (const halfExtent of [[4, 2.7, 4], [0.5, 2, 1], [2, 1, 8], [0, 0, 0]]) {
-      const largestDimension = 2 * Math.max(...halfExtent);
-      const roomScale = largestDimension > 0 ? 2 / largestDimension : 1;
-      const size = dimensions.map((value) => evaluateKotlin(value, { halfExtent, roomScale }));
+      const size = Object.values(evaluateRoomSize(code, halfExtent, halfExtent));
       expect(size.every(Number.isFinite)).toBe(true);
-      expect(Math.max(...size)).toBeCloseTo(largestDimension > 0 ? 2 : 0);
+      expect(Math.max(...size)).toBeCloseTo(halfExtent.some((value) => value > 0) ? 2 : 0);
     }
+  });
+
+  it("keeps fixtures inside a skinned room when raw and rest-pose bounds diverge", () => {
+    const code = generateLightingDesign({ lights: LIGHT_TYPES });
+    // A 4 x 2.7 x 4 m room containing a centimeter-exported skin: the unskinned
+    // accessor box is 20 x 189 x 20 m, while the SDK's corrected box is the room.
+    // Supply both boxes so the emitted accessor, not the test, chooses the bounds.
+    const roomSize = evaluateRoomSize(code, [10, 94.5, 10], [2, 1.35, 2]);
+    const positions = [...code.matchAll(/position = Position\((.+)\),/g)].map(
+      (match) => match[1].split(",").map((value) => evaluateKotlin(value, { roomSize })),
+    );
+    // The old accessor places ambient at 1.85185, above ModelNode's 1.35 m ceiling.
+    expect(positions[0][1]).toBeCloseTo(1.25);
+    expect(roomSize).toEqual({ x: 2, y: 1.35, z: 2 });
+    expect(positions).toHaveLength(11);
+    for (const [x, y, z] of positions) {
+      expect(Math.abs(x)).toBeLessThan(1);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(1.35);
+      expect(Math.abs(z)).toBeLessThan(1);
+    }
+    expect(code).toContain("import io.github.sceneview.model.restPoseBoundingBox");
+    expect(code).toContain('implementation("io.github.sceneview:sceneview:4.69.4")');
   });
 
   it("places every AR fixture under the tapped horizontal plane's anchor", () => {
@@ -190,7 +207,7 @@ describe("generateLightingDesign", () => {
     expect(code).not.toContain("roomSize");
   });
 
-  it("generates valid Kotlin code for ambient + spot", () => {
+  it("emits the Kotlin scene scaffold for ambient + spot", () => {
     const code = generateLightingDesign({ lights: ["ambient", "spot"] });
     expect(code).toContain("package com.example.interior.lighting");
     expect(code).toContain("import io.github.sceneview.SceneView");
@@ -328,10 +345,26 @@ describe("generateLightingDesign", () => {
 });
 
 // Evaluate only arithmetic emitted in these trusted generator fixtures, not arbitrary Kotlin.
-function evaluateKotlin(expression: string, values: Record<string, unknown> = {}): number {
+function evaluateKotlin<T = number>(expression: string, values: Record<string, unknown> = {}): T {
   const arithmetic = expression
     .replace(/(\d)f\b/g, "$1")
     .replace(/PI\.toFloat\(\)/g, "Math.PI")
-    .replace(/maxOf\(/g, "Math.max(");
+    .replace(/maxOf\(/g, "Math.max(")
+    .replace(/if \((.+)\) (.+) else (.+)/, "($1) ? ($2) : ($3)");
   return Function(...Object.keys(values), `return (${arithmetic});`)(...Object.values(values));
+}
+
+function evaluateRoomSize(code: string, rawHalfExtent: number[], correctedHalfExtent: number[]) {
+  const instance = {
+    asset: {
+      boundingBox: { halfExtent: rawHalfExtent },
+      restPoseBoundingBox: { halfExtent: correctedHalfExtent },
+    },
+  };
+  const halfExtent = evaluateKotlin<number[]>(code.match(/val halfExtent = (.+)/)![1], { instance });
+  const largestDimension = evaluateKotlin(code.match(/val largestDimension = (.+)/)![1], { halfExtent });
+  const roomScale = evaluateKotlin(code.match(/val roomScale = (.+)/)![1], { largestDimension });
+  const dimensions = code.match(/Position\(\s*(halfExtent[\s\S]+?)\s*\)/)![1].split(",");
+  const [x, y, z] = dimensions.map((value) => evaluateKotlin(value, { halfExtent, roomScale }));
+  return { x, y, z };
 }

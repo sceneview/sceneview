@@ -5,7 +5,7 @@
 
 **Interior Design 3D MCP — give any AI assistant everything it needs to build room planners, AR furniture placement, material switchers, lighting designers, and virtual room tours with [SceneView](https://sceneview.github.io) on Android.**
 
-Every tool returns Kotlin code written against the SceneView 4.53.0 APIs (Jetpack Compose, `rememberModelInstance`, `ModelNode`, `ARSceneView`, `LightNode` with its `type` and the named `apply` parameter) — ready to drop into an Android project.
+Tools return Kotlin code written against SceneView's Compose APIs (`rememberModelInstance`, `ModelNode`, `ARSceneView`, `LightNode` with its `type` and the named `apply` parameter). The 3D lighting template targets SceneView 4.69.4 for skinning-corrected room bounds; the other templates target 4.53.0.
 
 ## Installation
 
@@ -55,9 +55,11 @@ claude mcp add interior-design-3d -- npx interior-design-3d-mcp
 ### Lighting preview coordinates and units
 
 `get_lighting_design` bottom-centers the 3D room and fits its largest dimension to
-2 meters. Fixture positions follow the scaled bounding-box dimensions, including
-the room's proportions; wall fixtures sit slightly inside the bounds. Local light
-falloff scales with the room and extends below every fixture to the floor.
+2 meters. Fixture positions use `restPoseBoundingBox`, the same skinning-corrected
+bounds as `ModelNode.scaleToUnits`, to follow the room's proportions even when a
+skinned mesh inflates its raw accessor bounds. Wall fixtures sit slightly inside
+the bounds. Local light falloff scales with the room and extends below every
+fixture to the floor.
 
 The AR template keeps fixture offsets in meters in a reference 4 × 2.7 × 4 meter
 layout. Tap an upward-facing horizontal plane: all fixtures become children of
