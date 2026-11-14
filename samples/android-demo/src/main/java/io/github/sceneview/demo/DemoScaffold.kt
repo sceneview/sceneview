@@ -41,8 +41,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -111,7 +113,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -736,7 +737,7 @@ fun DemoScaffold(
     var chromeToggled by rememberSaveable { mutableStateOf(true) }
 
     // Full screen (#4558): the identity row's last button gives the scene the whole window —
-    // the chrome, the demo's own top and bottom bands, the scrims and the system bars step
+    // the chrome, the demo's own top and bottom bands and the system bars step
     // aside, and the scene slot loses its reserve. The one way back sits where the button
     // was, and Back does the same. It wins over QA mode and TalkBack, which only keep the
     // chrome from a scene *tap*: this is an explicit request.
@@ -767,14 +768,9 @@ fun DemoScaffold(
     // A demo that opted in (#4379) loses its overlays with the chrome: the scene gets the window.
     val overlaysShown = !overlaysFollowChrome || chromeVisible
 
-    // The top scrim (#3328) puts a 60 %-black ground under the status bar, so in light
-    // mode the system icons — clock, wifi, battery — turn dark-on-dark and disappear.
-    // They used to read because they sat on whatever the scene rendered. Force the
-    // light (white) icon set while the scrim is up; the theme's own set comes back when
-    // the chrome hides or the demo is left. A request, not a write: the Showcase and the
-    // demo are both composed during the navigation, and the old save-and-restore pairs
-    // raced there and left dark icons on the dark stage (#3984).
-    RequestLightStatusBarIcons(active = chromeVisible && chrome.lightStatusIcons)
+    // The system bar keeps its own ground when a scene tap hides the controls. Its icon
+    // request must live just as long; full screen hides the bar and releases both.
+    RequestLightStatusBarIcons(active = !focused && chrome.lightStatusIcons)
 
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
     // `sample_interaction` / `settings`: every sample's settings sheet, logged in one place.
@@ -903,11 +899,12 @@ fun DemoScaffold(
     // The settings sheet is chrome too: full screen closes it.
     LaunchedEffect(focused) { if (focused) settingsExpanded = false }
 
-    // A phone held sideways has no band of scrim under the identity row nor under what a demo
-    // stacks above the dock ([demoTopScrim], [demoBottomScrim]): each glass element then stands
-    // on its own piece of it, so it reads the same and the scene stays clear.
-    val glassGround = if (isDemoCompactHeight()) chrome.scrim else Color.Transparent
-    CompositionLocalProvider(LocalStageChrome provides chrome, LocalGlassGround provides glassGround) {
+    // Ground only the glass controls, inside their own outlines. Full-width gradients drawn
+    // after `scene` darken its text too, even when a pill already has an opaque fill (#3733).
+    CompositionLocalProvider(
+        LocalStageChrome provides chrome,
+        LocalGlassGround provides chrome.scrimDock,
+    ) {
         // Measured by the dock, read by the scene's bottom stack and by the snackbar.
         var dockBandPx by remember { mutableIntStateOf(0) }
         // Whether anything stacks above the dock: the demo's status pill and overlays, the
@@ -1098,7 +1095,7 @@ fun DemoScaffold(
                     modifier = Modifier
                         .fillMaxSize()
                         // An inset scene leaves bands above and below the viewport. Unpainted,
-                        // they showed the window background — light grey under the scrims, in
+                        // they showed the window background — light grey in
                         // both themes — and the demo read as a letterboxed screenshot (#3983).
                         // Painted with the stage colour, the chrome sits on one continuous stage.
                         .then(
@@ -1187,8 +1184,8 @@ fun DemoScaffold(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 // The viewport is still the stage when AR failed: the
-                                                // glass chrome and scrims sit on it. `surface` painted it
-                                                // white in light theme, banded by the scrims (#3990).
+                                                // glass chrome sits on it. `surface` painted it
+                                                // white in light theme (#3990).
                                                 .background(chrome.ground),
                                             contentAlignment = Alignment.Center,
                                         ) {
@@ -1239,67 +1236,23 @@ fun DemoScaffold(
                         }
                     }
 
-                    // Ground for the identity row (#3328). Like the bottom band below, it is
-                    // drawn here rather than inside the chrome so it tints the *scene* and
-                    // never the glass — or the demo's own top overlay, which a scrim drawn
-                    // inside the chrome greys out, because the chrome is composed after the
-                    // overlay slots. It still fades with the chrome, which is the only thing
-                    // standing on it.
-                    //
-                    // Sized by [demoTopScrim]: the whole row upright, the status bar alone, eased
-                    // out, on a phone held sideways, where a band that tall is a third of the picture.
-                    val topScrim = demoTopScrim(isDemoCompactHeight(), statusBarInset)
+                    // Protect only the actual status bar. Extending this ground into the
+                    // scene darkens its overlay text; removing it leaves white icons on a
+                    // bright camera. This stays independent of the controls' visibility, and
+                    // fades with full screen rather than cutting in and out.
                     AnimatedVisibility(
-                        visible = chromeVisible && topScrim.height > 0.dp,
+                        visible = !focused,
                         enter = fadeIn(SceneViewTokens.Motion.fade()),
                         exit = fadeOut(SceneViewTokens.Motion.fade()),
-                        modifier = Modifier.align(Alignment.TopCenter),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth(),
                     ) {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(topScrim.height)
-                                .background(topScrim.brush(chrome.scrim, fromBottom = false)),
-                        )
-                    }
-
-                    // Ground for everything that lives at the bottom of the scene (#3328):
-                    // the dock band and, when a demo reserves one, the whole bottom-overlay
-                    // stack above it. It lives here rather than inside the chrome for two
-                    // reasons: it is drawn *before* the overlays and the chrome, so it tints
-                    // the scene and never the glass sitting on it; and it outlives the
-                    // chrome's fade, because a status pill stays on screen after a scene tap
-                    // has hidden the dock. Sized to the measured band so a pill a demo lifted
-                    // clear of the dock still lands on the scrim.
-                    //
-                    // On a phone held sideways that band is more than half the picture: the scrim
-                    // keeps to the dock and leaves with it ([demoBottomScrim]), and what stands
-                    // above carries its own ground ([LocalGlassGround]).
-                    val compactHeight = isDemoCompactHeight()
-                    val bottomScrim = demoBottomScrim(
-                        compactHeight = compactHeight,
-                        dockReserve = dockClearance,
-                        overlayBand = bottomOverlayBand,
-                        dockBand = dockBandClearance,
-                        navigationBarInset = navigationBarInset,
-                    )
-                    // A hidden dock takes the scrim with it (#4730): the page's own bottom (a pinned
-                    // action, a sheet) is no longer washed out by a ground for a dock that is gone.
-                    // In portrait a bottom stack keeps its scrim. On a phone held sideways the scrim
-                    // never grounds the stack, only the dock, so it goes whenever the dock is
-                    // hidden; the stack is faded to alpha 0 with the dock then anyway.
-                    AnimatedVisibility(
-                        visible = (chromeVisible && !dockHidden) ||
-                            (!focused && overlaysShown && bottomStackShown && !compactHeight),
-                        enter = fadeIn(SceneViewTokens.Motion.fade()),
-                        exit = fadeOut(SceneViewTokens.Motion.fade()),
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(bottomScrim.height)
-                                .background(bottomScrim.brush(chrome.scrimDock, fromBottom = true)),
+                                .windowInsetsTopHeight(WindowInsets.statusBars)
+                                .background(chrome.scrim),
                         )
                     }
 
@@ -1972,6 +1925,7 @@ private fun BoxScope.DemoDock(
             expanded = true,
             modifier = Modifier
                 .overMediaEdge(dockShape, chrome.edgeRing, chrome.edgeHalo)
+                .background(LocalGlassGround.current, dockShape)
                 // 64 dp is the baseline, not a clipping boundary. At large font scales the
                 // icon + caption column needs more room; the measured dock band already moves
                 // overlays and scene framing above whatever height results.
@@ -2051,11 +2005,11 @@ private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
     // A selected toggle sits on a filled `dock-selected` pill — the **dark-scheme** primary
     // in both themes (#3421: never `colorScheme.primary`, the dock is media), with its own
     // dark foreground (#3727). Tinting only the glyphs could not pass: the caption lands on
-    // the dock's 14 % white glass over the scrim, which over the near-white Contact Shadow
-    // studio composites to a mid grey, and pale #A4C1FF on it is 2.97:1 by the token maths
-    // — no pale accent reaches 4.5:1 there, and darkening the scrim until one did would
-    // blacken the whole bottom band. On the pill the caption reads at 7.3:1 whatever the
-    // scene is, and the pill itself still separates from the glass at > 3:1.
+    // the dock's 14 % white glass over its own `glass-ground`, which over the near-white
+    // Contact Shadow studio composites to a mid grey, and pale #A4C1FF on it is 2.97:1 by
+    // the token maths — no pale accent reaches 4.5:1 there, and darkening the ground until
+    // one did would blacken the whole dock. On the pill the caption reads at 7.3:1 whatever
+    // the scene is, and the pill itself still separates from the glass at > 3:1.
     val selectedFill = item.enabled && !item.dimmed && item.selected
     val chrome = LocalStageChrome.current
     val contentColor = when {
@@ -2542,22 +2496,6 @@ private class DrawnHeightSpacing(private val onDrawnHeight: (Int) -> Unit) : Arr
             if (drawn == 0) 0 else sizes.sum() + spacing.roundToPx() * (drawn - 1),
         )
     }
-}
-
-/**
- * The band as a gradient of [color], solid at the screen edge it grounds: the top one, or the
- * bottom one when [fromBottom]. The upright bands keep the two-stop ramp they always had.
- */
-private fun DemoScrim.brush(color: Color, fromBottom: Boolean): Brush {
-    val ramp = stops().map { (at, share) ->
-        val tint = when (share) {
-            1f -> color
-            0f -> Color.Transparent
-            else -> color.copy(alpha = color.alpha * share)
-        }
-        (if (fromBottom) 1f - at else at) to tint
-    }
-    return Brush.verticalGradient(*(if (fromBottom) ramp.reversed() else ramp).toTypedArray())
 }
 
 /**
