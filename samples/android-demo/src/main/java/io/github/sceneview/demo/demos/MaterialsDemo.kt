@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -708,9 +709,21 @@ private fun StudioSection(
     // "Scene ready" waits until both have landed (#4174).
     firstFrame.holdUntil(landed = environment != null)
 
-    LaunchedEffect(firstFrame.rendered.value, inspecting, galleryHintVisible) {
-        if (firstFrame.rendered.value && !inspecting && galleryHintVisible) {
-            delay(GALLERY_HINT_MILLIS)
+    // The hint yields to the scene: first interaction, or a few seconds after the first frame.
+    // The timeout follows the system's accessibility recommendation so TalkBack reads it before
+    // it goes, and QA mode keeps it on screen so captures stay deterministic.
+    val accessibilityManager = LocalAccessibilityManager.current
+    val galleryHintMillis = remember(accessibilityManager) {
+        accessibilityManager?.calculateRecommendedTimeoutMillis(
+            GALLERY_HINT_MILLIS,
+            containsIcons = false,
+            containsText = true,
+            containsControls = false,
+        ) ?: GALLERY_HINT_MILLIS
+    }
+    LaunchedEffect(firstFrame.rendered.value, inspecting, galleryHintVisible, DemoSettings.qaMode) {
+        if (firstFrame.rendered.value && !inspecting && galleryHintVisible && !DemoSettings.qaMode) {
+            delay(galleryHintMillis)
             onDismissGalleryHint()
         }
     }
@@ -722,6 +735,7 @@ private fun StudioSection(
     // one; the camera is already travelling and a re-aim mid-flight reads as a glitch.
     val gestureListener = rememberOnGestureListener(
         onSingleTapUp = { _, node ->
+            if (!inspecting) onDismissGalleryHint()
             if (!inspecting && !focusing) {
                 val tapped = library.indexOfFirst { it.id == node?.name }
                 if (tapped >= 0) focusOn(tapped)
