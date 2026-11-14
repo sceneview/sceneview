@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin default key-light direction across platforms without a rendering device.
 
-Run from any directory: python3 .claude/scripts/test-default-main-light.py
+Run from the worktree root: python3 .claude/scripts/test-default-main-light.py
 RealityKit aims its local -Z at the target, so aiming at the origin from a given
 position produces a travel direction equal to the negated position. Filament
 accepts the travel direction directly. Compare normalised vectors so equivalent
@@ -43,9 +43,15 @@ class DefaultMainLightTests(unittest.TestCase):
         for actual, wanted in zip(normalised(direction), normalised(expected)):
             self.assertAlmostEqual(actual, wanted, places=6)
 
-    def assertSwiftMainLight(self, filename, provision_method):
+    def assertSwiftMainLightFactoryUsed(self, filename, provision_method, assignment):
         provision = source(SWIFT / filename).split("private func " + provision_method, 1)[1]
         main = provision.split("case .main:", 1)[1].split("case .fill:", 1)[0]
+        self.assertEqual(main.strip(), assignment + " = LightNode.defaultMainLight().entity")
+
+    def test_swift_factory_direction(self):
+        main = source(SWIFT / "Nodes/LightNode.swift").split(
+            "static func defaultMainLight() -> LightNode {", 1
+        )[1].split("\n    }", 1)[0]
         position = vector(re.search(
             r"main.entity.look\(at: \.zero, from: \[([^]]+)\], relativeTo: nil\)", main
         ).group(1))
@@ -53,19 +59,22 @@ class DefaultMainLightTests(unittest.TestCase):
         self.assertIn("castsShadow: true", main)
 
     def test_swift_3d_main_light(self):
-        self.assertSwiftMainLight("SceneView.swift", "provisionLightSlot(")
+        self.assertSwiftMainLightFactoryUsed("SceneView.swift", "provisionLightSlot(", "entity")
 
     def test_swift_ar_main_light(self):
-        self.assertSwiftMainLight("ARSceneView.swift", "provisionARLightSlot(")
+        self.assertSwiftMainLightFactoryUsed("ARSceneView.swift", "provisionARLightSlot(", "lightEntity")
+
+    def test_web_factory_direction(self):
+        key = source(WEB / "nodes/LightConfig.kt").split(
+            "internal fun defaultMainLightConfig(", 1
+        )[1].split("\n}", 1)[0]
+        self.assertDirectionMatchesAndroid(vector(re.search(r"direction\(([^)]+)\)", key).group(1)))
 
     def test_web_dsl_main_light(self):
-        key = source(WEB / "SceneView.kt").split("val keyLight = LightConfig().apply {", 1)[1]
-        key = key.split("}", 1)[0]
-        self.assertDirectionMatchesAndroid(vector(re.search(r"direction\(([^)]+)\)", key).group(1)))
+        self.assertIn("sceneView.addLight(defaultMainLightConfig())", source(WEB / "SceneView.kt"))
 
     def test_web_javascript_viewer_main_light(self):
-        key = source(WEB / "Main.kt").split("light {", 1)[1].split("}", 1)[0]
-        self.assertDirectionMatchesAndroid(vector(re.search(r"direction\(([^)]+)\)", key).group(1)))
+        self.assertIn("light(defaultMainLightConfig(lightIntensity))", source(WEB / "Main.kt"))
 
 
 if __name__ == "__main__":

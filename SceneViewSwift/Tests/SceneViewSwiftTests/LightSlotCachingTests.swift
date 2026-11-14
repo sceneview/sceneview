@@ -24,16 +24,13 @@ import simd
 @MainActor
 final class LightSlotCachingTests: XCTestCase {
 
-    /// Builds the system-default main-slot light exactly as
-    /// `provisionLightSlot(.main, slot: .systemDefault)` does.
+    /// Uses the production factory shared by the 3D and AR default main slots.
     private func makeMainLight() -> Entity {
-        let main = LightNode.directional(color: .white, intensity: 10_000, castsShadow: true)
-        main.entity.look(at: .zero, from: [0.25, 1, 0.25], relativeTo: nil)
-        return main.entity
+        LightNode.defaultMainLight().entity
     }
 
     func testMainLightDirectionMatchesAndroid() {
-        let main = makeMainLight()
+        let main = LightNode.defaultMainLight().entity
         // Directional lights emit along local -Z; compare the world-space ray.
         let direction = main.orientation.act(SIMD3<Float>(0, 0, -1))
         let expected = simd_normalize(SIMD3<Float>(-0.25, -1, -0.25))

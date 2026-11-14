@@ -458,7 +458,7 @@ public struct ARSceneView: UIViewRepresentable {
     ///
     /// Mirrors SceneView Android's `ARSceneView(mainLightNode = ...)`
     /// composable parameter (`ARSceneView.kt:294`). Default (`.systemDefault`):
-    /// directional light at `10 000` lux pointing straight down (`-Y`),
+    /// directional light at `10 000` lux travelling along `(-0.25, -1, -0.25)`,
     /// shadow casting enabled — same baseline as the 3D ``SceneView``.
     ///
     /// On Android, ARCore's `ENVIRONMENTAL_HDR` light estimation mutates
@@ -809,14 +809,7 @@ public struct ARSceneView: UIViewRepresentable {
         case .systemDefault:
             switch which {
             case .main:
-                let main = LightNode.directional(
-                    color: .white,
-                    intensity: 10_000,
-                    castsShadow: true
-                )
-                // Match Android's key-light travel direction (-0.25, -1, -0.25).
-                main.entity.look(at: .zero, from: [0.25, 1, 0.25], relativeTo: nil)
-                lightEntity = main.entity
+                lightEntity = LightNode.defaultMainLight().entity
             case .fill:
                 let fill = LightNode.fill(intensity: 3_000)
                 fill.entity.look(at: .zero, from: [-0.5, 0.5, -0.5], relativeTo: nil)

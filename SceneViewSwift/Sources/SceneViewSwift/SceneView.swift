@@ -61,7 +61,7 @@ public enum LightSlot: Equatable {
     }
 
     /// Use the built-in default for this light slot.
-    /// - Main slot default: directional at `10_000` lux, oriented straight down, casts shadows.
+    /// - Main slot default: directional at `10_000` lux, travelling along `(-0.25, -1, -0.25)`, casts shadows.
     /// - Fill slot default: directional at `3_000` lux, oriented from `(0.5, -0.5, 0.5)`, no shadow.
     case systemDefault
 
@@ -2093,14 +2093,7 @@ private struct SceneViewRepresentation: View {
         case .systemDefault:
             switch which {
             case .main:
-                let main = LightNode.directional(
-                    color: .white,
-                    intensity: 10_000,
-                    castsShadow: true
-                )
-                // Match Android's key-light travel direction (-0.25, -1, -0.25).
-                main.entity.look(at: .zero, from: [0.25, 1, 0.25], relativeTo: nil)
-                entity = main.entity
+                entity = LightNode.defaultMainLight().entity
             case .fill:
                 let fill = LightNode.fill(intensity: 3_000)
                 fill.entity.look(at: .zero, from: [-0.5, 0.5, -0.5], relativeTo: nil)
