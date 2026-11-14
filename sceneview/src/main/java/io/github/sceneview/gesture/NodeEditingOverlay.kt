@@ -117,9 +117,10 @@ fun NodeEditingOverlay(
 
     // Re-project the node every displayed frame: the node moves under the gesture and
     // the camera moves in AR, so the anchors are only valid for one frame.
-    LaunchedEffect(state.node, view) {
+    LaunchedEffect(state, view) {
         while (true) {
             withFrameNanos { }
+            state.refreshRotationFromNode()
             anchors.update(state.node, view)
         }
     }
