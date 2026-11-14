@@ -1,10 +1,45 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.DEFAULT_LABEL_FADE_START_DEGREES
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MaterialCaptionLayoutTest {
+    @Test
+    fun `only the idle gallery publishes live spacing`() {
+        assertTrue(canPublishLiveGalleryCaptionSpacing(inspecting = false, focusIndex = null, focusZoom = 0f))
+        for (focusIndex in listOf(null, 0)) {
+            for (focusZoom in listOf(0f, 0.5f, 1f)) {
+                assertFalse(canPublishLiveGalleryCaptionSpacing(inspecting = true, focusIndex, focusZoom))
+            }
+        }
+    }
+
+    @Test
+    fun `a picked sphere keeps flight spacing through departure and arrival`() {
+        for (focusZoom in listOf(0f, 0.5f, 1f)) {
+            assertFalse(canPublishLiveGalleryCaptionSpacing(inspecting = false, focusIndex = 0, focusZoom))
+        }
+    }
+
+    @Test
+    fun `remaining zoom prevents live publication even without a picked sphere`() {
+        for (focusZoom in listOf(Float.MIN_VALUE, 0.5f, 1f)) {
+            assertFalse(canPublishLiveGalleryCaptionSpacing(inspecting = false, focusIndex = null, focusZoom))
+        }
+    }
+
+    @Test
+    fun `the gallery sweep stays within the fully opaque caption yaw`() {
+        assertTrue(
+            "Gallery sweep (${MaterialStudio.SWEEP_DEGREES} degrees) must not exceed the caption fade start " +
+                "($DEFAULT_LABEL_FADE_START_DEGREES degrees), or opaque captions can overlap",
+            MaterialStudio.SWEEP_DEGREES <= DEFAULT_LABEL_FADE_START_DEGREES,
+        )
+    }
+
     @Test
     fun `landscape far-side spacing at 25 degrees is smaller than head-on spacing`() {
         val headOnSpacingPx = 320f
@@ -33,6 +68,67 @@ class MaterialCaptionLayoutTest {
         val widerWallSpacing = galleryCaptionSpacingPx(320f, 2f, 0.6f, 5, 25f)
         assertTrue(nearSpacing < farSpacing)
         assertTrue(widerWallSpacing < nearSpacing)
+    }
+
+    @Test
+    fun `flight spacing accounts for pinching both closer and farther before a tap`() {
+        for ((headOnSpacingPx, cameraDistance) in listOf(640f to 1.5f, 320f to 3f, 160f to 6f)) {
+            val spacing = galleryCaptionSpacingAtRadiusPx(
+                headOnSpacingPx = headOnSpacingPx,
+                cameraDistance = cameraDistance,
+                galleryRadius = 3f,
+                ballSpacing = 0.6f,
+                columns = 3,
+                yawDegrees = 25f,
+            )
+            // The return radius controls both pinhole scaling and yaw compression.
+            assertEquals(267.416f, spacing, 0.001f)
+        }
+    }
+
+    @Test
+    fun `head-on flight spacing scales inversely with the return radius`() {
+        assertEquals(160f, galleryCaptionSpacingAtRadiusPx(320f, 3f, 6f, 0.6f, 3, 0f), 1e-4f)
+        assertEquals(640f, galleryCaptionSpacingAtRadiusPx(320f, 3f, 1.5f, 0.6f, 3, 0f), 1e-4f)
+    }
+
+    @Test
+    fun `flight spacing applies the eye-plane guard at the return radius`() {
+        assertEquals(0f, galleryCaptionSpacingAtRadiusPx(320f, 3f, 0.2f, 0.6f, 3, 25f), 0f)
+    }
+
+    @Test
+    fun `gallery captions hide below the low threshold and show above the high threshold`() {
+        for (wasVisible in listOf(false, true)) {
+            assertFalse(galleryCaptionVisible(63, wasVisible, hideBelowPx = 64, showAbovePx = 72))
+            assertTrue(galleryCaptionVisible(73, wasVisible, hideBelowPx = 64, showAbovePx = 72))
+        }
+    }
+
+    @Test
+    fun `the whole dead band including its endpoints preserves visibility`() {
+        for (widthPx in 64..72) {
+            for (wasVisible in listOf(false, true)) {
+                assertEquals(wasVisible, galleryCaptionVisible(widthPx, wasVisible, hideBelowPx = 64, showAbovePx = 72))
+            }
+        }
+    }
+
+    @Test
+    fun `zoom jitter needs to cross the opposite threshold before captions switch again`() {
+        var visible = true
+        val steps = listOf(80 to true, 70 to true, 63 to false, 64 to false, 68 to false, 72 to false, 73 to true)
+        for ((widthPx, expected) in steps) {
+            visible = galleryCaptionVisible(widthPx, visible, hideBelowPx = 64, showAbovePx = 72)
+            assertEquals("Caption visibility at width $widthPx", expected, visible)
+        }
+    }
+
+    @Test
+    fun `visibility thresholds accept density-scaled pixels`() {
+        assertFalse(galleryCaptionVisible(127, wasVisible = true, hideBelowPx = 128, showAbovePx = 144))
+        assertFalse(galleryCaptionVisible(144, wasVisible = false, hideBelowPx = 128, showAbovePx = 144))
+        assertTrue(galleryCaptionVisible(145, wasVisible = false, hideBelowPx = 128, showAbovePx = 144))
     }
 
     @Test
