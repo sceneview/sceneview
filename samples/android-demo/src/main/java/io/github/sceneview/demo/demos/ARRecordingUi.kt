@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -46,7 +47,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -86,6 +89,7 @@ import io.github.sceneview.demo.demos.internal.formatRecordingTitle
 import io.github.sceneview.demo.demos.internal.recordingContentsLine
 import io.github.sceneview.demo.demos.internal.recordingTitleOf
 import io.github.sceneview.demo.demos.internal.replayProgress
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.StageChrome
@@ -108,6 +112,11 @@ private val ShutterSize = Space.x3l + Space.sm // 72 dp — a camera app's shutt
 private val ShutterDiscSize = Space.x2l + Space.sm // 56 dp
 private val ShutterStopSize = Space.xl - Space.xs // 28 dp
 private val ShutterRingWidth = Space.xs - Space.xs / 4 // 3 dp
+
+// The ring as a gauge (3D Scan's turn): twice the plain ring, so it reads at a glance over the camera.
+private val ShutterGaugeWidth = Space.xs + Space.xs / 2 // 6 dp
+private val ShutterGaugeEdge = Space.xs / 4 // 1 dp of shade either side of it
+private val ShutterGaugePulse = Space.xs / 2 // 2 dp wider, for the beat a step is marked with
 private val ThumbnailWidth = Space.x4l // 96 dp, 4:3
 private val SavedThumbnailWidth = Space.x3l // 64 dp, 4:3
 private val RecordDotSize = Space.sm + Space.xs / 2 // 10 dp
@@ -365,7 +374,9 @@ internal fun RecordShutter(
     // Whether stopping is offered yet (3D Scan: not before the capture holds something).
     stopEnabled: Boolean = true,
     // How far along the take is, 0..1, drawn as the ring filling clockwise from the top
-    // (3D Scan: the turn made so far); null keeps the ring whole.
+    // (3D Scan: the turn made so far); null keeps the plain ring. As a gauge the ring is twice
+    // as thick, shaded on both edges so it reads on a white wall as on a dark room, and swells
+    // for a beat each time the take gets further.
     progress: Float? = null,
 ) {
     val tappable = if (isRecording) stopEnabled else startEnabled
@@ -375,6 +386,19 @@ internal fun RecordShutter(
         animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
         label = "shutterProgress",
     )
+    // One beat per step further (never for a step back, nor under reduced motion).
+    val motion = LocalMotionEnabled.current
+    val beat = remember { Animatable(0f) }
+    var reached by remember { mutableFloatStateOf(progress ?: 0f) }
+    LaunchedEffect(progress) {
+        val now = progress ?: 0f
+        val further = now > reached
+        reached = now
+        if (further && motion) {
+            beat.snapTo(1f)
+            beat.animateTo(0f, tween(SceneViewTokens.Duration.mediumMillis))
+        }
+    }
     val haptic = rememberHapticFeedback()
     val label = if (isRecording && stopLabel != null) {
         stopLabel
@@ -390,27 +414,50 @@ internal fun RecordShutter(
             enabled = tappable,
             shape = CircleShape,
             color = ArOverlay.meterTrack,
-            border = BorderStroke(
-                width = ShutterRingWidth,
-                // With a progress, the ring is the track and the part done is drawn over it.
-                color = ArOverlay.onScrim.copy(alpha = if (progress == null) ringAlpha else ringAlpha * RING_TRACK_ALPHA),
-            ),
+            // The plain ring; as a gauge it is drawn below, track and part done.
+            border = if (progress == null) BorderStroke(ShutterRingWidth, ArOverlay.onScrim.copy(alpha = ringAlpha)) else null,
             modifier = Modifier
                 .size(ShutterSize)
                 .testTag(AR_REC_SHUTTER_TAG)
                 .drawWithContent {
                     drawContent()
-                    if (progress != null && filled > 0f) {
-                        val stroke = ShutterRingWidth.toPx()
+                    if (progress != null) {
+                        val stroke = ShutterGaugeWidth.toPx()
+                        val edge = ShutterGaugeEdge.toPx()
+                        // Every stroke on the same circle, inside the button whatever its width.
+                        val inset = stroke / 2f + edge
+                        val topLeft = Offset(inset, inset)
+                        val ring = Size(size.width - inset * 2f, size.height - inset * 2f)
+                        // The shade the gauge stands on: the camera behind may be a white wall.
                         drawArc(
-                            color = ArOverlay.onScrim.copy(alpha = ringAlpha),
+                            color = ArOverlay.cameraDim,
                             startAngle = RING_START_DEGREES,
-                            sweepAngle = FULL_TURN_DEGREES * filled,
+                            sweepAngle = FULL_TURN_DEGREES,
                             useCenter = false,
-                            topLeft = Offset(stroke / 2f, stroke / 2f),
-                            size = Size(size.width - stroke, size.height - stroke),
-                            style = Stroke(width = stroke, cap = StrokeCap.Round),
+                            topLeft = topLeft,
+                            size = ring,
+                            style = Stroke(width = stroke + edge * 2f),
                         )
+                        drawArc(
+                            color = ArOverlay.onScrim.copy(alpha = ringAlpha * RING_TRACK_ALPHA),
+                            startAngle = RING_START_DEGREES,
+                            sweepAngle = FULL_TURN_DEGREES,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = ring,
+                            style = Stroke(width = stroke),
+                        )
+                        if (filled > 0f) {
+                            drawArc(
+                                color = ArOverlay.onScrim.copy(alpha = ringAlpha),
+                                startAngle = RING_START_DEGREES,
+                                sweepAngle = FULL_TURN_DEGREES * filled,
+                                useCenter = false,
+                                topLeft = topLeft,
+                                size = ring,
+                                style = Stroke(width = stroke + ShutterGaugePulse.toPx() * beat.value, cap = StrokeCap.Round),
+                            )
+                        }
                     }
                 }
                 .semantics {
