@@ -302,7 +302,7 @@ class DemoRegistryIntegrityTest {
                 "lines-paths", "spatial-audio", "two-d-in-three-d",
             ),
             DemoCategory.PLAY to listOf("matter", "cosmos", "rolling-balls", "finger-drawing"),
-            DemoCategory.PLACE_AR to listOf("ar-placement", "ar-orbital", "ar-pool", "ar-image"),
+            DemoCategory.PLACE_AR to listOf("ar-placement", "ar-orbital", "ar-pool", "ar-image", "spatial-answer"),
             DemoCategory.UNDERSTAND to listOf(
                 "ar-rerun", "ar-splat-room", "ar-measure", "ar-depth-occlusion", "ar-people-occlusion",
                 "ar-face", "ar-body-tracker", "point-and-ask", "ar-scene-semantics", "ar-depth-of-field",

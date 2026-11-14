@@ -385,4 +385,29 @@
     <string name="ar_placement_wall_model">TV</string>
     <string name="ar_placement_wall_help">Place a TV automatically on a wall. Preview scale — not a real TV\'s size.</string>
     <string name="demo_ar_session_failed">AR could not start. Return to the catalog and reopen this demo to try again.</string>
+    <string name="demo_spatial_answer">Spatial answer</string>
+    <string name="demo_spatial_answer_subtitle">From dimensions to a 3D answer, then real-scale AR</string>
+    <string name="spatial_sentence">Show an 80 × 40 cm desk, 75 cm high, here</string>
+    <string name="spatial_prompt">Describe a dimensioned object</string>
+    <string name="spatial_show">Show</string>
+    <string name="spatial_show_json">Show developer payload</string>
+    <string name="spatial_hide_json">Hide developer payload</string>
+    <string name="spatial_source_user">Dimensions given by you</string>
+    <string name="spatial_source_estimated">Estimated dimensions</string>
+    <string name="spatial_source_measured">Measured dimensions</string>
+    <string name="spatial_view_ar">View in your space</string>
+    <string name="spatial_clear">Clear placement</string>
+    <string name="spatial_back">Back</string>
+    <string name="spatial_back_to_card">Back to 3D answer</string>
+    <string name="spatial_place_floor">Move your phone to find the floor, then tap to place.</string>
+    <string name="spatial_place_table">Move your phone to find a tabletop, then tap to place.</string>
+    <string name="spatial_ar_note">Real scale · 1 metre in the payload = 1 metre in AR. Compare visually; placement depends on surface tracking.</string>
+    <string name="spatial_footnote">SceneView demonstrates the component that turns an assistant’s spatial answer into 3D and AR. This is not an integration with any vendor’s app. Parsing runs on device, without an LLM or network. No automatic fit detection or accuracy claim.</string>
+    <string name="spatial_asset_loading">Loading bundled model. If it cannot load, return to the answer.</string>
+    <string name="spatial_error_sentence">Use explicit dimensions, for example: Show an 80 × 40 cm desk, 75 cm high, here. Supported objects: desk, box, table, shelf. Use cm, m or mm.</string>
+    <string name="spatial_error_size">Each dimension must be greater than 1 cm and at most 10 m.</string>
+    <string name="spatial_error_asset">Unknown asset. Only bundled, allow-listed models are accepted.</string>
+    <string name="spatial_error_label">Use a label of at most 60 characters.</string>
+    <string name="spatial_error_version">Unsupported payload version. Expected version 1.</string>
+    <string name="spatial_error_payload">Invalid spatial payload. Check the version, fields and object kind.</string>
 </resources>
