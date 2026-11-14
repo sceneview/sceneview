@@ -59,7 +59,7 @@ class ARCameraPermissionVerdictTest {
     private lateinit var handler: FakeHandler
     private lateinit var arCore: ARCore
 
-    /** `true` / `false` for a denial verdict, `null` for a grant. */
+    /** Legacy settings recommendation (`true`), request (`false`), or grant (`null`). */
     private lateinit var verdicts: MutableList<Boolean?>
     private var nowMs = 0L
 
@@ -160,8 +160,8 @@ class ARCameraPermissionVerdictTest {
         handler.instantAnswer = false
         assertFalse(arCore.checkPermissionAndInstall(handler))
 
-        assertEquals(listOf<Boolean?>(false), verdicts)
-        assertTrue(arCore.cameraPermissionSettingsAvailable)
+        assertEquals(listOf<Boolean?>(true), verdicts)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
         assertTrue(arCore.isCameraPermissionDenied)
     }
 
@@ -184,8 +184,9 @@ class ARCameraPermissionVerdictTest {
         userTakes(2_000)
         handler.answer(granted = false)
 
-        assertEquals(listOf<Boolean?>(false, false), verdicts)
-        assertTrue(arCore.cameraPermissionSettingsAvailable)
+        // A legacy host still gets settings; the public recovery keeps both actions.
+        assertEquals(listOf<Boolean?>(false, true), verdicts)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
         assertEquals(2, handler.requestCount)
     }
 
@@ -279,8 +280,8 @@ class ARCameraPermissionVerdictTest {
         arCore.retryCameraPermission(handler)
         arCore.retryCameraPermission(handler)
 
-        assertEquals(listOf<Boolean?>(false), verdicts)
-        assertTrue(arCore.cameraPermissionSettingsAvailable)
+        assertEquals(listOf<Boolean?>(true), verdicts)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
         assertEquals(3, handler.requestCount)
     }
 }

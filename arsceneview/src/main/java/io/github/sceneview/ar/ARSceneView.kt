@@ -1215,23 +1215,20 @@ fun ARSceneView(
     // One state per verdict, shared by the overlay and the host. Its actions read the handler
     // of the latest composition, so a state the host keeps never asks through a stale one.
     val currentPermissionHandler by rememberUpdatedState(permissionHandler)
-    arCore.onCameraPermissionDenied = { permanently ->
-        val state = ARCameraPermissionState(
-            permanentlyDenied = permanently,
-            settingsAvailable = arCore.cameraPermissionSettingsAvailable,
-            request = { arCore.retryCameraPermission(currentPermissionHandler) },
-            openSettings = { arCore.openAppSettings(currentPermissionHandler) },
-        )
+    arCore.onCameraPermissionRecoveryChanged = { recovery ->
+        val state = recovery?.let {
+            ARCameraPermissionState(
+                permanentlyDenied = it == ARCameraPermissionRecovery.Settings,
+                settingsAvailable = it != ARCameraPermissionRecovery.Request,
+                request = { arCore.retryCameraPermission(currentPermissionHandler) },
+                openSettings = { arCore.openAppSettings(currentPermissionHandler) },
+            )
+        }
+        // A grant clears the card before session creation or any later ARCore failure.
         cameraPermissionState = state
         onCameraPermissionStateChanged?.invoke(state)
     }
-    // The grant takes the explanation down on its own: waiting for a session to be created
-    // left "camera access needed" up when the grant was followed by another failure (#4452).
-    arCore.onCameraPermissionGranted = {
-        cameraPermissionState = null
-        onCameraPermissionStateChanged?.invoke(null)
-    }
-    // Reassigned on each composition like the denial callback above, so the host lambda is
+    // Reassigned on each composition like the recovery callback above, so the host lambda is
     // never stale. Both are set during composition, before the `DisposableEffect` below runs
     // `arCore.create()` — the first verdict is therefore never missed (#3374).
     arCore.onARCoreAvailability = { availability ->

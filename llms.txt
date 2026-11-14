@@ -256,6 +256,8 @@ The built-in camera card and the Android demo share `cameraPermissionRecovery(ra
 
 `ARCameraPermissionState.settingsAvailable` tells a custom overlay when to offer settings alongside `request()`; `permanentlyDenied` selects settings as the sole action. The original three-argument state constructor remains available.
 
+Direct `ARCore` hosts can read `cameraPermissionRecovery: ARCameraPermissionRecovery?` and subscribe to `onCameraPermissionRecoveryChanged`. The property is updated before each callback; `null` clears a denial after a grant, including a return from settings. Read the property when attaching to an existing instance, since assigning the callback does not replay the current value. The original `onCameraPermissionDenied` callback keeps its binary signature and recommends settings (`true`) for both `RequestWithSettings` and `Settings`, protecting legacy hosts from an endless suppressed request. That boolean does not prove a permanent denial: use the new callback to retain the request alongside settings and choose neutral copy.
+
 ## Core Composables
 
 ### SceneView — 3D viewport

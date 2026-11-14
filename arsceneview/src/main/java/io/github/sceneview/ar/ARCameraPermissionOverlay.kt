@@ -9,11 +9,10 @@ import androidx.compose.ui.res.stringResource
 /**
  * What [ARSceneView] knows about a denied camera permission (#3308).
  *
- * @property permanentlyDenied `true` once the system stops showing the dialog — only
- *   [openSettings] can help; otherwise [request] shows the dialog again.
- * @property settingsAvailable offers settings as a fallback for an ambiguous answer, while
- *   keeping [request] as the main action.
- * @property request shows the system camera permission dialog again.
+ * @property permanentlyDenied selects settings as the sole recovery action.
+ * @property settingsAvailable offers settings as a fallback for an ambiguous answer; keep
+ *   [request] as the main action when [permanentlyDenied] is `false`.
+ * @property request requests camera permission again. Android may suppress its dialog.
  * @property openSettings opens the app's system settings page. Call it from an explicit
  *   user action only — never automatically, that is the bug this state replaces.
  */

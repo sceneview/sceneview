@@ -2,7 +2,7 @@ package io.github.sceneview.ar
 
 /** The actions to offer after an Android camera permission request is refused. */
 enum class ARCameraPermissionRecovery {
-    /** Android still offers the dialog. */
+    /** Offer another permission request; Android may still suppress its dialog. */
     Request,
 
     /** The answer is ambiguous: keep asking available, with settings as another way out. */

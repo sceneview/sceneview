@@ -118,7 +118,7 @@ class ARCameraPermissionHostTest {
 
         assertEquals(1, sessionsStarted)
         assertEquals(1, handler.requestCount)
-        assertEquals(listOf(false, null), verdicts)
+        assertEquals(listOf(true, null), verdicts)
     }
 
     @Test
@@ -172,7 +172,7 @@ class ARCameraPermissionHostTest {
 
         assertEquals(0, sessionsStarted)
         assertEquals(1, handler.requestCount)
-        assertEquals(listOf<Boolean?>(false), verdicts)
+        assertEquals(listOf<Boolean?>(true), verdicts)
     }
 
     // ── A request Android cancelled ─────────────────────────────────────────

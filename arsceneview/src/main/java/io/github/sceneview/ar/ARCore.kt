@@ -59,23 +59,34 @@ class ARCore(
     var permissionHandler: ARPermissionHandler? = null
 
     /**
-     * Called on the main thread when the user denies the camera permission (#3308).
+     * Legacy two-action camera denial callback, called on the main thread.
      *
-     * `permanentlyDenied` is `true` when the system will no longer show the permission dialog
-     * ("Don't ask again" / second denial on Android 11+); the only way forward is then
-     * [openAppSettings]. Otherwise [retryCameraPermission] shows the dialog again.
+     * The historical `permanentlyDenied` argument recommends settings when `true`, including
+     * ambiguous answers for which settings is a fallback. It does not prove Android has
+     * stopped showing the dialog. `false` offers another [retryCameraPermission] request.
+     * This conservative mapping keeps existing hosts from retrying a suppressed dialog
+     * forever. Nothing opens automatically; call [openAppSettings] from a user action.
      *
-     * Nothing is opened automatically any more: before #3308 a denial jumped straight to the
-     * system App Info screen with a toast, backgrounding the activity with no explanation.
-     * [ARSceneView] wires this to its built-in `cameraPermissionOverlay`.
-     *
-     * Since #4452 it is invoked each time the verdict changes — from "ask again" to "open
-     * settings" and back — and `permanentlyDenied` no longer mirrors
-     * [ARPermissionHandler.shouldShowPermissionRationale] alone: a dialog the user dismissed
-     * without answering leaves no rationale flag either, and is not a permanent denial (see
-     * [cameraPermissionRecovery]).
+     * Use [onCameraPermissionRecoveryChanged] for the complete recovery state: it preserves
+     * the request action alongside settings after an ambiguous answer. This boolean cannot
+     * distinguish that state from a confirmed settings-only denial, and is only notified
+     * when its own value changes. Its getter and setter signatures remain unchanged.
      */
     var onCameraPermissionDenied: ((permanentlyDenied: Boolean) -> Unit)? = null
+
+    /**
+     * Called on the main thread whenever [cameraPermissionRecovery] changes.
+     *
+     * [ARCameraPermissionRecovery.Request] offers [retryCameraPermission];
+     * [ARCameraPermissionRecovery.RequestWithSettings] keeps that action and also offers
+     * [openAppSettings] with neutral copy; [ARCameraPermissionRecovery.Settings] offers
+     * settings alone. `null` clears the denial after permission is granted, including on
+     * return from settings. The property is updated before this callback runs.
+     *
+     * No initial value is replayed when the callback is assigned: read the property when
+     * attaching to an existing instance. [ARSceneView] uses this callback for its card.
+     */
+    var onCameraPermissionRecoveryChanged: ((recovery: ARCameraPermissionRecovery?) -> Unit)? = null
 
     /**
      * Called on the main thread when a denial reported through [onCameraPermissionDenied] no
@@ -97,8 +108,12 @@ class ARCore(
     /** The last verdict sent to [onCameraPermissionDenied]; `null` while nothing is denied. */
     private var publishedCameraDenial: Boolean? = null
 
-    /** Settings may also help after an ambiguous answer, without replacing the request. */
-    internal var cameraPermissionSettingsAvailable = false
+    /**
+     * Current camera recovery, published through [onCameraPermissionRecoveryChanged].
+     * `null` before any denial and after permission is granted. A direct [ARCore] host can
+     * read this state without relying on the legacy denial callback's boolean.
+     */
+    var cameraPermissionRecovery: ARCameraPermissionRecovery? = null
         private set
 
     /** The camera request that has not been answered yet, if any. */
@@ -404,15 +419,18 @@ class ARCore(
             if (pending.handler === handler && !pending.hostPausedSince) return
             cameraRequest = null
             // Nothing says the dialog is blocked: offer to ask again.
-            publishCameraDenial(permanentlyDenied = false)
+            publishCameraDenial(ARCameraPermissionRecovery.Request)
             return
         }
         if (cameraPermissionRequested) {
             // Already refused. A rationale flag raised since then (the answer went to another
             // registration, say) means the dialog will show: do not keep sending to settings.
-            if (cameraPermissionSettingsAvailable && !handler.shouldShowPermissionRationale()) {
+            if (cameraPermissionRecovery != null &&
+                cameraPermissionRecovery != ARCameraPermissionRecovery.Request &&
+                !handler.shouldShowPermissionRationale()
+            ) {
                 unexplainedCameraRefusals = 0
-                publishCameraDenial(permanentlyDenied = false)
+                publishCameraDenial(ARCameraPermissionRecovery.Request)
             }
             return
         }
@@ -456,7 +474,7 @@ class ARCore(
     internal fun cancelPendingCameraRequest() {
         cameraRequest ?: return
         cameraRequest = null
-        publishCameraDenial(permanentlyDenied = false)
+        publishCameraDenial(ARCameraPermissionRecovery.Request)
     }
 
     private fun onCameraPermissionRefused(handler: ARPermissionHandler, request: CameraRequest) {
@@ -468,10 +486,7 @@ class ARCore(
             earlierUnexplainedRefusals = unexplainedCameraRefusals,
         )
         unexplainedCameraRefusals = if (rationaleAfter) 0 else (unexplainedCameraRefusals + 1).coerceAtMost(2)
-        publishCameraDenial(
-            permanentlyDenied = recovery == ARCameraPermissionRecovery.Settings,
-            settingsAvailable = recovery != ARCameraPermissionRecovery.Request,
-        )
+        publishCameraDenial(recovery)
     }
 
     /**
@@ -497,26 +512,30 @@ class ARCore(
     private fun onCameraPermissionAvailable() {
         cameraRequest = null
         unexplainedCameraRefusals = 0
-        cameraPermissionSettingsAvailable = false
         isCameraPermissionDenied = false
-        if (publishedCameraDenial != null && !isHostDetached) {
-            publishedCameraDenial = null
+        val hadRecovery = cameraPermissionRecovery != null
+        val hadLegacyDenial = publishedCameraDenial != null
+        cameraPermissionRecovery = null
+        publishedCameraDenial = null
+        if (isHostDetached) return
+        if (hadRecovery) onCameraPermissionRecoveryChanged?.invoke(null)
+        if (hadLegacyDenial && !isHostDetached && cameraPermissionRecovery == null) {
             onCameraPermissionGranted?.invoke()
         }
     }
 
-    /** Publishes a refusal to [onCameraPermissionDenied] when the verdict actually changed. */
-    private fun publishCameraDenial(
-        permanentlyDenied: Boolean,
-        settingsAvailable: Boolean = permanentlyDenied,
-    ) {
+    /** Publishes full recovery changes independently of the legacy boolean. */
+    private fun publishCameraDenial(recovery: ARCameraPermissionRecovery) {
         isCameraPermissionDenied = true
-        if (isHostDetached) return
-        val settingsChanged = cameraPermissionSettingsAvailable != settingsAvailable
-        cameraPermissionSettingsAvailable = settingsAvailable
-        if (publishedCameraDenial == permanentlyDenied && !settingsChanged) return
-        publishedCameraDenial = permanentlyDenied
-        onCameraPermissionDenied?.invoke(permanentlyDenied)
+        if (isHostDetached || cameraPermissionRecovery == recovery) return
+        cameraPermissionRecovery = recovery
+        onCameraPermissionRecoveryChanged?.invoke(recovery)
+        // A host callback may have granted permission, retried, or left the scene.
+        if (isHostDetached || cameraPermissionRecovery != recovery) return
+        val settingsAvailable = recovery != ARCameraPermissionRecovery.Request
+        if (publishedCameraDenial == settingsAvailable) return
+        publishedCameraDenial = settingsAvailable
+        onCameraPermissionDenied?.invoke(settingsAvailable)
     }
 
     /**
