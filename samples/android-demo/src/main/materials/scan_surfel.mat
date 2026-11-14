@@ -26,7 +26,8 @@ material {
     "parameters" : [
         { "type" : "sampler2d", "name" : "texture" },
         { "type" : "float", "name" : "maxSide" },
-        { "type" : "float", "name" : "nearFade" }
+        { "type" : "float", "name" : "nearFade" },
+        { "type" : "float", "name" : "captureTint" }
     ],
     "requires" : [ "position", "uv0", "custom0" ],
     "shadingModel" : "unlit",
@@ -49,7 +50,11 @@ vertex {
 fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        material.baseColor = texture(materialParams_texture, getUV0());
+        // Capture ink is independent of atlas contents, including uncoloured samples.
+        // Linear RGB of #76CFFF; opacity is applied once to the whole camera overlay.
+        material.baseColor = materialParams.captureTint > 0.5
+            ? float4(0.1812, 0.6240, 1.0, 1.0)
+            : texture(materialParams_texture, getUV0());
         // As image_texture.mat (#2224): Filament does not premultiply unlit baseColor.
         material.baseColor.rgb *= material.baseColor.a;
     }

@@ -71,6 +71,8 @@ class ArDebugOrbitCamera(
      * The fling is kept everywhere; 3D Scan bounds it so a flick cannot spin its cloud away.
      */
     val maxCoastDegrees: Float? = null,
+    /** Result viewers keep their subject centred; two fingers only zoom. */
+    val allowPan: Boolean = true,
 ) : CameraGestureDetector.CameraManipulator, CameraShotSink {
 
     /**
@@ -442,6 +444,7 @@ class ArDebugOrbitCamera(
         lastY = y
         if (dx == 0f && dy == 0f) return
         if (panning) {
+            if (!allowPan) return
             pose = bounded(pose.copy(target = pannedTarget(dx, dy)))
             return
         }

@@ -2,6 +2,120 @@ package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.roundToInt
 
+/** Resource-backed messages for the capture's single instruction line. */
+enum class ScanInstruction {
+    Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving,
+
+    /**
+     * The scan has been held off a jumped pose too long to come back by itself: finish with what
+     * it has, or leave and start again.
+     */
+    Stuck,
+
+    /** Nothing scanned yet at the floor's nearest empty area, on that side of the phone. */
+    HoleAhead, HoleLeft, HoleRight, HoleBehind,
+    ;
+
+    /** Whether this line names an empty area of the floor. */
+    val namesHole: Boolean get() = this == HoleAhead || this == HoleLeft || this == HoleRight || this == HoleBehind
+
+    companion object {
+        /** The line naming an empty area on [turn]'s side of the phone. */
+        fun holeOn(turn: ScanTurn): ScanInstruction = when (turn) {
+            ScanTurn.Ahead -> HoleAhead
+            ScanTurn.Left -> HoleLeft
+            ScanTurn.Right -> HoleRight
+            ScanTurn.Behind -> HoleBehind
+        }
+    }
+}
+
+/**
+ * The capture's one line, never empty while it records, held for at least two seconds: the sweep
+ * to start with, for six seconds by a monotonic clock (the trace clock stops during tracking
+ * loss); then "keep going" — "raise your phone to the walls" once a room's scan has looked away
+ * from them ([floorOnly]) for [OFF_WALLS_MS] on end, or the side an empty area is on ([hole]) —
+ * until the scan is [complete], then "tap to finish". A problem — lost,
+ * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
+ * precedence over coaching, with the same minimum time between changes.
+ *
+ * A line that names an empty area never outlives it: that area filled, or another one named, the
+ * line follows at once, so it and the hatching ([namedHole]) always say the same thing.
+ */
+class ScanLiveInstruction {
+    private var startedAt: Long? = null
+    private var changedAt: Long? = null
+    private var shown: ScanInstruction? = null
+
+    /** Since when the phone has looked away from the walls, `null` while it faces them. */
+    private var offWallsSince: Long? = null
+
+    /** The area the line shown names (`holeId` as it was when the line took it), `null` when it names none. */
+    var namedHole: Int? = null
+        private set
+
+    fun update(
+        nowMs: Long,
+        started: Boolean = true,
+        trackingLost: Boolean = false,
+        poseSlipped: Boolean = false,
+        /** The pose has stayed slipped too long to come back by itself ([PoseContinuity.isStuck]). */
+        poseStuck: Boolean = false,
+        tooFast: Boolean = false,
+        tooDark: Boolean = false,
+        saving: Boolean = false,
+        complete: Boolean = false,
+        floorOnly: Boolean = false,
+        /** The side of the phone the floor's nearest empty area is on, `null` with none. */
+        hole: ScanTurn? = null,
+        /** Which area [hole] is the side of ([ScanHoleGuide.gapId]). */
+        holeId: Int = 0,
+    ): ScanInstruction? {
+        if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
+        val elapsed = startedAt?.let { nowMs - it } ?: 0L
+        // A sweep goes down to the floor and up again every few seconds: the walls are asked
+        // for only when the phone stays off them (2026-11-14, a hand-held room scan: the line
+        // swapped with "keep going" at every sweep, eight times in a minute).
+        if (!floorOnly) offWallsSince = null else if (offWallsSince == null) offWallsSince = nowMs
+        val offWalls = offWallsSince?.let { nowMs - it >= OFF_WALLS_MS } == true
+        val wanted = when {
+            saving -> ScanInstruction.Saving
+            !started -> ScanInstruction.Starting
+            // Going back cannot undo a pose that stayed slipped: say the ways out instead.
+            poseSlipped && poseStuck -> ScanInstruction.Stuck
+            trackingLost || poseSlipped -> ScanInstruction.GoBack
+            tooFast -> ScanInstruction.Slower
+            tooDark -> ScanInstruction.MoreLight
+            // Do not introduce Sweep too late to give it its full hold before second six.
+            elapsed < INTRO_MS && (shown == ScanInstruction.Sweep || elapsed <= INTRO_MS - HOLD_MS) ->
+                ScanInstruction.Sweep
+            complete -> ScanInstruction.Complete
+            // An empty area named where it is beats a general line (2026-11-13, Thomas's
+            // workshop: « Raise your phone to the walls » all the way through, no wall named).
+            hole != null -> ScanInstruction.holeOn(hole)
+            offWalls -> ScanInstruction.Walls
+            else -> ScanInstruction.KeepGoing
+        }
+        val previousChange = changedAt
+        val named = namedHole
+        val areaGone = named != null && (hole == null || holeId != named)
+        if (previousChange == null || areaGone || (wanted != shown && nowMs - previousChange >= HOLD_MS)) {
+            shown = wanted
+            changedAt = nowMs
+            namedHole = holeId.takeIf { wanted.namesHole }
+        }
+        return shown
+    }
+
+    companion object {
+        const val HOLD_MS = 2_000L
+        const val INTRO_MS = 6_000L
+
+        /** How long the phone looks away from the walls before the line asks for them. */
+        const val OFF_WALLS_MS = 5_000L
+    }
+}
+
 /** Where the capture is, of its three steps: the step row under the shutter says it. */
 enum class ScanStep(val label: String) {
     Scan("Scan"),
@@ -214,6 +328,17 @@ object CaptureChrome {
         return label?.let { "$it · $state" } ?: state
     }
 
+    /**
+     * Live Room's second line, what was really captured and nothing it cannot know: the time,
+     * the floor scanned and the points — `0:42 · 6.2 m² floor · 12,345 points`. No share of a
+     * room whose extent the scan does not know.
+     */
+    fun honestDetail(clock: String, floorSquareMetres: Float, points: Int, floorLabel: String, pointsLabel: String): String {
+        val n = points.coerceAtLeast(0)
+        return "$clock · ${ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f))} $floorLabel · " +
+            "${ArDebugFormat.count(n)} $pointsLabel"
+    }
+
     /** The second line: `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured` elsewhere. */
     fun detail(clock: String, walls: Int?, points: Int): String = when {
         walls == null -> "$clock · ${ScanCopy.pointsCaptured(points)}"
@@ -246,4 +371,19 @@ object CaptureChrome {
     fun hapticWaitMs(nowMs: Long, playedAtMs: Long): Long = (HAPTIC_GAP_MS - (nowMs - playedAtMs)).coerceAtLeast(0L)
 
     private const val PERCENT = 100
+}
+
+/**
+ * When the capture's line says the scan looks complete: a room or a home once most of its floor
+ * is covered after a full turn's time, an object or an outdoor area after half a minute.
+ */
+object ScanCompletion {
+    const val ROOM_FLOOR_SHARE = 0.85f
+    const val ROOM_MIN_SECONDS = 20f
+    const val OPEN_MIN_SECONDS = 30f
+
+    fun complete(scope: ScanScope, seconds: Float, floorShare: Float): Boolean = when {
+        scope.hasFloorPlan -> seconds >= ROOM_MIN_SECONDS && floorShare >= ROOM_FLOOR_SHARE
+        else -> seconds >= OPEN_MIN_SECONDS
+    }
 }

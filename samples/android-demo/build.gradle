@@ -181,7 +181,8 @@ android {
         // --download, docs/docs/try.md) — that one must stay the plain demo.
         debug {
             if (!demoPlainDebug) {
-                applicationIdSuffix ".qa"
+                // Isolate device verification from another worktree's QA installation.
+                applicationIdSuffix providers.gradleProperty("demoApplicationIdSuffix").getOrElse(".qa")
                 versionNameSuffix "-qa"
             }
             if (System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE") != null) {

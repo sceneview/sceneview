@@ -1,9 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
 /*
- * The 3D Scan capture lifecycle (#4627), pure so a JVM test holds it: Pause and Resume, Finish
- * opening a review that "Keep scanning" leaves for the same capture, and only "Save scan"
- * ending it. Nothing here touches ARCore.
+ * The 3D Scan capture lifecycle: Done starts saving directly. Back may pause the capture
+ * behind its leave dialog. Nothing here touches ARCore.
  */
 
 /**
@@ -59,8 +58,8 @@ enum class ScanPhase {
         else -> this
     }
 
-    /** Finish: a reversible review, from a capture that is still open. */
-    fun finish(): ScanPhase = if (canKeepScanning) Reviewing else this
+    /** Done freezes new frames and starts saving, with no intermediate review. */
+    fun finish(): ScanPhase = if (canKeepScanning) Saving else this
 
     /** Back asks to leave: a scanning capture pauses behind the dialog, so it records nothing. */
     fun leaveAsked(): ScanPhase = if (this == Scanning) Paused else this

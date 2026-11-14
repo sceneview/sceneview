@@ -7,6 +7,7 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -44,6 +46,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
@@ -62,10 +65,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -77,6 +86,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.ColorGrading
@@ -95,6 +105,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
@@ -124,10 +135,11 @@ import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ResultFilm
 import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.ResultShading
+import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
-import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanOpening
+import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanResultCinematics
 import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
@@ -150,8 +162,10 @@ import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.recording.shareCapture
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.LocalStageChrome
+import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.demo.theme.StageChrome
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.NarrationText
 import io.github.sceneview.demo.ui.narrationBase
@@ -175,6 +189,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -370,10 +385,11 @@ internal fun buildRerunModel(
     onRaw: ((RerunModelBuild) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
     progress: (Float) -> Unit,
 ): RerunModelBuild {
     val started = System.nanoTime()
-    val meshed = mesh(source, progress, reconstruction)
+    val meshed = mesh(source, progress, reconstruction, reconstructionVoxelM)
     val raw = meshed.surface
     val meshedAt = System.nanoTime()
     val photos = when (source) {
@@ -483,9 +499,10 @@ private fun mesh(
     source: RerunModelSource,
     progress: (Float) -> Unit,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
 ): Meshed {
     val started = System.nanoTime()
-    val reconstructed = reconstructedTsdf(source, reconstruction) { progress(it * FUSE_SHARE) }
+    val reconstructed = reconstructedTsdf(source, reconstruction, reconstructionVoxelM) { progress(it * FUSE_SHARE) }
     val tsdf = reconstructed ?: when (source) {
         is RerunModelSource.Live -> checkNotNull(source.tsdf) { "TSDF released" }
         is RerunModelSource.Surfels -> RerunTsdf().also { t ->
@@ -575,6 +592,7 @@ internal fun buildScanModel(
     onRaw: ((RerunScanModel) -> Unit)? = null,
     shown: ByteArray? = null,
     reconstruction: ReconstructionMethod = ReconstructionMethod.Fused,
+    reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
     progress: (Float) -> Unit,
 ): RerunScanModel? {
     val skipMesh = source is RerunModelSource.Synthetic && source.meshFails
@@ -582,7 +600,7 @@ internal fun buildScanModel(
         null
     } else {
         val raw = onRaw?.let { show -> { build: RerunModelBuild -> show(build.scanModel()) } }
-        runCatching { buildRerunModel(source, raw, shown, reconstruction) { progress(it * MESH_PART) } }
+        runCatching { buildRerunModel(source, raw, shown, reconstruction, reconstructionVoxelM) { progress(it * MESH_PART) } }
             .onFailure { if (it is CancellationException) throw it }
             .onFailure { Log.w(TAG, "meshing failed", it) }
             .getOrNull()
@@ -729,6 +747,10 @@ internal fun RerunModelScreen(
     scope: ScanScope = ScanScope.Room,
     surfels: DenseCloud? = null,
     photo: SplatFaces? = null,
+    /** The dimensions the capture last showed: the result shows the same, not a second measure. */
+    capturedMeasure: RoomMeasure? = null,
+    /** The live model as its capture last drew it: the stage shows it until the model takes over. */
+    openingPhoto: ScanStill? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -768,8 +790,16 @@ internal fun RerunModelScreen(
                         value = ModelState.Ready(surface, final = false)
                     }
                 }
-                // The default finish, never asked first: the result opens on the model.
-                runCatching { buildScanModel(from, raw, retry?.glb, ReconstructionMethod.Fused, report) }
+                // Close measured gaps with the bounded Poisson reconstruction (#4805).
+                // It falls back to fused depth when no oriented cloud fits the budget.
+                runCatching {
+                    buildScanModel(from, raw, retry?.glb,
+                        reconstruction = if (scope.hasFloorPlan) ReconstructionMethod.Poisson else ReconstructionMethod.Fused,
+                        // Room depth is sparse: a 5 cm grid bridges small floor gaps and costs
+                        // less than the fine solve. Object and outdoor scans keep fused detail.
+                        reconstructionVoxelM = 0.05f,
+                        progress = report)
+                }
                     .onFailure { if (it is CancellationException) throw it }
                     .onFailure { Log.w(TAG, "model build failed", it) }
                     .getOrNull()
@@ -810,8 +840,15 @@ internal fun RerunModelScreen(
     // The ground it stands on (#4719), read off the model's own vertices once the model is settled,
     // never beside a big scan's finish ([groundSource]). Until the next settles, the last one stays.
     val groundModel = groundSource(model, settled)
-    val ground by produceState<GroundBuild?>(null, groundModel) {
-        groundModel?.let { built -> value = withContext(Dispatchers.Default) { groundOf(built) } }
+    // Before it, the capture's own points give the floor (2026-11-13): the grid and the room's
+    // dimensions stand under the Photo layer from its first frame, as they stood under the capture.
+    val ground by produceState<GroundBuild?>(null, groundModel, surfels) {
+        val built = groundModel
+        if (built != null) {
+            value = withContext(Dispatchers.Default) { groundOf(built) }
+        } else if (value == null && surfels != null) {
+            value = withContext(Dispatchers.Default) { groundOf(surfels) }
+        }
     }
     // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
     // out, never drawn but for More › Measure. The coverage is the capture's to show now.
@@ -879,25 +916,26 @@ internal fun RerunModelScreen(
     val instance = rendered.instance
     // The slow turn the result opens on (ScanResultTurntable), until the first touch; never
     // under reduced motion, nor in QA mode's still pictures unless their motion is asked for.
-    val spins = (LocalMotionEnabled.current && !DemoSettings.qaMode) || DemoSettings.qaMotion
+    val spins = false // The result moves only after a gesture or an explicit Video / Plan action.
     val turntable = remember(stageKey, spins) { ScanResultTurntable().also { if (!spins) it.stop() } }
     // Which sides of the room its dimensions are written on: the two the camera faces.
     val facing = remember(id ?: source) { FacingSides() }
     // No drift and no reveal: the camera opens on the frame and holds still there until the user
     // moves it, its pitch between a look across and the plan's look down. Kept across a source
     // that arrives for a scan already shown, whose finish is run again.
-    val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES) }
+    val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES, allowPan = false, maxCoastDegrees = 8f) }
     // 3D ↔ Plan, the one camera move, and only when the user asks for it; a touch cuts it short.
     // A result that opens on its Photo layer is entered from inside the place, then seen whole
     // ([ScanOpening]); one that opens on its model stays on its framing, as before.
-    val entersLow = preview != null && (LocalMotionEnabled.current || DemoSettings.qaMotion)
+    val entersLow = false
     val cinematics = remember(orbit, entersLow) {
         ScanResultCinematics(orbit, reveals = entersLow, entrance = ScanOpening::path)
     }
     // Read live by the framing below, so a toggle and the frame that flies to it agree.
     var plan by remember(stageKey) { mutableStateOf(false) }
-    // More › Measure: the grid, the slab and the room's dimensions, off until asked for.
-    var measuring by remember(stageKey) { mutableStateOf(false) }
+    // The grid, the slab and the room's dimensions: a room's result opens with them, as its capture
+    // showed them; More › Measure takes them away and back.
+    var measuring by remember(stageKey) { mutableStateOf(scope.hasFloorPlan) }
     var more by remember { mutableStateOf(false) }
     var shown by remember(stageKey) { mutableStateOf(false) }
     // The dark stage's floor pool waits for the camera to rise: from the low entrance it is seen
@@ -941,9 +979,9 @@ internal fun RerunModelScreen(
         started = shown && !wirePending && instance != null && !layers.photoShown,
         animate = animateReveal,
     )
-    // The model, finished and its wire read, takes the Photo preview's place — and is revealed.
+    // The first mesh takes over from Photo as soon as it can draw. Texturing refines it in place.
     LaunchedEffect(layers, settled, instance, wirePending, filming) {
-        if (layers.handsOverToModel(modelReady = settled && instance != null && !wirePending, busy = filming)) {
+        if (layers.handsOverToModel(modelReady = instance != null && !wirePending, busy = filming)) {
             layers.photoPicked = false
         }
     }
@@ -969,12 +1007,13 @@ internal fun RerunModelScreen(
     }
     var renaming by remember { mutableStateOf(false) }
     val rename = onRename?.let { { renaming = true } }
-    val measure = rescan?.measure
+    val measure = capturedMeasure ?: rescan?.measure
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
         themedStage = true,
+        sceneChrome = StageChrome.Media,
         // Reset and feedback in the identity row's ⋮: the bar holds the scan's three actions only.
         actionsMenu = true,
         topOverlay = { ScanNameCard(title = title, saved = id != null && settled, onRename = rename) },
@@ -1084,7 +1123,14 @@ internal fun RerunModelScreen(
             ),
         ),
     ) {
-        val chrome = LocalStageChrome.current
+        // The capture's scene, kept (2026-11-13): the model stands on the same dark stage in both
+        // themes, its grid and dimensions with it, so Finish never cuts to another room. Only the
+        // controls round it — the name card, the layer pill and the bar — follow the app theme.
+        val chrome = StageChrome.Media
+        RequestLightStatusBarIcons()
+        // The floor's slab and every colour the scene reads from the theme: the dark one's.
+        SceneViewDemoTheme(darkTheme = true) {
+        CompositionLocalProvider(LocalStageChrome provides chrome) {
         val environment = rememberModelEnvironment(engine, chrome.ground)
         val darkStage = chrome.ground.luminance() < HALF_LUMINANCE
         val shadowPool = remember { radialPool(LightingStage.FLOOR_COLOR) }
@@ -1133,8 +1179,10 @@ internal fun RerunModelScreen(
             val elevation = ScanResultFraming.elevation(scope)
             val offset = ScanResultFraming.offset(scope)
             val squareOn = scope != ScanScope.Object
-            val shownFrame = remember(frame, cuts, squareOn, elevation, aspect, area, fov) {
-                val drawnFrame = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+            val shownFrame = remember(frame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
+                val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+                // The dimensions stand outside the walls: a room measured keeps room for them.
+                val drawnFrame = if (measuring && squareOn) cut?.padded(MEASURE_MARGIN_M) else cut
                 if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
             }
             val view3d = remember(shownFrame, elevation, offset, aspect, area, fov) {
@@ -1336,16 +1384,34 @@ internal fun RerunModelScreen(
                 },
                 label = "veil",
             )
+            var veilOrigin by remember { mutableStateOf(Offset.Zero) }
             if (veil > 0f) {
                 Box(
                     Modifier
                         .matchParentSize()
                         .alpha(veil)
                         .background(chrome.ground)
-                        .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG)),
-                )
+                        .then(if (shown) Modifier else Modifier.testTag(RERUN_MODEL_VEIL_TAG))
+                        .onGloballyPositioned { veilOrigin = it.positionInWindow() },
+                ) {
+                    // Laid back where the capture drew it, pixel for pixel: the room does not jump.
+                    openingPhoto?.let { still ->
+                        val at = still.bounds.translate(-veilOrigin)
+                        val density = LocalDensity.current
+                        Image(
+                            still.bitmap.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier
+                                .offset { IntOffset(at.left.roundToInt(), at.top.roundToInt()) }
+                                .size(with(density) { at.width.toDp() }, with(density) { at.height.toDp() }),
+                        )
+                    }
+                }
             }
             ResultLayerVeil(layers, chrome.ground, Modifier.matchParentSize())
+        }
+        }
         }
     }
     if (renaming && onRename != null) {
@@ -1611,6 +1677,13 @@ private fun groundOf(model: RerunScanModel): GroundBuild? = runCatching {
     }
 }.onFailure { Log.w(TAG, "ground failed", it) }.getOrNull()
 
+/** [cloud]'s ground, `null` without normals or a floor in it. Off the main thread. */
+private fun groundOf(cloud: DenseCloud): GroundBuild? = runCatching {
+    val normals = cloud.normals ?: return@runCatching null
+    val ground = ScanGround.of(cloud.positions, normals, cloud.count) ?: return@runCatching null
+    GroundBuild(ground, ScanGroundMeshes.of(ground))
+}.onFailure { Log.w(TAG, "capture ground failed", it) }.getOrNull()
+
 /** The one-line gesture hint, a pill that leaves after a few seconds. */
 @Composable
 private fun ModelHint(text: String, modifier: Modifier = Modifier) {
@@ -1680,6 +1753,9 @@ internal const val RERUN_MODEL_MORE_TAG = "rerun_model_more"
 internal const val RERUN_MODEL_VEIL_TAG = "rerun_model_veil"
 private const val MILLIS_PER_SECOND = 1000f
 
+/** Floor kept round a measured room's frame for the dimensions outside its walls: line and label. */
+private const val MEASURE_MARGIN_M = 0.7f
+
 /** The longest the model's build waits for the Photo preview to be seen before it starts anyway. */
 private const val PREVIEW_HEAD_START_MS = 3_000L
 
@@ -1748,21 +1824,21 @@ private const val KB = 1024
 private const val NS_PER_MS = 1_000_000L
 
 /**
- * A depth-fused voxel meshes once two medium-confidence views (or one sure one) agree on it:
- * twice the marching cubes' default, so the voxels seen once at the edge of the view or through
- * a window leave no veil on the finished model.
+ * Keep measured, medium-confidence boundary voxels too: requiring a full weight at all eight
+ * corners erased strips between adjacent observations on short scans. Unobserved corners
+ * still cannot mesh; component cleanup removes isolated sensor noise.
  */
-private const val FRAMES_MIN_WEIGHT = 1f
+private const val FRAMES_MIN_WEIGHT = RerunMarchingCubes.DEFAULT_MIN_WEIGHT
 private const val FUSE_SHARE = 0.3f
 
 /** Where meshing ends on the progress bar: finishing the model ([CleanModel]) takes the rest. */
 private const val MESH_SHARE = 0.45f
 
 /**
- * A raw surface this big is shown while it finishes: a Pixel 4a took 23.5 s to finish 192k
- * triangles, so from about this size the finish passes the 20 s a result may keep the user waiting.
+ * Every nonempty surface is shown while it finishes. Even a small room takes several seconds
+ * to clean and texture on a Pixel 4a; triangle count is not a reliable proxy for that wait.
  */
-internal const val RAW_FIRST_TRIANGLES = 120_000
+internal const val RAW_FIRST_TRIANGLES = 1
 private const val ATLAS_JPEG_QUALITY = 85
 
 /** The mesh's share of the progress bar; the points fallback, when needed, takes the rest. */

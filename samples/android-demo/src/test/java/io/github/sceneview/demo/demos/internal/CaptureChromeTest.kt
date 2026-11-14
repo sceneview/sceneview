@@ -148,4 +148,13 @@ class CaptureChromeTest {
         assertEquals(CaptureChromeState(ScanBlocker.Full, false), CaptureChromeState.of(CaptureCue.Blocked(ScanBlocker.Full), false))
         assertEquals(CaptureChromeState(null, true), CaptureChromeState.of(CaptureCue.Next(ScanCopy.ROOM_DONE), true))
     }
+
+    @Test
+    fun `Live Room's line says the time, the floor and the points, never a share`() {
+        val line = CaptureChrome.honestDetail("0:42", 6.24f, 12_345, "floor", "points")
+        assertTrue(line, line.startsWith("0:42 · 6.2 m² floor · "))
+        assertTrue(line, line.endsWith(" points"))
+        assertFalse(line, "%" in line)
+        assertTrue(CaptureChrome.honestDetail("0:01", 0f, 1, "floor", "point").endsWith("0.0 m² floor · 1 point"))
+    }
 }

@@ -411,10 +411,10 @@ object DenseSurfels {
     const val MAX_SCREEN_SIDE = 0.25f
 
     /**
-     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height, about the largest a finest
-     * surfel is drawn (at [NEAR_FADE_M]). A surfel the map coarsened keeps its width in the room,
-     * so a wall past about a metre stays whole at every level; nearer, it shrinks to the size of a
-     * fine one instead of growing into a square over the camera.
+     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height. Surfels keep their width in
+     * the room, so what the scan has captured reads as a coat on the world (2026-11-13, Thomas:
+     * the capture must show, at a glance, what is taken), and only a surfel right by the lens is
+     * capped.
      */
     const val LIVE_MAX_SCREEN_SIDE = 0.1f
 
@@ -467,13 +467,20 @@ object DenseSurfels {
     /**
      * Two triangles and four vertices per surfel, surfel `i` at indices `6i until 6i + 6`; a
      * surfel of level L ([DenseCloud.levelOf]) 2^L times as wide, so a coarsened wall stays whole.
+     * [levelCap] stops that growth: past it, a coarse surfel is drawn as wide as one of that
+     * level, so a thinly seen wall reads as scattered points rather than as large tiles.
      */
-    fun mesh(cloud: DenseCloud, voxelM: Float): DebugMesh {
+    fun mesh(
+        cloud: DenseCloud,
+        voxelM: Float,
+        halfSideVoxels: Float = HALF_SIDE_VOXELS,
+        levelCap: Int = DenseFusion.LEVEL_LIMIT,
+    ): DebugMesh {
         val n = minOf(cloud.count, MAX_SURFELS)
         val mesh = DebugMesh(maxOf(n * 4, 1))
         val normals = cloud.normals
         for (i in 0 until n) {
-            val half = voxelM * HALF_SIDE_VOXELS * (1 shl cloud.levelOf(i).coerceAtMost(DenseFusion.LEVEL_LIMIT))
+            val half = voxelM * halfSideVoxels * (1 shl cloud.levelOf(i).coerceAtMost(minOf(levelCap, DenseFusion.LEVEL_LIMIT)))
             val x = cloud.positions[i * 3]
             val y = cloud.positions[i * 3 + 1]
             val z = cloud.positions[i * 3 + 2]
@@ -506,4 +513,11 @@ object DenseSurfels {
 
     /** The atlas's RGBA bytes: surfel `i` is texel `i`, row-major; no colour → [fallback]. */
     fun atlas(cloud: DenseCloud, fallback: Int): ByteArray = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
+
+    /**
+     * The half side, in voxels, the capture draws a surfel at over the camera: the saved size,
+     * so in the camera window the captured points sit on the world as fine points, never as a
+     * coat of tiles (2026-11-13, Thomas: « carreaux », « c'est horrible »).
+     */
+    const val LIVE_HALF_SIDE_VOXELS = HALF_SIDE_VOXELS
 }

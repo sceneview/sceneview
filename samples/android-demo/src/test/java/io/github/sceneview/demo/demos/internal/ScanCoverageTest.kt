@@ -237,33 +237,35 @@ class ScanCoachTest {
     }
 
     @Test
-    fun `a walk over the photos' pace is told to slow down, one under it is not`() {
+    fun `a hurried walk is told to slow down, a normal scan walk is not`() {
+        // 2026-11-13: 0.6 m/s warned through every recorded slow walk; a ~1 m/s walk says nothing.
         val brisk = ScanCoach()
-        brisk.walk(speed = 0.7f, seconds = 3f, grow = true)
+        brisk.walk(speed = 1.8f, seconds = 3f, grow = true)
         assertEquals(ScanCoach.Line.Slower, brisk.line)
         val calm = ScanCoach()
-        calm.walk(speed = 0.5f, seconds = 3f, grow = true)
+        calm.walk(speed = 1f, seconds = 3f, grow = true)
         assertNull(calm.line)
     }
 
     @Test
     fun `a fast turn on the spot is told to slow down, a calm one is not`() {
         val whip = ScanCoach()
-        assertEquals(1, whip.turn(seconds = 3f) { 70f })
+        assertEquals(1, whip.turn(seconds = 3f) { 120f })
         assertEquals(ScanCoach.Line.Slower, whip.line)
+        // A deliberate sweep, 90 degrees in a second, is not told off.
         val pan = ScanCoach()
-        assertEquals(0, pan.turn(seconds = 3f) { 50f })
+        assertEquals(0, pan.turn(seconds = 3f) { 90f })
         assertNull(pan.line)
     }
 
     @Test
     fun `a turn hovering round the cap comes on once, not every hold`() {
-        // 55 to 65 degrees a second, a two-second swing, for twenty seconds.
+        // 95 to 105 degrees a second, a two-second swing, for twenty seconds.
         val coach = ScanCoach()
-        val onsets = coach.turn(seconds = 20f) { t -> 60f + 5f * kotlin.math.sin(t * kotlin.math.PI.toFloat()) }
+        val onsets = coach.turn(seconds = 20f) { t -> 100f + 5f * kotlin.math.sin(t * kotlin.math.PI.toFloat()) }
         assertEquals(1, onsets)
         // Without the way out under the cap, the same turn flashed the line again and again.
-        assertTrue(ScanCoach.EXIT_SHARE < 55f / 65f)
+        assertTrue(ScanCoach.EXIT_SHARE < 95f / 105f)
     }
 
     @Test

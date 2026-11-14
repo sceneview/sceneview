@@ -465,6 +465,7 @@ internal class ScanCapture private constructor(
             events
         }
         val denseMs = (System.nanoTime() - started) / 1_000_000
+        Log.i(LOG_TAG, "saved cloud ${cloud?.count ?: 0} of ${map?.fusion?.count ?: 0} voxels in $denseMs ms")
         // The tier the scan really reached: raw depth on but no surfel is a sparse scan, said so.
         val device = ScanDevice(
             platform = "android",
@@ -473,7 +474,8 @@ internal class ScanCapture private constructor(
             depthSource = if (cloud != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
         val camera = "${RerunScanCamera.line}; images ${intrinsics.width}x${intrinsics.height}"
-        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera)
+        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera,
+            bakePlanes = cloud == null)
             .also { model?.keepFor(it) }
     }
 

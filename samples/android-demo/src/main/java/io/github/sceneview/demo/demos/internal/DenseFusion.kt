@@ -158,7 +158,42 @@ class DenseFusion(
      * it, every n-th voxel, so a capped cloud still covers the whole room — thinner — rather
      * than the corner scanned first.
      */
-    fun cloud(limit: Int = count, minViews: Int = 1, maxPoints: Int = Int.MAX_VALUE): DenseCloud {
+    fun cloud(limit: Int = count, minViews: Int = 1, maxPoints: Int = Int.MAX_VALUE): DenseCloud =
+        cloudOf(limit, maxPoints) { views[it] >= minViews }
+
+    /**
+     * The cloud a saved scan keeps ([savedMask]): every voxel [MIN_VIEWS] depth frames saw, and
+     * the ones a single frame saw that lie on a surface.
+     */
+    fun savedCloud(): DenseCloud {
+        val keep = savedMask()
+        return cloudOf(count, Int.MAX_VALUE) { keep[it] }
+    }
+
+    /**
+     * Which voxels a saved scan keeps: those [MIN_VIEWS] depth frames saw, and those one frame saw
+     * with at least [SURFACE_NEIGHBOURS] of their 26 neighbours held too — a wall or a bed one
+     * pass swept, which the live view showed (2026-11-13: a Pixel 4a fuses one depth frame in
+     * ten, and three quarters of a room was seen once). A voxel alone in the air, the dust a noisy
+     * frame leaves, has none and stays out.
+     */
+    fun savedMask(): BooleanArray = BooleanArray(count) { views[it] >= MIN_VIEWS || onSurface(it) }
+
+    private fun onSurface(index: Int): Boolean {
+        val key = voxelKeys[index]
+        val level = levelOf(key).toLong() shl LEVEL_SHIFT
+        val a = axis(key, 2 * AXIS_BITS)
+        val b = axis(key, AXIS_BITS)
+        val c = axis(key, 0)
+        var held = 0
+        for (da in -1..1) for (db in -1..1) for (dc in -1..1) {
+            if (da == 0 && db == 0 && dc == 0) continue
+            if (find(pack(a + da, b + db, c + dc) or level) >= 0 && ++held >= SURFACE_NEIGHBOURS) return true
+        }
+        return false
+    }
+
+    private inline fun cloudOf(limit: Int, maxPoints: Int, keeps: (Int) -> Boolean): DenseCloud {
         val first = limit.coerceIn(0, count)
         val cap = minOf(first, maxPoints.coerceAtLeast(0))
         val stride = if (cap == 0) 1 else (first + cap - 1) / cap
@@ -166,7 +201,7 @@ class DenseFusion(
         var n = 0
         var i = 0
         while (i < first && n < cap) {
-            if (views[i] >= minViews) kept[n++] = i
+            if (keeps(i)) kept[n++] = i
             i += stride
         }
         val positions = FloatArray(n * 3)
@@ -466,10 +501,19 @@ class DenseFusion(
      * [minViews] had been found by that frame: the prefix of the saved cloud a replay shows then.
      * A compaction merges voxels, so a count taken during the scan no longer is that prefix.
      */
-    fun revealCounts(atFrames: IntArray, minViews: Int = MIN_VIEWS): IntArray {
+    fun revealCounts(atFrames: IntArray, minViews: Int = MIN_VIEWS): IntArray =
+        revealCountsOf(atFrames) { views[it] >= minViews }
+
+    /** [revealCounts] of [savedCloud]: what a replay of a saved scan shows by each of [atFrames]. */
+    fun savedRevealCounts(atFrames: IntArray): IntArray {
+        val keep = savedMask()
+        return revealCountsOf(atFrames) { keep[it] }
+    }
+
+    private inline fun revealCountsOf(atFrames: IntArray, keeps: (Int) -> Boolean): IntArray {
         val found = IntArray(count)
         var n = 0
-        for (i in 0 until count) if (views[i] >= minViews) found[n++] = firstView[i]
+        for (i in 0 until count) if (keeps(i)) found[n++] = firstView[i]
         found.sort(0, n)
         return IntArray(atFrames.size) { upperBound(found, n, atFrames[it]) }
     }
@@ -757,6 +801,12 @@ class DenseFusion(
          * saw is most often that frame's noise.
          */
         const val MIN_VIEWS = 2
+
+        /**
+         * Neighbours of its 26 a voxel one depth frame saw needs held for a saved scan to keep it
+         * ([savedMask]): a surface gives 8 and more, a speck in the air none.
+         */
+        const val SURFACE_NEIGHBOURS = 4
 
         /** The fewest voxels [budgetFor] gives, and the most. */
         const val MIN_BUDGET = 250_000

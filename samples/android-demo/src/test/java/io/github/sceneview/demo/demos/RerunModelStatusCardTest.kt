@@ -110,8 +110,8 @@ class RerunModelStatusCardTest {
     )
 
     private companion object {
-        const val FINISHING = "Finishing your model…"
-        const val FINISHED = "Your model is finished."
+        const val FINISHING = "Cleaning up walls and floor · step 2 of 2"
+        const val FINISHED = "Your model is ready."
         const val CARD_WIDTH = 240
         const val PROBE = "status-probe"
         const val BOUNDS = 6

@@ -134,7 +134,8 @@ class ScanHonestCoachCorpusTest {
         // The coach: the whip pan is told off now, the calm walk still is not.
         assertTrue(result.toString(), result.after.coach.shakyCoached > result.before.coach.shakyCoached)
         assertEquals(result.toString(), 0, result.after.coach.falseOnsets)
-        assertTrue(result.toString(), result.after.coach.onsets >= 2)
+        // With the raised caps (1.5 m/s, 100°/s, 2026-11-13) the whip pan is told once, not twice.
+        assertTrue(result.toString(), result.after.coach.onsets >= 1)
         // Over the walk, the merged far floor no longer turns red.
         assertEquals(result.toString(), 0, result.walk.falseAfter)
     }

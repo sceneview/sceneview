@@ -108,15 +108,12 @@ class ScanLensTest {
     }
 
     @Test
-    fun `paused, the view keeps the phone's eye, saving hands it to the saving orbit`() {
-        assertTrue(ScanLens.seesThroughPhone(tracking = true, ScanPhase.Scanning))
-        // Paused, the eye stays the live phone: the cloud stays put and resuming does not jump.
-        assertTrue(ScanLens.seesThroughPhone(tracking = true, ScanPhase.Paused))
-        assertTrue(ScanLens.seesThroughPhone(tracking = true, ScanPhase.Reviewing))
-        assertFalse(ScanLens.seesThroughPhone(tracking = true, ScanPhase.Saving))
-        assertFalse(ScanLens.seesThroughPhone(tracking = false, ScanPhase.Scanning))
+    fun `the phone's eye is the capture's view while tracking, saving included`() {
+        // No virtual camera takes over at any phase: the capture always sees through the phone.
+        assertTrue(ScanLens.seesThroughPhone(tracking = true))
+        assertFalse(ScanLens.seesThroughPhone(tracking = false))
 
-        // Invalidated as the save starts, the orbit's own pose takes over again.
+        // Invalidated when tracking is lost, the orbit's own pose takes over again.
         val lens = lens()
         val orbit = following(lens)
         assertTrue(orbit.inFirstPerson)

@@ -460,17 +460,18 @@ class ScanCoach(
         const val HOLD_SECONDS = 2.1f
 
         /**
-         * Faster than this, smoothed, frames smear: a step above [ScanPhotoPolicy.MAX_SPEED_MPS],
-         * the most a sharp photo is taken at, so a pace the photos take is never told off. A
-         * stroll is 1 m/s.
+         * The capture's warning threshold, not the photo-selection limit. The old 0.6 m/s
+         * warned through a normal slow walk. 1.5 m/s leaves headroom above a ~1 m/s scan walk;
+         * the existing 0.5 s smoothing rejects hand tremor and the 80% exit threshold prevents
+         * flicker. Sharp-photo selection keeps its own stricter policy unchanged.
          */
-        const val MAX_SPEED_M_PER_S = 0.6f
+        const val MAX_SPEED_M_PER_S = 1.5f
 
         /**
-         * Turning faster than this, smoothed, smears the frames more than any walk: a step above
-         * [ScanPhotoPolicy.MAX_TURN_DEGREES_PER_SECOND], the most a sharp photo is taken at.
+         * A deliberate 90° sweep over a second should not warn. Above 100°/s, after smoothing,
+         * ask for a slower turn; photo selection still independently rejects blurred frames.
          */
-        const val MAX_TURN_DEGREES_PER_S = 60f
+        const val MAX_TURN_DEGREES_PER_S = 100f
 
         /** "Slower" goes once the speed and the turn are both under this share of their caps. */
         const val EXIT_SHARE = 0.8f

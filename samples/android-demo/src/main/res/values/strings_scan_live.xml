@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="scan_capture_back">Back</string>
+    <string name="scan_capture_done">Done</string>
+    <string name="scan_capture_next_room">Next room</string>
+    <string name="scan_capture_pause">Pause</string>
+    <string name="scan_capture_resume">Resume</string>
+    <string name="scan_capture_finish">Finish scan</string>
+    <string name="scan_capture_finish_short">Finish</string>
+    <string name="scan_capture_paused">Paused · nothing is captured</string>
+    <string name="scan_capture_camera">What the camera sees</string>
+    <string name="scan_capture_figures">%1$s · %2$s scanned</string>
+    <string name="scan_capture_starting">Move your phone slowly to start</string>
+    <string name="scan_capture_go_back">Go back to where you were</string>
+    <string name="scan_capture_stuck">Still lost. Tap the red button to keep this scan, or go back to restart</string>
+    <string name="scan_capture_slower">Move a little slower</string>
+    <string name="scan_capture_more_light">More light needed</string>
+    <string name="scan_capture_sweep">Sweep the floor and the walls</string>
+    <string name="scan_capture_keep_going">Keep going slowly, all around the room</string>
+    <string name="scan_capture_keep_going_object">Keep circling the object, slowly</string>
+    <string name="scan_capture_keep_going_outdoor">Keep walking slowly, the ground in view</string>
+    <string name="scan_capture_walls">Raise your phone to the walls</string>
+    <string name="scan_capture_hole_ahead">Keep going ahead, nothing scanned there yet</string>
+    <string name="scan_capture_hole_left">Turn left, nothing scanned there yet</string>
+    <string name="scan_capture_hole_right">Turn right, nothing scanned there yet</string>
+    <string name="scan_capture_hole_behind">Turn around, nothing scanned behind you yet</string>
+    <string name="scan_capture_complete">Looks complete. Tap the red button to finish</string>
+    <string name="scan_capture_saving">Saving your scan…</string>
+    <string name="scan_capture_live_model">Your scan · Live 3D</string>
+    <string name="scan_capture_sweep_object">Move slowly around the object</string>
+    <string name="scan_capture_sweep_outdoor">Move slowly with the ground in view</string>
+    <string name="scan_capture_between_rooms">Room saved. Move to the next room, then tap Start.</string>
+    <string name="scan_capture_photos_only">This phone captures photos and feature points, without a dense surface.</string>
+</resources>

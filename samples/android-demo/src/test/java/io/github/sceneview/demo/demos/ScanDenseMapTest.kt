@@ -47,7 +47,9 @@ class ScanDenseMapTest {
         assertTrue("it did make room, and said so", ScanDetail.Adjusting in seen)
         assertFalse(ScanCopy.SCAN_FULL in shown)
         assertTrue(ScanCopy.ADJUSTING_DETAIL in shown)
-        assertEquals(dense.savedCloud().count, last)
+        // The count is the confirmed voxels; the saved scan keeps them and the surfaces one frame swept.
+        assertEquals(dense.fusion.cloud(minViews = DenseFusion.MIN_VIEWS).count, last)
+        assertTrue(dense.savedCloud().count >= last)
         assertTrue(dense.fusion.count <= DenseFusion.MIN_BUDGET)
         val live = dense.live!!.cloud.count
         assertTrue("the live card draws at most its own share: $live", live in 1..ScanDenseMap.LIVE_MAX_SURFELS)

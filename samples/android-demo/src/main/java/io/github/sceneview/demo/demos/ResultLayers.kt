@@ -193,6 +193,12 @@ internal fun rememberResultLayers(
             prebuilt?.takeIf { it.all.count > 0 }?.let {
                 layers.faces = it
                 layers.splats = it.all
+                if (photoFirst) {
+                    // A scan handed over from its live model is already whole. Keep it visible
+                    // instead of replaying its growth from an empty stage after Done.
+                    layers.photoShown = true
+                    layers.grown = 1f
+                }
             }
         }
     }
@@ -492,7 +498,7 @@ private const val NOT_READY_ALPHA = 0.38f
 internal const val RESULT_LAYERS_TAG = "result-layers"
 
 /** How far the stage colour comes up at the swap: the room stays faintly seen through it. */
-internal const val VEIL_PEAK = 0.9f
+internal const val VEIL_PEAK = 0.35f
 
 /** Face filters [ResultLayers.shownOf] keeps: the one drawn and the one an orbit back returns to. */
 private const val SHOWN_FILTERS = 2

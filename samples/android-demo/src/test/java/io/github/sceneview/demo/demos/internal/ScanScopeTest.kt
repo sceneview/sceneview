@@ -24,13 +24,10 @@ class ScanScopeTest {
     }
 
     @Test
-    fun `the choice offers an object first, then a room, and a home or an area come back as a room`() {
-        assertEquals(listOf(ScanScope.Object, ScanScope.Room), ScanScope.OFFERED)
+    fun `the choice offers all four scopes, an object first, each as itself`() {
+        assertEquals(listOf(ScanScope.Object, ScanScope.Room, ScanScope.Home, ScanScope.Area), ScanScope.OFFERED)
         assertEquals(ScanScope.DEFAULT, ScanScope.OFFERED.first())
-        assertEquals(ScanScope.Object, ScanScope.Object.offered)
-        assertEquals(ScanScope.Room, ScanScope.Room.offered)
-        assertEquals(ScanScope.Room, ScanScope.Home.offered)
-        assertEquals(ScanScope.Room, ScanScope.Area.offered)
+        ScanScope.entries.forEach { assertEquals(it, it.offered) }
         ScanScope.entries.forEach { assertTrue(it.offered in ScanScope.OFFERED) }
         // A session kept before scopes were is still a room's.
         assertEquals(ScanScope.Room, RerunStoredSession.scopeOf(null))

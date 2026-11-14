@@ -29,8 +29,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -52,6 +52,7 @@ import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.RoomSurvey
 import io.github.sceneview.demo.demos.internal.ScanGround
+import io.github.sceneview.demo.demos.internal.room.RoomLevels
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -99,11 +100,27 @@ internal fun rescanOf(source: RerunModelSource?, ground: ScanGround?): RescanBui
     // One survey for both: the zones' walls are the walls the dimensions are read off.
     val survey = RescanSources.surveyOf(cloud)
     val zones = RescanSources.zones(cloud, ground, survey)
-    val measure = survey?.let(ResultFloor::measureOf)
+    // One measure from capture to result (2026-11-13): off the points, squared to the walls, as
+    // the capture measured them, so Finish never changes the figures by metres. The survey's
+    // walls only when the points cannot be read.
+    val measure = pointsMeasure(cloud, ground, survey?.structure?.yaw) ?: survey?.let(ResultFloor::measureOf)
     Log.i(TAG, "${zones.size} zones from ${cloud.count} points in ${(System.nanoTime() - started) / NS_PER_MS} ms")
     zones.forEach { Log.i(TAG, "  $it") }
     if (zones.isEmpty() && measure == null) null else RescanBuild(zones, RescanZoneMesh.of(zones), cloud, measure = measure)
 }.onFailure { Log.w(TAG, "zones failed", it) }.getOrNull()
+
+/**
+ * [cloud]'s width and depth off its points, squared to [wallsYaw] (the survey's walls) or to the
+ * walls its normals face; `null` with neither, or without a floor to read them from.
+ */
+private fun pointsMeasure(cloud: DenseCloud, ground: ScanGround?, wallsYaw: Float?): RoomMeasure? {
+    val yaw = wallsYaw ?: run {
+        val normals = cloud.normals ?: return null
+        val floorY = ground?.floorY ?: return null
+        RoomLevels.yawOf(cloud.positions, normals, floorY)
+    }
+    return RoomMeasure.ofPoints(cloud.positions, yaw)
+}
 
 /**
  * The parts of a recording's scan still to scan, for the views that draw them without a re-scan —

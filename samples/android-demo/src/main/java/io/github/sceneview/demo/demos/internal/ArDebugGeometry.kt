@@ -564,6 +564,12 @@ object ArDebugGeometry {
         if (face) addFrustumFace(out(DebugLayer.FrustumFace), camera, depth, lens)
     }
 
+    /** The phone alone, [depth] deep: its view cone's edges and its tinted face, no keyframe. */
+    fun buildPhone(camera: DebugPose, style: ArDebugStyle, out: (DebugLayer) -> DebugMesh, lens: ReplayLens, depth: Float) {
+        addFrustumEdges(out(DebugLayer.Frustum), camera, depth, style.frustumEdge, lens)
+        addFrustumFace(out(DebugLayer.FrustumFace), camera, depth, lens)
+    }
+
     fun buildMapPoints(points: FloatArray, style: ArDebugStyle, mesh: DebugMesh) {
         val r = style.mapPointRadius
         for (i in 0 until points.size / 3) addTetra(mesh, points[i * 3], points[i * 3 + 1], points[i * 3 + 2], r)
@@ -775,6 +781,23 @@ object ArDebugGeometry {
     }
 
     /**
+     * How far the body of a point cloud ([positions], flat xyz) reaches on the ground from
+     * ([x], [z]): the distance only its [trim] farthest share lies beyond, read on at most
+     * [ROBUST_SAMPLES] points spread across the cloud. `null` under [ROBUST_MIN_POINTS] points.
+     */
+    fun robustReach(positions: FloatArray, x: Float, z: Float, trim: Float = REACH_TRIM): Float? {
+        val count = positions.size / 3
+        if (count < ROBUST_MIN_POINTS) return null
+        val samples = min(count, ROBUST_SAMPLES)
+        val reach = FloatArray(samples) { i ->
+            val index = (i.toLong() * count / samples).toInt()
+            hypot(positions[index * 3] - x, positions[index * 3 + 2] - z)
+        }
+        reach.sort()
+        return reach[samples - 1 - (samples * trim).toInt()].takeIf { it.isFinite() }
+    }
+
+    /**
      * The heading of a room's walls about +Y, in degrees within ±45: the direction its vertical
      * [planes] run along, each weighing as much as it is long — walls a quarter-turn apart agree,
      * which is what makes a room a rectangle. `null` when no wall is long enough to tell.
@@ -820,6 +843,9 @@ object ArDebugGeometry {
     /** The same for a dense cloud, which holds few strays: a wall is more than this of a room. */
     const val DENSE_TRIM = 0.005f
     const val ROBUST_SAMPLES = 4096
+
+    /** The farthest share of a cloud left out of its [robustReach]: strays, not a room's corners. */
+    const val REACH_TRIM = 0.01f
     const val ROBUST_MIN_POINTS = 32
 
     /** A wall shorter than this, seen from above, has no heading worth squaring a map with. */

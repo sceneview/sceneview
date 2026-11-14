@@ -155,7 +155,9 @@ class ScanLiveWallsWholeTest {
                     now / NANOS_PER_S, FloatArray(0), pose, FloatArray(0), FloatArray(0), emptyList(), emptyList(),
                 )
                 walls.observe(frame, coverage, pose, record = null, dense = live)
-                val map = WallExtent.clip(found, pieces(dense.savedCloud().positions), 0f, RerunSyntheticRoom.MAX.y)
+                // The walls are cut on the voxels two depth frames confirmed, the live snapshot's whole map:
+                // a saved scan also keeps once-seen surfaces (DenseFusion.savedMask), which the walls never read.
+                val map = WallExtent.clip(found, pieces(dense.fusion.cloud(minViews = DenseFusion.MIN_VIEWS).positions), 0f, RerunSyntheticRoom.MAX.y)
                 val eyeRoom = walkthrough.roomAt(i)
                 walls.snapshot.walls.forEachIndexed { k, drawn ->
                     val wall = found[k]

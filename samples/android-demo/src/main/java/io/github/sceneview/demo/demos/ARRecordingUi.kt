@@ -353,8 +353,10 @@ internal fun RecordShutter(
     modifier: Modifier = Modifier.fillMaxWidth(),
     // What stopping does, said aloud where it is more than "Stop recording" (3D Scan: "Finish scan").
     stopLabel: String? = null,
+    // Whether stopping is offered yet (3D Scan: not before the capture holds something).
+    stopEnabled: Boolean = true,
 ) {
-    val tappable = isRecording || startEnabled
+    val tappable = if (isRecording) stopEnabled else startEnabled
     val haptic = rememberHapticFeedback()
     val label = if (isRecording && stopLabel != null) {
         stopLabel

@@ -23,10 +23,15 @@ import kotlin.math.roundToInt
  * the model fuses as it always has — and when Poisson has nothing to work from (no surfels
  * with normals) or no grid fits its budget; the model then fuses too.
  */
-internal fun reconstructedTsdf(source: RerunModelSource, method: ReconstructionMethod, progress: (Float) -> Unit): RerunTsdf? {
+internal fun reconstructedTsdf(
+    source: RerunModelSource,
+    method: ReconstructionMethod,
+    voxelM: Float = RerunTsdf.VOXEL_M,
+    progress: (Float) -> Unit,
+): RerunTsdf? {
     if (method != ReconstructionMethod.Poisson) return null
     val cloud = reconstructionCloud(source) ?: return null
-    return ScreenedPoisson.reconstruct(cloud, progress = progress)?.tsdf
+    return ScreenedPoisson.reconstruct(cloud, voxelM = voxelM, progress = progress)?.tsdf
 }
 
 /** What "Filled" ([ReconstructionMethod.Poisson]) can make of a scan, told before it is picked. */
