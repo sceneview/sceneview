@@ -1123,10 +1123,13 @@ fun SceneView(
     // frame from inside the loop, so making it observable would apply a snapshot 60 times a second
     // on every rendering scene — the exact per-frame cost this whole change exists to remove —
     // and it would buy nothing, because the loop is by definition awake while it owes frames.
-    // Only the wake-up needs to be observable, and that is the dirty flag.
-    val shouldRender = remember(currentFrameRatePolicy, frameRateGate) {
+    // Wake-ups observe the dirty flag and pending destroys: even a quiet scene must finish the
+    // queue's grace frames before parking (#4436).
+    val destroyQueue = remember(engine) { EngineDestroyQueue.of(engine) }
+    val shouldRender = remember(currentFrameRatePolicy, frameRateGate, destroyQueue) {
         derivedStateOf {
-            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty
+            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty ||
+                destroyQueue.size > 0
         }
     }
 
