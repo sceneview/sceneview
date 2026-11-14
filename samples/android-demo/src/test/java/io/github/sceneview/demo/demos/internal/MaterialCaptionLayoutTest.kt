@@ -29,4 +29,29 @@ class MaterialCaptionLayoutTest {
         assertEquals(290, compareCaptionWidthPx(500f, 200f, gapPx = 10, minimumWidthPx = 120))
         assertEquals(190, compareCaptionWidthPx(200f, 400f, gapPx = 10, minimumWidthPx = 120))
     }
+
+    @Test
+    fun `anchor well above the cover stays opaque`() {
+        assertEquals(1f, materialCaptionCoverAlpha(400f, 1000f, 300f, 40f), 0f)
+    }
+
+    @Test
+    fun `anchor at or below the cover edge is hidden`() {
+        assertEquals(0f, materialCaptionCoverAlpha(700f, 1000f, 300f, 40f), 0f)
+        assertEquals(0f, materialCaptionCoverAlpha(800f, 1000f, 300f, 40f), 0f)
+    }
+
+    @Test
+    fun `anchor within one caption height of the cover fades`() {
+        val alpha = materialCaptionCoverAlpha(680f, 1000f, 300f, 40f)
+        assertTrue(alpha > 0f && alpha < 1f)
+        assertEquals(0.5f, alpha, 0f)
+        assertEquals(1f, materialCaptionCoverAlpha(660f, 1000f, 300f, 40f), 0f)
+    }
+
+    @Test
+    fun `zero cover leaves captions unchanged even at the bottom`() {
+        assertEquals(1f, materialCaptionCoverAlpha(990f, 1000f, 0f, 40f), 0f)
+        assertEquals(1f, materialCaptionCoverAlpha(1100f, 1000f, 0f, 40f), 0f)
+    }
 }

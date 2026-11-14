@@ -79,6 +79,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialStudio
@@ -86,6 +87,7 @@ import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
@@ -972,6 +974,10 @@ private fun StudioSection(
             // Project ordinary Compose labels from the actual view, so names follow the sweep.
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val density = LocalDensity.current
+                val sceneHeightPx = with(density) { maxHeight.toPx() }
+                val bottomCoverPx = with(density) {
+                    LocalDemoSceneCover.current.calculateBottomPadding().toPx()
+                }
                 val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
                 val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
@@ -1013,7 +1019,7 @@ private fun StudioSection(
                                 .graphicsLayer {
                                     @Suppress("UNUSED_EXPRESSION")
                                     labelFrame
-                                    alpha = if (inspecting) {
+                                    val orbitAlpha = if (inspecting) {
                                         1f
                                     } else {
                                         orbitLabelFadeAlpha(
@@ -1026,6 +1032,13 @@ private fun StudioSection(
                                             ),
                                         )
                                     }
+                                    // Follow the glass during a drag; fade before the anchor reaches it.
+                                    alpha = orbitAlpha * materialCaptionCoverAlpha(
+                                        anchorY = view.worldToScreen(anchor)?.y ?: sceneHeightPx,
+                                        sceneHeightPx = sceneHeightPx,
+                                        bottomCoverPx = bottomCoverPx,
+                                        fadeBandPx = size.height,
+                                    )
                                 }
                                 .then(
                                     if (comparing) Modifier else Modifier
