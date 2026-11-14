@@ -1,0 +1,11 @@
+[
+  {"text":"0:43 · 14 m² floor · 18,714 points", "floor_m2":14.0, "points":18714},
+  {"text":"0:43 · 14.5 m² floor · 18 714 points", "floor_m2":14.5, "points":18714},
+  {"text":"0:43 · 14,5 m² floor · 18 714 points", "floor_m2":14.5, "points":18714},
+  {"text":"0:43 · 0 m² floor · 0 points", "floor_m2":0.0, "points":0},
+  {"text":"12 m2 floor | 1.234.567 points", "floor_m2":12.0, "points":1234567},
+  {"text":"12 m² floor | 18'714 points", "floor_m2":12.0, "points":18714},
+  {"text":"Scan map: 14 m² of floor covered. The hatched part is still to scan.", "floor_m2":14.0, "points":null},
+  {"text":"Scan map: 14,5 m² of floor covered. The hatched part is still to scan. | 1 point captured", "floor_m2":14.5, "points":1},
+  {"text":"Downloading model (43%)", "floor_m2":null, "points":null}
+]
