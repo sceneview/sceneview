@@ -54,16 +54,17 @@ class NodeEditingFeedbackState(
     val isArmed: Boolean get() = isPressed && activeKinds.isEmpty()
 
     /**
-     * Heading of the node around the world-up axis in degrees, `(-180°, 180°]`.
+     * Heading of the node's local quaternion about Y in degrees, `(-180°, 180°]`.
      *
      * Derived from the quaternion with an `atan2`-based extraction that covers the full
      * turn — deliberately **not** `node.rotation.y`, whose Euler decomposition saturates
-     * at ±90°.
+     * at ±90°. This absolute reading wraps at the half-turn; use [rotationDeltaDegrees]
+     * for continuous feedback during a rotation gesture.
      */
     var yawDegrees by mutableFloatStateOf(quaternionYawDegrees(node.quaternion))
         private set
 
-    /** Signed yaw accumulated since the current rotate gesture began, in degrees. */
+    /** Signed rotation accumulated since the current rotate gesture began, in degrees. */
     var rotationDeltaDegrees by mutableFloatStateOf(0f)
         private set
 

@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Editing feedback for grouping nodes ([#3740](https://github.com/sceneview/sceneview/issues/3740)).** Resolve an empty pivot's bounds from its descendants before using a placeholder box. Rotation badges show a signed gesture delta while turning and the absolute heading when selected at rest; rotation and scale badges expose polite accessibility announcements and the decorative canvas stays silent.

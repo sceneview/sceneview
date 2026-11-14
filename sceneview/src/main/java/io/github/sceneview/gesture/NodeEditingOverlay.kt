@@ -41,6 +41,10 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -71,9 +75,9 @@ private fun bothOrNull(a: Float2?, b: Float2?): Pair<Float2, Float2>? =
  *
  * Renders, anchored to [NodeEditingFeedbackState.node] by world→screen projection:
  * - **Selection** (when [selected] and no gesture is active): a white ring around the
- *   node's base.
+ *   node's base and an absolute-heading badge.
  * - **Rotate** (two-finger twist): an accent ring around the base with a live sweep arc
- *   and a yaw-angle badge.
+ *   and a signed rotation-delta badge.
  * - **Scale** (pinch): a live percentage badge above the node that bounces and tints
  *   [NodeEditingOverlayColors.limit] when the pinch presses against
  *   [Node.editableScaleRange].
@@ -161,6 +165,7 @@ fun NodeEditingOverlay(
             modifier = Modifier
                 .matchParentSize()
                 .onSizeChanged { overlaySize = Size(it.width.toFloat(), it.height.toFloat()) }
+                .clearAndSetSemantics { }
         ) {
             val base = anchors.baseInCanvas(size) ?: return@Canvas
             val rx = anchors.radiusXInCanvas(size)
@@ -315,10 +320,16 @@ fun NodeEditingOverlay(
         val badgeBase = anchors.baseInCanvas(overlaySize)
         val badgeTop = anchors.topInCanvas(overlaySize)
 
-        if (showRotation && badgeBase != null && overlaySize != Size.Zero) {
+        if ((showRotation || showSelection) && badgeBase != null && overlaySize != Size.Zero) {
             val ry = anchors.radiusYInCanvas(overlaySize)
+            val angleText = rotationBadgeText(
+                rotating = showRotation,
+                deltaDegrees = state.rotationDeltaDegrees,
+                absoluteDegrees = state.yawDegrees,
+            )
             FeedbackBadge(
-                text = "${state.yawDegrees.roundToInt()}°",
+                text = angleText,
+                description = "Rotation $angleText",
                 textColor = colors.badgeText,
                 background = colors.badgeBackground,
                 border = colors.badgeBorder,
@@ -335,6 +346,7 @@ fun NodeEditingOverlay(
             val atLimit = state.scaleLimit != null
             FeedbackBadge(
                 text = "${state.scalePercent.roundToInt()} %",
+                description = "Scale ${state.scalePercent.roundToInt()} percent",
                 textColor = if (atLimit) colors.limit else colors.badgeText,
                 background = colors.badgeBackground,
                 border = if (atLimit) colors.limit else colors.badgeBorder,
@@ -354,10 +366,21 @@ fun NodeEditingOverlay(
     }
 }
 
+/** Keep the live angle continuous across the absolute heading's ±180° seam. */
+internal fun rotationBadgeText(
+    rotating: Boolean,
+    deltaDegrees: Float,
+    absoluteDegrees: Float,
+): String {
+    val angle = (if (rotating) deltaDegrees else absoluteDegrees).roundToInt()
+    return "${if (rotating && angle > 0) "+" else ""}$angle°"
+}
+
 /** Dark scrim pill with a hairline border — centered horizontally on its offset. */
 @Composable
 private fun FeedbackBadge(
     text: String,
+    description: String,
     textColor: Color,
     background: Color,
     border: Color,
@@ -375,7 +398,11 @@ private fun FeedbackBadge(
                 .offset { IntOffset(-BADGE_HALF_WIDTH_HINT_PX, -BADGE_HALF_HEIGHT_HINT_PX) }
                 .background(background, RoundedCornerShape(50))
                 .border(1.dp, border, RoundedCornerShape(50))
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+                .clearAndSetSemantics {
+                    contentDescription = description
+                    liveRegion = LiveRegionMode.Polite
+                },
         )
     }
 }
@@ -464,27 +491,50 @@ internal class NodeScreenAnchors {
         canvasScale(canvasSize)?.let { radiusY * it.y } ?: 0f
 }
 
-/**
- * Local-space bounds used to anchor the feedback visuals.
- *
- * An empty AABB is a real state for a model whose geometry is not ready yet
- * (`sanitizeEmptyBoundingBoxes`) — fall back to a small default so the ring never
- * collapses to zero.
- */
-private fun Node.localBounds(): Pair<Float3, Float3> {
-    val (center, halfExtent) = when (this) {
+/** Local-space content bounds, falling back only when the entire subtree is empty. */
+private fun Node.localBounds(): Pair<Float3, Float3> =
+    contentBounds() ?: (Float3(0f) to Float3(DEFAULT_HALF_EXTENT))
+
+/** Empty grouping nodes contribute no geometry, but their descendants keep their transforms. */
+private fun Node.contentBounds(): Pair<Float3, Float3>? {
+    if (isDestroyed || (this is ModelNode && isModelDestroyed)) return null
+    val ownBounds = when (this) {
         is ModelNode -> center to halfExtent
         is RenderableComponent -> axisAlignedBoundingBox.let {
             Float3(it.center[0], it.center[1], it.center[2]) to
                 Float3(it.halfExtent[0], it.halfExtent[1], it.halfExtent[2])
         }
-        else -> Float3(0f) to Float3(0f)
+        else -> null
     }
-    return if (halfExtent.x <= 0f && halfExtent.y <= 0f && halfExtent.z <= 0f) {
-        center to Float3(DEFAULT_HALF_EXTENT)
-    } else {
-        center to halfExtent
+    ownBounds?.let { (_, extent) ->
+        if (extent.x > 0f || extent.y > 0f || extent.z > 0f) return ownBounds
     }
+
+    var minimum = Float3(Float.POSITIVE_INFINITY)
+    var maximum = Float3(Float.NEGATIVE_INFINITY)
+    var hasContent = false
+    for (child in childNodes) {
+        val (center, extent) = child.contentBounds() ?: continue
+        val transform = child.transform
+        // Transform all eight corners: translating just the center would lose rotation,
+        // non-uniform scale and reflected axes in the descendant hierarchy.
+        for (corner in 0 until 8) {
+            val offset = Float3(
+                if ((corner and 1) == 0) -extent.x else extent.x,
+                if ((corner and 2) == 0) -extent.y else extent.y,
+                if ((corner and 4) == 0) -extent.z else extent.z,
+            )
+            val point = (transform * Float4(center + offset, 1f)).xyz
+            minimum = Float3(
+                minOf(minimum.x, point.x), minOf(minimum.y, point.y), minOf(minimum.z, point.z),
+            )
+            maximum = Float3(
+                maxOf(maximum.x, point.x), maxOf(maximum.y, point.y), maxOf(maximum.z, point.z),
+            )
+            hasContent = true
+        }
+    }
+    return if (hasContent) (minimum + maximum) * 0.5f to (maximum - minimum) * 0.5f else null
 }
 
 /**
