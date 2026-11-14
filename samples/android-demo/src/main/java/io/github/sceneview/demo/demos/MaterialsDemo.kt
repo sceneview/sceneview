@@ -80,6 +80,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.LocalDemoSceneRestingCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialStudio
@@ -978,6 +979,9 @@ private fun StudioSection(
                 val bottomCoverPx = with(density) {
                     LocalDemoSceneCover.current.calculateBottomPadding().toPx()
                 }
+                val restingBottomCoverPx = with(density) {
+                    LocalDemoSceneRestingCover.current.calculateBottomPadding().toPx()
+                }
                 val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
                 val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
@@ -1032,11 +1036,12 @@ private fun StudioSection(
                                             ),
                                         )
                                     }
-                                    // Follow the glass during a drag; fade before the anchor reaches it.
+                                    // Follow the glass during a drag; fade before the caption bottom reaches it.
                                     alpha = orbitAlpha * materialCaptionCoverAlpha(
-                                        anchorY = view.worldToScreen(anchor)?.y ?: sceneHeightPx,
+                                        captionBottomY = (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
                                         sceneHeightPx = sceneHeightPx,
                                         bottomCoverPx = bottomCoverPx,
+                                        restingBottomCoverPx = restingBottomCoverPx,
                                         fadeBandPx = size.height,
                                     )
                                 }

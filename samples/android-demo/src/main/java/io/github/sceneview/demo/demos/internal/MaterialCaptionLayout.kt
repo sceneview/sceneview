@@ -10,14 +10,15 @@ internal fun compareCaptionWidthPx(
     minimumWidthPx: Int,
 ): Int = (abs(secondAnchorX - firstAnchorX) - gapPx).toInt().coerceAtLeast(minimumWidthPx)
 
-/** Fade above the cover edge so captions do not show through the glass. All distances are pixels. */
+/** Fade caption bottoms before they reach the sheet's glass, leaving resting chrome alone. Distances are pixels. */
 internal fun materialCaptionCoverAlpha(
-    anchorY: Float,
+    captionBottomY: Float,
     sceneHeightPx: Float,
     bottomCoverPx: Float,
+    restingBottomCoverPx: Float,
     fadeBandPx: Float,
 ): Float {
-    if (bottomCoverPx <= 0f) return 1f
+    if (bottomCoverPx <= restingBottomCoverPx) return 1f
     val coverEdgeY = sceneHeightPx - bottomCoverPx
-    return ((coverEdgeY - anchorY) / fadeBandPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    return ((coverEdgeY - captionBottomY) / fadeBandPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
 }
