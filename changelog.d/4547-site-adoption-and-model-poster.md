@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Website adoption proof and model fallback ([#4547](https://github.com/sceneview/sceneview/issues/4547)).** Link the repository count directly to its dated search query, keep the companies heading clear of the fixed header, and restore the selected model's poster and load button when a live model swap fails. Adopter names remain available in the static HTML without JavaScript.

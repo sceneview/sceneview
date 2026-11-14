@@ -318,10 +318,8 @@
         // A later tap replaced this one, or the viewer was parked: someone else owns the stage.
         if (superseded(e) || stage._sv !== sv) return;
         console.warn('[site] model swap failed:', e && e.message);
-        // No model was ever shown: tear the viewer down, as a failed first load does.
-        if (!stage.classList.contains('is-live')) {
-          for (var i = live.length; i--;) if (live[i].sv === sv) park(live.splice(i, 1)[0]);
-        }
+        // Restore the selected poster and load button, as a failed first load does.
+        for (var i = live.length; i--;) if (live[i].sv === sv) park(live.splice(i, 1)[0]);
         stage.classList.remove('is-loading');
       });
     }
