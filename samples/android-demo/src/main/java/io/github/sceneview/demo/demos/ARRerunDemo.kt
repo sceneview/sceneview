@@ -196,6 +196,8 @@ import io.github.sceneview.demo.demos.internal.ScanSaveFailure
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
+import io.github.sceneview.demo.demos.internal.SpaceAnswer
+import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.of
@@ -350,6 +352,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     // The model on screen, once built or read back: what the export sheet writes first.
     var resultModel by remember { mutableStateOf<RerunScanModel?>(null) }
+    // A space's measure, heard from its result screen: what the export sheet writes as JSON.
+    var resultSpace by remember { mutableStateOf<SpaceFit?>(null) }
     // Whether the scan shown has a result screen: the replay's Back returns to it.
     var hasResult by remember { mutableStateOf(modelSource != null) }
 
@@ -857,6 +861,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             photo = scanPhoto?.takeIf { showingScan && it.first === scanMedia }?.second,
             capturedMeasure = scanMeasure.takeIf { showingScan },
             openingPhoto = scanStill.takeIf { showingScan },
+            onSpace = { resultSpace = it },
         )
     }
     val exportable = when (screen) {
@@ -866,7 +871,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     if (exporting && exportable) {
         val onModel = screen == RerunScreen.Model
-        val source = remember(showingScan, scanTitle, scanPack, onModel, resultModel, scanKind, modelSource) {
+        val source = remember(showingScan, scanTitle, scanPack, onModel, resultModel, scanKind, modelSource, resultSpace) {
             val pack = scanPack
             val model = resultModel
             when {
@@ -875,6 +880,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     capture = pack?.let { { it } },
                     model = model?.let { { it } },
                     scope = scanKind,
+                    measurements = resultSpace?.takeIf { onModel }?.let { fit -> { SpaceAnswer.json(fit, scanTitle) } },
                 )
                 // QA: the synthetic room's model, and no recording to go with it.
                 onModel && modelSource is RerunModelSource.Synthetic ->

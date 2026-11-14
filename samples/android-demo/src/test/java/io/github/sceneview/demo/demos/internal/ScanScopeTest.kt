@@ -24,8 +24,11 @@ class ScanScopeTest {
     }
 
     @Test
-    fun `the choice offers all four scopes, an object first, each as itself`() {
-        assertEquals(listOf(ScanScope.Object, ScanScope.Room, ScanScope.Home, ScanScope.Area), ScanScope.OFFERED)
+    fun `the choice offers every scope, from the smallest to the largest, each as itself`() {
+        assertEquals(
+            listOf(ScanScope.Object, ScanScope.Space, ScanScope.Room, ScanScope.Home, ScanScope.Area),
+            ScanScope.OFFERED,
+        )
         assertEquals(ScanScope.DEFAULT, ScanScope.OFFERED.first())
         ScanScope.entries.forEach { assertEquals(it, it.offered) }
         ScanScope.entries.forEach { assertTrue(it.offered in ScanScope.OFFERED) }
@@ -161,6 +164,22 @@ class ScanScopeTest {
         assertEquals(ScanCopy.COACH_PAUSED, ScanScopeCopy.coaching(ScanScope.Home, ScanCopy.COACH_PAUSED))
         assertEquals("1 room", ScanScopeCopy.roomCount(1))
         assertEquals("3 rooms", ScanScopeCopy.roomCount(3))
+    }
+
+    @Test
+    fun `a space is scanned as an object is, at arm's length, and is not a room`() {
+        val space = ScanScope.Space
+        assertEquals(ScanPreset.OBJECT, space.preset)
+        assertTrue(space.closeUp && ScanScope.Object.closeUp)
+        assertFalse(ScanScope.Room.closeUp || ScanScope.Home.closeUp || ScanScope.Area.closeUp)
+        // No floor plan, no map of the ground, no next room.
+        assertFalse(space.hasFloorPlan || space.mapsGround || space.roomByRoom)
+        assertEquals("A space", ScanScopeCopy.title(space))
+        assertEquals("Scan a space", ScanScopeCopy.start(space))
+        assertEquals("Space · Nov 14, 5:40 PM", ScanScopeCopy.sessionTitle(space, 1, "Nov 14, 5:40 PM"))
+        // What it is for is said where it is chosen.
+        assertTrue(ScanScopeCopy.how(space), "inside measurements" in ScanScopeCopy.how(space))
+        assertEquals(space, RerunStoredSession.scopeOf("space"))
     }
 
     @Test

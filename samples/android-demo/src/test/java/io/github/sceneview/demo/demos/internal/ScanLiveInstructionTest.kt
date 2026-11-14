@@ -72,6 +72,17 @@ class ScanLiveInstructionTest {
     }
 
     @Test
+    fun `a space has no turn to make, never completes by itself, and asks sooner`() {
+        // Filmed from its opening: whatever the phone turned, there is no circle to fill.
+        assertEquals(null, ScanCompletion.progress(ScanScope.Space, turnShare = 1f))
+        assertFalse(ScanCompletion.complete(ScanScope.Space, seconds = 120f, floorShare = 1f, turnShare = 1f))
+        assertFalse(ScanCompletion.whenReady(ScanScope.Space, seconds = 14f))
+        assertTrue(ScanCompletion.whenReady(ScanScope.Space, seconds = 15f))
+        // An object is still given its half minute.
+        assertFalse(ScanCompletion.whenReady(ScanScope.Object, seconds = 15f))
+    }
+
+    @Test
     fun `the red button finishes nothing in the first three seconds`() {
         // Two scans of a terrace were saved after 0.8 s and 6.5 s (2026-11-14), one photo in the first.
         assertFalse(ScanCompletion.canFinish(0.8f))

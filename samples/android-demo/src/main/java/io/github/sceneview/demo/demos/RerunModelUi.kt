@@ -146,6 +146,7 @@ import io.github.sceneview.demo.demos.internal.ScanResultFrame
 import io.github.sceneview.demo.demos.internal.ScanResultFraming
 import io.github.sceneview.demo.demos.internal.ScanResultTurntable
 import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.groundSource
 import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.CleanModel
@@ -751,6 +752,8 @@ internal fun RerunModelScreen(
     capturedMeasure: RoomMeasure? = null,
     /** The live model as its capture last drew it: the stage shows it until the model takes over. */
     openingPhoto: ScanStill? = null,
+    /** Hears a space's measure once it is read (`null`: none, or not a space), for the export sheet. */
+    onSpace: (SpaceFit?) -> Unit = {},
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -1008,6 +1011,9 @@ internal fun RerunModelScreen(
     var renaming by remember { mutableStateOf(false) }
     val rename = onRename?.let { { renaming = true } }
     val measure = capturedMeasure ?: rescan?.measure
+    // A space's inside (SpaceResultUi): what its result is for, on a card under the model.
+    val space = rememberSpaceMeasure(scope, surfels)
+    LaunchedEffect(space) { onSpace((space as? SpaceMeasure.Found)?.fit) }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
@@ -1032,6 +1038,7 @@ internal fun RerunModelScreen(
                 }
             }
             val hintAlpha by animateFloatAsState(if (hintShown) 1f else 0f, label = "hint")
+            space?.let { SpaceMeasureCard(it) }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
                 slot?.let { ModelStatusLine(it) }
                 ModelHint(
@@ -1178,7 +1185,7 @@ internal fun RerunModelScreen(
             // the side it shows largest from; an object at a three-quarter on its own front.
             val elevation = ScanResultFraming.elevation(scope)
             val offset = ScanResultFraming.offset(scope)
-            val squareOn = scope != ScanScope.Object
+            val squareOn = !scope.closeUp
             val shownFrame = remember(frame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
                 val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
                 // The dimensions stand outside the walls: a room measured keeps room for them.
@@ -1327,7 +1334,7 @@ internal fun RerunModelScreen(
                     val (x, z) = f.worldCentre
                     val width = f.local[3] - f.local[0]
                     val depth = f.local[5] - f.local[2]
-                    val isObject = scope == ScanScope.Object
+                    val isObject = scope.closeUp
                     val shadowY = f.local[1] + if (isObject) SHADOW_LIFT_M else -SHADOW_DROP_M
                     val spread = if (isObject) SHADOW_SPREAD else ROOM_SHADOW_SPREAD
                     // The image plane's size is baked when it is made: a new box, a new plane.

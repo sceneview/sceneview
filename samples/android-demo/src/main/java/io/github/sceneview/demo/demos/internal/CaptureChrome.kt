@@ -396,6 +396,9 @@ object ScanCompletion {
     const val OBJECT_MIN_SECONDS = 10f
     const val OPEN_MIN_SECONDS = 30f
 
+    /** A space is a few faces at arm's length: a quarter of a minute has filmed them. */
+    const val SPACE_MIN_SECONDS = 15f
+
     /**
      * How long a capture runs before the red button finishes it: a tap meant for the screen
      * before, or a reflex to "start recording", ends nothing (2026-11-14, two scans of a terrace
@@ -405,10 +408,11 @@ object ScanCompletion {
 
     /**
      * The circle's share, `0..1`: [turnShare] ([ScanAllRound.share]), full once the scan is
-     * [complete]; `null` where there is no way round to measure (an outdoor area).
+     * [complete]; `null` where there is no way round to measure: an outdoor area, and a space,
+     * which is filmed from its opening.
      */
     fun progress(scope: ScanScope, turnShare: Float, complete: Boolean = false): Float? = when {
-        scope == ScanScope.Area -> null
+        scope == ScanScope.Area || scope == ScanScope.Space -> null
         complete -> 1f
         else -> turnShare.coerceIn(0f, 1f)
     }
@@ -421,9 +425,11 @@ object ScanCompletion {
 
     /**
      * Whether the line asks if the scan has all it can: outdoors, and round an object that
-     * stands against a wall, the circle never fills, and half a minute holds something to keep.
+     * stands against a wall, the circle never fills, and half a minute holds something to keep;
+     * a space has no circle, and is filmed sooner ([SPACE_MIN_SECONDS]).
      */
-    fun whenReady(scope: ScanScope, seconds: Float): Boolean = !scope.hasFloorPlan && seconds >= OPEN_MIN_SECONDS
+    fun whenReady(scope: ScanScope, seconds: Float): Boolean =
+        !scope.hasFloorPlan && seconds >= if (scope == ScanScope.Space) SPACE_MIN_SECONDS else OPEN_MIN_SECONDS
 
     /** Whether the red button finishes a capture [seconds] long (`null`: no clock, as in a QA state). */
     fun canFinish(seconds: Float?): Boolean = seconds == null || seconds >= FINISH_AFTER_SECONDS

@@ -78,11 +78,13 @@ internal fun ScanInstructionLine(
         ScanInstruction.MoreLight -> R.string.scan_capture_more_light
         ScanInstruction.Sweep -> when (scope) {
             ScanScope.Object -> R.string.scan_capture_sweep_object
+            ScanScope.Space -> R.string.scan_capture_sweep_space
             ScanScope.Area -> R.string.scan_capture_sweep_outdoor
             else -> R.string.scan_capture_sweep
         }
         ScanInstruction.KeepGoing -> when (scope) {
             ScanScope.Object -> R.string.scan_capture_keep_going_object
+            ScanScope.Space -> R.string.scan_capture_keep_going_space
             ScanScope.Area -> R.string.scan_capture_keep_going_outdoor
             else -> R.string.scan_capture_keep_going
         }
@@ -94,6 +96,7 @@ internal fun ScanInstructionLine(
         ScanInstruction.Complete -> R.string.scan_capture_complete
         ScanInstruction.WhenReady -> when (scope) {
             ScanScope.Object -> R.string.scan_capture_when_ready_object
+            ScanScope.Space -> R.string.scan_capture_when_ready_space
             else -> R.string.scan_capture_when_ready_outdoor
         }
         ScanInstruction.Saving -> R.string.scan_capture_saving

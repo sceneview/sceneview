@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AllInbox
 import androidx.compose.material.icons.rounded.Chair
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Home
@@ -93,7 +94,7 @@ internal object ScanScopeStore {
 }
 
 /**
- * The page of the scope choice: a heading, the four kinds offered ([ScanScope.OFFERED], an object
+ * The page of the scope choice: a heading, the kinds offered ([ScanScope.OFFERED], an object
  * first), and the action that starts that scan.
  * The action is pinned at the bottom, above the navigation bar, and the kinds scroll behind it
  * (#4730): it never moves and is never covered, and the last kind scrolls clear above it.
@@ -166,6 +167,7 @@ private fun ScopeCard(scope: ScanScope, selected: Boolean, onClick: () -> Unit) 
 private val ScanScope.icon: ImageVector
     get() = when (this) {
         ScanScope.Object -> Icons.Rounded.Chair
+        ScanScope.Space -> Icons.Rounded.AllInbox
         ScanScope.Room -> Icons.Rounded.MeetingRoom
         ScanScope.Home -> Icons.Rounded.Home
         ScanScope.Area -> Icons.Rounded.Yard

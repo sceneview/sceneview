@@ -52,6 +52,18 @@
     <string name="scan_live_map_swap_camera">Make the camera bigger</string>
     <string name="scan_live_map_swap_map">Make the map bigger</string>
 
+    <!-- A space's result: its inside measurements and the biggest box that fits -->
+    <string name="scan_space_inside">Inside %1$d × %2$d × %3$d cm</string>
+    <string name="scan_space_order">width × depth × height</string>
+    <string name="scan_space_fits">A box of %1$d × %2$d × %3$d cm fits</string>
+    <string name="scan_space_fits_none">Too tight for a box</string>
+    <plurals name="scan_space_obstacles">
+        <item quantity="one">%d thing in the way</item>
+        <item quantity="other">%d things in the way</item>
+    </plurals>
+    <string name="scan_space_none">Couldn\'t measure the inside</string>
+    <string name="scan_space_none_hint">Scan again from the opening: the back, the sides and the bottom.</string>
+
     <!-- Export sheet -->
     <string name="scan_export_title">Export scan</string>
     <string name="scan_export_model">3D model</string>
@@ -62,6 +74,7 @@
     <string name="scan_export_points">Coloured points — PLY</string>
     <string name="scan_export_scan">Original scan — SVSCAN</string>
     <string name="scan_export_recording">Recording — RRD</string>
+    <string name="scan_export_measurements">Inside measurements — JSON</string>
     <string name="scan_export_preparing">Preparing file…</string>
     <string name="scan_export_failed">Couldn\'t create this file</string>
     <!-- The model's row once its file is written, when it is not the light copy as planned (#4334). -->

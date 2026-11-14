@@ -194,13 +194,13 @@ object ScanResultFraming {
     const val WALL_NORMAL_Y = 0.5f
 
     /** The elevation the result opens at for [scope]. */
-    fun elevation(scope: ScanScope?): Float = if (scope == ScanScope.Object) OBJECT_ELEVATION else ROOM_ELEVATION
+    fun elevation(scope: ScanScope?): Float = if (scope?.closeUp == true) OBJECT_ELEVATION else ROOM_ELEVATION
 
     /**
      * How far off the front the result opens for [scope]: an object at a three-quarter, as a
      * product is shot; a room square on its walls, standing straight on the screen.
      */
-    fun offset(scope: ScanScope?): Float = if (scope == ScanScope.Object) THREE_QUARTER else 0f
+    fun offset(scope: ScanScope?): Float = if (scope?.closeUp == true) THREE_QUARTER else 0f
 
     /**
      * The weakest agreement of the walls' normals on one way — the folded mean's length over

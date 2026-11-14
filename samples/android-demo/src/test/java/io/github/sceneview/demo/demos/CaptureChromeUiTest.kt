@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -121,6 +124,22 @@ class CaptureChromeUiTest {
             )
         }
         composeRule.onNodeWithText(text(R.string.scan_capture_when_ready_object)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a space is told what to film inside, with a plain ring`() {
+        var instruction by mutableStateOf(ScanInstruction.Sweep)
+        composeRule.setContent {
+            ScanControls(instruction = instruction, doneEnabled = true, onFinish = {}, scope = ScanScope.Space)
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_sweep_space)).assertIsDisplayed()
+        composeRule.onNodeWithTag(AR_REC_SHUTTER_TAG).assert(
+            SemanticsMatcher.keyNotDefined(SemanticsProperties.ProgressBarRangeInfo),
+        )
+        instruction = ScanInstruction.KeepGoing
+        composeRule.onNodeWithText(text(R.string.scan_capture_keep_going_space)).assertIsDisplayed()
+        instruction = ScanInstruction.WhenReady
+        composeRule.onNodeWithText(text(R.string.scan_capture_when_ready_space)).assertIsDisplayed()
     }
 
     @Test
