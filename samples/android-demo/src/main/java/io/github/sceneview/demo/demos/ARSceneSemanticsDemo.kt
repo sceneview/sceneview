@@ -98,9 +98,8 @@ import io.github.sceneview.rememberModelLoader
  * root cause of [#3396](https://github.com/sceneview/sceneview/issues/3396) and
  * [#3527](https://github.com/sceneview/sceneview/issues/3527).
  *
- * **Outdoor only.** The ARCore model has no indoor training data — pointing the camera at a
- * living-room wall will return mostly `UNLABELED`. Take this demo outside (street / park /
- * back yard).
+ * **Outdoor only.** Indoors, the ARCore model can return `UNLABELED` or misleading outdoor
+ * labels. Take this demo outside (street / park / back yard).
  *
  * Closes [#1868](https://github.com/sceneview/sceneview/issues/1868) — follow-up of
  * [#1730](https://github.com/sceneview/sceneview/issues/1730) (Config wiring + Frame accessors).
@@ -132,6 +131,13 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // true if the device shipped the Scene Semantics ML model; false otherwise.
     // Driving the UI off this avoids the "black screen on unsupported device" trap (#1617).
     var semanticsSupported by remember { mutableStateOf<Boolean?>(null) }
+
+    // `semanticsSupported` stays null for good when the session never configures: ARCore
+    // missing or outdated (the SDK shows its install/update card) or a session failure (the
+    // scaffold shows its failure card). Same wiring as `ARPointCloudDemo`, so neither card is
+    // covered by the outdoor warning, which would otherwise wait on that null forever.
+    var arSessionFailed by remember { mutableStateOf(false) }
+    var arSessionUnavailable by remember { mutableStateOf(false) }
 
     // Latest top-3 (label, fraction) snapshot. Captured each `onSessionUpdated` frame; rendered
     // as a Compose overlay. We snapshot the list rather than expose per-label State because the
@@ -169,6 +175,8 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     var semanticsFrameVersion by remember { mutableStateOf(0) }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_scene_semantics_title),
         onBack = onBack,
         controls = {
@@ -220,7 +228,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
-        // Top band: the label HUD, then whichever of the three banners applies. They are
+        // Top band: the label HUD, the semantic notice and any tracking failure. They are
         // siblings in the scaffold's top Column, so they stack instead of overlapping —
         // this demo used to place them by arithmetic (8 dp, 8 dp, 56 dp), which held only
         // while the pill above stayed one line at font scale 1.0 in English (#3237).
@@ -272,49 +280,14 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Warming-up overlay — shown when supported but no semantic data yet (first
-            // ~5 frames after resume on the typical device). Crucial: never leave the user
-            // staring at a black screen (see #1617) if semantics takes a moment to warm up.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && !semanticsEverReceived,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Warming up Scene Semantics — point the camera at an outdoor scene",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // #3274 — the scene has been classified but almost every pixel came back
-            // UNLABELED (typically: an indoor scene — the model has no indoor training
-            // data). The overlay shader paints UNLABELED fully transparent, so without this
-            // the demo silently shows the plain camera feed and reads as broken.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && semanticsEverReceived && sceneUnclassified,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Nothing classified yet — Scene Semantics is outdoor-only. " +
-                            "Try a street, park or back yard.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
+            // One banner owns the persistent outdoor warning and the current semantic state,
+            // including UNLABELED frames whose transparent overlay can look broken (#3274).
+            SceneSemanticsOutdoorNotice(
+                arSessionBlocked = arSessionFailed || arSessionUnavailable,
+                semanticsSupported = semanticsSupported,
+                semanticsEverReceived = semanticsEverReceived,
+                sceneUnclassified = sceneUnclassified,
+            )
 
             // Tracking-failure overlay — same vocabulary as the other AR demos.
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason
@@ -368,6 +341,8 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
+                onSessionFailure = { arSessionFailed = true },
+                onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -463,6 +438,51 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                     alpha = overlayBlend,
                     modifier = Modifier.fillMaxSize()
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Persistent outdoor warning and semantic status share one banner to avoid duplicate guidance.
+ *
+ * [arSessionBlocked] is true when ARCore is missing, needs an update, or the session failed:
+ * [semanticsSupported] then never leaves null, and the SDK's ARCore card or the scaffold's
+ * failure card owns the screen instead.
+ */
+@Composable
+internal fun SceneSemanticsOutdoorNotice(
+    arSessionBlocked: Boolean,
+    semanticsSupported: Boolean?,
+    semanticsEverReceived: Boolean,
+    sceneUnclassified: Boolean,
+) {
+    if (!arSessionBlocked && semanticsSupported != false) {
+        Surface(
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            shape = MaterialTheme.shapes.large
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Trained on outdoor scenes — labels are unreliable indoors",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                val status = when {
+                    semanticsSupported != true -> null
+                    !semanticsEverReceived -> "Warming up Scene Semantics…"
+                    sceneUnclassified -> "Nothing classified yet — try a street, park or back yard."
+                    else -> null
+                }
+                if (status != null) {
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }
