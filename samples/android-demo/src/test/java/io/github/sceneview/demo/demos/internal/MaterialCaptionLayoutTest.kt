@@ -6,28 +6,28 @@ import org.junit.Test
 
 class MaterialCaptionLayoutTest {
     @Test
-    fun `gallery caption without a neighbour uses the maximum width`() {
-        assertEquals(240, galleryCaptionWidthPx(null, gapPx = 10, minimumWidthPx = 48, maximumWidthPx = 240))
+    fun `gallery caption without known spacing uses the maximum width`() {
+        assertEquals(240, galleryCaptionWidthPx(null, gapPx = 10, maximumWidthPx = 240))
     }
 
     @Test
     fun `widely spaced gallery captions are capped at the maximum width`() {
-        assertEquals(240, galleryCaptionWidthPx(400f, gapPx = 10, minimumWidthPx = 48, maximumWidthPx = 240))
+        assertEquals(240, galleryCaptionWidthPx(400f, gapPx = 10, maximumWidthPx = 240))
     }
 
     @Test
     fun `narrowly spaced gallery captions leave a gap`() {
-        assertEquals(110, galleryCaptionWidthPx(120f, gapPx = 10, minimumWidthPx = 48, maximumWidthPx = 240))
+        assertEquals(110, galleryCaptionWidthPx(120f, gapPx = 10, maximumWidthPx = 240))
     }
 
     @Test
-    fun `very narrowly spaced gallery captions keep the minimum width`() {
-        assertEquals(48, galleryCaptionWidthPx(5f, gapPx = 10, minimumWidthPx = 48, maximumWidthPx = 240))
+    fun `gallery spacing below the gap leaves zero width`() {
+        assertEquals(0, galleryCaptionWidthPx(5f, gapPx = 10, maximumWidthPx = 240))
     }
 
     @Test
-    fun `gallery maximum width takes precedence over a larger minimum`() {
-        assertEquals(30, galleryCaptionWidthPx(120f, gapPx = 10, minimumWidthPx = 48, maximumWidthPx = 30))
+    fun `gallery captions respect a small maximum width`() {
+        assertEquals(30, galleryCaptionWidthPx(120f, gapPx = 10, maximumWidthPx = 30))
     }
 
     @Test

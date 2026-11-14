@@ -307,6 +307,7 @@ private fun StudioSection(
     val view = rememberView(engine)
     val comparisonCamera = rememberCameraNode(engine)
     var labelFrame by remember { mutableIntStateOf(0) }
+    var headOnSpacingPx by remember { mutableFloatStateOf(Float.NaN) }
 
     // ── Tap-to-focus (#3609) ─────────────────────────────────────────────────────────────
     //
@@ -915,7 +916,22 @@ private fun StudioSection(
                 modifier = Modifier.fillMaxSize(),
                 view = view,
                 cameraNode = comparisonCamera,
-                onFrame = { nanos -> firstFrame.onFrame(nanos); labelFrame++ },
+                onFrame = { nanos ->
+                    firstFrame.onFrame(nanos)
+                    if (!inspecting) {
+                        // Camera-plane spacing keeps sweep yaw from reflowing the captions.
+                        val cameraRight = -comparisonCamera.leftDirection
+                        val centre = view.worldToScreen(Position(0f, 0f, 0f))
+                        val neighbour = view.worldToScreen(cameraRight * MaterialStudio.BALL_SPACING)
+                        if (centre != null && neighbour != null) {
+                            val spacing = abs(neighbour.x - centre.x)
+                            if (headOnSpacingPx.isNaN() || abs(spacing - headOnSpacingPx) > 1f) {
+                                headOnSpacingPx = spacing
+                            }
+                        }
+                    }
+                    labelFrame++
+                },
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -1015,27 +1031,20 @@ private fun StudioSection(
                                 .then(
                                     if (comparing) Modifier else Modifier
                                         .layout { measurable, constraints ->
-                                            @Suppress("UNUSED_EXPRESSION")
-                                            labelFrame
-                                            val point = view.worldToScreen(anchor)
-                                            val neighbourDistancePx = if (!inspecting && point != null) {
-                                                listOf(index - 1, index + 1)
-                                                    .filter { it in positions.indices && it / MaterialStudio.COLUMNS == index / MaterialStudio.COLUMNS }
-                                                    .mapNotNull { view.worldToScreen(positions[it]) }
-                                                    .minOfOrNull { abs(it.x - point.x) }
-                                            } else null
                                             val gap = gapPx.roundToInt()
-                                            // In landscape the wall fits the height, so screen-width shares overlap projected neighbours.
                                             val width = galleryCaptionWidthPx(
-                                                neighbourDistancePx = neighbourDistancePx,
+                                                headOnSpacingPx = if (inspecting) null else headOnSpacingPx.takeUnless { it.isNaN() },
                                                 gapPx = gap,
-                                                minimumWidthPx = SceneViewTokens.Space.x4l.roundToPx(),
                                                 maximumWidthPx = captionWidth.roundToPx(),
                                             )
                                             val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
-                                            val x = point?.x ?: -view.viewport.width.toFloat()
-                                            val y = point?.y ?: -view.viewport.height.toFloat()
                                             layout(placeable.width, placeable.height) {
+                                                // Frame changes invalidate placement without remeasuring text.
+                                                @Suppress("UNUSED_EXPRESSION")
+                                                labelFrame
+                                                val point = view.worldToScreen(anchor)
+                                                val x = point?.x ?: -view.viewport.width.toFloat()
+                                                val y = point?.y ?: -view.viewport.height.toFloat()
                                                 placeable.place((x - width / 2f).roundToInt(), (y + gap).roundToInt())
                                             }
                                         }
@@ -1095,8 +1104,8 @@ private fun StudioSection(
                                 MaterialTheme.colorScheme.onSurface
                             },
                             textAlign = TextAlign.Center,
-                            maxLines = if (comparing) 2 else Int.MAX_VALUE,
-                            overflow = if (comparing) TextOverflow.Ellipsis else TextOverflow.Clip,
+                            maxLines = if (!inspecting || comparing) 2 else Int.MAX_VALUE,
+                            overflow = if (!inspecting || comparing) TextOverflow.Ellipsis else TextOverflow.Clip,
                         )
                     }
                 }

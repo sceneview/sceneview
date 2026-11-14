@@ -2,16 +2,12 @@ package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.abs
 
-/** Keep gallery captions readable without overlapping their projected neighbours. */
+/** Keep gallery captions within their head-on column width when zooming out. */
 internal fun galleryCaptionWidthPx(
-    neighbourDistancePx: Float?,
+    headOnSpacingPx: Float?,
     gapPx: Int,
-    minimumWidthPx: Int,
     maximumWidthPx: Int,
-): Int {
-    if (neighbourDistancePx == null || minimumWidthPx > maximumWidthPx) return maximumWidthPx
-    return (neighbourDistancePx - gapPx).toInt().coerceIn(minimumWidthPx, maximumWidthPx)
-}
+): Int = headOnSpacingPx?.let { (it - gapPx).toInt().coerceIn(0, maximumWidthPx) } ?: maximumWidthPx
 
 /** Width shared by two centred captions; a pair narrower than the minimum needs two rows. */
 internal fun compareCaptionWidthPx(
