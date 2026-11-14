@@ -266,7 +266,8 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionCreated         Called once when the ARCore [Session] is ready.
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
- * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
+ * @param onSessionFailed          Called if ARCore initialization fails or a fatal frame update closes
+ *                                 the session. Discard app-held objects belonging to that session.
  *                                 Receives a raw [Exception]. **Soft-deprecated (#1844)** in favour
  *                                 of [onSessionFailure] for typed, exhaustive `when` matching
  *                                 (#1759). The legacy callback stays available indefinitely for
@@ -717,6 +718,8 @@ fun ARSceneView(
      * Invoked when an ARCore error occurred during session creation / resume / configuration
      * (missing ARCore install, permission denied, device-unsupported, etc.), or when a fatal
      * frame-update error closes the session. Fatal update failures are reported once per session.
+     * SDK-owned anchors and frame/plane caches are released before close. Discard app-held
+     * session objects and placement state; a retry creates a new session and needs fresh anchors.
      *
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
@@ -1707,6 +1710,17 @@ fun ARSceneView(
     }
 
     // ── Render loop ───────────────────────────────────────────────────────────────────────────────
+
+    arCore.onSessionClosing = {
+        try {
+            releaseSessionNodes(scopeChildNodes.toList())
+        } finally {
+            cameraNode.resetSession()
+            lastArFrameTimestamp.set(0L)
+            prevTrackingFailureRef.set(null)
+            arPlaneRenderer.resetSession()
+        }
+    }
 
     LaunchedEffect(engine, renderer, view, scene) {
         // Previous frame time for the node-edit coast's time step; 0 = none yet (or paused).

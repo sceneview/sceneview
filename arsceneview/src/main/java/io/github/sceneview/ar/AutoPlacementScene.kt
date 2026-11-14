@@ -61,7 +61,18 @@ class AutoPlacementResult internal constructor(
         this(anchor, plane, pose, plane.wallKindOrNull())
 
     var anchor: Anchor = anchor
-        internal set
+        internal set(value) {
+            field = value
+            isAnchorReleased = false
+        }
+
+    private var isAnchorReleased = false
+
+    internal fun releaseAnchor() {
+        if (isAnchorReleased) return
+        isAnchorReleased = true
+        anchor.detach()
+    }
     var pose: Pose = pose
         internal set
 
@@ -414,7 +425,7 @@ fun AutoPlacementScene(
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
         onDispose {
-            currentPlacement?.anchor?.detach()
+            currentPlacement?.releaseAnchor()
             state.dismiss()
         }
     }
@@ -448,10 +459,19 @@ fun AutoPlacementScene(
                 onTrackingFailureChanged?.invoke(it)
             },
             onSessionResumed = { state.cameraResumed() },
+            onSessionCreated = { created ->
+                (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
+                    val previous = placement
+                    placement = null
+                    planes = emptyList()
+                    state.resetPlacement(SystemClock.uptimeMillis())
+                    previous?.releaseAnchor()
+                }
+            },
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
                 if (!state.hasPlacement && placement != null) {
-                    placement?.anchor?.detach()
+                    placement?.releaseAnchor()
                     placement = null
                 }
                 val tracked = session.getAllTrackables(Plane::class.java)
@@ -1305,7 +1325,7 @@ private class AutomaticAnchorNode(
             DragEnd.REVERT -> {
                 pending = null
                 interruptedMove = false
-                if (anchor.trackingState == TrackingState.TRACKING) pose = anchor.pose
+                if (trackingState == TrackingState.TRACKING) pose = anchor.pose
             }
         }
         dragging = false
@@ -1381,7 +1401,7 @@ private class AutomaticAnchorNode(
 
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
-            anchor.trackingState == TrackingState.TRACKING
+            trackingState == TrackingState.TRACKING
 
     /** [source] shifted by [delta] in world space, keeping this node's authored rotation. */
     private fun translated(source: Pose, delta: FloatArray) = Pose(
@@ -1392,7 +1412,7 @@ private class AutomaticAnchorNode(
     private fun commitMove(): Boolean {
         val candidate = pending ?: return false
         val frame = frame ?: return false
-        if (anchor.trackingState != TrackingState.TRACKING ||
+        if (trackingState != TrackingState.TRACKING ||
             !visiblePlacementPoint(frame, candidate.pose)
         ) return false
         val next = candidate.createAnchor() ?: return false
@@ -1407,7 +1427,7 @@ private class AutomaticAnchorNode(
 
     override fun update(session: Session, frame: Frame) {
         val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
-            anchor.trackingState == TrackingState.TRACKING
+            trackingState == TrackingState.TRACKING
         if (!tracking) {
             if (!updateAnchorPose) {
                 // Freeze the last valid drag pose without replacing the logical anchor.

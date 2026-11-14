@@ -168,6 +168,9 @@ class ARCore(
     internal var session: ARSession? = null
         private set
 
+    /** Releases SDK-owned session objects on the main thread, before native close begins. */
+    internal var onSessionClosing: ((ARSession) -> Unit)? = null
+
     /** Updates only the native session, outside the host's per-frame callbacks. */
     @MainThread
     internal fun updateSessionOrNull(): Frame? = try {
@@ -665,6 +668,14 @@ class ARCore(
         cameraArbiter.destroy(cameraClient) { onClosed ->
             val closing = session
             session = null
+            if (closing != null) {
+                try {
+                    onSessionClosing?.invoke(closing)
+                } catch (exception: Exception) {
+                    Log.w("ARCore", "Could not release a closing session's scene", exception)
+                }
+                closing.releaseOwnedObjects()
+            }
             // A session still recording finalizes its file when it pauses, and a recorder
             // stopped by the same disposal returns that file at once: that one closes inline.
             val recording = closing != null && runCatching {
