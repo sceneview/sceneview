@@ -478,6 +478,10 @@ val LocalDemoSceneRestingCover = androidx.compose.runtime.compositionLocalOf { P
  */
 val LocalDemoSceneSheetCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
+/** The sheet's cover inside the scene slot, excluding its bottom inset. */
+internal fun demoSceneSheetCover(sheetCover: Dp, slotBottom: Dp): Dp =
+    (sheetCover - slotBottom).coerceAtLeast(0.dp)
+
 /**
  * Whether insetting the scene by the bands above and below it still leaves a scene worth the
  * name — `bottomOverlayReservesScene`'s own precondition.
@@ -579,7 +583,7 @@ private fun ProvideDemoSceneCover(
     CompositionLocalProvider(
         LocalDemoSceneCover provides cover,
         LocalDemoSceneRestingCover provides restingCover,
-        LocalDemoSceneSheetCover provides (sheetCoverDp - slotBottom).coerceAtLeast(0.dp),
+        LocalDemoSceneSheetCover provides demoSceneSheetCover(sheetCoverDp, slotBottom),
         LocalDemoFullScreen provides focused,
         content = content,
     )

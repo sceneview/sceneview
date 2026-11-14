@@ -24,6 +24,19 @@ class DemoSceneCoverTest {
     private val controlsBand = 272.dp
 
     @Test
+    fun `sheet cover inside an inset slot excludes its bottom inset`() {
+        assertEquals(33.dp, demoSceneSheetCover(sheetCover = 305.dp, slotBottom = controlsBand))
+        assertEquals(305.dp, demoSceneSheetCover(sheetCover = 305.dp, slotBottom = 0.dp))
+    }
+
+    @Test
+    fun `sheet cover stays zero while the sheet is below the slot bottom`() {
+        assertEquals(0.dp, demoSceneSheetCover(sheetCover = 200.dp, slotBottom = controlsBand))
+        assertEquals(0.dp, demoSceneSheetCover(sheetCover = controlsBand, slotBottom = controlsBand))
+        assertEquals(0.dp, demoSceneSheetCover(sheetCover = 0.dp, slotBottom = controlsBand))
+    }
+
+    @Test
     fun `a portrait phone has room for a scene between the two bands`() {
         assertTrue(demoSceneReserveFits(portraitWindow, chromeTop, controlsBand))
     }

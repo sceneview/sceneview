@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.utils.worldToScreen
@@ -68,12 +68,14 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
+import io.github.sceneview.demo.DEFAULT_LABEL_FADE_START_DEGREES
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
@@ -85,7 +87,10 @@ import io.github.sceneview.demo.demos.internal.MaterialStudio
 import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
+import io.github.sceneview.demo.demos.internal.MaterialCaptionPlacement
+import io.github.sceneview.demo.demos.internal.compareCaptionPlacements
 import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionSpacingPx
 import io.github.sceneview.demo.demos.internal.galleryCaptionWidthPx
 import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
 import io.github.sceneview.demo.initialDemoMode
@@ -127,6 +132,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * **Materials** — what a physically based surface is, shown rather than described.
@@ -306,7 +312,7 @@ private fun StudioSection(
     val view = rememberView(engine)
     val comparisonCamera = rememberCameraNode(engine)
     var labelFrame by remember { mutableIntStateOf(0) }
-    var headOnSpacingPx by remember { mutableFloatStateOf(Float.NaN) }
+    var opaqueSpacingPx by remember { mutableFloatStateOf(Float.NaN) }
 
     // ── Tap-to-focus (#3609) ─────────────────────────────────────────────────────────────
     //
@@ -917,15 +923,22 @@ private fun StudioSection(
                 cameraNode = comparisonCamera,
                 onFrame = { nanos ->
                     firstFrame.onFrame(nanos)
-                    if (!inspecting) {
-                        // Camera-plane spacing keeps sweep yaw from reflowing the captions.
+                    if (!inspecting && focusIndex == null && focusZoom.value == 0f) {
+                        // Freeze width during the flight (#3609); sweep yaw never reflows text.
                         val cameraRight = -comparisonCamera.leftDirection
                         val centre = view.worldToScreen(Position(0f, 0f, 0f))
                         val neighbour = view.worldToScreen(cameraRight * MaterialStudio.BALL_SPACING)
                         if (centre != null && neighbour != null) {
-                            val spacing = abs(neighbour.x - centre.x)
-                            if (headOnSpacingPx.isNaN() || abs(spacing - headOnSpacingPx) > 1f) {
-                                headOnSpacingPx = spacing
+                            val eye = comparisonCamera.worldPosition
+                            val spacing = galleryCaptionSpacingPx(
+                                headOnSpacingPx = abs(neighbour.x - centre.x),
+                                cameraDistance = sqrt(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z),
+                                ballSpacing = MaterialStudio.BALL_SPACING,
+                                columns = MaterialStudio.COLUMNS,
+                                yawDegrees = DEFAULT_LABEL_FADE_START_DEGREES,
+                            )
+                            if (opaqueSpacingPx.isNaN() || abs(spacing - opaqueSpacingPx) > 1f) {
+                                opaqueSpacingPx = spacing
                             }
                         }
                     }
@@ -996,9 +1009,16 @@ private fun StudioSection(
                     LocalDemoSceneSheetCover.current.toPx()
                 }
                 val comparing = inspecting && compare
-                val placedCaptionBottoms = remember { FloatArray(2) }
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
                 val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
+                val widthPx = with(density) {
+                    galleryCaptionWidthPx(
+                        spacingPx = if (inspecting) null else opaqueSpacingPx.takeUnless { it.isNaN() },
+                        gapPx = gapPx.roundToInt(),
+                        maximumWidthPx = captionWidth.roundToPx(),
+                    )
+                }
+                val readable = inspecting || widthPx >= with(density) { MIN_GALLERY_CAPTION_WIDTH.roundToPx() }
                 val positions = if (!inspecting) MaterialStudio.wallPositions().map {
                     Position(it.x, it.y - MaterialStudio.BALL_RADIUS, it.z)
                 } else if (compare) listOf(
@@ -1025,15 +1045,12 @@ private fun StudioSection(
                         Text(
                             caption,
                             modifier = Modifier
+                                .then(if (readable) Modifier else Modifier.clearAndSetSemantics {})
                                 .then(
                                     if (comparing) Modifier else Modifier
                                         .layout { measurable, constraints ->
                                             val gap = gapPx.roundToInt()
-                                            val width = galleryCaptionWidthPx(
-                                                headOnSpacingPx = if (inspecting) null else headOnSpacingPx.takeUnless { it.isNaN() },
-                                                gapPx = gap,
-                                                maximumWidthPx = captionWidth.roundToPx(),
-                                            )
+                                            val width = widthPx
                                             val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
                                             layout(placeable.width, placeable.height) {
                                                 // Frame changes invalidate placement without remeasuring text.
@@ -1055,7 +1072,7 @@ private fun StudioSection(
                                 // fixed Compare pair) with no neighbour to collide with, so its
                                 // captions stay at full opacity.
                                 // Layer follows offset: partial alpha fades the caption, avoiding offscreen clipping at the Box origin.
-                                .graphicsLayer {
+                                .then(if (comparing) Modifier else Modifier.graphicsLayer {
                                     @Suppress("UNUSED_EXPRESSION")
                                     labelFrame
                                     val orbitAlpha = if (inspecting) {
@@ -1072,15 +1089,13 @@ private fun StudioSection(
                                         )
                                     }
                                     // Follow the glass during a drag; fade before the caption bottom reaches it.
-                                    alpha = orbitAlpha * materialCaptionCoverAlpha(
-                                        // Compare may move the second caption below its anchor to avoid overlap.
-                                        captionBottomY = if (comparing) placedCaptionBottoms[index]
-                                        else (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
+                                    alpha = if (!readable) 0f else orbitAlpha * materialCaptionCoverAlpha(
+                                        captionBottomY = (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
                                         sceneHeightPx = sceneHeightPx,
                                         sheetCoverPx = sheetCoverPx,
                                         fadeBandPx = size.height,
                                     )
-                                }
+                                })
                                 .padding(horizontal = SceneViewTokens.Space.xs)
                                 .background(
                                     if (focused) {
@@ -1123,24 +1138,27 @@ private fun StudioSection(
                         val placeables = measurables.map {
                             it.measure(constraints.copy(minWidth = width, maxWidth = width, minHeight = 0))
                         }
-                        val offsets = points.map { point ->
-                            IntOffset(
-                                ((point?.x ?: -view.viewport.width.toFloat()) - width / 2f).roundToInt(),
-                                ((point?.y ?: -view.viewport.height.toFloat()) + gap).roundToInt(),
+                        val offsets = points.mapIndexed { index, point ->
+                            MaterialCaptionPlacement(
+                                x = ((point?.x ?: -view.viewport.width.toFloat()) - width / 2f).roundToInt(),
+                                y = ((point?.y ?: -view.viewport.height.toFloat()) + gap).roundToInt(),
+                                height = placeables[index].height,
                             )
                         }
-                        val first = offsets[0]
-                        val second = offsets[1]
-                        val tooClose = first.x < second.x + width + gap && second.x < first.x + width + gap
-                        // Keep both names centred on their spheres when the readable minimum needs two rows.
-                        val secondY = if (tooClose) {
-                            maxOf(second.y, first.y + placeables[0].height + gap)
-                        } else second.y
-                        placedCaptionBottoms[0] = (first.y + placeables[0].height).toFloat()
-                        placedCaptionBottoms[1] = (secondY + placeables[1].height).toFloat()
+                        val placements = compareCaptionPlacements(offsets[0], offsets[1], width, gap)
                         layout(constraints.maxWidth, constraints.maxHeight) {
-                            placeables[0].place(first.x, first.y)
-                            placeables[1].place(second.x, secondY)
+                            placeables.forEachIndexed { index, placeable ->
+                                val placement = placements[index]
+                                // Use this placement's bottom, including the stacked row.
+                                placeable.placeWithLayer(placement.x, placement.y) {
+                                    alpha = materialCaptionCoverAlpha(
+                                        captionBottomY = placement.captionBottomY,
+                                        sceneHeightPx = sceneHeightPx,
+                                        sheetCoverPx = sheetCoverPx,
+                                        fadeBandPx = placeable.height.toFloat(),
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {
@@ -1192,6 +1210,9 @@ private const val HERO_Y_HEIGHT: Float = 0.12f
 
 /** Fraction of the frame the gallery wall spans. Leaves the chrome bands their own air. */
 private const val GALLERY_FILL: Float = 0.88f
+
+/** Below this width the gallery names become single-character columns. */
+private val MIN_GALLERY_CAPTION_WIDTH = 48.dp
 
 /** Fraction of the frame the Inspect hero spans — tighter, because there is one subject. */
 private const val HERO_FILL: Float = 0.8f
