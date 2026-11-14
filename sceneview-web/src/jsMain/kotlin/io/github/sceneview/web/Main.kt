@@ -169,7 +169,7 @@ internal fun createViewerImpl(
                     light {
                         directional()
                         intensity(lightIntensity)
-                        direction(0.6f, -1.0f, -0.8f)
+                        direction(-0.25f, -1.0f, -0.25f)
                     }
                     autoRotate(autoRotate)
                     cameraControls(cameraControls)

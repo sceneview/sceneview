@@ -1816,11 +1816,11 @@ class SceneViewBuilder(private val sceneView: SceneView) {
             // 3-point lighting, in lux — mirrors Android's SceneFactories
             // (main 10_000, fill 3_000 ≈ 30 %). Read under the physically-based
             // default camera exposure; the previous 50k/25k/30k over-exposed.
-            // Key light — main directional, slightly warm
+            // Key light — same steep studio direction as Android's DEFAULT_MAIN_LIGHT_DIRECTION
             val keyLight = LightConfig().apply {
                 directional()
                 intensity(10_000.0)
-                direction(0.6f, -1.0f, -0.8f)
+                direction(-0.25f, -1.0f, -0.25f)
             }
             sceneView.addLight(keyLight)
 

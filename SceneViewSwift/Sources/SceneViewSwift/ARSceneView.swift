@@ -814,7 +814,8 @@ public struct ARSceneView: UIViewRepresentable {
                     intensity: 10_000,
                     castsShadow: true
                 )
-                main.entity.look(at: .zero, from: [0, 1, 0], relativeTo: nil)
+                // Match Android's key-light travel direction (-0.25, -1, -0.25).
+                main.entity.look(at: .zero, from: [0.25, 1, 0.25], relativeTo: nil)
                 lightEntity = main.entity
             case .fill:
                 let fill = LightNode.fill(intensity: 3_000)
