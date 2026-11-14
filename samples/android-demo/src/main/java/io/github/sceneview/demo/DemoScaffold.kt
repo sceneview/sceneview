@@ -41,8 +41,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -754,8 +756,9 @@ fun DemoScaffold(
     // A demo that opted in (#4379) loses its overlays with the chrome: the scene gets the window.
     val overlaysShown = !overlaysFollowChrome || chromeVisible
 
-    // Keep the system icons consistent with the media or themed-stage chrome.
-    RequestLightStatusBarIcons(active = chromeVisible && chrome.lightStatusIcons)
+    // The system bar keeps its own ground when a scene tap hides the controls. Its icon
+    // request must live just as long; full screen hides the bar and releases both.
+    RequestLightStatusBarIcons(active = !focused && chrome.lightStatusIcons)
 
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
     // `sample_interaction` / `settings`: every sample's settings sheet, logged in one place.
@@ -1219,6 +1222,19 @@ fun DemoScaffold(
                                 modifier = Modifier.padding(SceneViewTokens.Space.lg),
                             )
                         }
+                    }
+
+                    // Protect only the actual status bar. Extending this ground into the
+                    // scene darkens its overlay text; removing it leaves white icons on a
+                    // bright camera. This stays independent of the controls' visibility.
+                    if (!focused) {
+                        Box(
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .windowInsetsTopHeight(WindowInsets.statusBars)
+                                .background(chrome.scrim),
+                        )
                     }
 
                     // Top band: the demo's own overlays below the identity row, then the

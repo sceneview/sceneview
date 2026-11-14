@@ -86,8 +86,9 @@ class StageChrome(
     /** `over-media-edge`, the ring and the halo outside it. */
     val edgeRing: Color,
     val edgeHalo: Color,
-    /** Local grounds behind translucent glass controls. */
+    /** Ground limited to the system status-bar inset. */
     val scrim: Color,
+    /** Local ground behind translucent glass controls. */
     val scrimDock: Color,
     /** Fill of an overlay card (a HUD, a timeline), and its text. */
     val card: Color,
