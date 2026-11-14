@@ -165,6 +165,9 @@ class SceneRenderer(
      */
     var onSurfaceDestroyed: (() -> Unit)? = null
 
+    // Read on DOWN so recomposition does not change ownership partway through a touch stream.
+    internal var disallowParentIntercept: Boolean = false
+
     // ── Surface attachment ───────────────────────────────────────────────────────────────────────
 
     /**
@@ -203,7 +206,7 @@ class SceneRenderer(
         renderViewRef = WeakReference(surfaceView)
 
         onTouch?.let { dispatch ->
-            surfaceView.setOnTouchListener { _, event -> dispatch(event); true }
+            surfaceView.setOnTouchListener(makeTouchListener(dispatch))
         }
     }
 
@@ -237,7 +240,7 @@ class SceneRenderer(
         renderViewRef = WeakReference(textureView)
 
         onTouch?.let { dispatch ->
-            textureView.setOnTouchListener { _, event -> dispatch(event); true }
+            textureView.setOnTouchListener(makeTouchListener(dispatch))
         }
     }
 
@@ -427,6 +430,32 @@ class SceneRenderer(
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────────────────────
+
+    private fun makeTouchListener(dispatch: (MotionEvent) -> Unit): android.view.View.OnTouchListener {
+        var interceptDisallowed = false
+        return android.view.View.OnTouchListener { touchView, event ->
+            val action = event.actionMasked
+            if (action == MotionEvent.ACTION_DOWN) {
+                interceptDisallowed = disallowParentIntercept
+                if (interceptDisallowed) {
+                    // AndroidView's interop filter then delivers moves in Initial, before a
+                    // Compose parent's draggable/scrollable can consume them in Main (#3898).
+                    touchView.parent?.requestDisallowInterceptTouchEvent(true)
+                }
+            }
+            try {
+                dispatch(event)
+            } finally {
+                if (interceptDisallowed &&
+                    (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+                ) {
+                    touchView.parent?.requestDisallowInterceptTouchEvent(false)
+                    interceptDisallowed = false
+                }
+            }
+            true
+        }
+    }
 
     /**
      * Builds the [UiHelper.RendererCallback] that manages swap chain creation, destruction

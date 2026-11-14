@@ -46,6 +46,15 @@ val viewNodeManager = rememberViewNodeManager()
 
 ## SceneView
 
+Inside a scrolling list, pager or draggable bottom sheet, set
+`disallowParentIntercept = true` to keep touches that start on the scene with the scene
+until the finger lifts or the stream is cancelled. The default (`false`) lets the parent
+intercept drags. Changes apply to the next touch stream. This option is specific to Android
+`SceneView` and works with both surface types.
+
+An `isEditable = true` node absorbs touches instead of moving the camera, including
+double-tap zoom. Keep a display-only subject non-editable if dragging it should orbit the camera.
+
 ```kotlin
 SceneView(
     modifier = Modifier.fillMaxSize(),

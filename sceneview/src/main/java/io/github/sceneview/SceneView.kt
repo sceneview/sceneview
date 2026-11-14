@@ -202,6 +202,8 @@ import io.github.sceneview.node.reflectionProbes
  *                              recording (no MediaProjection). Use [rememberSurfaceMirrorer].
  * @param onGestureListener     Gesture callbacks — tap, double-tap, drag, pinch, etc.
  * @param onTouchEvent          Raw touch event callback with optional hit-test result.
+ * @param disallowParentIntercept Claim touch streams before a scrolling or draggable parent can
+ *                              intercept them. Defaults to false to preserve parent scrolling.
  * @param activity              Host [ComponentActivity] (auto-resolved from [LocalContext]).
  * @param lifecycle             Lifecycle that drives rendering resume/pause.
  * @param onFrame               Called once per **presented** frame, right after it reached the
@@ -481,6 +483,12 @@ fun SceneView(
      * Invoked once per frame immediately before the scene is updated and rendered.
      */
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    /**
+     * Claims touches on either surface from scrolling/draggable parents on ACTION_DOWN, releasing
+     * them after ACTION_UP or ACTION_CANCEL. Changes apply to the next touch stream. Editable
+     * nodes still absorb their gestures instead of moving the camera.
+     */
+    disallowParentIntercept: Boolean = false,
     /**
      * Declare scene nodes using the [SceneScope] DSL.
      */
@@ -1041,6 +1049,7 @@ fun SceneView(
     SideEffect {
         sceneRenderer.viewportCamera = cameraNode
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
+        sceneRenderer.disallowParentIntercept = disallowParentIntercept
         sceneRenderer.onSurfaceResized = { _, _ ->
             // Remember the size so a manipulator swapped in later (without a surface resize)
             // can inherit it — see [lastViewportRef] (#2514).
@@ -2543,6 +2552,7 @@ fun Scene(
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    disallowParentIntercept: Boolean = false,
     content: (@Composable SceneScope.() -> Unit)? = null
 ) = SceneView(
     modifier = modifier,
@@ -2576,5 +2586,6 @@ fun Scene(
     activity = activity,
     lifecycle = lifecycle,
     onFrame = onFrame,
+    disallowParentIntercept = disallowParentIntercept,
     content = content
 )
