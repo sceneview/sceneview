@@ -294,10 +294,8 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
             }
             // Silent while a card explains that AR could not start (#3986).
             ARCoachingOverlay(
+                guidance = guidance,
                 cue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
-                surface = guidance.surface,
-                hint = guidance.hint,
-                scanLingering = guidance.scanLingering,
             )
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
             if (startupTimedOut && availability == null) {

@@ -804,10 +804,8 @@ fun MeasureScreen(onBack: () -> Unit) {
                     }
 
                     ARCoachingOverlay(
+                        guidance = guidance,
                         cue = if (arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE,
-                        surface = guidance.surface,
-                        hint = guidance.hint,
-                        scanLingering = guidance.scanLingering,
                         contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
                     )
 

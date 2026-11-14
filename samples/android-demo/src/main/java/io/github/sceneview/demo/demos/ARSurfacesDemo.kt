@@ -264,10 +264,8 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
             }
             // #3341: silent while the SDK's "AR unavailable" card carries the reason.
             ARCoachingOverlay(
+                guidance = guidance,
                 cue = if (arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE,
-                surface = guidance.surface,
-                hint = guidance.hint,
-                scanLingering = guidance.scanLingering,
                 contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             )
         }
