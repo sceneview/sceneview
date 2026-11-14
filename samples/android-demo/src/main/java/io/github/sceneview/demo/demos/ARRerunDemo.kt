@@ -504,7 +504,12 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             // one — or with one that no longer reads — the replay's cover says "Opening your scan…"
             // while its files are read, then the model is built again from them.
             val keptModel = withContext(Dispatchers.IO) { store.model(id) }
-            val kept = keptModel != null
+            // A room whose shell is kept opens on it at once too (RoomShellLayer.kt).
+            val keptShell = kind == ScanScope.Room &&
+                withContext(Dispatchers.IO) { store.hasRoomShell(id, ROOM_SHELL_VERSION) }
+            // So does a scan whose surface fused from its depth is kept (ScanDepthModel.kt).
+            val keptDepth = withContext(Dispatchers.IO) { store.hasDepthModel(id, DEPTH_MODEL_VERSION) }
+            val kept = keptModel != null || keptShell || keptDepth
             resultModel = keptModel
             modelSource = null
             hasResult = kept
@@ -827,6 +832,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             scope = if (showingScan) scanKind else ScanScope.Room,
             // A kept model's Photo layer still comes from the real scan's own surfels.
             surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
+            // A room opens on its shell, built from the recording once it is read.
+            shellInput = remember(scanMedia, showingScan, scanKind) {
+                scanMedia?.takeIf { showingScan && scanKind == ScanScope.Room }?.let { RoomShellInput.of(it) }
+            },
         )
     }
     val exportable = when (screen) {
@@ -1643,7 +1652,9 @@ private fun RerunLiveScreen(
     // Record starts on the frame on screen, whose camera gives the scan its lens.
     val onStartScan = start@{
         val frame = latestFrame ?: return@start
-        val capture = ScanCapture.start(frame, captureScope, rawDepth, scanScope.preset) ?: return@start
+        // Its raw depth is recorded too, beside the session once saved: the fusion replays off the phone.
+        val depthDir = File(context.cacheDir, SCAN_DEPTH_DIR)
+        val capture = ScanCapture.start(frame, captureScope, rawDepth, scanScope.preset, depthDir) ?: return@start
         debugFullScreen = false
         debugSession.trace = capture.trace
         debugSession.goLive()
@@ -1667,6 +1678,7 @@ private fun RerunLiveScreen(
     val moveTo = { next: ScanPhase -> phase = next }
     // Drops the capture, built or not: the camera goes back to waiting for the next one.
     val dropCapture = {
+        scan?.discardDepth()
         if (scan != null) {
             debugSession.trace = ArDebugTrace()
             scan = null
@@ -2752,6 +2764,9 @@ private fun copyToClipboard(context: Context, label: String, text: String) {
 private val StatusDotSize = Space.sm + Space.xs / 2 // 10 dp, same as the record dot
 
 private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
+
+/** Where a scan's raw depth is recorded while it runs, in the cache: the save moves it into the session. */
+private const val SCAN_DEPTH_DIR = "scan-depth"
 private const val QA_SEED = "ar-rerun"
 
 private const val QA_STATE_CONNECTED = "connected"

@@ -67,8 +67,11 @@ object ArDebugLogWriter {
      * A long scan's log runs to tens of megabytes, and on Android a `String` of it weighs twice
      * that, its `StringBuilder` up to four times while it grows — the copies that ran a save out
      * of memory (#4815).
+     *
+     * [extraLines] (whole JSON lines, no newline) go after the events: lines of types the replay does
+     * not read, such as a depth recording's `depth_frame` and `pose_guard` ([ScanDepthFormat]).
      */
-    fun writeBytes(events: List<ArDebugEvent>): ByteArray {
+    fun writeBytes(events: List<ArDebugEvent>, extraLines: List<String> = emptyList()): ByteArray {
         val chunks = ArrayList<ByteArray>()
         var chunk = ByteArray(CHUNK)
         var used = 0
@@ -90,6 +93,10 @@ object ArDebugLogWriter {
         }
         for (event in events) {
             val line = line(event) ?: continue
+            put(line.toByteArray(Charsets.UTF_8))
+            put(NEWLINE)
+        }
+        for (line in extraLines) {
             put(line.toByteArray(Charsets.UTF_8))
             put(NEWLINE)
         }
