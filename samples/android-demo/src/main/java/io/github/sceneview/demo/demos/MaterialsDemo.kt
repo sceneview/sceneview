@@ -1012,6 +1012,16 @@ private fun StudioSection(
                         Text(
                             caption,
                             modifier = Modifier
+                                .then(
+                                    if (comparing) Modifier else Modifier
+                                        .offset {
+                                            @Suppress("UNUSED_EXPRESSION")
+                                            labelFrame
+                                            val point = view.worldToScreen(anchor)
+                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                                        }.width(captionWidth)
+                                )
                                 // #3802: the wall is flat and captioned for a roughly head-on
                                 // view; the orbit itself stays completely free (this demo exists
                                 // to turn a reflection around), so instead of bounding the drag,
@@ -1020,6 +1030,7 @@ private fun StudioSection(
                                 // perspective and overlap. Inspect mode has one subject (or a
                                 // fixed Compare pair) with no neighbour to collide with, so its
                                 // captions stay at full opacity.
+                                // Layer follows offset: partial alpha fades the caption, avoiding offscreen clipping at the Box origin.
                                 .graphicsLayer {
                                     @Suppress("UNUSED_EXPRESSION")
                                     labelFrame
@@ -1045,16 +1056,6 @@ private fun StudioSection(
                                         fadeBandPx = size.height,
                                     )
                                 }
-                                .then(
-                                    if (comparing) Modifier else Modifier
-                                        .offset {
-                                            @Suppress("UNUSED_EXPRESSION")
-                                            labelFrame
-                                            val point = view.worldToScreen(anchor)
-                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                                        }.width(captionWidth)
-                                )
                                 .padding(horizontal = SceneViewTokens.Space.xs)
                                 .background(
                                     if (focused) {
