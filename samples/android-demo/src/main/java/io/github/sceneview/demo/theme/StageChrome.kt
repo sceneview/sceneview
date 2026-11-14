@@ -68,8 +68,8 @@ class ShowroomPalette(
  * theme-independent glass of [Media]. The Rerun demo is the exception: its stage is a view the
  * app draws itself (the replay, the landing page), so it can follow the theme. In light theme it
  * takes [Light]: the ground is `surface-dim`, the chrome is `glass-sheet` (`surface-container`
- * at 88 %) with `on-surface` glyphs, the chrome bands wash towards the ground instead of towards
- * black, and the status bar keeps the theme's dark icons. In dark theme it keeps [Media], so the
+ * at 88 %) with `on-surface` glyphs, the controls carry their own light ground,
+ * and the status bar keeps the theme's dark icons. In dark theme it keeps [Media], so the
  * dark replay is the one it always was.
  *
  * A demo opts in with `DemoScaffold(themedStage = true)`; anything under it reads the palette
@@ -86,7 +86,7 @@ class StageChrome(
     /** `over-media-edge`, the ring and the halo outside it. */
     val edgeRing: Color,
     val edgeHalo: Color,
-    /** `chrome-scrim` under the top band, `chrome-scrim-dock` under the bottom one. */
+    /** Local grounds behind translucent glass controls. */
     val scrim: Color,
     val scrimDock: Color,
     /** Fill of an overlay card (a HUD, a timeline), and its text. */
