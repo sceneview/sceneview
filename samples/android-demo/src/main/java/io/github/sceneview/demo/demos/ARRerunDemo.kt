@@ -512,6 +512,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     val openStored = { id: String, title: String, kind: ScanScope ->
         scanKind = kind
+        // The capture's picture and figures belong to the scan just finished, not to this one
+        // (Codex's review of u26: scan A's picture under scan B's title).
+        scanMeasure = null
+        scanStill = null
         scanMedia = null
         scanTitle = title
         scanPack = null

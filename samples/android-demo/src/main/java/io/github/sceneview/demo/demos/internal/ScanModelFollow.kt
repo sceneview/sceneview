@@ -1,6 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
-import io.github.sceneview.math.Position
+import kotlin.math.abs
 import kotlin.math.exp
 
 /**
@@ -20,16 +20,20 @@ class ScanModelFollow(private val turnSeconds: Float = TURN_SECONDS) {
     private var reach = 0f
 
     /**
-     * The pose for the phone at [camera], [time] seconds into the capture: [room] frames the
-     * scanned room from a heading (its target the room's centre, its distance the fit), and the
-     * view looks at that centre pulled [PHONE_PULL] of the way towards the phone. Before the
-     * phone has a heading, the view keeps [fallbackHeading]. `null` without a room to frame.
+     * The pose for the phone at [camera], [time] seconds into the capture, over the scanned room's
+     * [bounds] (`minX, minY, minZ, maxX, maxY, maxZ`). The view looks at the room's centre pulled
+     * [PHONE_PULL] of the way towards the phone, and [fit] frames, from a heading, a box about
+     * that centre grown by the pull on each side, holding the phone too: the room and the phone
+     * stay whole on screen wherever the phone stands (Codex's review of u26: a fixed margin let a
+     * corner out once the phone walked past the cloud). Before the phone has a heading, the view
+     * keeps [fallbackHeading]. `null` without a room.
      */
     fun poseFor(
         camera: DebugPose?,
         time: Float,
         fallbackHeading: Float,
-        room: (headingDegrees: Float) -> OrbitPose?,
+        bounds: FloatArray?,
+        fit: (bounds: FloatArray, headingDegrees: Float) -> OrbitPose?,
     ): OrbitPose? {
         val seen = camera?.let { ScanFollow.headingOf(it, phoneHeading) }
         if (seen != null) phoneHeading = seen
@@ -42,16 +46,9 @@ class ScanModelFollow(private val turnSeconds: Float = TURN_SECONDS) {
             else -> before + CameraRig.shortestDelta(before, seen) * (1f - exp(-dt / turnSeconds))
         }
         heading = next
-        val framed = room(next) ?: return null
+        val framed = fit(viewBox(bounds ?: return null, camera), next) ?: return null
         reach = maxOf(reach, framed.distance * REACH_MARGIN)
-        val target = camera?.let {
-            Position(
-                framed.target.x + (it.x - framed.target.x) * PHONE_PULL,
-                framed.target.y,
-                framed.target.z + (it.z - framed.target.z) * PHONE_PULL,
-            )
-        } ?: framed.target
-        return framed.copy(target = target, azimuthDegrees = next, distance = reach)
+        return framed.copy(azimuthDegrees = next, distance = reach)
     }
 
     companion object {
@@ -61,8 +58,25 @@ class ScanModelFollow(private val turnSeconds: Float = TURN_SECONDS) {
         /** How far the view's centre leans from the room's towards the phone, so the phone stays in it. */
         const val PHONE_PULL = 0.3f
 
-        /** The room's fit stepped back a little, for the lean towards the phone to keep it all in view. */
-        const val REACH_MARGIN = 1.12f
+        /** The fit stepped back a hair, for the view cone and the path drawn round the phone. */
+        const val REACH_MARGIN = 1.05f
+
+        /**
+         * The box the view frames: [bounds] with [camera]'s position in it, then grown about its
+         * centre pulled [PHONE_PULL] towards the phone by that pull on each side, so it holds the
+         * whole room however far the centre leant.
+         */
+        fun viewBox(bounds: FloatArray, camera: DebugPose?): FloatArray {
+            val b = bounds.copyOf()
+            if (camera != null) {
+                b[0] = minOf(b[0], camera.x); b[1] = minOf(b[1], camera.y); b[2] = minOf(b[2], camera.z)
+                b[3] = maxOf(b[3], camera.x); b[4] = maxOf(b[4], camera.y); b[5] = maxOf(b[5], camera.z)
+            }
+            camera ?: return b
+            val sx = (camera.x - (b[0] + b[3]) / 2f) * PHONE_PULL
+            val sz = (camera.z - (b[2] + b[5]) / 2f) * PHONE_PULL
+            return floatArrayOf(b[0] + sx - abs(sx), b[1], b[2] + sz - abs(sz), b[3] + sx + abs(sx), b[4], b[5] + sz + abs(sz))
+        }
 
         /** The longest step one call eases over: a stalled frame never swings the view at once. */
         private const val MAX_STEP_S = 0.5f

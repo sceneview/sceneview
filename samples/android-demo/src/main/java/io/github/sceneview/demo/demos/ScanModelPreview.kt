@@ -49,7 +49,6 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.OrbitBand
-import io.github.sceneview.demo.demos.internal.RescanHole
 import io.github.sceneview.demo.demos.internal.RescanSources
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanHoleMarks
@@ -142,15 +141,20 @@ internal fun ScanModelPreview(
     // Framed on a room-sized box at least: the first surfels, a metre of floor, never fill the
     // screen only to shrink away as the room grows (2026-11-13, Thomas: « le zoom va pas »).
     val currentBounds by rememberUpdatedState(bounds?.let(::atLeastRoomSized))
+    // The view is composed, unseen, as soon as there is a model, and comes in only once it has
+    // drawn it: the camera never leaves the screen for a stage with nothing on it yet (u28, dark:
+    // half a second of empty stage and a black viewfinder; intention.md: never a screen without
+    // an image).
+    var rendered by remember(media) { mutableStateOf(false) }
+    val present = bounds != null && rendered
     val shown by animateFloatAsState(
-        targetValue = if (bounds != null) 1f else 0f,
+        targetValue = if (present) 1f else 0f,
         animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
         label = "scan-model-in",
     )
-    val present = bounds != null
     LaunchedEffect(present) { onShown(present) }
     DisposableEffect(Unit) { onDispose { onShown(false) } }
-    if (shown == 0f) return
+    if (bounds == null && shown == 0f) return
     // White status icons over the dark stage, in both themes.
     RequestLightStatusBarIcons(active = present)
     // The room's dimensions fitted to the model's own points, squared to the walls the planes
@@ -189,7 +193,7 @@ internal fun ScanModelPreview(
             var extent: List<Pair<Float, Float>>? = null
             var layer: ReplayDenseLayer? = null
             var floor: ScanGround? = null
-            var gaps: List<RescanHole> = emptyList()
+            var gaps: List<Pair<FloatArray, Pair<Float, Float>>> = emptyList()
             var markedFor: Pair<Float, Float>? = null
             var markedOn: ScanGround? = null
             while (true) {
@@ -217,12 +221,14 @@ internal fun ScanModelPreview(
                         )
                         LiveCoverageGround.of(keys, cell, hull, floorY)
                     }
+                    // Each gap with the point the guidance aims at, on one of its own missing cells.
                     gaps = floor?.let { f ->
                         withContext(Dispatchers.Default) {
                             RescanSources.holes(f).filter { it.area >= ScanLiveMapFraming.MIN_ZONE_M2 }
+                                .mapNotNull { hole -> hole.bounds().let { b -> ScanHoleMarks.aimOf(f, b)?.let { b to it } } }
                         }
                     }.orEmpty()
-                    holes(gaps.map(::centreOf))
+                    holes(gaps.map { it.second })
                 }
                 // Rebuilt when the floor changes or the guidance names another gap.
                 val aim = named()
@@ -232,7 +238,7 @@ internal fun ScanModelPreview(
                     val f = floor
                     ground = if (f == null) null else withContext(Dispatchers.Default) {
                         val box = aim?.let { (x, z) ->
-                            gaps.minByOrNull { gap(centreOf(it), x, z) }?.takeIf { gap(centreOf(it), x, z) <= SAME_GAP_M2 }?.bounds()
+                            gaps.minByOrNull { gap(it.second, x, z) }?.takeIf { gap(it.second, x, z) <= SAME_GAP_M2 }?.first
                         }
                         // One indication of where to go (intention.md, 13/11: no orange zones, one
                         // cue that means something): the named gap alone, on the ground's weak layer.
@@ -264,7 +270,8 @@ internal fun ScanModelPreview(
     var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
         modifier.fillMaxSize()
-            .graphicsLayer { alpha = shown }
+            // Never quite 0 while it waits, so the view keeps drawing its first frames.
+            .graphicsLayer { alpha = shown.coerceAtLeast(WAITING_ALPHA) }
             .onGloballyPositioned { origin = it.positionInWindow() }
             .testTag("scan_live_model"),
     ) {
@@ -294,6 +301,7 @@ internal fun ScanModelPreview(
                 compact = false,
                 transparent = true,
                 maxFps = 30,
+                onShown = { rendered = true },
                 // The floor's grid, a line every metre, and the room's dimensions as the replay drew them.
                 measuresRoom = true,
                 stageAxes = false,
@@ -311,9 +319,9 @@ internal fun ScanModelPreview(
                 // From behind and above the phone, eased, stepping back as the room grows.
                 content = { ScanLiveGroundLayer(ground, engine, materialLoader, groundColors) },
                 follow = { frame ->
-                    phoneFollow.poseFor(frame.camera, frame.time, ArDebugFraming.HOME_AZIMUTH) { heading ->
+                    phoneFollow.poseFor(frame.camera, frame.time, ArDebugFraming.HOME_AZIMUTH, currentBounds) { box, heading ->
                         ArDebugFraming.home(
-                            currentBounds, heading, orbit.verticalFovDegrees,
+                            box, heading, orbit.verticalFovDegrees,
                             orbit.aspect, elevationDegrees = MODEL_ELEVATION, band = OrbitBand.CARD, fill = 1f,
                         )
                     }
@@ -345,19 +353,10 @@ private const val MARKS_REFRESH_MS = 500L
 /** A gap whose centre lies within ~0.7 m of the one named is the one named. */
 private const val SAME_GAP_M2 = 0.5f
 
-private fun centreOf(hole: RescanHole): Pair<Float, Float> {
-    val o = hole.outline
-    var x = 0f
-    var z = 0f
-    val n = o.size / 2
-    for (i in 0 until n) {
-        x += o[i * 2]
-        z += o[i * 2 + 1]
-    }
-    return x / n to z / n
-}
-
 private fun gap(a: Pair<Float, Float>, x: Float, z: Float) = (a.first - x) * (a.first - x) + (a.second - z) * (a.second - z)
+
+/** The model's alpha while its first frames are drawn, unseen: invisible over the camera. */
+private const val WAITING_ALPHA = 0.01f
 
 /** How often the model's snapshot is rebuilt, at most. */
 private const val REFRESH_MS = 600L

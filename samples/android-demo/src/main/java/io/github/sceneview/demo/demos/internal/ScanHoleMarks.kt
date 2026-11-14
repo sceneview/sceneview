@@ -35,6 +35,45 @@ internal object ScanHoleMarks {
         return mesh
     }
 
+    /**
+     * Where the guidance points for the gap whose bounds are [bounds]: the centre of its missing
+     * cell nearest the mean of its missing cells, so always on the gap itself. The middle of the
+     * bounds is not: an L-shaped gap's lies on floor already scanned, and pointed the line the
+     * wrong way (Codex's review of u26). `null` without a missing cell in [bounds].
+     */
+    fun aimOf(ground: ScanGround, bounds: FloatArray): Pair<Float, Float>? {
+        var sx = 0f
+        var sz = 0f
+        var n = 0
+        forMissing(ground, bounds) { x, z -> sx += x; sz += z; n++ }
+        if (n == 0) return null
+        val mx = sx / n
+        val mz = sz / n
+        var best: Pair<Float, Float>? = null
+        var bestGap = Float.MAX_VALUE
+        forMissing(ground, bounds) { x, z ->
+            val d = (x - mx) * (x - mx) + (z - mz) * (z - mz)
+            if (d < bestGap) {
+                bestGap = d
+                best = x to z
+            }
+        }
+        return best
+    }
+
+    /** Each missing cell's centre (x, z) inside [bounds]. */
+    private inline fun forMissing(ground: ScanGround, bounds: FloatArray, each: (Float, Float) -> Unit) {
+        val s = ground.cellM
+        for (r in 0 until ground.rows) {
+            for (c in 0 until ground.columns) {
+                if (ground.at(c, r) != ScanGround.MISSING) continue
+                val x = ground.originX + (c + 0.5f) * s
+                val z = ground.originZ + (r + 0.5f) * s
+                if (inside(bounds, x, z)) each(x, z)
+            }
+        }
+    }
+
     private fun inside(b: FloatArray, x: Float, z: Float) = x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3]
 
     /** Half the stripe's width, share of a cell: about 2 cm wide on a 25 cm cell. */
