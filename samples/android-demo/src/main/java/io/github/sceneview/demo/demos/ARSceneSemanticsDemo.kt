@@ -219,7 +219,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
-        // Top band: the label HUD, then whichever of the three banners applies. They are
+        // Top band: the label HUD, the semantic notice and any tracking failure. They are
         // siblings in the scaffold's top Column, so they stack instead of overlapping —
         // this demo used to place them by arithmetic (8 dp, 8 dp, 56 dp), which held only
         // while the pill above stayed one line at font scale 1.0 in English (#3237).
@@ -271,32 +271,13 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Explain the outdoor model before the session is configured, then keep a compact
-            // reminder even when indoor furniture receives confident outdoor labels (#4036).
-            SceneSemanticsOutdoorNotice(semanticsSupported, semanticsEverReceived)
-
-            // #3274 — the scene has been classified but almost every pixel came back
-            // UNLABELED (typically: an indoor scene — the model has no indoor training
-            // data). The overlay shader paints UNLABELED fully transparent, so without this
-            // the demo silently shows the plain camera feed and reads as broken.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && semanticsEverReceived && sceneUnclassified,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Nothing classified yet — Scene Semantics is outdoor-only. " +
-                            "Try a street, park or back yard.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
+            // One banner owns the persistent outdoor warning and the current semantic state,
+            // including UNLABELED frames whose transparent overlay can look broken (#3274).
+            SceneSemanticsOutdoorNotice(
+                semanticsSupported = semanticsSupported,
+                semanticsEverReceived = semanticsEverReceived,
+                sceneUnclassified = sceneUnclassified,
+            )
 
             // Tracking-failure overlay — same vocabulary as the other AR demos.
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason
@@ -450,11 +431,12 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     }
 }
 
-/** Outdoor guidance in the scene's top overlay, independent of the predicted labels. */
+/** Persistent outdoor warning and semantic status share one banner to avoid duplicate guidance. */
 @Composable
 internal fun SceneSemanticsOutdoorNotice(
     semanticsSupported: Boolean?,
     semanticsEverReceived: Boolean,
+    sceneUnclassified: Boolean,
 ) {
     if (semanticsSupported != false) {
         Surface(
@@ -462,19 +444,27 @@ internal fun SceneSemanticsOutdoorNotice(
             contentColor = MaterialTheme.colorScheme.onPrimary,
             shape = MaterialTheme.shapes.large
         ) {
-            Text(
-                text = if (semanticsEverReceived) {
-                    "Outdoor model"
-                } else {
-                    "Scene Semantics is trained on outdoor scenes — step outside for real labels."
-                },
-                style = if (semanticsEverReceived) {
-                    MaterialTheme.typography.labelSmall
-                } else {
-                    MaterialTheme.typography.bodyMedium
-                },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Outdoor model — labels unreliable indoors",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                val status = when {
+                    semanticsSupported != true -> null
+                    !semanticsEverReceived -> "Warming up Scene Semantics…"
+                    sceneUnclassified -> "Nothing classified yet — try a street, park or back yard."
+                    else -> null
+                }
+                if (status != null) {
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
     }
 }
