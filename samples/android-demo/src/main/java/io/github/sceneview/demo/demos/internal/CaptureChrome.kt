@@ -33,9 +33,9 @@ enum class ScanInstruction {
 /**
  * The capture's one line, never empty while it records, held for at least two seconds: the sweep
  * to start with, for six seconds by a monotonic clock (the trace clock stops during tracking
- * loss); then "keep going" — "raise your phone to the walls" while a room's scan looks only at
- * the floor ([floorOnly]), or the side an empty area is on ([hole]) — until the scan is
- * [complete], then "tap to finish". A problem — lost,
+ * loss); then "keep going" — "raise your phone to the walls" once a room's scan has looked away
+ * from them ([floorOnly]) for [OFF_WALLS_MS] on end, or the side an empty area is on ([hole]) —
+ * until the scan is [complete], then "tap to finish". A problem — lost,
  * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
  * precedence over coaching, with the same minimum time between changes.
  *
@@ -46,6 +46,9 @@ class ScanLiveInstruction {
     private var startedAt: Long? = null
     private var changedAt: Long? = null
     private var shown: ScanInstruction? = null
+
+    /** Since when the phone has looked away from the walls, `null` while it faces them. */
+    private var offWallsSince: Long? = null
 
     /** The area the line shown names (`holeId` as it was when the line took it), `null` when it names none. */
     var namedHole: Int? = null
@@ -70,6 +73,11 @@ class ScanLiveInstruction {
     ): ScanInstruction? {
         if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
         val elapsed = startedAt?.let { nowMs - it } ?: 0L
+        // A sweep goes down to the floor and up again every few seconds: the walls are asked
+        // for only when the phone stays off them (2026-11-14, a hand-held room scan: the line
+        // swapped with "keep going" at every sweep, eight times in a minute).
+        if (!floorOnly) offWallsSince = null else if (offWallsSince == null) offWallsSince = nowMs
+        val offWalls = offWallsSince?.let { nowMs - it >= OFF_WALLS_MS } == true
         val wanted = when {
             saving -> ScanInstruction.Saving
             !started -> ScanInstruction.Starting
@@ -85,7 +93,7 @@ class ScanLiveInstruction {
             // An empty area named where it is beats a general line (2026-11-13, Thomas's
             // workshop: « Raise your phone to the walls » all the way through, no wall named).
             hole != null -> ScanInstruction.holeOn(hole)
-            floorOnly -> ScanInstruction.Walls
+            offWalls -> ScanInstruction.Walls
             else -> ScanInstruction.KeepGoing
         }
         val previousChange = changedAt
@@ -102,6 +110,9 @@ class ScanLiveInstruction {
     companion object {
         const val HOLD_MS = 2_000L
         const val INTRO_MS = 6_000L
+
+        /** How long the phone looks away from the walls before the line asks for them. */
+        const val OFF_WALLS_MS = 5_000L
     }
 }
 

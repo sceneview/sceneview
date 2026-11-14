@@ -76,6 +76,24 @@ class ScanLiveInstructionTest {
     }
 
     @Test
+    fun `the walls are asked for only once the phone has stayed off them`() {
+        val line = ScanLiveInstruction()
+        line.update(nowMs = 0)
+        val t = ScanLiveInstruction.INTRO_MS + 1
+        // A sweep down to the floor and up again: the line does not move.
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = t, floorOnly = true))
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = t + 3_000, floorOnly = true))
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = t + 4_000))
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = t + 6_000, floorOnly = true))
+        // Five seconds on the floor: now it asks.
+        val asked = t + 6_000 + ScanLiveInstruction.OFF_WALLS_MS
+        assertEquals(ScanInstruction.Walls, line.update(nowMs = asked, floorOnly = true))
+        // Back on the walls, the line goes with its usual hold.
+        assertEquals(ScanInstruction.Walls, line.update(nowMs = asked + 500))
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = asked + ScanLiveInstruction.HOLD_MS))
+    }
+
+    @Test
     fun `an empty area is named on its side, over the walls line, under complete`() {
         val line = ScanLiveInstruction()
         line.update(nowMs = 0)
