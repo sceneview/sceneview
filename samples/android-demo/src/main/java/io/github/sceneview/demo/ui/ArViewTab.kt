@@ -41,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
@@ -237,6 +238,7 @@ fun ArViewTabContent(
             availability = arCoreAvailability,
             cameraGranted = cameraGranted,
             cameraBlocked = camera.blocked,
+            cameraSettingsAvailable = camera.settingsAvailable,
             onRequestCamera = camera.request,
             onOpenSettings = camera.openSettings,
             onStartArSession = { sessionStarted = true },
@@ -376,6 +378,7 @@ private fun ArLauncherScreen(
     cameraGranted: Boolean,
     /** Android no longer shows its dialog: only system settings turn the camera on. */
     cameraBlocked: Boolean,
+    cameraSettingsAvailable: Boolean,
     onRequestCamera: () -> Unit,
     onOpenSettings: () -> Unit,
     onStartArSession: () -> Unit,
@@ -557,9 +560,12 @@ private fun ArLauncherScreen(
                 }
 
                 if (showCta) {
-                    if (!cameraGranted && cameraBlocked && !isChecking) {
+                    if (!cameraGranted && cameraSettingsAvailable && !isChecking) {
                         Text(
-                            text = stringResource(R.string.ar_permission_required_subtitle),
+                            text = stringResource(
+                                if (cameraBlocked) R.string.ar_permission_required_subtitle
+                                else R.string.ar_permission_fallback_subtitle,
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -589,6 +595,11 @@ private fun ArLauncherScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(ctaLabel, style = MaterialTheme.typography.titleMedium)
+                    }
+                    if (!cameraGranted && !cameraBlocked && cameraSettingsAvailable && !isChecking) {
+                        TextButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.ar_permission_open_settings))
+                        }
                     }
                 }
             }

@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,11 +27,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import io.github.sceneview.ar.ARCameraPermissionRecovery
+import io.github.sceneview.ar.cameraPermissionRecovery
 
 /**
  * The camera permission as the AR surfaces of the demo app read it: one holder behind
  * [ArDemoPermissionGate] and the AR tab's launcher, so both agree on when to ask and when
- * only system settings can help.
+ * settings can help.
  */
 @Immutable
 internal class ArCameraPermission(
@@ -38,12 +41,14 @@ internal class ArCameraPermission(
     val granted: Boolean,
     /** Refused once: Android will show its dialog again, and wants an explanation first. */
     val shouldShowRationale: Boolean,
-    /** Android no longer shows the dialog — see [cameraPromptBlocked]. */
+    /** The rationale transition confirms that Android no longer shows the dialog. */
     val blocked: Boolean,
     /** Opens the system dialog (or learns that it no longer opens). */
     val request: () -> Unit,
     /** Opens this app's page in system settings. */
     val openSettings: () -> Unit,
+    /** Also offer settings after ambiguous answers, keeping the request as the main action. */
+    val settingsAvailable: Boolean = blocked,
 )
 
 @Composable
@@ -58,7 +63,8 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
 
     var granted by remember { mutableStateOf(grantedNow()) }
     var rationale by remember { mutableStateOf(!granted && rationaleNow()) }
-    var blocked by rememberSaveable { mutableStateOf(false) }
+    var recovery by rememberSaveable { mutableStateOf(ARCameraPermissionRecovery.Request) }
+    var unexplainedRefusals by rememberSaveable { mutableIntStateOf(0) }
     // What the request in flight started from. Saved: the dialog outlives a rotation, and
     // its answer is delivered to the recreated activity.
     var promptAt by rememberSaveable { mutableLongStateOf(0L) }
@@ -68,12 +74,13 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
         ActivityResultContracts.RequestPermission(),
     ) { result ->
         val rationaleAfter = !result && rationaleNow()
-        blocked = cameraPromptBlocked(
-            granted = result,
+        recovery = if (result) ARCameraPermissionRecovery.Request else cameraPermissionRecovery(
             rationaleBefore = promptRationaleBefore,
             rationaleAfter = rationaleAfter,
             elapsedMs = SystemClock.elapsedRealtime() - promptAt,
+            earlierUnexplainedRefusals = unexplainedRefusals,
         )
+        unexplainedRefusals = if (result || rationaleAfter) 0 else (unexplainedRefusals + 1).coerceAtMost(2)
         granted = result
         rationale = rationaleAfter
     }
@@ -85,7 +92,10 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
             if (event == Lifecycle.Event.ON_RESUME) {
                 granted = grantedNow()
                 rationale = !granted && rationaleNow()
-                if (granted || rationale) blocked = false
+                if (granted || rationale) {
+                    recovery = ARCameraPermissionRecovery.Request
+                    unexplainedRefusals = 0
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -95,7 +105,8 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
     return ArCameraPermission(
         granted = granted,
         shouldShowRationale = rationale,
-        blocked = blocked,
+        blocked = recovery == ARCameraPermissionRecovery.Settings,
+        settingsAvailable = recovery != ARCameraPermissionRecovery.Request,
         request = {
             promptAt = SystemClock.elapsedRealtime()
             promptRationaleBefore = rationaleNow()

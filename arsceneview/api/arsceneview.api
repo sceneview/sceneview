@@ -7,14 +7,30 @@ public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
 	public static final field ACTION Ljava/lang/String;
 	public static final field CARD Ljava/lang/String;
 	public static final field INSTANCE Lio/github/sceneview/ar/ARCameraPermissionOverlayTags;
+	public static final field SETTINGS_ACTION Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionRecovery : java/lang/Enum {
+	public static final field Request Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static final field RequestWithSettings Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static final field Settings Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static fun values ()[Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionRecoveryKt {
+	public static final fun cameraPermissionRecovery (ZZJI)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionState {
 	public static final field $stable I
 	public fun <init> (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
+	public fun <init> (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Z)V
 	public final fun getOpenSettings ()Lkotlin/jvm/functions/Function0;
 	public final fun getPermanentlyDenied ()Z
 	public final fun getRequest ()Lkotlin/jvm/functions/Function0;
+	public final fun getSettingsAvailable ()Z
 }
 
 public final class io/github/sceneview/ar/ARCoachingOverlayKt {

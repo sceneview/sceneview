@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 
 /**
  * The one card behind [ARCameraPermissionOverlay] and [ARCoreAvailabilityOverlay]: a title, a
- * body and at most one action, centred in the scene on a dark ground — the ground is a camera
+ * body and its recovery actions, centred in the scene on a dark ground — the ground is a camera
  * frame, so the card does not follow the app theme.
  *
  * Both overlays are public and may be drawn in any parent, so the layout holds in two kinds:
@@ -60,6 +60,9 @@ internal fun BoxScope.AROverlayCard(
     cardTag: String,
     actionTag: String,
     modifier: Modifier = Modifier,
+    secondaryAction: String? = null,
+    onSecondaryAction: () -> Unit = {},
+    secondaryActionTag: String = "",
 ) {
     Layout(
         content = {
@@ -87,23 +90,12 @@ internal fun BoxScope.AROverlayCard(
                 )
             }
             if (action != null) {
-                Box(
-                    modifier = Modifier
-                        .background(Color.White, RoundedCornerShape(22.dp))
-                        .clickable(role = Role.Button, onClick = onAction)
-                        .padding(horizontal = AROverlayCardActionPadding, vertical = 12.dp)
-                        .testTag(actionTag),
-                ) {
-                    BasicText(
-                        text = action,
-                        style = TextStyle(
-                            color = Color(0xFF1A1A2E),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            // A label that wraps is centred like the text above it.
-                            textAlign = TextAlign.Center,
-                        ),
-                    )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    AROverlayCardAction(action, onAction, actionTag)
+                    if (secondaryAction != null) {
+                        Spacer(Modifier.height(8.dp))
+                        AROverlayCardAction(secondaryAction, onSecondaryAction, secondaryActionTag)
+                    }
                 }
             }
         },
@@ -140,6 +132,28 @@ internal fun BoxScope.AROverlayCard(
             text.placeRelative((width - text.width) / 2, fit.textTop)
             actionPlaceable?.placeRelative((width - actionPlaceable.width) / 2, fit.actionTop)
         }
+    }
+}
+
+/** One button; both actions are measured together before giving the text its space. */
+@Composable
+private fun AROverlayCardAction(label: String, onClick: () -> Unit, tag: String) {
+    Box(
+        modifier = Modifier
+            .background(Color.White, RoundedCornerShape(22.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = AROverlayCardActionPadding, vertical = 12.dp)
+            .testTag(tag),
+    ) {
+        BasicText(
+            text = label,
+            style = TextStyle(
+                color = Color(0xFF1A1A2E),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            ),
+        )
     }
 }
 

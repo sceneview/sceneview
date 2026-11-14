@@ -73,7 +73,7 @@ class ARCore(
      * settings" and back — and `permanentlyDenied` no longer mirrors
      * [ARPermissionHandler.shouldShowPermissionRationale] alone: a dialog the user dismissed
      * without answering leaves no rationale flag either, and is not a permanent denial (see
-     * [isCameraPromptBlocked]).
+     * [cameraPermissionRecovery]).
      */
     var onCameraPermissionDenied: ((permanentlyDenied: Boolean) -> Unit)? = null
 
@@ -97,10 +97,14 @@ class ARCore(
     /** The last verdict sent to [onCameraPermissionDenied]; `null` while nothing is denied. */
     private var publishedCameraDenial: Boolean? = null
 
+    /** Settings may also help after an ambiguous answer, without replacing the request. */
+    internal var cameraPermissionSettingsAvailable = false
+        private set
+
     /** The camera request that has not been answered yet, if any. */
     private var cameraRequest: CameraRequest? = null
 
-    /** Refusals in a row that came back with no rationale flag — see [isCameraPromptBlocked]. */
+    /** Refusals in a row that came back with no rationale flag — see [cameraPermissionRecovery]. */
     private var unexplainedCameraRefusals = 0
 
     /** `true` between [resume] and [pause]. */
@@ -406,7 +410,8 @@ class ARCore(
         if (cameraPermissionRequested) {
             // Already refused. A rationale flag raised since then (the answer went to another
             // registration, say) means the dialog will show: do not keep sending to settings.
-            if (publishedCameraDenial == true && !handler.shouldShowPermissionRationale()) {
+            if (cameraPermissionSettingsAvailable && !handler.shouldShowPermissionRationale()) {
+                unexplainedCameraRefusals = 0
                 publishCameraDenial(permanentlyDenied = false)
             }
             return
@@ -456,14 +461,17 @@ class ARCore(
 
     private fun onCameraPermissionRefused(handler: ARPermissionHandler, request: CameraRequest) {
         val rationaleAfter = !handler.shouldShowPermissionRationale()
-        val blocked = isCameraPromptBlocked(
+        val recovery = cameraPermissionRecovery(
             rationaleBefore = request.rationaleBefore,
             rationaleAfter = rationaleAfter,
             elapsedMs = (nanoTime() - request.startedAtNanos) / NANOS_PER_MILLI,
             earlierUnexplainedRefusals = unexplainedCameraRefusals,
         )
-        unexplainedCameraRefusals = if (rationaleAfter) 0 else unexplainedCameraRefusals + 1
-        publishCameraDenial(permanentlyDenied = blocked)
+        unexplainedCameraRefusals = if (rationaleAfter) 0 else (unexplainedCameraRefusals + 1).coerceAtMost(2)
+        publishCameraDenial(
+            permanentlyDenied = recovery == ARCameraPermissionRecovery.Settings,
+            settingsAvailable = recovery != ARCameraPermissionRecovery.Request,
+        )
     }
 
     /**
@@ -489,6 +497,7 @@ class ARCore(
     private fun onCameraPermissionAvailable() {
         cameraRequest = null
         unexplainedCameraRefusals = 0
+        cameraPermissionSettingsAvailable = false
         isCameraPermissionDenied = false
         if (publishedCameraDenial != null && !isHostDetached) {
             publishedCameraDenial = null
@@ -497,9 +506,15 @@ class ARCore(
     }
 
     /** Publishes a refusal to [onCameraPermissionDenied] when the verdict actually changed. */
-    private fun publishCameraDenial(permanentlyDenied: Boolean) {
+    private fun publishCameraDenial(
+        permanentlyDenied: Boolean,
+        settingsAvailable: Boolean = permanentlyDenied,
+    ) {
         isCameraPermissionDenied = true
-        if (isHostDetached || publishedCameraDenial == permanentlyDenied) return
+        if (isHostDetached) return
+        val settingsChanged = cameraPermissionSettingsAvailable != settingsAvailable
+        cameraPermissionSettingsAvailable = settingsAvailable
+        if (publishedCameraDenial == permanentlyDenied && !settingsChanged) return
         publishedCameraDenial = permanentlyDenied
         onCameraPermissionDenied?.invoke(permanentlyDenied)
     }
@@ -721,39 +736,17 @@ fun TrackingFailureReason.getDescription(context: Context) = when (this) {
     else -> context.getString(R.string.sceneview_unknown_tracking_failure, this)
 }
 
-/** Below this, a refusal came back too fast for a dialog to have been read and answered. */
-internal const val CAMERA_PROMPT_INSTANT_RETURN_MS = 1000L
-
 private const val NANOS_PER_MILLI = 1_000_000L
 
-/**
- * Whether a refused camera request means Android has stopped showing its dialog (#4452).
- *
- * Android has no "permanently denied" query. A refusal with no rationale flag is what a
- * permanent denial looks like — and also what a dialog dismissed with Back, or with a tap
- * outside it, looks like. Reading the flag alone sent the second kind to system settings
- * with "camera access was turned off", when asking again would simply have worked. The two
- * are told apart by what surrounds the answer:
- *  - the rationale flag was up before and is down after: that was the second refusal;
- *  - the answer came back at once ([CAMERA_PROMPT_INSTANT_RETURN_MS]): no dialog was shown.
- *    A Pixel 4a answers a blocked request in 290 ms on an idle screen and 510 ms while a
- *    scene is still loading; nobody reads and dismisses a dialog inside a second;
- *  - it is the second such answer in a row ([earlierUnexplainedRefusals]): whichever it was,
- *    asking again is not getting anywhere, so settings is the way out.
- *
- * A first slow, unexplained refusal is therefore not blocked: a dismissed dialog keeps its
- * "ask again".
- */
+/** Whether Android's rationale transition confirms a settings-only refusal. */
 internal fun isCameraPromptBlocked(
     rationaleBefore: Boolean,
     rationaleAfter: Boolean,
     elapsedMs: Long,
     earlierUnexplainedRefusals: Int,
-): Boolean = !rationaleAfter && (
-    rationaleBefore ||
-        elapsedMs < CAMERA_PROMPT_INSTANT_RETURN_MS ||
-        earlierUnexplainedRefusals >= 1
-    )
+): Boolean = cameraPermissionRecovery(
+    rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals,
+) == ARCameraPermissionRecovery.Settings
 
 /**
  * One camera per device, so one arbitration per process.

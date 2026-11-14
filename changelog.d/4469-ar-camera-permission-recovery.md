@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **AR camera permission recovery ([#4469](https://github.com/sceneview/sceneview/issues/4469)).** Dismissing the permission dialog repeatedly keeps the request action and adds a settings fallback with neutral copy. Fast ambiguous answers also offer both actions, so timing alone never claims camera access was turned off. The SDK card and Android demo use one recovery policy.

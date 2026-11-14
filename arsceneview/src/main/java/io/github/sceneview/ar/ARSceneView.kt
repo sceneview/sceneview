@@ -1218,6 +1218,7 @@ fun ARSceneView(
     arCore.onCameraPermissionDenied = { permanently ->
         val state = ARCameraPermissionState(
             permanentlyDenied = permanently,
+            settingsAvailable = arCore.cameraPermissionSettingsAvailable,
             request = { arCore.retryCameraPermission(currentPermissionHandler) },
             openSettings = { arCore.openAppSettings(currentPermissionHandler) },
         )
