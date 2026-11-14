@@ -7,7 +7,7 @@ public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
 	public static final field ACTION Ljava/lang/String;
 	public static final field CARD Ljava/lang/String;
 	public static final field INSTANCE Lio/github/sceneview/ar/ARCameraPermissionOverlayTags;
-	public static final field SETTINGS_ACTION Ljava/lang/String;
+	public static final field REQUEST_ACTION Ljava/lang/String;
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionRecovery : java/lang/Enum {
@@ -20,17 +20,17 @@ public final class io/github/sceneview/ar/ARCameraPermissionRecovery : java/lang
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionRecoveryKt {
-	public static final fun cameraPermissionRecovery (ZZJI)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static final fun resolveCameraPermissionRecovery (ZZJI)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionState {
 	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/ARCameraPermissionRecovery;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
 	public fun <init> (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
-	public fun <init> (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Z)V
 	public final fun getOpenSettings ()Lkotlin/jvm/functions/Function0;
 	public final fun getPermanentlyDenied ()Z
+	public final fun getRecovery ()Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public final fun getRequest ()Lkotlin/jvm/functions/Function0;
-	public final fun getSettingsAvailable ()Z
 }
 
 public final class io/github/sceneview/ar/ARCoachingOverlayKt {
@@ -82,7 +82,6 @@ public final class io/github/sceneview/ar/ARCore {
 	public final fun createSession (Landroid/content/Context;)V
 	public final fun destroy ()V
 	public final fun getArCoreAvailability ()Lio/github/sceneview/ar/ARCoreAvailability;
-	public final fun getCameraPermissionRecovery ()Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public final fun getCheckAvailability ()Z
 	public final fun getCheckCameraPermission ()Z
 	public final fun getFeatures ()Ljava/util/Set;
@@ -90,7 +89,6 @@ public final class io/github/sceneview/ar/ARCore {
 	public final fun getOnArSessionFailed ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnCameraPermissionDenied ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnCameraPermissionGranted ()Lkotlin/jvm/functions/Function0;
-	public final fun getOnCameraPermissionRecoveryChanged ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSessionConfigChanged ()Lkotlin/jvm/functions/Function2;
 	public final fun getOnSessionCreated ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSessionPaused ()Lkotlin/jvm/functions/Function1;
@@ -115,7 +113,6 @@ public final class io/github/sceneview/ar/ARCore {
 	public final fun setOnARCoreAvailability (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOnCameraPermissionDenied (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOnCameraPermissionGranted (Lkotlin/jvm/functions/Function0;)V
-	public final fun setOnCameraPermissionRecoveryChanged (Lkotlin/jvm/functions/Function1;)V
 	public final fun setPermissionHandler (Lio/github/sceneview/ar/ARPermissionHandler;)V
 }
 

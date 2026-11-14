@@ -3,9 +3,9 @@ package io.github.sceneview.ar.publicapi;
 import com.google.ar.core.ArCoreApk;
 import io.github.sceneview.ar.ARCameraPermissionRecovery;
 import io.github.sceneview.ar.ARCore;
+import io.github.sceneview.ar.ARCameraPermissionState;
 import io.github.sceneview.ar.ARPermissionHandler;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
@@ -13,7 +13,6 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /** A direct ARCore host, compiled from Java without Kotlin's internal test access. */
@@ -38,66 +37,40 @@ public class ARCoreCameraPermissionPublicApiTest {
     }
 
     @Test
-    public void completeRecoveryReachesDirectHostsIncludingGrantAndSameLegacyValueTransitions() {
+    public void sceneHostsKeepTheLegacySettingsRecommendationForAmbiguousRecovery() {
+        int[] requests = {0};
+        int[] settings = {0};
+        for (ARCameraPermissionRecovery recovery : ARCameraPermissionRecovery.values()) {
+            ARCameraPermissionState state = new ARCameraPermissionState(
+                    recovery,
+                    () -> { requests[0]++; return Unit.INSTANCE; },
+                    () -> { settings[0]++; return Unit.INSTANCE; });
+            assertEquals(recovery, state.getRecovery());
+            assertEquals(recovery != ARCameraPermissionRecovery.Request, state.getPermanentlyDenied());
+            // The documented host pattern, also used by TwoARScenesActivity.
+            if (state.getPermanentlyDenied()) state.getOpenSettings().invoke();
+            else state.getRequest().invoke();
+        }
+        assertEquals(1, requests[0]);
+        assertEquals(2, settings[0]);
+    }
+
+    @Test
+    public void originalStateConstructorAndDenialGrantCallbacksRemainUsableFromJava() {
+        assertEquals(ARCameraPermissionRecovery.Request,
+                new ARCameraPermissionState(false, () -> Unit.INSTANCE, () -> Unit.INSTANCE).getRecovery());
+        assertEquals(ARCameraPermissionRecovery.Settings,
+                new ARCameraPermissionState(true, () -> Unit.INSTANCE, () -> Unit.INSTANCE).getRecovery());
         ARCore core = newCore();
         FakeHandler handler = new FakeHandler();
-        List<ARCameraPermissionRecovery> recoveries = new ArrayList<>();
-        List<Boolean> legacyDenials = new ArrayList<>();
         int[] grants = {0};
-        assertNull(core.getCameraPermissionRecovery());
-        core.setOnCameraPermissionRecoveryChanged(recovery -> {
-            assertEquals(recovery, core.getCameraPermissionRecovery());
-            recoveries.add(recovery);
-            return Unit.INSTANCE;
-        });
-        core.setOnCameraPermissionDenied(denial -> {
-            legacyDenials.add(denial);
-            return Unit.INSTANCE;
-        });
-        core.setOnCameraPermissionGranted(() -> {
-            grants[0]++;
-            return Unit.INSTANCE;
-        });
-        assertTrue(recoveries.isEmpty());
-
-        // A raised rationale flag always permits another request, whatever the timing.
-        handler.rationale = true;
-        handler.rationaleAfter = true;
+        core.setOnCameraPermissionGranted(() -> { grants[0]++; return Unit.INSTANCE; });
         assertFalse(core.checkPermissionAndInstall(handler));
-        assertEquals(ARCameraPermissionRecovery.Request, core.getCameraPermissionRecovery());
-
-        // Two unexplained answers must expose both actions, independent of their timing.
-        handler.rationale = false;
-        handler.rationaleAfter = false;
-        core.retryCameraPermission(handler);
-        core.retryCameraPermission(handler);
-        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, core.getCameraPermissionRecovery());
-        assertEquals(Arrays.asList(false, true), legacyDenials);
-
-        // The rationale transition confirms a block. The enum changes; the legacy bit does not.
-        handler.rationale = true;
-        core.retryCameraPermission(handler);
-        assertEquals(ARCameraPermissionRecovery.Settings, core.getCameraPermissionRecovery());
-        assertEquals(Arrays.asList(false, true), legacyDenials);
-        assertEquals(Arrays.asList(
-                ARCameraPermissionRecovery.Request,
-                ARCameraPermissionRecovery.RequestWithSettings,
-                ARCameraPermissionRecovery.Settings), recoveries);
-
-        // A grant read from settings clears the public recovery and both host signals once.
-        core.openAppSettings(handler);
         handler.granted = true;
         assertTrue(core.checkPermissionAndInstall(handler));
         assertTrue(core.checkPermissionAndInstall(handler));
-        assertNull(core.getCameraPermissionRecovery());
         assertFalse(core.isCameraPermissionDenied());
-        assertEquals(1, handler.settingsOpened);
         assertEquals(1, grants[0]);
-        assertEquals(Arrays.asList(
-                ARCameraPermissionRecovery.Request,
-                ARCameraPermissionRecovery.RequestWithSettings,
-                ARCameraPermissionRecovery.Settings,
-                null), recoveries);
     }
 
     private static ARCore newCore() {

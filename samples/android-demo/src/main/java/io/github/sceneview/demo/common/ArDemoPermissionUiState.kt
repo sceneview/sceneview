@@ -5,10 +5,10 @@ internal enum class ArDemoPermissionUiState {
     /** Camera granted: the demo is mounted and owns the screen. */
     ShowDemo,
 
-    /** Not granted, and Android still shows its dialog: explain, and offer to ask. */
+    /** Keep a request available; ambiguous answers also offer settings as the main action. */
     AskPermission,
 
-    /** Android answers without a dialog: only system settings can turn the camera on. */
+    /** The rationale transition confirms a denial: offer only system settings. */
     OpenSettings,
 }
 

@@ -9,40 +9,47 @@ import androidx.compose.ui.res.stringResource
 /**
  * What [ARSceneView] knows about a denied camera permission (#3308).
  *
- * @property permanentlyDenied selects settings as the sole recovery action.
- * @property settingsAvailable offers settings as a fallback for an ambiguous answer; keep
- *   [request] as the main action when [permanentlyDenied] is `false`.
+ * @property recovery The available recovery actions. Settings is the primary action for
+ *   [ARCameraPermissionRecovery.RequestWithSettings], with [request] still available.
+ * @property permanentlyDenied Legacy conservative recommendation: `true` when settings is
+ *   available, including ambiguous answers. It does not prove the dialog is blocked. Hosts
+ *   that need all actions should use [recovery].
  * @property request requests camera permission again. Android may suppress its dialog.
  * @property openSettings opens the app's system settings page. Call it from an explicit
  *   user action only — never automatically, that is the bug this state replaces.
  */
 @Immutable
 class ARCameraPermissionState(
-    val permanentlyDenied: Boolean,
+    val recovery: ARCameraPermissionRecovery,
     val request: () -> Unit,
     val openSettings: () -> Unit,
-    val settingsAvailable: Boolean,
 ) {
-    /** Retains the original constructor for hosts that only distinguish confirmed denials. */
+    val permanentlyDenied: Boolean get() = recovery != ARCameraPermissionRecovery.Request
+
+    /** Retains the original constructor and its request/settings behavior. */
     constructor(
         permanentlyDenied: Boolean,
         request: () -> Unit,
         openSettings: () -> Unit,
-    ) : this(permanentlyDenied, request, openSettings, settingsAvailable = permanentlyDenied)
+    ) : this(
+        if (permanentlyDenied) ARCameraPermissionRecovery.Settings else ARCameraPermissionRecovery.Request,
+        request,
+        openSettings,
+    )
 }
 
 /** Test tags for [ARCameraPermissionOverlay]. */
 object ARCameraPermissionOverlayTags {
     const val CARD = "sceneview-camera-permission"
     const val ACTION = "sceneview-camera-permission-action"
-    const val SETTINGS_ACTION = "sceneview-camera-permission-settings-action"
+    const val REQUEST_ACTION = "sceneview-camera-permission-request-action"
 }
 
 /**
  * The built-in explanation drawn by [ARSceneView] while the camera permission is denied:
  * a dark card in the [PlaneDiscoveryHelpCard] style — the ground is a camera frame (here,
- * black) so it does not follow the app theme. Ambiguous answers keep the request action
- * and offer settings as a fallback; only confirmed denials replace it with settings.
+ * black) so it does not follow the app theme. Ambiguous answers lead with settings and
+ * keep a secondary request action with neutral copy; confirmed denials offer only settings.
  *
  * Public so hosts that pass their own `cameraPermissionOverlay` can still reuse it, and so
  * previews can render all variants without an ARCore session.
@@ -55,9 +62,11 @@ fun BoxScope.ARCameraPermissionOverlay(
     AROverlayCard(
         title = stringResource(R.string.sceneview_camera_permission_title),
         body = stringResource(
-            if (state.permanentlyDenied) R.string.sceneview_camera_permission_body_settings
-            else if (state.settingsAvailable) R.string.sceneview_camera_permission_body_fallback
-            else R.string.sceneview_camera_permission_body
+            when (state.recovery) {
+                ARCameraPermissionRecovery.Request -> R.string.sceneview_camera_permission_body
+                ARCameraPermissionRecovery.RequestWithSettings -> R.string.sceneview_camera_permission_body_fallback
+                ARCameraPermissionRecovery.Settings -> R.string.sceneview_camera_permission_body_settings
+            }
         ),
         action = stringResource(
             if (state.permanentlyDenied) R.string.sceneview_camera_permission_settings
@@ -67,10 +76,10 @@ fun BoxScope.ARCameraPermissionOverlay(
         cardTag = ARCameraPermissionOverlayTags.CARD,
         actionTag = ARCameraPermissionOverlayTags.ACTION,
         modifier = modifier,
-        secondaryAction = if (!state.permanentlyDenied && state.settingsAvailable) {
-            stringResource(R.string.sceneview_camera_permission_settings)
+        secondaryAction = if (state.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+            stringResource(R.string.sceneview_camera_permission_grant)
         } else null,
-        onSecondaryAction = state.openSettings,
-        secondaryActionTag = ARCameraPermissionOverlayTags.SETTINGS_ACTION,
+        onSecondaryAction = state.request,
+        secondaryActionTag = ARCameraPermissionOverlayTags.REQUEST_ACTION,
     )
 }

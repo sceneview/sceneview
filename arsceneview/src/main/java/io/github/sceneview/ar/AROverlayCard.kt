@@ -94,7 +94,7 @@ internal fun BoxScope.AROverlayCard(
                     AROverlayCardAction(action, onAction, actionTag)
                     if (secondaryAction != null) {
                         Spacer(Modifier.height(8.dp))
-                        AROverlayCardAction(secondaryAction, onSecondaryAction, secondaryActionTag)
+                        AROverlayCardAction(secondaryAction, onSecondaryAction, secondaryActionTag, primary = false)
                     }
                 }
             }
@@ -137,10 +137,10 @@ internal fun BoxScope.AROverlayCard(
 
 /** One button; both actions are measured together before giving the text its space. */
 @Composable
-private fun AROverlayCardAction(label: String, onClick: () -> Unit, tag: String) {
+private fun AROverlayCardAction(label: String, onClick: () -> Unit, tag: String, primary: Boolean = true) {
     Box(
         modifier = Modifier
-            .background(Color.White, RoundedCornerShape(22.dp))
+            .background(if (primary) Color.White else Color.Transparent, RoundedCornerShape(22.dp))
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = AROverlayCardActionPadding, vertical = 12.dp)
             .testTag(tag),
@@ -148,7 +148,7 @@ private fun AROverlayCardAction(label: String, onClick: () -> Unit, tag: String)
         BasicText(
             text = label,
             style = TextStyle(
-                color = Color(0xFF1A1A2E),
+                color = if (primary) Color(0xFF1A1A2E) else Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,

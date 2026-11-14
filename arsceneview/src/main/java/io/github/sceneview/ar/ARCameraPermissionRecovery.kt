@@ -5,7 +5,7 @@ enum class ARCameraPermissionRecovery {
     /** Offer another permission request; Android may still suppress its dialog. */
     Request,
 
-    /** The answer is ambiguous: keep asking available, with settings as another way out. */
+    /** The answer is ambiguous: lead with settings and keep another request available. */
     RequestWithSettings,
 
     /** Android's rationale flag fell after a refusal: only settings can grant access. */
@@ -18,11 +18,22 @@ enum class ARCameraPermissionRecovery {
  *
  * A dialog dismissed with Back and a request Android refuses without showing a dialog both
  * leave no rationale flag. Timing and repeated answers therefore only add a settings
- * fallback, never take away the request action or claim access was turned off (#4469).
- * [earlierUnexplainedRefusals] counts consecutive refused answers with no rationale flag;
- * reset it when the flag is raised or permission is granted.
+ * action, never take away the request action or claim access was turned off (#4469).
+ * The timing threshold and refusal heuristic may evolve; callers should use the returned
+ * recovery instead of duplicating the heuristic.
+ *
+ * @param rationaleBefore Android's `shouldShowRequestPermissionRationale(CAMERA)` immediately
+ *   before launching the request: `true` means Android recommends showing a rationale.
+ *   This is the **inverse** of [ARPermissionHandler.shouldShowPermissionRationale].
+ * @param rationaleAfter The same Android rationale flag immediately after the refused answer,
+ *   also the inverse of [ARPermissionHandler.shouldShowPermissionRationale].
+ * @param elapsedMs Monotonic elapsed milliseconds between launching and answering the request.
+ *   A fast answer is ambiguous, not proof that Android suppressed the dialog.
+ * @param earlierUnexplainedRefusals Consecutive earlier refused answers with no rationale flag,
+ *   excluding this answer. Reset to zero on a grant or a raised rationale flag.
+ * @return The recovery actions to offer for this refused request; settings leads when available.
  */
-fun cameraPermissionRecovery(
+fun resolveCameraPermissionRecovery(
     rationaleBefore: Boolean,
     rationaleAfter: Boolean,
     elapsedMs: Long,

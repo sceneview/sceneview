@@ -803,7 +803,8 @@ fun ARSceneView(
      * What to draw over the scene while the camera permission is denied (#3308). Receives an
      * [ARCameraPermissionState] whose [ARCameraPermissionState.request] re-shows the system
      * dialog and whose [ARCameraPermissionState.openSettings] sends the user to App Info —
-     * the latter is the only way forward once [ARCameraPermissionState.permanentlyDenied].
+     * settings is recommended once [ARCameraPermissionState.permanentlyDenied]. Read
+     * [ARCameraPermissionState.recovery] to retain the request after an ambiguous answer.
      * Defaults to the built-in [ARCameraPermissionOverlay]; pass `null` to draw nothing and
      * handle the state yourself through [onCameraPermissionStateChanged].
      *
@@ -1218,8 +1219,7 @@ fun ARSceneView(
     arCore.onCameraPermissionRecoveryChanged = { recovery ->
         val state = recovery?.let {
             ARCameraPermissionState(
-                permanentlyDenied = it == ARCameraPermissionRecovery.Settings,
-                settingsAvailable = it != ARCameraPermissionRecovery.Request,
+                recovery = it,
                 request = { arCore.retryCameraPermission(currentPermissionHandler) },
                 openSettings = { arCore.openAppSettings(currentPermissionHandler) },
             )

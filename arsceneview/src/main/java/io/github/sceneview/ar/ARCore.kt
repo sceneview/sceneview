@@ -67,10 +67,9 @@ class ARCore(
      * This conservative mapping keeps existing hosts from retrying a suppressed dialog
      * forever. Nothing opens automatically; call [openAppSettings] from a user action.
      *
-     * Use [onCameraPermissionRecoveryChanged] for the complete recovery state: it preserves
-     * the request action alongside settings after an ambiguous answer. This boolean cannot
-     * distinguish that state from a confirmed settings-only denial, and is only notified
-     * when its own value changes. Its getter and setter signatures remain unchanged.
+     * This boolean cannot distinguish an ambiguous answer from a confirmed settings-only
+     * denial, and is only notified when its own value changes. [ARSceneView] hosts receive
+     * the complete recovery through `onCameraPermissionStateChanged` instead.
      */
     var onCameraPermissionDenied: ((permanentlyDenied: Boolean) -> Unit)? = null
 
@@ -86,7 +85,7 @@ class ARCore(
      * No initial value is replayed when the callback is assigned: read the property when
      * attaching to an existing instance. [ARSceneView] uses this callback for its card.
      */
-    var onCameraPermissionRecoveryChanged: ((recovery: ARCameraPermissionRecovery?) -> Unit)? = null
+    internal var onCameraPermissionRecoveryChanged: ((recovery: ARCameraPermissionRecovery?) -> Unit)? = null
 
     /**
      * Called on the main thread when a denial reported through [onCameraPermissionDenied] no
@@ -110,10 +109,10 @@ class ARCore(
 
     /**
      * Current camera recovery, published through [onCameraPermissionRecoveryChanged].
-     * `null` before any denial and after permission is granted. A direct [ARCore] host can
-     * read this state without relying on the legacy denial callback's boolean.
+     * `null` before any denial and after permission is granted. Used by [ARSceneView] to
+     * retain both actions without changing the legacy callback's boolean contract.
      */
-    var cameraPermissionRecovery: ARCameraPermissionRecovery? = null
+    internal var cameraPermissionRecovery: ARCameraPermissionRecovery? = null
         private set
 
     /** The camera request that has not been answered yet, if any. */
@@ -479,7 +478,7 @@ class ARCore(
 
     private fun onCameraPermissionRefused(handler: ARPermissionHandler, request: CameraRequest) {
         val rationaleAfter = !handler.shouldShowPermissionRationale()
-        val recovery = cameraPermissionRecovery(
+        val recovery = resolveCameraPermissionRecovery(
             rationaleBefore = request.rationaleBefore,
             rationaleAfter = rationaleAfter,
             elapsedMs = (nanoTime() - request.startedAtNanos) / NANOS_PER_MILLI,
@@ -757,15 +756,6 @@ fun TrackingFailureReason.getDescription(context: Context) = when (this) {
 
 private const val NANOS_PER_MILLI = 1_000_000L
 
-/** Whether Android's rationale transition confirms a settings-only refusal. */
-internal fun isCameraPromptBlocked(
-    rationaleBefore: Boolean,
-    rationaleAfter: Boolean,
-    elapsedMs: Long,
-    earlierUnexplainedRefusals: Int,
-): Boolean = cameraPermissionRecovery(
-    rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals,
-) == ARCameraPermissionRecovery.Settings
 
 /**
  * One camera per device, so one arbitration per process.

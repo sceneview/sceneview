@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
+import io.github.sceneview.ar.ARCameraPermissionRecovery
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -57,8 +58,8 @@ internal fun ArDemoPermissionGate(
     }
     ArCameraPermissionGate(
         permission = rememberArCameraPermission(),
-        blocked = { detail, action, onAction, onOpenSettings ->
-            ArPermissionScreen(title, onBack, detail, action, onAction, onOpenSettings)
+        blocked = { detail, action, onAction, onRequestAgain ->
+            ArPermissionScreen(title, onBack, detail, action, onAction, onRequestAgain)
         },
         content = content,
     )
@@ -80,8 +81,8 @@ internal fun ArCameraStagePermissionGate(
 ) {
     ArCameraPermissionGate(
         permission = permission,
-        blocked = { detail, action, onAction, onOpenSettings ->
-            ArPermissionStage(detail, action, onAction, modifier, onOpenSettings)
+        blocked = { detail, action, onAction, onRequestAgain ->
+            ArPermissionStage(detail, action, onAction, modifier, onRequestAgain)
         },
         content = content,
     )
@@ -90,18 +91,18 @@ internal fun ArCameraStagePermissionGate(
 @Composable
 internal fun ArCameraPermissionGate(
     permission: ArCameraPermission,
-    blocked: @Composable (detail: String, action: String, onAction: () -> Unit, onOpenSettings: (() -> Unit)?) -> Unit,
+    blocked: @Composable (detail: String, action: String, onAction: () -> Unit, onRequestAgain: (() -> Unit)?) -> Unit,
     content: @Composable () -> Unit,
 ) {
     var promptLaunched by rememberSaveable { mutableStateOf(false) }
 
-    when (arDemoPermissionUiState(permission.granted, permission.blocked)) {
+    when (arDemoPermissionUiState(permission.granted, permission.recovery == ARCameraPermissionRecovery.Settings)) {
         ArDemoPermissionUiState.ShowDemo -> content()
         ArDemoPermissionUiState.AskPermission -> {
             // The same card stays up behind the system dialog and after it: a dialog that
             // never comes back (process death, a dismissal) still leaves a button.
             blocked(
-                if (permission.settingsAvailable) {
+                if (permission.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
                     stringResource(R.string.ar_permission_fallback_subtitle)
                 } else when (arCameraAskReason(permission.shouldShowRationale)) {
                     ArCameraAskReason.NotAnswered ->
@@ -109,13 +110,19 @@ internal fun ArCameraPermissionGate(
                     ArCameraAskReason.Refused ->
                         stringResource(R.string.ar_permission_refused_subtitle)
                 },
-                stringResource(R.string.ar_permission_allow),
-                permission.request,
-                permission.openSettings.takeIf { permission.settingsAvailable },
+                stringResource(
+                    if (permission.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+                        R.string.ar_permission_open_settings
+                    } else R.string.ar_permission_allow,
+                ),
+                if (permission.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+                    permission.openSettings
+                } else permission.request,
+                permission.request.takeIf { permission.recovery == ARCameraPermissionRecovery.RequestWithSettings },
             )
             val autoPrompt = shouldAutoPromptForCamera(
                 granted = permission.granted,
-                blocked = permission.blocked,
+                blocked = permission.recovery != ARCameraPermissionRecovery.Request,
                 shouldShowRationale = permission.shouldShowRationale,
                 promptLaunched = promptLaunched,
             )
@@ -142,13 +149,13 @@ private fun ArPermissionScreen(
     detail: String,
     action: String,
     onAction: () -> Unit,
-    onOpenSettings: (() -> Unit)? = null,
+    onRequestAgain: (() -> Unit)? = null,
 ) {
     // No dock: its "Settings" pill opens the demo's own sheet, which has nothing in it here
     // and reads as the way to the *system* settings the card is talking about.
     // No scene either: the viewport must not announce "Scene ready" over a permission card.
     DemoScaffold(title = title, onBack = onBack, dockHidden = true, hasScene = false) {
-        ArPermissionStage(detail, action, onAction, onOpenSettings = onOpenSettings)
+        ArPermissionStage(detail, action, onAction, onRequestAgain = onRequestAgain)
     }
 }
 
@@ -159,7 +166,7 @@ private fun ArPermissionStage(
     action: String,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
-    onOpenSettings: (() -> Unit)? = null,
+    onRequestAgain: (() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
@@ -173,7 +180,7 @@ private fun ArPermissionStage(
             detail = detail,
             action = action,
             onAction = onAction,
-            onOpenSettings = onOpenSettings,
+            onRequestAgain = onRequestAgain,
         )
     }
 }
@@ -185,7 +192,7 @@ internal fun ArPermissionCard(
     detail: String?,
     action: String?,
     onAction: () -> Unit,
-    onOpenSettings: (() -> Unit)? = null,
+    onRequestAgain: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -232,10 +239,10 @@ internal fun ArPermissionCard(
                 Text(action, style = MaterialTheme.typography.labelLarge)
             }
         }
-        if (onOpenSettings != null) {
-            TextButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+        if (onRequestAgain != null) {
+            TextButton(onClick = onRequestAgain, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    stringResource(R.string.ar_permission_open_settings),
+                    stringResource(R.string.ar_permission_allow),
                     color = SceneViewTokens.ArOverlay.onScrim,
                 )
             }
