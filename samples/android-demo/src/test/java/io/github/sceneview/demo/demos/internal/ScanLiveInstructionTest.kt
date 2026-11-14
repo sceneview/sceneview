@@ -92,6 +92,39 @@ class ScanLiveInstructionTest {
     }
 
     @Test
+    fun `a line naming an area follows another area at once`() {
+        val line = ScanLiveInstruction()
+        line.update(nowMs = 0)
+        val after = ScanLiveInstruction.INTRO_MS + 1
+        assertEquals(ScanInstruction.HoleLeft, line.update(nowMs = after, hole = ScanTurn.Left, holeId = 1))
+        assertEquals(1, line.namedHole)
+        // The same area on another side waits for the hold.
+        assertEquals(ScanInstruction.HoleLeft, line.update(nowMs = after + 100, hole = ScanTurn.Behind, holeId = 1))
+        // Another area does not.
+        assertEquals(ScanInstruction.HoleRight, line.update(nowMs = after + 200, hole = ScanTurn.Right, holeId = 2))
+        assertEquals(2, line.namedHole)
+        // Nor does no area at all.
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = after + 300))
+        assertEquals(null, line.namedHole)
+    }
+
+    @Test
+    fun `a pose that stays slipped stops asking to go back and says the ways out`() {
+        // Codex's review of u30: « Go back to where you were » repeated for ever, and going back
+        // slowly cannot undo a slipped pose.
+        val line = ScanLiveInstruction()
+        line.update(nowMs = 0)
+        val t = ScanLiveInstruction.HOLD_MS
+        assertEquals(ScanInstruction.GoBack, line.update(nowMs = t, trackingLost = true, poseSlipped = true))
+        assertEquals(
+            ScanInstruction.Stuck,
+            line.update(nowMs = 2 * t, trackingLost = true, poseSlipped = true, poseStuck = true),
+        )
+        // The pose came back after all: the scan goes on.
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = ScanLiveInstruction.INTRO_MS + 3 * t))
+    }
+
+    @Test
     fun `a normal slow walk is not too fast`() {
         // Below the raised threshold (1.5 m/s), the ~1 m/s of a scan walk raises no warning.
         assertTrue(ScanCoach.MAX_SPEED_M_PER_S > 1f)

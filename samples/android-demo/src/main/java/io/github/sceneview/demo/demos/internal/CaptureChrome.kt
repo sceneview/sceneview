@@ -6,9 +6,18 @@ import kotlin.math.roundToInt
 enum class ScanInstruction {
     Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving,
 
+    /**
+     * The scan has been held off a jumped pose too long to come back by itself: finish with what
+     * it has, or leave and start again.
+     */
+    Stuck,
+
     /** Nothing scanned yet at the floor's nearest empty area, on that side of the phone. */
     HoleAhead, HoleLeft, HoleRight, HoleBehind,
     ;
+
+    /** Whether this line names an empty area of the floor. */
+    val namesHole: Boolean get() = this == HoleAhead || this == HoleLeft || this == HoleRight || this == HoleBehind
 
     companion object {
         /** The line naming an empty area on [turn]'s side of the phone. */
@@ -29,17 +38,26 @@ enum class ScanInstruction {
  * [complete], then "tap to finish". A problem — lost,
  * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
  * precedence over coaching, with the same minimum time between changes.
+ *
+ * A line that names an empty area never outlives it: that area filled, or another one named, the
+ * line follows at once, so it and the hatching ([namedHole]) always say the same thing.
  */
 class ScanLiveInstruction {
     private var startedAt: Long? = null
     private var changedAt: Long? = null
     private var shown: ScanInstruction? = null
 
+    /** The area the line shown names (`holeId` as it was when the line took it), `null` when it names none. */
+    var namedHole: Int? = null
+        private set
+
     fun update(
         nowMs: Long,
         started: Boolean = true,
         trackingLost: Boolean = false,
         poseSlipped: Boolean = false,
+        /** The pose has stayed slipped too long to come back by itself ([PoseContinuity.isStuck]). */
+        poseStuck: Boolean = false,
         tooFast: Boolean = false,
         tooDark: Boolean = false,
         saving: Boolean = false,
@@ -47,12 +65,16 @@ class ScanLiveInstruction {
         floorOnly: Boolean = false,
         /** The side of the phone the floor's nearest empty area is on, `null` with none. */
         hole: ScanTurn? = null,
+        /** Which area [hole] is the side of ([ScanHoleGuide.gapId]). */
+        holeId: Int = 0,
     ): ScanInstruction? {
         if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
         val elapsed = startedAt?.let { nowMs - it } ?: 0L
         val wanted = when {
             saving -> ScanInstruction.Saving
             !started -> ScanInstruction.Starting
+            // Going back cannot undo a pose that stayed slipped: say the ways out instead.
+            poseSlipped && poseStuck -> ScanInstruction.Stuck
             trackingLost || poseSlipped -> ScanInstruction.GoBack
             tooFast -> ScanInstruction.Slower
             tooDark -> ScanInstruction.MoreLight
@@ -67,9 +89,12 @@ class ScanLiveInstruction {
             else -> ScanInstruction.KeepGoing
         }
         val previousChange = changedAt
-        if (previousChange == null || (wanted != shown && nowMs - previousChange >= HOLD_MS)) {
+        val named = namedHole
+        val areaGone = named != null && (hole == null || holeId != named)
+        if (previousChange == null || areaGone || (wanted != shown && nowMs - previousChange >= HOLD_MS)) {
             shown = wanted
             changedAt = nowMs
+            namedHole = holeId.takeIf { wanted.namesHole }
         }
         return shown
     }

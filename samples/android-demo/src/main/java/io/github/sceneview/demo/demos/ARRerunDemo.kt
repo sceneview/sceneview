@@ -1875,6 +1875,13 @@ private fun RerunLiveScreen(
             delay(HUD_TICK_MS)
         }
     }
+    // Held too long to come back by itself: the line stops asking to go back and says the ways out.
+    val poseStuck by produceState(false, scan) {
+        while (true) {
+            value = scan != null && debugRecorder.stuck
+            delay(HUD_TICK_MS)
+        }
+    }
     val capturedPhotos = debugSession.trace.imageCount
     val captureEmpty = capturedPoints == 0 && capturedPhotos == 0 && stats.planes == 0
     val trackingLost = recording && (
@@ -1918,6 +1925,7 @@ private fun RerunLiveScreen(
         started = recording,
         trackingLost = trackingLost && !dark,
         poseSlipped = poseSlipped,
+        poseStuck = poseStuck,
         tooFast = scanCoverage.coachLine == ScanCoach.Line.Slower ||
             trackingFailureReason == TrackingFailureReason.EXCESSIVE_MOTION,
         tooDark = dark,
@@ -1929,6 +1937,7 @@ private fun RerunLiveScreen(
         ),
         floorOnly = scanScope.hasFloorPlan && !scanCoverage.facingWall,
         hole = hole,
+        holeId = holeSide.gapId,
     )
 
     // Where the recorder's camera window is: the live model's ground leaves it open.
@@ -1992,7 +2001,7 @@ private fun RerunLiveScreen(
                     onFinish = if (betweenRooms) ({ dropCapture(); onFinishHome() }) else onSaveScan,
                     onResumeRoom = if (betweenRooms) ({ betweenRooms = false; moveTo(ScanPhase.Scanning) }) else null,
                     scope = scanScope,
-                    limitedDepth = scan?.rawDepth == false,
+                    limitedDepth = scan?.rawDepth == false || qaState == QA_STATE_RECORD_NO_DEPTH,
                     paused = phase == ScanPhase.Paused,
                     onTogglePause = { moveTo(phase.togglePause()) }.takeIf { recording && phase.canKeepScanning },
                     onCameraWindow = { cameraWindow = it },
@@ -2136,7 +2145,7 @@ private fun RerunLiveScreen(
                     onViewBounds = { captureMeasure.viewBounds = it },
                     coverage = scanCoverage,
                     onHoles = { scanHoles = it },
-                    target = { holeSide.target },
+                    target = { holeSide.marked(instructionState.namedHole) },
                 )
             }
 

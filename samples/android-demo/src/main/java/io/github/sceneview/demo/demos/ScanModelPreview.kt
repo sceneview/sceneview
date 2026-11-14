@@ -49,13 +49,12 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.OrbitBand
-import io.github.sceneview.demo.demos.internal.RescanSources
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanHoleMarks
+import io.github.sceneview.demo.demos.internal.ScanLiveGaps
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
-import io.github.sceneview.demo.demos.internal.ScanLiveMapFraming
 import io.github.sceneview.demo.demos.internal.ScanModelFollow
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -65,6 +64,7 @@ import io.github.sceneview.loaders.ModelLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlin.math.hypot
 
 /**
  * The scan's main view while capturing: the model being built, in the colours the camera saw,
@@ -96,7 +96,7 @@ internal fun ScanModelPreview(
     coverage: ScanCoverageState? = null,
     /** The empty areas of that floor large enough to go back to, centres (x, z): the guidance names one. */
     onHoles: (List<Pair<Float, Float>>) -> Unit = {},
-    /** The centre of the area the guidance names, drawn brighter than the rest. */
+    /** The point aimed at in the area the line names, whose area alone is hatched; `null` while the line names none. */
     target: () -> Pair<Float, Float>? = { null },
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
@@ -129,18 +129,27 @@ internal fun ScanModelPreview(
     val current by rememberUpdatedState(snapshot)
     // The framing only grows: a snapshot that trims a far patch never pulls the view in again.
     val grown = remember(media) { arrayOfNulls<FloatArray>(1) }
+    val grownReach = remember(media) { FloatArray(1) }
     val bounds = remember(snapshot) {
-        snapshot?.whole?.let { ArDebugGeometry.robustBounds(it) }?.let { next ->
+        val points = snapshot?.whole
+        points?.let { ArDebugGeometry.robustBounds(it) }?.let { next ->
             val before = grown[0]
             val union = if (before == null) next else FloatArray(6) { i ->
                 if (i < 3) minOf(before[i], next[i]) else maxOf(before[i], next[i])
             }
+            // How far the model itself reaches from the box's middle: a room askew in the
+            // world's axes is narrower than its box, whose sides are always held.
+            val half = maxOf(union[3] - union[0], union[5] - union[2]) / 2f
+            val diagonal = hypot(union[3] - union[0], union[5] - union[2]) / 2f
+            val reach = ArDebugGeometry.robustReach(points, (union[0] + union[3]) / 2f, (union[2] + union[5]) / 2f)
+            grownReach[0] = maxOf(grownReach[0], (reach ?: diagonal).coerceIn(half, diagonal))
             union.also { grown[0] = it }
         } ?: grown[0]
     }
-    // Framed on a room-sized box at least: the first surfels, a metre of floor, never fill the
+    // Framed on a room-sized view at least: the first surfels, a metre of floor, never fill the
     // screen only to shrink away as the room grows (2026-11-13, Thomas: « le zoom va pas »).
     val currentBounds by rememberUpdatedState(bounds?.let(::atLeastRoomSized))
+    val currentReach by rememberUpdatedState(maxOf(MIN_HALF_WIDE_M, grownReach[0]))
     // The view is composed, unseen, as soon as there is a model, and comes in only once it has
     // drawn it: the camera never leaves the screen for a stage with nothing on it yet (u28, dark:
     // half a second of empty stage and a black viewfinder; intention.md: never a screen without
@@ -221,12 +230,9 @@ internal fun ScanModelPreview(
                         )
                         LiveCoverageGround.of(keys, cell, hull, floorY)
                     }
-                    // Each gap with the point the guidance aims at, on one of its own missing cells.
+                    // Each gap worth a line, with the point the guidance aims at in it.
                     gaps = floor?.let { f ->
-                        withContext(Dispatchers.Default) {
-                            RescanSources.holes(f).filter { it.area >= ScanLiveMapFraming.MIN_ZONE_M2 }
-                                .mapNotNull { hole -> hole.bounds().let { b -> ScanHoleMarks.aimOf(f, b)?.let { b to it } } }
-                        }
+                        withContext(Dispatchers.Default) { ScanLiveGaps.of(f).map { it.bounds to it.aim } }
                     }.orEmpty()
                     holes(gaps.map { it.second })
                 }
@@ -319,10 +325,12 @@ internal fun ScanModelPreview(
                 // From behind and above the phone, eased, stepping back as the room grows.
                 content = { ScanLiveGroundLayer(ground, engine, materialLoader, groundColors) },
                 follow = { frame ->
-                    phoneFollow.poseFor(frame.camera, frame.time, ArDebugFraming.HOME_AZIMUTH, currentBounds) { box, heading ->
+                    phoneFollow.poseFor(
+                        frame.camera, frame.time, ArDebugFraming.HOME_AZIMUTH, currentBounds, currentReach,
+                    ) { view, heading ->
                         ArDebugFraming.home(
-                            box, heading, orbit.verticalFovDegrees,
-                            orbit.aspect, elevationDegrees = MODEL_ELEVATION, band = OrbitBand.CARD, fill = 1f,
+                            view.axis(), heading, orbit.verticalFovDegrees, orbit.aspect,
+                            elevationDegrees = MODEL_ELEVATION, band = OrbitBand.CARD, fill = 1f, also = view.rings(),
                         )
                     }
                 },
@@ -348,7 +356,7 @@ private const val MIN_HALF_HIGH_M = 1f
 private const val NAMED_HATCH_TINT = 0.75f
 
 /** How often the floor's marks are checked for a new floor or a newly named gap. */
-private const val MARKS_REFRESH_MS = 500L
+private const val MARKS_REFRESH_MS = 150L
 
 /** A gap whose centre lies within ~0.7 m of the one named is the one named. */
 private const val SAME_GAP_M2 = 0.5f

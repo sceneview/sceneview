@@ -73,6 +73,34 @@ class CaptureChromeUiTest {
     }
 
     @Test
+    fun `a phone without raw depth says so under what to do`() {
+        // Codex's review of u30: the explanation could never show, the line always had an instruction.
+        composeRule.setContent {
+            ScanControls(instruction = ScanInstruction.Sweep, doneEnabled = true, onFinish = {}, limitedDepth = true)
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_sweep), useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCAN_NOTE_TAG, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_capture_photos_only), useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a phone with raw depth has one line only`() {
+        composeRule.setContent {
+            ScanControls(instruction = ScanInstruction.Sweep, doneEnabled = true, onFinish = {})
+        }
+        composeRule.onNodeWithTag(SCAN_NOTE_TAG, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a scan stuck off its pose names the red button and the way back`() {
+        composeRule.setContent {
+            ScanControls(instruction = ScanInstruction.Stuck, doneEnabled = true, onFinish = {})
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_stuck), useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag(AR_REC_SHUTTER_TAG).assertIsEnabled()
+    }
+
+    @Test
     fun `a whole home offers Next room beside Done`() {
         var next = 0
         composeRule.setContent {

@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import android.os.SystemClock
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -59,12 +60,20 @@ import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.haptic.rememberHapticFeedback
 import kotlinx.coroutines.delay
 
-/** One calm, opaque line: the camera remains untouched outside this small surface. */
+/**
+ * One calm, opaque line: the camera remains untouched outside this small surface. [note], when
+ * set, is a quieter second line on the same surface: a fact about this capture, not a thing to do.
+ */
 @Composable
-internal fun ScanInstructionLine(instruction: ScanInstruction, scope: ScanScope = ScanScope.Room) {
+internal fun ScanInstructionLine(
+    instruction: ScanInstruction,
+    scope: ScanScope = ScanScope.Room,
+    @StringRes note: Int? = null,
+) {
     val message = when (instruction) {
         ScanInstruction.Starting -> R.string.scan_capture_starting
         ScanInstruction.GoBack -> R.string.scan_capture_go_back
+        ScanInstruction.Stuck -> R.string.scan_capture_stuck
         ScanInstruction.Slower -> R.string.scan_capture_slower
         ScanInstruction.MoreLight -> R.string.scan_capture_more_light
         ScanInstruction.Sweep -> when (scope) {
@@ -101,10 +110,22 @@ internal fun ScanInstructionLine(instruction: ScanInstruction, scope: ScanScope 
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.inverseOnSurface)
             }
-            Text(text = stringResource(message), style = MaterialTheme.typography.bodyMedium)
+            Column {
+                Text(text = stringResource(message), style = MaterialTheme.typography.bodyMedium)
+                if (note != null) {
+                    Text(
+                        text = stringResource(note),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag(SCAN_NOTE_TAG),
+                    )
+                }
+            }
         }
     }
 }
+
+/** The quieter second line of the capture's instruction, when it has one. */
+internal const val SCAN_NOTE_TAG = "scan_capture_note"
 
 /*
  * The 3D Scan capture's chrome legible in sunlight: every line of it sits on a solid fill, so the

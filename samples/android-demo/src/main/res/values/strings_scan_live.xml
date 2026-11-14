@@ -12,6 +12,7 @@
     <string name="scan_capture_figures">%1$s · %2$s scanned</string>
     <string name="scan_capture_starting">Move your phone slowly to start</string>
     <string name="scan_capture_go_back">Go back to where you were</string>
+    <string name="scan_capture_stuck">Still lost. Tap the red button to keep this scan, or go back to restart</string>
     <string name="scan_capture_slower">Move a little slower</string>
     <string name="scan_capture_more_light">More light needed</string>
     <string name="scan_capture_sweep">Sweep the floor and the walls</string>

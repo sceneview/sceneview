@@ -17,6 +17,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import io.github.sceneview.demo.demos.internal.ScanAreaCopy
 import io.github.sceneview.demo.demos.internal.ScanInstruction
 import io.github.sceneview.demo.demos.internal.ScanLens
+import io.github.sceneview.demo.demos.internal.ScanLivePoints
 
 import androidx.compose.foundation.background
 import androidx.compose.animation.AnimatedVisibility
@@ -345,8 +346,11 @@ internal fun ScanControls(
         }
         when {
             paused && instruction != ScanInstruction.Saving -> ScanPausedLine()
-            instruction != null -> ScanInstructionLine(instruction, scope)
-            limitedDepth -> Text(stringResource(R.string.scan_capture_photos_only), style = MaterialTheme.typography.bodyMedium)
+            // Without raw depth no model grows: the line says why under what to do.
+            instruction != null -> ScanInstructionLine(
+                instruction, scope,
+                note = R.string.scan_capture_photos_only.takeIf { limitedDepth && instruction != ScanInstruction.Saving },
+            )
         }
         // While saving, the model owns the stage: the line says so, no control under it.
         if (instruction == ScanInstruction.Saving) {
@@ -793,7 +797,13 @@ internal fun ScanLiveView(
         replay = drawn,
         transparent = true,
         measuresRoom = false,
-        visible = { lens.ready && media.liveDense?.invoke() != null && it in SCAN_LIVE_GROUPS },
+        visible = {
+            it in SCAN_LIVE_GROUPS && ScanLivePoints.visible(
+                lensReady = lens.ready,
+                hasDenseMap = media.liveDense != null,
+                denseReady = media.liveDense?.invoke() != null,
+            )
+        },
         observe = { frame ->
             val cells = media.liveDense?.invoke()?.coveredCells
             if (observed.isNew(frame, frame.camera, cells)) {
