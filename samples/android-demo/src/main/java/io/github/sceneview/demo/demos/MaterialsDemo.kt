@@ -4,10 +4,12 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -66,7 +68,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +79,7 @@ import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoScaffoldTestTags
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
@@ -98,7 +103,9 @@ import io.github.sceneview.demo.OrbitSpin
 import io.github.sceneview.demo.orbitLabelFadeAlpha
 import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setMetallic
@@ -122,6 +129,7 @@ import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.cos
@@ -177,9 +185,11 @@ fun MaterialsDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(MaterialsMode.entries, MaterialsMode.Gallery))
     }
+    var galleryHintDismissed by remember { mutableStateOf(false) }
     val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     val onModeChange: (MaterialsMode) -> Unit = { next ->
         if (next != mode) {
+            galleryHintDismissed = true
             io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
             mode = next
         }
@@ -190,7 +200,13 @@ fun MaterialsDemo(onBack: () -> Unit) {
         // instances survive the toggle. Switching modes is then a camera change, not a
         // teardown — no reload, no black frame, and a slider tweak is still there when the
         // user comes back to the wall.
-        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(onBack, mode, onModeChange)
+        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(
+            onBack = onBack,
+            mode = mode,
+            onModeChange = onModeChange,
+            galleryHintVisible = !galleryHintDismissed,
+            onDismissGalleryHint = { galleryHintDismissed = true },
+        )
         // Occlusion gets its own engine on purpose: it is a different scene with a different
         // camera and a loaded GLB, and giving it a separate `rememberEngine()` means leaving
         // the tab tears its resources down completely.
@@ -235,6 +251,8 @@ private fun StudioSection(
     onBack: () -> Unit,
     mode: MaterialsMode,
     onModeChange: (MaterialsMode) -> Unit,
+    galleryHintVisible: Boolean,
+    onDismissGalleryHint: () -> Unit,
 ) {
     val inspecting = mode == MaterialsMode.Inspect
     val library = MaterialStudio.library
@@ -627,6 +645,7 @@ private fun StudioSection(
      * the screenshot harness never captures a half-travelled camera.
      */
     fun focusOn(index: Int) {
+        onDismissGalleryHint()
         focusIndex = index
         haptic.selection()
         // Pin the sweep where the tap found it: the dolly must not also turn, or the sphere
@@ -691,6 +710,25 @@ private fun StudioSection(
     // "Scene ready" waits until both have landed (#4174).
     firstFrame.holdUntil(landed = environment != null)
 
+    // The hint yields to the scene: first interaction, or a few seconds after the first frame.
+    // The timeout follows the system's accessibility recommendation so TalkBack reads it before
+    // it goes, and QA mode keeps it on screen so captures stay deterministic.
+    val accessibilityManager = LocalAccessibilityManager.current
+    val galleryHintMillis = remember(accessibilityManager) {
+        accessibilityManager?.calculateRecommendedTimeoutMillis(
+            GALLERY_HINT_MILLIS,
+            containsIcons = false,
+            containsText = true,
+            containsControls = false,
+        ) ?: GALLERY_HINT_MILLIS
+    }
+    LaunchedEffect(firstFrame.rendered.value, inspecting, galleryHintVisible, DemoSettings.qaMode) {
+        if (firstFrame.rendered.value && !inspecting && galleryHintVisible && !DemoSettings.qaMode) {
+            delay(galleryHintMillis)
+            onDismissGalleryHint()
+        }
+    }
+
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
     // `Node.name` carries the material id — the picker hands back the picked Node, not an
     // index, and matching on the name is what keeps that mapping readable when the wall order
@@ -698,11 +736,14 @@ private fun StudioSection(
     // one; the camera is already travelling and a re-aim mid-flight reads as a glitch.
     val gestureListener = rememberOnGestureListener(
         onSingleTapUp = { _, node ->
+            if (!inspecting) onDismissGalleryHint()
             if (!inspecting && !focusing) {
                 val tapped = library.indexOfFirst { it.id == node?.name }
                 if (tapped >= 0) focusOn(tapped)
             }
         },
+        onScroll = { _, _, _, _ -> if (!inspecting) onDismissGalleryHint() },
+        onScaleBegin = { _, _, _ -> if (!inspecting) onDismissGalleryHint() },
     )
 
     DemoScaffold(
@@ -723,8 +764,29 @@ private fun StudioSection(
         peekHeader = if (inspecting) {
             stringResource(selected.nameRes)
         } else {
-            stringResource(R.string.demo_materials_gallery_hint)
+            null
         },
+        bottomOverlay = if (!inspecting) {{
+            val hintAlpha by animateFloatAsState(
+                targetValue = if (galleryHintVisible) 1f else 0f,
+                animationSpec = SceneViewTokens.Motion.fade(),
+                label = "gallery-hint",
+            )
+            // Keep the measured band: removing the hint would reframe the wall as it fades.
+            GlassPill(
+                modifier = Modifier
+                    .graphicsLayer { alpha = hintAlpha }
+                    .then(if (galleryHintVisible) Modifier else Modifier.clearAndSetSemantics { })
+                    .testTag(DemoScaffoldTestTags.STATUS_PILL),
+            ) {
+                Text(
+                    text = stringResource(R.string.demo_materials_gallery_hint),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LocalStageChrome.current.onGlass,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }} else null,
         onResetSettings = {
             selectedIndex = MaterialStudio.DEFAULT_INDEX
             environmentIndex = MaterialStudio.DEFAULT_ENVIRONMENT_INDEX
@@ -1181,6 +1243,9 @@ private fun EnvironmentSwapIndicator() {
  * — and short enough that it never feels like a wait before Inspect opens.
  */
 private const val FOCUS_FLIGHT_MILLIS: Int = 520
+
+/** Long enough to discover tap-to-focus without covering the bottom captions indefinitely. */
+private const val GALLERY_HINT_MILLIS: Long = 4_000L
 
 /**
  * Height of Inspect's orbiting eye above its subject, world units.
