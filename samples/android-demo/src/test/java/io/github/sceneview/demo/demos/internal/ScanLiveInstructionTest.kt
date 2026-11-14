@@ -31,7 +31,65 @@ class ScanLiveInstructionTest {
         assertFalse(ScanCompletion.complete(ScanScope.Room, seconds = 10f, floorShare = 1f))
         assertFalse(ScanCompletion.complete(ScanScope.Room, seconds = 40f, floorShare = 0.5f))
         assertTrue(ScanCompletion.complete(ScanScope.Room, seconds = 40f, floorShare = 0.9f))
-        assertTrue(ScanCompletion.complete(ScanScope.Object, seconds = 31f, floorShare = 0f))
+    }
+
+    @Test
+    fun `a room looks complete once the phone has been all the way round`() {
+        // A real 75 s room scan (2026-11-14) never covered 85 % of its floor's hull: nothing ever
+        // said it was finished. Its turn was full at 37 s.
+        assertFalse(ScanCompletion.complete(ScanScope.Room, seconds = 40f, floorShare = 0.5f, turnShare = 11f / 12f))
+        assertTrue(ScanCompletion.complete(ScanScope.Room, seconds = 40f, floorShare = 0.5f, turnShare = 1f))
+        assertTrue(ScanCompletion.complete(ScanScope.Home, seconds = 40f, floorShare = 0.5f, turnShare = 1f))
+        // A spin on the spot in ten seconds is not a scan yet.
+        assertFalse(ScanCompletion.complete(ScanScope.Room, seconds = 10f, floorShare = 0.5f, turnShare = 1f))
+    }
+
+    @Test
+    fun `an object looks complete once it was walked round, never by the clock alone`() {
+        assertFalse(ScanCompletion.complete(ScanScope.Object, seconds = 31f, floorShare = 0f))
+        assertFalse(ScanCompletion.complete(ScanScope.Object, seconds = 5f, floorShare = 0f, turnShare = 1f))
+        assertTrue(ScanCompletion.complete(ScanScope.Object, seconds = 19f, floorShare = 0f, turnShare = 1f))
+    }
+
+    @Test
+    fun `an outdoor area never looks complete by itself, it asks`() {
+        assertFalse(ScanCompletion.complete(ScanScope.Area, seconds = 200f, floorShare = 1f, turnShare = 1f))
+        assertFalse(ScanCompletion.whenReady(ScanScope.Area, seconds = 29f))
+        assertTrue(ScanCompletion.whenReady(ScanScope.Area, seconds = 30f))
+        // An object against a wall cannot be walked round: it asks too. A room waits for its turn.
+        assertTrue(ScanCompletion.whenReady(ScanScope.Object, seconds = 30f))
+        assertFalse(ScanCompletion.whenReady(ScanScope.Room, seconds = 300f))
+        assertFalse(ScanCompletion.whenReady(ScanScope.Home, seconds = 300f))
+    }
+
+    @Test
+    fun `the circle is the turn made, full once complete, and absent outdoors`() {
+        assertEquals(0.5f, ScanCompletion.progress(ScanScope.Room, turnShare = 0.5f)!!, 0f)
+        assertEquals(0.25f, ScanCompletion.progress(ScanScope.Object, turnShare = 0.25f)!!, 0f)
+        // A room complete by its floor shows a full circle: the line and the circle say the same.
+        assertEquals(1f, ScanCompletion.progress(ScanScope.Room, turnShare = 0.5f, complete = true)!!, 0f)
+        assertEquals(null, ScanCompletion.progress(ScanScope.Area, turnShare = 1f))
+    }
+
+    @Test
+    fun `the red button finishes nothing in the first three seconds`() {
+        // Two scans of a terrace were saved after 0.8 s and 6.5 s (2026-11-14), one photo in the first.
+        assertFalse(ScanCompletion.canFinish(0.8f))
+        assertFalse(ScanCompletion.canFinish(2.9f))
+        assertTrue(ScanCompletion.canFinish(3f))
+        // No clock (a QA state): nothing to wait for.
+        assertTrue(ScanCompletion.canFinish(null))
+    }
+
+    @Test
+    fun `a scan with no turn to wait for asks whether it has everything`() {
+        val line = ScanLiveInstruction()
+        line.update(nowMs = 0)
+        assertEquals(ScanInstruction.KeepGoing, line.update(nowMs = 10_000))
+        assertEquals(ScanInstruction.WhenReady, line.update(nowMs = 30_000, whenReady = true))
+        // A problem still takes the line, and a full turn outranks the question.
+        assertEquals(ScanInstruction.Slower, line.update(nowMs = 33_000, whenReady = true, tooFast = true))
+        assertEquals(ScanInstruction.Complete, line.update(nowMs = 36_000, whenReady = true, complete = true))
     }
 
     @Test

@@ -310,6 +310,8 @@ private const val GAUGE_SEGMENTS = 10
  * camera app's: the window on what the camera sees where a camera keeps its last shot, the red
  * stop shutter in the middle, Pause and Resume across from it — and, for a whole home, Next room
  * above them. One instruction line at most sits over the row. While saving, only the line stays.
+ * The stop shutter's ring is the scan's one gauge: it fills with [progress], the turn made so far,
+ * and the line says to keep turning until it is full.
  * [onCameraWindow] hears where the camera window is, in the window's coordinates, for the live
  * model's ground to leave it open; `null` once it is gone.
  */
@@ -327,6 +329,8 @@ internal fun ScanControls(
     onTogglePause: (() -> Unit)? = null,
     onCameraWindow: (Rect?) -> Unit = {},
     cameraWindowShown: Boolean = true,
+    /** How far round the scan has been, `0..1` ([ScanCompletion.progress]): the circle on the red button. */
+    progress: Float? = null,
 ) {
     Column(
         modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth().testTag(SCAN_CONTROLS_TAG),
@@ -379,6 +383,7 @@ internal fun ScanControls(
                     modifier = Modifier.testTag(SCAN_FINISH_TAG).background(ArOverlay.scrimDark, CircleShape),
                     stopLabel = stringResource(R.string.scan_capture_finish),
                     stopEnabled = doneEnabled,
+                    progress = progress,
                 )
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {

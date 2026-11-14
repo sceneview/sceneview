@@ -7,6 +7,12 @@ enum class ScanInstruction {
     Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving,
 
     /**
+     * A scan with no full turn to wait for (outdoors, or an object that cannot be walked round)
+     * has run long enough to hold something: the line asks whether it has all it can.
+     */
+    WhenReady,
+
+    /**
      * The scan has been held off a jumped pose too long to come back by itself: finish with what
      * it has, or leave and start again.
      */
@@ -31,11 +37,13 @@ enum class ScanInstruction {
 }
 
 /**
- * The capture's one line, never empty while it records, held for at least two seconds: the sweep
- * to start with, for six seconds by a monotonic clock (the trace clock stops during tracking
- * loss); then "keep going" — "raise your phone to the walls" once a room's scan has looked away
- * from them ([floorOnly]) for [OFF_WALLS_MS] on end, or the side an empty area is on ([hole]) —
- * until the scan is [complete], then "tap to finish". A problem — lost,
+ * The capture's one line, never empty while it records, held for at least two seconds, in the
+ * words of someone who has never scanned: what to film to start with, for six seconds by a
+ * monotonic clock (the trace clock stops during tracking loss); then where to move — "keep
+ * turning until the circle is full", "raise your phone to the walls" once a room's scan has
+ * looked away from them ([floorOnly]) for [OFF_WALLS_MS] on end, or the side an empty area is on
+ * ([hole]) — until the scan is [complete], then "tap the red button to finish". A scan with no
+ * full turn to wait for asks instead whether it has everything ([whenReady]). A problem — lost,
  * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
  * precedence over coaching, with the same minimum time between changes.
  *
@@ -65,6 +73,8 @@ class ScanLiveInstruction {
         tooDark: Boolean = false,
         saving: Boolean = false,
         complete: Boolean = false,
+        /** No full turn to wait for, and long enough to hold something ([ScanCompletion.whenReady]). */
+        whenReady: Boolean = false,
         floorOnly: Boolean = false,
         /** The side of the phone the floor's nearest empty area is on, `null` with none. */
         hole: ScanTurn? = null,
@@ -94,6 +104,7 @@ class ScanLiveInstruction {
             // workshop: « Raise your phone to the walls » all the way through, no wall named).
             hole != null -> ScanInstruction.holeOn(hole)
             offWalls -> ScanInstruction.Walls
+            whenReady -> ScanInstruction.WhenReady
             else -> ScanInstruction.KeepGoing
         }
         val previousChange = changedAt
@@ -374,16 +385,46 @@ object CaptureChrome {
 }
 
 /**
- * When the capture's line says the scan looks complete: a room or a home once most of its floor
- * is covered after a full turn's time, an object or an outdoor area after half a minute.
+ * When a scan is finished, said the way someone who has never scanned can act on: the circle
+ * round the red button is the turn the phone has made ([ScanAllRound]), and the scan looks
+ * complete once it is full. A room or a home also completes once most of its floor is covered; an
+ * outdoor area has no turn to close, so it never "looks complete" by itself.
  */
 object ScanCompletion {
     const val ROOM_FLOOR_SHARE = 0.85f
     const val ROOM_MIN_SECONDS = 20f
+    const val OBJECT_MIN_SECONDS = 10f
     const val OPEN_MIN_SECONDS = 30f
 
-    fun complete(scope: ScanScope, seconds: Float, floorShare: Float): Boolean = when {
-        scope.hasFloorPlan -> seconds >= ROOM_MIN_SECONDS && floorShare >= ROOM_FLOOR_SHARE
-        else -> seconds >= OPEN_MIN_SECONDS
+    /**
+     * How long a capture runs before the red button finishes it: a tap meant for the screen
+     * before, or a reflex to "start recording", ends nothing (2026-11-14, two scans of a terrace
+     * saved after 0.8 s and 6.5 s, one photo in the first).
+     */
+    const val FINISH_AFTER_SECONDS = 3f
+
+    /**
+     * The circle's share, `0..1`: [turnShare] ([ScanAllRound.share]), full once the scan is
+     * [complete]; `null` where there is no way round to measure (an outdoor area).
+     */
+    fun progress(scope: ScanScope, turnShare: Float, complete: Boolean = false): Float? = when {
+        scope == ScanScope.Area -> null
+        complete -> 1f
+        else -> turnShare.coerceIn(0f, 1f)
     }
+
+    fun complete(scope: ScanScope, seconds: Float, floorShare: Float, turnShare: Float = 0f): Boolean = when {
+        scope.hasFloorPlan -> seconds >= ROOM_MIN_SECONDS && (turnShare >= 1f || floorShare >= ROOM_FLOOR_SHARE)
+        scope == ScanScope.Object -> seconds >= OBJECT_MIN_SECONDS && turnShare >= 1f
+        else -> false
+    }
+
+    /**
+     * Whether the line asks if the scan has all it can: outdoors, and round an object that
+     * stands against a wall, the circle never fills, and half a minute holds something to keep.
+     */
+    fun whenReady(scope: ScanScope, seconds: Float): Boolean = !scope.hasFloorPlan && seconds >= OPEN_MIN_SECONDS
+
+    /** Whether the red button finishes a capture [seconds] long (`null`: no clock, as in a QA state). */
+    fun canFinish(seconds: Float?): Boolean = seconds == null || seconds >= FINISH_AFTER_SECONDS
 }

@@ -211,6 +211,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
+import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
@@ -1920,6 +1921,17 @@ private fun RerunLiveScreen(
     val hole = scanCoverage.camera?.takeIf { scanScope.hasFloorPlan }?.let { phone ->
         holeSide.update(scanHoles, phone, nowMs)
     }
+    // When it is finished: the turn the phone has made is the circle on the red button, and a
+    // full one says so, in the line and under the thumb.
+    val scanSeconds = scan?.elapsedSeconds() ?: 0f
+    val scanComplete = ScanCompletion.complete(
+        scope = scanScope,
+        seconds = scanSeconds,
+        floorShare = scanCoverage.floorShare,
+        turnShare = scanCoverage.turnShare,
+    )
+    val completeHaptic = rememberHapticFeedback()
+    LaunchedEffect(scanComplete) { if (scanComplete && recording && !DemoSettings.qaMode) completeHaptic.success() }
     val instruction = instructionState.update(
         nowMs = nowMs,
         started = recording,
@@ -1930,11 +1942,8 @@ private fun RerunLiveScreen(
             trackingFailureReason == TrackingFailureReason.EXCESSIVE_MOTION,
         tooDark = dark,
         saving = phase == ScanPhase.Saving,
-        complete = ScanCompletion.complete(
-            scope = scanScope,
-            seconds = scan?.elapsedSeconds() ?: 0f,
-            floorShare = scanCoverage.floorShare,
-        ),
+        complete = scanComplete,
+        whenReady = ScanCompletion.whenReady(scanScope, scanSeconds),
         floorOnly = scanScope.hasFloorPlan && !scanCoverage.facingWall,
         hole = hole,
         holeId = holeSide.gapId,
@@ -1997,7 +2006,9 @@ private fun RerunLiveScreen(
             } else if (arCoreAvailability == null || qaState != null) {
                 ScanControls(
                     instruction = instruction,
-                    doneEnabled = recording && !captureEmpty && phase.canKeepScanning,
+                    doneEnabled = recording && !captureEmpty && phase.canKeepScanning &&
+                        ScanCompletion.canFinish(scan?.elapsedSeconds()),
+                    progress = ScanCompletion.progress(scanScope, scanCoverage.turnShare, scanComplete),
                     onFinish = if (betweenRooms) ({ dropCapture(); onFinishHome() }) else onSaveScan,
                     onResumeRoom = if (betweenRooms) ({ betweenRooms = false; moveTo(ScanPhase.Scanning) }) else null,
                     scope = scanScope,

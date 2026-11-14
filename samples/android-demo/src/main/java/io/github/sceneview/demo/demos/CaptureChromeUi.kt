@@ -92,6 +92,10 @@ internal fun ScanInstructionLine(
         ScanInstruction.HoleRight -> R.string.scan_capture_hole_right
         ScanInstruction.HoleBehind -> R.string.scan_capture_hole_behind
         ScanInstruction.Complete -> R.string.scan_capture_complete
+        ScanInstruction.WhenReady -> when (scope) {
+            ScanScope.Object -> R.string.scan_capture_when_ready_object
+            else -> R.string.scan_capture_when_ready_outdoor
+        }
         ScanInstruction.Saving -> R.string.scan_capture_saving
     }
     Surface(

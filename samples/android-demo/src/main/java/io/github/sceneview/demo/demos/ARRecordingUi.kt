@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -52,15 +54,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -355,8 +364,17 @@ internal fun RecordShutter(
     stopLabel: String? = null,
     // Whether stopping is offered yet (3D Scan: not before the capture holds something).
     stopEnabled: Boolean = true,
+    // How far along the take is, 0..1, drawn as the ring filling clockwise from the top
+    // (3D Scan: the turn made so far); null keeps the ring whole.
+    progress: Float? = null,
 ) {
     val tappable = if (isRecording) stopEnabled else startEnabled
+    val ringAlpha = if (tappable) 1f else DISABLED_ALPHA
+    val filled by animateFloatAsState(
+        targetValue = progress?.coerceIn(0f, 1f) ?: 1f,
+        animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
+        label = "shutterProgress",
+    )
     val haptic = rememberHapticFeedback()
     val label = if (isRecording && stopLabel != null) {
         stopLabel
@@ -374,12 +392,31 @@ internal fun RecordShutter(
             color = ArOverlay.meterTrack,
             border = BorderStroke(
                 width = ShutterRingWidth,
-                color = ArOverlay.onScrim.copy(alpha = if (tappable) 1f else DISABLED_ALPHA),
+                // With a progress, the ring is the track and the part done is drawn over it.
+                color = ArOverlay.onScrim.copy(alpha = if (progress == null) ringAlpha else ringAlpha * RING_TRACK_ALPHA),
             ),
             modifier = Modifier
                 .size(ShutterSize)
                 .testTag(AR_REC_SHUTTER_TAG)
-                .semantics { contentDescription = label },
+                .drawWithContent {
+                    drawContent()
+                    if (progress != null && filled > 0f) {
+                        val stroke = ShutterRingWidth.toPx()
+                        drawArc(
+                            color = ArOverlay.onScrim.copy(alpha = ringAlpha),
+                            startAngle = RING_START_DEGREES,
+                            sweepAngle = FULL_TURN_DEGREES * filled,
+                            useCenter = false,
+                            topLeft = Offset(stroke / 2f, stroke / 2f),
+                            size = Size(size.width - stroke, size.height - stroke),
+                            style = Stroke(width = stroke, cap = StrokeCap.Round),
+                        )
+                    }
+                }
+                .semantics {
+                    contentDescription = label
+                    if (progress != null) progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                },
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Box(
@@ -396,6 +433,11 @@ internal fun RecordShutter(
 }
 
 private const val DISABLED_ALPHA = 0.4f
+
+/** The ring left to fill, under the part done: there, and plainly not done. */
+private const val RING_TRACK_ALPHA = 0.3f
+private const val RING_START_DEGREES = -90f
+private const val FULL_TURN_DEGREES = 360f
 
 // ── Gallery ──────────────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -17,6 +18,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.CaptureChrome
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanInstruction
+import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.ScanStep
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -81,6 +83,44 @@ class CaptureChromeUiTest {
         composeRule.onNodeWithText(text(R.string.scan_capture_sweep), useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag(SCAN_NOTE_TAG, useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText(text(R.string.scan_capture_photos_only), useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the red button's ring is the turn made so far`() {
+        composeRule.setContent {
+            ScanControls(instruction = ScanInstruction.KeepGoing, doneEnabled = true, onFinish = {}, progress = 0.5f)
+        }
+        // The line names the circle, and the circle is the shutter's own gauge.
+        composeRule.onNodeWithText(text(R.string.scan_capture_keep_going)).assertIsDisplayed()
+        composeRule.onNodeWithTag(AR_REC_SHUTTER_TAG).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0.5f, 0f..1f)),
+        )
+        composeRule.onNodeWithContentDescription(text(R.string.scan_capture_finish)).assertIsEnabled()
+    }
+
+    @Test
+    fun `a scan with no way round has a plain ring and asks whether it has everything`() {
+        composeRule.setContent {
+            ScanControls(
+                instruction = ScanInstruction.WhenReady, doneEnabled = true, onFinish = {},
+                scope = ScanScope.Area,
+            )
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_when_ready_outdoor)).assertIsDisplayed()
+        composeRule.onNodeWithTag(AR_REC_SHUTTER_TAG).assert(
+            SemanticsMatcher.keyNotDefined(SemanticsProperties.ProgressBarRangeInfo),
+        )
+    }
+
+    @Test
+    fun `an object that cannot be walked round asks in its own words`() {
+        composeRule.setContent {
+            ScanControls(
+                instruction = ScanInstruction.WhenReady, doneEnabled = true, onFinish = {},
+                scope = ScanScope.Object, progress = 0.25f,
+            )
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_when_ready_object)).assertIsDisplayed()
     }
 
     @Test
