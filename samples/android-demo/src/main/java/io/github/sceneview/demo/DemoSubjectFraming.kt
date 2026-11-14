@@ -44,6 +44,12 @@ internal class DemoSceneFrame(
 internal fun isDemoCompactHeight(): Boolean =
     LocalConfiguration.current.screenHeightDp < DEMO_COMPACT_HEIGHT_DP
 
+/** Whether the window is narrow — Material's compact width class ([DEMO_COMPACT_WIDTH_DP]). */
+@Composable
+@ReadOnlyComposable
+internal fun isDemoCompactWidth(): Boolean =
+    LocalConfiguration.current.screenWidthDp < DEMO_COMPACT_WIDTH_DP
+
 /**
  * The [DemoSceneFrame] of a scene that fills this box, itself filling the scaffold's `scene` slot.
  *
@@ -131,6 +137,14 @@ internal const val DEMO_MIN_VISIBLE_FRACTION = 0.1f
  * class. Read through [isDemoCompactHeight].
  */
 internal const val DEMO_COMPACT_HEIGHT_DP = 480
+
+/**
+ * Below this window width, in dp, a window is compact — Material's compact width class: a phone
+ * in portrait, or one half of a split screen. A window both short ([DEMO_COMPACT_HEIGHT_DP]) and
+ * this narrow is not a phone held sideways and has no room for two columns side by side.
+ * Read through [isDemoCompactWidth].
+ */
+internal const val DEMO_COMPACT_WIDTH_DP = 600
 
 /**
  * Diameter of the disc a double pendulum can reach around its hinge: both arms in line, out to

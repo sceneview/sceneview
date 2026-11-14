@@ -32,6 +32,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.demos.internal.SemanticsOverlay
 import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.isDemoCompactWidth
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.rememberEngine
@@ -444,6 +446,7 @@ internal fun SceneSemanticsOutdoorNotice(
 ) {
     if (!arSessionBlocked && semanticsSupported != false) {
         Surface(
+            modifier = Modifier.testTag(OUTDOOR_NOTICE_TAG),
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
             contentColor = MaterialTheme.colorScheme.onPrimary,
             shape = MaterialTheme.shapes.large
@@ -479,6 +482,20 @@ private const val LEGEND_MIN_BLEND = 0.05f
 /** Test tag of the color legend, wherever the window puts it. */
 internal const val SEMANTIC_LEGEND_TAG = "scene-semantics-legend"
 
+/** Test tag of the outdoor warning pill — the whole Surface, not only its first line. */
+internal const val OUTDOOR_NOTICE_TAG = "scene-semantics-outdoor-notice"
+
+/**
+ * Whether the legend goes beside the HUD in the top band rather than in the bottom band: only in
+ * a window both short and wide, a phone held sideways (#4036). A short but narrow window — one
+ * half of a split screen, 393 × 400 dp — has no room for two columns: halved, the HUD's "41 %"
+ * wrapped one character per line and the warning was pushed down under the dock, so it keeps
+ * the portrait layout.
+ */
+@Composable
+@ReadOnlyComposable
+private fun legendBesideHud(): Boolean = isDemoCompactHeight() && !isDemoCompactWidth()
+
 /**
  * The demo's `topOverlay` content, with the color legend beside it on a phone held sideways.
  *
@@ -488,7 +505,7 @@ internal const val SEMANTIC_LEGEND_TAG = "scene-semantics-legend"
  * window height) the HUD and the outdoor warning reached down past the top of the legend, and
  * the legend sat across the lower half of the warning, in light and dark theme alike (#4036).
  *
- * So in a compact-height window ([isDemoCompactHeight]) the legend leaves the bottom band and
+ * So in a short and wide window ([legendBesideHud]) the legend leaves the bottom band and
  * becomes the end column of a Row whose start column is [content]: two Row cells share no
  * horizontal pixels, so the warning and the legend cannot overlap at any font scale, and the
  * bottom band stays empty above the dock. Portrait is unchanged: [content] goes straight into
@@ -499,7 +516,7 @@ internal fun ColumnScope.SceneSemanticsTopBand(
     legendShown: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (legendShown && isDemoCompactHeight()) {
+    if (legendShown && legendBesideHud()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
@@ -531,7 +548,7 @@ internal fun ColumnScope.SceneSemanticsTopBand(
  */
 @Composable
 internal fun DemoBottomOverlayScope.SceneSemanticsBottomLegend(legendShown: Boolean) {
-    if (legendShown && !isDemoCompactHeight()) {
+    if (legendShown && !legendBesideHud()) {
         SemanticLegend(
             modifier = Modifier
                 .align(Alignment.Start)
