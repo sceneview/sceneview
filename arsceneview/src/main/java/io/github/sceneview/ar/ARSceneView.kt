@@ -715,7 +715,8 @@ fun ARSceneView(
     onSessionPaused: ((session: Session) -> Unit)? = null,
     /**
      * Invoked when an ARCore error occurred during session creation / resume / configuration
-     * (missing ARCore install, permission denied, device-unsupported, etc.).
+     * (missing ARCore install, permission denied, device-unsupported, etc.), or when a fatal
+     * frame-update error closes the session. Fatal update failures are reported once per session.
      *
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
@@ -1725,7 +1726,8 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        hasNewArFrame || sceneChanged || arFramesOwed.get() > 0
+                        arCore.arCoreAvailability != ARCoreAvailability.SessionFailed &&
+                            (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
                     }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
@@ -1735,7 +1737,7 @@ fun ARSceneView(
                     // AR frame update — feed ARCore data into camera, lights, planes.
                     arCore.session?.let { session ->
                         try {
-                            session.updateOrNull()?.let { frame ->
+                            arCore.updateSessionOrNull()?.let { frame ->
                                 hasNewArFrame =
                                     lastArFrameTimestamp.getAndSet(frame.timestamp) != frame.timestamp
                                 val trackingFailureReason = readTrackingFailureReason(
@@ -1785,6 +1787,9 @@ fun ARSceneView(
                             )
                         }
                     }
+
+                    // A fatal update closed the session; nodes may still hold its native handles.
+                    if (arCore.arCoreAvailability == ARCoreAvailability.SessionFailed) return@renderFrame
 
                     // Before any node's onFrame, as in SceneView: animator commits then reindex
                     // nothing under the nodes' cached transform handles.

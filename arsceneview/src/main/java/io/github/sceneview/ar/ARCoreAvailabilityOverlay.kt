@@ -39,8 +39,9 @@ enum class ARCoreAvailability {
     CheckFailed,
 
     /**
-     * ARCore is installed, but session creation or resume failed. A busy camera can cause
-     * this after returning to the app too. Retryable; a successful resume clears the state.
+     * ARCore is installed, but session creation, resume or a fatal frame update failed. A busy
+     * camera can cause this after returning to the app too. Retryable; a successful resume clears
+     * the state. A fatal update closes the failed session so a retry creates a new one.
      */
     SessionFailed,
 }

@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.annotation.MainThread
 import com.google.ar.core.ArCoreApk.Availability
 import com.google.ar.core.Config
+import com.google.ar.core.Frame
 import com.google.ar.core.RecordingStatus
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
@@ -36,7 +37,8 @@ const val kDefaultHitTestInstantDistance = 2.0f
  * @param onSessionPaused      Called each time the session pauses.
  * @param onArSessionFailed    Called when session creation or resume fails, once per failed
  *                             attempt: every host resume, permission grant or [retrySession]
- *                             that cannot resume the session reports again.
+ *                             that cannot resume the session reports again. A fatal frame-update
+ *                             error closes the session and reports once, without per-frame retries.
  * @param onSessionConfigChanged Called when the session configuration changes.
  */
 class ARCore(
@@ -165,6 +167,20 @@ class ARCore(
 
     internal var session: ARSession? = null
         private set
+
+    /** Updates only the native session, outside the host's per-frame callbacks. */
+    @MainThread
+    internal fun updateSessionOrNull(): Frame? = try {
+        session?.updateOrNull()
+    } catch (exception: FatalException) {
+        // A fatal native session cannot recover on the next frame (#4501). Close it before
+        // notifying the host, so even a throwing callback cannot leave the retry loop running.
+        destroy()
+        publishAvailability(ARCoreAvailability.SessionFailed)
+        Log.e("ARCore", "ARCore session update failed; the session was closed", exception)
+        onException(exception)
+        null
+    }
 
     /**
      * Initializes the ARCore session lifecycle.
