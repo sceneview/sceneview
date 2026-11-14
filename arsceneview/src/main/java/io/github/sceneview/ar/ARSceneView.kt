@@ -803,7 +803,8 @@ fun ARSceneView(
      * What to draw over the scene while the camera permission is denied (#3308). Receives an
      * [ARCameraPermissionState] whose [ARCameraPermissionState.request] re-shows the system
      * dialog and whose [ARCameraPermissionState.openSettings] sends the user to App Info —
-     * the latter is the only way forward once [ARCameraPermissionState.permanentlyDenied].
+     * settings is recommended once [ARCameraPermissionState.permanentlyDenied]. Read
+     * [ARCameraPermissionState.recovery] to retain the request after an ambiguous answer.
      * Defaults to the built-in [ARCameraPermissionOverlay]; pass `null` to draw nothing and
      * handle the state yourself through [onCameraPermissionStateChanged].
      *
@@ -1215,22 +1216,19 @@ fun ARSceneView(
     // One state per verdict, shared by the overlay and the host. Its actions read the handler
     // of the latest composition, so a state the host keeps never asks through a stale one.
     val currentPermissionHandler by rememberUpdatedState(permissionHandler)
-    arCore.onCameraPermissionDenied = { permanently ->
-        val state = ARCameraPermissionState(
-            permanentlyDenied = permanently,
-            request = { arCore.retryCameraPermission(currentPermissionHandler) },
-            openSettings = { arCore.openAppSettings(currentPermissionHandler) },
-        )
+    arCore.onCameraPermissionRecoveryChanged = { recovery ->
+        val state = recovery?.let {
+            ARCameraPermissionState(
+                recovery = it,
+                request = { arCore.retryCameraPermission(currentPermissionHandler) },
+                openSettings = { arCore.openAppSettings(currentPermissionHandler) },
+            )
+        }
+        // A grant clears the card before session creation or any later ARCore failure.
         cameraPermissionState = state
         onCameraPermissionStateChanged?.invoke(state)
     }
-    // The grant takes the explanation down on its own: waiting for a session to be created
-    // left "camera access needed" up when the grant was followed by another failure (#4452).
-    arCore.onCameraPermissionGranted = {
-        cameraPermissionState = null
-        onCameraPermissionStateChanged?.invoke(null)
-    }
-    // Reassigned on each composition like the denial callback above, so the host lambda is
+    // Reassigned on each composition like the recovery callback above, so the host lambda is
     // never stale. Both are set during composition, before the `DisposableEffect` below runs
     // `arCore.create()` — the first verdict is therefore never missed (#3374).
     arCore.onARCoreAvailability = { availability ->
