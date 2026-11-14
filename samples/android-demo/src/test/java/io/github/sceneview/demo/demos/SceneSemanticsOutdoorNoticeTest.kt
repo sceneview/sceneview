@@ -43,6 +43,7 @@ class SceneSemanticsOutdoorNoticeTest {
         composeRule.setContent {
             MaterialTheme {
                 SceneSemanticsOutdoorNotice(
+                    arSessionBlocked = false,
                     semanticsSupported = true,
                     semanticsEverReceived = received.value,
                     sceneUnclassified = false,
@@ -71,6 +72,7 @@ class SceneSemanticsOutdoorNoticeTest {
         composeRule.setContent {
             MaterialTheme {
                 SceneSemanticsOutdoorNotice(
+                    arSessionBlocked = false,
                     semanticsSupported = true,
                     semanticsEverReceived = true,
                     sceneUnclassified = unclassified.value,
@@ -102,22 +104,51 @@ class SceneSemanticsOutdoorNoticeTest {
         assertNoticeAbsent()
     }
 
+    @Test
+    fun `missing or outdated ARCore leaves the SDK card uncovered while support stays unknown`() {
+        showNotice(supported = null, received = false, blocked = true)
+        assertNoticeAbsent()
+    }
+
+    @Test
+    fun `a session that fails after configuring hides the notice for the failure card`() {
+        val blocked = mutableStateOf(false)
+        composeRule.setContent {
+            MaterialTheme {
+                SceneSemanticsOutdoorNotice(
+                    arSessionBlocked = blocked.value,
+                    semanticsSupported = true,
+                    semanticsEverReceived = true,
+                    sceneUnclassified = true,
+                )
+            }
+        }
+        composeRule.onNodeWithText(OUTDOOR_WARNING).assertIsDisplayed()
+        composeRule.runOnIdle { blocked.value = true }
+        assertNoticeAbsent()
+    }
+
     private fun assertNoticeAbsent() {
         composeRule.onNodeWithText(OUTDOOR_WARNING).assertDoesNotExist()
         composeRule.onNodeWithText(WARMING_UP).assertDoesNotExist()
         composeRule.onNodeWithText(UNCLASSIFIED).assertDoesNotExist()
     }
 
-    private fun showNotice(supported: Boolean?, received: Boolean, unclassified: Boolean = false) {
+    private fun showNotice(
+        supported: Boolean?,
+        received: Boolean,
+        unclassified: Boolean = false,
+        blocked: Boolean = false,
+    ) {
         composeRule.setContent {
             MaterialTheme {
-                SceneSemanticsOutdoorNotice(supported, received, unclassified)
+                SceneSemanticsOutdoorNotice(blocked, supported, received, unclassified)
             }
         }
     }
 
     private companion object {
-        const val OUTDOOR_WARNING = "Outdoor model — labels unreliable indoors"
+        const val OUTDOOR_WARNING = "Trained on outdoor scenes — labels are unreliable indoors"
         const val WARMING_UP = "Warming up Scene Semantics…"
         const val UNCLASSIFIED = "Nothing classified yet — try a street, park or back yard."
     }

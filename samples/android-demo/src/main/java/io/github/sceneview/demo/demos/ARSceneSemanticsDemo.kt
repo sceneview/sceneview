@@ -132,6 +132,13 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // Driving the UI off this avoids the "black screen on unsupported device" trap (#1617).
     var semanticsSupported by remember { mutableStateOf<Boolean?>(null) }
 
+    // `semanticsSupported` stays null for good when the session never configures: ARCore
+    // missing or outdated (the SDK shows its install/update card) or a session failure (the
+    // scaffold shows its failure card). Same wiring as `ARPointCloudDemo`, so neither card is
+    // covered by the outdoor warning, which would otherwise wait on that null forever.
+    var arSessionFailed by remember { mutableStateOf(false) }
+    var arSessionUnavailable by remember { mutableStateOf(false) }
+
     // Latest top-3 (label, fraction) snapshot. Captured each `onSessionUpdated` frame; rendered
     // as a Compose overlay. We snapshot the list rather than expose per-label State because the
     // 12-element computation per frame is cheap and the entire HUD recomposes together — no
@@ -168,6 +175,8 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     var semanticsFrameVersion by remember { mutableStateOf(0) }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_scene_semantics_title),
         onBack = onBack,
         controls = {
@@ -274,6 +283,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
             // One banner owns the persistent outdoor warning and the current semantic state,
             // including UNLABELED frames whose transparent overlay can look broken (#3274).
             SceneSemanticsOutdoorNotice(
+                arSessionBlocked = arSessionFailed || arSessionUnavailable,
                 semanticsSupported = semanticsSupported,
                 semanticsEverReceived = semanticsEverReceived,
                 sceneUnclassified = sceneUnclassified,
@@ -331,6 +341,8 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
+                onSessionFailure = { arSessionFailed = true },
+                onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -431,14 +443,21 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     }
 }
 
-/** Persistent outdoor warning and semantic status share one banner to avoid duplicate guidance. */
+/**
+ * Persistent outdoor warning and semantic status share one banner to avoid duplicate guidance.
+ *
+ * [arSessionBlocked] is true when ARCore is missing, needs an update, or the session failed:
+ * [semanticsSupported] then never leaves null, and the SDK's ARCore card or the scaffold's
+ * failure card owns the screen instead.
+ */
 @Composable
 internal fun SceneSemanticsOutdoorNotice(
+    arSessionBlocked: Boolean,
     semanticsSupported: Boolean?,
     semanticsEverReceived: Boolean,
     sceneUnclassified: Boolean,
 ) {
-    if (semanticsSupported != false) {
+    if (!arSessionBlocked && semanticsSupported != false) {
         Surface(
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -449,7 +468,7 @@ internal fun SceneSemanticsOutdoorNotice(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = "Outdoor model — labels unreliable indoors",
+                    text = "Trained on outdoor scenes — labels are unreliable indoors",
                     style = MaterialTheme.typography.labelLarge,
                 )
                 val status = when {
