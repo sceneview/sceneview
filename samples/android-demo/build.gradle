@@ -184,6 +184,11 @@ android {
                 applicationIdSuffix ".qa"
                 versionNameSuffix "-qa"
             }
+            // Long-press "SV QA" -> "AR Recording" (src/qaLauncher/res/xml/qa_launcher_shortcuts.xml),
+            // the one visible way into the ARCore session recorder. The plain debug APK gets an
+            // empty shortcut list (src/debug/res/xml/no_launcher_shortcuts.xml).
+            manifestPlaceholders["qaLauncherShortcuts"] =
+                demoPlainDebug ? "@xml/no_launcher_shortcuts" : "@xml/qa_launcher_shortcuts"
             if (System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE") != null) {
                 signingConfig signingConfigs.githubApk
             }

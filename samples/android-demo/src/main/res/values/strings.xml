@@ -114,6 +114,7 @@
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
     <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
     <string name="ar_permission_allow_subtitle">Allow camera access to start this demo.</string>
+    <string name="ar_permission_fallback_subtitle">Allow camera access to start AR. If no permission dialog appears, you can also allow it in system settings.</string>
     <string name="ar_permission_blocked_subtitle">Camera access is off for this app. Turn it on in system settings — the demo starts when you come back.</string>
     <string name="ar_permission_refused_subtitle">This demo draws on the live camera view, so it cannot start without it. Android will ask one more time.</string>
     <string name="ar_permission_allow">Allow camera</string>

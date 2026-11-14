@@ -493,10 +493,8 @@ fun BoxScope.TapToPlaceStatusOverlays(
         ArGuidanceCue.NONE
     }
     ARCoachingOverlay(
+        guidance = guidance,
         cue = coachingCue,
-        surface = guidance.surface,
-        hint = guidance.hint,
-        scanLingering = guidance.scanLingering,
         // The overlay keeps its own 16 dp gutter off the safe area; the dock is ours to declare.
         contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
     )
