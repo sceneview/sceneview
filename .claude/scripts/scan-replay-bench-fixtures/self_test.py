@@ -12,6 +12,21 @@ from unittest.mock import patch
 def run_tests(bench, out):
     fixtures = Path(__file__).parent
 
+    class ScopeDevice:
+        """Execute only the run-as payload locally, inside synthetic app storage."""
+        def __init__(self, root):
+            self.root = root
+            self.root.mkdir()
+
+        def shell(self, *args, **kwargs):
+            if args[:4] != ("run-as", bench.PACKAGE, "sh", "-c") or len(args) != 5:
+                raise AssertionError(args)
+            result = subprocess.run(["sh", "-c", args[4]], cwd=self.root,
+                                    capture_output=True, text=True)
+            if result.returncode:
+                raise bench.BenchError("Synthetic run-as failed")
+            return result.stdout
+
     class Parsers(unittest.TestCase):
         def test_hud_thousands_separators(self):
             for case in json.loads((fixtures / "hud.json").read_text()):
@@ -30,6 +45,21 @@ def run_tests(bench, out):
             self.assertFalse(bench.parse_ui('<hierarchy><node text="Photo Model Plan"/></hierarchy>')["tabs_ready"])
             with self.assertRaises(bench.BenchError):
                 bench.parse_ui("ERROR: could not get idle state")
+
+        def test_current_coverage_accessibility_label(self):
+            ui = bench.parse_ui((fixtures / "live-coverage.xml").read_text())
+            self.assertEqual(ui["floor_m2"], 14)
+            self.assertEqual(ui["points"], 18714)
+            self.assertTrue(ui["warning"])
+            self.assertFalse(ui["tabs_ready"])
+
+        def test_review_buttons_are_not_result_tabs(self):
+            for fixture, label, coordinates in (("review.xml", "build 3d model", (750, 1550)),
+                                                 ("review-repairs.xml", "build anyway", (240, 1550))):
+                with self.subTest(fixture=fixture):
+                    ui = bench.parse_ui((fixtures / fixture).read_text())
+                    self.assertFalse(ui["tabs_ready"])
+                    self.assertEqual(ui["targets"][label], coordinates)
 
         def test_logcat_epoch_live_cutoff_and_stall(self):
             result = bench.parse_logcat((fixtures / "logcat.txt").read_text(), 1794500100, 1794500111)
@@ -69,11 +99,47 @@ def run_tests(bench, out):
             self.assertIn("date +%s.%N", script)
             self.assertIn(f"am start -W -n {bench.ACTIVITY}", script)
             self.assertIn("--es telemetry_consent denied", script)
-            self.assertIn("--es scan_scope room", script)
+            self.assertNotIn("scan_scope", script)
             self.assertIn("/files/ar-recordings/walk.mp4", script)
             self.assertAlmostEqual(bench.device_epoch("BENCH_EPOCH=123.456\nStatus: ok"), 123.456)
             with self.assertRaises(bench.BenchError):
                 bench.device_epoch("BENCH_EPOCH=123.%N")
+
+        def test_room_preference_missing_existing_and_backup(self):
+            for state in ("missing", "object", "room", "backup"):
+                with self.subTest(state=state):
+                    device = ScopeDevice(out / ("scope-" + state))
+                    primary = device.root / bench.SCOPE_PREFS
+                    primary.parent.mkdir()
+                    source = (fixtures / "scope-object.xml").read_text()
+                    if state != "missing":
+                        primary.write_text(source.replace(">object<", ">room<") if state == "room" else source)
+                    backup = primary.with_suffix(".xml.bak")
+                    if state == "backup":
+                        # Android restores .bak even if the primary file still exists.
+                        backup.write_text(source.replace("One &amp; two", "Recovered &amp; kept"))
+                    for _ in range(2):
+                        bench.select_room(device)
+                        saved = bench.scan_preferences(primary.read_text())
+                        self.assertEqual([entry.text for entry in saved if entry.get("name") == bench.SCOPE_KEY], ["room"])
+                    if state != "missing":
+                        self.assertEqual(saved.find("boolean").get("value"), "true")
+                        self.assertEqual(saved.find("string[@name='synthetic_title']").text,
+                                         "Recovered & kept" if state == "backup" else "One & two")
+                    self.assertFalse(backup.exists())
+                    self.assertEqual(list(primary.parent.glob("*.scan-bench-*")), [])
+
+        def test_room_selection_fails_clearly(self):
+            for raw in ("not XML", "<not-a-map />"):
+                with self.subTest(raw=raw), patch.object(ScopeDevice, "shell", return_value=raw):
+                    with self.assertRaisesRegex(bench.BenchError, "Cannot select Room before playback"):
+                        bench.select_room(ScopeDevice(out / ("scope-invalid-" + str(len(raw)))))
+            with patch.object(ScopeDevice, "shell", side_effect=bench.BenchError("package not debuggable")):
+                with self.assertRaisesRegex(bench.BenchError, "debug run-as required"):
+                    bench.select_room(ScopeDevice(out / "scope-unavailable"))
+            with patch.object(ScopeDevice, "shell", return_value=(fixtures / "scope-object.xml").read_text()):
+                with self.assertRaisesRegex(bench.BenchError, "Room preference did not persist"):
+                    bench.select_room(ScopeDevice(out / "scope-not-persisted"))
 
         def test_push_only_absent_or_size_changed(self):
             walk = out / "walk.mp4"
@@ -198,14 +264,24 @@ def run_tests(bench, out):
             self.assertTrue(all(r["status"] == "skipped" for r in results))
 
         def test_live_then_result_then_pull_with_device_clock(self):
+            self.exercise_workflow()
+
+        def test_review_builds_model_then_captures(self):
+            self.exercise_workflow("review.xml")
+
+        def test_review_repairs_build_anyway_then_captures(self):
+            self.exercise_workflow("review-repairs.xml")
+
+        def exercise_workflow(self, review_fixture=None):
             # Exercise the whole device workflow with synthetic time and adb responses.
             # No real device, camera footage, sleep or screenrecord is used.
             clock = [1000.0]
             events = []
             walk = out / "workflow-walk.mp4"
             walk.write_bytes(b"synthetic walk")
-            run_dir = out / "workflow"
+            run_dir = out / (review_fixture or "workflow")
             run_dir.mkdir()
+            scope_device = ScopeDevice(run_dir / "app-storage")
 
             def sleep(seconds):
                 clock[0] += max(seconds, .001)
@@ -226,11 +302,15 @@ def run_tests(bench, out):
 
             class Device:
                 reviewing = False
+                built = False
+                ready_at = 0
                 model = False
                 launch = None
 
                 def shell(self, *args, **kwargs):
                     events.append(("shell", args))
+                    if args[0] == "run-as":
+                        return scope_device.shell(*args, **kwargs)
                     if args[0] == "stat":
                         return str(walk.stat().st_size)
                     if args[:2] == ("dumpsys", "package"):
@@ -249,6 +329,8 @@ def run_tests(bench, out):
                         length = int(script.split("--time-limit ")[1].split()[0])
                         return Process(clock[0] + length)
                     self.launch = clock[0]
+                    prefs = bench.scan_preferences((scope_device.root / bench.SCOPE_PREFS).read_text())
+                    self_assert.assertEqual(prefs.find(f"string[@name='{bench.SCOPE_KEY}']").text, "room")
                     output.write(f"BENCH_EPOCH={self.launch:.6f}\nStatus: ok\n")
                     output.flush()
                     return Process(clock[0])
@@ -258,11 +340,20 @@ def run_tests(bench, out):
                     stamp = f"BENCH_EPOCH={clock[0]:.6f}\n"
                     if "uiautomator" in script:
                         sleep(.1)
-                        name = "result.xml" if self.reviewing else "live.xml"
+                        name = "live-coverage.xml"
+                        if self.reviewing:
+                            name = "result.xml" if not review_fixture or (self.built and clock[0] >= self.ready_at) else review_fixture
                         return stamp + (fixtures / name).read_text()
                     if "input tap 500 1550" in script:
                         self.reviewing = True
+                    build_tap = "input tap 750 1550" if review_fixture == "review.xml" else "input tap 240 1550"
+                    if review_fixture and build_tap in script:
+                        self_assert.assertTrue(self.reviewing)
+                        self_assert.assertFalse(self.built, "must not tap Build twice while the UI transitions")
+                        self.built = True
+                        self.ready_at = clock[0] + 3
                     if "input tap 499 1650" in script:
+                        self_assert.assertTrue(not review_fixture or self.built)
                         self.model = True
                     return stamp
 
@@ -290,6 +381,15 @@ def run_tests(bench, out):
             self.assertEqual(result["ar_fps_mean"], 30)
             self.assertEqual(result["first_surface_s"], 6)
             self.assertEqual(result["points"], 18714)
+            self.assertEqual(result["floor_m2"], 14)
+            self.assertEqual(result["scan_scope"], "room")
+            self.assertEqual(result["warnings"], [])
+            self.assertIsNotNone(result["result_ready_s"])
+            self.assertTrue((run_dir / "model.png").is_file())
+            if review_fixture:
+                self.assertTrue(device.built)
+                self.assertLess(result["stop_tap_epoch_s"], result["build_tap_epoch_s"])
+                self.assertLess(result["build_tap_epoch_s"], result["model_tap_epoch_s"])
             starts = [value for kind, value in events if kind == "start" and "screenrecord" in value]
             self.assertIn("--time-limit 30", starts[0])
             self.assertIn("--time-limit 25", starts[1])
@@ -303,6 +403,10 @@ def run_tests(bench, out):
                 polls = list(csv.DictReader(stream, delimiter="\t"))
             self.assertEqual({r["phase"] for r in polls}, {"live", "result"})
             self.assertTrue(all(float(r["elapsed_s"]) == float(r["epoch_s"]) - device.launch for r in polls))
+            if review_fixture:
+                review_polls = [r for r in polls if r["phase"] == "result" and "Build" in r["text"]]
+                self.assertGreaterEqual(len(review_polls), 2)
+                self.assertTrue(all(not bench.truth(r["tabs_ready"]) for r in review_polls))
             deletes = [value for kind, value in events if kind == "shell" and value[0] == "rm"]
             self.assertFalse(any(bench.DEVICE_RECORDINGS in str(args) for args in deletes))
 

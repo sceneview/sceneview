@@ -25,6 +25,8 @@ FIXTURES = Path(__file__).with_name("scan-replay-bench-fixtures")
 PACKAGE = "io.github.sceneview.demo.qa"
 ACTIVITY = f"{PACKAGE}/io.github.sceneview.demo.MainActivity"
 DEVICE_RECORDINGS = f"/sdcard/Android/data/{PACKAGE}/files/ar-recordings"
+SCOPE_PREFS = "shared_prefs/sceneview_demo_ar_rerun.xml"
+SCOPE_KEY = "ar_rerun_scan_scope"
 REFERENCES = dict(zip("ABCDE", (
     "ar-session-20260928-003538", "ar-session-20260928-003416",
     "ar-session-20260929-092427", "ar-session-20260930-224347",
@@ -85,8 +87,10 @@ def number(value):
 def parse_hud(text):
     # Compose may merge the HUD into one node. Accept comma, thin/NBSP, apostrophe and dot
     # grouping for counts, plus either decimal separator for floor area.
-    area = re.search(r"(\d+(?:[.,]\d+)?)\s*m(?:²|2)\s+floor\b", text, re.I)
-    points = re.search(r"(\d(?:[\d,.'’\s\u00a0\u202f]*\d)?)\s+points\b", text, re.I)
+    # scan_coverage_label says "Scan map: 14 m² of floor covered..."; older HUDs
+    # put "14 m² floor" directly in the status line.
+    area = re.search(r"(\d+(?:[.,]\d+)?)\s*m(?:²|2)\s+(?:of\s+)?floor\b", text, re.I)
+    points = re.search(r"(\d(?:[\d,.'’\s\u00a0\u202f]*\d)?)\s+points?\b", text, re.I)
     return {"floor_m2": float(area[1].replace(",", ".")) if area else None,
             "points": int(re.sub(r"\D", "", points[1])) if points else None}
 
@@ -357,6 +361,43 @@ def installed_build(device):
     return "\n".join(fields)
 
 
+def scan_preferences(raw):
+    try:
+        prefs = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        raise BenchError("Invalid scan scope SharedPreferences XML") from exc
+    if prefs.tag != "map":
+        raise BenchError("Scan scope SharedPreferences root is not a map")
+    return prefs
+
+
+def select_room(device):
+    # ar_playback_file bypasses the scope chooser and starts capture immediately.
+    # On these debug APKs, run-as can set ScanScopeStore's actual preference while
+    # the app is force-stopped, before any playback frames or timing are consumed.
+    # Preserve other keys and honour Android's recovery backup; replace atomically
+    # and remove that backup so SharedPreferences cannot restore the old scope.
+    read = (f"if [ -f {SCOPE_PREFS}.bak ]; then cat {SCOPE_PREFS}.bak; "
+            f"elif [ -f {SCOPE_PREFS} ]; then cat {SCOPE_PREFS}; else printf '<map />'; fi")
+    try:
+        prefs = scan_preferences(device.shell("run-as", PACKAGE, "sh", "-c", read))
+        for entry in list(prefs):
+            if entry.get("name") == SCOPE_KEY:
+                prefs.remove(entry)
+        ET.SubElement(prefs, "string", name=SCOPE_KEY).text = "room"
+        content = ET.tostring(prefs, encoding="unicode")
+        temporary = f"{SCOPE_PREFS}.scan-bench-{uuid.uuid4().hex}"
+        write = (f"mkdir -p shared_prefs && printf '%s\\n' {shlex.quote(content)} > {temporary} && "
+                 f"mv -f {temporary} {SCOPE_PREFS} && rm -f {SCOPE_PREFS}.bak")
+        device.shell("run-as", PACKAGE, "sh", "-c", write)
+        saved = scan_preferences(device.shell("run-as", PACKAGE, "sh", "-c", read))
+        scopes = [entry.text for entry in saved if entry.tag == "string" and entry.get("name") == SCOPE_KEY]
+        if scopes != ["room"]:
+            raise BenchError("Room preference did not persist")
+    except BenchError as exc:
+        raise BenchError(f"Cannot select Room before playback (debug run-as required): {exc}") from exc
+
+
 MEASURE_ONLY = False
 
 
@@ -446,8 +487,7 @@ def join_segments(parts, target):
 
 def launch_script(dataset):
     args = ["am", "start", "-W", "-n", ACTIVITY, "--es", "demo", "ar-rerun",
-            "--es", "telemetry_consent", "denied", "--es", "ar_playback_file", dataset,
-            "--es", "scan_scope", "room"]
+            "--es", "telemetry_consent", "denied", "--es", "ar_playback_file", dataset]
     return f"{DATE_MARKER}; exec {shlex.join(args)}"
 
 
@@ -459,7 +499,7 @@ def new_result(walk, label, slot):
 
 def record_run(device, walk, result, run_dir, seconds, build_identity):
     """Caller owns the lock for the whole run. Launch, tap and logs use device epoch time."""
-    launch_epoch = live_end_epoch = tap_epoch = None
+    launch_epoch = live_end_epoch = tap_epoch = build_epoch = None
     launch_process = recorder = None
     rows, sf_samples, previous = [], [], {}
     xml = f"/sdcard/scan-bench-{uuid.uuid4().hex}.xml"
@@ -474,6 +514,8 @@ def record_run(device, walk, result, run_dir, seconds, build_identity):
         device.shell("input", "keyevent", "KEYCODE_WAKEUP")
         device.shell("am", "force-stop", PACKAGE)
         touched_app = True
+        select_room(device)
+        result["scan_scope"] = "room"
         device.call("logcat", "-b", "all", "-c")
         result["clip_duration_s"] = seconds
         result["live_requested_s"] = math.ceil(seconds + 20)
@@ -518,9 +560,18 @@ def record_run(device, walk, result, run_dir, seconds, build_identity):
                                 continue
                             try:
                                 row = ui_poll(device, xml, launch_epoch, phase)
-                                if phase == "result" and row["tabs_ready"] and not model_selected:
-                                    result["model_tap_epoch_s"] = tap(device, row["targets"], "Model")
-                                    model_selected = True
+                                if phase == "result":
+                                    if row["tabs_ready"] and not model_selected:
+                                        result["model_tap_epoch_s"] = tap(device, row["targets"], "Model")
+                                        model_selected = True
+                                    elif build_epoch is None:
+                                        # Stop enters ScanPhase.Reviewing. ScanReviewCard offers
+                                        # BUILD_MODEL, or BUILD_ANYWAY when there are repairs.
+                                        for label in ("Build 3D model", "Build anyway"):
+                                            if label.casefold() in row["targets"]:
+                                                build_epoch = tap(device, row["targets"], label)
+                                                result["build_tap_epoch_s"] = build_epoch
+                                                break
                             except BenchError as exc:
                                 epoch = launch_epoch + time.monotonic() - launch_host
                                 row = {"phase": phase, "epoch_s": epoch, "elapsed_s": epoch - launch_epoch,

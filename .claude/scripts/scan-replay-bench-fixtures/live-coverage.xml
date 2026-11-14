@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node text="Room · 43%" content-desc="" bounds="[0,200][1000,250]" />
+  <node text="0:43 · 18,714 points captured" content-desc="" bounds="[0,250][1000,300]" />
+  <node text="" content-desc="Scan map: 14 m² of floor covered. The hatched part is still to scan." bounds="[0,400][1000,1400]" />
+  <node text="Moving too fast" content-desc="" bounds="[0,300][1000,350]" />
+  <node text="" content-desc="Stop and review" bounds="[100,1500][900,1600]" />
+</hierarchy>

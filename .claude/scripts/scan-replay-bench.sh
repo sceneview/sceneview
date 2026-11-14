@@ -10,6 +10,7 @@
 # Default walks: the five references A–E, in that order. --walks all selects the corpus.
 # Install A once, run every walk, then install B once and repeat. Walks stay on the device.
 # Real runs need an unlocked, ARCore-ready device; camera permission is granted after install.
+# Room is set and verified before playback through run-as; both APKs must be debuggable.
 # Replay starts scanning automatically on tracking: qa_state record* would inject fake data.
 # Exit: 0 for complete runs, 1 for failed/skipped/incomplete runs or warnings,
 # 2 for setup errors, 130 for interruption. Lock each install and each run separately;
