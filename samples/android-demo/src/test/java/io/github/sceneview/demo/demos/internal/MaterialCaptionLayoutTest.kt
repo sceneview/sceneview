@@ -6,6 +6,31 @@ import org.junit.Test
 
 class MaterialCaptionLayoutTest {
     @Test
+    fun `gallery caption without known spacing uses the maximum width`() {
+        assertEquals(240, galleryCaptionWidthPx(null, gapPx = 10, maximumWidthPx = 240))
+    }
+
+    @Test
+    fun `widely spaced gallery captions are capped at the maximum width`() {
+        assertEquals(240, galleryCaptionWidthPx(400f, gapPx = 10, maximumWidthPx = 240))
+    }
+
+    @Test
+    fun `narrowly spaced gallery captions leave a gap`() {
+        assertEquals(110, galleryCaptionWidthPx(120f, gapPx = 10, maximumWidthPx = 240))
+    }
+
+    @Test
+    fun `gallery spacing below the gap leaves zero width`() {
+        assertEquals(0, galleryCaptionWidthPx(5f, gapPx = 10, maximumWidthPx = 240))
+    }
+
+    @Test
+    fun `gallery captions respect a small maximum width`() {
+        assertEquals(30, galleryCaptionWidthPx(120f, gapPx = 10, maximumWidthPx = 30))
+    }
+
+    @Test
     fun `anchors 300 pixels apart leave a gap between caption boxes`() {
         val firstX = 200f
         val secondX = 500f

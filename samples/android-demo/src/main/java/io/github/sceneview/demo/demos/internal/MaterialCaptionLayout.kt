@@ -2,6 +2,13 @@ package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.abs
 
+/** Keep gallery captions within their head-on column width when zooming out. */
+internal fun galleryCaptionWidthPx(
+    headOnSpacingPx: Float?,
+    gapPx: Int,
+    maximumWidthPx: Int,
+): Int = headOnSpacingPx?.let { (it - gapPx).toInt().coerceIn(0, maximumWidthPx) } ?: maximumWidthPx
+
 /** Width shared by two centred captions; a pair narrower than the minimum needs two rows. */
 internal fun compareCaptionWidthPx(
     firstAnchorX: Float,

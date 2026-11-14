@@ -7,8 +7,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +64,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -88,6 +87,7 @@ import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionWidthPx
 import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -124,6 +124,7 @@ import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -306,6 +307,7 @@ private fun StudioSection(
     val view = rememberView(engine)
     val comparisonCamera = rememberCameraNode(engine)
     var labelFrame by remember { mutableIntStateOf(0) }
+    var headOnSpacingPx by remember { mutableFloatStateOf(Float.NaN) }
 
     // ── Tap-to-focus (#3609) ─────────────────────────────────────────────────────────────
     //
@@ -914,7 +916,22 @@ private fun StudioSection(
                 modifier = Modifier.fillMaxSize(),
                 view = view,
                 cameraNode = comparisonCamera,
-                onFrame = { nanos -> firstFrame.onFrame(nanos); labelFrame++ },
+                onFrame = { nanos ->
+                    firstFrame.onFrame(nanos)
+                    if (!inspecting) {
+                        // Camera-plane spacing keeps sweep yaw from reflowing the captions.
+                        val cameraRight = -comparisonCamera.leftDirection
+                        val centre = view.worldToScreen(Position(0f, 0f, 0f))
+                        val neighbour = view.worldToScreen(cameraRight * MaterialStudio.BALL_SPACING)
+                        if (centre != null && neighbour != null) {
+                            val spacing = abs(neighbour.x - centre.x)
+                            if (headOnSpacingPx.isNaN() || abs(spacing - headOnSpacingPx) > 1f) {
+                                headOnSpacingPx = spacing
+                            }
+                        }
+                    }
+                    labelFrame++
+                },
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -984,7 +1001,6 @@ private fun StudioSection(
                 }
                 val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
-                val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
                 val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
                 val positions = if (!inspecting) MaterialStudio.wallPositions().map {
                     Position(it.x, it.y - MaterialStudio.BALL_RADIUS, it.z)
@@ -1014,13 +1030,24 @@ private fun StudioSection(
                             modifier = Modifier
                                 .then(
                                     if (comparing) Modifier else Modifier
-                                        .offset {
-                                            @Suppress("UNUSED_EXPRESSION")
-                                            labelFrame
-                                            val point = view.worldToScreen(anchor)
-                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                                        }.width(captionWidth)
+                                        .layout { measurable, constraints ->
+                                            val gap = gapPx.roundToInt()
+                                            val width = galleryCaptionWidthPx(
+                                                headOnSpacingPx = if (inspecting) null else headOnSpacingPx.takeUnless { it.isNaN() },
+                                                gapPx = gap,
+                                                maximumWidthPx = captionWidth.roundToPx(),
+                                            )
+                                            val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                            layout(placeable.width, placeable.height) {
+                                                // Frame changes invalidate placement without remeasuring text.
+                                                @Suppress("UNUSED_EXPRESSION")
+                                                labelFrame
+                                                val point = view.worldToScreen(anchor)
+                                                val x = point?.x ?: -view.viewport.width.toFloat()
+                                                val y = point?.y ?: -view.viewport.height.toFloat()
+                                                placeable.place((x - width / 2f).roundToInt(), (y + gap).roundToInt())
+                                            }
+                                        }
                                 )
                                 // #3802: the wall is flat and captioned for a roughly head-on
                                 // view; the orbit itself stays completely free (this demo exists
@@ -1077,8 +1104,8 @@ private fun StudioSection(
                                 MaterialTheme.colorScheme.onSurface
                             },
                             textAlign = TextAlign.Center,
-                            maxLines = if (comparing) 2 else Int.MAX_VALUE,
-                            overflow = if (comparing) TextOverflow.Ellipsis else TextOverflow.Clip,
+                            maxLines = if (!inspecting || comparing) 2 else Int.MAX_VALUE,
+                            overflow = if (!inspecting || comparing) TextOverflow.Ellipsis else TextOverflow.Clip,
                         )
                     }
                 }
