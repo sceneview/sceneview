@@ -7,8 +7,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +64,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -88,6 +87,7 @@ import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionWidthPx
 import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -124,6 +124,7 @@ import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -984,7 +985,6 @@ private fun StudioSection(
                 }
                 val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
-                val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
                 val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
                 val positions = if (!inspecting) MaterialStudio.wallPositions().map {
                     Position(it.x, it.y - MaterialStudio.BALL_RADIUS, it.z)
@@ -1014,13 +1014,31 @@ private fun StudioSection(
                             modifier = Modifier
                                 .then(
                                     if (comparing) Modifier else Modifier
-                                        .offset {
+                                        .layout { measurable, constraints ->
                                             @Suppress("UNUSED_EXPRESSION")
                                             labelFrame
                                             val point = view.worldToScreen(anchor)
-                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                                        }.width(captionWidth)
+                                            val neighbourDistancePx = if (!inspecting && point != null) {
+                                                listOf(index - 1, index + 1)
+                                                    .filter { it in positions.indices && it / MaterialStudio.COLUMNS == index / MaterialStudio.COLUMNS }
+                                                    .mapNotNull { view.worldToScreen(positions[it]) }
+                                                    .minOfOrNull { abs(it.x - point.x) }
+                                            } else null
+                                            val gap = gapPx.roundToInt()
+                                            // In landscape the wall fits the height, so screen-width shares overlap projected neighbours.
+                                            val width = galleryCaptionWidthPx(
+                                                neighbourDistancePx = neighbourDistancePx,
+                                                gapPx = gap,
+                                                minimumWidthPx = SceneViewTokens.Space.x4l.roundToPx(),
+                                                maximumWidthPx = captionWidth.roundToPx(),
+                                            )
+                                            val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                            val x = point?.x ?: -view.viewport.width.toFloat()
+                                            val y = point?.y ?: -view.viewport.height.toFloat()
+                                            layout(placeable.width, placeable.height) {
+                                                placeable.place((x - width / 2f).roundToInt(), (y + gap).roundToInt())
+                                            }
+                                        }
                                 )
                                 // #3802: the wall is flat and captioned for a roughly head-on
                                 // view; the orbit itself stays completely free (this demo exists
