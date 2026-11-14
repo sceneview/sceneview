@@ -473,6 +473,12 @@ val LocalDemoSceneCover = androidx.compose.runtime.compositionLocalOf { PaddingV
 val LocalDemoSceneRestingCover = androidx.compose.runtime.compositionLocalOf { PaddingValues(0.dp) }
 
 /**
+ * How much of the `scene` slot the settings sheet covers right now, following every frame of a
+ * drag, without the chrome's bands. Zero with the sheet closed and outside a [DemoScaffold].
+ */
+val LocalDemoSceneSheetCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/**
  * Whether insetting the scene by the bands above and below it still leaves a scene worth the
  * name — `bottomOverlayReservesScene`'s own precondition.
  *
@@ -551,10 +557,11 @@ private fun ProvideDemoSceneCover(
             if (top.isNaN() || windowHeightPx <= 0) 0f else (windowHeightPx - top).coerceAtLeast(0f)
         }
     }
+    val sheetCoverDp = with(density) { sheetCoverPx.toDp() }
     val cover = demoSceneCover(
         chromeTop = easedTop,
         chromeBottom = easedBottom,
-        sheetCover = with(density) { sheetCoverPx.toDp() },
+        sheetCover = sheetCoverDp,
         slotTop = slotTop,
         slotBottom = slotBottom,
     )
@@ -572,6 +579,7 @@ private fun ProvideDemoSceneCover(
     CompositionLocalProvider(
         LocalDemoSceneCover provides cover,
         LocalDemoSceneRestingCover provides restingCover,
+        LocalDemoSceneSheetCover provides (sheetCoverDp - slotBottom).coerceAtLeast(0.dp),
         LocalDemoFullScreen provides focused,
         content = content,
     )

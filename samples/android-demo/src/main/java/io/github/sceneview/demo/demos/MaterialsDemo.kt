@@ -78,8 +78,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
-import io.github.sceneview.demo.LocalDemoSceneCover
-import io.github.sceneview.demo.LocalDemoSceneRestingCover
+import io.github.sceneview.demo.LocalDemoSceneSheetCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialStudio
@@ -993,13 +992,11 @@ private fun StudioSection(
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val density = LocalDensity.current
                 val sceneHeightPx = with(density) { maxHeight.toPx() }
-                val bottomCoverPx = with(density) {
-                    LocalDemoSceneCover.current.calculateBottomPadding().toPx()
-                }
-                val restingBottomCoverPx = with(density) {
-                    LocalDemoSceneRestingCover.current.calculateBottomPadding().toPx()
+                val sheetCoverPx = with(density) {
+                    LocalDemoSceneSheetCover.current.toPx()
                 }
                 val comparing = inspecting && compare
+                val placedCaptionBottoms = remember { FloatArray(2) }
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
                 val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
                 val positions = if (!inspecting) MaterialStudio.wallPositions().map {
@@ -1076,10 +1073,11 @@ private fun StudioSection(
                                     }
                                     // Follow the glass during a drag; fade before the caption bottom reaches it.
                                     alpha = orbitAlpha * materialCaptionCoverAlpha(
-                                        captionBottomY = (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
+                                        // Compare may move the second caption below its anchor to avoid overlap.
+                                        captionBottomY = if (comparing) placedCaptionBottoms[index]
+                                        else (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
                                         sceneHeightPx = sceneHeightPx,
-                                        bottomCoverPx = bottomCoverPx,
-                                        restingBottomCoverPx = restingBottomCoverPx,
+                                        sheetCoverPx = sheetCoverPx,
                                         fadeBandPx = size.height,
                                     )
                                 }
@@ -1138,6 +1136,8 @@ private fun StudioSection(
                         val secondY = if (tooClose) {
                             maxOf(second.y, first.y + placeables[0].height + gap)
                         } else second.y
+                        placedCaptionBottoms[0] = (first.y + placeables[0].height).toFloat()
+                        placedCaptionBottoms[1] = (secondY + placeables[1].height).toFloat()
                         layout(constraints.maxWidth, constraints.maxHeight) {
                             placeables[0].place(first.x, first.y)
                             placeables[1].place(second.x, secondY)
