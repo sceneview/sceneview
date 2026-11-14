@@ -178,8 +178,8 @@ internal fun ScanModelPreview(
         fit
     }
     // The floor still empty under the model (2026-11-13, Thomas's workshop: say which part is
-    // missing, and show it): a quiet hairline hatching on every gap, and a bright one on the gap
-    // the guidance names alone (the review of u25: half the floor in amber read as site tape).
+    // missing, and show it): the gap the guidance names alone is hatched (the review of u25: half
+    // the floor in amber read as site tape; intention.md: one indication of where to go).
     var ground by remember { mutableStateOf<ScanGroundMeshes?>(null) }
     val holes by rememberUpdatedState(onHoles)
     val named by rememberUpdatedState(target)
@@ -234,22 +234,18 @@ internal fun ScanModelPreview(
                         val box = aim?.let { (x, z) ->
                             gaps.minByOrNull { gap(centreOf(it), x, z) }?.takeIf { gap(centreOf(it), x, z) <= SAME_GAP_M2 }?.bounds()
                         }
-                        val marks = ScanHoleMarks.of(f, box)
-                        // The ground layer's hatch and weak layers carry the quiet and the bright marks.
-                        ScanGroundMeshes(DebugMesh(), DebugMesh(), hatch = marks.faint, weakFill = marks.strong)
+                        // One indication of where to go (intention.md, 13/11: no orange zones, one
+                        // cue that means something): the named gap alone, on the ground's weak layer.
+                        ScanGroundMeshes(DebugMesh(), DebugMesh(), weakFill = ScanHoleMarks.of(f, box))
                     }
                 }
                 delay(MARKS_REFRESH_MS)
             }
         }
     }
-    // The guidance amber, toned into the dark stage: quiet on every gap, bright on the one named.
+    // The guidance amber on the gap named, toned into the dark stage.
     val groundColors = ScanGroundColors.currentLive().let { base ->
-        val amber = SceneViewTokens.ArOverlay.accentGuidance
-        base.copy(
-            hatch = lerp(StageChrome.Media.ground, amber, FAINT_HATCH_TINT),
-            weak = lerp(StageChrome.Media.ground, amber, NAMED_HATCH_TINT),
-        )
+        base.copy(weak = lerp(StageChrome.Media.ground, SceneViewTokens.ArOverlay.accentGuidance, NAMED_HATCH_TINT))
     }
     val orbit = remember(media) {
         ArDebugOrbitCamera(
@@ -340,8 +336,7 @@ private fun atLeastRoomSized(bounds: FloatArray): FloatArray = FloatArray(6) { i
 private const val MIN_HALF_WIDE_M = 1.5f
 private const val MIN_HALF_HIGH_M = 1f
 
-/** How much of the guidance amber the quiet hatching takes over the dark stage, and the named gap's. */
-private const val FAINT_HATCH_TINT = 0.35f
+/** How much of the guidance amber the named gap's hatching takes over the dark stage. */
 private const val NAMED_HATCH_TINT = 0.75f
 
 /** How often the floor's marks are checked for a new floor or a newly named gap. */

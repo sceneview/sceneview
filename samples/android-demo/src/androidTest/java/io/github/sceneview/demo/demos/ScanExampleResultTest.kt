@@ -190,7 +190,7 @@ class ScanExampleResultTest {
         const val VIDEO = "Video"
         const val PHOTO = "Photo"
         const val MODEL = "Model"
-        const val CREATING = "Turning your points into a surface"
+        const val CREATING = "Building the surface"
         const val FINISHING = "Cleaning up walls and floor"
         const val PHOTO_NOTE = "Photo preview · measures stay on the model"
         const val FILMING = "Filming…"

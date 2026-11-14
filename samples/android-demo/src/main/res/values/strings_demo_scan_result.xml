@@ -10,7 +10,7 @@
     <string name="scan_result_rename_field">Name</string>
     <string name="scan_result_rename_save">Save</string>
     <string name="scan_result_cancel">Cancel</string>
-    <string name="scan_result_creating">Turning your points into a surface · step 1 of 2</string>
+    <string name="scan_result_creating">Building the surface · step 1 of 2</string>
     <string name="scan_result_partial">Only part of the surface could be built</string>
     <string name="scan_result_failed">Couldn\'t build a model from this scan. Scan slowly, 1–3 m from the surfaces.</string>
     <string name="scan_result_hint">Drag to turn · Pinch to zoom.</string>

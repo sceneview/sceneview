@@ -1,22 +1,21 @@
 package io.github.sceneview.demo.demos.internal
 
 /**
- * The marks 3D Scan's live model lays on the floor still to scan (2026-11-13, the review of u25:
- * a hatching over half the floor read as site tape and drowned the model). Every missing cell of
- * the ground gets a thin diagonal, [FAINT_HALF_WIDTH] of a cell, drawn quiet; only the gap the
- * guidance names ([target], bounds `[minX, minZ, maxX, maxZ]`) gets the wider [STRONG_HALF_WIDTH]
- * one, drawn bright. Cell after cell, the diagonals join into a 45° hatching.
+ * The mark 3D Scan's live model lays on the floor still to scan: the gap the guidance names alone
+ * ([of]'s target, bounds `[minX, minZ, maxX, maxZ]`), each of its missing cells crossed by a
+ * diagonal [HALF_WIDTH] of a cell wide on each side, so cell after cell they join into a 45°
+ * hatching. Every other gap stays unmarked (2026-11-13: half the floor hatched read as site tape,
+ * and intention.md asks for one indication of where to go, no orange zones).
  */
 internal object ScanHoleMarks {
 
-    /** The quiet hatching of every gap, and the bright one of the gap named. */
-    class Meshes(val faint: DebugMesh, val strong: DebugMesh)
-
-    fun of(ground: ScanGround, target: FloatArray?): Meshes {
-        val faint = DebugMesh()
-        val strong = DebugMesh()
+    /** The hatching of [ground]'s missing cells inside [target]; empty without one. */
+    fun of(ground: ScanGround, target: FloatArray?): DebugMesh {
+        val mesh = DebugMesh()
+        target ?: return mesh
         val s = ground.cellM
         val y = ground.floorY - ScanGroundMeshes.SLAB_DROP_M + ScanGroundMeshes.HATCH_LIFT_M
+        val h = s * HALF_WIDTH
         for (r in 0 until ground.rows) {
             val z0 = ground.originZ + r * s
             val z1 = z0 + s
@@ -24,9 +23,7 @@ internal object ScanHoleMarks {
                 if (ground.at(c, r) != ScanGround.MISSING) continue
                 val x0 = ground.originX + c * s
                 val x1 = x0 + s
-                val named = target != null && inside(target, x0 + s / 2f, z0 + s / 2f)
-                val mesh = if (named) strong else faint
-                val h = s * if (named) STRONG_HALF_WIDTH else FAINT_HALF_WIDTH
+                if (!inside(target, x0 + s / 2f, z0 + s / 2f)) continue
                 mesh.quad(
                     mesh.vertex(x0 - h, y, z1 - h),
                     mesh.vertex(x0 + h, y, z1 + h),
@@ -35,14 +32,11 @@ internal object ScanHoleMarks {
                 )
             }
         }
-        return Meshes(faint, strong)
+        return mesh
     }
 
     private fun inside(b: FloatArray, x: Float, z: Float) = x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3]
 
-    /** Half a quiet stripe's width, share of a cell: a hairline, 1 cm on a 25 cm cell. */
-    const val FAINT_HALF_WIDTH = 0.02f
-
-    /** Half the named gap's stripe, share of a cell: about 2 cm wide on a 25 cm cell. */
-    const val STRONG_HALF_WIDTH = 0.045f
+    /** Half the stripe's width, share of a cell: about 2 cm wide on a 25 cm cell. */
+    const val HALF_WIDTH = 0.045f
 }

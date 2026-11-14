@@ -4,8 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The live model's floor marks: every gap hatched quietly, only the gap the guidance names
- * hatched brightly (2026-11-13, the review of u25).
+ * The live model's floor mark: the gap the guidance names alone is hatched (2026-11-13, the
+ * review of u25 and intention.md: one indication of where to go).
  */
 class ScanHoleMarksTest {
 
@@ -23,16 +23,14 @@ class ScanHoleMarksTest {
     }
 
     @Test
-    fun everyGapIsQuietWithoutATarget() {
-        val marks = ScanHoleMarks.of(ringGround(), null)
-        assertEquals(4 * 2, marks.faint.triangleCount)
-        assertEquals(0, marks.strong.triangleCount)
+    fun nothingIsMarkedWithoutATarget() {
+        assertEquals(0, ScanHoleMarks.of(ringGround(), null).triangleCount)
     }
 
     @Test
-    fun theNamedGapIsBright() {
-        val marks = ScanHoleMarks.of(ringGround(), floatArrayOf(0.5f, 0.5f, 1f, 1f))
-        assertEquals(0, marks.faint.triangleCount)
-        assertEquals(4 * 2, marks.strong.triangleCount)
+    fun theNamedGapAloneIsHatched() {
+        assertEquals(4 * 2, ScanHoleMarks.of(ringGround(), floatArrayOf(0.5f, 0.5f, 1f, 1f)).triangleCount)
+        // A target away from the gap marks nothing.
+        assertEquals(0, ScanHoleMarks.of(ringGround(), floatArrayOf(0f, 0f, 0.2f, 0.2f)).triangleCount)
     }
 }
