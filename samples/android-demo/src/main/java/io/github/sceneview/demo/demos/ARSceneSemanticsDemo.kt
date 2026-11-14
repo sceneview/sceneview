@@ -98,9 +98,8 @@ import io.github.sceneview.rememberModelLoader
  * root cause of [#3396](https://github.com/sceneview/sceneview/issues/3396) and
  * [#3527](https://github.com/sceneview/sceneview/issues/3527).
  *
- * **Outdoor only.** The ARCore model has no indoor training data — pointing the camera at a
- * living-room wall will return mostly `UNLABELED`. Take this demo outside (street / park /
- * back yard).
+ * **Outdoor only.** Indoors, the ARCore model can return `UNLABELED` or misleading outdoor
+ * labels. Take this demo outside (street / park / back yard).
  *
  * Closes [#1868](https://github.com/sceneview/sceneview/issues/1868) — follow-up of
  * [#1730](https://github.com/sceneview/sceneview/issues/1730) (Config wiring + Frame accessors).
@@ -272,26 +271,9 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Warming-up overlay — shown when supported but no semantic data yet (first
-            // ~5 frames after resume on the typical device). Crucial: never leave the user
-            // staring at a black screen (see #1617) if semantics takes a moment to warm up.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && !semanticsEverReceived,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Warming up Scene Semantics — point the camera at an outdoor scene",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
+            // Explain the outdoor model before the session is configured, then keep a compact
+            // reminder even when indoor furniture receives confident outdoor labels (#4036).
+            SceneSemanticsOutdoorNotice(semanticsSupported, semanticsEverReceived)
 
             // #3274 — the scene has been classified but almost every pixel came back
             // UNLABELED (typically: an indoor scene — the model has no indoor training
@@ -464,6 +446,35 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        }
+    }
+}
+
+/** Outdoor guidance in the scene's top overlay, independent of the predicted labels. */
+@Composable
+internal fun SceneSemanticsOutdoorNotice(
+    semanticsSupported: Boolean?,
+    semanticsEverReceived: Boolean,
+) {
+    if (semanticsSupported != false) {
+        Surface(
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            shape = MaterialTheme.shapes.large
+        ) {
+            Text(
+                text = if (semanticsEverReceived) {
+                    "Outdoor model"
+                } else {
+                    "Scene Semantics is trained on outdoor scenes — step outside for real labels."
+                },
+                style = if (semanticsEverReceived) {
+                    MaterialTheme.typography.labelSmall
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
         }
     }
 }
