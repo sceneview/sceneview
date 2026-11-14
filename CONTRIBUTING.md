@@ -462,7 +462,7 @@ correct. Specifically:
   `sceneview/**`, `sceneview-core/**`, `arsceneview/**` or the Gradle build
   files runs the `android-library-render` job
   (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216); a PR
-  touching `samples/web-demo/**` or `sceneview-web/**` runs the advisory
+  touching `samples/web-demo/**` or `sceneview-web/**` runs the
   `web-render` Playwright job. The iOS leg is push-to-main + nightly +
   `workflow_dispatch` only, and on a push each leg runs only when its
   platform's paths changed. A docs-only PR matches none of
@@ -494,7 +494,7 @@ filter on each workflow (and the per-job `changes` gate that both
 web Playwright suite runs on `main` through `device-qa.yml`'s blocking web leg
 only, and only when the push touched `samples/web-demo/**` (or the harness);
 the Android legs likewise need `samples/android-demo/**`, `.maestro/**` or
-their scripts. `render-tests.yml`'s `web-render` job, which cannot go red, no
+their scripts. `render-tests.yml`'s `web-render` job reports test failures and no
 longer repeats the web suite on push or at night. On `workflow_dispatch` and
 in the nightly every leg of both workflows still runs.
 
