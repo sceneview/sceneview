@@ -186,6 +186,32 @@ class SpaceFitTest {
     }
 
     @Test
+    fun `a space whose bottom was not filmed keeps its measure and claims no box`() {
+        val scan = Scan().apply {
+            plane(0f, 0f, 0f, WIDTH, HEIGHT, axis = 2, normal = 1f) // back
+            plane(0f, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = 1f) // left
+            plane(WIDTH, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = -1f) // right
+            plane(0f, HEIGHT, 0f, WIDTH, DEPTH, axis = 1, normal = -1f) // top
+        }
+        val fit = fitOf(scan, eye = scan.eye)
+        assertEquals(WIDTH, fit.width, TOLERANCE)
+        assertEquals(DEPTH, fit.depth, TOLERANCE)
+        assertTrue("open ${fit.open}", SpaceFace.Bottom in fit.open)
+        assertNull(fit.fits)
+        assertEquals(JsonNull, SpaceAnswer.tree(fit, "No bottom").getValue("fits"))
+    }
+
+    @Test
+    fun `the answer says the grid its scan was kept on`() {
+        val scan = cupboard()
+        val fine = fitOf(scan)
+        assertEquals(SpaceFitter.DEFAULT_VOXEL_M, fine.resolution, 0f)
+        val coarse = checkNotNull(SpaceFitter.of(scan.cloud(), voxelM = COARSE_VOXEL_M))
+        assertEquals(COARSE_VOXEL_M, coarse.resolution, 0f)
+        assertEquals(COARSE_VOXEL_M, SpaceAnswer.tree(coarse, "Coarse").getValue("resolutionM").jsonPrimitive.content.toFloat(), 1e-6f)
+    }
+
+    @Test
     fun `a space nothing fits says so`() {
         val none = SpaceFit(0.04f, 0.04f, 0.04f, setOf(SpaceFace.Front), emptyList(), null, 0f, 0f, 0f, 0f)
         val root = SpaceAnswer.tree(none, "Slot")
@@ -309,5 +335,6 @@ class SpaceFitTest {
         const val SEED = 20261114
         const val WHITE = -1
         const val SECOND_NANOS = 1_000_000_000L
+        const val COARSE_VOXEL_M = 0.04f
     }
 }

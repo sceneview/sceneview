@@ -37,10 +37,12 @@ data class SpaceBox(val x: Float, val y: Float, val z: Float, val width: Float, 
  * A space as measured: its inside [width], [height] and [depth]; the faces no surface closes
  * ([open], the front always); what stands inside ([obstacles], the biggest first); and the biggest
  * box that rests on the bottom and slides in from the opening clear of all of it ([fits], `null`
- * when nothing of a useful size does).
+ * when nothing of a useful size does, or when no bottom was seen for it to rest on).
  *
  * [originX], [originY], [originZ] and [yawDegrees] place the frame in the scan's world: the
  * back-left-bottom corner, and the turn about Y that brings world +Z onto the frame's +Z.
+ * [resolution] is the grid the measure was read on, in metres: the scan's voxel, or the cell
+ * its inside was sorted into when that is coarser.
  */
 class SpaceFit(
     val width: Float,
@@ -53,6 +55,7 @@ class SpaceFit(
     val originY: Float,
     val originZ: Float,
     val yawDegrees: Float,
+    val resolution: Float = SpaceFitter.DEFAULT_VOXEL_M,
 ) {
     /** The world position of the frame's point ([x], [y], [z]). */
     fun world(x: Float, y: Float, z: Float): Vec3 {
@@ -263,7 +266,8 @@ object SpaceFitter {
             if (inside) grid.fill(x, y, z)
         }
         val obstacles = grid.obstacles(MIN_OBSTACLE_CELLS)
-        val fits = grid.biggestBox(width, height, depth, topOpen = top == null)
+        // A box rests on a bottom that was seen: a height read off the back alone carries nothing.
+        val fits = if (bottom != null) grid.biggestBox(width, height, depth, topOpen = top == null) else null
         // The frame's origin, back in the scan's world.
         return SpaceFit(
             width = width,
@@ -276,6 +280,7 @@ object SpaceFitter {
             originY = vBottom,
             originZ = -uLeft * s + wBack * c,
             yawDegrees = Math.toDegrees(yaw.toDouble()).toFloat(),
+            resolution = maxOf(voxelM, cell),
         )
     }
 

@@ -866,6 +866,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             openingPhoto = scanStill.takeIf { showingScan },
             onSpace = { resultSpace = it },
             captureEye = scanEye,
+            surfelsVoxelM = scanMedia?.takeIf { showingScan }?.dense?.voxelM,
         )
     }
     val exportable = when (screen) {

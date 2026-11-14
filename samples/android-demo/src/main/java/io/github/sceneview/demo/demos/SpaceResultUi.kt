@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.semantics
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.SpaceFace
 import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.SpaceFitter
 import io.github.sceneview.demo.demos.internal.Vec3
@@ -40,16 +41,18 @@ internal sealed interface SpaceMeasure {
 /**
  * The measure of the space [surfels] show, `null` for any other [scope]: read once, off the main
  * thread, and again only for other points. [eye] is where the phone stood as it filmed them
- * ([SpaceFitter.eyeOf]): the space opens towards it.
+ * ([SpaceFitter.eyeOf]): the space opens towards it. [voxelM] is the grid [surfels] were kept
+ * on, the scan's own when it says one.
  */
 @Composable
-internal fun rememberSpaceMeasure(scope: ScanScope, surfels: DenseCloud?, eye: Vec3? = null): SpaceMeasure? {
+internal fun rememberSpaceMeasure(scope: ScanScope, surfels: DenseCloud?, eye: Vec3? = null, voxelM: Float? = null): SpaceMeasure? {
     if (scope != ScanScope.Space) return null
-    val measure by produceState<SpaceMeasure>(SpaceMeasure.Measuring, surfels, eye) {
+    val measure by produceState<SpaceMeasure>(SpaceMeasure.Measuring, surfels, eye, voxelM) {
         // No points yet is not "no space": a kept scan's are read after its model is shown.
         val cloud = surfels ?: return@produceState
         value = withContext(Dispatchers.Default) {
-            runCatching { SpaceFitter.of(cloud, eye = eye) }.getOrNull()?.let(SpaceMeasure::Found) ?: SpaceMeasure.None
+            runCatching { SpaceFitter.of(cloud, voxelM ?: SpaceFitter.DEFAULT_VOXEL_M, eye) }.getOrNull()?.let(SpaceMeasure::Found)
+                ?: SpaceMeasure.None
         }
     }
     return measure
@@ -75,10 +78,11 @@ internal fun SpaceMeasureCard(measure: SpaceMeasure, modifier: Modifier = Modifi
             Text(stringResource(R.string.scan_space_order), style = Type.caption, color = chrome.onCardMuted)
             val box = fit.fits
             Text(
-                text = if (box != null) {
-                    stringResource(R.string.scan_space_fits, cm(box.width), cm(box.depth), cm(box.height))
-                } else {
-                    stringResource(R.string.scan_space_fits_none)
+                text = when {
+                    box != null -> stringResource(R.string.scan_space_fits, cm(box.width), cm(box.depth), cm(box.height))
+                    // No bottom seen is a bottom not filmed: what to do, not a verdict on the space.
+                    SpaceFace.Bottom in fit.open -> stringResource(R.string.scan_space_fits_no_bottom)
+                    else -> stringResource(R.string.scan_space_fits_none)
                 },
                 style = Type.body,
                 color = chrome.onCard,

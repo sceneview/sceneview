@@ -57,6 +57,7 @@
     <string name="scan_space_order">width × depth × height</string>
     <string name="scan_space_fits">A box of %1$d × %2$d × %3$d cm fits</string>
     <string name="scan_space_fits_none">Too tight for a box</string>
+    <string name="scan_space_fits_no_bottom">Film the bottom too, to get the box that fits</string>
     <plurals name="scan_space_obstacles">
         <item quantity="one">%d thing in the way</item>
         <item quantity="other">%d things in the way</item>

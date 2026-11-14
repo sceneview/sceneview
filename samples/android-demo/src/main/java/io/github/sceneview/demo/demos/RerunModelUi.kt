@@ -757,6 +757,8 @@ internal fun RerunModelScreen(
     onSpace: (SpaceFit?) -> Unit = {},
     /** Where the phone stood during the capture, on average: the side a space opens on. */
     captureEye: Vec3? = null,
+    /** The grid [surfels] were kept on, in metres, when the scan says it. */
+    surfelsVoxelM: Float? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -1015,7 +1017,7 @@ internal fun RerunModelScreen(
     val rename = onRename?.let { { renaming = true } }
     val measure = capturedMeasure ?: rescan?.measure
     // A space's inside (SpaceResultUi): what its result is for, on a card under the model.
-    val space = rememberSpaceMeasure(scope, surfels, captureEye)
+    val space = rememberSpaceMeasure(scope, surfels, captureEye, surfelsVoxelM)
     LaunchedEffect(space) { onSpace((space as? SpaceMeasure.Found)?.fit) }
 
     DemoScaffold(

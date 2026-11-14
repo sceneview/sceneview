@@ -105,6 +105,16 @@ class SpaceResultUiTest {
     }
 
     @Test
+    fun `a space whose bottom was not seen asks for it instead of a verdict`() {
+        measure = SpaceMeasure.Found(SpaceFit(0.6f, 0.56f, 0.5f, setOf(SpaceFace.Front, SpaceFace.Bottom), emptyList(), null, 0f, 0f, 0f, 0f))
+        show()
+        composeRule.onNodeWithText("Inside 60 × 50 × 56 cm").assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_space_fits_no_bottom)).assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_space_fits_none)).assertDoesNotExist()
+        save("result-card-no-bottom")
+    }
+
+    @Test
     fun `the choice offers a space, with what it is for`() {
         choosing = true
         show()

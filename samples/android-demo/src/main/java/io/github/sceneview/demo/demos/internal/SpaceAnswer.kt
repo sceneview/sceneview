@@ -48,18 +48,17 @@ object SpaceAnswer {
     private val pretty = Json { prettyPrint = true }
 
     /** [fit] as its JSON text, named [label]. */
-    fun json(fit: SpaceFit, label: String, resolutionM: Float = SpaceFitter.DEFAULT_VOXEL_M): String =
-        pretty.encodeToString(JsonObject.serializer(), tree(fit, label, resolutionM))
+    fun json(fit: SpaceFit, label: String): String = pretty.encodeToString(JsonObject.serializer(), tree(fit, label))
 
     /** [fit] as its JSON object, named [label]. */
-    fun tree(fit: SpaceFit, label: String, resolutionM: Float = SpaceFitter.DEFAULT_VOXEL_M): JsonObject = buildJsonObject {
+    fun tree(fit: SpaceFit, label: String): JsonObject = buildJsonObject {
         put("v", VERSION)
         put("kind", KIND)
         put("label", label)
         put("units", "m")
         put("frame", FRAME)
         put("dimensionSource", SOURCE)
-        put("resolutionM", metres(resolutionM))
+        put("resolutionM", metres(fit.resolution))
         put("interior", box(null, floatArrayOf(fit.width, fit.height, fit.depth)))
         put("open", JsonArray(SpaceFace.entries.filter { it in fit.open }.map { JsonPrimitive(it.key) }))
         put("obstacles", JsonArray(fit.obstacles.map(::box)))
