@@ -62,4 +62,10 @@
     <string name="sceneview_coaching_hint_too_fast_action">Move your phone more slowly</string>
     <string name="sceneview_coaching_hint_low_detail">Low detail</string>
     <string name="sceneview_coaching_hint_low_detail_action">Aim at something with more texture</string>
+    <string name="sceneview_coaching_hint_bad_state">AR error</string>
+    <string name="sceneview_coaching_hint_bad_state_action">Restart the AR view</string>
+    <string name="sceneview_coaching_hint_bad_state_detail">AR stopped working</string>
+    <string name="sceneview_coaching_hint_camera_unavailable">Camera busy</string>
+    <string name="sceneview_coaching_hint_camera_unavailable_action">Close the other camera app</string>
+    <string name="sceneview_coaching_hint_camera_unavailable_detail">Another app is using the camera</string>
 </resources>

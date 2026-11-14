@@ -1663,7 +1663,19 @@ Box(Modifier.fillMaxSize()) {
 
 `guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
 `SCAN`, `SURFACE_FOUND` (held 1 000 ms after a new placement), `TRACKING_LIMITED`,
-`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip and
+`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip. Persistent
+`BAD_STATE` and `CAMERA_UNAVAILABLE` reasons make `ARCoachingOverlay(guidance)` show recovery
+advice (restart the AR view or close the other camera app), with the same 700 ms debounce
+and 1 500 ms minimum hold as the movement hints. These are Android ARCore reasons; iOS delegates coaching to Apple's
+`ARCoachingOverlayView` and reports session failures separately through `onSessionEvent`.
+The public `ArTrackingHint` keeps its four movement-advice cases (`NONE`, `TOO_DARK`,
+`TOO_FAST`, `LOW_DETAIL`); `guidance.hint` remains `NONE` for camera/internal errors.
+Their debounced reasons travel internally to the state-based overlay, so existing exhaustive
+`when` expressions keep compiling and running unchanged. Placement wrappers and the demo
+pass the whole `guidance` state. To silence the overlay while another card is visible, use
+`ARCoachingOverlay(guidance, cue = ArGuidanceCue.NONE)`; omitting `cue` uses `guidance.cue`.
+The override preserves the exit fade and leaves the guidance state unchanged. With no movement advice,
+`guidance.hint` is also `NONE`, and
 `guidance.scanLingering` turns the second line into "Try a brighter spot with more texture"
 after a long scan. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
 render `ARCoachingOverlay(guidance, contentPadding = …)` yourself in any `Box`. Next to your own
