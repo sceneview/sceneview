@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -183,6 +184,9 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Separate the caption from the controls with DESIGN.md's `space-md` block separator.
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+
             Text(
                 stringResource(R.string.demo_spatial_audio_falloff_label),
                 style = MaterialTheme.typography.labelLarge,
