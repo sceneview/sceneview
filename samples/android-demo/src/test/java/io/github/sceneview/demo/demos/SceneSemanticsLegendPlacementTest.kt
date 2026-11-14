@@ -29,8 +29,17 @@ import org.robolectric.annotation.GraphicsMode
  * independent overlay bands — the top one below the identity row, the bottom one above the
  * dock — and a 393 dp window (Pixel 4a, landscape) is too short for both.
  *
- * Asserted on measured bounds, with the demo's real HUD, warning and legend, at font scale 1.0
- * and 2.0, in the Pixel 4a's two orientations.
+ * Asserted on measured bounds, with the demo's real HUD, warning and legend, in the Pixel 4a's
+ * two orientations and in one half of a split screen. The warning is measured as its whole pill
+ * ([OUTDOOR_NOTICE_TAG]), not only its first line of text.
+ *
+ * Landscape runs at font scale 1.3, not 1.0: Robolectric draws no system bars, so the scaffold's
+ * bands get the status and navigation bar heights back, and at 1.0 the old layout's legend
+ * cleared the warning here while it covered it on the phone. At 1.3 the old layout overlaps.
+ *
+ * The split-screen half (393 × 400 dp) is short but narrow: the side-by-side layout does not fit
+ * there — the HUD's "41 %" wrapped one character per line and the warning went under the dock —
+ * so it must keep the portrait layout. The dock check runs below font scale 2 only.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -42,8 +51,8 @@ class SceneSemanticsLegendPlacementTest {
 
     @Test
     @Config(qualifiers = LANDSCAPE)
-    fun `landscape legend never covers the outdoor warning`() {
-        assertWarningClearOfLegend(fontScale = 1.0f, legendInTopBand = true)
+    fun `landscape legend never covers the outdoor warning at font scale 1_3`() {
+        assertWarningClearOfLegend(fontScale = 1.3f, legendInTopBand = true)
     }
 
     @Test
@@ -64,7 +73,31 @@ class SceneSemanticsLegendPlacementTest {
         assertWarningClearOfLegend(fontScale = 2.0f, legendInTopBand = false)
     }
 
-    private fun assertWarningClearOfLegend(fontScale: Float, legendInTopBand: Boolean) {
+    @Test
+    @Config(qualifiers = SPLIT_SCREEN)
+    fun `split screen half keeps the portrait layout`() {
+        assertWarningClearOfLegend(fontScale = 1.0f, legendInTopBand = false)
+    }
+
+    @Test
+    @Config(qualifiers = SPLIT_SCREEN)
+    fun `split screen half keeps the portrait layout at font scale 2`() {
+        // 400 dp cannot hold the identity row, the HUD, the warning, the legend and the dock at
+        // this scale (about 540 dp of content), in either layout: only the layout itself and the
+        // HUD's unwrapped percentages are asserted here.
+        assertWarningClearOfLegend(fontScale = 2.0f, legendInTopBand = false, checkFit = false)
+    }
+
+    /**
+     * @param checkFit Require the warning pill to stay clear of the legend and, below font scale
+     * 2, of the dock: under 400 dp of height that scale cannot stack the identity row, the HUD and
+     * the warning above the dock, whichever band the legend is in.
+     */
+    private fun assertWarningClearOfLegend(
+        fontScale: Float,
+        legendInTopBand: Boolean,
+        checkFit: Boolean = true,
+    ) {
         composeRule.setContent {
             ScaledDensity(fontScale) {
                 SceneViewDemoTheme(darkTheme = false) {
@@ -92,19 +125,39 @@ class SceneSemanticsLegendPlacementTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(SEMANTIC_LEGEND_TAG).assertIsDisplayed()
-        val warning = composeRule.onNodeWithText(OUTDOOR_WARNING).getUnclippedBoundsInRoot()
+        val warning = composeRule.onNodeWithTag(OUTDOOR_NOTICE_TAG).getUnclippedBoundsInRoot()
         val legend = composeRule.onNodeWithTag(SEMANTIC_LEGEND_TAG).getUnclippedBoundsInRoot()
         val topBand = composeRule.onNodeWithTag(DemoScaffoldTestTags.TOP_OVERLAY)
             .getUnclippedBoundsInRoot()
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).getUnclippedBoundsInRoot()
 
-        assertFalse(
-            "at font scale $fontScale the legend $legend overlaps the outdoor warning $warning",
-            warning.intersects(legend),
-        )
+        val percent = composeRule.onNodeWithText(TOP_PERCENT).getUnclippedBoundsInRoot()
+
         assertTrue(
-            "the legend $legend should be in the " +
-                (if (legendInTopBand) "top" else "bottom") + " band (top band: $topBand)",
-            legendInTopBand == topBand.contains(legend),
+            "at font scale $fontScale the HUD's \"$TOP_PERCENT\" $percent wraps onto several lines",
+            percent.right - percent.left > percent.bottom - percent.top,
+        )
+        if (checkFit && fontScale < 2f) {
+            assertFalse(
+                "at font scale $fontScale the outdoor warning $warning runs under the dock $dock",
+                warning.intersects(dock),
+            )
+        }
+        if (checkFit) {
+            assertFalse(
+                "at font scale $fontScale the legend $legend overlaps the outdoor warning $warning",
+                warning.intersects(legend),
+            )
+        }
+        // Side by side, the legend is the end half of a Row in the top band; in portrait it is
+        // start-aligned in the bottom band. In a 400 dp window the two bands overlap, so the
+        // layout is told by the legend's column, not by which band's bounds contain it.
+        val besideHud = legend.left >= (topBand.left + topBand.right) / 2
+        assertTrue(
+            "the legend $legend should be " +
+                (if (legendInTopBand) "beside the HUD in the top band" else "in the bottom band") +
+                " (top band: $topBand)",
+            legendInTopBand == besideHud && (!legendInTopBand || topBand.contains(legend)),
         )
     }
 
@@ -128,7 +181,11 @@ class SceneSemanticsLegendPlacementTest {
         const val LANDSCAPE = "w851dp-h393dp-land-xxhdpi"
         const val PORTRAIT = "w393dp-h851dp-port-xxhdpi"
 
-        const val OUTDOOR_WARNING = "Trained on outdoor scenes — labels are unreliable indoors"
+        /** One half of a split screen on the Pixel 4a in portrait: short, but phone-narrow. */
+        const val SPLIT_SCREEN = "w393dp-h400dp-xxhdpi"
+
+        /** The HUD's widest percentage, on its first row. */
+        const val TOP_PERCENT = "41 %"
 
         /** The three rows the HUD shows once an indoor recording has settled. */
         val SETTLED_LABELS = listOf(
