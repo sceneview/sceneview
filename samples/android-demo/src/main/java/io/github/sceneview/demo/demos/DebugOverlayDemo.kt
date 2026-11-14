@@ -302,7 +302,8 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // Separate the caption from the controls with DESIGN.md's `space-md` block separator.
+            // Without this the caption's last line sits on the first section label and the two read as
+            // one paragraph. Same `Space.md` separator as CustomGeometryDemo's caption.
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
 
             Column(
