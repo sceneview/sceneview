@@ -12,6 +12,18 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const source = read('assets/site.js');
 const home = read('index.html');
 const companies = read('companies.html');
+const staticHtml = (html) => html.replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+
+test('both pages use only the approved public repository count claim', () => {
+  for (const [page, html] of [['index.html', home], ['companies.html', companies]]) {
+    const text = staticHtml(html).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    const claims = text.match(/\b(?:over\s+|at\s+least\s+|more\s+than\s+)?\d[\d,]*\+?\s+(?:distinct\s+)?public\s+repositories(?:\s+declare\s+it\s+as\s+a\s+dependency)?/gi) || [];
+    assert.ok(claims.length, `${page} must include the adoption claim`);
+    for (const claim of claims) {
+      assert.equal(claim, 'over 500 public repositories declare it as a dependency', page);
+    }
+  }
+});
 
 test('the adoption figure links directly to a dated, reproducible source', () => {
   assert.match(home, /href="\/companies\.html#adoption"[^>]*>over 500 public repositories/);
@@ -21,7 +33,6 @@ test('the adoption figure links directly to a dated, reproducible source', () =>
   const url = new URL(link[1].replaceAll('&amp;', '&'));
   assert.equal(url.searchParams.get('type'), 'code');
   assert.equal(url.searchParams.get('q'), '"io.github.sceneview:" -org:sceneview -user:ThomasGorisse');
-  assert.match(adoption, /at least \d+ distinct public repositories/i);
   assert.match(adoption, /<time datetime="\d{4}-\d{2}-\d{2}">[^<]+<\/time>/);
 });
 
@@ -30,7 +41,6 @@ test('the companies anchor reserves the fixed header plus the home page gap', ()
 });
 
 test('both pages include adopter names in their HTML without JavaScript', () => {
-  const staticHtml = (html) => html.replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
   const proof = staticHtml(home).match(/<section[^>]+id="proof"[\s\S]*?<\/section>/)[0];
   const adoption = staticHtml(companies).match(/<section id="adoption"[\s\S]*?<\/section>/)[0];
   for (const name of ['Medal', 'IKEA', 'Bitkey', 'Vocable']) {
