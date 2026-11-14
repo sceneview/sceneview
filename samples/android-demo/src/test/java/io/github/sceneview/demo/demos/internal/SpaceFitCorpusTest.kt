@@ -6,7 +6,8 @@ import java.io.File
 
 /**
  * A space's measure on real scans: every kept scan under `SCENEVIEW_SCAN_CORPUS` (a folder per
- * scan, its `capture-manifest.json` and `capture-media.bin`) is measured, and its answer written
+ * scan, its `capture-manifest.json` and `capture-media.bin`, and its `capture-session.jsonl` for
+ * where the phone stood) is measured, and its answer written
  * as `<scan>-space.json` under `SCENEVIEW_SCAN_OUT`, with a line per scan on the console.
  *
  * Skipped when either variable is unset: scans stay off the repository. Run with
@@ -31,8 +32,13 @@ class SpaceFitCorpusTest {
                 println("${scan.name}: no dense cloud")
                 continue
             }
+            val eye = File(scan, LOG).takeIf { it.isFile }?.let { log ->
+                val trace = ArDebugTrace()
+                log.useLines { lines -> parseArDebugLog(lines).filterIsInstance<ArDebugEvent.CameraPose>().forEach { trace.addPose(it.nanos, it.pose) } }
+                SpaceFitter.eyeOf(trace)
+            }
             val started = System.nanoTime()
-            val fit = SpaceFitter.of(cloud, dense.voxelM)
+            val fit = SpaceFitter.of(cloud, dense.voxelM, eye)
             val ms = (System.nanoTime() - started) / NANOS_PER_MS
             if (fit == null) {
                 println("${scan.name}: ${cloud.count} points, no space ($ms ms)")
@@ -52,6 +58,7 @@ class SpaceFitCorpusTest {
         const val OUT = "SCENEVIEW_SCAN_OUT"
         const val MANIFEST = "capture-manifest.json"
         const val MEDIA = "capture-media.bin"
+        const val LOG = "capture-session.jsonl"
         const val NANOS_PER_MS = 1_000_000L
     }
 }

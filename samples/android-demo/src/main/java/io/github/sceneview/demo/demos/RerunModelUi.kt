@@ -147,6 +147,7 @@ import io.github.sceneview.demo.demos.internal.ScanResultFraming
 import io.github.sceneview.demo.demos.internal.ScanResultTurntable
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.SpaceFit
+import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.groundSource
 import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.CleanModel
@@ -754,6 +755,8 @@ internal fun RerunModelScreen(
     openingPhoto: ScanStill? = null,
     /** Hears a space's measure once it is read (`null`: none, or not a space), for the export sheet. */
     onSpace: (SpaceFit?) -> Unit = {},
+    /** Where the phone stood during the capture, on average: the side a space opens on. */
+    captureEye: Vec3? = null,
 ) {
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
@@ -1012,7 +1015,7 @@ internal fun RerunModelScreen(
     val rename = onRename?.let { { renaming = true } }
     val measure = capturedMeasure ?: rescan?.measure
     // A space's inside (SpaceResultUi): what its result is for, on a card under the model.
-    val space = rememberSpaceMeasure(scope, surfels)
+    val space = rememberSpaceMeasure(scope, surfels, captureEye)
     LaunchedEffect(space) { onSpace((space as? SpaceMeasure.Found)?.fit) }
 
     DemoScaffold(

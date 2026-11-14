@@ -109,13 +109,35 @@ object SpaceFitter {
     private const val MIN_OBSTACLE_CELLS = 6
     private const val MAX_CELLS = 4_000_000
     private const val BIN_M = 0.01f
+
+    /** The share of a face's area its far end is read at, before [edge] carries it on. */
     private const val REACH_SHARE = 0.97f
-    private const val LOW_SHARE = 0.02f
-    private const val HIGH_SHARE = 0.98f
+
+    /** The same for the two ends of what was seen of a face left open. */
+    private const val EXTENT_SHARE = 0.98f
     private const val YAW_BINS = 90
     private const val YAW_SMOOTH = 2
     private const val YAW_REFINE_DEGREES = 5f
     private const val QUARTER_TURN = 90f
+
+    /**
+     * Where the phone stood while [trace] was recorded, on average, `null` with no pose: the
+     * side a space was filmed from, which is its opening.
+     */
+    fun eyeOf(trace: ArDebugTrace): Vec3? {
+        val count = trace.poseCount
+        if (count == 0) return null
+        var x = 0f
+        var y = 0f
+        var z = 0f
+        for (i in 0 until count) {
+            val pose = trace.pose(i)
+            x += pose.x
+            y += pose.y
+            z += pose.z
+        }
+        return Vec3(x / count, y / count, z / count)
+    }
 
     /**
      * The space [cloud] shows, `null` when it shows none: no normals, too few points, no wall to
@@ -161,13 +183,17 @@ object SpaceFitter {
         val right = strong(peaks(n, area, { u[it] }) { nu[it] < -FACING && inFront(w[it], wBack) && u[it] > uc + CENTRE_GAP_M })
             .minByOrNull { it.at }
         val uLeft = left?.at
-            ?: quantile(n, area, LOW_SHARE, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
+            ?: edge(n, area, EXTENT_SHARE, far = false, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
         val uRight = right?.at
-            ?: quantile(n, area, HIGH_SHARE, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
+            ?: edge(n, area, EXTENT_SHARE, far = true, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
         // How far the sides come forward bounds where a bottom and a top are looked for.
         val sideReach = listOfNotNull(
-            left?.let { quantile(n, area, REACH_SHARE, { w[it] }) { nu[it] > FACING && abs(u[it] - uLeft) <= ON_PLANE_M && inFront(w[it], wBack) } },
-            right?.let { quantile(n, area, REACH_SHARE, { w[it] }) { nu[it] < -FACING && abs(u[it] - uRight) <= ON_PLANE_M && inFront(w[it], wBack) } },
+            left?.let {
+                edge(n, area, REACH_SHARE, far = true, { w[it] }) { nu[it] > FACING && abs(u[it] - uLeft) <= ON_PLANE_M && inFront(w[it], wBack) }
+            },
+            right?.let {
+                edge(n, area, REACH_SHARE, far = true, { w[it] }) { nu[it] < -FACING && abs(u[it] - uRight) <= ON_PLANE_M && inFront(w[it], wBack) }
+            },
         ).maxOrNull() ?: (wBack + MAX_DEPTH_M)
         val bottom = strong(
             peaks(n, area, { v[it] }) {
@@ -180,10 +206,14 @@ object SpaceFitter {
             },
         ).minByOrNull { it.at }
         val vBottom = bottom?.at
-            ?: quantile(n, area, LOW_SHARE, { v[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M && between(u[it], uLeft, uRight) }
+            ?: edge(n, area, EXTENT_SHARE, far = false, { v[it] }) {
+                nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M && between(u[it], uLeft, uRight)
+            }
             ?: return null
         val vTop = top?.at
-            ?: quantile(n, area, HIGH_SHARE, { v[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M && between(u[it], uLeft, uRight) }
+            ?: edge(n, area, EXTENT_SHARE, far = true, { v[it] }) {
+                nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M && between(u[it], uLeft, uRight)
+            }
             ?: return null
 
         // The opening: where the first of the bottom and the sides stops, inside the space's own
@@ -191,17 +221,17 @@ object SpaceFitter {
         // other stops at the edge.
         val wFront = listOfNotNull(
             bottom?.let {
-                quantile(n, area, REACH_SHARE, { w[it] }) {
+                edge(n, area, REACH_SHARE, far = true, { w[it] }) {
                     nv[it] > FACING && abs(v[it] - vBottom) <= ON_PLANE_M && between(u[it], uLeft, uRight) && inFront(w[it], wBack)
                 }
             },
             left?.let {
-                quantile(n, area, REACH_SHARE, { w[it] }) {
+                edge(n, area, REACH_SHARE, far = true, { w[it] }) {
                     nu[it] > FACING && abs(u[it] - uLeft) <= ON_PLANE_M && between(v[it], vBottom, vTop) && inFront(w[it], wBack)
                 }
             },
             right?.let {
-                quantile(n, area, REACH_SHARE, { w[it] }) {
+                edge(n, area, REACH_SHARE, far = true, { w[it] }) {
                     nu[it] < -FACING && abs(u[it] - uRight) <= ON_PLANE_M && between(v[it], vBottom, vTop) && inFront(w[it], wBack)
                 }
             },
@@ -381,6 +411,20 @@ object SpaceFitter {
             if (here > before && here >= after) found += Peak(around(moments, b) / here, here)
         }
         return found
+    }
+
+    /**
+     * Where the points kept stop along [at], at their [far] end or their near one: their [share]
+     * quantile, carried on by as much as that quantile leaves out of a face seen evenly. The
+     * quantile alone is deaf to a few stray points and stops short by its own share, 3 % of an
+     * 80 cm niche's depth.
+     */
+    @Suppress("LongParameterList")
+    private inline fun edge(n: Int, area: FloatArray, share: Float, far: Boolean, at: (Int) -> Float, keep: (Int) -> Boolean): Float? {
+        val low = quantile(n, area, 1f - share, at, keep) ?: return null
+        val high = quantile(n, area, share, at, keep) ?: return null
+        val beyond = (high - low) * (1f - share) / (2f * share - 1f)
+        return if (far) high + beyond else low - beyond
     }
 
     /** The value under which [share] of the area of the points [keep] holds lies, to a centimetre. */

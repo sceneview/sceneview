@@ -52,6 +52,41 @@ class SpaceFitTest {
     }
 
     @Test
+    fun `a deep niche filmed along one wall still opens towards the phone`() {
+        // Narrow and deep, its right wall seen whole, its left one as a band: by its walls alone
+        // it would open sideways, the way its one big wall faces.
+        val deep = 0.8f
+        val narrow = 0.3f
+        val scan = Scan().apply {
+            plane(0f, 0f, 0f, narrow, HEIGHT, axis = 2, normal = 1f) // back
+            plane(narrow, 0f, 0f, HEIGHT, deep, axis = 0, normal = -1f) // right, whole
+            plane(0f, 0.2f, 0f, 0.1f, deep, axis = 0, normal = 1f) // left, a band of it
+            plane(0f, 0f, 0f, narrow, deep, axis = 1, normal = 1f) // bottom
+            plane(0f, HEIGHT, 0f, narrow, deep, axis = 1, normal = -1f) // top
+        }
+        val fit = fitOf(scan, eye = scan.world(narrow / 2f, HEIGHT / 2f, deep + 0.5f))
+        assertEquals(YAW_DEGREES, turn(fit.yawDegrees), 1f)
+        assertEquals(narrow, fit.width, TOLERANCE)
+        assertEquals(deep, fit.depth, TOLERANCE)
+        assertEquals(HEIGHT, fit.height, TOLERANCE)
+        val guessed = SpaceFitter.of(scan.cloud())
+        assertTrue("without the phone it opens ${guessed?.yawDegrees}", guessed == null || turn(guessed.yawDegrees - YAW_DEGREES) > 45f)
+    }
+
+    @Test
+    fun `where the phone stood is the middle of the path it recorded`() {
+        assertNull(SpaceFitter.eyeOf(ArDebugTrace()))
+        val trace = ArDebugTrace()
+        trace.addPose(0L, DebugPose(0f, 1f, 2f))
+        trace.addPose(SECOND_NANOS, DebugPose(1f, 1.5f, 2f))
+        trace.addPose(2 * SECOND_NANOS, DebugPose(2f, 2f, 2f))
+        val eye = checkNotNull(SpaceFitter.eyeOf(trace))
+        assertEquals(1f, eye.x, 1e-4f)
+        assertEquals(1.5f, eye.y, 1e-4f)
+        assertEquals(2f, eye.z, 1e-4f)
+    }
+
+    @Test
     fun `the frame's origin is the cupboard's back-left-bottom corner in the scan`() {
         val scan = cupboard()
         val fit = fitOf(scan)
@@ -273,5 +308,6 @@ class SpaceFitTest {
         const val TOLERANCE = 0.02f
         const val SEED = 20261114
         const val WHITE = -1
+        const val SECOND_NANOS = 1_000_000_000L
     }
 }

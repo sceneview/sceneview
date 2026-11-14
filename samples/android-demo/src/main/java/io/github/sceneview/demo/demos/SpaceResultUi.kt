@@ -13,6 +13,7 @@ import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.SpaceFitter
+import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
 import kotlin.math.roundToInt
@@ -38,16 +39,17 @@ internal sealed interface SpaceMeasure {
 
 /**
  * The measure of the space [surfels] show, `null` for any other [scope]: read once, off the main
- * thread, and again only for other points.
+ * thread, and again only for other points. [eye] is where the phone stood as it filmed them
+ * ([SpaceFitter.eyeOf]): the space opens towards it.
  */
 @Composable
-internal fun rememberSpaceMeasure(scope: ScanScope, surfels: DenseCloud?): SpaceMeasure? {
+internal fun rememberSpaceMeasure(scope: ScanScope, surfels: DenseCloud?, eye: Vec3? = null): SpaceMeasure? {
     if (scope != ScanScope.Space) return null
-    val measure by produceState<SpaceMeasure>(SpaceMeasure.Measuring, surfels) {
+    val measure by produceState<SpaceMeasure>(SpaceMeasure.Measuring, surfels, eye) {
         // No points yet is not "no space": a kept scan's are read after its model is shown.
         val cloud = surfels ?: return@produceState
         value = withContext(Dispatchers.Default) {
-            runCatching { SpaceFitter.of(cloud) }.getOrNull()?.let(SpaceMeasure::Found) ?: SpaceMeasure.None
+            runCatching { SpaceFitter.of(cloud, eye = eye) }.getOrNull()?.let(SpaceMeasure::Found) ?: SpaceMeasure.None
         }
     }
     return measure

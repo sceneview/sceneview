@@ -198,6 +198,7 @@ import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.SpaceAnswer
 import io.github.sceneview.demo.demos.internal.SpaceFit
+import io.github.sceneview.demo.demos.internal.SpaceFitter
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.of
@@ -354,6 +355,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var resultModel by remember { mutableStateOf<RerunScanModel?>(null) }
     // A space's measure, heard from its result screen: what the export sheet writes as JSON.
     var resultSpace by remember { mutableStateOf<SpaceFit?>(null) }
+    // Where the phone stood while the scan shown was filmed: a space opens towards it.
+    val scanEye = remember(scanMedia, showingScan) { scanMedia?.takeIf { showingScan }?.trace?.let(SpaceFitter::eyeOf) }
     // Whether the scan shown has a result screen: the replay's Back returns to it.
     var hasResult by remember { mutableStateOf(modelSource != null) }
 
@@ -862,6 +865,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             capturedMeasure = scanMeasure.takeIf { showingScan },
             openingPhoto = scanStill.takeIf { showingScan },
             onSpace = { resultSpace = it },
+            captureEye = scanEye,
         )
     }
     val exportable = when (screen) {
