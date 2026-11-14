@@ -4,6 +4,13 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
+/** Live spacing follows the camera only after both legs of the focus flight have ended. */
+internal fun canPublishLiveGalleryCaptionSpacing(
+    inspecting: Boolean,
+    focusIndex: Int?,
+    focusZoom: Float,
+): Boolean = !inspecting && focusIndex == null && focusZoom == 0f
+
 /** Smallest edge-column gap at the last fully opaque yaw, independent of the live sweep. */
 internal fun galleryCaptionSpacingPx(
     headOnSpacingPx: Float,
@@ -26,12 +33,40 @@ internal fun galleryCaptionSpacingPx(
     return minOf(leftGap, rightGap)
 }
 
+/** During a focus flight, size captions for the gallery radius the camera returns to. */
+internal fun galleryCaptionSpacingAtRadiusPx(
+    headOnSpacingPx: Float,
+    cameraDistance: Float,
+    galleryRadius: Float,
+    ballSpacing: Float,
+    columns: Int,
+    yawDegrees: Float,
+): Float = galleryCaptionSpacingPx(
+    headOnSpacingPx = headOnSpacingPx * cameraDistance / galleryRadius,
+    cameraDistance = galleryRadius,
+    ballSpacing = ballSpacing,
+    columns = columns,
+    yawDegrees = yawDegrees,
+)
+
 /** Keep gallery captions within their narrowest opaque column width when zooming out. */
 internal fun galleryCaptionWidthPx(
     spacingPx: Float?,
     gapPx: Int,
     maximumWidthPx: Int,
 ): Int = spacingPx?.let { (it - gapPx).toInt().coerceIn(0, maximumWidthPx) } ?: maximumWidthPx
+
+/** A dead band keeps small zoom changes from repeatedly hiding and showing captions. */
+internal fun galleryCaptionVisible(
+    widthPx: Int,
+    wasVisible: Boolean,
+    hideBelowPx: Int,
+    showAbovePx: Int,
+): Boolean = when {
+    widthPx < hideBelowPx -> false
+    widthPx > showAbovePx -> true
+    else -> wasVisible
+}
 
 /** Width shared by two centred captions; a pair narrower than the minimum needs two rows. */
 internal fun compareCaptionWidthPx(
