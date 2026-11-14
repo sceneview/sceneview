@@ -42,13 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.node.LightNode
 
@@ -62,7 +62,7 @@ import io.github.sceneview.node.LightNode
  *
  * Model: src/main/assets/${modelPath}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
  */
 @Composable
 fun ${composableName}() {
@@ -70,7 +70,6 @@ fun ${composableName}() {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     val modelInstance = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -89,7 +88,6 @@ ${beforeAfter ? `    var splitPosition by remember { mutableFloatStateOf(0.5f) }
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/interior_hdr.ktx"
                 )!!,
@@ -103,6 +101,7 @@ ${beforeAfter ? `    var splitPosition by remember { mutableFloatStateOf(0.5f) }
 
                 // Neutral interior lighting
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(100_000f)
                         color(1.0f, 0.97f, 0.93f)
@@ -208,12 +207,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 
 /**
  * AR Material Switcher — ${surface}.
@@ -224,15 +224,17 @@ import io.github.sceneview.rememberCollisionSystem
  * Required AndroidManifest.xml:
  *   <uses-permission android:name="android.permission.CAMERA" />
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
- *   <meta-data android:name="com.google.ar.core" android:value="required" />
+ *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
+ *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val modelInstance = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -249,12 +251,16 @@ fun ${composableName}AR() {
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 planeRenderer = true,
-                onSessionUpdated = { session, frame -> },
-                onTapAR = { hitResult ->
-                    // Apply selected material to tapped surface
-                }
+                onSessionUpdated = { _, frame -> latestFrame = frame },
+                onGestureListener = rememberOnGestureListener(
+                    onSingleTapConfirmed = { e, _ ->
+                        // Hit-test the tap against the latest ARCore frame
+                        latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                            // Apply selected material to tapped surface
+                        }
+                    }
+                )
             ) {
                 modelInstance?.let { instance ->
                     ModelNode(

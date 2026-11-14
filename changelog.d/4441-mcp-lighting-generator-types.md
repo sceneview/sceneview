@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **MCP interior lighting uses fixture-specific light types ([#4441](https://github.com/sceneview/sceneview/issues/4441)).** Generated 3D and AR scenes now use positioned point lights for lamps and ambient fill, spot lights with explicit cones for focused fixtures, and directional light for natural lighting. Both variants share the same generator, and the interior package's compiled output is refreshed.

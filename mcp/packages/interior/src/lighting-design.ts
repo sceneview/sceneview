@@ -68,7 +68,7 @@ export function generateLightingDesign(options: LightingDesignOptions): string {
   }
 
   const lightNodes = lights
-    .map((light, i) => generateLightNodeCode(light, tempColor, i))
+    .map((light) => generateLightNodeCode(light, tempColor))
     .join("\n\n");
 
   return `package com.example.interior.lighting
@@ -164,8 +164,24 @@ ${lights.map((light, i) => `                Text("${capitalize(light)}", style =
 function generateLightNodeCode(
   light: LightType,
   color: { r: number; g: number; b: number },
-  index: number
+  indent = "                "
 ): string {
+  // Filament has no ambient or area light type; approximate those fixtures with points.
+  const types: Record<LightType, "DIRECTIONAL" | "POINT" | "SPOT"> = {
+    ambient: "POINT",
+    spot: "SPOT",
+    accent: "SPOT",
+    pendant: "POINT",
+    recessed: "SPOT",
+    track: "SPOT",
+    sconce: "POINT",
+    "floor-lamp": "POINT",
+    "table-lamp": "POINT",
+    chandelier: "POINT",
+    "strip-led": "POINT",
+    natural: "DIRECTIONAL",
+  };
+
   const positions: Record<string, string> = {
     ambient: "0f, 2.5f, 0f",
     spot: "0f, 2.4f, 0f",
@@ -198,16 +214,22 @@ function generateLightNodeCode(
 
   const pos = positions[light] ?? "0f, 2f, 0f";
   const intensity = intensities[light] ?? 80_000;
+  const type = types[light];
 
-  return `                // ${capitalize(light)} light
-                LightNode(
-                    type = LightManager.Type.DIRECTIONAL,
-                    apply = {
-                        intensity(${intensity}f)
-                        color(${color.r}f, ${color.g}f, ${color.b}f)
-                        direction(0f, -1f, 0f)
-                    }
-                )`;
+  const lines = [
+    `// ${capitalize(light)} light`,
+    "LightNode(",
+    `    type = LightManager.Type.${type},`,
+    ...(type !== "DIRECTIONAL" ? [`    position = Position(${pos}),`] : []),
+    "    apply = {",
+    `        intensity(${intensity}f)`,
+    `        color(${color.r}f, ${color.g}f, ${color.b}f)`,
+    ...(type !== "POINT" ? ["        direction(0f, -1f, 0f)"] : []),
+    ...(type === "SPOT" ? ["        spotLightCone(0.5f, 0.8f)"] : []),
+    "    }",
+    ")",
+  ];
+  return lines.map((line) => indent + line).join("\n");
 }
 
 function generateArLightingDesign(
@@ -235,6 +257,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.math.Position
 
 /**
  * AR Lighting Design — preview lighting in your real room.
@@ -278,15 +301,7 @@ fun ${composableName}AR() {
                 }
             )
         ) {
-${lights.map((light) => `            // ${capitalize(light)} light
-            LightNode(
-                type = LightManager.Type.DIRECTIONAL,
-                apply = {
-                    intensity(80_000f)
-                    color(${tempColor.r}f, ${tempColor.g}f, ${tempColor.b}f)
-                    direction(0f, -1f, 0f)
-                }
-            )`).join("\n\n")}
+${lights.map((light) => generateLightNodeCode(light, tempColor, "            ")).join("\n\n")}
         }
 
         if (!placed) {

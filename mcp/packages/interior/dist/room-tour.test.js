@@ -39,8 +39,9 @@ describe("generateRoomTour", () => {
     it("includes play/pause button", () => {
         const code = generateRoomTour({ tourStyle: "orbit" });
         expect(code).toContain("isPlaying");
-        expect(code).toContain("PlayArrow");
-        expect(code).toContain("Pause");
+        expect(code).toContain('if (isPlaying) "Pause" else "Play"');
+        // Text label: material-icons-extended is not a SceneView dependency
+        expect(code).not.toContain("Icons.");
     });
     it("includes progress indicator", () => {
         const code = generateRoomTour({ tourStyle: "flyover" });
@@ -79,10 +80,12 @@ describe("generateRoomTour", () => {
         expect(code).toContain("CircularProgressIndicator");
         expect(code).toContain("modelInstance == null");
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generateRoomTour({ tourStyle: "orbit" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("uses custom room model path", () => {

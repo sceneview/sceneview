@@ -3,6 +3,7 @@ import {
   generateLightingDesign,
   LIGHT_TYPES,
   COLOR_TEMPERATURES,
+  type LightType,
 } from "./lighting-design.js";
 
 describe("LIGHT_TYPES", () => {
@@ -33,6 +34,55 @@ describe("COLOR_TEMPERATURES", () => {
 });
 
 describe("generateLightingDesign", () => {
+  describe.each([false, true])("fixture types with ar=%s", (ar) => {
+    const fixtures: [LightType, string, string | null][] = [
+      ["ambient", "POINT", "0f, 2.5f, 0f"],
+      ["spot", "SPOT", "0f, 2.4f, 0f"],
+      ["accent", "SPOT", "1.5f, 1.5f, -1.5f"],
+      ["pendant", "POINT", "0f, 2.2f, 0f"],
+      ["recessed", "SPOT", "0f, 2.6f, 0f"],
+      ["track", "SPOT", "-1f, 2.4f, 0f"],
+      ["sconce", "POINT", "2f, 1.8f, -2f"],
+      ["floor-lamp", "POINT", "1.5f, 1.4f, 1.5f"],
+      ["table-lamp", "POINT", "0.8f, 0.9f, -0.5f"],
+      ["chandelier", "POINT", "0f, 2.0f, 0f"],
+      ["strip-led", "POINT", "0f, 2.5f, -2f"],
+      ["natural", "DIRECTIONAL", null],
+    ];
+
+    it.each(fixtures)("emits %s as %s", (light, type, position) => {
+      const code = generateLightingDesign({ lights: [light], ar });
+      expect(code.match(/type = LightManager.Type.\w+/g)).toEqual([
+        `type = LightManager.Type.${type}`,
+      ]);
+      if (position) {
+        expect(code).toContain("import io.github.sceneview.math.Position");
+        expect(code).toContain(`position = Position(${position})`);
+      } else {
+        expect(code).not.toContain("position = Position(");
+      }
+      if (type === "SPOT") {
+        expect(code).toContain("spotLightCone(0.5f, 0.8f)");
+      } else {
+        expect(code).not.toContain("spotLightCone(");
+      }
+      if (type === "POINT") {
+        expect(code).not.toContain("direction(");
+      } else {
+        expect(code).toContain("direction(0f, -1f, 0f)");
+      }
+    });
+
+    it("keeps the types and positions of a mixed lighting setup", () => {
+      const code = generateLightingDesign({ lights: LIGHT_TYPES, ar });
+      expect(code.match(/type = LightManager.Type.\w+/g)).toEqual(
+        fixtures.map(([, type]) => `type = LightManager.Type.${type}`),
+      );
+      expect(code.match(/position = Position\(/g)).toHaveLength(11);
+      expect(code.match(/spotLightCone\(/g)).toHaveLength(4);
+    });
+  });
+
   it("generates valid Kotlin code for ambient + spot", () => {
     const code = generateLightingDesign({ lights: ["ambient", "spot"] });
     expect(code).toContain("package com.example.interior.lighting");

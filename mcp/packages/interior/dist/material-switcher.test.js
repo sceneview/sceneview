@@ -65,10 +65,12 @@ describe("generateMaterialSwitcher", () => {
         expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
         expect(code).toContain("android.permission.CAMERA");
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generateMaterialSwitcher({ surface: "countertop" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("handles loading state", () => {

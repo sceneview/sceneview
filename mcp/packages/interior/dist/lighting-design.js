@@ -24,7 +24,7 @@ export function generateLightingDesign(options) {
         return generateArLightingDesign(composableName, roomModel, options);
     }
     const lightNodes = lights
-        .map((light, i) => generateLightNodeCode(light, tempColor, i))
+        .map((light) => generateLightNodeCode(light, tempColor))
         .join("\n\n");
     return `package com.example.interior.lighting
 
@@ -34,13 +34,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 
@@ -53,14 +53,13 @@ import io.github.sceneview.math.Position
  *
  * Model: src/main/assets/${roomModel}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
  */
 @Composable
 fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     val modelInstance = rememberModelInstance(modelLoader, "${roomModel}")
 
@@ -76,7 +75,6 @@ ${dimmable ? lights.map((_, i) => `    var light${i}Intensity by remember { muta
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/interior_hdr.ktx"
                 )!!,
@@ -117,7 +115,22 @@ ${lights.map((light, i) => `                Text("${capitalize(light)}", style =
     }
 }`;
 }
-function generateLightNodeCode(light, color, index) {
+function generateLightNodeCode(light, color, indent = "                ") {
+    // Filament has no ambient or area light type; approximate those fixtures with points.
+    const types = {
+        ambient: "POINT",
+        spot: "SPOT",
+        accent: "SPOT",
+        pendant: "POINT",
+        recessed: "SPOT",
+        track: "SPOT",
+        sconce: "POINT",
+        "floor-lamp": "POINT",
+        "table-lamp": "POINT",
+        chandelier: "POINT",
+        "strip-led": "POINT",
+        natural: "DIRECTIONAL",
+    };
     const positions = {
         ambient: "0f, 2.5f, 0f",
         spot: "0f, 2.4f, 0f",
@@ -148,14 +161,21 @@ function generateLightNodeCode(light, color, index) {
     };
     const pos = positions[light] ?? "0f, 2f, 0f";
     const intensity = intensities[light] ?? 80_000;
-    return `                // ${capitalize(light)} light
-                LightNode(
-                    apply = {
-                        intensity(${intensity}f)
-                        color(${color.r}f, ${color.g}f, ${color.b}f)
-                        direction(0f, -1f, 0f)
-                    }
-                )`;
+    const type = types[light];
+    const lines = [
+        `// ${capitalize(light)} light`,
+        "LightNode(",
+        `    type = LightManager.Type.${type},`,
+        ...(type !== "DIRECTIONAL" ? [`    position = Position(${pos}),`] : []),
+        "    apply = {",
+        `        intensity(${intensity}f)`,
+        `        color(${color.r}f, ${color.g}f, ${color.b}f)`,
+        ...(type !== "POINT" ? ["        direction(0f, -1f, 0f)"] : []),
+        ...(type === "SPOT" ? ["        spotLightCone(0.5f, 0.8f)"] : []),
+        "    }",
+        ")",
+    ];
+    return lines.map((line) => indent + line).join("\n");
 }
 function generateArLightingDesign(composableName, roomModel, options) {
     const { lights, colorTemperature = "warm-white" } = options;
@@ -168,13 +188,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.math.Position
 
 /**
  * AR Lighting Design — preview lighting in your real room.
@@ -185,15 +208,17 @@ import io.github.sceneview.node.LightNode
  * Required AndroidManifest.xml:
  *   <uses-permission android:name="android.permission.CAMERA" />
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
- *   <meta-data android:name="com.google.ar.core" android:value="required" />
+ *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
+ *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     var placed by remember { mutableStateOf(false) }
 
@@ -202,24 +227,21 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onSessionUpdated = { session, frame -> },
-            onTapAR = { hitResult ->
-                if (!placed) {
-                    val anchor = hitResult.createAnchor()
-                    placed = true
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed) {
+                            val anchor = hitResult.createAnchor()
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
-${lights.map((light) => `            // ${capitalize(light)} light
-            LightNode(
-                apply = {
-                    intensity(80_000f)
-                    color(${tempColor.r}f, ${tempColor.g}f, ${tempColor.b}f)
-                    direction(0f, -1f, 0f)
-                }
-            )`).join("\n\n")}
+${lights.map((light) => generateLightNodeCode(light, tempColor, "            ")).join("\n\n")}
         }
 
         if (!placed) {
