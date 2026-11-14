@@ -3,8 +3,6 @@
 package io.github.sceneview.capture
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.SurfaceTexture
 import android.opengl.EGL14
 import android.opengl.EGLConfig
@@ -39,9 +37,12 @@ private const val TAG = "SceneRecorder"
  * render thread stalled behind every recorded frame and a 1080p video came out at about 7 fps on
  * a Pixel 4a.
  *
- * The overlay is drawn on a software [Canvas] — the same kind of canvas a photo's overlay gets —
- * into a bitmap the size of the video, uploaded once per frame and blended in the same pass as
- * the scene (premultiplied alpha, "source over").
+ * The overlay is drawn by [OverlayPainter] on a software `Canvas`, the kind a photo gets, into a
+ * bitmap the size of the video, uploaded once per frame and blended in the same pass as the scene
+ * (premultiplied alpha, "source over"). An overlay that throws costs the overlay, never the frame.
+ *
+ * A failing `eglSwapBuffers` drops that frame and is logged once. There is no switch to the
+ * ImageReader compositor mid-recording: the mirror is bound to this compositor's input surface.
  *
  * The constructor sets EGL up on the compositor thread and throws when it cannot: the caller then
  * falls back to another compositor or records without the overlay.
@@ -66,13 +67,14 @@ internal class GlOverlayCompositor(
     private var sceneTransformLocation = -1
     private lateinit var surfaceTexture: SurfaceTexture
     private lateinit var overlayBitmap: Bitmap
-    private lateinit var overlayCanvas: Canvas
+    private lateinit var painter: OverlayPainter
     private val sceneTransform = FloatArray(MATRIX_SIZE)
 
     /** Read by GL at each draw: held here so it outlives every frame. */
     private var quad: FloatBuffer? = null
     private var sceneSurface: Surface? = null
     private var released = false
+    private var swapFailures = 0
 
     override val inputSurface: Surface
 
@@ -123,7 +125,7 @@ internal class GlOverlayCompositor(
         setUpTexture(GLES20.GL_TEXTURE_2D, overlayTexture)
 
         overlayBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        overlayCanvas = Canvas(overlayBitmap)
+        painter = OverlayPainter(overlay, overlayBitmap)
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, overlayBitmap, 0)
         checkGl("overlay texture")
 
@@ -142,8 +144,8 @@ internal class GlOverlayCompositor(
             surfaceTexture.updateTexImage()
             surfaceTexture.getTransformMatrix(sceneTransform)
 
-            overlayBitmap.eraseColor(Color.TRANSPARENT)
-            overlay.draw(overlayCanvas, width, height)
+            // An overlay that throws leaves the bitmap transparent: the scene is still recorded.
+            painter.paint()
             GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, overlayTexture)
             GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, overlayBitmap)
@@ -157,8 +159,8 @@ internal class GlOverlayCompositor(
             // The scene's own capture time, so the encoder spaces frames as they were rendered.
             val timestamp = surfaceTexture.timestamp
             if (timestamp > 0) EGLExt.eglPresentationTimeANDROID(display, eglSurface, timestamp)
-            if (!EGL14.eglSwapBuffers(display, eglSurface)) {
-                // The encoder surface goes away while the recording stops.
+            if (!EGL14.eglSwapBuffers(display, eglSurface) && swapFailures++ == 0) {
+                // The encoder surface goes away while the recording stops. Logged once.
                 Log.w(TAG, "Overlay frame dropped: ${eglError("eglSwapBuffers")}")
             }
         } catch (e: RuntimeException) {
@@ -171,6 +173,7 @@ internal class GlOverlayCompositor(
     override fun release() {
         handler.post {
             released = true
+            if (swapFailures > 1) Log.w(TAG, "eglSwapBuffers dropped $swapFailures overlay frames")
             tearDown()
         }
         // quitSafely runs the cleanup above first; wait for it so no overlay frame is drawn on the
@@ -239,8 +242,8 @@ internal class GlOverlayCompositor(
         const val VERTEX_SHADER = """
             attribute vec2 aPosition;
             uniform mat4 uSceneTransform;
-            varying vec2 vScene;
-            varying vec2 vOverlay;
+            varying highp vec2 vScene;
+            varying highp vec2 vOverlay;
             void main() {
                 vec2 uv = aPosition * 0.5 + 0.5;
                 vScene = (uSceneTransform * vec4(uv, 0.0, 1.0)).xy;
@@ -255,8 +258,9 @@ internal class GlOverlayCompositor(
             precision mediump float;
             uniform samplerExternalOES uScene;
             uniform sampler2D uOverlay;
-            varying vec2 vScene;
-            varying vec2 vOverlay;
+            // highp: mediump texture coordinates lose texel precision across a 1920-pixel edge.
+            varying highp vec2 vScene;
+            varying highp vec2 vOverlay;
             void main() {
                 vec3 scene = texture2D(uScene, vScene).rgb;
                 vec4 overlay = texture2D(uOverlay, vOverlay);
