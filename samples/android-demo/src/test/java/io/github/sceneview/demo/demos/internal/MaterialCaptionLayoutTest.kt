@@ -57,33 +57,33 @@ class MaterialCaptionLayoutTest {
 
     @Test
     fun `caption bottom well above the cover stays opaque`() {
-        assertEquals(1f, materialCaptionCoverAlpha(400f, 1000f, 300f, 100f, 40f), 0f)
+        assertEquals(1f, materialCaptionCoverAlpha(400f, 1000f, 300f, 40f), 0f)
     }
 
     @Test
     fun `caption bottom at or below the cover edge is hidden`() {
-        assertEquals(0f, materialCaptionCoverAlpha(700f, 1000f, 300f, 100f, 40f), 0f)
-        assertEquals(0f, materialCaptionCoverAlpha(800f, 1000f, 300f, 100f, 40f), 0f)
+        assertEquals(0f, materialCaptionCoverAlpha(700f, 1000f, 300f, 40f), 0f)
+        assertEquals(0f, materialCaptionCoverAlpha(800f, 1000f, 300f, 40f), 0f)
     }
 
     @Test
     fun `caption bottom within one caption height of the cover fades`() {
-        val alpha = materialCaptionCoverAlpha(680f, 1000f, 300f, 100f, 40f)
+        val alpha = materialCaptionCoverAlpha(680f, 1000f, 300f, 40f)
         assertTrue(alpha > 0f && alpha < 1f)
         assertEquals(0.5f, alpha, 0f)
-        assertEquals(1f, materialCaptionCoverAlpha(660f, 1000f, 300f, 100f, 40f), 0f)
+        assertEquals(1f, materialCaptionCoverAlpha(660f, 1000f, 300f, 40f), 0f)
     }
 
     @Test
-    fun `cover equal to the resting chrome leaves captions unchanged`() {
-        assertEquals(1f, materialCaptionCoverAlpha(990f, 1000f, 300f, 300f, 40f), 0f)
-        assertEquals(1f, materialCaptionCoverAlpha(1100f, 1000f, 300f, 300f, 40f), 0f)
+    fun `closed sheet leaves captions unchanged`() {
+        assertEquals(1f, materialCaptionCoverAlpha(990f, 1000f, 0f, 40f), 0f)
+        assertEquals(1f, materialCaptionCoverAlpha(1100f, 1000f, 0f, 40f), 0f)
     }
 
     @Test
-    fun `cover below the resting chrome leaves captions unchanged`() {
-        assertEquals(1f, materialCaptionCoverAlpha(990f, 1000f, 200f, 300f, 40f), 0f)
-        assertEquals(1f, materialCaptionCoverAlpha(1100f, 1000f, 200f, 300f, 40f), 0f)
+    fun `a sheet still under the chrome fades only what it reaches`() {
+        assertEquals(0.5f, materialCaptionCoverAlpha(880f, 1000f, 100f, 40f), 0f)
+        assertEquals(1f, materialCaptionCoverAlpha(850f, 1000f, 100f, 40f), 0f)
     }
 
     @Test
@@ -95,15 +95,13 @@ class MaterialCaptionLayoutTest {
         val shortAlpha = materialCaptionCoverAlpha(
             captionBottomY = anchorY + gapPx + shortHeightPx,
             sceneHeightPx = 1000f,
-            bottomCoverPx = 300f,
-            restingBottomCoverPx = 100f,
+            sheetCoverPx = 300f,
             fadeBandPx = shortHeightPx,
         )
         val tallAlpha = materialCaptionCoverAlpha(
             captionBottomY = anchorY + gapPx + tallHeightPx,
             sceneHeightPx = 1000f,
-            bottomCoverPx = 300f,
-            restingBottomCoverPx = 100f,
+            sheetCoverPx = 300f,
             fadeBandPx = tallHeightPx,
         )
 
