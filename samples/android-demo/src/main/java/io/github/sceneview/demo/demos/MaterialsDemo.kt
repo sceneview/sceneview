@@ -65,10 +65,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
@@ -83,6 +85,7 @@ import io.github.sceneview.demo.demos.internal.MaterialStudio
 import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
+import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
@@ -119,6 +122,7 @@ import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -968,6 +972,7 @@ private fun StudioSection(
             // Project ordinary Compose labels from the actual view, so names follow the sweep.
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val density = LocalDensity.current
+                val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
                 val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
                 val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
@@ -977,79 +982,123 @@ private fun StudioSection(
                     Position(-MaterialStudio.COMPARE_OFFSET, -MaterialStudio.COMPARE_RADIUS, 0f),
                     Position(MaterialStudio.COMPARE_OFFSET, -MaterialStudio.COMPARE_RADIUS, 0f),
                 ) else listOf(Position(0f, -MaterialStudio.HERO_RADIUS, 0f))
-                positions.forEachIndexed { index, anchor ->
-                    val caption = if (!inspecting) stringResource(library[index].nameRes)
-                    else if (compare && index == 0) stringResource(
-                        if (selected.trait == MaterialTrait.None) R.string.demo_materials_base_matte
-                        else R.string.demo_materials_base_layer
-                    ) else stringResource(selected.nameRes)
-                    // #3609: the labels carry NO pointer-input modifier, on purpose. They
-                    // used to be `clickable`, and a Compose node that takes pointer input
-                    // wins the hit test outright — the `SceneView` sibling underneath was
-                    // never even offered the event, so a drag that happened to start on a
-                    // name did nothing at all while the same drag two pixels lower orbited
-                    // the camera. Non-consumption is not enough to fix that: hit testing
-                    // stops at the topmost node that accepts pointers, whatever it then does
-                    // with them. So the labels are pure decoration and the spheres behind
-                    // them stay both draggable and tappable.
-                    val focused = !inspecting && focusIndex == index
-                    Text(
-                        caption,
-                        modifier = Modifier
-                            // #3802: the wall is flat and captioned for a roughly head-on
-                            // view; the orbit itself stays completely free (this demo exists
-                            // to turn a reflection around), so instead of bounding the drag,
-                            // neighbouring captions fade out as the camera turns away from
-                            // front-on — they would otherwise converge on screen under
-                            // perspective and overlap. Inspect mode has one subject (or a
-                            // fixed Compare pair) with no neighbour to collide with, so its
-                            // captions stay at full opacity.
-                            .graphicsLayer {
-                                @Suppress("UNUSED_EXPRESSION")
-                                labelFrame
-                                alpha = if (inspecting) {
-                                    1f
-                                } else {
-                                    orbitLabelFadeAlpha(
-                                        orbitYawDeviationDegrees(
-                                            eye = galleryManipulator.getTransform().position,
-                                            // Matches `galleryManipulator`'s own `target`
-                                            // below — the wall pivots around the origin.
-                                            target = Position(0f, 0f, 0f),
-                                            referenceYawDegrees = 0f,
-                                        ),
-                                    )
+                val captions: @Composable () -> Unit = {
+                    positions.forEachIndexed { index, anchor ->
+                        val caption = if (!inspecting) stringResource(library[index].nameRes)
+                        else if (compare && index == 0) stringResource(
+                            if (selected.trait == MaterialTrait.None) R.string.demo_materials_base_matte
+                            else R.string.demo_materials_base_layer
+                        ) else stringResource(selected.nameRes)
+                        // #3609: the labels carry NO pointer-input modifier, on purpose. They
+                        // used to be `clickable`, and a Compose node that takes pointer input
+                        // wins the hit test outright — the `SceneView` sibling underneath was
+                        // never even offered the event, so a drag that happened to start on a
+                        // name did nothing at all while the same drag two pixels lower orbited
+                        // the camera. Non-consumption is not enough to fix that: hit testing
+                        // stops at the topmost node that accepts pointers, whatever it then does
+                        // with them. So the labels are pure decoration and the spheres behind
+                        // them stay both draggable and tappable.
+                        val focused = !inspecting && focusIndex == index
+                        Text(
+                            caption,
+                            modifier = Modifier
+                                // #3802: the wall is flat and captioned for a roughly head-on
+                                // view; the orbit itself stays completely free (this demo exists
+                                // to turn a reflection around), so instead of bounding the drag,
+                                // neighbouring captions fade out as the camera turns away from
+                                // front-on — they would otherwise converge on screen under
+                                // perspective and overlap. Inspect mode has one subject (or a
+                                // fixed Compare pair) with no neighbour to collide with, so its
+                                // captions stay at full opacity.
+                                .graphicsLayer {
+                                    @Suppress("UNUSED_EXPRESSION")
+                                    labelFrame
+                                    alpha = if (inspecting) {
+                                        1f
+                                    } else {
+                                        orbitLabelFadeAlpha(
+                                            orbitYawDeviationDegrees(
+                                                eye = galleryManipulator.getTransform().position,
+                                                // Matches `galleryManipulator`'s own `target`
+                                                // below — the wall pivots around the origin.
+                                                target = Position(0f, 0f, 0f),
+                                                referenceYawDegrees = 0f,
+                                            ),
+                                        )
+                                    }
                                 }
-                            }
-                            .offset {
-                                @Suppress("UNUSED_EXPRESSION")
-                                labelFrame
-                                val point = view.worldToScreen(anchor)
-                                IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                    ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                            }.width(captionWidth)
-                            .padding(horizontal = SceneViewTokens.Space.xs)
-                            .background(
-                                if (focused) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surface
-                                },
-                                MaterialTheme.shapes.small,
+                                .then(
+                                    if (comparing) Modifier else Modifier
+                                        .offset {
+                                            @Suppress("UNUSED_EXPRESSION")
+                                            labelFrame
+                                            val point = view.worldToScreen(anchor)
+                                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                                        }.width(captionWidth)
+                                )
+                                .padding(horizontal = SceneViewTokens.Space.xs)
+                                .background(
+                                    if (focused) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                    MaterialTheme.shapes.small,
+                                )
+                                .padding(SceneViewTokens.Space.xs),
+                            style = if (inspecting) {
+                                MaterialTheme.typography.titleSmall
+                            } else {
+                                MaterialTheme.typography.labelSmall
+                            },
+                            color = if (focused) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            textAlign = TextAlign.Center,
+                            maxLines = if (comparing) 2 else Int.MAX_VALUE,
+                            overflow = if (comparing) TextOverflow.Ellipsis else TextOverflow.Clip,
+                        )
+                    }
+                }
+                if (comparing) {
+                    Layout(content = captions, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
+                        @Suppress("UNUSED_EXPRESSION")
+                        labelFrame
+                        val points = positions.map { view.worldToScreen(it) }
+                        val gap = gapPx.roundToInt()
+                        // Compare caption collision: screen halves overlap when the projected anchors converge.
+                        val width = compareCaptionWidthPx(
+                            firstAnchorX = points[0]?.x ?: 0f,
+                            secondAnchorX = points[1]?.x ?: 0f,
+                            gapPx = gap,
+                            minimumWidthPx = with(density) { SceneViewTokens.Space.x4l.roundToPx() },
+                        ).coerceAtMost(constraints.maxWidth)
+                        val placeables = measurables.map {
+                            it.measure(constraints.copy(minWidth = width, maxWidth = width, minHeight = 0))
+                        }
+                        val offsets = points.map { point ->
+                            IntOffset(
+                                ((point?.x ?: -view.viewport.width.toFloat()) - width / 2f).roundToInt(),
+                                ((point?.y ?: -view.viewport.height.toFloat()) + gap).roundToInt(),
                             )
-                            .padding(SceneViewTokens.Space.xs),
-                        style = if (inspecting) {
-                            MaterialTheme.typography.titleSmall
-                        } else {
-                            MaterialTheme.typography.labelSmall
-                        },
-                        color = if (focused) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        textAlign = TextAlign.Center,
-                    )
+                        }
+                        val first = offsets[0]
+                        val second = offsets[1]
+                        val tooClose = first.x < second.x + width + gap && second.x < first.x + width + gap
+                        // Keep both names centred on their spheres when the readable minimum needs two rows.
+                        val secondY = if (tooClose) {
+                            maxOf(second.y, first.y + placeables[0].height + gap)
+                        } else second.y
+                        layout(constraints.maxWidth, constraints.maxHeight) {
+                            placeables[0].place(first.x, first.y)
+                            placeables[1].place(second.x, secondY)
+                        }
+                    }
+                } else {
+                    captions()
                 }
             }
             // The scene is procedural, so there is nothing to decode — but the environment's
