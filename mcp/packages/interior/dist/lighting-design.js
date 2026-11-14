@@ -162,6 +162,7 @@ function generateLightNodeCode(light, color, indent = "                ") {
     const pos = positions[light] ?? "0f, 2f, 0f";
     const intensity = intensities[light] ?? 80_000;
     const type = types[light];
+    // A 5 m radius reaches the floor from the tallest local fixture at 2.6 m.
     const lines = [
         `// ${capitalize(light)} light`,
         "LightNode(",
@@ -170,6 +171,7 @@ function generateLightNodeCode(light, color, indent = "                ") {
         "    apply = {",
         `        intensity(${intensity}f)`,
         `        color(${color.r}f, ${color.g}f, ${color.b}f)`,
+        ...(type !== "DIRECTIONAL" ? ["        falloff(5f)"] : []),
         ...(type !== "POINT" ? ["        direction(0f, -1f, 0f)"] : []),
         ...(type === "SPOT" ? ["        spotLightCone(0.5f, 0.8f)"] : []),
         "    }",

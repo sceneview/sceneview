@@ -73,6 +73,22 @@ describe("generateLightingDesign", () => {
       }
     });
 
+    it.each(fixtures)("lets %s reach the floor", (light, type) => {
+      const code = generateLightingDesign({ lights: [light], ar });
+      const falloff = code.match(/falloff\(([\d.]+)f\)/);
+      if (type === "DIRECTIONAL") {
+        expect(falloff).toBeNull();
+        return;
+      }
+
+      expect(falloff).not.toBeNull();
+      const position = code.match(/position = Position\(([^)]+)\)/);
+      expect(position).not.toBeNull();
+      const height = Number.parseFloat(position![1].split(",")[1]);
+      // At the falloff radius Filament contributes no light, so equality is insufficient.
+      expect(Number(falloff![1])).toBeGreaterThan(Math.abs(height));
+    });
+
     it("keeps the types and positions of a mixed lighting setup", () => {
       const code = generateLightingDesign({ lights: LIGHT_TYPES, ar });
       expect(code.match(/type = LightManager.Type.\w+/g)).toEqual(
