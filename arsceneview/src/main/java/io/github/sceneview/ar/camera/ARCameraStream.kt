@@ -42,6 +42,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executor
 
 const val kUVTransformParameter = "uvTransform"
 const val kCameraTextureParameter = "cameraTexture"
@@ -709,9 +710,7 @@ open class ARCameraStream(
             pendingDisplayGeometryChange = false
             if (changed) {
                 upload.copyFrom(coordinates)
-                vertexBuffer.setBufferAt(engine, POSITION_BUFFER_INDEX, upload.positions, 0, 0, null, upload.onConsumed)
-                vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, upload.imageUvs, 0, 0, null, upload.onConsumed)
-                vertexBuffer.setBufferAt(engine, CAMERA_UV_BUFFER_INDEX, upload.cameraUvs, 0, 0, null, upload.onConsumed)
+                uploadCoordinates(engine, vertexBuffer, upload)
                 imageStabilizationEnabled = mode == Config.ImageStabilizationMode.EIS
             } else {
                 upload.cancel()
@@ -953,6 +952,22 @@ open class ARCameraStream(
     }
 
     companion object {
+        // Filament only delivers completion callbacks with a non-null Handler or Executor.
+        // Completion only decrements an atomic counter, so it can run on the notifying thread.
+        private val coordinateUploadExecutor = Executor { it.run() }
+
+        internal fun uploadCoordinates(engine: Engine, vertexBuffer: VertexBuffer, upload: CameraStreamUploadRing.Slot) {
+            vertexBuffer.setBufferAt(
+                engine, POSITION_BUFFER_INDEX, upload.positions, 0, 0, coordinateUploadExecutor, upload.onConsumed
+            )
+            vertexBuffer.setBufferAt(
+                engine, UV_BUFFER_INDEX, upload.imageUvs, 0, 0, coordinateUploadExecutor, upload.onConsumed
+            )
+            vertexBuffer.setBufferAt(
+                engine, CAMERA_UV_BUFFER_INDEX, upload.cameraUvs, 0, 0, coordinateUploadExecutor, upload.onConsumed
+            )
+        }
+
         /**
          * Camera-stream draw priority while depth occlusion is OFF (issue #1617).
          *
