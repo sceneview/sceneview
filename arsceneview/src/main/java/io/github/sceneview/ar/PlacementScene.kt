@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -25,6 +26,7 @@ import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
+import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
@@ -38,7 +40,6 @@ import java.io.File
 
 /**
  * Manual-placement API. For automatic placement use [AutoPlacementScene].
- * Published defaults and tap/reticle behavior remain unchanged.
  *
  * One-line tap-to-place AR scene — the Sceneform `ArFragment` parity bundle
  * ([#1765](https://github.com/sceneview/sceneview/issues/1765)).
@@ -82,8 +83,9 @@ import java.io.File
  *    content should ride that anchor. Taps that fall on existing scene nodes are ignored, so a
  *    placed model can still be gesture-edited without spawning a duplicate on top.
  *  - An **instant-placement fallback** ([instantPlacement] = `true` by default): models can be
- *    dropped before ARCore has converged a plane, then snap to the real surface once tracking
- *    catches up — exactly Sceneform's behaviour.
+ *    dropped before ARCore has converged a plane. An `AnchorNode` declared in [onPlaced] holds
+ *    its initial world pose while depth is approximate, then blends to the refined anchor pose
+ *    over 300 ms once full tracking starts.
  *
  * The composable keeps the list of created anchors itself; everything the caller declares inside
  * [onPlaced] is composed once per anchor. Call [PlacementController.clear] (via the [controller]
@@ -263,7 +265,7 @@ fun PlacementScene(
                     if (node != null) return@rememberOnGestureListener
                     val frame = latestFrame ?: return@rememberOnGestureListener
                     placementHit(frame, event.x, event.y, instantPlacement)?.let { hit ->
-                        controller.add(hit.createAnchor())
+                        controller.add(hit)
                         // Confirm the commit in the hand. A tap that lands must feel different
                         // from a tap that misses, or a dropped tap reads as a dead screen
                         // (#3571).
@@ -328,7 +330,11 @@ fun PlacementScene(
             // single-parent).
             controller.anchors.forEach { anchor ->
                 key(anchor) {
-                    onPlaced(anchor)
+                    CompositionLocalProvider(
+                        LocalInstantPlacement provides controller.instantPlacements[anchor],
+                    ) {
+                        onPlaced(anchor)
+                    }
                 }
             }
 
@@ -412,6 +418,7 @@ internal fun shouldCatchGroundShadows(
  */
 class PlacementController internal constructor() {
     private val _anchors = mutableStateListOf<Anchor>()
+    internal val instantPlacements = mutableMapOf<Anchor, InstantPlacement>()
 
     /** The anchors created so far, in placement order. Compose-observable. */
     val anchors: List<Anchor> get() = _anchors
@@ -423,6 +430,17 @@ class PlacementController internal constructor() {
         _anchors += anchor
     }
 
+    internal fun add(hit: HitResult) {
+        val anchor = hit.createAnchor()
+        val point = hit.trackable as? InstantPlacementPoint
+        if (point?.trackingMethod ==
+            InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE
+        ) {
+            instantPlacements[anchor] = InstantPlacement(anchor, point, hit.hitPose)
+        }
+        add(anchor)
+    }
+
     /**
      * Detaches every created [Anchor] so ARCore stops tracking them, then drops them from the
      * list — recomposition removes the matching content from the scene. Safe to call from the
@@ -431,6 +449,7 @@ class PlacementController internal constructor() {
     fun clear() {
         _anchors.forEach { runCatching { it.detach() } }
         _anchors.clear()
+        instantPlacements.clear()
     }
 }
 

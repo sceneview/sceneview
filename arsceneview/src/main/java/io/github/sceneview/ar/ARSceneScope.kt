@@ -133,6 +133,8 @@ class ARSceneScope internal constructor(
      * The node's transform is updated each frame to match the anchor's pose as ARCore refines its
      * understanding of the environment. The node is only visible when the anchor is in
      * [TrackingState.TRACKING].
+     * Inside [PlacementScene]'s `onPlaced`, approximate instant-placement anchors hold their
+     * drop pose until full tracking, then blend to the refined pose over 300 ms.
      *
      * Typical usage — place a model at a tapped surface:
      * ```kotlin
@@ -176,6 +178,7 @@ class ARSceneScope internal constructor(
         apply: AnchorNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
+        val instantPlacement = LocalInstantPlacement.current?.takeIf { it.anchor == anchor }
         val node = remember(engine, anchor) {
             AnchorNodeImpl(
                 engine = engine,
@@ -184,6 +187,7 @@ class ARSceneScope internal constructor(
                 onAnchorChanged = onAnchorChanged,
                 onUpdated = onUpdated
             ).apply {
+                this.instantPlacement = instantPlacement
                 this.updateAnchorPose = updateAnchorPose
                 this.visibleTrackingStates = visibleTrackingStates
                 apply()

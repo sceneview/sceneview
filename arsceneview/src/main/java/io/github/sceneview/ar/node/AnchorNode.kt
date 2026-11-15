@@ -4,10 +4,12 @@ import android.view.MotionEvent
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
+import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.InstantPlacement
 import io.github.sceneview.ar.PlacementTrackableKind
 import io.github.sceneview.gesture.MoveGestureDetector
 
@@ -27,6 +29,16 @@ open class AnchorNode(
      * Should the anchor automatically update the anchor new pose
      */
     var updateAnchorPose = true
+
+    /** The tap's trackable and world pose, retained by PlacementScene while depth converges. */
+    internal var instantPlacement: InstantPlacement? = null
+        set(value) {
+            field = value
+            instantPlacementPose = value?.let { InstantPlacementPose(it.dropPose) }
+            value?.let { pose = it.dropPose }
+        }
+
+    private var instantPlacementPose: InstantPlacementPose? = null
 
     /**
      * The node world positioned anchor
@@ -60,6 +72,7 @@ open class AnchorNode(
             // Detach the replaced anchor so it stops accruing ARCore tracking cost.
             field.detach()
             field = value
+            instantPlacement = null
             trackingState = value.trackingState
             pose = value.pose
             onAnchorChanged?.invoke(value)
@@ -128,16 +141,38 @@ open class AnchorNode(
         // #2270: prefer the per-frame batched updated-anchors set computed once by the AR frame
         // driver (O(1) HashSet lookup, no per-node JNI allocation). Fall back to the per-node
         // JNI query when this node's update runs outside that driver so behaviour is identical.
-        if (anchor in (frameUpdatedAnchors ?: frame.updatedAnchors)) {
+        val anchorUpdated = anchor in (frameUpdatedAnchors ?: frame.updatedAnchors)
+        if (anchorUpdated) {
             trackingState = anchor.trackingState
-            if (trackingState == TrackingState.TRACKING && updateAnchorPose) {
+        }
+        if (updateAnchorPose && (anchorUpdated || instantPlacement != null) &&
+            trackingState == TrackingState.TRACKING
+        ) {
+            val placement = instantPlacement
+            if (placement != null) {
+                // Run every frame, even when ARCore reports no anchor update, so the
+                // refinement animation completes after a stationary FULL_TRACKING pose.
+                if (placement.point.trackingState == TrackingState.TRACKING) {
+                    val refinement = checkNotNull(instantPlacementPose)
+                    pose = refinement.update(
+                        fullTracking = placement.point.trackingMethod ==
+                            InstantPlacementPoint.TrackingMethod.FULL_TRACKING,
+                        anchorPose = anchor.pose,
+                        timestampNs = frame.timestamp,
+                    )
+                    if (refinement.isComplete) instantPlacement = null
+                }
+            } else if (anchorUpdated) {
                 pose = anchor.pose
             }
+        }
+        if (anchorUpdated) {
             onUpdated?.invoke(anchor)
         }
     }
 
     open fun detachAnchor() {
+        instantPlacement = null
         anchor.detach()
     }
 
