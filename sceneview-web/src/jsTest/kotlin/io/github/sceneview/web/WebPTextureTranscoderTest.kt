@@ -431,31 +431,36 @@ class WebPTextureTranscoderTest {
         """.trimIndent()
         val source = toArrayBuffer(encode(json))
         var reported = -1
-        val browserConsole = js("globalThis.console")
-        val originalWarn = browserConsole.warn
-        val warnings = mutableListOf<String>()
-        var cause: dynamic = null
-        browserConsole.warn = { message: String, error: dynamic ->
-            warnings += message
-            cause = error
-        }
 
-        return WebPTextureTranscoder.transcode(source, fakeTranscoder) { reported = it }
-            .then { result ->
-                browserConsole.warn = originalWarn
-                assertSame(source, result, "a malformed data URI must not abort the model load")
-                assertEquals(1, reported, "the malformed WebP image must still be reported")
-                assertEquals(0, decodeCount, "invalid base64 must not reach the image decoder")
-                assertEquals(1, warnings.size, "the original decode error must be logged once")
-                assertTrue(warnings.single().contains("WebP"))
-                assertTrue(warnings.single().contains("data URI"))
-                assertNotNull(cause, "the diagnostic must retain the original exception")
-                assertEquals("InvalidCharacterError", cause.name as String)
+        // Kotlin's Karma adapter restores console methods as soon as a test returns its
+        // Promise. Install the spy in a microtask after that synchronous restoration.
+        return Promise.resolve(Unit).then {
+            val browserConsole = js("globalThis.console")
+            val originalWarn = browserConsole.warn
+            val warnings = mutableListOf<String>()
+            var cause: dynamic = null
+            browserConsole.warn = { message: String, error: dynamic ->
+                warnings += message
+                cause = error
             }
-            .catch { throwable ->
-                browserConsole.warn = originalWarn
-                throw throwable
-            }
+
+            WebPTextureTranscoder.transcode(source, fakeTranscoder) { reported = it }
+                .then { result ->
+                    browserConsole.warn = originalWarn
+                    assertSame(source, result, "a malformed data URI must not abort the model load")
+                    assertEquals(1, reported, "the malformed WebP image must still be reported")
+                    assertEquals(0, decodeCount, "invalid base64 must not reach the image decoder")
+                    assertEquals(1, warnings.size, "the original decode error must be logged once")
+                    assertTrue(warnings.single().contains("WebP"))
+                    assertTrue(warnings.single().contains("data URI"))
+                    assertNotNull(cause, "the diagnostic must retain the original exception")
+                    assertEquals("InvalidCharacterError", cause.name as String)
+                }
+                .catch { throwable ->
+                    browserConsole.warn = originalWarn
+                    throw throwable
+                }
+        }.unsafeCast<Promise<Unit>>()
     }
 
     @Test
