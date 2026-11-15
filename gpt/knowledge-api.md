@@ -2966,8 +2966,8 @@ fine-grained control. See the `ar-depth-of-field` demo for the canonical wiring.
 ### Scene Semantics — per-pixel outdoor classification (#1730)
 
 ARCore's Scene Semantics labels every pixel of an **outdoor** camera frame with one of 12 classes
-through an on-device ML model (`SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`, `TERRAIN`,
-`STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`, `UNLABELED`). The AI-first use case is
+through an on-device ML model (`UNLABELED`, `SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`,
+`TERRAIN`, `STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`). The AI-first use case is
 semantic placement rules — "place models only on `TERRAIN`, never on `SKY`/`PERSON`/`VEHICLE`" —
 that an assistant can generate without reading per-pixel rasters.
 
@@ -2993,7 +2993,8 @@ ARSceneView(
         val groundFraction = frame.semanticLabelFraction(SemanticLabel.TERRAIN)
         if (groundFraction > 0.3f) { /* enough ground in view to place a model */ }
 
-        // Per-pixel raster (R8, label ordinal per pixel — `SemanticLabel.forNumber(byte)`).
+        // Per-pixel raster (R8, label ordinal per pixel, UNLABELED = 0 … WATER = 11 —
+        // decode with `SemanticLabel.values()[byte.toInt() and 0xFF]`).
         // Caller-owned Image — close in `use { }` or ARCore will throw ResourceExhausted
         // after 2-3 leaked frames. Returns null while semantics are warming up.
         frame.semanticImage()?.use { image -> /* walk image.planes[0].buffer */ }
@@ -3013,8 +3014,8 @@ available — making "place on TERRAIN" rules naturally wait for the first usabl
 **Visualizing the segmentation (#1868).** To render the per-pixel labels as a tinted overlay
 instead of just reading them, use the built-in `semantics_overlay.filamat` material. Upload the
 `semanticImage()` R8 raster into a Filament `R8` `Texture`, then paint a quad with the overlay
-material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`
-stays transparent):
+material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`,
+ordinal `0`, stays transparent):
 
 ```kotlin
 import io.github.sceneview.material.setSemanticsOpacity
@@ -3023,6 +3024,10 @@ import io.github.sceneview.material.setSemanticsOpacity
 val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
 overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
 ```
+
+The label texture is sampled at the nearest texel, clamped at the edges, by default
+(`setSemanticsTexture(texture, sampler = …)`). A texel is a class number, not a colour: never
+filter it, or every boundary between two classes is painted with the classes numbered between.
 
 Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
 semantic blend slider over the overlay material, plus the top-3 label HUD.
