@@ -31,6 +31,7 @@ import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberHostLifecycle
+import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
@@ -70,6 +71,8 @@ import io.github.sceneview.rememberOnGestureListener
  *    (show them again) and **Reset** (pick the sofa up, scan again) on screen throughout.
  *
  * The rules of step 3 live in [SurfaceShowcaseState], which is pure and unit-tested.
+ * Automatic depth and camera occlusion hide marks behind nearer real furniture; ARCore falls
+ * back to disabled depth on unsupported devices.
  */
 @Composable
 fun ARSurfacesDemo(onBack: () -> Unit) {
@@ -166,13 +169,8 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                     SurfaceShowcaseBanner.PLACED -> stringResource(R.string.ar_surfaces_status_placed)
                     SurfaceShowcaseBanner.MOVE_PHONE -> stringResource(R.string.ar_surfaces_status_move)
                 },
-                tone = if (banner == SurfaceShowcaseBanner.MOVE_PHONE) {
-                    DemoStatusTone.Guidance
-                } else {
-                    DemoStatusTone.Progress
-                },
-                // A Progress pill spins unless it is handed an icon. Only the scan spins:
-                // once a surface is found the phone is waiting for the user, not working.
+                tone = banner?.tone ?: DemoStatusTone.Guidance,
+                // Only the scan spins; found and placed messages keep their action icon.
                 icon = when (banner) {
                     SurfaceShowcaseBanner.FOUND -> Icons.Filled.TouchApp
                     SurfaceShowcaseBanner.PLACED -> Icons.Filled.OpenWith
@@ -192,7 +190,13 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                 playbackDataset = arPlaybackDataset,
                 // Fading the surfaces only stops drawing them: detection, hit tests and
                 // the gestures on the sofa keep working.
-                planeRenderer = showcase.planesVisible,
+                // Both the depth-producing session and the camera's depth pass are needed
+                // for real furniture to hide the plane marks (#4228).
+                depthMode = Config.DepthMode.AUTOMATIC,
+                sceneUnderstanding = SceneUnderstanding(
+                    occlusion = true,
+                    planeVisualization = showcase.planesVisible,
+                ),
                 sessionConfiguration = { _: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 },
