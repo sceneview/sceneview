@@ -346,8 +346,8 @@ and park again. The callback runs before scene updates on every render-loop tick
 surface, including ticks the GPU declines to present; `maxFps` still caps presentation. Mutating
 Compose state here is supported; direct node writes can affect the same frame, while Compose
 changes reach nodes after recomposition. `onFrame` stays a pure observer called only after a
-presented frame and never keeps the scene awake. The existing overload is retained for binary and
-positional source compatibility. This callback is Android `SceneView`-specific: `ARSceneView` uses
+presented frame and never keeps the scene awake. The existing overload is retained for binary
+compatibility and hidden from source calls. This callback is Android `SceneView`-specific: `ARSceneView` uses
 its ARCore session loop, and other platforms have separate render loops and callback APIs.
 
 **A camera pose written from `onFrame` is overwritten on the next frame while a `cameraManipulator` is installed:** the loop updates the manipulator, calls its `getTransform()` exactly once, passes that pose through the camera-swap continuity resolver, and applies the resolved transform when it differs from `cameraNode.transform`. Pass `cameraManipulator = null` while a script owns the camera (as `applyCinematicOrbit` requires), or install a manipulator whose `getTransform()` returns the scripted pose—for example, a wrapper around the default manipulator that returns `cameraNode.transform` while the script owns it.

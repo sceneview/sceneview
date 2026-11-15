@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -120,6 +121,24 @@ class SceneAnimationFrameTest {
                     it.name == "onAnimationFrame" && it.isOptional && it.type.isMarkedNullable
                 } && function.parameters.any { it.name == "onFrame" }
             }
+        )
+    }
+
+    @Test
+    fun compatibilityOverloadRemainsInBytecodeButIsHiddenFromKotlinCalls() {
+        val overloads = Class.forName("io.github.sceneview.SceneKt").declaredMethods
+            .filter { it.name == "SceneView" }
+        assertEquals("both JVM descriptors must remain available", 2, overloads.size)
+
+        val compatibilityOverload = overloads.minBy { it.parameterCount }
+        assertEquals(
+            DeprecationLevel.HIDDEN,
+            compatibilityOverload.getAnnotation(Deprecated::class.java)?.level
+        )
+        assertTrue("the compatibility overload must be binary-only", compatibilityOverload.isSynthetic)
+        assertFalse(
+            "source calls must use the overload with the animation driver and full KDoc",
+            overloads.maxBy { it.parameterCount }.isSynthetic
         )
     }
 }

@@ -2523,9 +2523,14 @@ private fun ScenePreview(modifier: Modifier) {
 }
 
 /**
- * Compatibility overload preserving the published JVM descriptor and positional calls made before
- * `onAnimationFrame` was added. Calls without an animation driver keep their existing cadence.
+ * Binary-compatibility overload preserving the JVM descriptor published before `onAnimationFrame`
+ * was added. Calls without an animation driver keep their existing cadence.
  */
+@Deprecated(
+    "Binary-compatibility overload. Use the SceneView overload that takes `onAnimationFrame`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Suppress("DEPRECATION")
 @Composable
 fun SceneView(
     modifier: Modifier = Modifier,
