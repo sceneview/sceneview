@@ -83,7 +83,7 @@ describe("local save protocol (sample and generated sidecars)", () => {
                     generated,
                 ].map((script) => {
                     const result = spawnSync("python3", [
-                        fileURLToPath(new URL("./__fixtures__/sidecar-save.py", import.meta.url)),
+                        fileURLToPath(new URL("../src/__fixtures__/sidecar-save.py", import.meta.url)),
                         script, path, mode,
                     ], { encoding: "utf8" });
                     expect(result.stderr).toBe("");
