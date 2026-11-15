@@ -573,6 +573,7 @@ internal object WebPTextureTranscoder {
     private fun decodeDataUri(uri: String): Uint8Array? = try {
         fromBase64(uri.substringAfter("base64,"))
     } catch (throwable: Throwable) {
+        console.warn("SceneView: Could not decode a WebP texture data URI.", throwable)
         null
     }
 

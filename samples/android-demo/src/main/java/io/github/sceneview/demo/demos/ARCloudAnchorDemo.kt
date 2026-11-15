@@ -424,6 +424,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_cloud_anchor_title),
         chromeToggleOnTap = false,
         onBack = onBack,
