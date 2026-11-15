@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 // ARScene lives in the separate `arsceneview` module intentionally: apps that only need 3D
 // can depend on `sceneview` alone without pulling in ARCore.
 //

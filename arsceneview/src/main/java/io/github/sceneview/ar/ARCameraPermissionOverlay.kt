@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.ar
 
 import androidx.compose.foundation.layout.BoxScope
@@ -5,11 +7,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import io.github.sceneview.ExperimentalSceneViewApi
 
 /**
  * What [ARSceneView] knows about a denied camera permission (#3308).
  *
- * @property recovery The available recovery actions. Settings is the primary action for
+ * @property recovery The experimental recovery actions. Settings is the primary action for
  *   [ARCameraPermissionRecovery.RequestWithSettings], with [request] still available.
  * @property permanentlyDenied Legacy conservative recommendation: `true` when settings is
  *   available, including ambiguous answers. It does not prove the dialog is blocked. Hosts
@@ -20,6 +23,7 @@ import androidx.compose.ui.res.stringResource
  */
 @Immutable
 class ARCameraPermissionState(
+    @ExperimentalSceneViewApi
     val recovery: ARCameraPermissionRecovery,
     val request: () -> Unit,
     val openSettings: () -> Unit,
