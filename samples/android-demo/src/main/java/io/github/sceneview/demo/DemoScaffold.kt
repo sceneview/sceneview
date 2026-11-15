@@ -141,6 +141,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sceneview.ar.replay.LocalARSessionProbe
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
+import io.github.sceneview.demo.common.DemoMotionSensors
+import io.github.sceneview.demo.common.MotionSensorSessionProbe
+import io.github.sceneview.demo.common.motionSensorSilentForced
+import io.github.sceneview.demo.common.rememberDemoMotionSensorSilent
+import io.github.sceneview.demo.common.placement.PlacementActionCard
+import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.capture.PhotoFormat
@@ -623,6 +631,8 @@ fun DemoScaffold(
     bottomOverlayReservesScene: Boolean = false,
     arSessionFailed: Boolean = false,
     arOverlaysEnabled: Boolean = true,
+    // Rear-camera hosts opt in; the AR tab / tap-to-place host already owns this watch.
+    monitorArMotionSensors: Boolean = false,
     dock: List<DockItem> = emptyList(),
     dockAccent: DockItem? = null,
     // The app-level actions (Reset, Send feedback, QA mode) in a ⋮ menu at the end of the
@@ -653,6 +663,14 @@ fun DemoScaffold(
     hasScene: Boolean = true,
     scene: @Composable BoxScope.() -> Unit
 ) {
+    val motionSensors = remember(monitorArMotionSensors) { DemoMotionSensors() }
+    val motionSensorSilent = monitorArMotionSensors && rememberDemoMotionSensorSilent(motionSensors)
+    val pinnedMotionSensorCard = monitorArMotionSensors && motionSensorSilentForced()
+    val enclosingProbe = LocalARSessionProbe.current
+    val sessionProbe = remember(motionSensors, enclosingProbe) {
+        MotionSensorSessionProbe(motionSensors, enclosingProbe)
+    }
+
     // The stage's ground and the chrome over it (#4080): media glass unless the demo draws a
     // themed stage of its own, which then follows the app theme.
     val chrome = if (themedStage) themedStageChrome() else StageChrome.Media
@@ -919,6 +937,8 @@ fun DemoScaffold(
     // Ground only the glass controls, inside their own outlines. Full-width gradients drawn
     // after `scene` darken its text too, even when a pill already has an opaque fill (#3733).
     CompositionLocalProvider(
+        LocalARSessionProbe provides if (monitorArMotionSensors) sessionProbe else enclosingProbe,
+        LocalMotionSensorSilent provides motionSensorSilent,
         LocalStageChrome provides chrome,
         LocalGlassGround provides chrome.scrimDock,
     ) {
@@ -926,12 +946,14 @@ fun DemoScaffold(
         var dockBandPx by remember { mutableIntStateOf(0) }
         // Whether anything stacks above the dock: the demo's status pill and overlays, the
         // Record pill, the mode pill.
-        val bottomStackShown = bottomOverlay != null || peekHeader != null ||
+        val bottomStackShown = motionSensorSilent || bottomOverlay != null || peekHeader != null ||
             modeSwitch != null || recordPillShown
         // Whether the bottom band is composed at all. Its measurement outlives it — the
         // Record pill comes and goes, an AR session fails — so the scene and the snackbar are
         // only told about a band that is up.
-        val bottomBandShown = if (arSessionFailed) {
+        val bottomBandShown = if (pinnedMotionSensorCard) {
+            true
+        } else if (arSessionFailed) {
             modeSwitch != null
         } else {
             arOverlaysEnabled && bottomStackShown
@@ -1205,7 +1227,11 @@ fun DemoScaffold(
                                     focused = focused,
                                     focusProgress = focusProgress,
                                 ) {
-                                    if (arSessionFailed) {
+                                    if (pinnedMotionSensorCard && (arSessionFailed || !arOverlaysEnabled)) {
+                                        // Capture the restart card even on an emulator that cannot
+                                        // start AR. A working session keeps its live camera behind it.
+                                        Box(Modifier.fillMaxSize().background(chrome.ground))
+                                    } else if (arSessionFailed) {
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
@@ -1284,10 +1310,11 @@ fun DemoScaffold(
 
                     // Top band: the demo's own overlays below the identity row, then the
                     // chrome on top so scaffold controls always win the z-order.
-                    if (topOverlay != null && !arSessionFailed && arOverlaysEnabled) {
+                    if (topOverlay != null && !arSessionFailed && arOverlaysEnabled && !motionSensorSilent) {
                         Box(Modifier.matchParentSize().hiddenInFullScreen { focusAlpha }) {
                             DemoTopOverlay(
                                 reservedTop = identityRow,
+                                reservedBottom = dockBandClearance + navigationBarInset,
                                 shown = overlaysShown,
                                 onBandHeightChanged = { topOverlayBandPx = it },
                                 content = topOverlay,
@@ -1299,7 +1326,7 @@ fun DemoScaffold(
                     // The record pill and the consolidated card's mode pill close the stack,
                     // in that order, so the mode pill always sits just above the dock.
                     Box(Modifier.matchParentSize().hiddenInFullScreen { focusAlpha }) {
-                        if (!arSessionFailed && arOverlaysEnabled && bottomStackShown) {
+                        if (pinnedMotionSensorCard || (!arSessionFailed && arOverlaysEnabled && bottomStackShown)) {
                             DemoBottomOverlay(
                                 reservedBottom = dockClearance,
                                 dockGap = dockClearance - dockBandClearance,
@@ -1308,8 +1335,15 @@ fun DemoScaffold(
                                 faded = settingsExpanded || dockHidden,
                                 shown = overlaysShown,
                                 onBandHeightChanged = { bottomOverlayBandPx = it },
-                                status = peekHeader,
-                                content = bottomOverlay,
+                                status = if (motionSensorSilent) null else peekHeader,
+                                content = if (motionSensorSilent) {
+                                    {
+                                        PlacementActionCard(
+                                            PlacementCard.MOTION_SENSOR_SILENT,
+                                            null, {}, {}, null,
+                                        )
+                                    }
+                                } else bottomOverlay,
                                 footer = if (modeSwitch != null || recordPillShown) {
                                     {
                                         if (recorder != null && recordPillShown) {
@@ -2566,6 +2600,15 @@ class DemoTopOverlayScope internal constructor(
      * keep compiling as a no-op.
      */
     val assetSourceChipReservedSpace: Dp,
+    /**
+     * Height of the band the dock covers at the bottom of the window, navigation-bar inset
+     * included.
+     *
+     * The slot runs down to the bottom of the window, under the dock. An overlay that can grow
+     * tall — a short window, large text — ends its content this far up, and scrolls what does
+     * not fit, or its last rows sit under the settings button (#4036).
+     */
+    val dockReservedSpace: Dp,
 ) : ColumnScope by columnScope
 
 /**
@@ -2576,6 +2619,7 @@ class DemoTopOverlayScope internal constructor(
 @Composable
 private fun BoxScope.DemoTopOverlay(
     reservedTop: Dp,
+    reservedBottom: Dp,
     shown: Boolean,
     onBandHeightChanged: (Int) -> Unit,
     content: @Composable DemoTopOverlayScope.() -> Unit,
@@ -2600,7 +2644,7 @@ private fun BoxScope.DemoTopOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(OVERLAY_STACK_SPACING),
         ) {
-            DemoTopOverlayScope(this, 0.dp).content()
+            DemoTopOverlayScope(this, 0.dp, reservedBottom).content()
         }
     }
 }

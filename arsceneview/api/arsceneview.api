@@ -236,6 +236,7 @@ public final class io/github/sceneview/ar/ARSceneScope : io/github/sceneview/Sce
 	public final fun DepthHitResultNode (FFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun DepthHitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun DepthMeshNode (Lio/github/sceneview/ar/node/DepthMeshNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun GroundContact (Lkotlin/jvm/functions/Function0;FLdev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
 	public final fun HitResultNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun HitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun PlacementReticle (FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V

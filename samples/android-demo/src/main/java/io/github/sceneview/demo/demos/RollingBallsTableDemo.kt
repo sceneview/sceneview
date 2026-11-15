@@ -101,6 +101,7 @@ fun RollingBallsTableDemo(onBack: () -> Unit) {
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_rolling_balls_title),
         onBack = onBack,
         peekHeader = if (ballCount > 0) {
