@@ -15,6 +15,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** Geometry only: no Compose, Filament engine, ARCore session or mocked hit tests. */
 class PlacementBoundsFitTest {
@@ -136,6 +139,24 @@ class PlacementBoundsFitTest {
         assertMargin(0.5f, fit(polygon = floatArrayOf(
             -1f, -1f, 0f, -1f, 1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f, -1f, -1f,
         )))
+    }
+
+    @Test fun `rotated rectangles tolerate roundoff at collinear vertices in either winding`() {
+        val rectangle = floatArrayOf(
+            -2f, -1f, 0f, -1f, 2f, -1f, 2f, 0f,
+            2f, 1f, 0f, 1f, -2f, 1f, -2f, 0f,
+        )
+        for (yaw in 1..359) {
+            val radians = Math.toRadians(yaw.toDouble())
+            val c = cos(radians).toFloat()
+            val s = sin(radians).toFloat()
+            val rotated = rectangle.asList().chunked(2).flatMap { (x, z) ->
+                listOf(c * x - s * z, s * x + c * z)
+            }
+            val expected = 1f - 0.5f * (abs(c) + abs(s))
+            assertMargin(expected, fit(polygon = rotated.toFloatArray()))
+            assertMargin(expected, fit(polygon = rotated.chunked(2).reversed().flatten().toFloatArray()))
+        }
     }
 
     @Test fun `missing malformed and degenerate polygons have no verdict`() {

@@ -943,10 +943,6 @@ public final class io/github/sceneview/ar/Ndc {
 
 public final class io/github/sceneview/ar/PlacementBoundsFit {
 	public static final field $stable I
-	public fun <init> (F)V
-	public final fun component1 ()F
-	public final fun copy (F)Lio/github/sceneview/ar/PlacementBoundsFit;
-	public static synthetic fun copy$default (Lio/github/sceneview/ar/PlacementBoundsFit;FILjava/lang/Object;)Lio/github/sceneview/ar/PlacementBoundsFit;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getFits ()Z
 	public final fun getMarginMeters ()F

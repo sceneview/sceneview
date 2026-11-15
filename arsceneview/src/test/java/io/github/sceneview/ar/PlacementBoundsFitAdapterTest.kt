@@ -79,6 +79,38 @@ class PlacementBoundsFitAdapterTest {
         assertNull(SnapshotPlane(pose, TrackingState.PAUSED).placementBoundsFit(bounds, pose.transform))
     }
 
+    @Test fun `rotated polygon measures clearance in polygon edge directions`() {
+        val pose = planePose(yaw = 37f)
+        // A square rotated 45 degrees in plane-local XZ, with half-side sqrt(0.5).
+        val plane = SnapshotPlane(pose, polygon = floatArrayOf(0f, -1f, 1f, 0f, 0f, 1f, -1f, 0f))
+        val fit = requireNotNull(plane.placementBoundsFit(bounds, pose.transform))
+        assertTrue(fit.fits)
+        assertEquals(0f, fit.marginMeters, 1e-5f)
+
+        val overhang = requireNotNull(plane.placementBoundsFit(
+            bounds, pose.transform * translation(Position(0.1f, 0f, 0f)),
+        ))
+        assertFalse(overhang.fits)
+        assertEquals(-0.1f / kotlin.math.sqrt(2f), overhang.marginMeters, 1e-5f)
+    }
+
+    @Test fun `subsumed planes use the top plane tracking pose and polygon`() {
+        val pose = planePose(yaw = 37f)
+        val top = SnapshotPlane(pose)
+        val stalePolygon = floatArrayOf(-0.1f, -0.1f, 0.1f, -0.1f, 0.1f, 0.1f, -0.1f, 0.1f)
+        val merged = SnapshotPlane(Pose.IDENTITY, polygon = stalePolygon, parent = top)
+        val original = SnapshotPlane(Pose.IDENTITY, TrackingState.STOPPED, parent = merged)
+        val fit = requireNotNull(original.placementBoundsFit(bounds, pose.transform))
+        assertTrue(fit.fits)
+        assertEquals(0.5f, fit.marginMeters, 1e-5f)
+    }
+
+    @Test fun `tracking child has no verdict when the subsuming plane is paused`() {
+        val pose = planePose(yaw = 1f)
+        val top = SnapshotPlane(pose, TrackingState.PAUSED)
+        assertNull(SnapshotPlane(pose, parent = top).placementBoundsFit(bounds, pose.transform))
+    }
+
     private fun planePose(yaw: Float): Pose {
         val q = Rotation(x = 4f, y = yaw).toQuaternion()
         return Pose(floatArrayOf(5f, 2f, -3f), floatArrayOf(q.x, q.y, q.z, q.w))
@@ -89,10 +121,12 @@ class PlacementBoundsFitAdapterTest {
     private class SnapshotPlane(
         private val pose: Pose,
         private val state: TrackingState = TrackingState.TRACKING,
+        private val polygon: FloatArray = floatArrayOf(-1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f),
+        private val parent: Plane? = null,
     ) : Plane() {
         override fun getCenterPose(): Pose = pose
         override fun getTrackingState(): TrackingState = state
-        override fun getPolygon(): FloatBuffer =
-            FloatBuffer.wrap(floatArrayOf(-1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f))
+        override fun getPolygon(): FloatBuffer = FloatBuffer.wrap(polygon)
+        override fun getSubsumedBy(): Plane? = parent
     }
 }

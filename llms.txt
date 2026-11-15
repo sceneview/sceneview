@@ -1992,7 +1992,9 @@ distance from the projected box to any polygon edge's supporting line: positive 
 zero contact, negative greatest perpendicular overhang. It is not the translation needed to
 make the object fit or a Euclidean distance to a corner. `null` means no verdict (untracked
 plane, missing/invalid/degenerate/nonconvex polygon or bounds, non-affine transform). Flat
-models and duplicate/collinear polygon vertices are supported.
+models and duplicate/collinear polygon vertices are supported, with the same 10 micrometre
+tolerance for polygon convexity roundoff. The plane adapter follows `subsumedBy` to the
+current top plane before reading its tracking state, pose and polygon.
 
 For a plane hit, import `io.github.sceneview.ar.placementBoundsFit` and
 `io.github.sceneview.ar.arcore.transform`, plus `io.github.sceneview.model.restPoseBoundingBox`, then call
@@ -2003,8 +2005,10 @@ changes; instant/depth hits have no plane polygon and cannot confirm a fit. This
 **tracked surface coverage**, not room height, support or collisions, and leaves the app's
 placement gate and copy to the app.
 
-This ARCore-specific addition completes the bounds-check portion of #3446 alongside the public
-`AutoPlacementState`, scale detent, `UsableSurfacePolicy` and plane-first `placementHitSource`.
+This ARCore-specific addition provides geometry helpers toward the bounds-check portion of
+#3446, alongside the public `AutoPlacementState`, scale detent, `UsableSurfacePolicy` and
+plane-first `placementHitSource`. It adds no bounds-check composable; no production code in
+this repository calls the new API yet, and ARMV integration remains to be implemented.
 Scope is Android/ARCore for this `arsceneview` follow-up; other platforms need their native
 plane-polygon adapters. All existing placement signatures remain available.
 

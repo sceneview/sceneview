@@ -23,13 +23,20 @@ import kotlin.math.sqrt
  * contact, negative means the greatest perpendicular overhang past an edge. This is not the
  * translation needed to make an oversized object fit, nor a Euclidean distance to a corner.
  */
-data class PlacementBoundsFit(val marginMeters: Float) {
+class PlacementBoundsFit internal constructor(val marginMeters: Float) {
     /**
      * Whether the whole projected box is contained, allowing 0.00001 m (10 micrometres) of
      * numerical contact tolerance for pose/transform roundoff. [marginMeters] stays unrounded,
      * so a tiny negative margin within this tolerance still fits.
      */
     val fits: Boolean get() = marginMeters >= -PLACEMENT_CONTACT_TOLERANCE_METERS
+
+    override fun equals(other: Any?): Boolean =
+        other is PlacementBoundsFit && marginMeters.compareTo(other.marginMeters) == 0
+
+    override fun hashCode(): Int = marginMeters.hashCode()
+
+    override fun toString(): String = "PlacementBoundsFit(marginMeters=$marginMeters)"
 }
 
 private const val PLACEMENT_CONTACT_TOLERANCE_METERS = 1e-5f
@@ -47,7 +54,8 @@ private const val PLACEMENT_CONTACT_TOLERANCE_METERS = 1e-5f
  * @param modelToPlane affine model-local to plane-local transform, including the placement
  * pose, pivot offsets, asset rotation and final scale. Plane-local +Y is the surface normal.
  * @param planePolygon flat `[x0, z0, x1, z1, …]` convex polygon in metres, in either winding.
- * Duplicate and collinear vertices are allowed.
+ * Duplicate and collinear vertices are allowed, with 0.00001 m of convexity tolerance
+ * for floating-point roundoff.
  * @return clearance/overhang, or `null` for missing, nonfinite, degenerate or nonconvex
  * geometry, empty bounds, or a non-affine transform. Flat models are supported.
  */
@@ -86,11 +94,11 @@ fun placementBoundsFit(
         val nx = -dz / length * winding
         val nz = dx / length * winding
 
-        // Every vertex must lie on the inward side of every edge: reject concavity and
-        // crossings instead of returning a misleading fit for an unsupported polygon.
+        // Every vertex must lie on the inward side of every edge within the same metre
+        // tolerance as boundary contact: rotated collinear vertices can round outward.
         for (j in planePolygon.indices step 2) {
             if (winding * (dx * (planePolygon[j + 1] - az) -
-                    dz * (planePolygon[j] - ax)) < 0.0
+                    dz * (planePolygon[j] - ax)) < -PLACEMENT_CONTACT_TOLERANCE_METERS * length
             ) return null
         }
 
@@ -106,7 +114,8 @@ fun placementBoundsFit(
 
 /**
  * Checks [bounds] (for example, `modelInstance.model.restPoseBoundingBox`) at [modelTransform]
- * against this plane's **current** polygon. [modelTransform] is the complete model-local to
+ * against this plane's **current** polygon, following [Plane.getSubsumedBy] after merges.
+ * [modelTransform] is the complete model-local to
  * world transform; for an unscaled model at a hit, pass `hit.hitPose.transform`. For a composed
  * model, pass its node's `worldTransform`, including its scale and pivot/asset corrections.
  *
@@ -117,13 +126,17 @@ fun placementBoundsFit(
  * automatically; the caller decides how to present [PlacementBoundsFit.fits].
  */
 fun Plane.placementBoundsFit(bounds: Box, modelTransform: Transform): PlacementBoundsFit? {
-    if (trackingState != TrackingState.TRACKING) return null
+    var plane = this
+    while (true) {
+        plane = plane.subsumedBy ?: break
+    }
+    if (plane.trackingState != TrackingState.TRACKING) return null
     return placementBoundsFit(
         boundsCenter = bounds.centerPosition,
         boundsHalfExtent = bounds.halfExtentSize,
         // Rigid-pose inversion preserves the exact affine bottom row during matrix conversion.
-        modelToPlane = centerPose.inverse().transform * modelTransform,
-        planePolygon = polygonArray(),
+        modelToPlane = plane.centerPose.inverse().transform * modelTransform,
+        planePolygon = plane.polygonArray(),
     )
 }
 
