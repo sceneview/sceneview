@@ -148,6 +148,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_body_tracker_title),

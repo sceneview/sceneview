@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: the Scene Semantics legend no longer covers the outdoor warning in landscape ([#4036](https://github.com/sceneview/sceneview/issues/4036)).** On a phone held sideways the color legend moves from the bottom band to a column beside the label HUD, so it can no longer sit across "Trained on outdoor scenes — labels are unreliable indoors", in light and dark theme and at 200 % text. Portrait is unchanged.

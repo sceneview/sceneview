@@ -450,11 +450,12 @@ class MaterialLoader(
      *
      * The material samples a single-channel `R8` texture whose red channel is a
      * [`SemanticLabel`](https://developers.google.com/ar/reference/java/com/google/ar/core/SemanticLabel)
-     * ordinal (`0..11`, scaled to `[0, 1]` — i.e. `ordinal / 255f` on upload). Each pixel is
-     * mapped to one of the 12 fixed outdoor-class colours baked into the shader:
+     * ordinal (`0..11`, scaled to `[0, 1]` — i.e. `ordinal / 255f` on upload). That is the byte
+     * `Frame.semanticImage()` already holds, so its buffer uploads as is. Each pixel is mapped
+     * to one of the fixed outdoor-class colours baked into the shader, in ARCore's own order:
      *
-     * `SKY` · `BUILDING` · `TREE` · `ROAD` · `SIDEWALK` · `TERRAIN` · `STRUCTURE` · `OBJECT` ·
-     * `VEHICLE` · `PERSON` · `WATER` · `UNLABELED`.
+     * `0 UNLABELED` · `1 SKY` · `2 BUILDING` · `3 TREE` · `4 ROAD` · `5 SIDEWALK` · `6 TERRAIN` ·
+     * `7 STRUCTURE` · `8 OBJECT` · `9 VEHICLE` · `10 PERSON` · `11 WATER`.
      *
      * `UNLABELED` pixels stay fully transparent so the live camera feed shows through any
      * un-classified region — only confident classes are tinted.

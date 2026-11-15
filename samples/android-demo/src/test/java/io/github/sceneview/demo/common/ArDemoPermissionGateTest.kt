@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.common
 
+import io.github.sceneview.ar.ARCameraPermissionRecovery
+import io.github.sceneview.ar.resolveCameraPermissionRecovery
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -72,11 +74,11 @@ class ArDemoPermissionGateTest {
 
     /**
      * #4460: two Back presses in a row turned the card into "Open settings" on a Pixel 4a,
-     * with no `USER_FIXED` flag on the permission. There is nothing left to count: a
-     * dismissal is judged the same the first time and the tenth.
+     * with no `USER_FIXED` flag on the permission. Counting dismissals may add settings
+     * as a fallback, but must never take away the request action.
      */
     @Test
-    fun `a dialog dismissed again and again never sends to settings`() {
+    fun `repeated dismissals never confirm a settings-only denial`() {
         var rationale = false
         repeat(10) {
             val isBlocked = blocked(rationaleBefore = rationale, rationaleAfter = rationale, elapsedMs = 1_500)
@@ -102,18 +104,19 @@ class ArDemoPermissionGateTest {
     }
 
     @Test
-    fun `an answer with no dialog is a block`() {
-        assertTrue(blocked(elapsedMs = CAMERA_PROMPT_INSTANT_RETURN_MS - 1))
+    fun `a fast answer keeps the offer to ask and adds settings`() {
+        assertFalse(blocked(elapsedMs = 1_000L - 1))
         // Measured on a Pixel 4a: a blocked request answers in 290 ms idle, 510 ms under load.
-        assertTrue(blocked(elapsedMs = 290))
-        assertTrue(blocked(elapsedMs = 510))
+        assertFalse(blocked(elapsedMs = 290))
+        assertFalse(blocked(elapsedMs = 510))
     }
 
-    /** The library's threshold (#4452): 500 ms called a blocked request at 510 ms a dismissal. */
+    /** Timing changes the fallback, never whether the user can request again. */
     @Test
     fun `the instant-return threshold is one second`() {
-        assertEquals(1_000L, CAMERA_PROMPT_INSTANT_RETURN_MS)
-        assertFalse(blocked(elapsedMs = CAMERA_PROMPT_INSTANT_RETURN_MS))
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, resolveCameraPermissionRecovery(false, false, 999, 0))
+        assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, false, 1_000, 0))
+        assertFalse(blocked(elapsedMs = 1_000L))
     }
 
     @Test
@@ -125,6 +128,16 @@ class ArDemoPermissionGateTest {
     fun `the card gives the reason only to someone who refused`() {
         assertEquals(ArCameraAskReason.NotAnswered, arCameraAskReason(shouldShowRationale = false))
         assertEquals(ArCameraAskReason.Refused, arCameraAskReason(shouldShowRationale = true))
+    }
+
+    @Test
+    fun `two ambiguous answers keep another request available alongside settings`() {
+        val recovery = resolveCameraPermissionRecovery(false, false, 5_000, 1)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, recovery)
+        assertEquals(
+            ArDemoPermissionUiState.AskPermission,
+            arDemoPermissionUiState(granted = false, blocked = recovery == ARCameraPermissionRecovery.Settings),
+        )
     }
 
     private fun prompt(
@@ -139,5 +152,7 @@ class ArDemoPermissionGateTest {
         rationaleBefore: Boolean = false,
         rationaleAfter: Boolean = false,
         elapsedMs: Long,
-    ) = cameraPromptBlocked(granted, rationaleBefore, rationaleAfter, elapsedMs)
+    ) = !granted && resolveCameraPermissionRecovery(
+        rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals = 0,
+    ) == ARCameraPermissionRecovery.Settings
 }

@@ -983,6 +983,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * to how [size] is built: `Size(x, 0f, z)` is a floor quad (normal `+Y`), `Size(x, y, 0f)` is
      * a wall quad (normal `+Z`).
      *
+     * With custom AR placement and depth occlusion, also declare `ARSceneScope.GroundContact`
+     * with a world-space surface centre, normal and radius covering this shadow and any placement
+     * ring. It prevents surface depth noise from cutting them; `AutoPlacementScene` does this
+     * automatically.
+     *
      * ```kotlin
      * ContactShadow(
      *     size = Size(1.6f, 1.0f, 0f),
@@ -1989,18 +1994,23 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      *
      * All probes of a scene are resolved together: the active probe with the highest [priority]
      * wins (on a tie, the one added most recently), and with no active probe the scene shows its
-     * `SceneView` environment again — a new `SceneView` environment never overrides an active
-     * probe. `ARSceneView` still writes its light directly, so this guarantee does not hold in AR
-     * yet (see #4928).
+     * current environment again. In `ARSceneView`, the fallback is the latest estimated IBL,
+     * or the base environment before the first estimate. A probe overrides the entire IBL;
+     * environment changes and estimates never override an active probe. Directional-light
+     * estimation continues independently (#4939).
      *
      * ```kotlin
+     * val scene = rememberScene(engine)
+     * val cameraNode = rememberCameraNode(engine)
      * val probeEnv = rememberEnvironment(environmentLoader) {
      *     environmentLoader.createHDREnvironment("environments/office.hdr") ?: createEnvironment(environmentLoader)
      * }
      * var cameraPos by remember { mutableStateOf(Position()) }
      *
      * SceneView(
+     *     engine = engine,
      *     scene = scene,
+     *     cameraNode = cameraNode,
      *     onFrame = { cameraPos = cameraNode.worldPosition }
      * ) {
      *     // Local probe — active only when the camera is within 3 m of the origin

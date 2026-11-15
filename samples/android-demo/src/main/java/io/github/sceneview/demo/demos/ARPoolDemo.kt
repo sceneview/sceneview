@@ -57,6 +57,7 @@ import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberArGuidanceState
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
@@ -240,6 +241,7 @@ private fun PoolSession(choices: PoolChoices, onBack: () -> Unit, onRestart: () 
     )
     val header = if (poolScale == 1f) dimensions else stringResource(R.string.ar_pool_dimensions_miniature, dimensions)
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_pool_title),
         onBack = onBack,
         chromeToggleOnTap = false,
@@ -322,10 +324,8 @@ private fun PoolSession(choices: PoolChoices, onBack: () -> Unit, onRestart: () 
         }
         // Silent while a card explains that AR could not start (#3986).
         ARCoachingOverlay(
-            cue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
-            surface = guidance.surface,
-            hint = guidance.hint,
-            scanLingering = guidance.scanLingering,
+            guidance = guidance,
+            cue = if (!LocalMotionSensorSilent.current && availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
         )
         ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
         if (startupTimedOut && availability == null) {
