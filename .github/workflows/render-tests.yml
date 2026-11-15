@@ -461,6 +461,13 @@ jobs:
           npm ci --no-audit --no-fund
           npx playwright install chromium --with-deps
 
+      - uses: ./.github/actions/setup-gradle
+
+      # Produces the npm-viewer fixture and its version-matched Filament runtime.
+      # Widget and /open tests separately exercise the checked-in site bundle.
+      - name: Build model-format browser fixtures
+        run: ./gradlew :sceneview-web:jsBrowserProductionWebpack --console=plain
+
       - name: Run Playwright tests
         working-directory: samples/web-demo
         run: npx playwright test --reporter=html

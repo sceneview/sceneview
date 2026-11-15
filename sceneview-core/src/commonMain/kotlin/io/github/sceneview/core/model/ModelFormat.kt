@@ -33,7 +33,8 @@ enum class ModelFormat {
                 bytes[2] == 0x54.toByte() && bytes[3] == 0x46.toByte()
             ) return GLB
             val prefix = bytes.decodeToString(0, minOf(bytes.size, 4096)).trimStart()
-            if (prefix.startsWith("{") && Regex("\"asset\"\\s*:").containsMatchIn(prefix)) return GLTF
+            // JSON object keys are unordered: asset can follow a large extras/buffer value.
+            if (prefix.startsWith("{") && Regex("\"asset\"\\s*:").containsMatchIn(bytes.decodeToString())) return GLTF
             if (ThreeMfLoader.isThreeMf(bytes)) return THREE_MF
             if (StlLoader.isStl(bytes)) return STL
             if (PlyLoader.isPly(bytes)) return PLY

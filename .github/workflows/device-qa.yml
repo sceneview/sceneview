@@ -251,6 +251,11 @@ jobs:
         with:
           node-version: 20
 
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build model-format browser fixtures
+        run: ./gradlew :sceneview-web:jsBrowserProductionWebpack --console=plain
+
       - name: Run device-qa.sh (web leg)
         run: bash .claude/scripts/device-qa.sh --platform=web --ci
 

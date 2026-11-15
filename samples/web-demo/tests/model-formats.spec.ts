@@ -13,15 +13,12 @@ const stl = 'solid part\n' + faces.map(f => 'facet normal 0 0 0\nouter loop\n' +
 const ply = 'ply\nformat ascii 1.0\nelement vertex 4\nproperty float x\nproperty float y\nproperty float z\nelement face 4\nproperty list uchar int vertex_indices\nend_header\n' +
   vertices.map(v => v.join(' ')).join('\n') + '\n' + faces.map(f => `3 ${f.join(' ')}`).join('\n') + '\n';
 
-// Exercise the real widget HTML with the locally built KMP bundle and the site's
-// vendored Filament runtime. No renderer or converter is mocked.
+// Exercise the real widget HTML with the shipped converter and the site's
+// vendored Filament runtime. Only the npm viewer uses a fresh Kotlin build.
 test.beforeEach(async ({ page }) => {
   await page.route('https://sceneview.github.io/**', async route => {
     const path = new URL(route.request().url()).pathname;
-    const file = path === '/js/sceneview-web.js'
-      ? join(root, 'sceneview-web/build/kotlin-webpack/js/productionExecutable/sceneview-web.js')
-      : join(root, 'website-static', path);
-    await route.fulfill({ path: file, headers: { 'Access-Control-Allow-Origin': '*' } });
+    await route.fulfill({ path: join(root, 'website-static', path), headers: { 'Access-Control-Allow-Origin': '*' } });
   });
   await page.route('**/formats/widget*', route => route.fulfill({ contentType: 'text/html', body: WIDGET_3D_VIEWER_HTML }));
   await page.route('**/formats/filament.*', route => route.fulfill({
@@ -29,7 +26,10 @@ test.beforeEach(async ({ page }) => {
   }));
   await page.route('**/formats/bundle', route => route.fulfill({ contentType: 'text/html', body:
     '<canvas id="scene-canvas" width="640" height="480"></canvas>' +
-    '<script src="/formats/filament.js"></script><script src="/js/sceneview-web.js"></script>',
+    '<script src="/formats/filament.js"></script><script src="/formats/sceneview-web.js"></script>',
+  }));
+  await page.route('**/formats/sceneview-web.js', route => route.fulfill({
+    path: join(root, 'sceneview-web/build/kotlin-webpack/js/productionExecutable/sceneview-web.js'),
   }));
   await page.route('**/formats/part.*', async route => {
     const ext = new URL(route.request().url()).pathname.split('.').pop();
@@ -44,7 +44,6 @@ test.beforeEach(async ({ page }) => {
   });
   await page.route('http://localhost:8080/js/**', route => route.fulfill({ path: join(root, 'website-static', new URL(route.request().url()).pathname) }));
   await page.route('http://localhost:8080/environments/**', route => route.fulfill({ path: join(root, 'website-static', new URL(route.request().url()).pathname) }));
-  await page.route('**/js/sceneview-web.js*', route => route.fulfill({ path: join(root, 'sceneview-web/build/kotlin-webpack/js/productionExecutable/sceneview-web.js') }));
 });
 
 async function assertRendered(page: Page, selector: string) {

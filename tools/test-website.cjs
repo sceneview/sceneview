@@ -14,6 +14,29 @@ const home = read('index.html');
 const companies = read('companies.html');
 const staticHtml = (html) => html.replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 
+test('the deployed converter detects and converts mesh formats used by /open and MCP', () => {
+  const window = {};
+  runInNewContext(read('js/sceneview-web.js'), { window, Filament: {}, console, ArrayBuffer, Uint8Array, Int8Array });
+  const api = window.sceneview;
+  const meshes = {
+    STL: 'solid part\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 10 0 0\nvertex 0 10 0\nendloop\nendfacet\nendsolid part\n',
+    OBJ: 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n',
+    PLY: 'ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n0 0 0\n10 0 0\n0 10 0\n3 0 1 2\n',
+  };
+  for (const [format, text] of Object.entries(meshes)) {
+    const bytes = new TextEncoder().encode(text).buffer;
+    assert.equal(api.modelFormat(bytes), format);
+    assert.equal(new TextDecoder().decode(api.modelToGlb(bytes).slice(0, 4)), 'glTF');
+  }
+  const threeMf = Uint8Array.from(readFileSync('samples/web-demo/site/models/printed-icosahedron.3mf')).buffer;
+  assert.equal(api.modelFormat(threeMf), 'THREE_MF');
+  assert.equal(new TextDecoder().decode(api.modelToGlb(threeMf).slice(0, 4)), 'glTF');
+  const gltf = new TextEncoder().encode(JSON.stringify({ extras: 'x'.repeat(5000), asset: { version: '2.0' } }));
+  assert.equal(api.modelFormat(gltf.buffer), 'GLTF');
+  assert.deepEqual(Buffer.from(api.modelToGlb(gltf.buffer)), Buffer.from(gltf));
+  assert.throws(() => api.modelFormat(new ArrayBuffer(4)), { name: 'UnsupportedModelFormatError', code: 'unsupported-format' });
+});
+
 test('both pages use only the approved public repository count claim', () => {
   for (const [page, html] of [['index.html', home], ['companies.html', companies]]) {
     const text = staticHtml(html).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');

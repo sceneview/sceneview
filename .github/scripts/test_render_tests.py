@@ -70,6 +70,20 @@ class PlaywrightVerdictTest(unittest.TestCase):
                 self.assertTrue(step["uses"].startswith("actions/upload-artifact@"))
                 self.assertEqual(step["with"]["path"], path)
 
+    def test_browser_fixtures_are_built_before_both_full_suites(self):
+        for path, job, runner in (
+            (WORKFLOW, "web-render", "Run Playwright tests"),
+            (ROOT / ".github/workflows/device-qa.yml", "web", "Run device-qa.sh (web leg)"),
+        ):
+            with self.subTest(workflow=path.name):
+                steps = yaml.safe_load(path.read_text())["jobs"][job]["steps"]
+                setup = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/setup-gradle")
+                build = next(i for i, s in enumerate(steps) if ":sceneview-web:jsBrowserProductionWebpack" in s.get("run", ""))
+                run = next(i for i, s in enumerate(steps) if s.get("name") == runner)
+                self.assertLess(setup, build)
+                self.assertLess(build, run)
+                self.assertFalse(steps[build].get("continue-on-error", False))
+
 
 if __name__ == "__main__":
     unittest.main()

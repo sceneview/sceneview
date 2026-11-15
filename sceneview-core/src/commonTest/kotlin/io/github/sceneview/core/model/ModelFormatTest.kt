@@ -40,6 +40,15 @@ class ModelFormatTest {
         assertEquals(ModelFormat.OBJ, ModelFormat.sniff(meshes.getValue(ModelFormat.OBJ).encodeToByteArray(), "wrong.stl"))
     }
 
+    @Test fun gltfAssetMayFollowALargePropertyWithoutAFilename() {
+        val bytes = ("{\"extras\":\"" + "x".repeat(5000) + "\",\"asset\":{\"version\":\"2.0\"}}")
+            .encodeToByteArray()
+        for (hint in listOf(null, "https://example.com/model.gltf?download=1#file")) {
+            assertEquals(ModelFormat.GLTF, ModelFormat.sniff(bytes, hint))
+            assertSame(bytes, ModelFormat.sniff(bytes, hint).toGlb(bytes))
+        }
+    }
+
     @Test fun unitsChangeConvertedMeshScaleAndDefaultToMillimeters() {
         for ((format, text) in meshes) {
             val bytes = text.encodeToByteArray()
