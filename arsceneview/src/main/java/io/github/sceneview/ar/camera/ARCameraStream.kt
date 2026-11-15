@@ -679,9 +679,11 @@ open class ARCameraStream(
         // `session.setCameraTextureNames(cameraTextureIds)` hands ARCore all 6 ids and ARCore
         // rotates through them so the previous frame's texture stays readable while the next one
         // is written. Caching the name would pin one texture and tear. Read it every frame.
-        cameraTextures[frame.cameraTextureName]?.let {
-            cameraTexture = it
-        }
+        cameraTexture = cameraTextureForFrame(
+            timestamp = frame.timestamp,
+            textureName = frame.cameraTextureName,
+            textures = cameraTextures,
+        ) ?: return
 
         // Recalculate camera Uvs if necessary.
         if (transformedUvCoordinates == null || frame.hasDisplayGeometryChanged()) {

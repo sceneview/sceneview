@@ -84,6 +84,7 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.camera.cameraFramePresented
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
@@ -1626,6 +1627,9 @@ fun ARSceneView(
     // split-screen resize. Separate from the timestamp test, because a brand-new swap chain needs
     // a frame even on a vsync where ARCore returns a duplicate.
     val arFramesOwed = remember { AtomicInteger(1) }
+    // A host callback runs before Renderer.beginFrame, which can refuse the frame. Keep a
+    // neutral cover until an image has actually been submitted, including on quick re-entry.
+    var cameraImagePresented by remember(sceneRenderer, cameraStream) { mutableStateOf(false) }
 
     // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
     // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
@@ -1705,7 +1709,7 @@ fun ARSceneView(
 
     // ── Render loop ───────────────────────────────────────────────────────────────────────────────
 
-    LaunchedEffect(engine, renderer, view, scene) {
+    LaunchedEffect(engine, renderer, view, scene, cameraStream) {
         // Previous frame time for the node-edit coast's time step; 0 = none yet (or paused).
         var lastFrameTimeNanos = 0L
         while (true) {
@@ -1817,6 +1821,11 @@ fun ARSceneView(
                 // Pay the surface's debt down only on a frame that really reached it —
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
+                cameraImagePresented = cameraFramePresented(
+                    alreadyPresented = cameraImagePresented,
+                    hasCameraImage = cameraStreamRef.get()?.hasCameraFrame == true,
+                    submitted = presented,
+                )
                 if (presented) {
                     frameRateGate.didRender(frameTimeNanos)
                     if (arFramesOwed.get() > 0) {
@@ -1857,6 +1866,12 @@ fun ARSceneView(
                 },
                 update = {}
             )
+        }
+
+        // Compose draws above either surface type. Leave translucent/custom-background views
+        // alone; permission and availability overlays below must remain above this cover.
+        if (isOpaque && cameraStream != null && !cameraImagePresented) {
+            Box(Modifier.fillMaxSize().background(Color(0xFF202124)))
         }
 
         val denial = cameraPermissionState
