@@ -30,6 +30,8 @@ import java.util.concurrent.TimeUnit
  * frames, call [capturePixels] to read back the framebuffer contents as a [Bitmap].
  *
  * **All Filament calls must run on the main thread.** Use [runOnMain] for convenience.
+ * [capturePixels] makes its own hop there, so it can be called from inside [runOnMain], as
+ * below, or from the test's own thread.
  *
  * Usage:
  * ```kotlin
@@ -117,10 +119,10 @@ class RenderTestHarness(
         // renderFrames(1) to flush, which aborts with
         //   "readPixels() on a SwapChain must be called after beginFrame() and before endFrame()"
         //
-        // Threading: we enqueue the readPixels on the main thread (required because Filament
-        // entity / renderer calls are main-thread only). THEN we flushAndWait() OUTSIDE the
-        // main-thread block so the backend thread can actually process the frame and fire our
-        // callback — flushing while holding main would deadlock the callback delivery.
+        // Threading: the frame and its readPixels are issued on the main thread, like every
+        // other Filament call here. The pixels do not come back to it: Filament hands the
+        // callback to the executor below on its own service thread. So this method works from
+        // the test's thread and from inside runOnMain alike (both seen on a Pixel 4a).
         runOnMain {
             // The frame that carries the readback is drawn whatever beginFrame advises. It
             // returns false when Filament would rather skip a frame, which is its advice for
@@ -135,17 +137,17 @@ class RenderTestHarness(
                     Texture.Format.RGBA,
                     Texture.Type.UBYTE,
                     1, 0, 0, 0,
-                    // Run the callback where the backend completes the readback. Without a
-                    // handler it did not arrive within the five seconds below on that phone,
-                    // even with the frame drawn.
+                    // Filament drops a callback whose handler is null: given none, the latch
+                    // below was never counted down, even with the frame drawn. The inline
+                    // executor runs it where Filament delivers it, on its service thread.
                     Executor { it.run() }, Runnable { latch.countDown() }
                 )
             )
             renderer.endFrame()
         }
 
-        // Drain the backend command queue. Running off-main so the backend thread can finish
-        // processing the readPixels command and fire its callback without blocking on us.
+        // Hand the frame to the backend. The callback tends to arrive after this returns
+        // (11 times out of 11 on a Pixel 4a): the latch is what waits for the pixels.
         engine.flushAndWait()
 
         check(latch.await(5, TimeUnit.SECONDS)) {

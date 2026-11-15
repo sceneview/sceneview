@@ -1,5 +1,6 @@
 package io.github.sceneview.render
 
+import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -75,20 +76,21 @@ class SemanticsOverlayRenderTest {
         }
     }
 
-    /** A 1 × 1 `R8` texture holding [label], the byte ARCore writes for one pixel. */
-    private fun labelTexture(label: Int): Texture {
+    /** One row of an `R8` texture holding [labels], the bytes ARCore writes, one per pixel. */
+    private fun labelTexture(vararg labels: Int): Texture {
         val texture = Texture.Builder()
-            .width(1)
+            .width(labels.size)
             .height(1)
             .levels(1)
             .sampler(Texture.Sampler.SAMPLER_2D)
             .format(Texture.InternalFormat.R8)
             .build(harness.engine)
-        val pixel = ByteBuffer.allocateDirect(1).put(0, label.toByte())
+        val row = ByteBuffer.allocateDirect(labels.size)
+        labels.forEachIndexed { i, label -> row.put(i, label.toByte()) }
         texture.setImage(
             harness.engine,
             0,
-            Texture.PixelBufferDescriptor(pixel, Texture.Format.R, Texture.Type.UBYTE)
+            Texture.PixelBufferDescriptor(row, Texture.Format.R, Texture.Type.UBYTE)
         )
         return texture
     }
@@ -117,18 +119,55 @@ class SemanticsOverlayRenderTest {
         materialInstances = listOf(instance)
     )
 
+    /**
+     * The frame drawn by the overlay material for one row of [labels], on a quad that fills it.
+     *
+     * The quad, the instance and the texture are released whether or not the frame came back.
+     * Left in the scene by a readback that timed out, they are still in use when the class's
+     * teardown destroys the material loader: that second failure would be the one reported.
+     */
+    private fun frameOf(vararg labels: Int): Bitmap {
+        var texture: Texture? = null
+        var instance: MaterialInstance? = null
+        var quad: PlaneNode? = null
+        try {
+            harness.runOnMain {
+                val row = labelTexture(*labels).also { texture = it }
+                val overlay = materialLoader.createSemanticsOverlayInstance(row, opacity = 1f)
+                    .also { instance = it }
+                val node = fullFrameQuad(overlay).also { quad = it }
+                harness.scene.addEntity(node.entity)
+                harness.renderFrames(5)
+            }
+            return harness.capturePixels()
+        } finally {
+            harness.runOnMain {
+                quad?.let {
+                    harness.scene.remove(it.entity)
+                    it.destroy()
+                }
+                instance?.let { materialLoader.destroyMaterialInstance(it) }
+                texture?.let { harness.engine.destroyTexture(it) }
+            }
+        }
+    }
+
     @Test
     fun material_loadsWithItsTwoParameters() {
         harness.runOnMain {
             val texture = labelTexture(1)
-            val instance = materialLoader.createSemanticsOverlayInstance(texture, opacity = 1f)
+            var instance: MaterialInstance? = null
+            try {
+                val overlay = materialLoader.createSemanticsOverlayInstance(texture, opacity = 1f)
+                    .also { instance = it }
 
-            assertEquals("semanticsOverlay", instance.material.name)
-            assertTrue(instance.material.hasParameter("semanticTexture"))
-            assertTrue(instance.material.hasParameter("opacity"))
-
-            materialLoader.destroyMaterialInstance(instance)
-            harness.engine.destroyTexture(texture)
+                assertEquals("semanticsOverlay", overlay.material.name)
+                assertTrue(overlay.material.hasParameter("semanticTexture"))
+                assertTrue(overlay.material.hasParameter("opacity"))
+            } finally {
+                instance?.let { materialLoader.destroyMaterialInstance(it) }
+                harness.engine.destroyTexture(texture)
+            }
         }
     }
 
@@ -142,32 +181,11 @@ class SemanticsOverlayRenderTest {
             lookAtTheOriginOverRed()
             harness.renderFrames(5)
         }
-        // Read back from the test's own thread, never inside runOnMain: the callback that hands
-        // the pixels over is delivered on the main thread, which must be free to take it.
+        // The background by itself, before any quad is drawn over it.
         val background = harness.capturePixels().getPixel(centre, centre)
 
-        val painted = mutableMapOf<Int, Int>()
-        for (label in intArrayOf(0, 1, 11, 12)) {
-            var texture: Texture? = null
-            var instance: MaterialInstance? = null
-            var quad: PlaneNode? = null
-            harness.runOnMain {
-                val labels = labelTexture(label).also { texture = it }
-                val overlay = materialLoader.createSemanticsOverlayInstance(labels, opacity = 1f)
-                    .also { instance = it }
-                val node = fullFrameQuad(overlay).also { quad = it }
-                harness.scene.addEntity(node.entity)
-                harness.renderFrames(5)
-            }
-            painted[label] = harness.capturePixels().getPixel(centre, centre)
-            harness.runOnMain {
-                quad?.let {
-                    harness.scene.remove(it.entity)
-                    it.destroy()
-                }
-                instance?.let { materialLoader.destroyMaterialInstance(it) }
-                texture?.let { harness.engine.destroyTexture(it) }
-            }
+        val painted = intArrayOf(0, 1, 11, 12).associateWith { label ->
+            frameOf(label).getPixel(centre, centre)
         }
 
         fun describe(pixel: Int) = "(${Color.red(pixel)}, ${Color.green(pixel)}, ${Color.blue(pixel)})"
@@ -203,41 +221,9 @@ class SemanticsOverlayRenderTest {
         RenderTestCapabilities.assumeGpuReadbackAvailable()
         harness.resetScene()
 
-        var texture: Texture? = null
-        var instance: MaterialInstance? = null
-        var quad: PlaneNode? = null
-        harness.runOnMain {
-            lookAtTheOriginOverRed()
-            // Two texels, SKY beside WATER: the classes furthest apart in ARCore's numbering.
-            val labels = Texture.Builder()
-                .width(2)
-                .height(1)
-                .levels(1)
-                .sampler(Texture.Sampler.SAMPLER_2D)
-                .format(Texture.InternalFormat.R8)
-                .build(harness.engine)
-                .also { texture = it }
-            val bytes = ByteBuffer.allocateDirect(2).put(0, 1.toByte()).put(1, 11.toByte())
-            labels.setImage(
-                harness.engine,
-                0,
-                Texture.PixelBufferDescriptor(bytes, Texture.Format.R, Texture.Type.UBYTE)
-            )
-            val overlay = materialLoader.createSemanticsOverlayInstance(labels, opacity = 1f)
-                .also { instance = it }
-            val node = fullFrameQuad(overlay).also { quad = it }
-            harness.scene.addEntity(node.entity)
-            harness.renderFrames(5)
-        }
-        val frame = harness.capturePixels()
-        harness.runOnMain {
-            quad?.let {
-                harness.scene.remove(it.entity)
-                it.destroy()
-            }
-            instance?.let { materialLoader.destroyMaterialInstance(it) }
-            texture?.let { harness.engine.destroyTexture(it) }
-        }
+        harness.runOnMain { lookAtTheOriginOverRed() }
+        // Two texels, SKY beside WATER: the classes furthest apart in ARCore's numbering.
+        val frame = frameOf(1, 11)
 
         val row = (0 until SIZE).map { frame.getPixel(it, SIZE / 2) }
         val oneSide = row.first()
