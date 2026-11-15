@@ -60,6 +60,26 @@ class GroundContactCompositionTest {
     }
 
     @Test
+    fun `moving a custom contact changes the nearest selection without recomposition`() = runTest {
+        val host = Host(this)
+        var center = Position(0f, 0f, -2f)
+        host.provider = { center }
+        host.secondPresent = true
+        host.frame()
+        assertTrue(host.read())
+        assertEquals(-2f, host.out[2], 0f)
+
+        center = Position(0f, 0f, -6f)
+        assertTrue(host.read())
+        assertEquals(-5f, host.out[2], 0f)
+
+        center = Position(1f, 0f, -3f)
+        assertTrue(host.read())
+        assertArrayEquals(floatArrayOf(1f, 0f, -3f, 0.3f, 0f, 1f, 0f, 1f), host.out, 1e-6f)
+        host.dispose()
+    }
+
+    @Test
     fun `recomposition uses the latest provider radius and normal and removes the old contact`() = runTest {
         val host = Host(this)
         assertTrue(host.read())
