@@ -143,6 +143,7 @@ import io.github.sceneview.demo.demos.internal.model.ModelPhotos
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
+import io.github.sceneview.demo.demos.internal.rememberResultCinematics
 import io.github.sceneview.demo.demos.internal.toShot
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.recording.VIDEO_MIME
@@ -891,9 +892,8 @@ internal fun RerunModelScreen(
     // A result that opens on its Photo layer is entered from inside the place, then seen whole
     // ([ScanOpening]); one that opens on its model stays on its framing, as before.
     val entersLow = preview != null && (LocalMotionEnabled.current || DemoSettings.qaMotion)
-    val cinematics = remember(orbit, entersLow) {
-        ScanResultCinematics(orbit, reveals = entersLow, entrance = ScanOpening::path)
-    }
+    // One per stage, as the veil below is: a stage started over is let seen again (#5098).
+    val cinematics = rememberResultCinematics(stageKey, orbit, reveals = entersLow)
     // Read live by the framing below, so a toggle and the frame that flies to it agree.
     var plan by remember(stageKey) { mutableStateOf(false) }
     // More › Measure: the grid, the slab and the room's dimensions, off until asked for.
