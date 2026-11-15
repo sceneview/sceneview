@@ -1604,11 +1604,20 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 - with no active probe (camera outside every local zone, or the last probe removed), the scene
   shows its `SceneView(environment = …)` light again — the current one, even if it changed
   meanwhile;
-- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+- a new scene environment (dark/light toggle, `environment.copy(skybox = …)`) never
   overrides an active probe; a destroyed light is never handed back.
-- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
-  estimation's) directly, so in AR a new environment can replace an active probe until the next
-  probe change (see #4928).
+- in `ARSceneView`, a probe overrides the entire estimated IBL without blending. Estimates keep
+  updating the fallback: leaving the zone restores the latest estimate, or the base environment
+  before the first estimate (reset on environment change). Directional-light estimation continues
+  independently (#4939);
+- a light written directly to `scene.indirectLight` is restored after a probe cycle, until a new
+  environment or AR estimate supersedes it. A released environment no longer owns the fallback.
+
+Android library integration uses the `@RestrictTo(LIBRARY_GROUP_PREFIX)` hooks
+`Scene.setEnvironmentLight(light: IndirectLight?)` and
+`Scene.releaseEnvironmentLight(light: IndirectLight?)` in `io.github.sceneview.node`.
+They share the probe registry across `sceneview` and `arsceneview`; release the fallback before
+destroying its light. These are Android Filament integration hooks; other renderers do not use them.
 
 ---
 
