@@ -34,7 +34,10 @@ class RerunExportFormatTest {
             RerunExportFormat.available(hasModel = true, hasCapture = true, hasMeasurements = true),
         )
         assertEquals("application/json", RerunExportFormat.Measurements.mimeType)
-        assertEquals("space-nov-14-5-40-pm.json", RerunExportFormat.Measurements.fileName("Space · Nov 14, 5:40 PM"))
+        assertEquals(
+            "cupboard-or-shelf-nov-14-5-40-pm.json",
+            RerunExportFormat.Measurements.fileName("Cupboard or shelf · Nov 14, 5:40 PM"),
+        )
     }
 
     @Test

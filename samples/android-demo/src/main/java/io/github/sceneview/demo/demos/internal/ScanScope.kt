@@ -214,10 +214,13 @@ object ScanScopeCopy {
         ScanScope.Area -> "Scan an area"
     }
 
-    /** What the capture's status line calls the scan: `Object`, `Room`, `Room 2`. */
+    /**
+     * What the capture's status line calls the scan: `Object`, `Room`, `Room 2`. A space is
+     * called what it was chosen as: "Space" names nothing a first scan knows.
+     */
     fun label(scope: ScanScope, roomNumber: Int): String = when (scope) {
         ScanScope.Object -> "Object"
-        ScanScope.Space -> "Space"
+        ScanScope.Space -> "Cupboard or shelf"
         ScanScope.Room -> "Room"
         ScanScope.Home -> "Room $roomNumber"
         ScanScope.Area -> "Area"

@@ -165,7 +165,7 @@ internal fun ScanCaptureLayout(
  * as a camera's, then the duration and the floor area.
  */
 @Composable
-internal fun ScanHud(seconds: Float, floorSquareMetres: Float, label: String? = null, recording: Boolean = false) {
+internal fun ScanHud(seconds: Float, floorSquareMetres: Float?, label: String? = null, recording: Boolean = false) {
     // Opaque and inverse, as the instruction line: legible over a sunlit wall and over the stage.
     Surface(
         shape = CircleShape,
@@ -182,11 +182,15 @@ internal fun ScanHud(seconds: Float, floorSquareMetres: Float, label: String? = 
                 Box(Modifier.size(ScanDotSize).background(ArOverlay.accentRecord, CircleShape).testTag(SCAN_REC_DOT_TAG))
             }
             Text(
-                text = (label?.let { "$it · " } ?: "") + stringResource(
-                    R.string.scan_capture_figures,
-                    ArDebugFormat.clock(seconds),
-                    ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f)),
-                ),
+                text = (label?.let { "$it · " } ?: "") + if (floorSquareMetres == null) {
+                    ArDebugFormat.clock(seconds)
+                } else {
+                    stringResource(
+                        R.string.scan_capture_figures,
+                        ArDebugFormat.clock(seconds),
+                        ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f)),
+                    )
+                },
                 style = MaterialTheme.typography.labelLarge,
                 textAlign = TextAlign.Center,
             )

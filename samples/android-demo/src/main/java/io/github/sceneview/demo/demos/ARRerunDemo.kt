@@ -2008,7 +2008,8 @@ private fun RerunLiveScreen(
         top = {
             ScanHud(
                 seconds = scan?.elapsedSeconds() ?: qaLong?.shownSeconds ?: stats.duration,
-                floorSquareMetres = scanCoverage.coveredSquareMetres,
+                // The floor a cupboard's scan covers says nothing of the cupboard: its time only.
+                floorSquareMetres = scanCoverage.coveredSquareMetres.takeIf { scanScope != ScanScope.Space },
                 label = ScanScopeCopy.label(scanScope, roomNumber),
                 recording = recording && phase == ScanPhase.Scanning,
             )

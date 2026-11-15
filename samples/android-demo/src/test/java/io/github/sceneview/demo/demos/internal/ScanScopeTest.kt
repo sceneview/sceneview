@@ -177,7 +177,8 @@ class ScanScopeTest {
         // Named by what it is, not "a space": the first one scanned under that name was a kitchen.
         assertEquals("A cupboard or shelf", ScanScopeCopy.title(space))
         assertEquals("Scan a cupboard or shelf", ScanScopeCopy.start(space))
-        assertEquals("Space · Nov 14, 5:40 PM", ScanScopeCopy.sessionTitle(space, 1, "Nov 14, 5:40 PM"))
+        assertEquals("Cupboard or shelf", ScanScopeCopy.label(space, 1))
+        assertEquals("Cupboard or shelf · Nov 14, 5:40 PM", ScanScopeCopy.sessionTitle(space, 1, "Nov 14, 5:40 PM"))
         // What it is for is said where it is chosen.
         assertTrue(ScanScopeCopy.how(space), "inside measurements" in ScanScopeCopy.how(space))
         assertEquals(space, RerunStoredSession.scopeOf("space"))

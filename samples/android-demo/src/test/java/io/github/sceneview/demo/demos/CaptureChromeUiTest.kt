@@ -22,6 +22,7 @@ import io.github.sceneview.demo.demos.internal.CaptureChrome
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanInstruction
 import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanStep
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -239,5 +240,14 @@ class CaptureChromeUiTest {
         composeRule.onNodeWithText("0:23", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("14", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText(ScanCopy.PAUSED, substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a cupboard's pill says its name and its time, no floor area`() {
+        composeRule.setContent {
+            ScanHud(seconds = 41f, floorSquareMetres = null, label = ScanScopeCopy.label(ScanScope.Space, 1), recording = true)
+        }
+        composeRule.onNodeWithText("Cupboard or shelf · 0:41").assertIsDisplayed()
+        composeRule.onNodeWithText("scanned", substring = true).assertDoesNotExist()
     }
 }

@@ -17,7 +17,7 @@ import kotlin.math.roundToInt
  * {
  *   "v": 1,
  *   "kind": "space",
- *   "label": "Space · Nov 14, 5:40 PM",
+ *   "label": "Cupboard or shelf · Nov 14, 5:40 PM",
  *   "units": "m",
  *   "frame": "right-handed, Y up; origin at the back-left-bottom corner; …",
  *   "dimensionSource": "scan",
