@@ -59,7 +59,7 @@ class ARCameraPermissionVerdictTest {
     private lateinit var handler: FakeHandler
     private lateinit var arCore: ARCore
 
-    /** `true` / `false` for a denial verdict, `null` for a grant. */
+    /** Legacy settings recommendation (`true`), request (`false`), or grant (`null`). */
     private lateinit var verdicts: MutableList<Boolean?>
     private var nowMs = 0L
 
@@ -92,34 +92,30 @@ class ARCameraPermissionVerdictTest {
     // ── The pure verdict ────────────────────────────────────────────────────
 
     @Test
-    fun `a refusal that raises the rationale flag is never blocked`() {
-        assertFalse(isCameraPromptBlocked(false, true, 0, 0))
-        assertFalse(isCameraPromptBlocked(true, true, 5_000, 3))
+    fun `a refusal with Android rationale still raised offers another request`() {
+        assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, true, 0, 0))
+        assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(true, true, 5_000, 3))
     }
 
     @Test
-    fun `the rationale flag going down is the second refusal`() {
-        assertTrue(isCameraPromptBlocked(true, false, 5_000, 0))
+    fun `the Android rationale flag falling confirms settings only`() {
+        assertEquals(ARCameraPermissionRecovery.Settings, resolveCameraPermissionRecovery(true, false, 5_000, 0))
     }
 
     @Test
-    fun `an answer faster than a dialog can be read is a blocked dialog`() {
-        assertTrue(isCameraPromptBlocked(false, false, 0, 0))
-        // The two answers measured on the Pixel 4a: idle screen, then a scene still loading.
-        assertTrue(isCameraPromptBlocked(false, false, 289, 0))
-        assertTrue(isCameraPromptBlocked(false, false, 509, 0))
-        assertTrue(isCameraPromptBlocked(false, false, CAMERA_PROMPT_INSTANT_RETURN_MS - 1, 0))
+    fun `fast unexplained answers offer settings without removing the request`() {
+        for (elapsedMs in listOf(0L, 289, 509, CAMERA_PROMPT_INSTANT_RETURN_MS - 1)) {
+            assertEquals(ARCameraPermissionRecovery.RequestWithSettings, resolveCameraPermissionRecovery(false, false, elapsedMs, 0))
+        }
     }
 
     @Test
-    fun `a first slow unexplained refusal is a dismissed dialog`() {
-        assertFalse(isCameraPromptBlocked(false, false, CAMERA_PROMPT_INSTANT_RETURN_MS, 0))
-        assertFalse(isCameraPromptBlocked(false, false, 4_000, 0))
-    }
-
-    @Test
-    fun `a second slow unexplained refusal sends to settings`() {
-        assertTrue(isCameraPromptBlocked(false, false, 4_000, 1))
+    fun `slow unexplained answers add settings on the second refusal`() {
+        for (elapsedMs in listOf(CAMERA_PROMPT_INSTANT_RETURN_MS, 5_000L, 60_000L)) {
+            assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, false, elapsedMs, 0))
+            assertEquals(ARCameraPermissionRecovery.RequestWithSettings, resolveCameraPermissionRecovery(false, false, elapsedMs, 1))
+        }
+        assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, true, 0, 10))
     }
 
     // ── What ARCore publishes ───────────────────────────────────────────────
@@ -146,12 +142,12 @@ class ARCameraPermissionVerdictTest {
     }
 
     @Test
-    fun `permanently denied sends to settings`() {
+    fun `a suppressed request keeps both recovery actions`() {
         handler.instantAnswer = false
-
         assertFalse(arCore.checkPermissionAndInstall(handler))
 
         assertEquals(listOf<Boolean?>(true), verdicts)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
         assertTrue(arCore.isCameraPermissionDenied)
     }
 
@@ -166,7 +162,7 @@ class ARCameraPermissionVerdictTest {
     }
 
     @Test
-    fun `dismissing the dialog twice sends to settings`() {
+    fun `dismissing the dialog twice keeps the offer to ask`() {
         arCore.checkPermissionAndInstall(handler)
         userTakes(2_000)
         handler.answer(granted = false)
@@ -174,7 +170,9 @@ class ARCameraPermissionVerdictTest {
         userTakes(2_000)
         handler.answer(granted = false)
 
+        // A legacy host still gets settings; the scene recovery keeps both actions.
         assertEquals(listOf<Boolean?>(false, true), verdicts)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
         assertEquals(2, handler.requestCount)
     }
 
@@ -239,8 +237,10 @@ class ARCameraPermissionVerdictTest {
 
     @Test
     fun `a grant from settings takes the explanation down on the next resume`() {
-        handler.instantAnswer = false
+        handler.rationale = true
         arCore.checkPermissionAndInstall(handler)
+        userTakes(2_000)
+        handler.answer(granted = false, rationaleAfter = false)
         arCore.pause()
         handler.granted = true
 
@@ -260,6 +260,36 @@ class ARCameraPermissionVerdictTest {
     }
 
     @Test
+    fun `scene recovery reports enum transitions and clears on a settings grant`() {
+        val recoveries = mutableListOf<ARCameraPermissionRecovery?>()
+        arCore.onCameraPermissionRecoveryChanged = {
+            assertEquals(it, arCore.cameraPermissionRecovery)
+            recoveries += it
+        }
+        handler.instantAnswer = false
+        handler.rationale = true
+        arCore.checkPermissionAndInstall(handler)
+        handler.rationale = false
+        arCore.retryCameraPermission(handler)
+        arCore.retryCameraPermission(handler)
+        handler.rationale = true
+        handler.instantAnswer = null
+        arCore.retryCameraPermission(handler)
+        handler.answer(granted = false, rationaleAfter = false)
+        handler.granted = true
+        arCore.checkPermissionAndInstall(handler)
+        arCore.checkPermissionAndInstall(handler)
+
+        assertEquals(listOf(false, true, null), verdicts)
+        assertEquals(listOf(
+            ARCameraPermissionRecovery.Request,
+            ARCameraPermissionRecovery.RequestWithSettings,
+            ARCameraPermissionRecovery.Settings,
+            null,
+        ), recoveries)
+    }
+
+    @Test
     fun `the same verdict is published once`() {
         handler.instantAnswer = false
         arCore.checkPermissionAndInstall(handler)
@@ -267,6 +297,7 @@ class ARCameraPermissionVerdictTest {
         arCore.retryCameraPermission(handler)
 
         assertEquals(listOf<Boolean?>(true), verdicts)
+        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
         assertEquals(3, handler.requestCount)
     }
 }

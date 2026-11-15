@@ -38,6 +38,7 @@ on:
       - 'website-static/**'
       - 'assets/manifest.json'
       - 'tools/fetch-assets.sh'
+      - 'tools/test-website.cjs'
       - '.github/actions/fetch-assets/**'
       - 'llms.txt'
       - 'CHANGELOG.md'
@@ -157,6 +158,15 @@ jobs:
           # even a correctly copied `.well-known/` would be dropped at
           # build time and 404 (#1998).
           touch site/.nojekyll
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Test static website regressions
+        env:
+          SITE_ROOT: site
+        run: node --test tools/test-website.cjs
 
       # ── 2. Build MkDocs (technical docs — /docs/) ───────────────────────
       - uses: actions/setup-python@v7

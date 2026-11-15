@@ -41,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
@@ -67,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.annotation.StringRes
 import com.google.ar.core.ArCoreApk
+import io.github.sceneview.ar.ARCameraPermissionRecovery
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
 import io.github.sceneview.demo.common.rememberArCameraPermission
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
@@ -236,7 +238,7 @@ fun ArViewTabContent(
         ArLauncherScreen(
             availability = arCoreAvailability,
             cameraGranted = cameraGranted,
-            cameraBlocked = camera.blocked,
+            cameraRecovery = camera.recovery,
             onRequestCamera = camera.request,
             onOpenSettings = camera.openSettings,
             onStartArSession = { sessionStarted = true },
@@ -371,11 +373,10 @@ fun ArViewTabContent(
  * Visual reference: Polycam launcher + Reality Composer entry screen.
  */
 @Composable
-private fun ArLauncherScreen(
+internal fun ArLauncherScreen(
     availability: ArCoreApk.Availability?,
     cameraGranted: Boolean,
-    /** Android no longer shows its dialog: only system settings turn the camera on. */
-    cameraBlocked: Boolean,
+    cameraRecovery: ARCameraPermissionRecovery,
     onRequestCamera: () -> Unit,
     onOpenSettings: () -> Unit,
     onStartArSession: () -> Unit,
@@ -404,7 +405,7 @@ private fun ArLauncherScreen(
 
     val ctaLabel = when {
         isChecking -> stringResource(R.string.ar_cta_checking)
-        !cameraGranted && cameraBlocked -> stringResource(R.string.ar_permission_open_settings)
+        !cameraGranted && cameraRecovery != ARCameraPermissionRecovery.Request -> stringResource(R.string.ar_permission_open_settings)
         !cameraGranted -> stringResource(R.string.ar_cta_grant_camera)
         else -> stringResource(R.string.ar_cta_start_camera)
     }
@@ -557,9 +558,12 @@ private fun ArLauncherScreen(
                 }
 
                 if (showCta) {
-                    if (!cameraGranted && cameraBlocked && !isChecking) {
+                    if (!cameraGranted && cameraRecovery != ARCameraPermissionRecovery.Request && !isChecking) {
                         Text(
-                            text = stringResource(R.string.ar_permission_required_subtitle),
+                            text = stringResource(
+                                if (cameraRecovery == ARCameraPermissionRecovery.Settings) R.string.ar_permission_required_subtitle
+                                else R.string.ar_permission_fallback_subtitle,
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -568,7 +572,7 @@ private fun ArLauncherScreen(
                         onClick = {
                             when {
                                 cameraGranted -> onStartArSession()
-                                cameraBlocked -> onOpenSettings()
+                                cameraRecovery != ARCameraPermissionRecovery.Request -> onOpenSettings()
                                 else -> onRequestCamera()
                             }
                         },
@@ -589,6 +593,11 @@ private fun ArLauncherScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(ctaLabel, style = MaterialTheme.typography.titleMedium)
+                    }
+                    if (!cameraGranted && cameraRecovery == ARCameraPermissionRecovery.RequestWithSettings && !isChecking) {
+                        TextButton(onClick = onRequestCamera, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.ar_permission_allow))
+                        }
                     }
                 }
             }

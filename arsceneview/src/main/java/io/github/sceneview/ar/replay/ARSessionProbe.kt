@@ -8,11 +8,11 @@ import io.github.sceneview.node.Node
 import java.io.File
 
 /**
- * One hook that every [io.github.sceneview.ar.ARSceneView] below it in the composition honours —
- * the single injection point a QA harness needs to drive a whole app through a recorded ARCore
- * session, instead of wiring `playbackDataset` and a frame callback into each screen.
+ * Observes every [io.github.sceneview.ar.ARSceneView] below it in the composition. Live
+ * diagnostics can observe tracking without wiring a frame callback into each screen; a QA
+ * harness can additionally supply a recorded ARCore session through [playbackDataset].
  *
- * Provide it once, near the root, and only for a test launch:
+ * For replay, provide it once near the root, only for a test launch:
  *
  * ```kotlin
  * val probe = ARReplayProbe(playbackDataset = File(recordingPath))
@@ -21,8 +21,9 @@ import java.io.File
  * }
  * ```
  *
- * Without a provider ([LocalARSessionProbe] is `null`, the default) `ARSceneView` behaves exactly
- * as before: there is no cost and no behaviour change for a normal launch.
+ * Without a provider ([LocalARSessionProbe] is `null`, the default) no observer runs. An observer
+ * that leaves [playbackDataset] `null` does not change the session's source. Nested providers
+ * should forward frames and [playbackDataset] to the enclosing observer if both are needed.
  *
  * [ARReplayProbe] is the ready-made implementation: it counts replayed frames, records when the
  * first plane tracked and whether an anchor exists, and measures how much of the screen the

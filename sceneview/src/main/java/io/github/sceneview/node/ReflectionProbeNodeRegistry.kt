@@ -1,11 +1,33 @@
 package io.github.sceneview.node
 
+import androidx.annotation.RestrictTo
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Scene
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.math.Position
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
+
+/**
+ * Sets the scene's fallback IBL without replacing an active [ReflectionProbeNode] (#4939).
+ *
+ * Shared by `SceneView` and `ARSceneView`: an AR estimate replaces the baseline fallback,
+ * while an active probe keeps its own IBL unchanged. Main thread only; the caller owns [light].
+ */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+fun Scene.setEnvironmentLight(light: IndirectLight?) {
+    reflectionProbes.setEnvironmentLight(light)
+}
+
+/**
+ * Withdraws [light] before its owner destroys it, including direct reattachments after a newer
+ * fallback superseded it. Preserves an active probe and the newer fallback.
+ * Main thread only. Pair with [setEnvironmentLight].
+ */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+fun Scene.releaseEnvironmentLight(light: IndirectLight?) {
+    reflectionProbes.releaseEnvironmentLight(light)
+}
 
 /**
  * Decides which indirect light (IBL) a scene shows while [ReflectionProbeNode]s are in it (#4928).
@@ -19,9 +41,8 @@ import java.util.WeakHashMap
  *
  * - among the probes whose zone holds the camera, the highest [Probe.priority] wins, and on a tie
  *   the probe added most recently ([newProbe]) wins;
- * - with no active probe, the scene shows its own environment's light: the one `SceneView`
- *   declares through [setEnvironmentLight]. In a scene no `SceneView` drives, it is the light the
- *   scene held before a probe took over — or the one the caller wrote since.
+ * - with no active probe, the scene shows the latest environment or AR estimate declared through
+ *   [setEnvironmentLight], or a light the caller wrote directly since that declaration.
  *
  * A light the engine has already destroyed is never handed back to the scene.
  *
@@ -56,11 +77,12 @@ internal class ReflectionProbeRegistry<L : Any>(private val target: Target<L>) {
     private val probes = mutableListOf<Probe<L>>()
     private var nextOrder = 0L
 
-    /** Whether a `SceneView` declared the scene's own light. */
+    /** Whether a `SceneView` or `ARSceneView` declared the scene's fallback light. */
     private var environmentDeclared = false
     private var environmentLight: L? = null
 
-    /** The scene's own light when nobody declared one: whatever someone else last wrote there. */
+    /** A direct caller write after the last environment declaration, including an explicit null. */
+    private var callerDeclared = false
     private var callerLight: L? = null
 
     /** The light this registry last wrote, to tell its own writes from the caller's. */
@@ -102,24 +124,37 @@ internal class ReflectionProbeRegistry<L : Any>(private val target: Target<L>) {
     }
 
     /**
-     * Declares the scene's own light — what `SceneView` passes for its `environment`. It is shown
-     * at once unless an active probe overrides it, and comes back when the last probe lets go.
+     * Declares the scene's fallback light: the environment or latest AR estimate. It is shown
+     * at once unless an active probe overrides it, and supersedes any previous caller write.
      */
     fun setEnvironmentLight(light: L?) {
         environmentDeclared = true
         environmentLight = light
+        callerDeclared = false
+        callerLight = null
         // The environment replaces whatever the scene showed, like a direct write used to.
         resolve(force = true)
     }
 
     /**
-     * Withdraws [light] as the scene's own light, before its owner destroys it. Only lets go of a
-     * light the scene still got from here: a light the caller wrote since is left alone.
+     * Withdraws [light] before its owner destroys it, even after another fallback superseded it.
+     * Clears matching scene and caller references, leaving other lights and probes alone.
      */
     fun releaseEnvironmentLight(light: L?) {
-        if (!environmentDeclared || environmentLight !== light) return
-        environmentLight = null
-        resolve(force = false)
+        val releasesEnvironment = environmentDeclared && environmentLight === light
+        val current = target.light
+        if (!releasesEnvironment && (light == null || (current !== light && callerLight !== light))) return
+        captureCallerLight()
+        if (releasesEnvironment) {
+            environmentDeclared = false
+            environmentLight = null
+        }
+        // Even a direct caller write must not keep this owner's soon-to-be-destroyed light.
+        if (callerLight === light) {
+            callerDeclared = false
+            callerLight = null
+        }
+        resolve(force = current === light, captureCaller = false)
     }
 
     /** The light the scene would show now. Exposed for tests. */
@@ -135,13 +170,22 @@ internal class ReflectionProbeRegistry<L : Any>(private val target: Target<L>) {
         .maxWithOrNull(compareBy<Probe<L>>({ it.priority }, { it.order }))
 
     private fun fallback(): L? =
-        (if (environmentDeclared) environmentLight else callerLight)?.takeIf(target::isAlive)
+        (if (callerDeclared) callerLight else if (environmentDeclared) environmentLight else null)
+            ?.takeIf(target::isAlive)
 
-    private fun resolve(force: Boolean) {
+    private fun captureCallerLight() {
         val current = target.light
-        // Someone else wrote the scene's light since our last write: without a declared
-        // environment, that is the light to fall back to.
-        if (!environmentDeclared && current !== applied) callerLight = current
+        if (current !== applied) {
+            callerDeclared = true
+            callerLight = current
+        }
+    }
+
+    private fun resolve(force: Boolean, captureCaller: Boolean = !force) {
+        // Environment declarations supersede caller writes; other changes remember them even
+        // when an environment was declared, so the next probe cycle can hand them back.
+        if (captureCaller) captureCallerLight()
+        val current = target.light
         val winner = winner()
         val wanted = wanted(winner)
         if (current === wanted) {
