@@ -258,6 +258,19 @@ The built-in camera card and the Android demo share `resolveCameraPermissionReco
 
 The original three-argument state constructor and `permanentlyDenied` getter remain available. That legacy boolean conservatively recommends settings for both `RequestWithSettings` and `Settings` (`recovery != Request`), as does `ARCore.onCameraPermissionDenied`; it does not prove a permanent denial. Use `ARSceneView.onCameraPermissionStateChanged` for the complete state, including `null` after a grant read on return from settings. Direct `ARCore` hosts retain their existing denial and grant callbacks; the scene's internal recovery property and callback are not added to the public API.
 
+## Android overlay and transient-message coordination
+
+`io.github.sceneview.ar.LocalAROverlayVisibility` is a Compose local with type
+`ProvidableCompositionLocal<((Boolean) -> Unit)?>`, default `null`. Provide a stable
+listener above `ARSceneView` or standalone SDK overlays to defer snackbars while a
+centred card is shown. Each coaching card, camera permission card and ARCore
+availability card emits `true` on entering composition and `false` on leaving,
+including the coaching exit transition. Count these balanced events when several
+cards may coexist; the "Surface found" pill emits none. Removing a `SnackbarHost`
+while the count is positive keeps its queued message from timing out before it can
+be shown. This contract is Android-specific; other platforms use native overlay
+lifecycles. Existing overlay signatures are unchanged.
+
 ## Core Composables
 
 ### SceneView — 3D viewport

@@ -64,6 +64,7 @@ internal fun BoxScope.AROverlayCard(
     onSecondaryAction: () -> Unit = {},
     secondaryActionTag: String = "",
 ) {
+    ReportAROverlayVisibility()
     Layout(
         content = {
             Column(

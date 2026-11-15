@@ -1,6 +1,7 @@
 package io.github.sceneview.demo
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -10,7 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertContentDescriptionEquals
@@ -20,9 +24,21 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.ar.ARCoachingOverlay
+import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ARCoreAvailabilityOverlay
+import io.github.sceneview.ar.ARCoreAvailabilityState
+import io.github.sceneview.ar.ARCameraPermissionOverlay
+import io.github.sceneview.ar.ARCameraPermissionState
+import io.github.sceneview.ar.ArGuidanceCue
+import io.github.sceneview.demo.common.placement.PlacementPhase
+import io.github.sceneview.demo.common.placement.PlacementTestTags
+import io.github.sceneview.demo.common.placement.TapToPlaceState
+import io.github.sceneview.demo.common.placement.TapToPlaceStatusOverlays
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import org.junit.Assert.assertEquals
@@ -281,6 +297,180 @@ class DemoScaffoldBottomBandTest {
         )
     }
 
+    @Test
+    fun snackbar_waitsForTheSdkCoachingCard() {
+        assertSnackbarWaitsForSdkOverlay { ARCoachingOverlay(cue = ArGuidanceCue.SCAN) }
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-xhdpi")
+    fun snackbar_waitsForTheSdkAvailabilityCard_inLandscapeAtLargeFontScale() {
+        assertSnackbarWaitsForSdkOverlay {
+            ARCoreAvailabilityOverlay(ARCoreAvailabilityState(ARCoreAvailability.SessionFailed, {}))
+        }
+    }
+
+    @Test
+    fun snackbar_waitsForTheSdkPermissionCard() {
+        assertSnackbarWaitsForSdkOverlay {
+            ARCameraPermissionOverlay(ARCameraPermissionState(true, {}, {}))
+        }
+    }
+
+    private fun assertSnackbarWaitsForSdkOverlay(overlay: @Composable BoxScope.() -> Unit) {
+        val shown = mutableStateOf(true)
+        showResetSnackbar(
+            bottomOverlay = { Box(Modifier.fillMaxWidth().height(48.dp)) },
+            scene = { Box(Modifier.fillMaxSize()) { if (shown.value) overlay() } },
+            fontScale = 1.3f,
+        )
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        // A queued message must survive longer than Material's normal short timeout.
+        composeRule.mainClock.advanceTimeBy(5_000)
+        composeRule.runOnIdle { shown.value = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
+    }
+
+    @Test
+    fun snackbar_waitsUntilBothSdkCardsHaveLeft() {
+        val permission = mutableStateOf(true)
+        val availability = mutableStateOf(true)
+        showResetSnackbar(bottomOverlay = null, scene = {
+            Box(Modifier.fillMaxSize()) {
+                if (permission.value) ARCameraPermissionOverlay(ARCameraPermissionState(true, {}, {}))
+                if (availability.value) {
+                    ARCoreAvailabilityOverlay(ARCoreAvailabilityState(ARCoreAvailability.SessionFailed, {}))
+                }
+            }
+        })
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        composeRule.runOnIdle { permission.value = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        composeRule.runOnIdle { availability.value = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
+    }
+
+    @Test
+    fun snackbar_waitsThroughTheCoachingCardsExitFade_butNotForTheFoundPill() {
+        val cue = mutableStateOf(ArGuidanceCue.SCAN)
+        showResetSnackbar(bottomOverlay = null, scene = {
+            Box(Modifier.fillMaxSize()) { ARCoachingOverlay(cue = cue.value) }
+        })
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnIdle { cue.value = ArGuidanceCue.SURFACE_FOUND }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
+    }
+
+    @Test
+    fun snackbar_aHandDraggedSheet_restoresTheStackRestingLineImmediately() {
+        showResetSnackbar(
+            bottomOverlay = { Box(Modifier.fillMaxWidth().height(360.dp).testTag(OVERLAY_PROBE)) },
+            closeSheet = false,
+        )
+        val stack = composeRule.onNodeWithTag(OVERLAY_PROBE).getUnclippedBoundsInRoot()
+        val sheet = composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_SHEET)
+        val openSheet = sheet.getUnclippedBoundsInRoot()
+        val openSnackbar = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+        assertTrue("the open sheet should be below the tall stack", openSheet.top > stack.top)
+        assertTrue("settled open must release the stack resting line", openSnackbar.bottom > stack.top)
+        composeRule.mainClock.autoAdvance = false
+        sheet.performTouchInput { down(Offset(center.x, 8f)) }
+        repeat(4) { step ->
+            sheet.performTouchInput { moveBy(Offset(0f, 50f), delayMillis = 32) }
+            composeRule.mainClock.advanceTimeByFrame()
+            composeRule.mainClock.advanceTimeByFrame()
+            val draggedSheet = sheet.getUnclippedBoundsInRoot()
+            val snackbar = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+            assertTrue("step $step did not drag the sheet", draggedSheet.top > openSheet.top)
+            assertTrue("step $step: snackbar $snackbar crosses returning stack $stack", snackbar.bottom <= stack.top)
+        }
+        sheet.performTouchInput { up() }
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        // This short drag returns to the same open detent. Its target need never change:
+        // the offset alone must restore the stack clearance until the sheet settles again.
+        val settledSheet = sheet.getUnclippedBoundsInRoot()
+        val snackbar = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+        assertEquals(openSheet.top.value, settledSheet.top.value, HALF_A_DP)
+        assertEquals(SceneViewTokens.Space.md.value, (settledSheet.top - snackbar.bottom).value, HALF_A_DP)
+    }
+
+    @Test
+    fun sceneCards_removingOneKeepsTheOtherRegistered() {
+        val lowerShown = mutableStateOf(true)
+        val upperShown = mutableStateOf(true)
+        showResetSnackbar(bottomOverlay = null, scene = {
+            Box(Modifier.fillMaxSize()) {
+                key("upper") {
+                    if (upperShown.value) {
+                        Box(
+                            Modifier.padding(top = 300.dp).height(100.dp)
+                                .fillMaxWidth().reportsDemoSceneBottomCard().testTag(SCENE_PROBE),
+                        )
+                    }
+                }
+                key("lower") {
+                    if (lowerShown.value) {
+                        Box(
+                            Modifier.padding(top = 500.dp).height(100.dp)
+                                .fillMaxWidth().reportsDemoSceneBottomCard().testTag("lower-card"),
+                        )
+                    }
+                }
+            }
+        })
+        assertSnackbarAboveSceneProbe()
+        composeRule.runOnIdle { lowerShown.value = false }
+        composeRule.waitForIdle()
+        assertSnackbarAboveSceneProbe()
+        composeRule.runOnIdle {
+            lowerShown.value = true
+            upperShown.value = false
+        }
+        composeRule.waitForIdle()
+        assertSnackbarAboveSceneProbe("lower-card")
+    }
+
+    private fun assertSnackbarAboveSceneProbe(tag: String = SCENE_PROBE) {
+        val card = composeRule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+        val snackbar = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+        assertEquals(SceneViewTokens.Space.md.value, (card.top - snackbar.bottom).value, HALF_A_DP)
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-xhdpi")
+    fun snackbar_besideTheRealLandscapeCornerCard_keepsItsStackRestingLine() {
+        val state = TapToPlaceState().apply {
+            cameraReady = true
+            isTracking = true
+            phase = PlacementPhase.NO_SURFACE
+        }
+        val snackbar = raiseSnackbarWithTheSheetClosed(
+            bottomOverlay = null,
+            modeSwitch = DemoModeSwitch(
+                listOf(DemoMode("place", R.string.demo_mode_place), DemoMode("free-pose", R.string.demo_mode_free_pose)),
+                selected = 0,
+                onSelect = {},
+            ),
+            scene = {
+                Box(Modifier.fillMaxSize()) {
+                    TapToPlaceStatusOverlays(state, onViewIn3D = {}, onRestartSession = {})
+                }
+            },
+        )
+        val card = composeRule.onNodeWithTag(PlacementTestTags.PLACEMENT_CARD).getUnclippedBoundsInRoot()
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).getUnclippedBoundsInRoot()
+        val pill = composeRule.onNodeWithTag(DEMO_MODE_PILL_TAG).getUnclippedBoundsInRoot()
+        assertTrue("expected corner card $card beside pill $pill and dock $dock", card.left >= pill.right)
+        assertEquals(SceneViewTokens.Space.md.value, (pill.top - snackbar.bottom).value, HALF_A_DP)
+    }
+
     /**
      * Raises "Demo reset" the only way the app can — from its row in the settings sheet —
      * closes the sheet, and returns where the snackbar's layout box came to rest. Material
@@ -289,16 +479,30 @@ class DemoScaffoldBottomBandTest {
     private fun raiseSnackbarWithTheSheetClosed(
         bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)?,
         scene: @Composable () -> Unit = {},
+        modeSwitch: DemoModeSwitch? = null,
     ): DpRect {
+        showResetSnackbar(bottomOverlay, scene, modeSwitch = modeSwitch)
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
+        return composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+    }
+
+    private fun showResetSnackbar(
+        bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)?,
+        scene: @Composable () -> Unit = {},
+        fontScale: Float = 1f,
+        closeSheet: Boolean = true,
+        modeSwitch: DemoModeSwitch? = null,
+    ) {
         composeRule.setContent {
-            SceneViewDemoTheme(darkTheme = false) {
-                DemoScaffold(
-                    title = "Band",
-                    onBack = {},
-                    onReset = {},
-                    bottomOverlay = bottomOverlay,
-                ) {
-                    scene()
+            ScaledDensity(fontScale) {
+                SceneViewDemoTheme(darkTheme = false) {
+                    DemoScaffold(
+                        title = "Band",
+                        onBack = {},
+                        onReset = {},
+                        bottomOverlay = bottomOverlay,
+                        modeSwitch = modeSwitch,
+                    ) { scene() }
                 }
             }
         }
@@ -306,10 +510,8 @@ class DemoScaffoldBottomBandTest {
         composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(DemoScaffoldTestTags.RESET_ACTION).performClick()
-        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_CLOSE).performClick()
+        if (closeSheet) composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_CLOSE).performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
-        return composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
     }
 
     private fun assertOverlayClearsDock(fontScale: Float) {

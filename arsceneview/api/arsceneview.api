@@ -203,6 +203,10 @@ public final class io/github/sceneview/ar/ARMotionSensorsKt {
 	public static synthetic fun probeARMotionSensors$default (Landroid/content/Context;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
+public final class io/github/sceneview/ar/AROverlayVisibilityKt {
+	public static final fun getLocalAROverlayVisibility ()Landroidx/compose/runtime/ProvidableCompositionLocal;
+}
+
 public abstract interface class io/github/sceneview/ar/ARPermissionHandler {
 	public abstract fun checkARCoreAvailability ()Lcom/google/ar/core/ArCoreApk$Availability;
 	public abstract fun hasCameraPermission ()Z
