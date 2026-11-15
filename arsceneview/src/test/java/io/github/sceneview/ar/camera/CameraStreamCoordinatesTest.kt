@@ -16,9 +16,39 @@ class CameraStreamCoordinatesTest {
         val coordinates = CameraStreamCoordinates(vertices)
         update(coordinates)
 
-        assertArrayEquals(ndc, coordinates.positions.xy(), 0f)
+        assertArrayEquals(vertices, coordinates.positions.values(), 0f)
         assertArrayEquals(floatArrayOf(0f, 0f, 0f, 2f, 2f, 0f), coordinates.imageUvs.values(), 0f)
         assertArrayEquals(floatArrayOf(0f, 1f, 1f, 0f, -1f, 1f, 2f, 1f, 1f), coordinates.cameraUvs.values(), 0f)
+    }
+
+    @Test
+    fun `EIS screen Z never moves the uploaded camera background off the far plane`() {
+        val coordinates = CameraStreamCoordinates(vertices)
+        for (screenZ in listOf(0f, 0.25f, -0.5f, 0f)) {
+            coordinates.update(
+                transform3d = { _, type, output ->
+                    if (type == Coordinates3d.EIS_NORMALIZED_DEVICE_COORDINATES) {
+                        output.put(floatArrayOf(-0.8f, 0.9f, screenZ, -0.9f, -2.8f, screenZ, 3.1f, 1.2f, screenZ))
+                    } else {
+                        output.put(floatArrayOf(0.4f, 0.3f, 2f, 0.8f, 1.4f, 3f, 1.8f, 0.6f, 4f))
+                    }
+                },
+                transform2d = { _, output -> output.put(FloatArray(6)) },
+            )
+            // Device-domain Filament shaders take raster depth directly from POSITION.
+            // Assert the actual upload: XY must retain EIS compensation, Z must stay at 1.
+            assertArrayEquals(
+                floatArrayOf(-0.8f, 0.9f, 1f, -0.9f, -2.8f, 1f, 3.1f, 1.2f, 1f),
+                coordinates.positions.cameraStreamUploadBuffer().values(),
+                0f,
+            )
+            // The independent homogeneous texture denominator must retain its ARCore value.
+            assertArrayEquals(
+                floatArrayOf(0.4f, 0.3f, 2f, 0.8f, 1.4f, 3f, 1.8f, 0.6f, 4f),
+                coordinates.cameraUvs.cameraStreamUploadBuffer().values(),
+                0f,
+            )
+        }
     }
 
     @Test

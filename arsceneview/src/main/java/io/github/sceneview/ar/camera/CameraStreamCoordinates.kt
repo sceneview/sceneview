@@ -43,6 +43,12 @@ internal class CameraStreamCoordinates(vertices: FloatArray) {
         ndc.rewind()
         positions.rewind()
         transform3d(ndc, Coordinates3d.EIS_NORMALIZED_DEVICE_COORDINATES, positions)
+        // Filament's device-domain shader takes raster depth from POSITION, independently of
+        // material.worldPosition. ARCore's screen Z (0 with EIS OFF) must not replace the
+        // background's far-plane Z=1, which Filament maps to reverse-Z depth 0.
+        for (i in 0 until vertexCount) {
+            positions.put(i * 3 + 2, 1f)
+        }
         ndc.rewind()
         cameraUvs.rewind()
         transform3d(ndc, Coordinates3d.EIS_TEXTURE_NORMALIZED, cameraUvs)
