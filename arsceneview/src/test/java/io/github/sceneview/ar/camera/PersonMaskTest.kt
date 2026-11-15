@@ -42,6 +42,15 @@ class PersonMaskTest {
         // it read 9 (VEHICLE) for as long as nothing compared it to the SDK (#4036).
         assertEquals(10, PersonMask.PERSON_ORDINAL)
         assertEquals(com.google.ar.core.SemanticLabel.PERSON.ordinal, PersonMask.PERSON_ORDINAL)
+        // The mask compares against the byte in the image, which is ARCore's native code for
+        // the class rather than the place of its constant in the Java enum.
+        val nativeCode = com.google.ar.core.SemanticLabel::class.java
+            .getDeclaredField("nativeCode")
+            .apply { isAccessible = true }
+        assertEquals(
+            nativeCode.getInt(com.google.ar.core.SemanticLabel.PERSON),
+            PersonMask.PERSON_ORDINAL,
+        )
     }
 
     @Test

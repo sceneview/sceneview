@@ -44,9 +44,10 @@ internal object PersonMask {
      * ARCore's order, so the mask picked out `VEHICLE` pixels and people occlusion hid virtual
      * content behind cars instead of behind people.
      *
-     * Hard-coded rather than read via `SemanticLabel.PERSON.ordinal` so the conversion is
-     * JVM-unit-testable without the ARCore runtime on the classpath. `FrameSemanticsTest`
-     * pins it against the live ARCore enum so a future SDK reorder is caught loudly.
+     * Written as a number because a `const val` cannot read an enum. The byte in the image is
+     * ARCore's native code for the class, and that code is the enum's ordinal: `PersonMaskTest`
+     * compares this number with both for `PERSON`, and `FrameSemanticsTest` holds the two equal
+     * for all twelve classes, so an SDK that renumbers them fails a test instead of a mask.
      */
     const val PERSON_ORDINAL: Int = 10
 

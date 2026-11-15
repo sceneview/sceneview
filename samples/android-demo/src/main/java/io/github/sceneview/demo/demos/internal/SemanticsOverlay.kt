@@ -81,7 +81,7 @@ internal object SemanticsOverlay {
         0xFF9E75BD.toInt(), // STRUCTURE  — purple
         0xFFFFC207.toInt(), // OBJECT     — amber
         0xFF2196F2.toInt(), // VEHICLE    — strong blue
-        0xFFF54290.toInt(), // PERSON     — pink
+        0xFFF5428C.toInt(), // PERSON     — pink
         0xFF00BDD4.toInt()  // WATER      — cyan
     )
 
