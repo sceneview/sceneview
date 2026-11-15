@@ -10,6 +10,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
@@ -43,6 +44,7 @@ import io.github.sceneview.ar.node.DepthMeshNode as DepthMeshNodeImpl
 import io.github.sceneview.ar.node.DepthMeshSnapshot
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.ar.depth.GroundContacts
+import io.github.sceneview.ar.depth.GroundContact as GroundContactImpl
 import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
 import io.github.sceneview.ar.node.PlaneNode as PlaneNodeImpl
 import io.github.sceneview.ar.node.PointCloudNode as PointCloudNodeImpl
@@ -56,6 +58,8 @@ import io.github.sceneview.ar.node.ShadowReceiverPlaneNode as ShadowReceiverPlan
 import io.github.sceneview.ar.node.StreetscapeGeometryNode as StreetscapeGeometryNodeImpl
 import io.github.sceneview.ar.node.TerrainAnchorNode as TerrainAnchorNodeImpl
 import io.github.sceneview.ar.node.TrackableNode as TrackableNodeImpl
+import io.github.sceneview.math.Direction
+import io.github.sceneview.math.Position
 
 /**
  * The composable DSL scope for building AR scenes inside [ARScene].
@@ -124,6 +128,48 @@ class ARSceneScope internal constructor(
     _nodes = _nodes,
     nodeRemover = nodeRemover
 ) {
+
+    /**
+     * Registers a contact disc that keeps surface depth noise from cutting a placed object's
+     * contact shadow, placement ring and feet. Use alongside custom placement in [ARSceneView];
+     * [AutoPlacementScene] already registers its own contacts.
+     *
+     * [center] is read on the main thread each rendered frame, after nodes have moved. Return
+     * `null` while the object is not placed or no longer valid. The contact is removed when this
+     * composable leaves the composition. This draws nothing and does not enable depth occlusion:
+     * enable it on the camera stream (or with `SceneUnderstanding`) and enable session depth.
+     *
+     * All coordinates are in **world space**, including for nodes parented to an anchor.
+     * Put the centre on the supporting surface, not at the model's bounding-box centre. For a
+     * node whose origin is on the floor:
+     * ```kotlin
+     * GroundContact(center = { node.worldPosition }, radius = ringRadius)
+     * ```
+     *
+     * Only the valid contact nearest the camera is used. Within its disc the existing occlusion
+     * material tolerates depth noise up to 10 cm nearer than the surface, fading out beyond the
+     * radius; real geometry sufficiently in front still occludes. Custom camera materials must support
+     * the `groundContact` and `groundNormal` parameters to use this band.
+     *
+     * @param center Provider of the disc centre in world metres, or `null` to suspend it.
+     * @param radius Disc radius in world metres, covering the contact shadow and ring.
+     * @param normal World-space surface normal, normalized internally; defaults to a floor's +Y.
+     * Non-finite values, a non-positive radius or a zero-length normal disable this contact.
+     */
+    @Composable
+    fun GroundContact(
+        center: () -> Position?,
+        radius: Float,
+        normal: Direction = Direction(y = 1f),
+    ) {
+        val currentCenter = rememberUpdatedState(center)
+        DisposableEffect(groundContacts, radius, normal) {
+            val unregister = groundContacts.register {
+                currentCenter.value()?.let { GroundContactImpl(it, normal, radius) }
+            }
+            onDispose { unregister() }
+        }
+    }
 
     // ── AnchorNode ────────────────────────────────────────────────────────────────────────────────
 

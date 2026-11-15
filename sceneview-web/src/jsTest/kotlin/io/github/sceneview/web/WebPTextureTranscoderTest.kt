@@ -422,6 +422,48 @@ class WebPTextureTranscoderTest {
     // --- data: URIs --------------------------------------------------------
 
     @Test
+    fun aMalformedDataUriLogsTheDecodeErrorAndIsPassedThrough(): Promise<Unit> {
+        val json = """
+            {
+              "images": [{"mimeType": "image/webp", "uri": "data:image/webp;base64,invalid!"}],
+              "textures": [{"source": 0}]
+            }
+        """.trimIndent()
+        val source = toArrayBuffer(encode(json))
+        var reported = -1
+
+        // Kotlin's Karma adapter restores console methods as soon as a test returns its
+        // Promise. Install the spy in a microtask after that synchronous restoration.
+        return Promise.resolve(Unit).then {
+            val browserConsole = js("globalThis.console")
+            val originalWarn = browserConsole.warn
+            val warnings = mutableListOf<String>()
+            var cause: dynamic = null
+            browserConsole.warn = { message: String, error: dynamic ->
+                warnings += message
+                cause = error
+            }
+
+            WebPTextureTranscoder.transcode(source, fakeTranscoder) { reported = it }
+                .then { result ->
+                    browserConsole.warn = originalWarn
+                    assertSame(source, result, "a malformed data URI must not abort the model load")
+                    assertEquals(1, reported, "the malformed WebP image must still be reported")
+                    assertEquals(0, decodeCount, "invalid base64 must not reach the image decoder")
+                    assertEquals(1, warnings.size, "the original decode error must be logged once")
+                    assertTrue(warnings.single().contains("WebP"))
+                    assertTrue(warnings.single().contains("data URI"))
+                    assertNotNull(cause, "the diagnostic must retain the original exception")
+                    assertEquals("InvalidCharacterError", cause.name as String)
+                }
+                .catch { throwable ->
+                    browserConsole.warn = originalWarn
+                    throw throwable
+                }
+        }.unsafeCast<Promise<Unit>>()
+    }
+
+    @Test
     fun gltfJsonDataUrisAreReEncodedAsPngDataUris(): Promise<Unit> {
         val webPDataUri = "data:image/webp;base64," + toBase64(webPBytes)
         val json = """
