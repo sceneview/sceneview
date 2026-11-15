@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **AR placement bounds fit ([#3446](https://github.com/sceneview/sceneview/issues/3446)).** `placementBoundsFit` checks a transformed model box against a convex plane polygon and reports containment plus signed clearance/overhang in metres. A `Plane.placementBoundsFit` adapter uses the current tracked ARCore polygon; the geometry core is JVM-testable and existing placement APIs are unchanged.

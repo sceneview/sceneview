@@ -1910,6 +1910,48 @@ white hairline ring over a faint dark contact halo, with a small `#a4c1ff` centr
 only in the *ready* phase (#3570). Reticle colour is a design decision: if you re-tint it, tint
 the dot, not the ring.
 
+### Placement bounds fit — does the object fit on the tracked surface? (#3446)
+
+`io.github.sceneview.ar.placementBoundsFit` checks the projection of the **whole transformed
+bounding box** inside a convex plane polygon, including rotation, scale, authored centre offsets
+and the height of a tilted model. A hit inside a plane or inside its rectangular extents does
+not establish that the model fits.
+
+```kotlin
+fun placementBoundsFit(
+    boundsCenter: Position,          // model-local authored box centre
+    boundsHalfExtent: Size,          // HALF-side lengths, in the same coordinates
+    modelToPlane: Transform,        // complete model-local → plane-local affine transform
+    planePolygon: FloatArray,       // plane-local [x0, z0, x1, z1, …], metres, either winding
+): PlacementBoundsFit?
+
+fun Plane.placementBoundsFit(
+    bounds: com.google.android.filament.Box,
+    modelTransform: Transform,      // complete model-local → WORLD transform
+): PlacementBoundsFit?
+```
+
+`PlacementBoundsFit.fits` includes boundary contact. `marginMeters` is the smallest inward
+distance from the projected box to any polygon edge's supporting line: positive clearance,
+zero contact, negative greatest perpendicular overhang. It is not the translation needed to
+make the object fit or a Euclidean distance to a corner. `null` means no verdict (untracked
+plane, missing/invalid/degenerate/nonconvex polygon or bounds, non-affine transform). Flat
+models and duplicate/collinear polygon vertices are supported.
+
+For a plane hit, import `io.github.sceneview.ar.placementBoundsFit` and
+`io.github.sceneview.ar.arcore.transform`, plus `io.github.sceneview.model.restPoseBoundingBox`, then call
+`(hit.trackable as? Plane)?.placementBoundsFit(modelInstance.model.restPoseBoundingBox, hit.hitPose.transform)`
+for an unscaled model. For a rendered model, pass that model node's `worldTransform` to account
+for its final scale, asset rotation and pivot corrections. Re-evaluate when the model or plane
+changes; instant/depth hits have no plane polygon and cannot confirm a fit. This checks the
+**tracked surface coverage**, not room height, support or collisions, and leaves the app's
+placement gate and copy to the app.
+
+This ARCore-specific addition completes the bounds-check portion of #3446 alongside the public
+`AutoPlacementState`, scale detent, `UsableSurfacePolicy` and plane-first `placementHitSource`.
+Scope is Android/ARCore for this `arsceneview` follow-up; other platforms need their native
+plane-polygon adapters. All existing placement signatures remain available.
+
 ### WallPlacementScene — manual wall placement, aligned to the floor↔wall edge (#2740)
 
 **Legacy manual wall placement.** New automatic wall flows use
