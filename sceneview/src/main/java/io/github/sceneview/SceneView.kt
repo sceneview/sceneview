@@ -1130,7 +1130,7 @@ fun SceneView(
     val shouldRender = remember(currentFrameRatePolicy, frameRateGate, destroyQueue) {
         derivedStateOf {
             currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty ||
-                destroyQueue.size > 0
+                destroyQueue.hasPending
         }
     }
 
