@@ -1250,14 +1250,16 @@ internal fun automaticPlacementOffset(corners: List<Position>, wall: Boolean): P
 
 private fun visiblePlacementPoint(frame: Frame, pose: Pose): Boolean {
     if (frame.camera.trackingState != TrackingState.TRACKING) return false
-    val camera = frame.camera.pose
-    val distance = ViewportProjection.distance(pose.tx(), pose.ty(), pose.tz(), camera.tx(), camera.ty(), camera.tz())
-    if (distance !in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M) return false
+    if (!withinPlacementDistance(frame.camera.pose, pose)) return false
     val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
     val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
     return ViewportProjection.project(ViewportProjection.multiply(projection, view),
         pose.tx(), pose.ty(), pose.tz())?.isInsideViewport == true
 }
+
+private fun withinPlacementDistance(camera: Pose, target: Pose): Boolean =
+    ViewportProjection.distance(target.tx(), target.ty(), target.tz(), camera.tx(), camera.ty(), camera.tz()) in
+        UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
 
 /** Detected floors win; only an instant placement may slide on an estimated contact plane. */
 internal fun horizontalDragCandidate(
@@ -1265,12 +1267,14 @@ internal fun horizontalDragCandidate(
     hits: List<HitResult>,
     fromHit: (HitResult) -> AutoPlacementCandidate,
     onContactPlane: () -> AutoPlacementCandidate?,
-): AutoPlacementCandidate? = hits.firstOrNull {
+    cameraPose: Pose,
+): AutoPlacementCandidate? = (hits.firstOrNull {
     val plane = it.trackable as? Plane
     plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
         plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
         it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
-}?.let(fromHit) ?: if (placement.trackable is InstantPlacementPoint) onContactPlane() else null
+}?.let(fromHit) ?: if (placement.trackable is InstantPlacementPoint) onContactPlane() else null)
+    ?.takeIf { withinPlacementDistance(cameraPose, it.pose) }
 
 /** Keeps the logical anchor alive while dragging; only a valid finished move replaces it. */
 private class AutomaticAnchorNode(
@@ -1282,6 +1286,7 @@ private class AutomaticAnchorNode(
     private var offset: FloatArray? = null
     private var pending: AutoPlacementCandidate? = null
     private var interruptedMove = false
+    private var moveAnchorPose: Pose? = null
 
     /** This drag opened an adjustment: only a drag that did closes one ([DragEnd]). */
     private var dragging = false
@@ -1322,6 +1327,7 @@ private class AutomaticAnchorNode(
         offset = floatArrayOf(grab.x, grab.y, grab.z)
         pending = null
         interruptedMove = false
+        moveAnchorPose = anchor.pose
         updateAnchorPose = false
         return true
     }
@@ -1329,6 +1335,7 @@ private class AutomaticAnchorNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         if (!state.isAdjusting) return false
         val frame = frame ?: return false
+        rebaseMove(frame)
         // Same stale-frame case as PoseNode.onMove: a paused session throws from hitTest.
         val hits = arSessionGuarded("AutoPlacement onMove", null) { frame.hitTest(e) } ?: return false
         val candidate = if (placement.isWall) {
@@ -1340,7 +1347,7 @@ private class AutomaticAnchorNode(
         } else {
             horizontalDragCandidate(placement, hits, fromHit = {
                 hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f))
-            }, onContactPlane = { slideAlongContactPlane(e) })
+            }, onContactPlane = { slideAlongContactPlane(e) }, cameraPose = frame.camera.pose)
         }
         if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
             invalidMove(true)
@@ -1353,6 +1360,7 @@ private class AutomaticAnchorNode(
     }
 
     override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) {
+        frame?.let { rebaseMove(it) }
         val target = pending?.pose
         val travel = if (target == null) 0f else ViewportProjection.distance(
             target.tx(), target.ty(), target.tz(), anchor.pose.tx(), anchor.pose.ty(), anchor.pose.tz(),
@@ -1377,6 +1385,7 @@ private class AutomaticAnchorNode(
         if (!interruptedMove) {
             updateAnchorPose = true
             pending = null
+            moveAnchorPose = null
         }
         offset = null
         invalidMove(false)
@@ -1454,9 +1463,27 @@ private class AutomaticAnchorNode(
         pose.rotationQuaternion,
     )
 
+    private fun rebaseMove(frame: Frame) {
+        val previous = moveAnchorPose ?: return
+        if (!isTracking(frame)) return
+        val refined = anchor.pose
+        moveAnchorPose = refined
+        if (previous.translation.contentEquals(refined.translation) &&
+            previous.rotationQuaternion.contentEquals(refined.rotationQuaternion)
+        ) return
+        // A detected plane supplies its own geometry; only the estimated floor follows this anchor.
+        val candidate = pending ?: AutoPlacementCandidate(placement.trackable, pose, placement.kind)
+        if (candidate.trackable !is InstantPlacementPoint) return
+        val rebased = rebaseInstantPlacementDrag(candidate, previous, refined)
+        if (pending != null) pending = rebased
+        pose = rebased.pose
+        offset = offset?.let { refined.compose(previous.inverse()).rotateVector(it) }
+    }
+
     private fun commitMove(): Boolean {
-        val candidate = pending ?: return false
         val frame = frame ?: return false
+        rebaseMove(frame)
+        val candidate = pending ?: return false
         if (anchor.trackingState != TrackingState.TRACKING ||
             !visiblePlacementPoint(frame, candidate.pose)
         ) return false
@@ -1467,6 +1494,7 @@ private class AutomaticAnchorNode(
         placement.kind = next.kind
         placement.pose = next.pose
         pending = null
+        moveAnchorPose = null
         return true
     }
 
@@ -1481,7 +1509,10 @@ private class AutomaticAnchorNode(
                 interruptedMove = pending != null
                 offset = null
                 state.endAdjustment()
-                if (!interruptedMove) updateAnchorPose = true
+                if (!interruptedMove) {
+                    updateAnchorPose = true
+                    moveAnchorPose = null
+                }
             }
             // A still-tracking anchor must not move the content while the camera is limited.
             // Keep the frozen pose available for the opacity fade, including anchor loss.
@@ -1491,6 +1522,7 @@ private class AutomaticAnchorNode(
             updateAnchorPose = followAnchor
             return
         }
+        rebaseMove(frame)
         if (interruptedMove && commitMove()) {
             interruptedMove = false
             updateAnchorPose = true

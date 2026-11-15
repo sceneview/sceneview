@@ -13,7 +13,7 @@ internal class FakeInstantPlacementPoint : InstantPlacementPoint(0L, null) {
     override fun createAnchor(pose: Pose) = anchorFactory(pose)
 }
 
-internal class FakePlacementAnchor(private val location: Pose) : Anchor() {
+internal class FakePlacementAnchor(var location: Pose) : Anchor() {
     var state = TrackingState.TRACKING
     var detached = false
     override fun getPose() = location

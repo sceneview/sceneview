@@ -15,13 +15,93 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AutoPlacementInstantPlacementTest {
+    @Test fun `refinement during a drag rebases the release before landing on the actual floor`() {
+        val (point, placement, state) = standing()
+        val previous = placement.anchor.pose
+        val pending = AutoPlacementCandidate(point,
+            Pose(floatArrayOf(0.5f, -1.3f, -1.8f), previous.rotationQuaternion), null)
+        val refined = Pose(floatArrayOf(previous.tx(), -0.8f, previous.tz()), previous.rotationQuaternion)
+        (placement.anchor as FakePlacementAnchor).location = refined
+        point.method = TrackingMethod.FULL_TRACKING
+        val floor = TestPlane(Pose.makeTranslation(0f, -0.8f, 0f))
+        state.beginAdjustment()
+        updateInstantPlacement(placement, listOf(floor), state, true)
+        assertEquals("Landing waits for release", 0, floor.anchorsCreated)
+
+        val rebased = rebaseInstantPlacementDrag(pending, previous, placement.anchor.pose)
+        assertArrayEquals(floatArrayOf(0.5f, -0.8f, -1.8f), rebased.pose.translation, 0.00001f)
+        assertArrayEquals(pending.pose.rotationQuaternion, rebased.pose.rotationQuaternion, 0.00001f)
+        val released = rebased.createAnchor()!!
+        placement.anchor.detach()
+        placement.anchor = released.anchor
+        placement.pose = released.pose
+        state.endAdjustment()
+        updateInstantPlacement(placement, listOf(floor), state, true)
+        assertSame("The refined floor must remain eligible after release", floor, placement.planeOrNull)
+        assertEquals(1, floor.anchorsCreated)
+        assertEquals(-0.8f, placement.anchor.pose.ty(), 0.00001f)
+    }
+
+    @Test fun `rebasing preserves anchor local movement and rotation without applying refinement twice`() {
+        val point = FakeInstantPlacementPoint()
+        val previous = Pose.makeTranslation(0f, -1.3f, -1.14f)
+        val local = Pose(floatArrayOf(0.3f, 0f, -0.4f), floatArrayOf(0f, 0.4f, 0f, 0.916515f))
+        val pending = AutoPlacementCandidate(point, previous.compose(local), null)
+        val refined = Pose(floatArrayOf(0.2f, -0.8f, -1f), floatArrayOf(0f, 0.70710677f, 0f, 0.70710677f))
+        val rebased = rebaseInstantPlacementDrag(pending, previous, refined)
+        val expected = refined.compose(local)
+        assertArrayEquals(expected.translation, rebased.pose.translation, 0.00001f)
+        assertArrayEquals(expected.rotationQuaternion, rebased.pose.rotationQuaternion, 0.00001f)
+        val unchanged = rebaseInstantPlacementDrag(rebased, refined, refined)
+        assertArrayEquals(rebased.pose.translation, unchanged.pose.translation, 0.00001f)
+        assertArrayEquals(rebased.pose.rotationQuaternion, unchanged.pose.rotationQuaternion, 0.00001f)
+    }
+
+    @Test fun `instant refinement does not move a pending detected plane target`() {
+        val plane = TestPlane()
+        val pending = AutoPlacementCandidate(plane, plane.centerPose)
+        assertSame(pending, rebaseInstantPlacementDrag(pending,
+            Pose.makeTranslation(0f, -1.3f, 0f), Pose.makeTranslation(0f, -0.8f, 0f)))
+    }
+
+    @Test fun `estimated floor drag rejects distant near and nonfinite camera relative targets`() {
+        val point = FakeInstantPlacementPoint()
+        val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
+        val camera = Pose.makeTranslation(12f, 1f, -5f)
+        for (distance in listOf(65f, 3.01f, 0.24f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            var anchors = 0
+            point.anchorFactory = { anchors++; FakePlacementAnchor(it) }
+            val fallback = AutoPlacementCandidate(point,
+                Pose.makeTranslation(camera.tx() + distance, camera.ty(), camera.tz()), null)
+            val candidate = horizontalDragCandidate(placement, emptyList(),
+                fromHit = { error("No plane exists") }, onContactPlane = { fallback }, cameraPose = camera)
+            assertNull("Unusable distance: $distance", candidate)
+            assertNull(candidate?.createAnchor())
+            assertEquals("An out of range fallback must not create an anchor", 0, anchors)
+        }
+    }
+
+    @Test fun `estimated floor drag accepts both distance boundaries relative to the camera`() {
+        val point = FakeInstantPlacementPoint()
+        val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
+        val camera = Pose.makeTranslation(12f, 1f, -5f)
+        for (distance in listOf(0.25f, 3f)) {
+            val fallback = AutoPlacementCandidate(point,
+                Pose.makeTranslation(camera.tx() + distance, camera.ty(), camera.tz()), null)
+            val candidate = horizontalDragCandidate(placement, emptyList(),
+                fromHit = { error("No plane exists") }, onContactPlane = { fallback }, cameraPose = camera)
+            assertSame(fallback, candidate)
+            assertNotNull(candidate!!.createAnchor())
+        }
+    }
+
     @Test fun `instant placements can drag with no plane hits in either tracking method`() {
         for (method in TrackingMethod.entries) {
             val point = FakeInstantPlacementPoint().apply { this.method = method }
             val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
             val movedPose = Pose(floatArrayOf(0.3f, -1.3f, -1.5f), placement.pose.rotationQuaternion)
             val fallback = AutoPlacementCandidate(point, movedPose, null)
-            val target = horizontalDragCandidate(placement, emptyList(),
+            val target = horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits = emptyList(),
                 fromHit = { error("No plane exists") }, onContactPlane = { fallback })!!
             assertSame(fallback, target)
             assertTrue(target.accepts(target.pose))
@@ -37,7 +117,7 @@ class AutoPlacementInstantPlacementTest {
         val plane = TestPlane()
         val hit = TestHit(plane, plane.centerPose)
         val expected = AutoPlacementCandidate(plane, hit.hitPose)
-        assertSame(expected, horizontalDragCandidate(placement, listOf(hit),
+        assertSame(expected, horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits = listOf(hit),
             fromHit = { assertSame(hit, it); expected },
             onContactPlane = { error("A detected plane must win") }))
     }
@@ -47,7 +127,7 @@ class AutoPlacementInstantPlacementTest {
         val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
         val outside = TestPlane().apply { contains = false }
         val expected = AutoPlacementCandidate(point, point.pose, null)
-        assertSame(expected, horizontalDragCandidate(placement,
+        assertSame(expected, horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits =
             listOf(TestHit(point, point.pose), TestHit(outside, outside.centerPose)),
             fromHit = { error("Neither hit is a usable plane") }, onContactPlane = { expected }))
     }
@@ -57,11 +137,11 @@ class AutoPlacementInstantPlacementTest {
         val placement = AutoPlacementCandidate(plane, plane.centerPose).createAnchor()!!
         val expected = AutoPlacementCandidate(plane, plane.centerPose)
         val hit = TestHit(plane, plane.centerPose)
-        assertSame(expected, horizontalDragCandidate(placement, listOf(hit),
+        assertSame(expected, horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits = listOf(hit),
             fromHit = { expected }, onContactPlane = { error("No estimate for a plane placement") }))
         plane.contains = false
         for (hits in listOf(emptyList(), listOf(hit))) {
-            assertNull(horizontalDragCandidate(placement, hits,
+            assertNull(horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits = hits,
                 fromHit = { error("No valid plane hit") },
                 onContactPlane = { error("No estimate for a plane placement") }))
         }
@@ -70,10 +150,10 @@ class AutoPlacementInstantPlacementTest {
     @Test fun `an unusable contact ray or a paused instant point cannot commit a drag`() {
         val point = FakeInstantPlacementPoint()
         val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
-        assertNull(horizontalDragCandidate(placement, emptyList(),
+        assertNull(horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits = emptyList(),
             fromHit = { error("No plane exists") }, onContactPlane = { null }))
         point.state = TrackingState.PAUSED
-        val candidate = horizontalDragCandidate(placement, emptyList(),
+        val candidate = horizontalDragCandidate(placement, cameraPose = Pose.IDENTITY, hits = emptyList(),
             fromHit = { error("No plane exists") },
             onContactPlane = { AutoPlacementCandidate(point, point.pose, null) })!!
         assertFalse(candidate.accepts(candidate.pose))

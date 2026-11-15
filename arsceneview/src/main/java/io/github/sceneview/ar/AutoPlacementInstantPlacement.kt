@@ -85,6 +85,16 @@ internal fun updateInstantPlacement(
     ) state.gestureHapticSink?.invoke(ARHapticEvent.Placed)
 }
 
+/** Carry an estimated-floor move with its live anchor as ARCore refines the world pose. */
+internal fun rebaseInstantPlacementDrag(
+    candidate: AutoPlacementCandidate,
+    previousAnchorPose: Pose,
+    refinedAnchorPose: Pose,
+): AutoPlacementCandidate = if (candidate.trackable is InstantPlacementPoint) {
+    AutoPlacementCandidate(candidate.trackable,
+        refinedAnchorPose.compose(previousAnchorPose.inverse().compose(candidate.pose)), candidate.kind)
+} else candidate
+
 /** ARCore owns the estimate and its refinement; the distance guess puts it on the floor. */
 internal fun findInstantPlacementSurface(
     frame: Frame,
