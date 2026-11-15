@@ -75,7 +75,7 @@ fun MaterialInstance.setExternalTexture(name: String, texture: Texture) =
  * (created by [io.github.sceneview.loaders.MaterialLoader.createSemanticsOverlayInstance]).
  *
  * [texture] must be a single-channel `R8` [Texture] whose red channel holds a `SemanticLabel`
- * ordinal (`0..11`) scaled to `[0, 1]`. Re-call this — or re-upload into the same [Texture] — on
+ * ordinal (`0..11`, `UNLABELED` first) scaled to `[0, 1]`. Re-call this — or re-upload into the same [Texture] — on
  * every frame to refresh the overlay (#1868).
  */
 fun MaterialInstance.setSemanticsTexture(

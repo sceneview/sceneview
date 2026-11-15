@@ -942,7 +942,7 @@ internal fun RerunModelScreen(
     // A result that opens on its Photo layer is entered from inside the place, then seen whole
     // ([ScanOpening]); one that opens on its model stays on its framing, as before.
     val entersLow = false
-    // One per stage, as the veil below is: a stage started over is let seen again.
+    // One per stage, as the veil below is: a stage started over is let seen again (#5098).
     val cinematics = rememberResultCinematics(stageKey, orbit, reveals = entersLow)
     // Read live by the framing below, so a toggle and the frame that flies to it agree.
     var plan by remember(stageKey) { mutableStateOf(false) }

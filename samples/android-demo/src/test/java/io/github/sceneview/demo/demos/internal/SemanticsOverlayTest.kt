@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import com.google.ar.core.SemanticLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -15,7 +16,7 @@ import java.nio.ByteBuffer
  * Pins the contract that backs the `ARSceneSemanticsDemo` Compose bitmap overlay (#1868,
  * #3396, #3527): row-strided input compacts and colours correctly regardless of stride, rotation
  * re-indexes without resampling, `UNLABELED` stays transparent, and the 12-class colour
- * palette / label tables stay the right size.
+ * palette / label tables stay the right size and in ARCore's own order (#4036).
  */
 class SemanticsOverlayTest {
 
@@ -27,9 +28,9 @@ class SemanticsOverlayTest {
         val height = 2
         val rowStride = 5 // 2 padding bytes per row
         val source = ByteBuffer.allocateDirect(rowStride * height)
-        // Row 0: ordinals 0(SKY),1(BUILDING),2(TREE) then padding.
-        // Row 1: ordinals 3(ROAD),4(SIDEWALK),5(TERRAIN) then padding.
-        val ordinals = intArrayOf(0, 1, 2, 3, 4, 5)
+        // Row 0: ordinals 1(SKY),2(BUILDING),3(TREE) then padding.
+        // Row 1: ordinals 4(ROAD),5(SIDEWALK),6(TERRAIN) then padding.
+        val ordinals = intArrayOf(1, 2, 3, 4, 5, 6)
         for (y in 0 until height) {
             for (x in 0 until width) {
                 source.put(y * rowStride + x, ordinals[y * width + x].toByte())
@@ -50,27 +51,51 @@ class SemanticsOverlayTest {
         val height = 1
         val source = ByteBuffer.allocateDirect(width * height)
         source.put(0, SemanticsOverlay.UNLABELED_ORDINAL.toByte())
-        source.put(1, 0) // SKY
+        source.put(1, 1) // SKY
 
         val pixels = SemanticsOverlay.labelBufferToArgb(source, width, height, width)
 
         assertEquals(0x00000000, pixels[0])
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[0], pixels[1])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[1])
     }
 
     @Test
-    fun `labelBufferToArgb clamps an out-of-range byte to UNLABELED and paints it transparent`() {
-        val source = ByteBuffer.allocateDirect(1)
+    fun `labelBufferToArgb leaves a byte past the last class transparent`() {
+        val source = ByteBuffer.allocateDirect(2)
         source.put(0, 200.toByte()) // way past LABEL_COUNT - 1
+        source.put(1, SemanticsOverlay.LABEL_COUNT.toByte()) // the first value past it
 
-        val pixels = SemanticsOverlay.labelBufferToArgb(source, width = 1, height = 1, rowStrideBytes = 1)
+        val pixels = SemanticsOverlay.labelBufferToArgb(source, width = 2, height = 1, rowStrideBytes = 2)
 
-        // coerceIn(0, LABEL_COUNT - 1) folds any garbage ordinal onto UNLABELED_ORDINAL (11), the
-        // last valid entry — and UNLABELED is by contract painted fully transparent (see the
-        // "paints UNLABELED fully transparent" test above), not PALETTE_ARGB[11]'s opaque black.
-        // A corrupt/unrecognized byte should show the live camera through, never a solid colour
-        // that looks like a deliberate classification.
+        // A corrupt or unrecognised byte should show the live camera through, never a solid
+        // colour that looks like a deliberate classification — and never the last class's one.
         assertEquals(0x00000000, pixels[0])
+        assertEquals(0x00000000, pixels[1])
+    }
+
+    @Test
+    fun `labelBufferToArgb paints each class in the colour the legend gives its name`() {
+        // The byte ARCore writes is the SemanticLabel ordinal. Read against a table that starts
+        // at SKY, a BUILDING wall came out in the legend's "Tree" green and a chair ARCore called
+        // OBJECT in its "Vehicle" blue (#4036).
+        val labels = SemanticLabel.values().filter { it != SemanticLabel.UNLABELED }
+        val source = ByteBuffer.allocateDirect(labels.size)
+        labels.forEachIndexed { i, label -> source.put(i, label.ordinal.toByte()) }
+
+        val pixels = SemanticsOverlay.labelBufferToArgb(
+            source,
+            width = labels.size,
+            height = 1,
+            rowStrideBytes = labels.size,
+        )
+
+        val byName = SemanticsOverlay.LABEL_NAMES.map { it.uppercase() }
+        labels.forEachIndexed { i, label ->
+            assertEquals(label.name, SemanticsOverlay.PALETTE_ARGB[byName.indexOf(label.name)], pixels[i])
+        }
+        assertEquals("BUILDING is terracotta", 0xFFD95F57.toInt(), pixels[labels.indexOf(SemanticLabel.BUILDING)])
+        assertEquals("OBJECT is amber", 0xFFFFC207.toInt(), pixels[labels.indexOf(SemanticLabel.OBJECT)])
+        assertEquals("WATER is cyan, not left transparent", 0xFF00BDD4.toInt(), pixels[labels.indexOf(SemanticLabel.WATER)])
     }
 
     @Test
@@ -105,13 +130,13 @@ class SemanticsOverlayTest {
 
     @Test
     fun `labelBufferToArgb rotates 90 degrees clockwise without resampling`() {
-        // 2x1 source: [SKY(0), BUILDING(1)] -> rotated 90 becomes a 1x2 column,
+        // 2x1 source: [SKY(1), BUILDING(2)] -> rotated 90 becomes a 1x2 column,
         // reading top-to-bottom as [SKY, BUILDING] (matches DepthVisualization's indexing).
         val width = 2
         val height = 1
         val source = ByteBuffer.allocateDirect(width * height)
-        source.put(0, 0) // SKY
-        source.put(1, 1) // BUILDING
+        source.put(0, 1) // SKY
+        source.put(1, 2) // BUILDING
 
         val pixels = SemanticsOverlay.labelBufferToArgb(
             source,
@@ -125,8 +150,8 @@ class SemanticsOverlayTest {
 
         assertEquals(1, outWidth)
         assertEquals(2, outHeight)
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[0], pixels[0])
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[1])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[0])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[2], pixels[1])
     }
 
     @Test
@@ -156,12 +181,20 @@ class SemanticsOverlayTest {
     }
 
     @Test
-    fun `unlabeled is the last ordinal and renders black`() {
+    fun `label names and the unlabeled ordinal follow ARCore's own SemanticLabel order`() {
+        // The pin that was missing: both tables are indexed by the byte ARCore writes, so they
+        // have to list the classes in the order the SDK declares them (UNLABELED first).
         assertEquals(
-            SemanticsOverlay.LABEL_COUNT - 1,
-            SemanticsOverlay.UNLABELED_ORDINAL
+            SemanticLabel.values().map { it.name },
+            SemanticsOverlay.LABEL_NAMES.map { it.uppercase() },
         )
-        // UNLABELED is painted transparent by the shader; its legend colour is black.
+        assertEquals(SemanticLabel.UNLABELED.ordinal, SemanticsOverlay.UNLABELED_ORDINAL)
+    }
+
+    @Test
+    fun `unlabeled is ARCore's first ordinal and renders black`() {
+        assertEquals(0, SemanticsOverlay.UNLABELED_ORDINAL)
+        // UNLABELED is painted transparent by the overlay; its table colour is black.
         assertEquals(
             0xFF000000.toInt(),
             SemanticsOverlay.PALETTE_ARGB[SemanticsOverlay.UNLABELED_ORDINAL]
@@ -209,7 +242,15 @@ class SemanticsOverlayTest {
     fun `a real top label is never reported as unclassified, however high its fraction`() {
         assertFalse(
             SemanticsOverlay.isOutdoorSceneUnclassified(
-                topOrdinal = 0, // SKY
+                topOrdinal = 1, // SKY
+                topFraction = 1.0f,
+            )
+        )
+        // WATER is the last ordinal, where this table used to keep UNLABELED: a lake filling
+        // the frame is a classified scene, not "nothing classified yet".
+        assertFalse(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = SemanticLabel.WATER.ordinal,
                 topFraction = 1.0f,
             )
         )
