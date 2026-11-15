@@ -583,13 +583,15 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: inputs.force-all || needs.changes.outputs.android == 'true'
+    # Web-only changes must also reach the detekt gate (#4424).
+    if: inputs.force-all || needs.changes.outputs.android == 'true' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
       - name: Fetch binary assets (android)
+        if: inputs.force-all || needs.changes.outputs.android == 'true'
         uses: ./.github/actions/fetch-assets
         with:
           scopes: android
@@ -599,11 +601,12 @@ jobs:
       # The demo checks its library dependencies, so this single task covers
       # the Android source graph without separate library analyses.
       - name: Lint
+        if: inputs.force-all || needs.changes.outputs.android == 'true'
         run: ./gradlew :samples:android-demo:lintDebug --stacktrace
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml).
-      # Runs on the four library modules plus the Play Store demo (#3450): the
+      # Runs on the five library modules plus the Play Store demo (#3450): the
       # demo's task used to be scheduled nowhere, so its missing dependency on
       # `generateDemoRegistry` and its 93 grandfathered findings went unseen.
       #
@@ -620,7 +623,7 @@ jobs:
       # What still blocks is the bug-finding rules (potential-bugs,
       # coroutines, exceptions, empty-blocks, dead code).
       - name: Detekt
-        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt :samples:android-demo:detekt --stacktrace
+        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt :sceneview-web:detekt :samples:android-demo:detekt --stacktrace
 
       - name: Upload detekt reports
         if: always()
@@ -632,6 +635,7 @@ jobs:
             arsceneview/build/reports/detekt/
             sceneview-core/build/reports/detekt/
             sceneview-compose/build/reports/detekt/
+            sceneview-web/build/reports/detekt/
             samples/android-demo/build/reports/detekt/
           if-no-files-found: ignore
 

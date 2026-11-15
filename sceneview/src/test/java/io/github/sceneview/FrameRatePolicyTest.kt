@@ -35,8 +35,9 @@ import kotlin.reflect.jvm.kotlinFunction
 class FrameRatePolicyTest {
 
     /**
-     * The production wake condition, verbatim from `SceneView.kt`: a policy that draws
-     * unconditionally, or a gate something has invalidated.
+     * The production wake condition with an empty destroy queue: a policy that draws
+     * unconditionally, or a gate something has invalidated. Pending-destroy wake-ups are covered
+     * by DeferredDestroyQueueTest.
      */
     private fun shouldRenderState(
         policy: androidx.compose.runtime.State<FrameRatePolicy>,

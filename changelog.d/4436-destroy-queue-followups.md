@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **On-demand scenes finish pending resource destruction before parking ([#4436](https://github.com/sceneview/sceneview/issues/4436)).** Enqueuing a deferred destroy wakes an idle scene, which keeps ticking until its engine's queue is empty. Correct ImageNode and ViewNode comments to explain the teardown margin rather than delayed material-instance reclamation.
+- **Materials demo: retire replaced studio environments after the scene applies the replacement ([#4436](https://github.com/sceneview/sceneview/issues/4436)).** The Materials demo releases the previous lighting and backdrop after Compose applies the swap, instead of guessing from two frame callbacks.
