@@ -648,8 +648,9 @@ private fun SemanticLegend(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // UNLABELED (last entry) is intentionally omitted — it renders transparent.
-            for (ordinal in 0 until SemanticsOverlay.UNLABELED_ORDINAL) {
+            // UNLABELED is intentionally omitted — it renders transparent.
+            for (ordinal in 0 until SemanticsOverlay.LABEL_COUNT) {
+                if (ordinal == SemanticsOverlay.UNLABELED_ORDINAL) continue
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)

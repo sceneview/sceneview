@@ -3124,7 +3124,8 @@ ARSceneView(
         val groundFraction = frame.semanticLabelFraction(SemanticLabel.TERRAIN)
         if (groundFraction > 0.3f) { /* enough ground in view to place a model */ }
 
-        // Per-pixel raster (R8, label ordinal per pixel — `SemanticLabel.forNumber(byte)`).
+        // Per-pixel raster (R8, label ordinal per pixel, UNLABELED = 0 … WATER = 11 —
+        // decode with `SemanticLabel.values()[byte.toInt() and 0xFF]`).
         // Caller-owned Image — close in `use { }` or ARCore will throw ResourceExhausted
         // after 2-3 leaked frames. Returns null while semantics are warming up.
         frame.semanticImage()?.use { image -> /* walk image.planes[0].buffer */ }
@@ -3144,8 +3145,8 @@ available — making "place on TERRAIN" rules naturally wait for the first usabl
 **Visualizing the segmentation (#1868).** To render the per-pixel labels as a tinted overlay
 instead of just reading them, use the built-in `semantics_overlay.filamat` material. Upload the
 `semanticImage()` R8 raster into a Filament `R8` `Texture`, then paint a quad with the overlay
-material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`
-stays transparent):
+material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`,
+ordinal `0`, stays transparent):
 
 ```kotlin
 import io.github.sceneview.material.setSemanticsOpacity
