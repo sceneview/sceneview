@@ -3,7 +3,6 @@ package io.github.sceneview.ar
 import com.google.android.filament.Box
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingState
-import dev.romainguy.kotlin.math.inverse
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
@@ -115,7 +114,8 @@ fun Plane.placementBoundsFit(bounds: Box, modelTransform: Transform): PlacementB
     return placementBoundsFit(
         boundsCenter = bounds.centerPosition,
         boundsHalfExtent = bounds.halfExtentSize,
-        modelToPlane = inverse(centerPose.transform) * modelTransform,
+        // Rigid-pose inversion preserves the exact affine bottom row during matrix conversion.
+        modelToPlane = centerPose.inverse().transform * modelTransform,
         planePolygon = polygonArray(),
     )
 }
