@@ -1725,6 +1725,8 @@ fun ARSceneView(
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
 
                     val childNodes = childNodesRef.get()
+                    // Use only this tick's frame; never retain it across Session.update() calls.
+                    var arFrame: Frame? = null
 
                     // AR frame update — feed ARCore data into camera, lights, planes.
                     arCore.session?.let { session ->
@@ -1755,6 +1757,7 @@ fun ARSceneView(
                                     session = session,
                                     frame = frame
                                 )
+                                arFrame = frame
                                 notifyHostOfFrame(
                                     prevTrackingFailureRef = prevTrackingFailureRef,
                                     onTrackingFailureChangedRef = onTrackingFailureChangedRef,
@@ -1796,6 +1799,16 @@ fun ARSceneView(
                     }
                     lastFrameTimeNanos = frameTimeNanos
                     gestureDetector.advanceInertia(inertiaDelta)
+
+                    // Custom placement can move in the host callback, node ticks (including smooth
+                    // transforms), or gesture inertia. Sample contacts only after all of them.
+                    arFrame?.let { frame ->
+                        try {
+                            cameraStreamRef.get()?.updateGroundContact(frame)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SceneView", "Ground contact update failed", e)
+                        }
+                    }
 
                     // Last, so the node ticks above are already accounted for: a glTF animation
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
@@ -2036,9 +2049,6 @@ private fun onARFrame(
         is DepthMeshNode -> n.update(session, frame)
         is PointCloudNode -> n.update(session, frame)
     }
-
-    // Last: the placed objects' contacts are read from the anchors moved just above.
-    cameraStream?.updateGroundContact(frame)
 }
 
 /**

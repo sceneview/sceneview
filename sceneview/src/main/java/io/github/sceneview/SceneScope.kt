@@ -983,6 +983,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * to how [size] is built: `Size(x, 0f, z)` is a floor quad (normal `+Y`), `Size(x, y, 0f)` is
      * a wall quad (normal `+Z`).
      *
+     * With custom AR placement and depth occlusion, also declare `ARSceneScope.GroundContact`
+     * with a world-space surface centre, normal and radius covering this shadow and any placement
+     * ring. It prevents surface depth noise from cutting them; `AutoPlacementScene` does this
+     * automatically.
+     *
      * ```kotlin
      * ContactShadow(
      *     size = Size(1.6f, 1.0f, 0f),
