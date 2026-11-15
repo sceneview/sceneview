@@ -36,11 +36,23 @@ class PersonMaskTest {
     }
 
     @Test
-    fun `PERSON ordinal is 9 — the ARCore Scene Semantics class index`() {
-        // Pinned against the documented ARCore SemanticLabel set
-        // (0 SKY .. 9 PERSON .. 11 UNLABELED). FrameSemanticsTest pins the live enum so a
-        // future SDK reorder is caught loudly elsewhere.
-        assertEquals(9, PersonMask.PERSON_ORDINAL)
+    fun `PERSON ordinal is 10 — the ARCore Scene Semantics class index`() {
+        // ARCore's SemanticLabel set is 0 UNLABELED · 1 SKY .. 9 VEHICLE · 10 PERSON · 11 WATER.
+        // Pinned here against the live enum, not only against a number written down by hand:
+        // it read 9 (VEHICLE) for as long as nothing compared it to the SDK (#4036).
+        assertEquals(10, PersonMask.PERSON_ORDINAL)
+        assertEquals(com.google.ar.core.SemanticLabel.PERSON.ordinal, PersonMask.PERSON_ORDINAL)
+    }
+
+    @Test
+    fun `build leaves VEHICLE pixels out of the mask`() {
+        // The class just before PERSON, which the mask used to pick out instead.
+        val vehicle = com.google.ar.core.SemanticLabel.VEHICLE.ordinal
+        val source = semanticBuffer(intArrayOf(vehicle, PersonMask.PERSON_ORDINAL), width = 2, height = 1)
+        val mask = PersonMask.build(source, width = 2, height = 1, rowStrideBytes = 2)
+
+        assertEquals("VEHICLE → 0x00", PersonMask.BACKGROUND_BYTE, mask.get(0))
+        assertEquals("PERSON → 0xFF", PersonMask.PERSON_BYTE, mask.get(1))
     }
 
     @Test
@@ -48,8 +60,8 @@ class PersonMaskTest {
         // 2x2 raster: top-left PERSON, the other three non-PERSON classes.
         val source = semanticBuffer(
             intArrayOf(
-                PersonMask.PERSON_ORDINAL, 0, // PERSON, SKY
-                3, 11                          // ROAD, UNLABELED
+                PersonMask.PERSON_ORDINAL, 1, // PERSON, SKY
+                4, 0                           // ROAD, UNLABELED
             ),
             width = 2,
             height = 2
@@ -78,7 +90,7 @@ class PersonMaskTest {
         // Overwrite the real (non-padding) pixels with a non-PERSON class.
         for (y in 0 until height) {
             for (x in 0 until width) {
-                buffer.put(y * rowStride + x, 0) // SKY
+                buffer.put(y * rowStride + x, 1) // SKY
             }
         }
 

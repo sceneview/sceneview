@@ -239,8 +239,10 @@ fun Frame.rawDepthConfidenceImage(): Image? = try {
  * [SemanticLabel.PERSON], [SemanticLabel.WATER], [SemanticLabel.UNLABELED] (#1730).
  *
  * Wraps [Frame.acquireSemanticImage]. Each pixel byte is the ordinal of the matching
- * [SemanticLabel] — use `SemanticLabel.forNumber(byte.toInt())` to decode. Typical resolution
- * is 256×144 regardless of the active [com.google.ar.core.CameraConfig].
+ * [SemanticLabel], in the order ARCore declares them — `0 UNLABELED`, `1 SKY`, `2 BUILDING`,
+ * `3 TREE`, `4 ROAD`, `5 SIDEWALK`, `6 TERRAIN`, `7 STRUCTURE`, `8 OBJECT`, `9 VEHICLE`,
+ * `10 PERSON`, `11 WATER` — so `SemanticLabel.values()[byte.toInt() and 0xFF]` decodes it.
+ * Typical resolution is 256×144 regardless of the active [com.google.ar.core.CameraConfig].
  *
  * Requires [Config.SemanticMode.ENABLED] on the session. Outdoor scenes only — the model has
  * no indoor training data. On devices without the model the session silently downgrades to
@@ -258,7 +260,7 @@ fun Frame.rawDepthConfidenceImage(): Image? = try {
  * onSessionUpdated = { _, frame ->
  *     frame.semanticImage()?.use { image ->
  *         val buffer = image.planes[0].buffer  // R8 — one byte per pixel
- *         // Decode: SemanticLabel.forNumber(buffer.get(idx).toInt())
+ *         // Decode: SemanticLabel.values()[buffer.get(idx).toInt() and 0xFF]
  *     }
  * }
  * ```
