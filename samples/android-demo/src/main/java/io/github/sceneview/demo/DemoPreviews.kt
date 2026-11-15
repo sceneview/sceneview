@@ -3,18 +3,26 @@ package io.github.sceneview.demo
 import android.content.res.Resources
 import android.util.LruCache
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.md_theme_dark_surfaceContainer
+import io.github.sceneview.demo.theme.md_theme_light_surfaceContainer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -120,9 +128,9 @@ object DemoPreviews {
 }
 
 /**
- * The captured preview for this demo in the current colour scheme, or `null`
- * while an uncached picture loads or when no capture exists — callers draw the icon tile
- * instead. Cached pictures are available in the first composition, including on Back.
+ * The captured preview for this demo in the current colour scheme, or `null` when no
+ * capture exists. An uncached picture fades in over a neutral placeholder after loading.
+ * Cached pictures are available in the first composition, including on Back.
  *
  * [dark] picks the capture explicitly. A surface that is dark in both themes — the
  * home hero band over the live stage — passes `true`, so its white copy never sits
@@ -136,6 +144,28 @@ fun DemoEntry.previewPainter(dark: Boolean = isSystemInDarkTheme()): Painter? =
             val bitmap by produceState<ImageBitmap?>(initialValue = DemoPreviews.cachedBitmap(res)) {
                 if (value == null) value = DemoPreviews.bitmap(resources, res)
             }
-            remember(bitmap) { bitmap?.let { BitmapPainter(it) } }
+            val alpha = animateFloatAsState(
+                targetValue = if (bitmap == null) 0f else 1f,
+                animationSpec = SceneViewTokens.Motion.fade(),
+                label = "previewFade",
+            )
+            val placeholder = if (dark) md_theme_dark_surfaceContainer else md_theme_light_surfaceContainer
+            remember(bitmap, placeholder) {
+                PreviewPainter(bitmap?.let { BitmapPainter(it) }, placeholder, alpha)
+            }
         }
     }
+
+/** The same loading treatment for grid, carousel and pager, without changing their layout. */
+private class PreviewPainter(
+    private val image: Painter?,
+    private val placeholder: Color,
+    private val alpha: State<Float>,
+) : Painter() {
+    override val intrinsicSize: Size = image?.intrinsicSize ?: Size.Unspecified
+
+    override fun DrawScope.onDraw() {
+        drawRect(placeholder)
+        image?.let { with(it) { draw(size, alpha = alpha.value) } }
+    }
+}

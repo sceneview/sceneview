@@ -10,10 +10,22 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.core.app.ApplicationProvider
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.md_theme_dark_surfaceContainer
+import io.github.sceneview.demo.theme.md_theme_light_surfaceContainer
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -30,6 +42,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** A cold preview cache must not hold up the first frame of Back from an AR demo (#4461). */
 @RunWith(RobolectricTestRunner::class)
@@ -40,6 +54,7 @@ class DemoPreviewsTest {
     val composeRule = createComposeRule()
 
     private val decodeThreads = CopyOnWriteArrayList<Thread>()
+    private var decodeGate: CountDownLatch? = null
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val baseResources = context.resources
 
@@ -49,6 +64,7 @@ class DemoPreviewsTest {
     ) {
         override fun getDrawable(id: Int, theme: Theme?): Drawable {
             decodeThreads += Thread.currentThread()
+            check(decodeGate?.await(TIMEOUT_MS, TimeUnit.MILLISECONDS) != false) { "decode gate timed out" }
             return super.getDrawable(id, theme)
         }
     }
@@ -57,7 +73,10 @@ class DemoPreviewsTest {
     fun clearCache() = DemoPreviews.trimMemory()
 
     @After
-    fun releaseCache() = DemoPreviews.trimMemory()
+    fun releaseCache() {
+        decodeGate?.countDown()
+        DemoPreviews.trimMemory()
+    }
 
     @Test
     fun `a cache miss decodes off the main thread`() = runBlocking {
@@ -83,11 +102,36 @@ class DemoPreviewsTest {
     }
 
     @Test
-    fun `a cold preview first yields the icon fallback then a painter`() {
+    fun `a cold preview fades from a neutral placeholder to the picture`() {
+        composeRule.mainClock.autoAdvance = false
+        decodeGate = CountDownLatch(1)
         val observed = observePreview()
 
-        assertNull("the first composition must not wait for a decode", observed.first())
-        composeRule.waitUntil { observed.lastOrNull() != null }
+        val placeholder = List(64) { md_theme_light_surfaceContainer }
+        assertEquals(
+            "the first frame must be neutral without waiting for a decode",
+            placeholder,
+            pixels(observed.first()!!),
+        )
+        decodeGate!!.countDown()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            DemoPreviews.cachedBitmap(R.drawable.preview_ar_placement_light) != null
+        }
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            composeRule.mainClock.advanceTimeByFrame()
+            observed.size > 1
+        }
+        val expected = pixels(
+            BitmapPainter(DemoPreviews.cachedBitmap(R.drawable.preview_ar_placement_light)!!),
+            background = md_theme_light_surfaceContainer,
+        )
+        assertEquals("a newly decoded picture must start at zero opacity", placeholder, pixels(observed.last()!!))
+        composeRule.mainClock.advanceTimeBy(SceneViewTokens.Motion.fadeMillis / 2L)
+        val halfway = pixels(observed.last()!!)
+        assertFalse("the picture must become visible during the fade", halfway == placeholder)
+        assertFalse("the picture must not jump to full opacity", halfway == expected)
+        composeRule.mainClock.advanceTimeBy(SceneViewTokens.Motion.fadeMillis.toLong())
+        assertEquals(expected, pixels(observed.last()!!))
         assertFalse(decodeThreads.isEmpty())
         assertTrue(decodeThreads.all { it != Looper.getMainLooper().thread })
     }
@@ -100,6 +144,14 @@ class DemoPreviewsTest {
         val observed = observePreview()
 
         assertNotNull(observed.first())
+        assertEquals(
+            "a cache hit must be fully visible without a fade",
+            pixels(
+                BitmapPainter(DemoPreviews.cachedBitmap(R.drawable.preview_ar_placement_light)!!),
+                md_theme_light_surfaceContainer,
+            ),
+            pixels(observed.first()!!),
+        )
         assertEquals("the first frame reuses the cache", decodes, decodeThreads.size)
     }
 
@@ -114,13 +166,31 @@ class DemoPreviewsTest {
                 SideEffect { observed += dark to painter }
             }
         }
-        composeRule.waitUntil { observed.any { !it.first && it.second != null } }
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            DemoPreviews.cachedBitmap(R.drawable.preview_ar_placement_light) != null
+        }
+        composeRule.waitForIdle()
 
         composeRule.runOnIdle { dark = true }
         composeRule.waitForIdle()
-        composeRule.waitUntil { observed.any { it.first && it.second != null } }
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            DemoPreviews.cachedBitmap(R.drawable.preview_ar_placement_dark) != null
+        }
 
-        assertNull(observed.first { it.first }.second)
+        assertEquals(List(64) { md_theme_dark_surfaceContainer }, pixels(observed.first { it.first }.second!!))
+    }
+
+    @Test
+    fun `a demo without a capture keeps the icon fallback`() {
+        val demo = ALL_DEMOS.first().copy(id = "missing-preview")
+        val observed = CopyOnWriteArrayList<Painter?>()
+        composeRule.setContent {
+            val painter = demo.previewPainter(dark = false)
+            SideEffect { observed += painter }
+        }
+
+        assertFalse(observed.isEmpty())
+        observed.forEach { assertNull(it) }
     }
 
     private val previewContext: Context
@@ -138,5 +208,20 @@ class DemoPreviewsTest {
             }
         }
         return observed
+    }
+
+    /** Draw the actual painter, including animation opacity, without a device screenshot. */
+    private fun pixels(painter: Painter, background: Color = Color.Transparent): List<Color> {
+        val image = ImageBitmap(8, 8)
+        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(image), Size(8f, 8f)) {
+            drawRect(background)
+            with(painter) { draw(size) }
+        }
+        val pixels = image.toPixelMap()
+        return List(64) { pixels[it % 8, it / 8] }
+    }
+
+    private companion object {
+        const val TIMEOUT_MS = 5_000L
     }
 }
