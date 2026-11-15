@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -39,7 +40,7 @@ class SpaceFitTest {
             plane(-1.5f, 0.9f, -0.2f, 3.6f, 0.6f, axis = 1, normal = 1f) // worktop
         }
         // Taken for one space as wide as the room, its opening never found.
-        val walked = SpaceFitter.of(kitchen.cloud(), eye = kitchen.eye)
+        val walked = SpaceFitter.of(kitchen.cloud(), view = SpaceView(kitchen.eye))
         assertTrue("${walked?.width} wide, ${walked?.depth} deep", walked == null || !SpaceFitter.isOneSpace(walked))
         // The cupboard measured right, with a walk across the room filmed behind it: no figure
         // either, the scan cannot tell which of the two it is.
@@ -47,7 +48,7 @@ class SpaceFitTest {
             plane(-1.5f, -0.1f, DEPTH + 0.4f, 3.6f, 3f, axis = 1, normal = 1f) // the floor, on to the far wall
             plane(-1.5f, -0.1f, DEPTH + 3.4f, 3.6f, 2.4f, axis = 2, normal = -1f) // the far wall
         }
-        val behind = SpaceFitter.of(wandered.cloud(), eye = wandered.eye)
+        val behind = SpaceFitter.of(wandered.cloud(), view = SpaceView(wandered.eye))
         assertTrue("share ${behind?.share}", behind == null || !SpaceFitter.isOneSpace(behind))
     }
 
@@ -75,24 +76,24 @@ class SpaceFitTest {
     @Test
     fun `a capture reads the faces closed so far, the back alone first`() {
         val scan = Scan().apply { plane(0f, 0f, 0f, WIDTH, HEIGHT, axis = 2, normal = 1f) }
-        assertEquals(setOf(SpaceFace.Back), SpaceFitter.closed(scan.cloud(), eye = scan.eye))
+        assertEquals(setOf(SpaceFace.Back), SpaceFitter.closed(scan.cloud(), view = SpaceView(scan.eye)))
         // A back alone has no depth to measure yet.
-        assertNull(SpaceFitter.of(scan.cloud(), eye = scan.eye))
+        assertNull(SpaceFitter.of(scan.cloud(), view = SpaceView(scan.eye)))
         scan.plane(0f, 0f, 0f, WIDTH, DEPTH, axis = 1, normal = 1f)
-        assertEquals(setOf(SpaceFace.Back, SpaceFace.Bottom), SpaceFitter.closed(scan.cloud(), eye = scan.eye))
+        assertEquals(setOf(SpaceFace.Back, SpaceFace.Bottom), SpaceFitter.closed(scan.cloud(), view = SpaceView(scan.eye)))
         // Left and right are the hand's own, standing before the opening.
         scan.plane(0f, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = 1f)
-        assertEquals(setOf(SpaceFace.Back, SpaceFace.Bottom, SpaceFace.Left), SpaceFitter.closed(scan.cloud(), eye = scan.eye))
+        assertEquals(setOf(SpaceFace.Back, SpaceFace.Bottom, SpaceFace.Left), SpaceFitter.closed(scan.cloud(), view = SpaceView(scan.eye)))
         scan.plane(WIDTH, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = -1f)
         scan.plane(0f, HEIGHT, 0f, WIDTH, DEPTH, axis = 1, normal = -1f)
         assertEquals(
             setOf(SpaceFace.Back, SpaceFace.Bottom, SpaceFace.Left, SpaceFace.Right, SpaceFace.Top),
-            SpaceFitter.closed(scan.cloud(), eye = scan.eye),
+            SpaceFitter.closed(scan.cloud(), view = SpaceView(scan.eye)),
         )
         // Nothing to read in no scan, nor on the wall of a room.
         assertTrue(SpaceFitter.closed(DenseCloud.Empty).isEmpty())
         val wall = Scan().apply { plane(0f, 0f, 0f, 4f, 2.4f, axis = 2, normal = 1f) }
-        assertTrue(SpaceFitter.closed(wall.cloud(), eye = wall.eye).isEmpty())
+        assertTrue(SpaceFitter.closed(wall.cloud(), view = SpaceView(wall.eye)).isEmpty())
     }
 
     @Test
@@ -146,16 +147,45 @@ class SpaceFitTest {
     }
 
     @Test
-    fun `where the phone stood is the middle of the path it recorded`() {
-        assertNull(SpaceFitter.eyeOf(ArDebugTrace()))
+    fun `how a space was filmed is read off the path its capture recorded`() {
+        assertNull(SpaceFitter.viewOf(ArDebugTrace()))
         val trace = ArDebugTrace()
         trace.addPose(0L, DebugPose(0f, 1f, 2f))
         trace.addPose(SECOND_NANOS, DebugPose(1f, 1.5f, 2f))
         trace.addPose(2 * SECOND_NANOS, DebugPose(2f, 2f, 2f))
-        val eye = checkNotNull(SpaceFitter.eyeOf(trace))
-        assertEquals(1f, eye.x, 1e-4f)
-        assertEquals(1.5f, eye.y, 1e-4f)
-        assertEquals(2f, eye.z, 1e-4f)
+        val view = checkNotNull(SpaceFitter.viewOf(trace))
+        // Where the phone stood: the middle of its path.
+        assertEquals(1f, view.eye.x, 1e-4f)
+        assertEquals(1.5f, view.eye.y, 1e-4f)
+        assertEquals(2f, view.eye.z, 1e-4f)
+        // Which way it looked: a camera looks down its own -Z.
+        val forward = checkNotNull(view.forward)
+        assertEquals(0f, forward.x, 1e-4f)
+        assertEquals(-1f, forward.z, 1e-4f)
+        // How far it went from its start, its height not counted: nine poses in ten within it.
+        assertEquals(1f, checkNotNull(view.strayM), 1e-4f)
+    }
+
+    @Test
+    fun `a phone that looked all round aimed at nothing`() {
+        val trace = ArDebugTrace()
+        for (step in 0 until TURN_STEPS) {
+            val yaw = (2 * Math.PI * step / TURN_STEPS).toFloat()
+            trace.addPose(step * SECOND_NANOS, RerunSyntheticRoom.lookPose(Vec3(0f, 1.4f, 0f), yaw, 0f))
+        }
+        val view = checkNotNull(SpaceFitter.viewOf(trace))
+        assertNull(view.forward)
+        assertEquals(0f, checkNotNull(view.strayM), 1e-4f)
+    }
+
+    @Test
+    fun `one space is filmed from one spot, whatever else the scan holds`() {
+        val fit = fitOf(cupboard(pipe = true), eye = Scan().eye)
+        val eye = Scan().eye
+        assertTrue(SpaceFitter.isOneSpace(fit, SpaceView(eye, strayM = 0.4f)))
+        // The capture's own reach: a step aside is not a walk, a walk is.
+        assertTrue(SpaceFitter.isOneSpace(fit, SpaceView(eye, strayM = SpaceStay.REACH_M)))
+        assertFalse(SpaceFitter.isOneSpace(fit, SpaceView(eye, strayM = 1.6f)))
     }
 
     @Test
@@ -292,7 +322,8 @@ class SpaceFitTest {
         assertNotNull(root.getValue("interior") as? JsonObject)
     }
 
-    private fun fitOf(scan: Scan, eye: Vec3? = null): SpaceFit = checkNotNull(SpaceFitter.of(scan.cloud(), eye = eye)) { "no space" }
+    private fun fitOf(scan: Scan, eye: Vec3? = null): SpaceFit =
+        checkNotNull(SpaceFitter.of(scan.cloud(), view = eye?.let(::SpaceView))) { "no space" }
 
     /** [degrees] folded into a quarter turn: the walls square the frame, the opening picks its side. */
     private fun turn(degrees: Float) = ((degrees % 360f) + 360f) % 360f
@@ -430,6 +461,7 @@ class SpaceFitTest {
         const val ROUGH = 0.03f
         const val MIN_ROUGH_DEPTH = 0.18f
         const val SEED = 20261114
+        const val TURN_STEPS = 12
         const val WHITE = -1
         const val SECOND_NANOS = 1_000_000_000L
         const val COARSE_VOXEL_M = 0.04f

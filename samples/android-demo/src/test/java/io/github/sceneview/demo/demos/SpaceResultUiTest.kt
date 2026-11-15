@@ -84,7 +84,19 @@ class SpaceResultUiTest {
         composeRule.onNodeWithText(text(R.string.scan_space_order)).assertIsDisplayed()
         composeRule.onNodeWithText("A box of 58 × 28 × 55 cm fits").assertIsDisplayed()
         composeRule.onNodeWithText("1 thing in the way").assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_space_no_top)).assertDoesNotExist()
         save("result-card")
+    }
+
+    @Test
+    fun `a space whose top was not seen says its height is only what was filmed`() {
+        measure = SpaceMeasure.Found(
+            SpaceFit(0.6f, 0.9f, 0.5f, setOf(SpaceFace.Front, SpaceFace.Top), emptyList(), SpaceBox(0.01f, 0f, 0.01f, 0.58f, 0.9f, 0.48f), 0f, 0f, 0f, 0f),
+        )
+        show()
+        composeRule.onNodeWithText("Inside 60 × 50 × 90 cm").assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_space_no_top)).assertIsDisplayed()
+        save("result-card-no-top")
     }
 
     @Test

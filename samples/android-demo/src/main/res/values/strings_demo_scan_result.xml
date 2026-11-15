@@ -60,6 +60,7 @@
     <string name="scan_space_fits">A box of %1$s × %2$s × %3$s %4$s fits</string>
     <string name="scan_space_fits_none">Too tight for a box</string>
     <string name="scan_space_fits_no_bottom">Film the bottom too, to get the box that fits</string>
+    <string name="scan_space_no_top">No top seen. If it has one, scan again and tilt up to it.</string>
     <plurals name="scan_space_obstacles">
         <item quantity="one">%d thing in the way</item>
         <item quantity="other">%d things in the way</item>

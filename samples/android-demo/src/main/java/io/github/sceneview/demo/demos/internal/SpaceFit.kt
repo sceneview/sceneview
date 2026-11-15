@@ -5,7 +5,9 @@ import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /*
  * A space measured from its scan: a shelf, a niche, the cupboard under a sink, a car boot. What
@@ -45,7 +47,7 @@ data class SpaceBox(val x: Float, val y: Float, val z: Float, val width: Float, 
  * its inside was sorted into when that is coarser. [share] is how much of the scan's surface
  * the space holds, on its faces and inside, from 0 to 1: the scan of one cupboard is mostly
  * that cupboard, a walk round a room is not ([SpaceFitter.isOneSpace]). [spread] is how thick the
- * scan's surfaces are, in metres: how far off the back nearly all of its own points lie. What
+ * scan's surfaces are, in metres: how far behind the back nearly all of its own points lie. What
  * stands nearer a face than that is not told from the face.
  */
 class SpaceFit(
@@ -72,6 +74,16 @@ class SpaceFit(
     }
 }
 
+/**
+ * How a space was filmed, read off its capture's path ([SpaceFitter.viewOf]): where the phone
+ * stood on average ([eye]), the space opening towards it; which way it looked on average
+ * ([forward], a unit vector), what it aimed at being inside the space; and how far from where it
+ * started it went across the ground, nine poses in ten within it ([strayM]), one space being
+ * filmed from one spot. `null` for what is not known: a phone that looked all round aimed at
+ * nothing.
+ */
+class SpaceView(val eye: Vec3, val forward: Vec3? = null, val strayM: Float? = null)
+
 /** Measures a [SpaceFit] off a scan's dense points. */
 object SpaceFitter {
     /** The dense cloud's own voxel ([DenseFusion]): a level-0 point stands for a square this wide. */
@@ -97,14 +109,25 @@ object SpaceFitter {
     const val ONE_SPOT_SIDE_M = 2.6f
 
     /**
-     * Whether [fit]'s scan is of that one space, not a walk round more than it: the space holds
-     * most of the scan, it is no wider or higher than one spot films, and its opening was found
-     * short of how far a space is looked for. A room walked round fails one of the three, and
-     * its figures would mean nothing.
+     * The least of a scan's surface a space holds when its capture is known to have stayed on
+     * one spot ([SpaceView.strayM]). A cupboard among kitchen units, the wall over the worktop
+     * and the floor before it in the scan too, holds 30 % of it ([RerunSyntheticCupboard]).
      */
-    fun isOneSpace(fit: SpaceFit): Boolean =
-        fit.share >= ONE_SPACE_SHARE && fit.width <= ONE_SPOT_SIDE_M && fit.height <= ONE_SPOT_SIDE_M &&
-            fit.depth < MAX_DEPTH_M - WALL_MARGIN_M
+    const val FILMED_SHARE = 0.15f
+
+    /**
+     * Whether [fit]'s scan is of that one space, not a walk round more than it: it is no wider
+     * or higher than one spot films, its opening was found short of how far a space is looked
+     * for, and it was filmed from one spot. [view] says so when it knows how far the phone went
+     * ([SpaceStay.REACH_M], what the capture itself holds it to; three hand-held scans of rooms
+     * went 1.5 to 1.7 m, 2026-11-14); without it, the space has to hold most of the scan. A room
+     * walked round fails, and its figures would mean nothing.
+     */
+    fun isOneSpace(fit: SpaceFit, view: SpaceView? = null): Boolean {
+        val sized = fit.width <= ONE_SPOT_SIDE_M && fit.height <= ONE_SPOT_SIDE_M && fit.depth < MAX_DEPTH_M - WALL_MARGIN_M
+        val stray = view?.strayM ?: return sized && fit.share >= ONE_SPACE_SHARE
+        return sized && stray <= SpaceStay.REACH_M && fit.share >= FILMED_SHARE
+    }
 
     /** A surface smaller than this (about 12 cm × 12 cm) closes no face. */
     private const val MIN_WALL_M2 = 0.015f
@@ -134,12 +157,35 @@ object SpaceFitter {
      */
     private const val MAX_WALL_MARGIN_M = 0.1f
 
-    /** How far off the back its own points are looked for, and the share of them [SpaceFit.spread] covers. */
+    /** How far behind the back its own points are looked for, and the share of them [SpaceFit.spread] covers. */
     private const val SLAB_M = 0.1f
-    private const val SPREAD_SHARE = 0.97f
+    private const val SPREAD_SHARE = 0.99f
+
+    /** The back's middle is the middle of its points within this of it, looked for this many times over. */
+    private const val SLAB_HALF_M = 0.05f
+    private const val SLAB_PASSES = 3
 
     /** No face is looked for nearer the point aimed at than this. */
     private const val CENTRE_GAP_M = 0.03f
+
+    /** The phone looked one way when its looks, averaged, still make this much of one. */
+    private const val MIN_STEADY = 0.5f
+
+    /** The share of a capture's poses [SpaceView.strayM] holds: a step aside and back is not a walk. */
+    private const val STRAY_SHARE = 0.9f
+
+    /**
+     * The look meets the scan where [AIM_POINTS] points within [AIM_RAY_M] of it gather within
+     * [AIM_GATHER_M] along it, further than [AIM_NEAR_M] from the phone. What was aimed at is
+     * [AIM_BACK_M] short of there, and the back is looked for within [AIM_REACH_M] of it, across
+     * and upright: under half the narrowest cupboard, so the wall round a wider one stays out.
+     */
+    private const val AIM_RAY_M = 0.05f
+    private const val AIM_NEAR_M = 0.15f
+    private const val AIM_POINTS = 6
+    private const val AIM_GATHER_M = 0.06f
+    private const val AIM_BACK_M = 0.1f
+    private const val AIM_REACH_M = 0.25f
 
     /** How far in front of the back a space is looked for: past the arm's-length capture. */
     private const val MAX_DEPTH_M = 1.5f
@@ -161,41 +207,60 @@ object SpaceFitter {
     private const val QUARTER_TURN = 90f
 
     /**
-     * Where the phone stood while [trace] was recorded, on average, `null` with no pose: the
-     * side a space was filmed from, which is its opening.
+     * How [trace]'s capture was filmed ([SpaceView]), `null` with no pose: where the phone stood
+     * on average, which way it looked when it looked one way more than all round, and how far
+     * from its first pose nine in ten of the others are, across the ground.
      */
-    fun eyeOf(trace: ArDebugTrace): Vec3? {
+    fun viewOf(trace: ArDebugTrace): SpaceView? {
         val count = trace.poseCount
         if (count == 0) return null
+        val first = trace.pose(0)
+        val strays = FloatArray(count)
         var x = 0f
         var y = 0f
         var z = 0f
+        var ax = 0f
+        var ay = 0f
+        var az = 0f
         for (i in 0 until count) {
             val pose = trace.pose(i)
             x += pose.x
             y += pose.y
             z += pose.z
+            // A camera looks down its own -Z.
+            val ahead = pose.rotate(0f, 0f, -1f)
+            ax += ahead.x
+            ay += ahead.y
+            az += ahead.z
+            strays[i] = hypot(pose.x - first.x, pose.z - first.z)
         }
-        return Vec3(x / count, y / count, z / count)
+        strays.sort()
+        val steady = sqrt(ax * ax + ay * ay + az * az)
+        return SpaceView(
+            eye = Vec3(x / count, y / count, z / count),
+            forward = if (steady >= count * MIN_STEADY) Vec3(ax / steady, ay / steady, az / steady) else null,
+            strayM = strays[((count - 1) * STRAY_SHARE).toInt()],
+        )
     }
 
     /**
      * The space [cloud] shows, `null` when it shows none: no normals, too few points, no wall to
      * square it on, or no surface behind what was aimed at with a bottom or a side to give it a
-     * depth. [eye] is where the phone stood, on average: the opening faces it. Without it the
-     * opening is the side most surfaces face.
+     * depth. [view] is how it was filmed: the opening faces where the phone stood, and the space
+     * is the one it aimed at. Without it the opening is the side most surfaces face, and the space
+     * is round the middle of what was seen of the back.
      */
-    fun of(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, eye: Vec3? = null): SpaceFit? =
-        walls(cloud, voxelM, eye)?.let { measure(it, voxelM) }
+    fun of(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, view: SpaceView? = null): SpaceFit? =
+        walls(cloud, voxelM, view)?.let { measure(it, voxelM) }
 
     /**
-     * The faces [cloud] closes so far, as seen from [eye]: its back, and each of the two sides,
+     * The faces [cloud] closes so far, filmed as [view] says: its back, and each of the two sides,
      * the bottom and the top a surface stands on. Empty while it shows no back, or one wider or
      * higher than one spot films ([ONE_SPOT_SIDE_M]). A capture reads it as it goes, to say which
      * face is still to film ([SpaceFaceGuide]): unlike [of], a back alone is enough for it.
      */
-    fun closed(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, eye: Vec3? = null): Set<SpaceFace> {
-        val walls = walls(cloud, voxelM, eye) ?: return emptySet()
+    fun closed(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, view: SpaceView? = null): Set<SpaceFace> {
+        val walls = walls(cloud, voxelM, view) ?: return emptySet()
         if (walls.across.size > ONE_SPOT_SIDE_M || walls.upright.size > ONE_SPOT_SIDE_M) return emptySet()
         return buildSet {
             add(SpaceFace.Back)
@@ -218,6 +283,9 @@ object SpaceFitter {
         val nu = FloatArray(n) { normals[it * 3] * c - normals[it * 3 + 2] * s }
         val nv = FloatArray(n) { normals[it * 3 + 1] }
         val nw = FloatArray(n) { normals[it * 3] * s + normals[it * 3 + 2] * c }
+
+        /** The world point or direction [at], in the frame: ([Vec3.x] = u, [Vec3.y] = v, [Vec3.z] = w). */
+        fun framed(at: Vec3) = Vec3(at.x * c - at.z * s, at.y, at.x * s + at.z * c)
     }
 
     /** A space along one axis, [from] one face [to] the other, and whether a surface closes each. */
@@ -227,14 +295,14 @@ object SpaceFitter {
 
     /**
      * A space's back at [wBack], and its faces [across] (left to right) and [upright] (bottom to
-     * top). [spread] is how thick the scan's surfaces are: how far off the back nearly all of
-     * its own points lie.
+     * top). [spread] is how thick the scan's surfaces are: how far behind the back nearly all
+     * of its own points lie.
      */
     private class Walls(val frame: Frame, val wBack: Float, val spread: Float, val across: Span, val upright: Span)
 
     /** The back [cloud] shows and the faces round it, `null` with no back to speak of. */
     @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one early return per thing a space needs
-    private fun walls(cloud: DenseCloud, voxelM: Float, eye: Vec3?): Walls? {
+    private fun walls(cloud: DenseCloud, voxelM: Float, view: SpaceView?): Walls? {
         val normals = cloud.normals ?: return null
         val n = cloud.count
         if (n < MIN_POINTS) return null
@@ -244,7 +312,7 @@ object SpaceFitter {
             side * side
         }
         val squared = wallYaw(normals, area, n) ?: return null
-        val frame = Frame(cloud, normals, area, opening(cloud.positions, normals, area, n, squared, eye))
+        val frame = Frame(cloud, normals, area, opening(cloud.positions, normals, area, n, squared, view?.eye))
         val u = frame.u
         val v = frame.v
         val w = frame.w
@@ -252,15 +320,30 @@ object SpaceFitter {
         val nv = frame.nv
         val nw = frame.nw
 
-        // The back: of the surfaces facing the opening, the deepest that is a wall.
-        val facing = peaks(n, area, { w[it] }) { nw[it] > FACING }
+        // What was aimed at, when the phone looked one way: a point inside the space.
+        val aim = view?.forward?.let { aimed(frame, view.eye, it) }
+        // The back: of the surfaces facing the opening, the deepest that is a wall. Behind what
+        // was aimed at when that is known: the wall a cupboard stands against carries on over
+        // its worktop and beside it, and is not its back there.
+        val backward = BooleanArray(n) {
+            nw[it] > FACING && (
+                aim == null ||
+                    w[it] < aim.z && (u[it] - aim.x) * (u[it] - aim.x) + (v[it] - aim.y) * (v[it] - aim.y) <= AIM_REACH_M * AIM_REACH_M
+                )
+        }
+        val facing = peaks(n, area, { w[it] }) { backward[it] }
         val largest = facing.maxOfOrNull { it.area } ?: return null
-        val wBack = facing.filter { it.area >= maxOf(MIN_WALL_M2, largest * BACK_SHARE) }.minByOrNull { it.at }?.at
+        var wBack = facing.filter { it.area >= maxOf(MIN_WALL_M2, largest * BACK_SHARE) }.minByOrNull { it.at }?.at
             ?: return null
-        val spread = quantile(n, area, SPREAD_SHARE, { abs(w[it] - wBack) }) { nw[it] > FACING && abs(w[it] - wBack) <= SLAB_M } ?: 0f
-        // What was aimed at: the middle of what was seen of the back.
-        val uc = quantile(n, area, 0.5f, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
-        val vc = quantile(n, area, 0.5f, { v[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
+        // The middle of that surface, not its deepest layer: a phone's depth makes a slab of a
+        // wall, and its nearer half would stand in the space as a thing in the way.
+        repeat(SLAB_PASSES) {
+            val around = wBack
+            wBack = quantile(n, area, 0.5f, { w[it] }) { backward[it] && abs(w[it] - around) <= SLAB_HALF_M } ?: around
+        }
+        // The space is round what was aimed at; that not known, round the middle of what was seen of the back.
+        val uc = aim?.x ?: quantile(n, area, 0.5f, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
+        val vc = aim?.y ?: quantile(n, area, 0.5f, { v[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
 
         // The sides: the first wall each way from there, in front of the back.
         val left = strong(peaks(n, area, { u[it] }) { nu[it] > FACING && inFront(w[it], wBack) && u[it] < uc - CENTRE_GAP_M })
@@ -300,11 +383,43 @@ object SpaceFitter {
                 nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M && between(u[it], uLeft, uRight)
             }
             ?: return null
+        // How thick this scan's surfaces are, read where only the back's own points can be:
+        // behind it, between the space's own faces. Before it, a thing standing against it is there too.
+        val spread = quantile(n, area, SPREAD_SHARE, { wBack - w[it] }) {
+            nw[it] > FACING && w[it] <= wBack && wBack - w[it] <= SLAB_M && between(u[it], uLeft, uRight) && between(v[it], vBottom, vTop)
+        } ?: 0f
         return Walls(
             frame, wBack, spread,
             across = Span(uLeft, uRight, fromClosed = left != null, toClosed = right != null),
             upright = Span(vBottom, vTop, fromClosed = bottom != null, toClosed = top != null),
         )
+    }
+
+    /**
+     * Where the look [forward] from [eye] first meets the scan, [AIM_BACK_M] short of it, in
+     * [frame]: a point inside the space filmed, whether the look ends on its back, on its bottom
+     * from above or on a thing standing in it. `null` when the look meets nothing.
+     */
+    private fun aimed(frame: Frame, eye: Vec3, forward: Vec3): Vec3? {
+        val from = frame.framed(eye)
+        val look = frame.framed(forward)
+        // How far along the look each point within [AIM_RAY_M] of it lies.
+        var along = FloatArray(AIM_POINTS * 2)
+        var count = 0
+        for (i in 0 until frame.n) {
+            val du = frame.u[i] - from.x
+            val dv = frame.v[i] - from.y
+            val dw = frame.w[i] - from.z
+            val t = du * look.x + dv * look.y + dw * look.z
+            if (t < AIM_NEAR_M || du * du + dv * dv + dw * dw - t * t > AIM_RAY_M * AIM_RAY_M) continue
+            if (count == along.size) along = along.copyOf(count * 2)
+            along[count++] = t
+        }
+        along.sort(0, count)
+        // The first place enough of them gather: a stray point is no surface.
+        val hit = (0..count - AIM_POINTS).firstOrNull { along[it + AIM_POINTS - 1] - along[it] <= AIM_GATHER_M } ?: return null
+        val t = along[hit] - AIM_BACK_M
+        return Vec3(from.x + look.x * t, from.y + look.y * t, from.z + look.z * t)
     }
 
     /** [walls] measured: how deep the space is, what stands in it and what fits, `null` with no depth to read. */
@@ -387,7 +502,19 @@ object SpaceFitter {
             val inside = x > margin && x < width - margin && y > margin && y < height - margin && z > margin && z < depth
             if (inside) grid.fill(x, y, z)
         }
-        val obstacles = grid.obstacles(MIN_OBSTACLE_CELLS)
+        // What never leaves a closed face's own noise is that face, however much of it gathers:
+        // as far again past the margin as its points spread.
+        val obstacles = grid.obstacles(
+            MIN_OBSTACLE_CELLS,
+            skin = margin + walls.spread,
+            closed = buildSet {
+                add(SpaceFace.Back)
+                if (left) add(SpaceFace.Left)
+                if (right) add(SpaceFace.Right)
+                if (bottom) add(SpaceFace.Bottom)
+                if (top) add(SpaceFace.Top)
+            },
+        )
         // A box rests on a bottom that was seen: a height read off the back alone carries nothing.
         val fits = if (bottom) grid.biggestBox(width, height, depth, topOpen = !top) else null
         // The frame's origin, back in the scan's world.
@@ -603,9 +730,17 @@ internal class SpaceGrid(private val nx: Int, private val ny: Int, private val n
 
     /**
      * What stands in the space: each group of touching cells of at least [minCells], as its box.
-     * Smaller groups are the depth's noise: they are emptied, and keep nothing away.
+     * Smaller groups are the depth's noise, and so is a group that nowhere stands further than
+     * [skin] metres off the [closed] faces: they are emptied, and keep nothing away.
      */
-    fun obstacles(minCells: Int): List<SpaceBox> {
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth") // a flood fill, and what each group is
+    fun obstacles(minCells: Int, skin: Float = 0f, closed: Set<SpaceFace> = emptySet()): List<SpaceBox> {
+        val layers = floor((skin + SKIN_SLACK_M) / cell).toInt()
+        val fromLeft = if (SpaceFace.Left in closed) layers else 0
+        val fromRight = if (SpaceFace.Right in closed) layers else 0
+        val fromBottom = if (SpaceFace.Bottom in closed) layers else 0
+        val fromTop = if (SpaceFace.Top in closed) layers else 0
+        val fromBack = if (SpaceFace.Back in closed) layers else 0
         val seen = BooleanArray(filled.size)
         val found = ArrayList<SpaceBox>()
         val queue = IntArray(filled.size)
@@ -617,11 +752,13 @@ internal class SpaceGrid(private val nx: Int, private val ny: Int, private val n
             seen[start] = true
             val low = intArrayOf(nx, ny, nz)
             val high = intArrayOf(-1, -1, -1)
+            var stands = false
             while (head < tail) {
                 val at = queue[head++]
                 val x = at % nx
                 val y = at / nx % ny
                 val z = at / (nx * ny)
+                if (x >= fromLeft && x < nx - fromRight && y >= fromBottom && y < ny - fromTop && z >= fromBack) stands = true
                 val here = intArrayOf(x, y, z)
                 for (a in 0 until AXES) {
                     if (here[a] < low[a]) low[a] = here[a]
@@ -639,7 +776,7 @@ internal class SpaceGrid(private val nx: Int, private val ny: Int, private val n
                     }
                 }
             }
-            if (tail < minCells) {
+            if (tail < minCells || !stands) {
                 for (i in 0 until tail) filled[queue[i]] = false
             } else {
                 found += SpaceBox(
@@ -724,6 +861,9 @@ internal class SpaceGrid(private val nx: Int, private val ny: Int, private val n
 
     private companion object {
         const val AXES = 3
+
+        /** A skin that ends on a cell's edge takes that cell, whatever the rounding. */
+        const val SKIN_SLACK_M = 1e-4f
 
         /** A box under 5 cm a side holds nothing worth fitting. */
         const val MIN_BOX_M = 0.05f

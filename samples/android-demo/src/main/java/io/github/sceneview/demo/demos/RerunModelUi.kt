@@ -131,6 +131,7 @@ import io.github.sceneview.demo.demos.internal.RerunResultView
 import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
+import io.github.sceneview.demo.demos.internal.SpaceFitDrawing
 import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ResultFilm
 import io.github.sceneview.demo.demos.internal.ResultFloor
@@ -147,7 +148,7 @@ import io.github.sceneview.demo.demos.internal.ScanResultFraming
 import io.github.sceneview.demo.demos.internal.ScanResultTurntable
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.SpaceFit
-import io.github.sceneview.demo.demos.internal.Vec3
+import io.github.sceneview.demo.demos.internal.SpaceView
 import io.github.sceneview.demo.demos.internal.groundSource
 import io.github.sceneview.demo.demos.internal.model.AtlasEncoder
 import io.github.sceneview.demo.demos.internal.model.CleanModel
@@ -755,8 +756,8 @@ internal fun RerunModelScreen(
     openingPhoto: ScanStill? = null,
     /** Hears a space's measure once it is read (`null`: none, or not a space), for the export sheet. */
     onSpace: (SpaceFit?) -> Unit = {},
-    /** Where the phone stood during the capture, on average: the side a space opens on. */
-    captureEye: Vec3? = null,
+    /** How the capture was filmed, read off its path: what a space's measure starts from. */
+    captureView: SpaceView? = null,
     /** The grid [surfels] were kept on, in metres, when the scan says it. */
     surfelsVoxelM: Float? = null,
 ) {
@@ -1017,7 +1018,7 @@ internal fun RerunModelScreen(
     val rename = onRename?.let { { renaming = true } }
     val measure = capturedMeasure ?: rescan?.measure
     // A space's inside (SpaceResultUi): what its result is for, on a card under the model.
-    val space = rememberSpaceMeasure(scope, surfels, captureEye, surfelsVoxelM)
+    val space = rememberSpaceMeasure(scope, surfels, captureView, surfelsVoxelM)
     LaunchedEffect(space) { onSpace((space as? SpaceMeasure.Found)?.fit) }
 
     DemoScaffold(
@@ -1191,11 +1192,14 @@ internal fun RerunModelScreen(
             val elevation = ScanResultFraming.elevation(scope)
             val offset = ScanResultFraming.offset(scope)
             val squareOn = !scope.closeUp
-            val shownFrame = remember(frame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
+            // A space measured is what its result shows: its inside, from its opening, not the
+            // whole of a scan that holds the wall behind it too.
+            val spaceFrame = remember(space) { (space as? SpaceMeasure.Found)?.fit?.let(SpaceFitDrawing::frame) }
+            val shownFrame = remember(frame, spaceFrame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
                 val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
                 // The dimensions stand outside the walls: a room measured keeps room for them.
                 val drawnFrame = if (measuring && squareOn) cut?.padded(MEASURE_MARGIN_M) else cut
-                if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
+                spaceFrame ?: if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
             }
             val view3d = remember(shownFrame, elevation, offset, aspect, area, fov) {
                 shownFrame?.pose(elevation, offset, fov, aspect, area)
@@ -1381,6 +1385,16 @@ internal fun RerunModelScreen(
                         val y = it.ground.floorY - ScanGroundMeshes.SLAB_DROP_M + ResultFloor.MEASURE_LIFT_M
                         ResultMeasureLayer(m, y, style, facing.sides, engine, materialLoader)
                     }
+                }
+                // A space's measure, drawn on the model it was read off: its inside, what is in
+                // the way and the box that fits, once the model is there to carry them.
+                (space as? SpaceMeasure.Found)?.fit?.takeIf { layers.photoShown || (instance != null && revealOver) }?.let { fit ->
+                    val style = ArDebugStyle.forOrbit(
+                        home.value()?.distance ?: 1f,
+                        orbit.verticalFovDegrees,
+                        constraints.maxHeight,
+                    )
+                    SpaceFitLayer(fit, style, engine, materialLoader)
                 }
                 ResultPhotoLayer(layers, instance, live = rendered::live)
             }

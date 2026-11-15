@@ -173,6 +173,7 @@ import io.github.sceneview.demo.demos.internal.RerunSetupStep
 import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.RerunStatusUx
 import io.github.sceneview.demo.demos.internal.RerunSyntheticBedroom
+import io.github.sceneview.demo.demos.internal.RerunSyntheticCupboard
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.RoomCompletion
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
@@ -345,11 +346,15 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     val media = if (showingScan) scanMedia else sample
     // Picked once when a real scan opens, so recomposition does not restart its model build.
     // The bundled room replay has no model result.
+    // QA: the ray-cast cupboard's points, as a kept scan of one holds them.
+    val qaSpace = remember { if (qaState == QA_STATE_MODEL_SPACE) RerunSyntheticCupboard.cloud() else null }
+    val qaSpaceView = remember(qaSpace) { qaSpace?.let { RerunSyntheticCupboard.view() } }
     var modelSource by remember {
         mutableStateOf<RerunModelSource?>(
             when (qaState) {
                 QA_STATE_MODEL_SYNTHETIC, QA_STATE_MODEL_EXPORT -> RerunModelSource.Synthetic()
                 QA_STATE_MODEL_POINTS -> RerunModelSource.Synthetic(meshFails = true)
+                QA_STATE_MODEL_SPACE -> qaSpace?.let { RerunModelSource.Surfels(it) }
                 else -> null
             },
         )
@@ -358,8 +363,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var resultModel by remember { mutableStateOf<RerunScanModel?>(null) }
     // A space's measure, heard from its result screen: what the export sheet writes as JSON.
     var resultSpace by remember { mutableStateOf<SpaceFit?>(null) }
-    // Where the phone stood while the scan shown was filmed: a space opens towards it.
-    val scanEye = remember(scanMedia, showingScan) { scanMedia?.takeIf { showingScan }?.trace?.let(SpaceFitter::eyeOf) }
+    // How the scan shown was filmed, off its path: a space opens towards the phone, round what it aimed at.
+    val scanView = remember(scanMedia, showingScan) { scanMedia?.takeIf { showingScan }?.trace?.let(SpaceFitter::viewOf) }
     // Whether the scan shown has a result screen: the replay's Back returns to it.
     var hasResult by remember { mutableStateOf(modelSource != null) }
 
@@ -861,14 +866,18 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             hintStays = qaState != null,
             opened = resultModel,
             // Framed as what it is (Scan redesign, PR 1): an object on its own box, a room square to its walls.
-            scope = if (showingScan) scanKind else ScanScope.Room,
+            scope = when {
+                showingScan -> scanKind
+                qaSpace != null -> ScanScope.Space
+                else -> ScanScope.Room
+            },
             // A kept model's Photo layer still comes from the real scan's own surfels.
-            surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud,
+            surfels = scanMedia?.takeIf { showingScan }?.dense?.cloud ?: qaSpace,
             photo = scanPhoto?.takeIf { showingScan && it.first === scanMedia }?.second,
             capturedMeasure = scanMeasure.takeIf { showingScan },
             openingPhoto = scanStill.takeIf { showingScan },
             onSpace = { resultSpace = it },
-            captureEye = scanEye,
+            captureView = scanView ?: qaSpaceView,
             surfelsVoxelM = scanMedia?.takeIf { showingScan }?.dense?.voxelM,
         )
     }
@@ -1947,8 +1956,8 @@ private fun RerunLiveScreen(
             val next = media.liveDense?.invoke()
             if (next != null && next !== read) {
                 read = next
-                val eye = SpaceFitter.eyeOf(media.trace)
-                spaceFaces.found(withContext(Dispatchers.Default) { SpaceFitter.closed(next.cloud, next.voxelM, eye) })
+                val view = SpaceFitter.viewOf(media.trace)
+                spaceFaces.found(withContext(Dispatchers.Default) { SpaceFitter.closed(next.cloud, next.voxelM, view) })
             }
             delay(SPACE_FACES_MS)
         }
@@ -2648,6 +2657,9 @@ private const val QA_STATE_MODEL_POINTS = "model-synthetic-points"
 /** The same result with its export sheet open. */
 private const val QA_STATE_MODEL_EXPORT = "model-synthetic-export"
 
+/** A cupboard's result built from the ray-cast one under a sink: its measure, drawn on its model. */
+private const val QA_STATE_MODEL_SPACE = "model-synthetic-space"
+
 /** A kept scan of the ray-cast room, opened on its floor plan (#4540): four walls and the ceiling seen. */
 private const val QA_STATE_PLAN_SYNTHETIC = "plan-synthetic"
 
@@ -2660,7 +2672,7 @@ private val PLAN_QA_STATES = setOf(QA_STATE_PLAN_SYNTHETIC, QA_STATE_PLAN_PARTIA
 private const val QA_PLAN_MARKER = "qa-plan-session.txt"
 
 /** The QA states that open straight on the result screen. */
-private val MODEL_QA_STATES = setOf(QA_STATE_MODEL_SYNTHETIC, QA_STATE_MODEL_POINTS, QA_STATE_MODEL_EXPORT)
+private val MODEL_QA_STATES = setOf(QA_STATE_MODEL_SYNTHETIC, QA_STATE_MODEL_POINTS, QA_STATE_MODEL_EXPORT, QA_STATE_MODEL_SPACE)
 
 /** The QA states that open straight on the live AR screen. */
 private val LIVE_QA_STATES =

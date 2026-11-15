@@ -36,13 +36,13 @@ class SpaceFitCorpusTest {
                 println("${scan.name}: no dense cloud")
                 continue
             }
-            val eye = File(scan, LOG).takeIf { it.isFile }?.let { log ->
+            val view = File(scan, LOG).takeIf { it.isFile }?.let { log ->
                 val trace = ArDebugTrace()
                 log.useLines { lines -> parseArDebugLog(lines).filterIsInstance<ArDebugEvent.CameraPose>().forEach { trace.addPose(it.nanos, it.pose) } }
-                SpaceFitter.eyeOf(trace)
+                SpaceFitter.viewOf(trace)
             }
             val started = System.nanoTime()
-            val fit = SpaceFitter.of(cloud, dense.voxelM, eye)
+            val fit = SpaceFitter.of(cloud, dense.voxelM, view)
             val ms = (System.nanoTime() - started) / NANOS_PER_MS
             if (fit == null) {
                 println("${scan.name}: ${cloud.count} points, no space ($ms ms)")
@@ -50,9 +50,10 @@ class SpaceFitCorpusTest {
             }
             File(out, "${scan.name}-space.json").writeText(SpaceAnswer.json(fit, scan.name))
             println(
-                "${scan.name}: ${cloud.count} points, inside %.2f x %.2f x %.2f m (W x H x D), share %.2f, open %s, %d obstacles, fits %s ($ms ms)"
+                "${scan.name}: ${cloud.count} points, inside %.2f x %.2f x %.2f m (W x H x D), share %.2f, open %s, %d obstacles, fits %s, strayed %s m, one space %s ($ms ms)"
                     .format(fit.width, fit.height, fit.depth, fit.share, fit.open.map { it.key }, fit.obstacles.size,
-                        fit.fits?.let { "%.2f x %.2f x %.2f".format(it.width, it.height, it.depth) }),
+                        fit.fits?.let { "%.2f x %.2f x %.2f".format(it.width, it.height, it.depth) },
+                        view?.strayM?.let { "%.2f".format(it) }, SpaceFitter.isOneSpace(fit, view)),
             )
         }
     }
