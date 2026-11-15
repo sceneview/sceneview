@@ -138,6 +138,17 @@ class CaptureChromeUiTest {
         )
         instruction = ScanInstruction.KeepGoing
         composeRule.onNodeWithText(text(R.string.scan_capture_keep_going_space)).assertIsDisplayed()
+        // One face at a time, each with the move that films it.
+        instruction = ScanInstruction.FaceBack
+        composeRule.onNodeWithText(text(R.string.scan_capture_face_back)).assertIsDisplayed()
+        instruction = ScanInstruction.FaceBottom
+        composeRule.onNodeWithText(text(R.string.scan_capture_face_bottom)).assertIsDisplayed()
+        instruction = ScanInstruction.FaceLeft
+        composeRule.onNodeWithText(text(R.string.scan_capture_face_left)).assertIsDisplayed()
+        instruction = ScanInstruction.FaceRight
+        composeRule.onNodeWithText(text(R.string.scan_capture_face_right)).assertIsDisplayed()
+        instruction = ScanInstruction.FaceTop
+        composeRule.onNodeWithText(text(R.string.scan_capture_face_top)).assertIsDisplayed()
         instruction = ScanInstruction.WhenReady
         composeRule.onNodeWithText(text(R.string.scan_capture_when_ready_space)).assertIsDisplayed()
         // Walked off: the line says where to stand, and which choice a room is.

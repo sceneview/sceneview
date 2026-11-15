@@ -31,6 +31,11 @@
     <string name="scan_capture_keep_going_space">Keep filming the inside, every side of it</string>
     <string name="scan_capture_when_ready_space">Filmed every side inside? Tap the red button</string>
     <string name="scan_capture_stay_space">Stay in front of the opening. For a whole room, go back and choose A room</string>
+    <string name="scan_capture_face_back">Point straight at the back of it</string>
+    <string name="scan_capture_face_bottom">Now the bottom: tilt your phone down</string>
+    <string name="scan_capture_face_left">Now the left side: turn your phone left</string>
+    <string name="scan_capture_face_right">Now the right side: turn your phone right</string>
+    <string name="scan_capture_face_top">Now the top: tilt your phone up</string>
     <string name="scan_capture_saving">Saving your scan…</string>
     <string name="scan_capture_live_model">Your scan · Live 3D</string>
     <string name="scan_capture_sweep_object">Film the object slowly, from every side</string>

@@ -171,28 +171,68 @@ object SpaceFitter {
      * depth. [eye] is where the phone stood, on average: the opening faces it. Without it the
      * opening is the side most surfaces face.
      */
-    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one early return per thing a space needs
-    fun of(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, eye: Vec3? = null): SpaceFit? {
-        val normals = cloud.normals ?: return null
-        val n = cloud.count
-        if (n < MIN_POINTS) return null
-        val p = cloud.positions
-        // What each point stands for: a square of its voxel, wider at a coarser level.
-        val area = FloatArray(n) {
-            val side = voxelM * (1 shl cloud.levelOf(it))
-            side * side
+    fun of(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, eye: Vec3? = null): SpaceFit? =
+        walls(cloud, voxelM, eye)?.let { measure(it, voxelM) }
+
+    /**
+     * The faces [cloud] closes so far, as seen from [eye]: its back, and each of the two sides,
+     * the bottom and the top a surface stands on. Empty while it shows no back, or one wider or
+     * higher than one spot films ([ONE_SPOT_SIDE_M]). A capture reads it as it goes, to say which
+     * face is still to film ([SpaceFaceGuide]): unlike [of], a back alone is enough for it.
+     */
+    fun closed(cloud: DenseCloud, voxelM: Float = DEFAULT_VOXEL_M, eye: Vec3? = null): Set<SpaceFace> {
+        val walls = walls(cloud, voxelM, eye) ?: return emptySet()
+        if (walls.across.size > ONE_SPOT_SIDE_M || walls.upright.size > ONE_SPOT_SIDE_M) return emptySet()
+        return buildSet {
+            add(SpaceFace.Back)
+            if (walls.across.fromClosed) add(SpaceFace.Left)
+            if (walls.across.toClosed) add(SpaceFace.Right)
+            if (walls.upright.fromClosed) add(SpaceFace.Bottom)
+            if (walls.upright.toClosed) add(SpaceFace.Top)
         }
-        val squared = wallYaw(normals, area, n) ?: return null
-        val yaw = opening(p, normals, area, n, squared, eye)
-        val c = cos(yaw)
-        val s = sin(yaw)
-        // The frame's axes before its origin is known: u to the right, v up, w towards the opening.
+    }
+
+    /** A cloud in a space's frame before its origin is known: [u] to the right, [v] up, [w] towards the opening. */
+    private class Frame(cloud: DenseCloud, normals: FloatArray, val area: FloatArray, val yaw: Float) {
+        val n = cloud.count
+        private val c = cos(yaw)
+        private val s = sin(yaw)
+        private val p = cloud.positions
         val u = FloatArray(n) { p[it * 3] * c - p[it * 3 + 2] * s }
         val v = FloatArray(n) { p[it * 3 + 1] }
         val w = FloatArray(n) { p[it * 3] * s + p[it * 3 + 2] * c }
         val nu = FloatArray(n) { normals[it * 3] * c - normals[it * 3 + 2] * s }
         val nv = FloatArray(n) { normals[it * 3 + 1] }
         val nw = FloatArray(n) { normals[it * 3] * s + normals[it * 3 + 2] * c }
+    }
+
+    /** A space along one axis, [from] one face [to] the other, and whether a surface closes each. */
+    private class Span(val from: Float, val to: Float, val fromClosed: Boolean, val toClosed: Boolean) {
+        val size: Float get() = to - from
+    }
+
+    /** A space's back at [wBack], and its faces [across] (left to right) and [upright] (bottom to top). */
+    private class Walls(val frame: Frame, val wBack: Float, val across: Span, val upright: Span)
+
+    /** The back [cloud] shows and the faces round it, `null` with no back to speak of. */
+    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one early return per thing a space needs
+    private fun walls(cloud: DenseCloud, voxelM: Float, eye: Vec3?): Walls? {
+        val normals = cloud.normals ?: return null
+        val n = cloud.count
+        if (n < MIN_POINTS) return null
+        // What each point stands for: a square of its voxel, wider at a coarser level.
+        val area = FloatArray(n) {
+            val side = voxelM * (1 shl cloud.levelOf(it))
+            side * side
+        }
+        val squared = wallYaw(normals, area, n) ?: return null
+        val frame = Frame(cloud, normals, area, opening(cloud.positions, normals, area, n, squared, eye))
+        val u = frame.u
+        val v = frame.v
+        val w = frame.w
+        val nu = frame.nu
+        val nv = frame.nv
+        val nw = frame.nw
 
         // The back: of the surfaces facing the opening, the deepest that is a wall.
         val facing = peaks(n, area, { w[it] }) { nw[it] > FACING }
@@ -241,25 +281,58 @@ object SpaceFitter {
                 nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M && between(u[it], uLeft, uRight)
             }
             ?: return null
+        return Walls(
+            frame, wBack,
+            across = Span(uLeft, uRight, fromClosed = left != null, toClosed = right != null),
+            upright = Span(vBottom, vTop, fromClosed = bottom != null, toClosed = top != null),
+        )
+    }
+
+    /** [walls] measured: how deep the space is, what stands in it and what fits, `null` with no depth to read. */
+    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // the opening, then one pass over the points
+    private fun measure(walls: Walls, voxelM: Float): SpaceFit? {
+        val frame = walls.frame
+        val n = frame.n
+        val area = frame.area
+        val u = frame.u
+        val v = frame.v
+        val w = frame.w
+        val nu = frame.nu
+        val nv = frame.nv
+        val wBack = walls.wBack
+        val uLeft = walls.across.from
+        val uRight = walls.across.to
+        val vBottom = walls.upright.from
+        val vTop = walls.upright.to
+        val bottom = walls.upright.fromClosed
+        val top = walls.upright.toClosed
+        val left = walls.across.fromClosed
+        val right = walls.across.toClosed
 
         // The opening: where the first of the bottom and the sides stops, inside the space's own
         // height and width. An open door carries a side on, a floor carries a bottom on; the
         // other stops at the edge.
         val wFront = listOfNotNull(
-            bottom?.let {
+            if (bottom) {
                 edge(n, area, REACH_SHARE, far = true, { w[it] }) {
                     nv[it] > FACING && abs(v[it] - vBottom) <= ON_PLANE_M && between(u[it], uLeft, uRight) && inFront(w[it], wBack)
                 }
+            } else {
+                null
             },
-            left?.let {
+            if (left) {
                 edge(n, area, REACH_SHARE, far = true, { w[it] }) {
                     nu[it] > FACING && abs(u[it] - uLeft) <= ON_PLANE_M && between(v[it], vBottom, vTop) && inFront(w[it], wBack)
                 }
+            } else {
+                null
             },
-            right?.let {
+            if (right) {
                 edge(n, area, REACH_SHARE, far = true, { w[it] }) {
                     nu[it] < -FACING && abs(u[it] - uRight) <= ON_PLANE_M && between(v[it], vBottom, vTop) && inFront(w[it], wBack)
                 }
+            } else {
+                null
             },
         ).minOrNull() ?: return null
 
@@ -269,10 +342,10 @@ object SpaceFitter {
         if (listOf(width, height, depth).any { it < MIN_SIDE_M || it > MAX_SIDE_M }) return null
         val open = buildSet {
             add(SpaceFace.Front)
-            if (left == null) add(SpaceFace.Left)
-            if (right == null) add(SpaceFace.Right)
-            if (bottom == null) add(SpaceFace.Bottom)
-            if (top == null) add(SpaceFace.Top)
+            if (!left) add(SpaceFace.Left)
+            if (!right) add(SpaceFace.Right)
+            if (!bottom) add(SpaceFace.Bottom)
+            if (!top) add(SpaceFace.Top)
         }
 
         // What stands inside, on a grid of the space.
@@ -294,8 +367,10 @@ object SpaceFitter {
         }
         val obstacles = grid.obstacles(MIN_OBSTACLE_CELLS)
         // A box rests on a bottom that was seen: a height read off the back alone carries nothing.
-        val fits = if (bottom != null) grid.biggestBox(width, height, depth, topOpen = top == null) else null
+        val fits = if (bottom) grid.biggestBox(width, height, depth, topOpen = !top) else null
         // The frame's origin, back in the scan's world.
+        val c = cos(frame.yaw)
+        val s = sin(frame.yaw)
         return SpaceFit(
             width = width,
             height = height,
@@ -306,7 +381,7 @@ object SpaceFitter {
             originX = uLeft * c + wBack * s,
             originY = vBottom,
             originZ = -uLeft * s + wBack * c,
-            yawDegrees = Math.toDegrees(yaw.toDouble()).toFloat(),
+            yawDegrees = Math.toDegrees(frame.yaw.toDouble()).toFloat(),
             resolution = maxOf(voxelM, cell),
             share = if (whole > 0f) held / whole else 0f,
         )

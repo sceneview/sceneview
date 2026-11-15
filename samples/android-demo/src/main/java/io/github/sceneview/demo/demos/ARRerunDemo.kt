@@ -198,6 +198,7 @@ import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.SpaceAnswer
 import io.github.sceneview.demo.demos.internal.SpaceFit
+import io.github.sceneview.demo.demos.internal.SpaceFaceGuide
 import io.github.sceneview.demo.demos.internal.SpaceFitter
 import io.github.sceneview.demo.demos.internal.SpaceStay
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
@@ -1936,6 +1937,25 @@ private fun RerunLiveScreen(
     // A cupboard or a shelf is filmed from before its opening: the phone that walks off is told.
     val spaceStay = remember(scanMedia) { SpaceStay() }
     val strayed = recording && scanScope == ScanScope.Space && spaceStay.strayed(scanCoverage.camera)
+    // It is asked for one face at a time, each done once the live scan closes it.
+    val spaceFaces = remember(scanMedia) { SpaceFaceGuide() }
+    LaunchedEffect(scanMedia, scanScope) {
+        val media = scanMedia?.takeIf { scanScope == ScanScope.Space } ?: return@LaunchedEffect
+        var read: ReplayDenseLayer? = null
+        while (true) {
+            val next = media.liveDense?.invoke()
+            if (next != null && next !== read) {
+                read = next
+                val eye = SpaceFitter.eyeOf(media.trace)
+                spaceFaces.found(withContext(Dispatchers.Default) { SpaceFitter.closed(next.cloud, next.voxelM, eye) })
+            }
+            delay(SPACE_FACES_MS)
+        }
+    }
+    val spaceFace = spaceFaces.takeIf { recording && scanScope == ScanScope.Space }?.ask(
+        nowMs,
+        asking = !strayed && !trackingLost && !poseSlipped && !dark && instructionState.introOver(nowMs),
+    )
     // When it is finished: the turn the phone has made is the circle on the red button, and a
     // full one says so, in the line and under the thumb.
     val scanSeconds = scan?.elapsedSeconds() ?: 0f
@@ -1944,6 +1964,7 @@ private fun RerunLiveScreen(
         seconds = scanSeconds,
         floorShare = scanCoverage.floorShare,
         turnShare = scanCoverage.turnShare,
+        facesDone = spaceFaces.complete,
     )
     val completeHaptic = rememberHapticFeedback()
     LaunchedEffect(scanComplete) { if (scanComplete && recording && !DemoSettings.qaMode) completeHaptic.success() }
@@ -1959,7 +1980,8 @@ private fun RerunLiveScreen(
         strayed = strayed,
         saving = phase == ScanPhase.Saving,
         complete = scanComplete,
-        whenReady = ScanCompletion.whenReady(scanScope, scanSeconds),
+        whenReady = ScanCompletion.whenReady(scanScope, scanSeconds, facesAsked = spaceFaces.asked),
+        face = spaceFace,
         floorOnly = scanScope.hasFloorPlan && !scanCoverage.facingWall,
         hole = hole,
         holeId = holeSide.gapId,
@@ -2024,7 +2046,11 @@ private fun RerunLiveScreen(
                     instruction = instruction,
                     doneEnabled = recording && !captureEmpty && phase.canKeepScanning &&
                         ScanCompletion.canFinish(scan?.elapsedSeconds()),
-                    progress = ScanCompletion.progress(scanScope, scanCoverage.turnShare, scanComplete),
+                    progress = ScanCompletion.progress(
+                        scanScope,
+                        if (scanScope == ScanScope.Space) spaceFaces.share else scanCoverage.turnShare,
+                        scanComplete,
+                    ),
                     onFinish = if (betweenRooms) ({ dropCapture(); onFinishHome() }) else onSaveScan,
                     onResumeRoom = if (betweenRooms) ({ betweenRooms = false; moveTo(ScanPhase.Scanning) }) else null,
                     scope = scanScope,
@@ -2540,6 +2566,9 @@ private const val AUTO_START_POLL_MS = 100L
 
 /** The scan HUD's clock ticks ten times a second, tracking or not. */
 private const val HUD_TICK_MS = 100L
+
+/** How often a cupboard or shelf capture reads which faces its live scan closes. */
+private const val SPACE_FACES_MS = 500L
 private const val NANOS_PER_SECOND = 1e9f
 
 /**

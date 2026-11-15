@@ -75,6 +75,11 @@ internal fun ScanInstructionLine(
         ScanInstruction.GoBack -> R.string.scan_capture_go_back
         ScanInstruction.Stuck -> R.string.scan_capture_stuck
         ScanInstruction.StayPut -> R.string.scan_capture_stay_space
+        ScanInstruction.FaceBack -> R.string.scan_capture_face_back
+        ScanInstruction.FaceBottom -> R.string.scan_capture_face_bottom
+        ScanInstruction.FaceLeft -> R.string.scan_capture_face_left
+        ScanInstruction.FaceRight -> R.string.scan_capture_face_right
+        ScanInstruction.FaceTop -> R.string.scan_capture_face_top
         ScanInstruction.Slower -> R.string.scan_capture_slower
         ScanInstruction.MoreLight -> R.string.scan_capture_more_light
         ScanInstruction.Sweep -> when (scope) {

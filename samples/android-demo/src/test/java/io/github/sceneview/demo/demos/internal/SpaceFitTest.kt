@@ -51,6 +51,29 @@ class SpaceFitTest {
     }
 
     @Test
+    fun `a capture reads the faces closed so far, the back alone first`() {
+        val scan = Scan().apply { plane(0f, 0f, 0f, WIDTH, HEIGHT, axis = 2, normal = 1f) }
+        assertEquals(setOf(SpaceFace.Back), SpaceFitter.closed(scan.cloud(), eye = scan.eye))
+        // A back alone has no depth to measure yet.
+        assertNull(SpaceFitter.of(scan.cloud(), eye = scan.eye))
+        scan.plane(0f, 0f, 0f, WIDTH, DEPTH, axis = 1, normal = 1f)
+        assertEquals(setOf(SpaceFace.Back, SpaceFace.Bottom), SpaceFitter.closed(scan.cloud(), eye = scan.eye))
+        // Left and right are the hand's own, standing before the opening.
+        scan.plane(0f, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = 1f)
+        assertEquals(setOf(SpaceFace.Back, SpaceFace.Bottom, SpaceFace.Left), SpaceFitter.closed(scan.cloud(), eye = scan.eye))
+        scan.plane(WIDTH, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = -1f)
+        scan.plane(0f, HEIGHT, 0f, WIDTH, DEPTH, axis = 1, normal = -1f)
+        assertEquals(
+            setOf(SpaceFace.Back, SpaceFace.Bottom, SpaceFace.Left, SpaceFace.Right, SpaceFace.Top),
+            SpaceFitter.closed(scan.cloud(), eye = scan.eye),
+        )
+        // Nothing to read in no scan, nor on the wall of a room.
+        assertTrue(SpaceFitter.closed(DenseCloud.Empty).isEmpty())
+        val wall = Scan().apply { plane(0f, 0f, 0f, 4f, 2.4f, axis = 2, normal = 1f) }
+        assertTrue(SpaceFitter.closed(wall.cloud(), eye = wall.eye).isEmpty())
+    }
+
+    @Test
     fun `an empty cupboard is measured inside, to the scan's grid`() {
         val fit = fitOf(cupboard())
         assertEquals(WIDTH, fit.width, TOLERANCE)
