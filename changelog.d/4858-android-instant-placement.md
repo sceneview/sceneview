@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Android automatic instant placement ([#4858](https://github.com/sceneview/sceneview/issues/4858)).** Opt in with `AutoPlacementScene(instantPlacement = true)` to show horizontal content after 0.6 s of tracking before a plane is detected. `instantPlacementSize` supplies the displayed model size for the distance estimate; `AutoPlacementState.trackingMethod` exposes approximate/full tracking. A fully tracked instant point is re-anchored to the plane beneath it with a landing haptic. Off by default; existing binary signatures are retained.

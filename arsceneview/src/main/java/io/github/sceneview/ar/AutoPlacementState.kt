@@ -3,6 +3,7 @@ package io.github.sceneview.ar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.google.ar.core.InstantPlacementPoint.TrackingMethod
 import io.github.sceneview.math.Size
 
 import kotlin.math.abs
@@ -78,6 +79,18 @@ data class FrameInput(
 )
 
 class AutoPlacementState {
+
+    /**
+     * `null` before placement, [TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE] while
+     * ARCore estimates the instant point, then [TrackingMethod.FULL_TRACKING]. Detected-plane
+     * placements start at full tracking. Camera/anchor tracking loss does not change this value.
+     */
+    var trackingMethod: TrackingMethod? by mutableStateOf(null)
+        private set
+
+    internal fun onTrackingMethod(method: TrackingMethod, initial: Boolean = false) {
+        if (hasPlacement && (initial || trackingMethod != TrackingMethod.FULL_TRACKING)) trackingMethod = method
+    }
 
     /** Current multiplier of the selected preview/authored base size. */
     var scaleFactor: Float by mutableStateOf(1f)
@@ -407,6 +420,7 @@ class AutoPlacementState {
         sessionGeneration++
         placementRequested = false
         hasPlacement = false
+        trackingMethod = null
         placedAtMillis = 0L
         searchStartedAt = null
         recoveringSince = null
@@ -426,6 +440,7 @@ class AutoPlacementState {
         isSelected = false
         scaleFactor = 1f
         hasPlacement = false
+        trackingMethod = null
         placementRequested = true
         recoveringSince = null
         searchStartedAt = nowMillis
@@ -527,6 +542,8 @@ class AutoPlacementState {
     private fun place(now: Long): FrameEffect {
         placementRequested = false
         hasPlacement = true
+        // The scene replaces this with the instant point's method on its first placement frame.
+        trackingMethod = TrackingMethod.FULL_TRACKING
         isSelected = true
         placementsCreated++
         placedAtMillis = now

@@ -125,6 +125,27 @@ AutoPlacementScene(
 // placement.resetPlacement(android.os.SystemClock.uptimeMillis())
 ```
 
+**Instant placement (opt-in, horizontal surfaces).** Pass `instantPlacement = true` to
+`AutoPlacementScene` to enable ARCore `LOCAL_Y_UP`. A usable detected plane wins immediately;
+otherwise, after 600 ms of uninterrupted camera tracking, `hitTestInstantPlacement` places on
+the estimated floor. Its height is the lowest tracked horizontal plane at least 0.4 m below
+the camera, or 1.3 m below it. The floor must be visible in the viewport.
+`instantPlacementSize` is the content's largest displayed side in metres (default `0.3f`):
+provide it before placement because the content lambda, and thus `AutoPlacementModel`, has
+not run yet. Reach is `clamp(0.9 + 0.8 * size, 1, 3)` metres (1.14 m for the default preview,
+2.5 m for 2 m content), with the centre-ray floor intersection clamped to 0.6–1 times reach.
+
+`state.trackingMethod` is `null` before placement, then ARCore's
+`InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE` or `FULL_TRACKING`.
+Detected-plane placements start at `FULL_TRACKING`; tracking loss does not downgrade it.
+Once ARCore reports full tracking and a tracked plane contains the refined point, the scene
+re-anchors there, retaining the model's scale/rotation and easing the standard placement
+nodes onto it. Landing waits for gestures to end; `ARHapticFeedback(state)` plays the landing
+haptic. `onPlaced` fires only for the initial placement. `result.planeOrNull` is `null` while
+attached to an instant point; `result.plane` throws then. Walls keep their existing detected
+surface/depth flow: ARCore `LOCAL_Y_UP` estimates horizontal surfaces only. Other platforms
+retain their native placement APIs; the Swift controller already offers `instantPlacement`.
+
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
 while rotating/scaling, and constrains dragging to supported plane geometry. Its
 0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains

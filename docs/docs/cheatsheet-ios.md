@@ -219,10 +219,10 @@ examples. To show the model before a plane is detected, opt in to instant placem
 
 ### Instant placement
 
-Off by default, and iOS only for now: Android's `AutoPlacementScene` has no instant placement
-yet (it hard-codes ARCore's `InstantPlacementMode.DISABLED`). Without it, nothing appears until
-ARKit detects a plane. Opt in when the first seconds matter more than
-the first pose:
+Off by default. Android also offers `AutoPlacementScene(instantPlacement = true)` for
+horizontal surfaces; see the [Android automatic-placement reference](https://sceneview.github.io/llms.txt).
+Without it, nothing appears until ARKit detects a plane. Opt in when the first seconds
+matter more than the first pose:
 
 ```swift
 @StateObject private var placement = ARPlacementController(instantPlacement: true)

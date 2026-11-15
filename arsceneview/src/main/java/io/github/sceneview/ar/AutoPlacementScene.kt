@@ -42,14 +42,15 @@ import java.io.File
 /** Supported automatic-placement alignment. Surface accepts tables, never ceilings. */
 enum class PlacementSurface { SURFACE, WALL }
 
-private const val NO_PLANE_MESSAGE = "This wall was found through the depth API or inferred from " +
-    "the floor seam: ARCore has no plane for it yet. Read planeOrNull instead."
+private const val NO_PLANE_MESSAGE = "This placement rides an instant point, a depth hit or " +
+    "an inferred wall: ARCore has no plane for it yet. Read planeOrNull instead."
 
 /**
  * A placement and the ARCore identity of what it stands on. For a floor, a table or a wall
  * ARCore has grown a plane on, that is the [plane]. A plain painted wall often has no plane at
  * all (#4070): the placement then rides a depth hit or the tracked floor it was inferred from,
- * and [planeOrNull] is `null`.
+ * and [planeOrNull] is `null`. An instant placement similarly rides an [InstantPlacementPoint]
+ * until it can be re-anchored to a detected plane.
  */
 class AutoPlacementResult internal constructor(
     anchor: Anchor,
@@ -60,7 +61,7 @@ class AutoPlacementResult internal constructor(
     internal constructor(anchor: Anchor, plane: Plane, pose: Pose) :
         this(anchor, plane, pose, plane.wallKindOrNull())
 
-    var anchor: Anchor = anchor
+    var anchor: Anchor by mutableStateOf(anchor)
         internal set
     var pose: Pose = pose
         internal set
@@ -76,14 +77,14 @@ class AutoPlacementResult internal constructor(
     /**
      * The ARCore plane the object stands on.
      *
-     * @throws IllegalStateException for a wall found through the depth API or inferred from the
-     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     * @throws IllegalStateException for an instant point or a wall found through the depth API
+     *   or inferred from the floor seam, which has no plane yet. Read [planeOrNull] instead.
      */
     val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
 
     /**
      * The ARCore plane the object stands on, or `null` for a wall found through the depth API
-     * or inferred from the floor↔wall seam (#4070).
+     * or inferred from the floor↔wall seam (#4070), or while riding an instant point.
      */
     val planeOrNull: Plane? get() = planeOf(trackable, kind)
 }
@@ -99,12 +100,12 @@ class AutoPlacementCandidate internal constructor(
     /**
      * The ARCore plane the candidate lies on.
      *
-     * @throws IllegalStateException for a wall found through the depth API or inferred from the
-     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     * @throws IllegalStateException for an instant point or a wall found through the depth API
+     *   or inferred from the floor seam, which has no plane yet. Read [planeOrNull] instead.
      */
     val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
 
-    /** The ARCore plane the candidate lies on, `null` for a wall without one (#4070). */
+    /** The ARCore plane the candidate lies on, `null` for an instant point or a wall without one. */
     val planeOrNull: Plane? get() = planeOf(trackable, kind)
 
     fun createAnchor(): AutoPlacementResult? = runCatching {
@@ -125,7 +126,8 @@ class AutoPlacementCandidate internal constructor(
         if (trackable.trackingState != TrackingState.TRACKING) return false
         val plane = trackable as? Plane
         return when (kind) {
-            null -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            null -> trackable is InstantPlacementPoint ||
+                (plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target))
             WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
                 (plane.isPoseInPolygon(target) ||
                     plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
@@ -370,6 +372,14 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay] as its `contentPadding`. The card
  *   and its "Surface found" pill already keep clear of the system bars and a 16 dp gutter; this
  *   is what they cannot measure, because you draw it. Only read while [coaching] is `true`.
+ * @param instantPlacement opt in to ARCore instant placement on horizontal surfaces. A detected
+ *   plane wins immediately; otherwise place on the visible estimated floor after 0.6 s of
+ *   uninterrupted tracking. [AutoPlacementState.trackingMethod] reports the estimate's precision.
+ *   Walls keep their detected-surface flow. Off by default.
+ * @param instantPlacementSize largest displayed side of the content in metres, including its
+ *   preview scale. Used before content composes: reach is `clamp(0.9 + 0.8 * size, 1, 3)` metres,
+ *   matching iOS. Default `0.3f` matches [AutoPlacementModel]'s preview. Non-positive/non-finite
+ *   values use 1 m reach. Changing it affects the next placement only.
  */
 @Composable
 fun AutoPlacementScene(
@@ -388,6 +398,8 @@ fun AutoPlacementScene(
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    instantPlacement: Boolean = false,
+    instantPlacementSize: Float = 0.3f,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -395,6 +407,7 @@ fun AutoPlacementScene(
     var planes by remember { mutableStateOf<List<Plane>>(emptyList()) }
     val ready by rememberUpdatedState(assetReady)
     val placedCallback by rememberUpdatedState(onPlaced)
+    val instant = remember(state, state.sessionGeneration) { AutoPlacementInstantPlacement() }
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
     }
@@ -428,7 +441,7 @@ fun AutoPlacementScene(
             planeRenderer = false,
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
             depthMode = autoPlacementDepthMode(surface),
-            instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            instantPlacementMode = AutoPlacementInstantPlacement.mode(instantPlacement, surface),
             onGestureListener = rememberOnGestureListener(
                 // Tap the object to select it (the selection ring appears), tap empty space
                 // to deselect — Scene Viewer's selection model.
@@ -448,6 +461,7 @@ fun AutoPlacementScene(
                 onTrackingFailureChanged?.invoke(it)
             },
             onSessionResumed = { state.cameraResumed() },
+            onSessionPaused = { instant.reset() },
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
                 if (!state.hasPlacement && placement != null) {
@@ -459,17 +473,27 @@ fun AutoPlacementScene(
                 if (tracked != planes) planes = tracked
                 state.onFloor(trackedFloorY(tracked))
                 if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
+                val now = SystemClock.uptimeMillis()
+                val tracking = frame.camera.trackingState == TrackingState.TRACKING
+                val instantReady = instant.ready(now, tracking && !state.hasPlacement)
                 val candidate = if (ready && state.wantsSurface) {
-                    findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
+                    findAutoPlacementCandidate(frame, tracked, viewport.width, viewport.height, surface,
+                        instantPlacement, instantReady, instantPlacementSize)
                 } else null
                 val effect = state.onFrame(
-                    FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
+                    FrameInput(now, tracking,
                         candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
                     commit = {
                         candidate?.createAnchor()?.let { placement = it; true } ?: false
                     },
                 )
-                if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+                placement?.let { result ->
+                    updateInstantPlacement(result, tracked, state, tracking, initial = effect == FrameEffect.PLACE)
+                }
+                if (effect == FrameEffect.PLACE) {
+                    instant.reset()
+                    placement?.let { placedCallback?.invoke(it) }
+                }
             },
         ) {
             placement?.let { result -> key(result) { content(result) } }
@@ -487,6 +511,32 @@ fun AutoPlacementScene(
         }
     }
 }
+
+/** Binary-compatibility shim for the descriptor before opt-in instant placement. */
+@Deprecated("Binary-compatibility overload. Use the overload with `instantPlacement`.", level = DeprecationLevel.HIDDEN)
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady, modifier, state, surface, engine, modelLoader, materialLoader, groundShadows,
+    coaching, coachingContentPadding, playbackDataset, onARCoreAvailability,
+    onTrackingFailureChanged, onSessionFailed, onPlaced, instantPlacement = false, content = content,
+)
 
 /**
  * Binary-compatibility shim for the pre-`coachingContentPadding` descriptor of
@@ -1224,7 +1274,13 @@ private class AutomaticAnchorNode(
 
     /** When this drag began, `MotionEvent.eventTime`. */
     private var dragStartMs = 0L
-    init { isEditable = true }
+    init {
+        isEditable = true
+        if (placement.trackable is InstantPlacementPoint) {
+            isSmoothTransformEnabled = true
+            smoothTransformSpeed = 6f
+        }
+    }
 
     /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
     fun moveBy(x: Float, y: Float): Boolean {
@@ -1404,6 +1460,8 @@ private class AutomaticAnchorNode(
     }
 
     override fun update(session: Session, frame: Frame) {
+        // The scene may have landed an instant point without recreating content or its pivot.
+        if (anchor != placement.anchor) anchor = placement.anchor
         val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
             anchor.trackingState == TrackingState.TRACKING
         if (!tracking) {
