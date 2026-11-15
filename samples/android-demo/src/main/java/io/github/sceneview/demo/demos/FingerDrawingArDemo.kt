@@ -262,6 +262,7 @@ private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
     val compactHeight = isDemoCompactHeight()
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_finger_drawing_title),
         onBack = onBack,
         peekHeader = when {

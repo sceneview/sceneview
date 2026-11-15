@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: Scene Semantics stays readable in half of a split screen with large text ([#4036](https://github.com/sceneview/sceneview/issues/4036)).** In a short and narrow window the colour legend sat on top of the outdoor warning from 130 % text, and over the coverage readout too at 200 %. The legend now goes under the warning in the same column, which ends above the settings button and scrolls what does not fit. Portrait and landscape are unchanged.

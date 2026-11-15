@@ -820,6 +820,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // ("Turn around and tap to catch"), so a settings sheet carrying a
     // lone paragraph of help text added only chrome (#1620 thread 1).
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_orbital_title),
         onBack = onBack,
         assetSource = assetSource,

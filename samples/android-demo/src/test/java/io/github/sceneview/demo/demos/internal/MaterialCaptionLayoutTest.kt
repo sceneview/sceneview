@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.demo.DEFAULT_LABEL_FADE_START_DEGREES
+import io.github.sceneview.math.Direction
+import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -8,26 +10,49 @@ import org.junit.Test
 
 class MaterialCaptionLayoutTest {
     @Test
-    fun `only the idle gallery publishes live spacing`() {
-        assertTrue(canPublishLiveGalleryCaptionSpacing(inspecting = false, focusIndex = null, focusZoom = 0f))
-        for (focusIndex in listOf(null, 0)) {
-            for (focusZoom in listOf(0f, 0.5f, 1f)) {
-                assertFalse(canPublishLiveGalleryCaptionSpacing(inspecting = true, focusIndex, focusZoom))
-            }
-        }
+    fun `the idle gallery publishes uncapped live spacing`() {
+        assertTrue(canPublishLiveGalleryCaptionSpacing(focusIndex = null, focusZoom = 0f))
+        assertEquals(320f, publishedGalleryCaptionSpacingPx(320f, 160f, null, 0f), 0f)
     }
 
     @Test
     fun `a picked sphere keeps flight spacing through departure and arrival`() {
         for (focusZoom in listOf(0f, 0.5f, 1f)) {
-            assertFalse(canPublishLiveGalleryCaptionSpacing(inspecting = false, focusIndex = 0, focusZoom))
+            assertFalse(canPublishLiveGalleryCaptionSpacing(focusIndex = 0, focusZoom))
         }
     }
 
     @Test
     fun `remaining zoom prevents live publication even without a picked sphere`() {
         for (focusZoom in listOf(Float.MIN_VALUE, 0.5f, 1f)) {
-            assertFalse(canPublishLiveGalleryCaptionSpacing(inspecting = false, focusIndex = null, focusZoom))
+            assertFalse(canPublishLiveGalleryCaptionSpacing(focusIndex = null, focusZoom))
+        }
+    }
+
+    @Test
+    fun `camera depth ignores lateral eye displacement and follows the forward axis`() {
+        assertEquals(3f, galleryCaptionDepth(Position(0f, 0f, 3f), Direction(0f, 0f, -1f)), 0f)
+        assertEquals(3f, galleryCaptionDepth(Position(4f, 2f, 3f), Direction(0f, 0f, -1f)), 0f)
+        assertEquals(4f, galleryCaptionDepth(Position(4f, 2f, 3f), Direction(-1f, 0f, 0f)), 0f)
+        assertEquals(3.6f, galleryCaptionDepth(Position(4f, 2f, 3f), Direction(0f, -0.6f, -0.8f)), 1e-6f)
+    }
+
+    @Test
+    fun `depth at or behind the camera plane suppresses gallery spacing`() {
+        for (eyeZ in listOf(0f, -3f)) {
+            val depth = galleryCaptionDepth(Position(4f, 0f, eyeZ), Direction(0f, 0f, -1f))
+            assertTrue(depth <= 0f)
+            assertEquals(0f, galleryCaptionSpacingPx(320f, depth, 0.6f, 3, 25f), 0f)
+        }
+    }
+
+    @Test
+    fun `focus flights use the smaller live or return spacing through both legs`() {
+        for ((focusIndex, focusZoom) in listOf(0 to 0f, 0 to 0.5f, 0 to 1f, null to Float.MIN_VALUE)) {
+            assertEquals(160f, publishedGalleryCaptionSpacingPx(160f, 320f, focusIndex, focusZoom), 0f)
+            assertEquals(160f, publishedGalleryCaptionSpacingPx(320f, 160f, focusIndex, focusZoom), 0f)
+            assertEquals(160f, publishedGalleryCaptionSpacingPx(160f, 160f, focusIndex, focusZoom), 0f)
+            assertEquals(0f, publishedGalleryCaptionSpacingPx(0f, 160f, focusIndex, focusZoom), 0f)
         }
     }
 
@@ -72,10 +97,10 @@ class MaterialCaptionLayoutTest {
 
     @Test
     fun `flight spacing accounts for pinching both closer and farther before a tap`() {
-        for ((headOnSpacingPx, cameraDistance) in listOf(640f to 1.5f, 320f to 3f, 160f to 6f)) {
+        for ((headOnSpacingPx, cameraDepth) in listOf(640f to 1.5f, 320f to 3f, 160f to 6f)) {
             val spacing = galleryCaptionSpacingAtRadiusPx(
                 headOnSpacingPx = headOnSpacingPx,
-                cameraDistance = cameraDistance,
+                cameraDepth = cameraDepth,
                 galleryRadius = 3f,
                 ballSpacing = 0.6f,
                 columns = 3,
