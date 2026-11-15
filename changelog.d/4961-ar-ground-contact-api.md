@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Custom AR placement can register ground contacts ([#4961](https://github.com/sceneview/sceneview/issues/4961)).** Declare `GroundContact(center = { node.worldPosition }, radius = ringRadius)` in `ARSceneView` to keep surface depth noise from cutting a contact shadow, placement ring or model feet. The world-space contact is read each frame after host callbacks, node updates and gesture inertia, and removed when the composable leaves; `AutoPlacementScene` continues to register its own contacts.

@@ -9,7 +9,8 @@ import java.nio.ByteBuffer
  * ## Why a separate mask
  *
  * ARCore's [com.google.ar.core.Frame.acquireSemanticImage] returns an `R8` image — one byte
- * per pixel, the byte being a [com.google.ar.core.SemanticLabel] ordinal (`0..11`). The
+ * per pixel, the byte being a [com.google.ar.core.SemanticLabel] ordinal (`0..11`, `UNLABELED`
+ * first). The
  * people-occlusion shader (`camera_stream_person_occlusion.mat`) only cares about a single
  * class — `PERSON` — and wants the cheapest possible per-pixel test: a value it can compare
  * against `0.5` after the GPU's `R8 → [0,1]` normalisation.
@@ -36,14 +37,19 @@ internal object PersonMask {
 
     /**
      * Ordinal of [com.google.ar.core.SemanticLabel.PERSON] in the ARCore Scene Semantics
-     * class set (`0 SKY · 1 BUILDING · 2 TREE · 3 ROAD · 4 SIDEWALK · 5 TERRAIN ·
-     * 6 STRUCTURE · 7 OBJECT · 8 VEHICLE · 9 PERSON · 10 WATER · 11 UNLABELED`).
+     * class set (`0 UNLABELED · 1 SKY · 2 BUILDING · 3 TREE · 4 ROAD · 5 SIDEWALK ·
+     * 6 TERRAIN · 7 STRUCTURE · 8 OBJECT · 9 VEHICLE · 10 PERSON · 11 WATER`).
      *
-     * Hard-coded rather than read via `SemanticLabel.PERSON.ordinal` so the conversion is
-     * JVM-unit-testable without the ARCore runtime on the classpath. `FrameSemanticsTest`
-     * pins the live ARCore enum so a future SDK reorder is caught loudly.
+     * This was `9` until #4036: the class set was written down starting at `SKY`, one place off
+     * ARCore's order, so the mask picked out `VEHICLE` pixels and people occlusion hid virtual
+     * content behind cars instead of behind people.
+     *
+     * Written as a number because a `const val` cannot read an enum. The byte in the image is
+     * ARCore's native code for the class, and that code is the enum's ordinal: `PersonMaskTest`
+     * compares this number with both for `PERSON`, and `FrameSemanticsTest` holds the two equal
+     * for all twelve classes, so an SDK that renumbers them fails a test instead of a mask.
      */
-    const val PERSON_ORDINAL: Int = 9
+    const val PERSON_ORDINAL: Int = 10
 
     /** Mask byte written for a PERSON pixel — `255` → `1.0` after the shader's `R8` normalise. */
     const val PERSON_BYTE: Byte = -1 // 0xFF

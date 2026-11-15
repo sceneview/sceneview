@@ -632,6 +632,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_point_and_ask_title),
         onBack = onBack,
         onReset = {

@@ -279,6 +279,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
         ?: formatRecordingTitle(recordingTitleOf("bundled-pixel9-sample.mp4"), today)
 
     DemoScaffold(
+        monitorArMotionSensors = showsCamera && !replaying,
         title = stringResource(R.string.demo_ar_record_playback_title),
         onBack = onBack,
         // A forced QA state keeps the Record step and its cards capturable: the emulator

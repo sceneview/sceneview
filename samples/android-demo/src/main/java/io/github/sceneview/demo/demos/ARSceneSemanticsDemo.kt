@@ -12,6 +12,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -21,10 +22,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -32,7 +36,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +50,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -61,6 +66,7 @@ import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DemoTopOverlayScope
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -76,8 +82,8 @@ import io.github.sceneview.rememberModelLoader
 /**
  * AR demo — Scene Semantics: read ARCore's per-pixel 12-class outdoor semantic model and render
  * it two ways at once — a live top-3 label HUD plus a color-coded segmentation **overlay** that
- * blends over the camera feed via a Camera ↔ Semantic slider (12 classes: SKY, BUILDING, TREE,
- * ROAD, SIDEWALK, TERRAIN, STRUCTURE, OBJECT, VEHICLE, PERSON, WATER, UNLABELED).
+ * blends over the camera feed via a Camera ↔ Semantic slider (12 classes: UNLABELED, SKY,
+ * BUILDING, TREE, ROAD, SIDEWALK, TERRAIN, STRUCTURE, OBJECT, VEHICLE, PERSON, WATER).
  *
  * Pipeline:
  *
@@ -184,6 +190,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     val legendShown = semanticsEverReceived && overlayBlend > LEGEND_MIN_BLEND
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_scene_semantics_title),
@@ -318,9 +325,10 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
             }
         },
         // Color legend — maps the 12 overlay colors to their class names so the segmentation
-        // is readable. Only relevant once the overlay is actually showing. Portrait keeps it in
-        // the bottom slot; a phone held sideways moves it into the top band, beside the HUD
-        // (see [SceneSemanticsTopBand] for why).
+        // is readable. Only relevant once the overlay is actually showing. A tall window keeps it
+        // in the bottom slot; a short one moves it into the top band — beside the HUD on a phone
+        // held sideways, under the warning in half of a split screen (see
+        // [SceneSemanticsTopBand] for why).
         bottomOverlay = {
             SceneSemanticsBottomLegend(legendShown = legendShown)
         },
@@ -485,39 +493,42 @@ internal const val SEMANTIC_LEGEND_TAG = "scene-semantics-legend"
 /** Test tag of the outdoor warning pill — the whole Surface, not only its first line. */
 internal const val OUTDOOR_NOTICE_TAG = "scene-semantics-outdoor-notice"
 
-/**
- * Whether the legend goes beside the HUD in the top band rather than in the bottom band: only in
- * a window both short and wide, a phone held sideways (#4036). A short but narrow window — one
- * half of a split screen, 393 × 400 dp — has no room for two columns: halved, the HUD's "41 %"
- * wrapped one character per line and the warning was pushed down under the dock, so it keeps
- * the portrait layout.
- */
-@Composable
-@ReadOnlyComposable
-private fun legendBesideHud(): Boolean = isDemoCompactHeight() && !isDemoCompactWidth()
+/** Test tag of the top band when it stacks the HUD, the warning and the legend in one column. */
+internal const val SEMANTIC_STACKED_BAND_TAG = "scene-semantics-stacked-band"
 
 /**
- * The demo's `topOverlay` content, with the color legend beside it on a phone held sideways.
+ * The demo's `topOverlay` content, with the color legend inside it whenever the window is short.
  *
  * The scaffold stacks each overlay slot as a Column, so nothing inside the top band can meet
  * anything else inside it — but the top band (below the identity row) and the bottom band
- * (above the dock) are two independent Columns. On a phone held sideways (Pixel 4a: 393 dp of
- * window height) the HUD and the outdoor warning reached down past the top of the legend, and
- * the legend sat across the lower half of the warning, in light and dark theme alike (#4036).
+ * (above the dock) are two independent Columns. A short window has no room for both: on a
+ * phone held sideways (Pixel 4a: 393 dp of window height) the legend sat across the lower half
+ * of the outdoor warning, and in one half of a split screen it covered the warning from 130 %
+ * text up, and the HUD too at 200 % (#4036). So the legend stays in the bottom band
+ * ([SceneSemanticsBottomLegend]) only in a tall window, where [content] goes straight into the
+ * slot's Column. In a short one ([isDemoCompactHeight]) it joins the top band:
  *
- * So in a short and wide window ([legendBesideHud]) the legend leaves the bottom band and
- * becomes the end column of a Row whose start column is [content]: two Row cells share no
- * horizontal pixels, so the warning and the legend cannot overlap at any font scale, and the
- * bottom band stays empty above the dock. Portrait is unchanged: [content] goes straight into
- * the slot's Column and the legend stays in the bottom band ([SceneSemanticsBottomLegend]).
+ * - **short and wide**, a phone held sideways: the legend is the end column of a Row whose start
+ *   column is [content]. Two Row cells share no horizontal pixels, so the warning and the legend
+ *   cannot overlap at any font scale.
+ * - **short and narrow**, half of a split screen (393 × 400 dp): there is no room for two
+ *   columns — halved, the HUD's "41 %" wrapped one character per line — so the legend goes
+ *   under [content] in one Column, which ends above the dock and scrolls what does not fit
+ *   ([SceneSemanticsStackedBand]).
  */
 @Composable
-internal fun ColumnScope.SceneSemanticsTopBand(
+internal fun DemoTopOverlayScope.SceneSemanticsTopBand(
     legendShown: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (legendShown && legendBesideHud()) {
-        Row(
+    when {
+        !isDemoCompactHeight() -> content()
+        isDemoCompactWidth() -> SceneSemanticsStackedBand(
+            legendShown = legendShown,
+            dockReservedSpace = dockReservedSpace,
+            content = content,
+        )
+        legendShown -> Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             verticalAlignment = Alignment.Top,
@@ -534,21 +545,59 @@ internal fun ColumnScope.SceneSemanticsTopBand(
                     .padding(end = SceneViewTokens.Space.md)
             )
         }
-    } else {
-        content()
+        else -> content()
     }
 }
 
 /**
- * The demo's `bottomOverlay` content: the color legend, in portrait only — sideways it is drawn
- * by [SceneSemanticsTopBand] instead (#4036).
+ * The top band of a short and narrow window: [content], then the legend, in one Column.
+ *
+ * One Column, so the legend can no longer cover the warning or the HUD. It is as tall as the
+ * room between the identity row and the dock ([dockReservedSpace], measured by the scaffold) and
+ * no taller: at 200 % text that room (about 230 dp of a 400 dp window) holds the HUD and the
+ * warning but not the legend, which is then reached by scrolling instead of being drawn under
+ * the settings button.
+ */
+@Composable
+private fun SceneSemanticsStackedBand(
+    legendShown: Boolean,
+    dockReservedSpace: Dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = (maxHeight - dockReservedSpace).coerceAtLeast(0.dp))
+                .verticalScroll(rememberScrollState())
+                .testTag(SEMANTIC_STACKED_BAND_TAG),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        ) {
+            content()
+            if (legendShown) {
+                // The bottom band's own inset: a start gutter only, so the legend keeps the width
+                // that holds its eleven classes on two rows at the default text size.
+                SemanticLegend(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = SceneViewTokens.Space.md)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The demo's `bottomOverlay` content: the color legend, in a tall window only — in a short one
+ * it is drawn by [SceneSemanticsTopBand] instead (#4036).
  *
  * Start-aligned in the scaffold's bottom slot (#2779): hand-anchored bottom-center, the wide
  * card's end edge used to run under the Settings FAB.
  */
 @Composable
 internal fun DemoBottomOverlayScope.SceneSemanticsBottomLegend(legendShown: Boolean) {
-    if (legendShown && !legendBesideHud()) {
+    if (legendShown && !isDemoCompactHeight()) {
         SemanticLegend(
             modifier = Modifier
                 .align(Alignment.Start)
@@ -648,8 +697,9 @@ private fun SemanticLegend(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // UNLABELED (last entry) is intentionally omitted — it renders transparent.
-            for (ordinal in 0 until SemanticsOverlay.UNLABELED_ORDINAL) {
+            // UNLABELED is intentionally omitted — it renders transparent.
+            for (ordinal in 0 until SemanticsOverlay.LABEL_COUNT) {
+                if (ordinal == SemanticsOverlay.UNLABELED_ORDINAL) continue
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
