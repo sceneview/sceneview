@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import io.github.sceneview.camera.CameraAnimator
 import io.github.sceneview.camera.CameraPath
 import io.github.sceneview.camera.CameraShot
@@ -136,6 +138,18 @@ internal class ScanResultCinematics(
         touring = false
     }
 }
+
+/**
+ * The cinematics of one [stage] of the result: what the screen's own state is kept for, the
+ * surfels it opened on or the model it did. A stage that starts over gets its own — a kept scan's
+ * points are read beside its model, and when the model is on screen first the result is staged
+ * again on the points. [ScanResultCinematics.frameDrawn] lets a view be seen once: kept across the
+ * two stages it never said so again, and the second stayed behind its veil for good (2026-11-15,
+ * five reopenings in six on a Pixel 4a).
+ */
+@Composable
+internal fun rememberResultCinematics(stage: Any?, orbit: ArDebugOrbitCamera, reveals: Boolean): ScanResultCinematics =
+    remember(stage, orbit, reveals) { ScanResultCinematics(orbit, reveals = reveals, entrance = ScanOpening::path) }
 
 /**
  * How a result that opens on its Photo layer is entered: from close and low, a turn to the side
