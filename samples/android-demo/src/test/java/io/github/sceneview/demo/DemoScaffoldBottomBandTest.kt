@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -445,30 +446,65 @@ class DemoScaffoldBottomBandTest {
 
     @Test
     @Config(qualifiers = "w891dp-h411dp-xhdpi")
-    fun snackbar_besideTheRealLandscapeCornerCard_keepsItsStackRestingLine() {
-        val state = TapToPlaceState().apply {
-            cameraReady = true
-            isTracking = true
-            phase = PlacementPhase.NO_SURFACE
-        }
-        val snackbar = raiseSnackbarWithTheSheetClosed(
-            bottomOverlay = null,
+    fun snackbar_besideTheRealLandscapeCornerCard_defersUntilItLeaves() {
+        assertLandscapeCardDefersSnackbar(
+            fontScale = 1f,
             modeSwitch = DemoModeSwitch(
                 listOf(DemoMode("place", R.string.demo_mode_place), DemoMode("free-pose", R.string.demo_mode_free_pose)),
                 selected = 0,
                 onSelect = {},
             ),
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-xhdpi")
+    fun snackbar_neverCoversTheLandscapeCornerCard_atMaximumFontScale() {
+        assertLandscapeCardDefersSnackbar(fontScale = 2f)
+    }
+
+    private fun assertLandscapeCardDefersSnackbar(fontScale: Float, modeSwitch: DemoModeSwitch? = null) {
+        val shown = mutableStateOf(true)
+        val state = TapToPlaceState().apply {
+            cameraReady = true
+            isTracking = true
+            phase = PlacementPhase.NO_SURFACE
+        }
+        showResetSnackbar(
+            bottomOverlay = null,
+            fontScale = fontScale,
+            modeSwitch = modeSwitch,
             scene = {
                 Box(Modifier.fillMaxSize()) {
-                    TapToPlaceStatusOverlays(state, onViewIn3D = {}, onRestartSession = {})
+                    if (shown.value) {
+                        TapToPlaceStatusOverlays(state, onViewIn3D = {}, onRestartSession = {})
+                    }
                 }
             },
         )
-        val card = composeRule.onNodeWithTag(PlacementTestTags.PLACEMENT_CARD).getUnclippedBoundsInRoot()
-        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).getUnclippedBoundsInRoot()
-        val pill = composeRule.onNodeWithTag(DEMO_MODE_PILL_TAG).getUnclippedBoundsInRoot()
-        assertTrue("expected corner card $card beside pill $pill and dock $dock", card.left >= pill.right)
-        assertEquals(SceneViewTokens.Space.md.value, (pill.top - snackbar.bottom).value, HALF_A_DP)
+        val card = composeRule.onNodeWithTag(PlacementTestTags.PLACEMENT_CARD)
+            .assertIsDisplayed().getUnclippedBoundsInRoot()
+        val chrome = composeRule.onNodeWithTag(
+            if (modeSwitch == null) DemoScaffoldTestTags.DOCK else DEMO_MODE_PILL_TAG,
+        ).getUnclippedBoundsInRoot()
+        assertTrue("expected corner card $card beside chrome $chrome", card.left >= chrome.right)
+        // Check the actual collision before asserting the chosen deferral policy. Separating
+        // the card from the mode pill says nothing about the wider snackbar (#4534 review).
+        if (composeRule.onAllNodesWithTag(DemoScaffoldTestTags.SNACKBAR).fetchSemanticsNodes().isNotEmpty()) {
+            val box = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+            // Material draws its container 12 dp inside the tagged layout box on each side.
+            val drawn = DpRect(box.left + 12.dp, box.top + 12.dp, box.right - 12.dp, box.bottom - 12.dp)
+            val overlaps = drawn.left < card.right && card.left < drawn.right &&
+                drawn.top < card.bottom && card.top < drawn.bottom
+            assertTrue("fontScale $fontScale: snackbar $drawn overlaps corner card $card", !overlaps)
+        }
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        composeRule.mainClock.advanceTimeBy(5_000)
+        composeRule.onNodeWithTag(PlacementTestTags.PLACEMENT_CARD).assertIsDisplayed()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        composeRule.runOnIdle { shown.value = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
     }
 
     /**

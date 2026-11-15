@@ -383,31 +383,42 @@ val LocalDemoChromeBottomWidth = androidx.compose.runtime.compositionLocalOf { D
 /**
  * How a demo tells the scaffold about what it anchors over the bottom of its own scene, one
  * gutter above the scaffold's chrome ([LocalDemoChromeBottomInset]): the placement screen's
- * decision card and coaching line. Called with that element's top edge in window pixels, or
- * with null when it shows nothing. Each element has its own key, so removing one leaves the
- * others registered. A no-op outside a [DemoScaffold].
+ * decision card and coaching line. Each element reports its top edge in window pixels and
+ * whether messages must wait for it, or null when it shows nothing. Keys keep registrations
+ * independent, so removing one leaves the others intact. A no-op outside a [DemoScaffold].
  *
  * The scaffold cannot measure it — it lives in the `scene` slot — yet its snackbar lands
  * exactly there, one gutter above the same chrome. Reported, the snackbar rests above it
  * instead of across its buttons (#4483). Use [reportsDemoSceneBottomCard].
  */
 internal val LocalDemoSceneBottomCard =
-    androidx.compose.runtime.compositionLocalOf<(Any, Int?) -> Unit> { { _, _ -> } }
+    androidx.compose.runtime.compositionLocalOf<(Any, DemoSceneBottomCard?) -> Unit> { { _, _ -> } }
+
+/** A measured card; a corner card defers messages because they can span both columns. */
+internal data class DemoSceneBottomCard(val topPx: Int, val deferSnackbar: Boolean)
 
 /**
  * Reports this element to the scaffold as the demo's bottom-anchored card
  * ([LocalDemoSceneBottomCard]), so a snackbar rests above it. Goes after the paddings that
  * place the element, so the reported box is what is drawn. An element measured empty reports
- * nothing, as does one that has left the composition. Set [enabled] to false for a corner
- * card beside the chrome: the full-width snackbar keeps its resting line above the stack.
+ * nothing, as does one that has left the composition. Set [deferSnackbar] for a corner card:
+ * even beside the chrome, it can overlap a wider snackbar at large font scales. The message
+ * waits until the card leaves instead of being placed across its text or actions.
  */
 @Composable
-internal fun Modifier.reportsDemoSceneBottomCard(enabled: Boolean = true): Modifier {
+internal fun Modifier.reportsDemoSceneBottomCard(deferSnackbar: Boolean = false): Modifier {
     val report = LocalDemoSceneBottomCard.current
     val key = remember { Any() }
-    DisposableEffect(report, key, enabled) { onDispose { report(key, null) } }
+    DisposableEffect(report, key) { onDispose { report(key, null) } }
     return onGloballyPositioned { coordinates ->
-        report(key, coordinates.positionInWindow().y.roundToInt().takeIf { enabled && coordinates.size.height > 0 })
+        report(
+            key,
+            if (coordinates.size.height > 0) {
+                DemoSceneBottomCard(coordinates.positionInWindow().y.roundToInt(), deferSnackbar)
+            } else {
+                null
+            },
+        )
     }
 }
 
@@ -936,10 +947,10 @@ fun DemoScaffold(
         var bottomOverlayContentPx by remember { mutableIntStateOf(0) }
         // Each scene card owns its edge in window pixels. The highest one holds the resting
         // line, and disposing another card cannot clear it ([reportsDemoSceneBottomCard]).
-        val sceneBottomCards = remember { mutableStateMapOf<Any, Int>() }
+        val sceneBottomCards = remember { mutableStateMapOf<Any, DemoSceneBottomCard>() }
         val reportSceneBottomCard = remember {
-            { key: Any, top: Int? ->
-                if (top == null) sceneBottomCards.remove(key) else sceneBottomCards[key] = top
+            { key: Any, card: DemoSceneBottomCard? ->
+                if (card == null) sceneBottomCards.remove(key) else sceneBottomCards[key] = card
                 Unit
             }
         }
@@ -1376,8 +1387,8 @@ fun DemoScaffold(
             // under the sheet, so a snackbar raised from it — "Demo reset" always is, its
             // row lives in the sheet — showed through the glass as a ghost nobody could read.
             // Removing the host also pauses Material's timeout: the queued message is shown
-            // after the centred SDK card (and its exit fade) has left, even on a short screen.
-            if (sdkOverlayCount == 0) DemoSnackbarHost(
+            // after the SDK or corner scene cards have left, even on a short screen.
+            if (sdkOverlayCount == 0 && sceneBottomCards.values.none { it.deferSnackbar }) DemoSnackbarHost(
                 hostState = snackbarHostState,
                 sheetState = settingsSheetState,
                 sheetRestingTopPx = rootHeightPx - when (settingsSheetState.currentValue) {
@@ -1396,7 +1407,7 @@ fun DemoScaffold(
                 } else {
                     0
                 },
-                sceneBottomCardTopPx = sceneBottomCards.values.minOrNull(),
+                sceneBottomCardTopPx = sceneBottomCards.values.minOfOrNull { it.topPx },
                 // The chrome a tap on the scene hides takes the band with it (the replay's
                 // timeline): hidden, it is no more there to rest above than under a full sheet.
                 bottomStackHidden = dockHidden || !overlaysShown,
@@ -1408,7 +1419,8 @@ fun DemoScaffold(
 
 /**
  * The scaffold's snackbar: over the whole window and above the settings sheet in z-order,
- * so nothing a demo or the sheet draws can cover it (#4019).
+ * so nothing a demo or the sheet draws can cover it (#4019). The caller defers this host
+ * while SDK or corner scene cards are present, so its full width cannot cross their column.
  *
  * At rest it floats `space-md` above whatever is highest at the bottom of the scene: the
  * card a demo anchors over its scene ([reportsDemoSceneBottomCard]), the demo's bottom stack

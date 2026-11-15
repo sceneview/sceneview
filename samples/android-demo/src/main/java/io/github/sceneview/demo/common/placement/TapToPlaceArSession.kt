@@ -557,7 +557,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
                 .padding(horizontal = SceneViewTokens.Space.md)
                 .padding(bottom = slot.bottom)
                 .then(if (slot.besideChrome) Modifier.width(slot.width) else Modifier)
-                .reportsDemoSceneBottomCard(enabled = !slot.besideChrome),
+                .reportsDemoSceneBottomCard(deferSnackbar = slot.besideChrome),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             CoachStackContent(
