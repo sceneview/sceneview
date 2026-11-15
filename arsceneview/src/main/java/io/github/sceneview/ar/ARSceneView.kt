@@ -143,6 +143,10 @@ import java.util.concurrent.atomic.AtomicReference
  * Drive AR state with ordinary Compose `mutableStateOf`: when state changes, the composition
  * updates and the 3D scene reflects it on the next frame.
  *
+ * When several scenes are resumed, the last one to resume holds the device camera. The others
+ * show a built-in "Camera in use" card until the holder pauses or leaves composition, then
+ * resume automatically. This temporary wait is not a session failure.
+ *
  * ### Minimal usage
  * ```kotlin
  * var anchor by remember { mutableStateOf<Anchor?>(null) }
@@ -1873,6 +1877,9 @@ fun ARSceneView(
                 )
             }
             arCoreAvailabilityOverlay(state)
+        }
+        if (denial == null && availability == null) {
+            ARCameraInUseOverlay(arCore.isCameraInUseByAnotherSession)
         }
     }
 
