@@ -87,13 +87,14 @@ material {
         }
     ],
     variables : [
+        { name : cameraUv, precision : high },
         {
             name : groundRay,
             precision : high
         }
     ],
     requires : [
-        uv0
+        uv0, custom0
     ]
 }
 
@@ -231,8 +232,10 @@ fragment {
 
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
+        // EIS supplies homogeneous texture coordinates. Divide AFTER interpolation (#2728).
+        highp vec2 cameraUv = variable_cameraUv.xy / variable_cameraUv.z;
         vec3 camera = Inverse_Tonemap_Filmic(
-                srgbToLinearExact(texture(materialParams_cameraTexture, getUV0()).rgb));
+                srgbToLinearExact(texture(materialParams_cameraTexture, cameraUv).rgb));
         vec2 packed_depth = texture(materialParams_depthTexture, getUV0()).xy;
         float depth_mm = dot(packed_depth, vec2(255.f, 256.f * 255.f));
         float depth_m = depth_mm / 1000.f;
@@ -297,6 +300,11 @@ fragment {
 
 vertex {
     void materialVertex(inout MaterialVertexInputs material) {
+        // CUSTOM0 is already in GPU texture orientation (unlike Filament's flipped UV0).
+        highp vec3 cameraUv = getCustom0().xyz;
+        material.cameraUv = vec4(
+            (materialParams.uvTransform * vec4(cameraUv.xy, 0.f, cameraUv.z)).xy,
+            cameraUv.z, 0.f);
         material.uv0 = mulMat4x4Float3(materialParams.uvTransform, vec3(material.uv0.x, material.uv0.y, 0.f)).xy;
         vec4 clip = getPosition();
         clip.z = 0.9999f;

@@ -37,7 +37,6 @@ import io.github.sceneview.safeRecycleEntity
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.utils.OpenGL
-import io.github.sceneview.utils.clone
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -76,6 +75,8 @@ internal const val kGroundNormalParameter = "groundNormal"
  * behind real-world surfaces using the ARCore depth image — and **people occlusion**
  * ([isPersonOcclusionEnabled], #1761) — virtual content is hidden behind real people using
  * the ARCore Scene Semantics `PERSON`-class segmentation mask.
+ * Electronic image stabilization uses ARCore's per-frame compensated geometry and homogeneous
+ * camera texture coordinates, so live EIS configuration changes preserve registration (#2728).
  *
  * Typically created via [rememberARCameraStream] and passed to `ARSceneView(cameraStream = ...)`.
  *
@@ -587,8 +588,10 @@ open class ARCameraStream(
         )
     }
 
+    private val coordinates = CameraStreamCoordinates(CAMERA_VERTICES)
+
     private val vertexBuffer: VertexBuffer =
-        VertexBuffer.Builder().vertexCount(VERTEX_COUNT).bufferCount(2).attribute(
+        VertexBuffer.Builder().vertexCount(VERTEX_COUNT).bufferCount(3).attribute(
             VertexBuffer.VertexAttribute.POSITION,
             POSITION_BUFFER_INDEX,
             VertexBuffer.AttributeType.FLOAT3,
@@ -600,6 +603,12 @@ open class ARCameraStream(
             VertexBuffer.AttributeType.FLOAT2,
             0,
             CAMERA_UVS.size / VERTEX_COUNT * FLOAT_SIZE_IN_BYTES
+        ).attribute(
+            VertexBuffer.VertexAttribute.CUSTOM0,
+            CAMERA_UV_BUFFER_INDEX,
+            VertexBuffer.AttributeType.FLOAT3,
+            0,
+            3 * FLOAT_SIZE_IN_BYTES
         ).build(engine).apply {
             setBufferAt(engine, POSITION_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_VERTICES))
             // Seed identity UVs at build time (#3373). `update()` overwrites these with the
@@ -607,20 +616,10 @@ open class ARCameraStream(
             // buffer 1 would otherwise be unset, and Filament draws the quad every frame from
             // the moment the entity joins the scene — with undefined attribute data. On the
             // emulator (no ARCore, so `update()` never runs) that painted a garbage band across
-            // the "AR couldn't start" fallback. Note: `CAMERA_UVS` directly, not `uvCoordinates`
-            // — that property is declared below and is still null inside this initializer.
+            // the "AR couldn't start" fallback.
             setBufferAt(engine, UV_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_UVS))
+            setBufferAt(engine, CAMERA_UV_BUFFER_INDEX, coordinates.cameraUvs.cameraStreamUploadBuffer())
         }
-
-    private val uvCoordinates: FloatBuffer =
-        ByteBuffer.allocateDirect(CAMERA_UVS.size * FLOAT_SIZE_IN_BYTES)
-            .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
-                put(CAMERA_UVS)
-                rewind()
-            }
-
-    // Note: ARCore expects the UV buffers to be direct or will assert in transformDisplayUvCoords
-    private var transformedUvCoordinates: FloatBuffer? = null
 
     // Hoisted into a field so destroy() can free it — building it inline in the
     // RenderableManager.Builder.geometry(...) call dropped the reference and leaked
@@ -683,27 +682,25 @@ open class ARCameraStream(
             cameraTexture = it
         }
 
-        // Recalculate camera Uvs if necessary.
-        if (transformedUvCoordinates == null || frame.hasDisplayGeometryChanged()) {
-            val transformedUvCoordinates = transformedUvCoordinates ?: uvCoordinates.clone().also {
-                transformedUvCoordinates = it
-            }
-
-            // If display rotation changed (also includes view size change), we need to re-query the UV
-            // coordinates for the screen rect, as they may have changed as well.
-            frame.transformCoordinates2d(
-                Coordinates2d.VIEW_NORMALIZED,
-                uvCoordinates,
-                Coordinates2d.TEXTURE_NORMALIZED,
-                transformedUvCoordinates
-            )
-            // Adjust Camera Uvs for OpenGL
-            for (i in 1 until (VERTEX_COUNT * 2) step 2) {
-                // Correct for vertical coordinates to match OpenGL
-                transformedUvCoordinates.put(i, 1.0f - transformedUvCoordinates[i])
-            }
-            vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, transformedUvCoordinates)
-        }
+        // EIS compensation changes every frame, including across a live config toggle (#2728).
+        // ARCore supplies identity compensation when EIS is OFF. Keep anchors untouched and
+        // render the camera texture with the matching screen/texture homography instead.
+        coordinates.update(
+            transform3d = { input, outputType, output ->
+                frame.transformCoordinates3d(
+                    Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input, outputType, output
+                )
+            },
+            transform2d = { input, output ->
+                frame.transformCoordinates2d(
+                    Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input,
+                    Coordinates2d.TEXTURE_NORMALIZED, output
+                )
+            },
+        )
+        vertexBuffer.setBufferAt(engine, POSITION_BUFFER_INDEX, coordinates.positions.cameraStreamUploadBuffer())
+        vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, coordinates.imageUvs.cameraStreamUploadBuffer())
+        vertexBuffer.setBufferAt(engine, CAMERA_UV_BUFFER_INDEX, coordinates.cameraUvs.cameraStreamUploadBuffer())
 
         // Both the real camera texture and the real UVs are now bound, so the quad is safe to
         // draw. Reveal it once (#3373).
@@ -930,8 +927,6 @@ open class ARCameraStream(
         // owns its entity — it is created in the constructor above, never handed in — so there
         // is no borrowed-entity case to guard, unlike `Node.ownsEntity`.
         engine.safeRecycleEntity(entity)
-        uvCoordinates.clear()
-        transformedUvCoordinates?.clear()
         Log.d("Sceneview", "CameraStream destroyed")
     }
 
@@ -987,6 +982,7 @@ open class ARCameraStream(
             -1.0f, 1.0f, 1.0f, -1.0f, -3.0f, 1.0f, 3.0f, 1.0f, 1.0f
         )
         private const val UV_BUFFER_INDEX = 1
+        private const val CAMERA_UV_BUFFER_INDEX = 2
         private val CAMERA_UVS = floatArrayOf(
             0.0f, 0.0f, 0.0f, 2.0f, 2.0f, 0.0f
         )
