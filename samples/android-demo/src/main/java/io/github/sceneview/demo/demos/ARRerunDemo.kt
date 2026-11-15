@@ -199,6 +199,7 @@ import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.SpaceAnswer
 import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.SpaceFitter
+import io.github.sceneview.demo.demos.internal.SpaceStay
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.of
@@ -1932,6 +1933,9 @@ private fun RerunLiveScreen(
     val hole = scanCoverage.camera?.takeIf { scanScope.hasFloorPlan }?.let { phone ->
         holeSide.update(scanHoles, phone, nowMs)
     }
+    // A cupboard or a shelf is filmed from before its opening: the phone that walks off is told.
+    val spaceStay = remember(scanMedia) { SpaceStay() }
+    val strayed = recording && scanScope == ScanScope.Space && spaceStay.strayed(scanCoverage.camera)
     // When it is finished: the turn the phone has made is the circle on the red button, and a
     // full one says so, in the line and under the thumb.
     val scanSeconds = scan?.elapsedSeconds() ?: 0f
@@ -1952,6 +1956,7 @@ private fun RerunLiveScreen(
         tooFast = scanCoverage.coachLine == ScanCoach.Line.Slower ||
             trackingFailureReason == TrackingFailureReason.EXCESSIVE_MOTION,
         tooDark = dark,
+        strayed = strayed,
         saving = phase == ScanPhase.Saving,
         complete = scanComplete,
         whenReady = ScanCompletion.whenReady(scanScope, scanSeconds),

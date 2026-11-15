@@ -140,6 +140,9 @@ class CaptureChromeUiTest {
         composeRule.onNodeWithText(text(R.string.scan_capture_keep_going_space)).assertIsDisplayed()
         instruction = ScanInstruction.WhenReady
         composeRule.onNodeWithText(text(R.string.scan_capture_when_ready_space)).assertIsDisplayed()
+        // Walked off: the line says where to stand, and which choice a room is.
+        instruction = ScanInstruction.StayPut
+        composeRule.onNodeWithText(text(R.string.scan_capture_stay_space)).assertIsDisplayed()
     }
 
     @Test

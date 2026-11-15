@@ -24,6 +24,33 @@ import kotlin.random.Random
 class SpaceFitTest {
 
     @Test
+    fun `a cupboard's scan is mostly that cupboard, a room walked round is not`() {
+        for (scan in listOf(cupboard(), cupboard(pipe = true), cupboard(top = false), cupboard(shelvesAround = true))) {
+            val fit = fitOf(scan)
+            assertTrue("share ${fit.share}", SpaceFitter.isOneSpace(fit))
+        }
+        // The same cupboard in its kitchen: the floor, three walls and a worktop filmed too.
+        val kitchen = cupboard().apply {
+            plane(-1.5f, -0.1f, -0.2f, 3.6f, 3f, axis = 1, normal = 1f) // floor
+            plane(-1.5f, -0.1f, -0.2f, 2.4f, 3f, axis = 0, normal = 1f) // wall to the left
+            plane(2.1f, -0.1f, -0.2f, 2.4f, 3f, axis = 0, normal = -1f) // wall to the right
+            plane(-1.5f, -0.1f, 2.8f, 3.6f, 2.4f, axis = 2, normal = -1f) // wall behind the phone
+            plane(-1.5f, 0.9f, -0.2f, 3.6f, 0.6f, axis = 1, normal = 1f) // worktop
+        }
+        // Taken for one space as wide as the room, its opening never found.
+        val walked = SpaceFitter.of(kitchen.cloud(), eye = kitchen.eye)
+        assertTrue("${walked?.width} wide, ${walked?.depth} deep", walked == null || !SpaceFitter.isOneSpace(walked))
+        // The cupboard measured right, with a walk across the room filmed behind it: no figure
+        // either, the scan cannot tell which of the two it is.
+        val wandered = cupboard().apply {
+            plane(-1.5f, -0.1f, DEPTH + 0.4f, 3.6f, 3f, axis = 1, normal = 1f) // the floor, on to the far wall
+            plane(-1.5f, -0.1f, DEPTH + 3.4f, 3.6f, 2.4f, axis = 2, normal = -1f) // the far wall
+        }
+        val behind = SpaceFitter.of(wandered.cloud(), eye = wandered.eye)
+        assertTrue("share ${behind?.share}", behind == null || !SpaceFitter.isOneSpace(behind))
+    }
+
+    @Test
     fun `an empty cupboard is measured inside, to the scan's grid`() {
         val fit = fitOf(cupboard())
         assertEquals(WIDTH, fit.width, TOLERANCE)

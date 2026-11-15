@@ -105,6 +105,16 @@ class SpaceResultUiTest {
     }
 
     @Test
+    fun `a room walked round as a cupboard gets no figure, and is told which choice a room is`() {
+        measure = SpaceMeasure.TooWide
+        show()
+        composeRule.onNodeWithText(text(R.string.scan_space_wide)).assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_space_wide_hint)).assertIsDisplayed()
+        composeRule.onNodeWithText("Inside", substring = true).assertDoesNotExist()
+        save("result-card-too-wide")
+    }
+
+    @Test
     fun `a space whose bottom was not seen asks for it instead of a verdict`() {
         measure = SpaceMeasure.Found(SpaceFit(0.6f, 0.56f, 0.5f, setOf(SpaceFace.Front, SpaceFace.Bottom), emptyList(), null, 0f, 0f, 0f, 0f))
         show()

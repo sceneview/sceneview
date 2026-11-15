@@ -18,6 +18,12 @@ enum class ScanInstruction {
      */
     Stuck,
 
+    /**
+     * A cupboard or a shelf is filmed from before its opening, and the phone has walked off
+     * ([SpaceStay]): stay there, or pick a room.
+     */
+    StayPut,
+
     /** Nothing scanned yet at the floor's nearest empty area, on that side of the phone. */
     HoleAhead, HoleLeft, HoleRight, HoleBehind,
     ;
@@ -71,6 +77,8 @@ class ScanLiveInstruction {
         poseStuck: Boolean = false,
         tooFast: Boolean = false,
         tooDark: Boolean = false,
+        /** The phone has walked away from the space it films ([SpaceStay.strayed]). */
+        strayed: Boolean = false,
         saving: Boolean = false,
         complete: Boolean = false,
         /** No full turn to wait for, and long enough to hold something ([ScanCompletion.whenReady]). */
@@ -96,6 +104,8 @@ class ScanLiveInstruction {
             trackingLost || poseSlipped -> ScanInstruction.GoBack
             tooFast -> ScanInstruction.Slower
             tooDark -> ScanInstruction.MoreLight
+            // Said at once, the opening line included: what follows would be filmed for nothing.
+            strayed -> ScanInstruction.StayPut
             // Do not introduce Sweep too late to give it its full hold before second six.
             elapsed < INTRO_MS && (shown == ScanInstruction.Sweep || elapsed <= INTRO_MS - HOLD_MS) ->
                 ScanInstruction.Sweep

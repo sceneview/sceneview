@@ -74,6 +74,7 @@ internal fun ScanInstructionLine(
         ScanInstruction.Starting -> R.string.scan_capture_starting
         ScanInstruction.GoBack -> R.string.scan_capture_go_back
         ScanInstruction.Stuck -> R.string.scan_capture_stuck
+        ScanInstruction.StayPut -> R.string.scan_capture_stay_space
         ScanInstruction.Slower -> R.string.scan_capture_slower
         ScanInstruction.MoreLight -> R.string.scan_capture_more_light
         ScanInstruction.Sweep -> when (scope) {

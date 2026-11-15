@@ -30,6 +30,7 @@
     <string name="scan_capture_sweep_space">Film the inside slowly: back, sides, bottom and top</string>
     <string name="scan_capture_keep_going_space">Keep filming the inside, every side of it</string>
     <string name="scan_capture_when_ready_space">Filmed every side inside? Tap the red button</string>
+    <string name="scan_capture_stay_space">Stay in front of the opening. For a whole room, go back and choose A room</string>
     <string name="scan_capture_saving">Saving your scan…</string>
     <string name="scan_capture_live_model">Your scan · Live 3D</string>
     <string name="scan_capture_sweep_object">Film the object slowly, from every side</string>

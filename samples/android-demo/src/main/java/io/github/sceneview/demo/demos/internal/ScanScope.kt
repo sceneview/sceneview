@@ -181,7 +181,7 @@ object ScanScopeCopy {
 
     fun title(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "An object"
-        ScanScope.Space -> "A space"
+        ScanScope.Space -> "A cupboard or shelf"
         ScanScope.Room -> "A room"
         ScanScope.Home -> "A whole home"
         ScanScope.Area -> "An outdoor area"
@@ -189,7 +189,7 @@ object ScanScopeCopy {
 
     fun detail(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "One item, from 30 cm to 1.5 m away."
-        ScanScope.Space -> "A shelf, a niche or under a sink."
+        ScanScope.Space -> "Its inside, to see what fits in it."
         ScanScope.Room -> "Floor, walls and the details inside."
         ScanScope.Home -> "Add rooms one at a time."
         ScanScope.Area -> "A garden, a yard or a terrace."
@@ -198,7 +198,8 @@ object ScanScopeCopy {
     /** How the scan goes, and what it gives: what a tradesperson needs to know before starting. */
     fun how(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Walk around it at arm's length. Anything further than 1.5 m is left out."
-        ScanScope.Space -> "Film the inside from its opening. You get its inside measurements and the biggest box that fits."
+        ScanScope.Space -> "Stand in front of its opening and film the inside. You get its inside measurements and the biggest box " +
+            "that fits. A niche, a gap or a car boot works too."
         ScanScope.Room -> "Walk along the walls. You get a 3D model and a floor plan with measurements."
         ScanScope.Home -> "Finish a room, then start the next. You get a plan of each room and the total."
         ScanScope.Area -> "Walk slowly across it. You get a 3D model and a map of the ground."
@@ -207,7 +208,7 @@ object ScanScopeCopy {
     /** The chooser's primary action. */
     fun start(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Scan an object"
-        ScanScope.Space -> "Scan a space"
+        ScanScope.Space -> "Scan a cupboard or shelf"
         ScanScope.Room -> "Scan a room"
         ScanScope.Home -> "Scan your home"
         ScanScope.Area -> "Scan an area"
@@ -236,7 +237,7 @@ object ScanScopeCopy {
     /** The coaching line when the last seconds added nothing. */
     fun nothingNew(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Point at the object, 30 cm to 1.5 m away"
-        ScanScope.Space -> "Point inside the space, 30 cm to 1.5 m away"
+        ScanScope.Space -> "Point inside it, 30 cm to 1.5 m away"
         ScanScope.Room, ScanScope.Home -> ScanCopy.COACH_NOTHING_NEW
         ScanScope.Area -> "Point at the ground or what stands on it, 1 to 3 m away"
     }

@@ -35,6 +35,9 @@ internal sealed interface SpaceMeasure {
     /** The scan shows no space: no back with a bottom or a side before it. */
     data object None : SpaceMeasure
 
+    /** The scan holds far more than one space, a room walked round: no figure of it means anything. */
+    data object TooWide : SpaceMeasure
+
     class Found(val fit: SpaceFit) : SpaceMeasure
 }
 
@@ -51,8 +54,12 @@ internal fun rememberSpaceMeasure(scope: ScanScope, surfels: DenseCloud?, eye: V
         // No points yet is not "no space": a kept scan's are read after its model is shown.
         val cloud = surfels ?: return@produceState
         value = withContext(Dispatchers.Default) {
-            runCatching { SpaceFitter.of(cloud, voxelM ?: SpaceFitter.DEFAULT_VOXEL_M, eye) }.getOrNull()?.let(SpaceMeasure::Found)
-                ?: SpaceMeasure.None
+            val fit = runCatching { SpaceFitter.of(cloud, voxelM ?: SpaceFitter.DEFAULT_VOXEL_M, eye) }.getOrNull()
+            when {
+                fit == null -> SpaceMeasure.None
+                SpaceFitter.isOneSpace(fit) -> SpaceMeasure.Found(fit)
+                else -> SpaceMeasure.TooWide
+            }
         }
     }
     return measure
@@ -67,6 +74,10 @@ internal fun SpaceMeasureCard(measure: SpaceMeasure, modifier: Modifier = Modifi
         SpaceMeasure.None -> OverlayCard(testTag = SPACE_CARD_TAG, modifier = modifier.semantics(mergeDescendants = true) { }) {
             Text(stringResource(R.string.scan_space_none), style = Type.card, color = chrome.onCard)
             Text(stringResource(R.string.scan_space_none_hint), style = Type.body, color = chrome.onCardMuted)
+        }
+        SpaceMeasure.TooWide -> OverlayCard(testTag = SPACE_CARD_TAG, modifier = modifier.semantics(mergeDescendants = true) { }) {
+            Text(stringResource(R.string.scan_space_wide), style = Type.card, color = chrome.onCard)
+            Text(stringResource(R.string.scan_space_wide_hint), style = Type.body, color = chrome.onCardMuted)
         }
         is SpaceMeasure.Found -> OverlayCard(testTag = SPACE_CARD_TAG, modifier = modifier.semantics(mergeDescendants = true) { }) {
             val fit = measure.fit

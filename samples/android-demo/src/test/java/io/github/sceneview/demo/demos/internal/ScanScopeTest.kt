@@ -174,8 +174,9 @@ class ScanScopeTest {
         assertFalse(ScanScope.Room.closeUp || ScanScope.Home.closeUp || ScanScope.Area.closeUp)
         // No floor plan, no map of the ground, no next room.
         assertFalse(space.hasFloorPlan || space.mapsGround || space.roomByRoom)
-        assertEquals("A space", ScanScopeCopy.title(space))
-        assertEquals("Scan a space", ScanScopeCopy.start(space))
+        // Named by what it is, not "a space": the first one scanned under that name was a kitchen.
+        assertEquals("A cupboard or shelf", ScanScopeCopy.title(space))
+        assertEquals("Scan a cupboard or shelf", ScanScopeCopy.start(space))
         assertEquals("Space · Nov 14, 5:40 PM", ScanScopeCopy.sessionTitle(space, 1, "Nov 14, 5:40 PM"))
         // What it is for is said where it is chosen.
         assertTrue(ScanScopeCopy.how(space), "inside measurements" in ScanScopeCopy.how(space))

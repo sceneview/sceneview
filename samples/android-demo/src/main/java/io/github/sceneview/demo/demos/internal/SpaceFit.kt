@@ -42,7 +42,9 @@ data class SpaceBox(val x: Float, val y: Float, val z: Float, val width: Float, 
  * [originX], [originY], [originZ] and [yawDegrees] place the frame in the scan's world: the
  * back-left-bottom corner, and the turn about Y that brings world +Z onto the frame's +Z.
  * [resolution] is the grid the measure was read on, in metres: the scan's voxel, or the cell
- * its inside was sorted into when that is coarser.
+ * its inside was sorted into when that is coarser. [share] is how much of the scan's surface
+ * the space holds, on its faces and inside, from 0 to 1: the scan of one cupboard is mostly
+ * that cupboard, a walk round a room is not ([SpaceFitter.isOneSpace]).
  */
 class SpaceFit(
     val width: Float,
@@ -56,6 +58,7 @@ class SpaceFit(
     val originZ: Float,
     val yawDegrees: Float,
     val resolution: Float = SpaceFitter.DEFAULT_VOXEL_M,
+    val share: Float = 1f,
 ) {
     /** The world position of the frame's point ([x], [y], [z]). */
     fun world(x: Float, y: Float, z: Float): Vec3 {
@@ -79,6 +82,26 @@ object SpaceFitter {
 
     /** Obstacles reported, the biggest; smaller ones still keep the fitting box away. */
     const val MAX_OBSTACLES = 8
+
+    /**
+     * The least of a scan's surface a space holds for the scan to be of that space
+     * ([SpaceFit.share]). Hand-built cupboards hold 53 to 67 % of theirs, what frames them
+     * included; three hand-held scans of rooms held 6, 9 and 27 % (2026-11-14).
+     */
+    const val ONE_SPACE_SHARE = 0.33f
+
+    /** The widest and the highest a space filmed from one spot is: a wardrobe, not a wall of a room. */
+    const val ONE_SPOT_SIDE_M = 2.6f
+
+    /**
+     * Whether [fit]'s scan is of that one space, not a walk round more than it: the space holds
+     * most of the scan, it is no wider or higher than one spot films, and its opening was found
+     * short of how far a space is looked for. A room walked round fails one of the three, and
+     * its figures would mean nothing.
+     */
+    fun isOneSpace(fit: SpaceFit): Boolean =
+        fit.share >= ONE_SPACE_SHARE && fit.width <= ONE_SPOT_SIDE_M && fit.height <= ONE_SPOT_SIDE_M &&
+            fit.depth < MAX_DEPTH_M - WALL_MARGIN_M
 
     /** A surface smaller than this (about 12 cm × 12 cm) closes no face. */
     private const val MIN_WALL_M2 = 0.015f
@@ -256,10 +279,14 @@ object SpaceFitter {
         var cell = CELL_M
         while (cells(width, cell).toLong() * cells(height, cell) * cells(depth, cell) > MAX_CELLS) cell *= 2f
         val grid = SpaceGrid(cells(width, cell), cells(height, cell), cells(depth, cell), cell)
+        var held = 0f
+        var whole = 0f
         for (i in 0 until n) {
             val x = u[i] - uLeft
             val y = v[i] - vBottom
             val z = w[i] - wBack
+            whole += area[i]
+            if (between(x, 0f, width) && between(y, 0f, height) && between(z, 0f, depth)) held += area[i]
             // A face that is closed has its own points near it; an open one has none to mistake.
             val inside = x > WALL_MARGIN_M && x < width - WALL_MARGIN_M && y > WALL_MARGIN_M && y < height - WALL_MARGIN_M &&
                 z > WALL_MARGIN_M && z < depth
@@ -281,6 +308,7 @@ object SpaceFitter {
             originZ = -uLeft * s + wBack * c,
             yawDegrees = Math.toDegrees(yaw.toDouble()).toFloat(),
             resolution = maxOf(voxelM, cell),
+            share = if (whole > 0f) held / whole else 0f,
         )
     }
 

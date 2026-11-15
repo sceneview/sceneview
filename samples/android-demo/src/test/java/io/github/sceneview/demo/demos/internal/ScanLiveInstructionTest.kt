@@ -104,6 +104,33 @@ class ScanLiveInstructionTest {
     }
 
     @Test
+    fun `a phone that walks off a cupboard is told at once, until it is back`() {
+        val line = ScanLiveInstruction()
+        line.update(nowMs = 0)
+        // Within the opening line's six seconds too: what follows would be filmed for nothing.
+        assertEquals(ScanInstruction.StayPut, line.update(nowMs = ScanLiveInstruction.HOLD_MS, strayed = true))
+        assertEquals(ScanInstruction.StayPut, line.update(nowMs = 30_000, strayed = true, whenReady = true))
+        // A lost pose is still said first.
+        assertEquals(ScanInstruction.GoBack, line.update(nowMs = 33_000, strayed = true, trackingLost = true))
+        assertEquals(ScanInstruction.WhenReady, line.update(nowMs = 36_000, whenReady = true))
+    }
+
+    @Test
+    fun `a phone has walked off past arm's reach across the ground, and is back a step nearer`() {
+        val stay = SpaceStay()
+        assertFalse(stay.strayed(null))
+        assertFalse(stay.strayed(DebugPose(1f, 1.2f, 1f)))
+        // An arm sweeping a wardrobe's width, and the phone raised and lowered: still there.
+        assertFalse(stay.strayed(DebugPose(1f + SpaceStay.REACH_M - 0.1f, 1.2f, 1f)))
+        assertFalse(stay.strayed(DebugPose(1f, 2.4f, 1f)))
+        assertTrue(stay.strayed(DebugPose(1f, 1.2f, 1f + SpaceStay.REACH_M + 0.1f)))
+        // Not back yet between the two distances, nor while the phone is not known.
+        assertTrue(stay.strayed(DebugPose(1f, 1.2f, 1f + SpaceStay.BACK_M + 0.1f)))
+        assertTrue(stay.strayed(null))
+        assertFalse(stay.strayed(DebugPose(1f, 1.2f, 1f + SpaceStay.BACK_M - 0.1f)))
+    }
+
+    @Test
     fun `a problem replaces the hint, but never sooner than the hold`() {
         val line = ScanLiveInstruction()
         line.update(nowMs = 0)

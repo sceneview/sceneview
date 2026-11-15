@@ -46,8 +46,8 @@ class SpaceFitCorpusTest {
             }
             File(out, "${scan.name}-space.json").writeText(SpaceAnswer.json(fit, scan.name))
             println(
-                "${scan.name}: ${cloud.count} points, inside %.2f x %.2f x %.2f m (W x H x D), open %s, %d obstacles, fits %s ($ms ms)"
-                    .format(fit.width, fit.height, fit.depth, fit.open.map { it.key }, fit.obstacles.size,
+                "${scan.name}: ${cloud.count} points, inside %.2f x %.2f x %.2f m (W x H x D), share %.2f, open %s, %d obstacles, fits %s ($ms ms)"
+                    .format(fit.width, fit.height, fit.depth, fit.share, fit.open.map { it.key }, fit.obstacles.size,
                         fit.fits?.let { "%.2f x %.2f x %.2f".format(it.width, it.height, it.depth) }),
             )
         }

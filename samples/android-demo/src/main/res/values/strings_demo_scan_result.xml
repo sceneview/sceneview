@@ -64,6 +64,8 @@
     </plurals>
     <string name="scan_space_none">Couldn\'t measure the inside</string>
     <string name="scan_space_none_hint">Scan again from the opening: the back, the sides and the bottom.</string>
+    <string name="scan_space_wide">This is more than one cupboard or shelf</string>
+    <string name="scan_space_wide_hint">Film just one, standing in front of its opening. For a whole room, choose A room.</string>
 
     <!-- Export sheet -->
     <string name="scan_export_title">Export scan</string>
