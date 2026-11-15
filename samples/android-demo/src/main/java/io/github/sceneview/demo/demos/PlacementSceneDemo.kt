@@ -106,7 +106,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 state = state,
                 engine = engine,
                 modelLoader = modelLoader,
-                // SDK coaching, permission and failure cards keep clear of the title and mode selector.
+                // Recovery cards clear the title; coaching keeps its full band above the dock.
                 coachingContentPadding = autoPlacementGuidancePadding(
                     bandWidth = maxWidth,
                     recoveryCardShown = recoveryCardShown,
@@ -150,7 +150,9 @@ internal fun autoPlacementGuidancePadding(bandWidth: Dp, recoveryCardShown: Bool
     )
     return PaddingValues(
         start = if (slot.besideChrome) safeWidth - slot.width - gutter * 2 else 0.dp,
-        top = LocalDemoChromeTopInset.current,
+        // The coaching row cannot scroll: reserving the title as well as the dock clips its
+        // instructions in landscape with large text. Only recovery cards need this top inset.
+        top = if (recoveryCardShown) LocalDemoChromeTopInset.current else 0.dp,
         bottom = if (slot.besideChrome) 0.dp else bottom,
     )
 }
