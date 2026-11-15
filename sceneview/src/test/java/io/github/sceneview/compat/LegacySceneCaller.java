@@ -1,0 +1,96 @@
+package io.github.sceneview.compat;
+
+/** Calls the exact pre-#3898 JVM descriptors, including the Compose flag and default masks. */
+public final class LegacySceneCaller {
+    private LegacySceneCaller() {}
+
+    public static void callScene() {
+        io.github.sceneview.SceneKt.Scene(
+            null /* androidx.compose.ui.Modifier */,
+            null /* io.github.sceneview.SurfaceType */,
+            null /* com.google.android.filament.Engine */,
+            null /* io.github.sceneview.loaders.ModelLoader */,
+            null /* io.github.sceneview.loaders.MaterialLoader */,
+            null /* io.github.sceneview.loaders.EnvironmentLoader */,
+            null /* com.google.android.filament.View */,
+            false /* boolean */,
+            null /* io.github.sceneview.FrameRatePolicy */,
+            null /* io.github.sceneview.RenderQuality */,
+            false /* boolean */,
+            false /* boolean */,
+            0f /* float */,
+            null /* io.github.sceneview.FitMode */,
+            null /* io.github.sceneview.model.AnimationEnvelope */,
+            null /* androidx.compose.foundation.layout.PaddingValues */,
+            false /* boolean */,
+            null /* com.google.android.filament.Renderer */,
+            null /* com.google.android.filament.Scene */,
+            null /* io.github.sceneview.environment.Environment */,
+            null /* io.github.sceneview.node.LightNode */,
+            null /* io.github.sceneview.node.LightNode */,
+            null /* io.github.sceneview.node.CameraNode */,
+            null /* io.github.sceneview.collision.CollisionSystem */,
+            null /* io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator */,
+            null /* io.github.sceneview.node.ViewNode.WindowManager */,
+            null /* io.github.sceneview.gesture.GestureDetector.OnGestureListener */,
+            null /* kotlin.jvm.functions.Function2 */,
+            null /* androidx.activity.ComponentActivity */,
+            null /* androidx.lifecycle.Lifecycle */,
+            null /* kotlin.jvm.functions.Function1 */,
+            null /* kotlin.jvm.functions.Function3 */,
+            null /* androidx.compose.runtime.Composer */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */
+        );
+    }
+
+    public static void callSceneView() {
+        io.github.sceneview.SceneKt.SceneView(
+            null /* androidx.compose.ui.Modifier */,
+            null /* io.github.sceneview.SurfaceType */,
+            null /* com.google.android.filament.Engine */,
+            null /* io.github.sceneview.loaders.ModelLoader */,
+            null /* io.github.sceneview.loaders.MaterialLoader */,
+            null /* io.github.sceneview.loaders.EnvironmentLoader */,
+            null /* com.google.android.filament.View */,
+            false /* boolean */,
+            null /* io.github.sceneview.FrameRatePolicy */,
+            null /* io.github.sceneview.RenderInvalidator */,
+            null /* io.github.sceneview.RenderQuality */,
+            false /* boolean */,
+            false /* boolean */,
+            0f /* float */,
+            null /* io.github.sceneview.FitMode */,
+            null /* io.github.sceneview.model.AnimationEnvelope */,
+            null /* androidx.compose.foundation.layout.PaddingValues */,
+            false /* boolean */,
+            null /* com.google.android.filament.Renderer */,
+            null /* com.google.android.filament.Scene */,
+            null /* io.github.sceneview.environment.Environment */,
+            null /* io.github.sceneview.node.LightNode */,
+            null /* io.github.sceneview.node.LightNode */,
+            null /* io.github.sceneview.node.CameraNode */,
+            null /* io.github.sceneview.collision.CollisionSystem */,
+            null /* io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator */,
+            null /* io.github.sceneview.node.ViewNode.WindowManager */,
+            null /* io.github.sceneview.utils.SurfaceMirrorer */,
+            null /* io.github.sceneview.gesture.GestureDetector.OnGestureListener */,
+            null /* kotlin.jvm.functions.Function2 */,
+            null /* androidx.activity.ComponentActivity */,
+            null /* androidx.lifecycle.Lifecycle */,
+            null /* kotlin.jvm.functions.Function1 */,
+            null /* kotlin.jvm.functions.Function3 */,
+            null /* androidx.compose.runtime.Composer */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */,
+            0 /* int */
+        );
+    }
+}

@@ -254,6 +254,10 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ### SceneView — 3D viewport
 
+The original overload omits `disallowParentIntercept` and keeps parent scrolling enabled
+(`false`). The overload below requires that argument explicitly; all other defaults are the same.
+Existing named, trailing-lambda and positional-content calls keep their original signature.
+
 Full signature:
 ```kotlin
 @Composable
@@ -291,7 +295,7 @@ fun SceneView(
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
-    disallowParentIntercept: Boolean = false, // Android: claim touches inside a scrolling/draggable parent
+    disallowParentIntercept: Boolean, // Android: explicit opt-in overload; omit to use the original overload (false)
     content: (@Composable SceneScope.() -> Unit)? = null
 )
 ```
