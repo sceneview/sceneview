@@ -1931,7 +1931,9 @@ fun Plane.placementBoundsFit(
 ): PlacementBoundsFit?
 ```
 
-`PlacementBoundsFit.fits` includes boundary contact. `marginMeters` is the smallest inward
+`PlacementBoundsFit.fits` includes boundary contact with a 0.00001 m (10 micrometre) numerical
+tolerance for pose/transform roundoff. `marginMeters` stays unrounded, so a tiny negative margin
+within that tolerance still fits. It is the smallest inward
 distance from the projected box to any polygon edge's supporting line: positive clearance,
 zero contact, negative greatest perpendicular overhang. It is not the translation needed to
 make the object fit or a Euclidean distance to a corner. `null` means no verdict (untracked

@@ -49,6 +49,20 @@ class PlacementBoundsFitTest {
         assertMargin(0f, fit(transform = translation(Position(0.5f, 0f, 0f))))
     }
 
+    @Test fun `contact classification tolerates ten micrometres without rounding the margin`() {
+        for (margin in listOf(-1e-5f, -2.3841858e-7f, 0f, 1e-5f)) {
+            val result = PlacementBoundsFit(margin)
+            assertTrue("contact within numerical tolerance: $margin", result.fits)
+            assertEquals("preserve the measured margin", margin, result.marginMeters, 0f)
+        }
+    }
+
+    @Test fun `overhang beyond the contact tolerance does not fit`() {
+        for (margin in listOf(Math.nextDown(-1e-5f), -1e-4f, -0.001f, -1f)) {
+            assertFalse("overhang beyond numerical tolerance: $margin", PlacementBoundsFit(margin).fits)
+        }
+    }
+
     @Test fun `box centre offset is transformed along with its bounds`() {
         assertMargin(-0.25f, fit(center = Position(0.75f, 0f, 0f)))
         assertMargin(0.5f, fit(

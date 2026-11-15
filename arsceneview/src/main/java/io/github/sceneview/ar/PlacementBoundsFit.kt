@@ -24,9 +24,15 @@ import kotlin.math.sqrt
  * translation needed to make an oversized object fit, nor a Euclidean distance to a corner.
  */
 data class PlacementBoundsFit(val marginMeters: Float) {
-    /** Whether the whole projected box is contained; touching the boundary is allowed. */
-    val fits: Boolean get() = marginMeters >= 0f
+    /**
+     * Whether the whole projected box is contained, allowing 0.00001 m (10 micrometres) of
+     * numerical contact tolerance for pose/transform roundoff. [marginMeters] stays unrounded,
+     * so a tiny negative margin within this tolerance still fits.
+     */
+    val fits: Boolean get() = marginMeters >= -PLACEMENT_CONTACT_TOLERANCE_METERS
 }
+
+private const val PLACEMENT_CONTACT_TOLERANCE_METERS = 1e-5f
 
 /**
  * Tests the **whole** model box against a tracked surface's convex polygon, rather than
@@ -105,7 +111,8 @@ fun placementBoundsFit(
  * model, pass its node's `worldTransform`, including its scale and pivot/asset corrections.
  *
  * Returns `null` while the plane is not tracking or the geometry has no usable verdict.
- * Re-evaluate as the polygon grows or the object moves/scales. Instant-placement and depth
+ * Boundary contact uses [PlacementBoundsFit.fits]'s numerical tolerance. Re-evaluate as the
+ * polygon grows or the object moves/scales. Instant-placement and depth
  * hits have no plane polygon, so they cannot establish a fit. No placement is gated or moved
  * automatically; the caller decides how to present [PlacementBoundsFit.fits].
  */

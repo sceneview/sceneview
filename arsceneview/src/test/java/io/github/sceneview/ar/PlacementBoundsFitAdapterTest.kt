@@ -13,6 +13,7 @@ import io.github.sceneview.math.Scale
 import io.github.sceneview.math.toQuaternion
 import java.nio.FloatBuffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -31,6 +32,34 @@ class PlacementBoundsFitAdapterTest {
             assertNotNull("4 degree tilt, $yaw degree yaw must have a fit verdict", fit)
             assertTrue(fit!!.fits)
             assertEquals("clearance at yaw $yaw", 0.5f, fit.marginMeters, 1e-5f)
+        }
+    }
+
+    @Test fun `translated tilted plane accepts exact boundary contact for every yaw`() {
+        val boundaryBounds = Box(floatArrayOf(0f, 0f, 0f), floatArrayOf(1f, 1f, 1f))
+        for (yaw in 1..359) {
+            val pose = planePose(yaw.toFloat())
+            val fit = SnapshotPlane(pose).placementBoundsFit(boundaryBounds, pose.transform)
+            assertNotNull("boundary contact must have a verdict at yaw $yaw", fit)
+            fit!!
+            assertTrue("boundary contact at yaw $yaw, margin=${fit.marginMeters}", fit.fits)
+            assertEquals("boundary margin at yaw $yaw", 0f, fit.marginMeters, 1e-5f)
+            if (yaw == 1) {
+                assertTrue("retain the raw negative roundoff margin", fit.marginMeters < 0f)
+            }
+        }
+    }
+
+    @Test fun `translated tilted plane rejects a millimetre overhang for every yaw`() {
+        val boundaryBounds = Box(floatArrayOf(0f, 0f, 0f), floatArrayOf(1f, 1f, 1f))
+        for (yaw in 1..359) {
+            val pose = planePose(yaw.toFloat())
+            val modelTransform = pose.transform * translation(Position(0.001f, 0f, 0f))
+            val fit = SnapshotPlane(pose).placementBoundsFit(boundaryBounds, modelTransform)
+            assertNotNull("overhang must have a verdict at yaw $yaw", fit)
+            fit!!
+            assertFalse("millimetre overhang at yaw $yaw, margin=${fit.marginMeters}", fit.fits)
+            assertEquals("overhang margin at yaw $yaw", -0.001f, fit.marginMeters, 1e-5f)
         }
     }
 
