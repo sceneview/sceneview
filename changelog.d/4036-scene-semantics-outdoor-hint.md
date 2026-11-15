@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: Scene Semantics now says it is trained on outdoor scenes ([#4036](https://github.com/sceneview/sceneview/issues/4036)).** Indoors, its labels can be wrong — furniture may come back as a building or a road — so the screen keeps "Trained on outdoor scenes — labels are unreliable indoors" in view the whole time, with warm-up and "nothing classified yet" hints in the same banner. When ARCore is missing, needs an update or fails to start, the warning steps aside so ARCore's own message stays readable.

@@ -43,10 +43,11 @@ enum class ArGuidanceCue {
 /**
  * Why tracking is poor, in words a user can act on — the reason chip of the coaching card.
  * Read from ARCore's [TrackingFailureReason] by [from]; only reasons the user can fix by
- * moving have a hint.
+ * moving have a hint. The built-in state-based overlay handles camera and internal errors
+ * separately, without adding cases to this published enum.
  */
 enum class ArTrackingHint {
-    /** No actionable reason. */
+    /** No movement advice. */
     NONE,
 
     /** [TrackingFailureReason.INSUFFICIENT_LIGHT] — "Too dark". */
@@ -59,7 +60,7 @@ enum class ArTrackingHint {
     LOW_DETAIL;
 
     companion object {
-        /** The hint for an ARCore failure [reason]; [NONE] for `null` and non-actionable reasons. */
+        /** Movement advice for an ARCore failure [reason]; [NONE] for `null` and other reasons. */
         fun from(reason: TrackingFailureReason?): ArTrackingHint = when (reason) {
             TrackingFailureReason.INSUFFICIENT_LIGHT -> TOO_DARK
             TrackingFailureReason.EXCESSIVE_MOTION -> TOO_FAST
@@ -109,10 +110,15 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
         private set
 
     /**
-     * Why tracking is poor, shown as a chip with one actionable line. Only ever set while
-     * [cue] is [ArGuidanceCue.INITIALIZING] or [ArGuidanceCue.TRACKING_LIMITED].
+     * Movement advice, shown as a chip with one actionable line. Only ever set while
+     * [cue] is [ArGuidanceCue.INITIALIZING] or [ArGuidanceCue.TRACKING_LIMITED]. Camera and
+     * internal errors keep this [ArTrackingHint.NONE]; the built-in overlay handles them separately.
      */
     var hint: ArTrackingHint by mutableStateOf(ArTrackingHint.NONE)
+        private set
+
+    /** Settled reason for the built-in card; recovery errors are not public enum hints. */
+    internal var trackingReason: TrackingFailureReason? by mutableStateOf(null)
         private set
 
     /** The scan has gone on long enough that the card suggests a better spot. */
@@ -140,7 +146,7 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
     private var rawSince = 0L
     private var shownSince = 0L
     private var hasExited = false
-    private var rawHint = ArTrackingHint.NONE
+    private var rawReason: TrackingFailureReason? = null
     private var rawHintSince = 0L
     private var hintShownSince = 0L
     private var nextDeadline: Long? = null
@@ -157,7 +163,7 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
 
     /**
      * Recomputes the cue for the placement's current [phase] and the camera's
-     * [trackingFailureReason] (from `onTrackingFailureChanged`), which feeds [hint].
+     * [trackingFailureReason] (from `onTrackingFailureChanged`), which feeds movement and recovery advice.
      */
     fun update(
         phase: PlacementPhase,
@@ -192,7 +198,7 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
             phase == PlacementPhase.RECOVERY_FAILED ||
             phase == PlacementPhase.CAMERA_ERROR
         val linger = lingering(raw, nowMillis, deadlines)
-        settle(raw, ArTrackingHint.from(trackingFailureReason), linger, cardDue, deadlines)
+        settle(raw, trackingFailureReason, linger, cardDue, deadlines)
     }
 
     /**
@@ -233,7 +239,7 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
         }
         if (phase != PlaneDiscoveryPhase.WAITING && phase != PlaneDiscoveryPhase.LOST) hasTracked = true
         val linger = phase == PlaneDiscoveryPhase.HELP_OFFERED || lingering(raw, nowMillis, deadlines)
-        settle(raw, ArTrackingHint.from(trackingFailureReason), linger, cardDue = false, deadlines)
+        settle(raw, trackingFailureReason, linger, cardDue = false, deadlines)
     }
 
     /**
@@ -273,13 +279,14 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
     /** The steadiness layer: from what the inputs say to what the card shows. */
     private fun settle(
         raw: ArGuidanceCue,
-        rawHintNow: ArTrackingHint,
+        reason: TrackingFailureReason?,
         linger: Boolean,
         cardDue: Boolean,
         deadlines: Deadlines,
     ) {
         val next = settleCue(raw, cardDue, deadlines)
-        hint = settleHint(next, rawHintNow, deadlines)
+        trackingReason = settleReason(next, reason.takeUnless { it == TrackingFailureReason.NONE }, deadlines)
+        hint = ArTrackingHint.from(trackingReason)
         scanLingering = linger && next == ArGuidanceCue.SCAN
         nextDeadline = deadlines.earliest
     }
@@ -314,29 +321,31 @@ class ArGuidanceState(val surface: PlacementSurface = PlacementSurface.SURFACE) 
     }
 
     /** A reason must hold before its chip shows, and a shown chip stays long enough to read. */
-    private fun settleHint(next: ArGuidanceCue, rawHintNow: ArTrackingHint, deadlines: Deadlines): ArTrackingHint {
+    private fun settleReason(
+        next: ArGuidanceCue,
+        reason: TrackingFailureReason?,
+        deadlines: Deadlines,
+    ): TrackingFailureReason? {
         val now = deadlines.now
-        if (rawHintNow != rawHint) {
-            rawHint = rawHintNow
+        if (reason != rawReason) {
+            rawReason = reason
             rawHintSince = now
         }
         val hintAllowed = next == ArGuidanceCue.INITIALIZING || next == ArGuidanceCue.TRACKING_LIMITED
-        val stableHint = if (now - rawHintSince >= HINT_STABLE_MS) {
-            rawHint
-        } else {
-            if (rawHint != hint) deadlines.add(rawHintSince + HINT_STABLE_MS)
-            null
+        val stable = now - rawHintSince >= HINT_STABLE_MS
+        if (!stable && rawReason != trackingReason) {
+            deadlines.add(rawHintSince + HINT_STABLE_MS)
         }
-        val nextHint = when {
-            !hintAllowed -> ArTrackingHint.NONE
-            stableHint == hint -> hint
-            hint != ArTrackingHint.NONE && now - hintShownSince < HINT_MIN_SHOWN_MS ->
-                hint.also { deadlines.add(hintShownSince + HINT_MIN_SHOWN_MS) }
-            stableHint != null -> stableHint
-            else -> hint
+        val nextReason = when {
+            !hintAllowed -> null
+            stable && rawReason == trackingReason -> trackingReason
+            trackingReason != null && now - hintShownSince < HINT_MIN_SHOWN_MS ->
+                trackingReason.also { deadlines.add(hintShownSince + HINT_MIN_SHOWN_MS) }
+            stable -> rawReason
+            else -> trackingReason
         }
-        if (nextHint != hint && nextHint != ArTrackingHint.NONE) hintShownSince = now
-        return nextHint
+        if (nextReason != trackingReason && nextReason != null) hintShownSince = now
+        return nextReason
     }
 
     /** Collects the future instants at which a re-evaluation can change the output. */

@@ -59,6 +59,9 @@ fun GlassChip(
             .heightIn(min = SceneViewTokens.Layout.touchTarget)
             .overMediaEdge(shape)
             .clip(shape)
+            // The same ground every glass control paints under its fill (#3733): without it an
+            // unselected chip is white text on 14 % white over whatever the scene shows.
+            .background(LocalGlassGround.current)
             .background(if (solid) SceneViewTokens.Glass.onGlass else SceneViewTokens.Glass.surface)
             .then(
                 if (toggle) {

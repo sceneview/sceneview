@@ -37,8 +37,10 @@ interface ARPermissionHandler {
     fun requestCameraPermission(onResult: (granted: Boolean) -> Unit)
 
     /**
-     * Returns `true` when the user has permanently denied the camera permission
-     * (i.e. "Don't ask again" was checked).
+     * Historical inverse of Android's `shouldShowRequestPermissionRationale(CAMERA)`:
+     * `true` means Android does **not** recommend a rationale. This also happens before
+     * the first request and after a dismissed dialog, so it does not prove permanent denial.
+     * Negate this result before passing it to [resolveCameraPermissionRecovery].
      */
     fun shouldShowPermissionRationale(): Boolean
 

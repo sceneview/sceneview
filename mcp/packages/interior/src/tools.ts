@@ -624,7 +624,7 @@ export async function dispatchTool(
               "```kotlin",
               args.ar
                 ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
-                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
+                : `implementation("io.github.sceneview:sceneview:4.69.4")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,

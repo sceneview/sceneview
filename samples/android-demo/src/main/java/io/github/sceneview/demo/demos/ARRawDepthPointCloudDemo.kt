@@ -163,6 +163,7 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
         (now - (zeroPointsSince ?: now)) > 2000L
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_raw_depth_cloud_title),
         onBack = onBack,
         controls = {
@@ -179,8 +180,8 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Raw depth samples are colored by distance (warm = near, " +
-                            "cool = far). Drag the slider right to drop low-confidence " +
+                        text = "Raw depth samples are colored by distance (red = 0.3 m, " +
+                            "blue = 5 m). Drag the slider right to drop low-confidence " +
                             "samples — the noise should fall away at object edges first.",
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -441,15 +442,24 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val canvasW = size.width
                     val canvasH = size.height
-                    val pointRadius = 2.5f
+                    val pointRadius = 3.dp.toPx()
+                    val outlineRadius = pointRadius + 1.dp.toPx()
+                    val outlineColor = Color.Black.copy(alpha = 0.8f)
                     for (i in 0 until pointCount) {
                         val px = RawDepthCloud.x(packed, i) / widthF * canvasW
                         val py = RawDepthCloud.y(packed, i) / heightF * canvasH
                         val argb = RawDepthCloud.argb(packed, i)
+                        val center = Offset(px, py)
+                        // Density-scaled dots with a dark edge stay legible on the camera feed.
+                        drawCircle(
+                            color = outlineColor,
+                            radius = outlineRadius,
+                            center = center,
+                        )
                         drawCircle(
                             color = Color(argb),
                             radius = pointRadius,
-                            center = Offset(px, py),
+                            center = center,
                         )
                     }
                 }

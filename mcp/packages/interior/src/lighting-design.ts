@@ -64,11 +64,11 @@ export function generateLightingDesign(options: LightingDesignOptions): string {
   const composableName = "LightingDesignScene";
 
   if (ar) {
-    return generateArLightingDesign(composableName, roomModel, options);
+    return generateArLightingDesign(composableName, options);
   }
 
   const lightNodes = lights
-    .map((light, i) => generateLightNodeCode(light, tempColor, i))
+    .map((light) => generateLightNodeCode(light, tempColor, true, "                    "))
     .join("\n\n");
 
   return `package com.example.interior.lighting
@@ -88,6 +88,8 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
+import io.github.sceneview.model.restPoseBoundingBox
+import kotlin.math.PI
 
 /**
  * Interior Lighting Design — ${lights.join(", ")} lights.
@@ -98,7 +100,7 @@ import io.github.sceneview.math.Position
  *
  * Model: src/main/assets/${roomModel}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.69.4")
  */
 @Composable
 fun ${composableName}() {
@@ -124,16 +126,29 @@ ${dimmable ? lights.map((_, i) => `    var light${i}Intensity by remember { muta
                     assetFileLocation = "environments/interior_hdr.ktx"
                 )!!,
             ) {
-                // Room model
+                // Match the fixtures to the room's scaled, bottom-centered bounding box.
                 modelInstance?.let { instance ->
+                    val roomSize = remember(instance) {
+                        // Use the same skinning-corrected bounds as ModelNode.scaleToUnits.
+                        val halfExtent = instance.asset.restPoseBoundingBox.halfExtent
+                        val largestDimension = 2f * maxOf(halfExtent[0], halfExtent[1], halfExtent[2])
+                        val roomScale = if (largestDimension > 0f) 2f / largestDimension else 1f
+                        Position(
+                            halfExtent[0] * 2f * roomScale,
+                            halfExtent[1] * 2f * roomScale,
+                            halfExtent[2] * 2f * roomScale
+                        )
+                    }
+                    val roomFalloff = maxOf(roomSize.x, roomSize.y, roomSize.z) * 1.25f
                     ModelNode(
                         modelInstance = instance,
-                        scaleToUnits = 2.0f
+                        scaleToUnits = 2.0f,
+                        centerOrigin = Position(0f, -1f, 0f)
                     )
-                }
 
-                // ── Light sources ─────────────────────────────────────────
+                    // ── Light sources ─────────────────────────────────────
 ${lightNodes}
+                }
             }
 
             if (modelInstance == null) {
@@ -164,24 +179,44 @@ ${lights.map((light, i) => `                Text("${capitalize(light)}", style =
 function generateLightNodeCode(
   light: LightType,
   color: { r: number; g: number; b: number },
-  index: number
+  scaledRoom: boolean,
+  indent = "                "
 ): string {
-  const positions: Record<string, string> = {
-    ambient: "0f, 2.5f, 0f",
-    spot: "0f, 2.4f, 0f",
-    accent: "1.5f, 1.5f, -1.5f",
-    pendant: "0f, 2.2f, 0f",
-    recessed: "0f, 2.6f, 0f",
-    track: "-1f, 2.4f, 0f",
-    sconce: "2f, 1.8f, -2f",
-    "floor-lamp": "1.5f, 1.4f, 1.5f",
-    "table-lamp": "0.8f, 0.9f, -0.5f",
-    chandelier: "0f, 2.0f, 0f",
-    "strip-led": "0f, 2.5f, -2f",
-    natural: "-2f, 2f, 2f",
+  // Filament has no ambient or area light type; approximate those fixtures with points.
+  const types: Record<LightType, "DIRECTIONAL" | "POINT" | "SPOT"> = {
+    ambient: "POINT",
+    spot: "SPOT",
+    accent: "SPOT",
+    pendant: "POINT",
+    recessed: "SPOT",
+    track: "SPOT",
+    sconce: "POINT",
+    "floor-lamp": "POINT",
+    "table-lamp": "POINT",
+    chandelier: "POINT",
+    "strip-led": "POINT",
+    natural: "DIRECTIONAL",
   };
 
-  const intensities: Record<string, number> = {
+  // Fixture offsets in a reference 4 x 2.7 x 4 m room, relative to its floor center.
+  const positions: Record<LightType, [number, number, number]> = {
+    ambient: [0, 2.5, 0],
+    spot: [0, 2.4, 0],
+    accent: [1.5, 1.5, -1.5],
+    pendant: [0, 2.2, 0],
+    recessed: [0, 2.6, 0],
+    track: [-1, 2.4, 0],
+    sconce: [1.9, 1.8, -1.9],
+    "floor-lamp": [1.5, 1.4, 1.5],
+    "table-lamp": [0.8, 0.9, -0.5],
+    chandelier: [0, 2, 0],
+    "strip-led": [0, 2.5, -1.9],
+    natural: [0, 0, 0],
+  };
+
+  // Preview illuminance below each fixture, before finite-radius attenuation.
+  // Match the legacy daylight-level presets; these are previews, not bulb ratings.
+  const illuminanceLux: Record<LightType, number> = {
     ambient: 40_000,
     spot: 120_000,
     accent: 60_000,
@@ -196,23 +231,45 @@ function generateLightNodeCode(
     natural: 80_000,
   };
 
-  const pos = positions[light] ?? "0f, 2f, 0f";
-  const intensity = intensities[light] ?? 80_000;
+  const dimensions = [4, 2.7, 4];
+  const axes = ["x", "y", "z"];
+  const coordinates = positions[light].map((value, axis) =>
+    scaledRoom && value !== 0
+      ? `roomSize.${axes[axis]} * (${value}f / ${dimensions[axis]}f)`
+      : `${value}f`,
+  );
+  const pos = coordinates.join(", ");
+  const intensity = illuminanceLux[light];
+  const type = types[light];
 
-  return `                // ${capitalize(light)} light
-                LightNode(
-                    type = LightManager.Type.DIRECTIONAL,
-                    apply = {
-                        intensity(${intensity}f)
-                        color(${color.r}f, ${color.g}f, ${color.b}f)
-                        direction(0f, -1f, 0f)
-                    }
-                )`;
+  // Filament: directional intensity is lux; POINT and non-focused SPOT take lumens.
+  // Phi = E * h^2 * 4*pi (point) or E * h^2 * pi (SPOT's cone-independent mode).
+  // https://google.github.io/filament/main/filament.html#lighting/directlighting/punctuallights
+  const lines = [
+    `// ${capitalize(light)} light`,
+    "LightNode(",
+    `    type = LightManager.Type.${type},`,
+    ...(type !== "DIRECTIONAL" ? [`    position = Position(${pos}),`] : []),
+    "    apply = {",
+    ...(type === "DIRECTIONAL"
+      ? [`        intensity(${intensity}f) // lux`]
+      : [
+          `        val height = ${coordinates[1]}`,
+          `        // Convert preview lux to lumens at this fixture's floor distance.`,
+          `        intensity(${intensity}f * ${type === "POINT" ? "4f * " : ""}PI.toFloat() * height * height)`,
+        ]),
+    `        color(${color.r}f, ${color.g}f, ${color.b}f)`,
+    ...(type !== "DIRECTIONAL" ? [`        falloff(${scaledRoom ? "roomFalloff" : "5f"})`] : []),
+    ...(type !== "POINT" ? ["        direction(0f, -1f, 0f)"] : []),
+    ...(type === "SPOT" ? ["        spotLightCone(0.5f, 0.8f)"] : []),
+    "    }",
+    ")",
+  ];
+  return lines.map((line) => indent + line).join("\n");
 }
 
 function generateArLightingDesign(
   composableName: string,
-  roomModel: string,
   options: LightingDesignOptions
 ): string {
   const { lights, colorTemperature = "warm-white" } = options;
@@ -228,19 +285,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import com.google.ar.core.Frame
+import com.google.ar.core.Anchor
+import com.google.ar.core.Plane
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
-import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.node.LightNode
+import io.github.sceneview.math.Position
+import kotlin.math.PI
 
 /**
  * AR Lighting Design — preview lighting in your real room.
  *
  * Lights: ${lights.join(", ")}. Color temperature: ${colorTemperature} (~${tempColor.kelvin}K).
- * Tap a surface to place virtual light fixtures, then adjust intensity.
+ * Tap a horizontal floor plane to place virtual light fixtures.
+ * Fixture offsets and falloff are in meters relative to that plane's anchor.
  *
  * Required AndroidManifest.xml:
  *   <uses-permission android:name="android.permission.CAMERA" />
@@ -257,7 +317,7 @@ fun ${composableName}AR() {
     // Latest ARCore frame — the tap handler hit-tests against it
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -268,28 +328,25 @@ fun ${composableName}AR() {
             onSessionUpdated = { _, frame -> latestFrame = frame },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { e, _ ->
-                    // Hit-test the tap against the latest ARCore frame
-                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed) {
-                            val anchor = hitResult.createAnchor()
-                            placed = true
-                        }
+                    // The anchor's local y=0 is the tapped floor, at any world height.
+                    if (anchor == null) {
+                        anchor = latestFrame?.hitTest(e)?.firstOrNull { hit ->
+                            val plane = hit.trackable as? Plane
+                            plane?.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                                plane.isPoseInPolygon(hit.hitPose)
+                        }?.createAnchorOrNull()
                     }
                 }
             )
         ) {
-${lights.map((light) => `            // ${capitalize(light)} light
-            LightNode(
-                type = LightManager.Type.DIRECTIONAL,
-                apply = {
-                    intensity(80_000f)
-                    color(${tempColor.r}f, ${tempColor.g}f, ${tempColor.b}f)
-                    direction(0f, -1f, 0f)
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+${lights.map((light) => generateLightNodeCode(light, tempColor, false, "                    ")).join("\n\n")}
                 }
-            )`).join("\n\n")}
+            }
         }
 
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,
@@ -298,7 +355,7 @@ ${lights.map((light) => `            // ${capitalize(light)} light
                     .padding(24.dp)
             ) {
                 Text(
-                    text = "Tap a surface to preview lighting setup",
+                    text = "Tap a floor plane to preview lighting setup",
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyMedium
                 )

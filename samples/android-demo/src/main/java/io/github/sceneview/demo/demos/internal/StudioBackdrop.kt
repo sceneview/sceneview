@@ -5,9 +5,10 @@ import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Engine
 import com.google.android.filament.Skybox
@@ -375,11 +376,7 @@ internal fun rememberStudioEnvironment(
             }
         }
     }
-    LaunchedEffect(state.value) {
-        repeat(2) { withFrameNanos { } }
-        retired.forEach { it.destroy(engine, environmentLoader) }
-        retired.clear()
-    }
+    ReleaseRetiredStudioResources(state.value, retired) { it.destroy(engine, environmentLoader) }
     DisposableEffect(engine, environmentLoader, state) {
         onDispose {
             state.value?.destroy(engine, environmentLoader)
@@ -389,6 +386,26 @@ internal fun rememberStudioEnvironment(
         }
     }
     return state.value?.presented
+}
+
+@Composable
+internal fun <T> ReleaseRetiredStudioResources(
+    current: T?,
+    retired: MutableList<T>,
+    release: (T) -> Unit,
+) {
+    key(current) {
+        // Capture only the resources retired by the value this composition hands to SceneView.
+        // SideEffect runs after its DisposableEffect has synchronously unbound the old pair;
+        // frame-clock callbacks alone do not prove that the replacement was applied (#4436).
+        val replaced = retired.toList()
+        SideEffect {
+            replaced.forEach {
+                release(it)
+                retired.remove(it)
+            }
+        }
+    }
 }
 
 private const val TAG = "StudioBackdrop"

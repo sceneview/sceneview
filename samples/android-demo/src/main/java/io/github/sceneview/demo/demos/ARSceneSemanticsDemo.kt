@@ -12,7 +12,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -20,10 +22,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -42,8 +47,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -55,13 +63,18 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.semanticImage
 import io.github.sceneview.ar.arcore.semanticLabelFraction
 import io.github.sceneview.ar.rememberHostLifecycle
+import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DemoTopOverlayScope
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.demos.internal.SemanticsOverlay
+import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.isDemoCompactWidth
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
@@ -69,8 +82,8 @@ import io.github.sceneview.rememberModelLoader
 /**
  * AR demo — Scene Semantics: read ARCore's per-pixel 12-class outdoor semantic model and render
  * it two ways at once — a live top-3 label HUD plus a color-coded segmentation **overlay** that
- * blends over the camera feed via a Camera ↔ Semantic slider (12 classes: SKY, BUILDING, TREE,
- * ROAD, SIDEWALK, TERRAIN, STRUCTURE, OBJECT, VEHICLE, PERSON, WATER, UNLABELED).
+ * blends over the camera feed via a Camera ↔ Semantic slider (12 classes: UNLABELED, SKY,
+ * BUILDING, TREE, ROAD, SIDEWALK, TERRAIN, STRUCTURE, OBJECT, VEHICLE, PERSON, WATER).
  *
  * Pipeline:
  *
@@ -98,9 +111,8 @@ import io.github.sceneview.rememberModelLoader
  * root cause of [#3396](https://github.com/sceneview/sceneview/issues/3396) and
  * [#3527](https://github.com/sceneview/sceneview/issues/3527).
  *
- * **Outdoor only.** The ARCore model has no indoor training data — pointing the camera at a
- * living-room wall will return mostly `UNLABELED`. Take this demo outside (street / park /
- * back yard).
+ * **Outdoor only.** Indoors, the ARCore model can return `UNLABELED` or misleading outdoor
+ * labels. Take this demo outside (street / park / back yard).
  *
  * Closes [#1868](https://github.com/sceneview/sceneview/issues/1868) — follow-up of
  * [#1730](https://github.com/sceneview/sceneview/issues/1730) (Config wiring + Frame accessors).
@@ -132,6 +144,13 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // true if the device shipped the Scene Semantics ML model; false otherwise.
     // Driving the UI off this avoids the "black screen on unsupported device" trap (#1617).
     var semanticsSupported by remember { mutableStateOf<Boolean?>(null) }
+
+    // `semanticsSupported` stays null for good when the session never configures: ARCore
+    // missing or outdated (the SDK shows its install/update card) or a session failure (the
+    // scaffold shows its failure card). Same wiring as `ARPointCloudDemo`, so neither card is
+    // covered by the outdoor warning, which would otherwise wait on that null forever.
+    var arSessionFailed by remember { mutableStateOf(false) }
+    var arSessionUnavailable by remember { mutableStateOf(false) }
 
     // Latest top-3 (label, fraction) snapshot. Captured each `onSessionUpdated` frame; rendered
     // as a Compose overlay. We snapshot the list rather than expose per-label State because the
@@ -168,7 +187,12 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // Image even though the Bitmap reference is unchanged.
     var semanticsFrameVersion by remember { mutableStateOf(0) }
 
+    val legendShown = semanticsEverReceived && overlayBlend > LEGEND_MIN_BLEND
+
     DemoScaffold(
+        monitorArMotionSensors = true,
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_scene_semantics_title),
         onBack = onBack,
         controls = {
@@ -220,154 +244,100 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
-        // Top band: the label HUD, then whichever of the three banners applies. They are
+        // Top band: the label HUD, the semantic notice and any tracking failure. They are
         // siblings in the scaffold's top Column, so they stack instead of overlapping —
         // this demo used to place them by arithmetic (8 dp, 8 dp, 56 dp), which held only
         // while the pill above stayed one line at font scale 1.0 in English (#3237).
         topOverlay = {
-            // Top-start HUD listing the 3 highest semantic-label fractions. Hidden until the
-            // first non-zero update so the empty list doesn't show during startup warmup.
-            if (semanticsSupported == true && semanticsEverReceived && topLabels.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    color = Color.Black.copy(alpha = 0.65f),
-                    contentColor = Color.White
+            SceneSemanticsTopBand(legendShown = legendShown) {
+                // Top-start HUD listing the 3 highest semantic-label fractions. Hidden until the
+                // first non-zero update so the empty list doesn't show during startup warmup.
+                if (semanticsSupported == true && semanticsEverReceived && topLabels.isNotEmpty()) {
+                    SceneSemanticsLabelHud(
+                        labels = topLabels,
+                        modifier = Modifier.align(Alignment.Start),
+                    )
+                }
+
+                // Device-unsupported banner — surfaced on-screen (not buried in a
+                // Settings sheet) so a user on a device without the Scene Semantics
+                // ML model immediately understands why the HUD never appears (#1620
+                // thread 1).
+                AnimatedVisibility(
+                    visible = semanticsSupported == false,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = MaterialTheme.shapes.large
+                    ) {
                         Text(
-                            text = "Scene Semantics",
-                            style = MaterialTheme.typography.labelLarge
+                            text = "Your device doesn't have the ARCore Scene Semantics " +
+                                "model — see ARCore docs for the supported device list.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
-                        Spacer(Modifier.height(6.dp))
-                        topLabels.forEach { (label, fraction) ->
-                            LabelRow(label, fraction)
-                        }
+                    }
+                }
+
+                // One banner owns the persistent outdoor warning and the current semantic state,
+                // including UNLABELED frames whose transparent overlay can look broken (#3274).
+                SceneSemanticsOutdoorNotice(
+                    arSessionBlocked = arSessionFailed || arSessionUnavailable,
+                    semanticsSupported = semanticsSupported,
+                    semanticsEverReceived = semanticsEverReceived,
+                    sceneUnclassified = sceneUnclassified,
+                )
+
+                // Tracking-failure overlay — same vocabulary as the other AR demos.
+                // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+                // when a developer has picked one in the debug menu (#1881). Read it here
+                // so flipping the override re-renders the overlay immediately.
+                val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+                AnimatedVisibility(
+                    visible = (!isTracking && trackingFailureReason != null) ||
+                        ForcedTrackingFailure.override != null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        Text(
+                            text = when (effectiveReason) {
+                                TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
+                                TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
+                                TrackingFailureReason.INSUFFICIENT_FEATURES ->
+                                    "Not enough detail — point at a textured outdoor scene"
+                                TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
+                                TrackingFailureReason.BAD_STATE -> "AR session error"
+                                else -> stringResource(R.string.ar_status_scanning)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                        )
                     }
                 }
             }
-
-            // Device-unsupported banner — surfaced on-screen (not buried in a
-            // Settings sheet) so a user on a device without the Scene Semantics
-            // ML model immediately understands why the HUD never appears (#1620
-            // thread 1).
-            AnimatedVisibility(
-                visible = semanticsSupported == false,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Your device doesn't have the ARCore Scene Semantics " +
-                            "model — see ARCore docs for the supported device list.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // Warming-up overlay — shown when supported but no semantic data yet (first
-            // ~5 frames after resume on the typical device). Crucial: never leave the user
-            // staring at a black screen (see #1617) if semantics takes a moment to warm up.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && !semanticsEverReceived,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Warming up Scene Semantics — point the camera at an outdoor scene",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // #3274 — the scene has been classified but almost every pixel came back
-            // UNLABELED (typically: an indoor scene — the model has no indoor training
-            // data). The overlay shader paints UNLABELED fully transparent, so without this
-            // the demo silently shows the plain camera feed and reads as broken.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && semanticsEverReceived && sceneUnclassified,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Nothing classified yet — Scene Semantics is outdoor-only. " +
-                            "Try a street, park or back yard.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // Tracking-failure overlay — same vocabulary as the other AR demos.
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = (!isTracking && trackingFailureReason != null) ||
-                    ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = when (effectiveReason) {
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                "Not enough detail — point at a textured outdoor scene"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            else -> stringResource(R.string.ar_status_scanning)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-            }
         },
-        // Bottom color legend — maps the 12 overlay colors to their class names so the
-        // segmentation is readable. Only relevant once the overlay is actually showing.
-        //
-        // Hosted by the scaffold's `bottomOverlay` slot (#2779): the legend is a wide card
-        // and, hand-anchored bottom-center, its end edge ran straight under the Settings
-        // FAB. Start-aligned with the FAB's own band reserved on the end side, the two
-        // cannot meet at any screen width, density or font scale.
+        // Color legend — maps the 12 overlay colors to their class names so the segmentation
+        // is readable. Only relevant once the overlay is actually showing. A tall window keeps it
+        // in the bottom slot; a short one moves it into the top band — beside the HUD on a phone
+        // held sideways, under the warning in half of a split screen (see
+        // [SceneSemanticsTopBand] for why).
         bottomOverlay = {
-            if (semanticsEverReceived && overlayBlend > 0.05f) {
-                SemanticLegend(
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .padding(start = 16.dp, end = settingsFabReservedSpace)
-                )
-            }
+            SceneSemanticsBottomLegend(legendShown = legendShown)
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
+                onSessionFailure = { arSessionFailed = true },
+                onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -468,8 +438,199 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     }
 }
 
+/**
+ * Persistent outdoor warning and semantic status share one banner to avoid duplicate guidance.
+ *
+ * [arSessionBlocked] is true when ARCore is missing, needs an update, or the session failed:
+ * [semanticsSupported] then never leaves null, and the SDK's ARCore card or the scaffold's
+ * failure card owns the screen instead.
+ */
+@Composable
+internal fun SceneSemanticsOutdoorNotice(
+    arSessionBlocked: Boolean,
+    semanticsSupported: Boolean?,
+    semanticsEverReceived: Boolean,
+    sceneUnclassified: Boolean,
+) {
+    if (!arSessionBlocked && semanticsSupported != false) {
+        Surface(
+            modifier = Modifier.testTag(OUTDOOR_NOTICE_TAG),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            shape = MaterialTheme.shapes.large
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Trained on outdoor scenes — labels are unreliable indoors",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                val status = when {
+                    semanticsSupported != true -> null
+                    !semanticsEverReceived -> "Warming up Scene Semantics…"
+                    sceneUnclassified -> "Nothing classified yet — try a street, park or back yard."
+                    else -> null
+                }
+                if (status != null) {
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Below this Camera ↔ Semantic blend the overlay is too faint for its legend to mean anything. */
+private const val LEGEND_MIN_BLEND = 0.05f
+
+/** Test tag of the color legend, wherever the window puts it. */
+internal const val SEMANTIC_LEGEND_TAG = "scene-semantics-legend"
+
+/** Test tag of the outdoor warning pill — the whole Surface, not only its first line. */
+internal const val OUTDOOR_NOTICE_TAG = "scene-semantics-outdoor-notice"
+
+/** Test tag of the top band when it stacks the HUD, the warning and the legend in one column. */
+internal const val SEMANTIC_STACKED_BAND_TAG = "scene-semantics-stacked-band"
+
+/**
+ * The demo's `topOverlay` content, with the color legend inside it whenever the window is short.
+ *
+ * The scaffold stacks each overlay slot as a Column, so nothing inside the top band can meet
+ * anything else inside it — but the top band (below the identity row) and the bottom band
+ * (above the dock) are two independent Columns. A short window has no room for both: on a
+ * phone held sideways (Pixel 4a: 393 dp of window height) the legend sat across the lower half
+ * of the outdoor warning, and in one half of a split screen it covered the warning from 130 %
+ * text up, and the HUD too at 200 % (#4036). So the legend stays in the bottom band
+ * ([SceneSemanticsBottomLegend]) only in a tall window, where [content] goes straight into the
+ * slot's Column. In a short one ([isDemoCompactHeight]) it joins the top band:
+ *
+ * - **short and wide**, a phone held sideways: the legend is the end column of a Row whose start
+ *   column is [content]. Two Row cells share no horizontal pixels, so the warning and the legend
+ *   cannot overlap at any font scale.
+ * - **short and narrow**, half of a split screen (393 × 400 dp): there is no room for two
+ *   columns — halved, the HUD's "41 %" wrapped one character per line — so the legend goes
+ *   under [content] in one Column, which ends above the dock and scrolls what does not fit
+ *   ([SceneSemanticsStackedBand]).
+ */
+@Composable
+internal fun DemoTopOverlayScope.SceneSemanticsTopBand(
+    legendShown: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    when {
+        !isDemoCompactHeight() -> content()
+        isDemoCompactWidth() -> SceneSemanticsStackedBand(
+            legendShown = legendShown,
+            dockReservedSpace = dockReservedSpace,
+            content = content,
+        )
+        legendShown -> Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                content = content,
+            )
+            SemanticLegend(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = SceneViewTokens.Space.md)
+            )
+        }
+        else -> content()
+    }
+}
+
+/**
+ * The top band of a short and narrow window: [content], then the legend, in one Column.
+ *
+ * One Column, so the legend can no longer cover the warning or the HUD. It is as tall as the
+ * room between the identity row and the dock ([dockReservedSpace], measured by the scaffold) and
+ * no taller: at 200 % text that room (about 230 dp of a 400 dp window) holds the HUD and the
+ * warning but not the legend, which is then reached by scrolling instead of being drawn under
+ * the settings button.
+ */
+@Composable
+private fun SceneSemanticsStackedBand(
+    legendShown: Boolean,
+    dockReservedSpace: Dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = (maxHeight - dockReservedSpace).coerceAtLeast(0.dp))
+                .verticalScroll(rememberScrollState())
+                .testTag(SEMANTIC_STACKED_BAND_TAG),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        ) {
+            content()
+            if (legendShown) {
+                // The bottom band's own inset: a start gutter only, so the legend keeps the width
+                // that holds its eleven classes on two rows at the default text size.
+                SemanticLegend(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = SceneViewTokens.Space.md)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The demo's `bottomOverlay` content: the color legend, in a tall window only — in a short one
+ * it is drawn by [SceneSemanticsTopBand] instead (#4036).
+ *
+ * Start-aligned in the scaffold's bottom slot (#2779): hand-anchored bottom-center, the wide
+ * card's end edge used to run under the Settings FAB.
+ */
+@Composable
+internal fun DemoBottomOverlayScope.SceneSemanticsBottomLegend(legendShown: Boolean) {
+    if (legendShown && !isDemoCompactHeight()) {
+        SemanticLegend(
+            modifier = Modifier
+                .align(Alignment.Start)
+                .padding(start = SceneViewTokens.Space.md, end = settingsFabReservedSpace)
+        )
+    }
+}
+
 /** Snapshot of one ARCore semantic-class fraction for the current frame. */
-private data class LabelFraction(val label: SemanticLabel, val fraction: Float)
+internal data class LabelFraction(val label: SemanticLabel, val fraction: Float)
+
+/** Top-start HUD listing the highest semantic-label fractions of the current frame. */
+@Composable
+internal fun SceneSemanticsLabelHud(labels: List<LabelFraction>, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(12.dp)),
+        color = Color.Black.copy(alpha = 0.65f),
+        contentColor = Color.White
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(
+                text = "Scene Semantics",
+                style = MaterialTheme.typography.labelLarge
+            )
+            Spacer(Modifier.height(6.dp))
+            labels.forEach { (label, fraction) ->
+                LabelRow(label, fraction)
+            }
+        }
+    }
+}
 
 /** Single row of the HUD — semi-mono label name + a small bar + a percentage. */
 @Composable
@@ -526,7 +687,7 @@ private fun LabelRow(label: SemanticLabel, fraction: Float) {
 @Composable
 private fun SemanticLegend(modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.testTag(SEMANTIC_LEGEND_TAG),
         color = Color.Black.copy(alpha = 0.6f),
         contentColor = Color.White,
         shape = MaterialTheme.shapes.medium
@@ -536,8 +697,9 @@ private fun SemanticLegend(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // UNLABELED (last entry) is intentionally omitted — it renders transparent.
-            for (ordinal in 0 until SemanticsOverlay.UNLABELED_ORDINAL) {
+            // UNLABELED is intentionally omitted — it renders transparent.
+            for (ordinal in 0 until SemanticsOverlay.LABEL_COUNT) {
+                if (ordinal == SemanticsOverlay.UNLABELED_ORDINAL) continue
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)

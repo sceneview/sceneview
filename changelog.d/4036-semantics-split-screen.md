@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: Scene Semantics keeps its portrait layout in half of a split screen ([#4036](https://github.com/sceneview/sceneview/issues/4036)).** The side-by-side legend meant for a phone held sideways was also used in a short but narrow window, such as one half of a split screen: the label percentages wrapped one character per line and the outdoor warning slid under the dock. The legend now moves beside the readout only when the window is also at least 600 dp wide.

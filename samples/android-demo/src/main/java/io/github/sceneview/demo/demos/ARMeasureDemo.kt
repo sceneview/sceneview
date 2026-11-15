@@ -96,6 +96,7 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberHostLifecycle
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -505,6 +506,7 @@ fun MeasureScreen(onBack: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         MeasureCameraLayer(covered = plan != null) {
             DemoScaffold(
+                monitorArMotionSensors = true,
                 arSessionFailed = arSessionFailed,
                 arOverlaysEnabled = arCoreAvailability == null,
                 title = stringResource(R.string.demo_ar_measure_title),
@@ -804,10 +806,8 @@ fun MeasureScreen(onBack: () -> Unit) {
                     }
 
                     ARCoachingOverlay(
-                        cue = if (arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE,
-                        surface = guidance.surface,
-                        hint = guidance.hint,
-                        scanLingering = guidance.scanLingering,
+                        guidance = guidance,
+                        cue = if (!LocalMotionSensorSilent.current && arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE,
                         contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
                     )
 
