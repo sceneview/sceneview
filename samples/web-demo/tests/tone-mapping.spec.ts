@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 
 // A self-contained, unlit colour swatch: no environment, texture or network asset
@@ -28,51 +30,62 @@ function swatchGlb(): Buffer {
   return Buffer.concat([header, jsonBytes, binHeader, bin]);
 }
 
+const BUNDLE_PATH = join(__dirname, '..', 'site', 'kotlin-bundle', 'sceneview-web.js');
+const BUNDLE_STAGED = existsSync(BUNDLE_PATH);
+
 for (const runtime of ['website', 'kotlin'] as const) {
-  test(`${runtime} preserves the chromaticity of a rendered material (#4623)`, async ({ page }) => {
-    const filament = runtime === 'website' ? '/js/filament/filament.js' : '/kotlin-bundle/filament.js';
-    const viewer = runtime === 'website' ? '/js/sceneview.js' : '/kotlin-bundle/sceneview-web.js';
-    await page.route('**/__tone-map.html', (route) => route.fulfill({
-      contentType: 'text/html',
-      body: `<body style="margin:0"><canvas id="scene-canvas" style="width:320px;height:320px"></canvas>` +
-        `<script src="${filament}"></script><script src="${viewer}"></script></body>`,
-    }));
-    await page.route('**/__swatch.glb', (route) => route.fulfill({ body: swatchGlb(), contentType: 'model/gltf-binary' }));
-    await page.goto('/__tone-map.html');
-    await page.evaluate(async (kind) => {
-      const w = window as any;
-      const sv = kind === 'website'
-        ? await w.SceneView.create('scene-canvas', { studio: false, autoRotate: false })
-        : await w.sceneview.createViewer('scene-canvas');
-      sv.setAutoRotate(false);
-      await sv.loadModel('/__swatch.glb');
-    }, runtime);
-    // Wait for the on-demand render and temporal AA to settle before reading the canvas.
-    await page.waitForTimeout(1000);
-    const canvas = page.locator('#scene-canvas');
-    await canvas.screenshot({ path: `test-results/tone-mapping-${runtime}.png` });
-    const box = (await canvas.boundingBox())!;
-    const png = await page.screenshot({ clip: { x: box.x + 156, y: box.y + 156, width: 9, height: 9 } });
-    const rgb = await page.evaluate(async (uri) => {
-      const image = new Image();
-      image.src = uri;
-      await image.decode();
-      const c = document.createElement('canvas');
-      c.width = c.height = 9;
-      const ctx = c.getContext('2d')!;
-      ctx.drawImage(image, 0, 0);
-      const pixels = ctx.getImageData(0, 0, 9, 9).data;
-      return [0, 1, 2].map((channel) => {
-        let sum = 0;
-        for (let i = channel; i < pixels.length; i += 4) sum += pixels[i];
-        return sum / 81;
-      });
-    }, 'data:image/png;base64,' + png.toString('base64'));
-    const linear = rgb.map((v) => v / 255).map((s) => s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4);
-    console.log(`[tone-mapping] ${runtime}: sRGB=${rgb.map((v) => v.toFixed(1))}, G/R=${(linear[1] / linear[0]).toFixed(3)}`);
-    expect(rgb[0], 'the swatch rendered').toBeGreaterThan(50);
-    expect(rgb[0], 'the swatch is below clipping').toBeLessThan(250);
-    expect(linear[1] / linear[0], 'linear G/R retains the authored 0.3/0.6 ratio').toBeCloseTo(0.5, 1);
-    expect(linear[2] / linear[0], 'linear B/R retains the authored 0.06/0.6 ratio').toBeCloseTo(0.1, 1);
+  test.describe(() => {
+    // The Node-only render job has no Kotlin build artifacts. The bundle smoke
+    // job stages them and runs this same spec against the real compiled viewer.
+    test.skip(
+      runtime === 'kotlin' && !BUNDLE_STAGED,
+      'Kotlin bundle not staged — run `bash .claude/scripts/web-bundle-smoke.sh`.',
+    );
+    test(`${runtime} preserves the chromaticity of a rendered material (#4623)`, async ({ page }) => {
+      const filament = runtime === 'website' ? '/js/filament/filament.js' : '/kotlin-bundle/filament.js';
+      const viewer = runtime === 'website' ? '/js/sceneview.js' : '/kotlin-bundle/sceneview-web.js';
+      await page.route('**/__tone-map.html', (route) => route.fulfill({
+        contentType: 'text/html',
+        body: `<body style="margin:0"><canvas id="scene-canvas" style="width:320px;height:320px"></canvas>` +
+          `<script src="${filament}"></script><script src="${viewer}"></script></body>`,
+      }));
+      await page.route('**/__swatch.glb', (route) => route.fulfill({ body: swatchGlb(), contentType: 'model/gltf-binary' }));
+      await page.goto('/__tone-map.html');
+      await page.evaluate(async (kind) => {
+        const w = window as any;
+        const sv = kind === 'website'
+          ? await w.SceneView.create('scene-canvas', { studio: false, autoRotate: false })
+          : await w.sceneview.createViewer('scene-canvas');
+        sv.setAutoRotate(false);
+        await sv.loadModel('/__swatch.glb');
+      }, runtime);
+      // Wait for the on-demand render and temporal AA to settle before reading the canvas.
+      await page.waitForTimeout(1000);
+      const canvas = page.locator('#scene-canvas');
+      await canvas.screenshot({ path: `test-results/tone-mapping-${runtime}.png` });
+      const box = (await canvas.boundingBox())!;
+      const png = await page.screenshot({ clip: { x: box.x + 156, y: box.y + 156, width: 9, height: 9 } });
+      const rgb = await page.evaluate(async (uri) => {
+        const image = new Image();
+        image.src = uri;
+        await image.decode();
+        const c = document.createElement('canvas');
+        c.width = c.height = 9;
+        const ctx = c.getContext('2d')!;
+        ctx.drawImage(image, 0, 0);
+        const pixels = ctx.getImageData(0, 0, 9, 9).data;
+        return [0, 1, 2].map((channel) => {
+          let sum = 0;
+          for (let i = channel; i < pixels.length; i += 4) sum += pixels[i];
+          return sum / 81;
+        });
+      }, 'data:image/png;base64,' + png.toString('base64'));
+      const linear = rgb.map((v) => v / 255).map((s) => s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4);
+      console.log(`[tone-mapping] ${runtime}: sRGB=${rgb.map((v) => v.toFixed(1))}, G/R=${(linear[1] / linear[0]).toFixed(3)}`);
+      expect(rgb[0], 'the swatch rendered').toBeGreaterThan(50);
+      expect(rgb[0], 'the swatch is below clipping').toBeLessThan(250);
+      expect(linear[1] / linear[0], 'linear G/R retains the authored 0.3/0.6 ratio').toBeCloseTo(0.5, 1);
+      expect(linear[2] / linear[0], 'linear B/R retains the authored 0.06/0.6 ratio').toBeCloseTo(0.1, 1);
+    });
   });
 }

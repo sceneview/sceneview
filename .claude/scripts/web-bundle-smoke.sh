@@ -92,12 +92,15 @@ log "ensuring Playwright + chromium ($WEBDIR)"
 )
 
 # 4. Run the bundle specs. playwright.config.ts auto-starts http-server on :8080
-#    (override with WEB_DEMO_URL). Its own reporters drive the output. Both specs
-#    self-skip when the bundle is not staged, so this is the single place the
+#    (override with WEB_DEMO_URL). Its own reporters drive the output. The artifact-dependent
+#    cases self-skip when the bundle is not staged, so this is the single place the
 #    staged bundle is exercised: the init-hang guard (kotlin-bundle), the
 #    SplatNode #2646 gate (splat-bundle, which also needs the staged bundle +
 #    the version-matched filament runtime), and the 3MF gate (threemf-bundle,
-#    #3482 — `loadModel` taking a `.3mf` URL and rendering it).
-log "running tests/kotlin-bundle.spec.ts + tests/splat-bundle.spec.ts + tests/threemf-bundle.spec.ts"
+#    #3482 — `loadModel` taking a `.3mf` URL and rendering it), and material
+#    chromaticity (tone-mapping, #4623). Its Kotlin case skips in the Node-only
+#    render job, so it must run here with the staged bundle.
+log "running bundle, splat, 3MF, and tone-mapping specs"
 ( cd "$WEBDIR" && npx playwright test \
-    tests/kotlin-bundle.spec.ts tests/splat-bundle.spec.ts tests/threemf-bundle.spec.ts )
+    tests/kotlin-bundle.spec.ts tests/splat-bundle.spec.ts tests/threemf-bundle.spec.ts \
+    tests/tone-mapping.spec.ts tests/tone-mapping-staging.spec.ts )
