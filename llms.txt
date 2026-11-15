@@ -250,6 +250,14 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ---
 
+## Android camera permission recovery
+
+The built-in camera card and the Android demo share `resolveCameraPermissionRecovery(rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals)` in `io.github.sceneview.ar`. Call it only after a refused request. The rationale parameters have Android's `shouldShowRequestPermissionRationale(CAMERA)` meaning (`true` recommends a rationale), the inverse of `ARPermissionHandler.shouldShowPermissionRationale()`. Pass monotonic elapsed milliseconds and the number of earlier consecutive answers with no rationale flag; reset that count on a grant or a raised rationale flag. The timing threshold and refusal heuristic may evolve; use the returned enum instead of duplicating them.
+
+`ARCameraPermissionState.recovery` is the single source of truth for custom overlays: `Request` offers **Allow camera**, `RequestWithSettings` makes **Open settings** primary and keeps **Allow camera** as a secondary action with neutral copy, and `Settings` offers settings alone. Repeated Back dismissals and fast answers are ambiguous, so neither removes the request action nor claims camera access was turned off. Only a raised rationale flag falling after refusal selects settings alone. This policy is Android-specific; other platforms use their native permission flow.
+
+The original three-argument state constructor and `permanentlyDenied` getter remain available. That legacy boolean conservatively recommends settings for both `RequestWithSettings` and `Settings` (`recovery != Request`), as does `ARCore.onCameraPermissionDenied`; it does not prove a permanent denial. Use `ARSceneView.onCameraPermissionStateChanged` for the complete state, including `null` after a grant read on return from settings. Direct `ARCore` hosts retain their existing denial and grant callbacks; the scene's internal recovery property and callback are not added to the public API.
+
 ## Core Composables
 
 ### SceneView — 3D viewport
@@ -440,7 +448,7 @@ fun ARSceneView(
     cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = { ARCameraPermissionOverlay(it) },   // Built-in "Camera access needed" card; null draws nothing.
     arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
-    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: recovery, permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -1663,7 +1671,19 @@ Box(Modifier.fillMaxSize()) {
 
 `guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
 `SCAN`, `SURFACE_FOUND` (held 1 000 ms after a new placement), `TRACKING_LIMITED`,
-`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip and
+`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip. Persistent
+`BAD_STATE` and `CAMERA_UNAVAILABLE` reasons make `ARCoachingOverlay(guidance)` show recovery
+advice (restart the AR view or close the other camera app), with the same 700 ms debounce
+and 1 500 ms minimum hold as the movement hints. These are Android ARCore reasons; iOS delegates coaching to Apple's
+`ARCoachingOverlayView` and reports session failures separately through `onSessionEvent`.
+The public `ArTrackingHint` keeps its four movement-advice cases (`NONE`, `TOO_DARK`,
+`TOO_FAST`, `LOW_DETAIL`); `guidance.hint` remains `NONE` for camera/internal errors.
+Their debounced reasons travel internally to the state-based overlay, so existing exhaustive
+`when` expressions keep compiling and running unchanged. Placement wrappers and the demo
+pass the whole `guidance` state. To silence the overlay while another card is visible, use
+`ARCoachingOverlay(guidance, cue = ArGuidanceCue.NONE)`; omitting `cue` uses `guidance.cue`.
+The override preserves the exit fade and leaves the guidance state unchanged. With no movement advice,
+`guidance.hint` is also `NONE`, and
 `guidance.scanLingering` turns the second line into "Try a brighter spot with more texture"
 after a long scan. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
 render `ARCoachingOverlay(guidance, contentPadding = …)` yourself in any `Box`. Next to your own
@@ -5661,7 +5681,7 @@ Key facts:
 - **Microphone** — `VideoSettings(recordAudio = true)` records AAC mono when the app holds `RECORD_AUDIO` at start; without it, or when another app holds the microphone, the video is recorded silent and `SceneRecording.hasAudio` is `false` (the recorder never asks for the permission).
 - **Time limit** — `VideoSettings(maxDurationMillis = …)`: the recording stops by itself and `SceneRecording.reachedMaxDuration` is `true`. `onRecordingFinished: (SceneRecording?) -> Unit` fires on every stop, manual or automatic (`null` = nothing usable was written; see `lastError`).
 - **Automatic stops** — a recording also ends, file finalised and `onRecordingFinished` called, when the scene feeding it leaves composition or stops using `recorder.surfaceMirrorer`, and — with `rememberSceneRecorder()` — when the screen reaches `Lifecycle.Event.ON_STOP` (background, screen off): the scene stops rendering there. `rememberSceneRecorder(lifecycle = …)` picks another lifecycle.
-- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (GPU compositing through an `ImageReader`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
+- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (one OpenGL ES pass over the mirrored scene; the overlay is drawn on a software canvas, so no `HARDWARE` bitmaps and no `drawRenderNode`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
 - **Compose state** — `isRecording`, `elapsedMillis` (ticks every 250 ms), `lastRecording`, `lastError`, `overlay`, `onRecordingFinished` are snapshot state.
 - **Files** — `newCaptureFile(extension)` = `getExternalFilesDir(null)/captures/scene_<timestamp>.<ext>`, or `filesDir/captures/` without external files storage (no storage permission). Share through your `FileProvider`.
 - `rememberSceneRecorder()` releases the recorder (and stops a running recording) when it leaves composition. Outside Compose: `SceneRecorder(context)`, then `release()`.

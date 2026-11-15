@@ -61,8 +61,8 @@ internal fun Modifier.hiddenInFullScreen(alpha: () -> Float): Modifier =
 
 /**
  * The way back from full screen (#4558): the same glass button, in the corner the full-screen
- * button left, alone on the scene. With no band under it, it carries its own `chrome-scrim`
- * ground ([GlassIconButton]'s `ground`), like the glass on a phone held sideways.
+ * button left, alone on the scene. Like every glass control, it carries its own `chrome-scrim`
+ * ground ([GlassIconButton]'s `ground`), inside its outline and nowhere else (#3733).
  */
 @Composable
 internal fun BoxScope.DemoFullScreenExit(visible: Boolean, onExit: () -> Unit) {

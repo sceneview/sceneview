@@ -273,6 +273,7 @@ export const TOOL_DEFINITIONS = [
             },
             required: [],
         },
+        outputSchema: { type: "object", properties: { models: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, category: { type: "string" }, source: { type: "string" }, sourceUrl: { type: "string" }, format: { type: "string" }, license: { type: "string" }, description: { type: "string" }, tags: { type: "array", items: { type: "string" } } }, required: ["id", "name", "category", "source", "sourceUrl", "format", "license", "description", "tags"], additionalProperties: false } } }, required: ["models"], additionalProperties: false },
         annotations: {
             readOnlyHint: true,
             openWorldHint: false,
@@ -292,6 +293,7 @@ export const TOOL_DEFINITIONS = [
             },
             required: ["code"],
         },
+        outputSchema: { type: "object", properties: { valid: { type: "boolean" }, issues: { type: "array", items: { type: "object", properties: { severity: { type: "string" }, message: { type: "string" }, line: { type: "number" } }, required: ["severity", "message"], additionalProperties: false } }, issueCount: { type: "object", properties: { errors: { type: "number" }, warnings: { type: "number" }, info: { type: "number" } }, required: ["errors", "warnings", "info"], additionalProperties: false } }, required: ["valid", "issues", "issueCount"], additionalProperties: false },
         annotations: {
             readOnlyHint: true,
             openWorldHint: false,
@@ -353,8 +355,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -401,8 +403,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             (args.ar ?? true)
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -448,8 +450,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -508,8 +510,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -556,8 +558,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -578,6 +580,7 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
             const text = formatFurnitureModelList(models);
             return {
                 content: withDisclaimer([{ type: "text", text }]),
+                structuredContent: { models },
             };
         }
         // ── validate_interior_code ─────────────────────────────────────────────
@@ -593,6 +596,7 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
             const report = formatValidationReport(result);
             return {
                 content: [{ type: "text", text: report }],
+                structuredContent: { ...result },
             };
         }
         default:
