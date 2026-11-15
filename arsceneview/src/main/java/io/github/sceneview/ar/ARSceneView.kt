@@ -1030,7 +1030,7 @@ fun ARSceneView(
         "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
             "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
-    // QA replay hook (null for every normal launch): see [ARSessionProbe].
+    // Frame observation and optional QA replay injection: see [ARSessionProbe].
     val sessionProbe = LocalARSessionProbe.current
     val sessionProbeRef = remember { AtomicReference(sessionProbe) }
     sessionProbeRef.set(sessionProbe)

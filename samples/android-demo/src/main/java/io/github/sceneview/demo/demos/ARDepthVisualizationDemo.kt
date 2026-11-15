@@ -216,6 +216,7 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_depth_visualization_title),
         onBack = onBack,
         controls = {

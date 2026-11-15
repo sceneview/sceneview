@@ -31,6 +31,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberHostLifecycle
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.DemoSettings
@@ -118,6 +119,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     val markerMaterial = rememberArMeshTintInstance(materialLoader, SceneViewTokens.ArOverlay.meshGround)
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         // The SDK's "Couldn't start AR" card keeps its in-place "Try again" (#4622); the
         // scaffold's card, which has none, is only for a failure the SDK does not explain.
         arSessionFailed = arSessionFailedUnexplained(arSessionFailed, arCoreAvailability),
@@ -251,7 +253,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
             // #3341: silent while the SDK's "AR unavailable" card carries the reason.
             ARCoachingOverlay(
                 guidance = guidance,
-                cue = if (arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE,
+                cue = if (!LocalMotionSensorSilent.current && arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE,
                 contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             )
         }

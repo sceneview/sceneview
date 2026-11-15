@@ -19,6 +19,7 @@ import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.common.CatalogueProductPill
 import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
@@ -49,6 +50,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     val playback = rememberArPlaybackDataset()
     ARHapticFeedback(state)
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_placement_scene_title),
         onBack = onBack,
         bottomOverlay = {
@@ -80,6 +82,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
         },
     ) {
         AutoPlacementScene(
+            coaching = !LocalMotionSensorSilent.current,
             assetReady = instance != null,
             modifier = Modifier.fillMaxSize(),
             state = state,
