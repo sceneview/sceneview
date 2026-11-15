@@ -12,9 +12,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.random.Random
+import java.util.Random
 
 /**
  * A space's measure on scans built by hand: a cupboard under a sink with what frames it, a shelf
@@ -48,6 +49,27 @@ class SpaceFitTest {
         }
         val behind = SpaceFitter.of(wandered.cloud(), eye = wandered.eye)
         assertTrue("share ${behind?.share}", behind == null || !SpaceFitter.isOneSpace(behind))
+    }
+
+    @Test
+    fun `a cupboard scanned as a phone really scans it is still measured`() {
+        // Surfaces as three hand-held scans hold them (2026-11-14, SpaceFitCorpusTest): a slab,
+        // its points 3 cm off the surface (RMS), half their normals leaning 31 degrees and more.
+        val scan = cupboard(pipe = true, thick = true)
+        val fit = fitOf(scan, eye = scan.eye)
+        assertEquals(WIDTH, fit.width, ROUGH)
+        assertEquals(HEIGHT, fit.height, ROUGH)
+        assertEquals(DEPTH, fit.depth, ROUGH)
+        assertEquals(setOf(SpaceFace.Front), fit.open)
+        assertTrue("share ${fit.share}", SpaceFitter.isOneSpace(fit))
+        // The walls' own thickness is not taken for things in the way: the pipe alone is.
+        assertEquals("obstacles ${fit.obstacles}", 1, fit.obstacles.size)
+        val fits = checkNotNull(fit.fits) { "no box" }
+        assertTrue("box $fits", apart(fits, PIPE))
+        assertEquals(WIDTH - 2 * SpaceFitter.CLEARANCE_M, fits.width, ROUGH)
+        assertEquals(HEIGHT - SpaceFitter.CLEARANCE_M, fits.height, ROUGH)
+        // The pipe is a slab too: the box keeps further from it than from a clean one, never nearer.
+        assertTrue("box $fits", fits.depth in MIN_ROUGH_DEPTH..(DEPTH - PIPE.z - PIPE.depth))
     }
 
     @Test
@@ -291,7 +313,8 @@ class SpaceFitTest {
         extra: SpaceBox? = null,
         top: Boolean = true,
         shelvesAround: Boolean = false,
-    ): Scan = Scan().apply {
+        thick: Boolean = false,
+    ): Scan = Scan(thick).apply {
         plane(0f, 0f, 0f, WIDTH, HEIGHT, axis = 2, normal = 1f) // back
         plane(0f, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = 1f) // left
         plane(WIDTH, 0f, 0f, HEIGHT, DEPTH, axis = 0, normal = -1f) // right
@@ -313,10 +336,10 @@ class SpaceFitTest {
     }
 
     /** Points of a scan, laid in a space's frame and written in the world, turned and moved. */
-    private class Scan {
+    private class Scan(private val thick: Boolean = false) {
         private val positions = ArrayList<Float>()
         private val normals = ArrayList<Float>()
-        private val random = Random(SEED)
+        private val random = Random(SEED.toLong())
         private val yaw = Math.toRadians(YAW_DEGREES.toDouble())
 
         /** Where the phone stood: a metre before the opening, at mid height. */
@@ -338,19 +361,32 @@ class SpaceFitTest {
             while (i < a) {
                 var j = STEP / 2f
                 while (j < b) {
-                    val noise = (random.nextFloat() - 0.5f) * 2f * NOISE
-                    val at = when (axis) {
-                        0 -> world(x + noise, y + i, z + j)
-                        1 -> world(x + i, y + noise, z + j)
-                        else -> world(x + i, y + j, z + noise)
-                    }
-                    positions += listOf(at.x, at.y, at.z)
-                    val c = cos(yaw).toFloat()
-                    val s = sin(yaw).toFloat()
-                    normals += when (axis) {
-                        0 -> listOf(normal * c, 0f, -normal * s)
-                        1 -> listOf(0f, normal, 0f)
-                        else -> listOf(normal * s, 0f, normal * c)
+                    repeat(if (thick) THICK_POINTS else 1) {
+                        val noise = if (thick) {
+                            (random.nextGaussian().toFloat() * THICK_M).coerceIn(-THICK_MOST_M, THICK_MOST_M)
+                        } else {
+                            (random.nextFloat() - 0.5f) * 2f * NOISE
+                        }
+                        val at = when (axis) {
+                            0 -> world(x + noise, y + i, z + j)
+                            1 -> world(x + i, y + noise, z + j)
+                            else -> world(x + i, y + j, z + noise)
+                        }
+                        positions += listOf(at.x, at.y, at.z)
+                        // The normal in the space's frame, leaning as a real one does, then in the world.
+                        val lean = if (thick) Math.toRadians((abs(random.nextGaussian()) * LEAN_DEGREES).coerceAtMost(LEAN_MOST_DEGREES)) else 0.0
+                        val about = if (thick) random.nextDouble() * 2.0 * Math.PI else 0.0
+                        val along = (normal * cos(lean)).toFloat()
+                        val one = (sin(lean) * cos(about)).toFloat()
+                        val other = (sin(lean) * sin(about)).toFloat()
+                        val local = when (axis) {
+                            0 -> Vec3(along, one, other)
+                            1 -> Vec3(one, along, other)
+                            else -> Vec3(one, other, along)
+                        }
+                        val c = cos(yaw).toFloat()
+                        val s = sin(yaw).toFloat()
+                        normals += listOf(local.x * c + local.z * s, local.y, -local.x * s + local.z * c)
                     }
                     j += STEP
                 }
@@ -382,6 +418,17 @@ class SpaceFitTest {
         const val STEP = 0.02f
         const val NOISE = 0.004f
         const val TOLERANCE = 0.02f
+
+        /** A real scan's surface: this many points a step, this far off it (RMS, and at most), leaning this much. */
+        const val THICK_POINTS = 3
+        const val THICK_M = 0.03f
+        const val THICK_MOST_M = 0.08f
+        const val LEAN_DEGREES = 46.0
+        const val LEAN_MOST_DEGREES = 85.0
+
+        /** What a measure off such a surface is held to, and the least the box before the pipe keeps of its depth. */
+        const val ROUGH = 0.03f
+        const val MIN_ROUGH_DEPTH = 0.18f
         const val SEED = 20261114
         const val WHITE = -1
         const val SECOND_NANOS = 1_000_000_000L

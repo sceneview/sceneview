@@ -44,7 +44,9 @@ data class SpaceBox(val x: Float, val y: Float, val z: Float, val width: Float, 
  * [resolution] is the grid the measure was read on, in metres: the scan's voxel, or the cell
  * its inside was sorted into when that is coarser. [share] is how much of the scan's surface
  * the space holds, on its faces and inside, from 0 to 1: the scan of one cupboard is mostly
- * that cupboard, a walk round a room is not ([SpaceFitter.isOneSpace]).
+ * that cupboard, a walk round a room is not ([SpaceFitter.isOneSpace]). [spread] is how thick the
+ * scan's surfaces are, in metres: how far off the back nearly all of its own points lie. What
+ * stands nearer a face than that is not told from the face.
  */
 class SpaceFit(
     val width: Float,
@@ -59,6 +61,7 @@ class SpaceFit(
     val yawDegrees: Float,
     val resolution: Float = SpaceFitter.DEFAULT_VOXEL_M,
     val share: Float = 1f,
+    val spread: Float = 0f,
 ) {
     /** The world position of the frame's point ([x], [y], [z]). */
     fun world(x: Float, y: Float, z: Float): Vec3 {
@@ -121,8 +124,19 @@ object SpaceFitter {
     /** Points this close to a face's plane lie on it. */
     private const val ON_PLANE_M = 0.015f
 
-    /** Points this close to a face are that face's noise, not an obstacle. */
+    /** Points this close to a face are that face's noise, not an obstacle: at least, on the cleanest scan. */
     private const val WALL_MARGIN_M = 0.03f
+
+    /**
+     * On a real one, a surface is a slab: a phone's depth leaves its points 3 cm off it (RMS,
+     * three hand-held scans, 2026-11-14). A face's noise reaches as far in as the scan's own
+     * surfaces are thick ([SpaceFit.spread]), up to this.
+     */
+    private const val MAX_WALL_MARGIN_M = 0.1f
+
+    /** How far off the back its own points are looked for, and the share of them [SpaceFit.spread] covers. */
+    private const val SLAB_M = 0.1f
+    private const val SPREAD_SHARE = 0.97f
 
     /** No face is looked for nearer the point aimed at than this. */
     private const val CENTRE_GAP_M = 0.03f
@@ -211,8 +225,12 @@ object SpaceFitter {
         val size: Float get() = to - from
     }
 
-    /** A space's back at [wBack], and its faces [across] (left to right) and [upright] (bottom to top). */
-    private class Walls(val frame: Frame, val wBack: Float, val across: Span, val upright: Span)
+    /**
+     * A space's back at [wBack], and its faces [across] (left to right) and [upright] (bottom to
+     * top). [spread] is how thick the scan's surfaces are: how far off the back nearly all of
+     * its own points lie.
+     */
+    private class Walls(val frame: Frame, val wBack: Float, val spread: Float, val across: Span, val upright: Span)
 
     /** The back [cloud] shows and the faces round it, `null` with no back to speak of. */
     @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one early return per thing a space needs
@@ -239,6 +257,7 @@ object SpaceFitter {
         val largest = facing.maxOfOrNull { it.area } ?: return null
         val wBack = facing.filter { it.area >= maxOf(MIN_WALL_M2, largest * BACK_SHARE) }.minByOrNull { it.at }?.at
             ?: return null
+        val spread = quantile(n, area, SPREAD_SHARE, { abs(w[it] - wBack) }) { nw[it] > FACING && abs(w[it] - wBack) <= SLAB_M } ?: 0f
         // What was aimed at: the middle of what was seen of the back.
         val uc = quantile(n, area, 0.5f, { u[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
         val vc = quantile(n, area, 0.5f, { v[it] }) { nw[it] > FACING && abs(w[it] - wBack) <= ON_PLANE_M } ?: return null
@@ -282,7 +301,7 @@ object SpaceFitter {
             }
             ?: return null
         return Walls(
-            frame, wBack,
+            frame, wBack, spread,
             across = Span(uLeft, uRight, fromClosed = left != null, toClosed = right != null),
             upright = Span(vBottom, vTop, fromClosed = bottom != null, toClosed = top != null),
         )
@@ -352,6 +371,8 @@ object SpaceFitter {
         var cell = CELL_M
         while (cells(width, cell).toLong() * cells(height, cell) * cells(depth, cell) > MAX_CELLS) cell *= 2f
         val grid = SpaceGrid(cells(width, cell), cells(height, cell), cells(depth, cell), cell)
+        // A face's own points reach as far in as this scan's surfaces are thick: no obstacle.
+        val margin = (walls.spread + CLEARANCE_M).coerceIn(WALL_MARGIN_M, MAX_WALL_MARGIN_M)
         var held = 0f
         var whole = 0f
         for (i in 0 until n) {
@@ -359,10 +380,11 @@ object SpaceFitter {
             val y = v[i] - vBottom
             val z = w[i] - wBack
             whole += area[i]
+            // Held to the plane, not to the slab: the share [isOneSpace] was set on (a slab's
+            // outer half counted too, a room filmed from one spot passed for a shelf).
             if (between(x, 0f, width) && between(y, 0f, height) && between(z, 0f, depth)) held += area[i]
             // A face that is closed has its own points near it; an open one has none to mistake.
-            val inside = x > WALL_MARGIN_M && x < width - WALL_MARGIN_M && y > WALL_MARGIN_M && y < height - WALL_MARGIN_M &&
-                z > WALL_MARGIN_M && z < depth
+            val inside = x > margin && x < width - margin && y > margin && y < height - margin && z > margin && z < depth
             if (inside) grid.fill(x, y, z)
         }
         val obstacles = grid.obstacles(MIN_OBSTACLE_CELLS)
@@ -384,6 +406,7 @@ object SpaceFitter {
             yawDegrees = Math.toDegrees(frame.yaw.toDouble()).toFloat(),
             resolution = maxOf(voxelM, cell),
             share = if (whole > 0f) held / whole else 0f,
+            spread = walls.spread,
         )
     }
 
