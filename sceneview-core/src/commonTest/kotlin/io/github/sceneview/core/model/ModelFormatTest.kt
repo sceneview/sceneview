@@ -53,10 +53,11 @@ class ModelFormatTest {
 
     private fun xExtent(glb: ByteArray): Float {
         // Geometry may bake units into positions or store them on the root node.
+        // Kotlin/JS uses Unicode regexes, which require escaping ']' inside this character class.
         val json = glb.decodeToString()
-        val max = Regex("\"max\":\\[([^]]+)\\]").find(json)!!.groupValues[1]
+        val max = Regex("\"max\":\\[([^\\]]+)\\]").find(json)!!.groupValues[1]
             .substringBefore(',').toFloat()
-        val scale = Regex("\"scale\":\\[([^]]+)\\]").find(json)?.groupValues?.get(1)
+        val scale = Regex("\"scale\":\\[([^\\]]+)\\]").find(json)?.groupValues?.get(1)
             ?.substringBefore(',')?.toFloat() ?: 1f
         return max * scale
     }
