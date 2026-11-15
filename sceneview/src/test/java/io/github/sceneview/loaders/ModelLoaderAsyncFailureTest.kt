@@ -18,6 +18,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.annotation.LooperMode
+import io.github.sceneview.core.model.ModelConverter
+import io.github.sceneview.core.model.ModelUnit
+import io.github.sceneview.core.model.UnsupportedModelFormat
+import java.nio.ByteBuffer
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import java.io.File
 import java.util.Collections
 
@@ -97,6 +103,35 @@ class ModelLoaderAsyncFailureTest {
         val result = awaitModel { loader.loadModelAsync(existingFileUri(), onResult = it) }
 
         assertTrue("clear() must not end the loader: a later load must report its result", result.called)
+    }
+
+    @Test
+    fun `supported formats match the shared mesh converter`() {
+        assertEquals(ModelConverter.supportedFormats, loader.supportedFormats)
+    }
+
+    @Test
+    fun `unknown formats fail with a typed error before gltfio is allocated`() {
+        assertThrows(UnsupportedModelFormat::class.java) {
+            loader.createModelInstance(ByteBuffer.wrap("unknown model".encodeToByteArray()), unit = ModelUnit.Inches)
+        }
+        assertFalse(loader.hasGltfLoaders)
+        val file = File.createTempFile("unsupported-model", ".STEP").apply { deleteOnExit() }
+        val error = assertThrows(UnsupportedModelFormat::class.java) { loader.createModel(file) }
+        assertEquals("step", error.extension)
+        assertFalse(loader.hasGltfLoaders)
+    }
+
+    @Test
+    fun `unknown formats from an async load report null without invoking native parsing`() {
+        val file = File.createTempFile("unsupported-model", ".fbx").apply { deleteOnExit() }
+        val result = awaitInstance {
+            loader.loadModelInstanceAsync("file://${file.absolutePath}", unit = ModelUnit.Meters, onResult = it)
+        }
+        assertTrue(result.called)
+        assertNull(result.value)
+        assertFalse(loader.hasGltfLoaders)
+        assertTrue(uncaught.isEmpty())
     }
 
     /** gltfio's `AssetLoader` refuses a zero native handle; give it one. Nothing else differs. */

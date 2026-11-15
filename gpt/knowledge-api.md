@@ -121,6 +121,78 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ---
 
+## Open any 3D file — Android
+
+Use **one entry point** for every supported mesh format. Put the file under `src/main/assets/`,
+or pass a `content://`, `file://` or HTTPS location to the same helper:
+`rememberModelInstance(modelLoader, "models/part.stl", unit = ModelUnit.Millimeters)`.
+Import `io.github.sceneview.core.model.ModelUnit`. `ModelLoader.supportedFormats` contains
+`GLB`, `GLTF`, `THREE_MF`, `STL`, `OBJ`, `PLY_MESH` (`ModelFormat` in the same package).
+
+| Format | Unit used in the scene | Colours / textures | One-liner (inside a composable) |
+|---|---|---|---|
+| `.glb` | Metres, fixed by glTF | glTF materials and textures | `rememberModelInstance(modelLoader, "model.glb")` |
+| `.gltf` | Metres, fixed by glTF | glTF materials and sibling textures/buffers | `rememberModelInstance(modelLoader, "model.gltf")` |
+| `.3mf` | Declared unit → metres; Z-up → Y-up | Object/triangle colours; no textures | `rememberModelInstance(modelLoader, "print.3mf")` |
+| `.stl` (ASCII / binary) | Millimetres by default; override with `unit` | Grey mesh; no textures | `rememberModelInstance(modelLoader, "part.stl", unit = ModelUnit.Millimeters)` |
+| `.obj` | Millimetres by default; override with `unit` | Grey automatically; `ObjLoader` with an MTL resolver reads colours; no textures | `rememberModelInstance(modelLoader, "part.obj", unit = ModelUnit.Inches)` |
+| `.ply` mesh (ASCII / binary) | Millimetres by default; override with `unit` | Vertex RGBA; no textures | `rememberModelInstance(modelLoader, "scan.ply", unit = ModelUnit.Meters)` |
+
+`ModelUnit` offers `Meters`, `Centimeters`, `Millimeters`, `Inches`. It only changes unitless
+STL/OBJ/PLY meshes. GLB/glTF stay in metres and 3MF retains its declared unit even when `unit` is
+passed. **Real size:** omit `scaleToUnits` (or pass `null`), keep the default node scale of 1;
+`scaleToUnits = 1f` fits the model into a one-metre box and discards its authored size.
+
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.SceneView
+import io.github.sceneview.core.model.ModelUnit
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun RealSizeStlViewer() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/part.stl", unit = ModelUnit.Millimeters)
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+        instance?.let { ModelNode(modelInstance = it, scaleToUnits = null) }
+    }
+}
+```
+
+For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced` callback:
+`AnchorNode(anchor = anchor) { ModelNode(modelInstance = instance, scaleToUnits = null) }`.
+
+**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) throw
+`io.github.sceneview.core.model.UnsupportedModelFormat(extension)` before Filament parses them.
+Use `rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` to show
+`ModelLoadState.Failed.error` with that type; `rememberModelInstance` returns `null` on failure,
+and callback loaders log the failure and return `null` (or an empty instance list).
+`ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
+but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
+`supportedFormats` and refused by `ModelConverter` / `ModelLoader` with the same typed error.
+
+For raw bytes in shared Kotlin code, use `ModelConverter.toGlb(bytes, format, unit)` from
+`io.github.sceneview.core.model`, after `ModelFormat.sniff(fileName, bytes)`. Recognisable bytes
+win over a wrong extension; the extension is the fallback. Supply the complete file for 3MF's
+ZIP-directory check and binary STL's length/count check. A bare `.ply` extension defaults to
+mesh; its header distinguishes Gaussian splats. GLB is returned without copying. JSON glTF is
+wrapped in a GLB JSON chunk; its resource URIs are retained and must still be resolved.
+The shared API runs on Kotlin platforms; Apple Swift and the web JavaScript APIs retain their
+own entry points and format support (see their sections below).
+
+## Android camera permission recovery
+
+The built-in camera card and the Android demo share `resolveCameraPermissionRecovery(rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals)` in `io.github.sceneview.ar`. Call it only after a refused request. The rationale parameters have Android's `shouldShowRequestPermissionRationale(CAMERA)` meaning (`true` recommends a rationale), the inverse of `ARPermissionHandler.shouldShowPermissionRationale()`. Pass monotonic elapsed milliseconds and the number of earlier consecutive answers with no rationale flag; reset that count on a grant or a raised rationale flag. The timing threshold and refusal heuristic may evolve; use the returned enum instead of duplicating them.
+
+`ARCameraPermissionState.recovery` is the single source of truth for custom overlays: `Request` offers **Allow camera**, `RequestWithSettings` makes **Open settings** primary and keeps **Allow camera** as a secondary action with neutral copy, and `Settings` offers settings alone. Repeated Back dismissals and fast answers are ambiguous, so neither removes the request action nor claims camera access was turned off. Only a raised rationale flag falling after refusal selects settings alone. This policy is Android-specific; other platforms use their native permission flow.
+
+The original three-argument state constructor and `permanentlyDenied` getter remain available. That legacy boolean conservatively recommends settings for both `RequestWithSettings` and `Settings` (`recovery != Request`), as does `ARCore.onCameraPermissionDenied`; it does not prove a permanent denial. Use `ARSceneView.onCameraPermissionStateChanged` for the complete state, including `null` after a grant read on return from settings. Direct `ARCore` hosts retain their existing denial and grant callbacks; the scene's internal recovery property and callback are not added to the public API.
+
 ## Core Composables
 
 ### SceneView — 3D viewport
@@ -310,7 +382,7 @@ fun ARSceneView(
     cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = { ARCameraPermissionOverlay(it) },   // Built-in "Camera access needed" card; null draws nothing.
     arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
-    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: recovery, permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -1533,7 +1605,19 @@ Box(Modifier.fillMaxSize()) {
 
 `guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
 `SCAN`, `SURFACE_FOUND` (held 1 000 ms after a new placement), `TRACKING_LIMITED`,
-`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip and
+`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip. Persistent
+`BAD_STATE` and `CAMERA_UNAVAILABLE` reasons make `ARCoachingOverlay(guidance)` show recovery
+advice (restart the AR view or close the other camera app), with the same 700 ms debounce
+and 1 500 ms minimum hold as the movement hints. These are Android ARCore reasons; iOS delegates coaching to Apple's
+`ARCoachingOverlayView` and reports session failures separately through `onSessionEvent`.
+The public `ArTrackingHint` keeps its four movement-advice cases (`NONE`, `TOO_DARK`,
+`TOO_FAST`, `LOW_DETAIL`); `guidance.hint` remains `NONE` for camera/internal errors.
+Their debounced reasons travel internally to the state-based overlay, so existing exhaustive
+`when` expressions keep compiling and running unchanged. Placement wrappers and the demo
+pass the whole `guidance` state. To silence the overlay while another card is visible, use
+`ARCoachingOverlay(guidance, cue = ArGuidanceCue.NONE)`; omitting `cue` uses `guidance.cue`.
+The override preserves the exit fade and leaves the guidance state unchanged. With no movement advice,
+`guidance.hint` is also `NONE`, and
 `guidance.scanLingering` turns the second line into "Try a brighter spot with more texture"
 after a long scan. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
 render `ARCoachingOverlay(guidance, contentPadding = …)` yourself in any `Box`. Next to your own
@@ -5099,7 +5183,7 @@ Key facts:
 - **Microphone** — `VideoSettings(recordAudio = true)` records AAC mono when the app holds `RECORD_AUDIO` at start; without it, or when another app holds the microphone, the video is recorded silent and `SceneRecording.hasAudio` is `false` (the recorder never asks for the permission).
 - **Time limit** — `VideoSettings(maxDurationMillis = …)`: the recording stops by itself and `SceneRecording.reachedMaxDuration` is `true`. `onRecordingFinished: (SceneRecording?) -> Unit` fires on every stop, manual or automatic (`null` = nothing usable was written; see `lastError`).
 - **Automatic stops** — a recording also ends, file finalised and `onRecordingFinished` called, when the scene feeding it leaves composition or stops using `recorder.surfaceMirrorer`, and — with `rememberSceneRecorder()` — when the screen reaches `Lifecycle.Event.ON_STOP` (background, screen off): the scene stops rendering there. `rememberSceneRecorder(lifecycle = …)` picks another lifecycle.
-- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (GPU compositing through an `ImageReader`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
+- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (one OpenGL ES pass over the mirrored scene; the overlay is drawn on a software canvas, so no `HARDWARE` bitmaps and no `drawRenderNode`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
 - **Compose state** — `isRecording`, `elapsedMillis` (ticks every 250 ms), `lastRecording`, `lastError`, `overlay`, `onRecordingFinished` are snapshot state.
 - **Files** — `newCaptureFile(extension)` = `getExternalFilesDir(null)/captures/scene_<timestamp>.<ext>`, or `filesDir/captures/` without external files storage (no storage permission). Share through your `FileProvider`.
 - `rememberSceneRecorder()` releases the recorder (and stops a running recording) when it leaves composition. Outside Compose: `SceneRecorder(context)`, then `release()`.

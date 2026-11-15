@@ -1,5 +1,7 @@
 package io.github.sceneview
 
+import io.github.sceneview.core.model.ModelUnit
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -68,8 +70,19 @@ fun rememberModelLoadState(
     resourceResolver: (resourceFileName: String) -> String = {
         ModelLoader.getFolderPath(fileLocation, it)
     },
+): ModelLoadState = rememberModelLoadState(modelLoader, fileLocation, null, resourceResolver)
+
+/** Load a supported format; [unit] overrides units only for STL/OBJ/PLY. Failures retain their type. */
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,
+    resourceResolver: (resourceFileName: String) -> String = {
+        ModelLoader.getFolderPath(fileLocation, it)
+    },
 ): ModelLoadState {
-    val state = remember(modelLoader, fileLocation) {
+    val state = remember(modelLoader, fileLocation, unit) {
         mutableStateOf<ModelLoadState>(ModelLoadState.Loading(ModelLoadProgress(ModelLoadProgress.Stage.Reading, 0f)))
     }
     val scope = rememberCoroutineScope()
@@ -78,11 +91,11 @@ fun rememberModelLoadState(
     // became ready just before this left the composition was never seen by the effect, and leaked.
     // Everything here runs on the main thread, so the dispose below either finds the model ready
     // and destroys it, or cancels a load that has not returned, which destroys what it created.
-    DisposableEffect(modelLoader, fileLocation) {
+    DisposableEffect(modelLoader, fileLocation, unit) {
         val load = scope.launch {
             state.value = try {
                 ModelLoadState.Ready(
-                    modelLoader.awaitModelInstance(fileLocation, resourceResolver) {
+                    modelLoader.awaitModelInstance(fileLocation, unit, resourceResolver) {
                         state.value = ModelLoadState.Loading(it)
                     },
                 )

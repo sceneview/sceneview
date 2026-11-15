@@ -6,6 +6,8 @@
 
 package io.github.sceneview
 
+import io.github.sceneview.core.model.ModelUnit
+
 import android.content.Context
 import android.content.Context.WINDOW_SERVICE
 import android.opengl.EGLContext
@@ -1559,6 +1561,21 @@ fun rememberModelInstance(
     }
     return instance
 }
+
+/**
+ * Open a supported model at its real size. [unit] overrides unitless STL/OBJ/PLY only; GLB/glTF
+ * remain metres and 3MF keeps its declared unit. The result is null while loading or on failure.
+ * Use [rememberModelLoadState] to display typed failures such as `UnsupportedModelFormat`.
+ * This composable owns and destroys the loaded model when the location or unit changes.
+ */
+@Composable
+fun rememberModelInstance(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,
+    resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) },
+): ModelInstance? = (rememberModelLoadState(modelLoader, fileLocation, unit, resourceResolver)
+    as? ModelLoadState.Ready)?.instance
 
 /**
  * [ModelLoader.loadModelInstance] for the `rememberModelInstance` overloads: a failed load is

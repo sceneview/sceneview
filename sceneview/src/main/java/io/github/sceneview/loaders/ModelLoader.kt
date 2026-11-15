@@ -20,9 +20,10 @@ import io.github.sceneview.BuildConfig
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
-import io.github.sceneview.core.obj.ObjLoader
-import io.github.sceneview.core.ply.PlyLoader
-import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.core.model.ModelConverter
+import io.github.sceneview.core.model.ModelFormat
+import io.github.sceneview.core.model.ModelUnit
+import io.github.sceneview.core.model.UnsupportedModelFormat
 import io.github.sceneview.GltfioTextureTables
 import io.github.sceneview.isAsyncLoadPending
 import io.github.sceneview.isBackendBusy
@@ -66,20 +67,11 @@ import java.nio.ByteBuffer
  *
  * A [Model] is composed of 1 or more [ModelInstance] objects which contain entities and components.
  *
- * **`.3mf` is loaded too, through every entry point on this class** (#3482). 3MF is what ChatGPT,
- * every slicer and every image-to-print flow emit for a printable model; a 3MF payload is detected
- * by its ZIP magic and converted to GLB in memory by [ThreeMfLoader] before it reaches Filament, so
- * `loadModel("print.3mf")`, `createModelInstance(uri)` and `rememberModelInstance(...)` need no
- * separate API and no separate code path. Conversion scales the model from its declared unit
- * (usually millimetres) to metres and rotates it from 3MF's Z-up to glTF's Y-up. A payload that is
- * not a ZIP costs one 4-byte comparison.
- *
- * **Binary and ASCII `.stl` also load through every entry point** (#3486):
- * `rememberModelInstance(modelLoader, "part.stl")`. Payload sniffing checks binary size/count
- * before ASCII solid/facet tokens, without copying other formats. STL has no units: the default
- * is millimetres, converted to metres, with the file's axes preserved. For another unit, first use
- * `StlLoader.toGlb(bytes, unit = ThreeMfUnit.INCH)` from `sceneview-core` and load that GLB.
- * Valid facet normals are kept; zero/invalid normals are repaired with smooth vertex normals.
+ * Every format in [supportedFormats] loads through the same entry points. [ModelFormat.sniff]
+ * identifies the bytes and [ModelConverter] converts mesh formats to GLB before Filament sees them.
+ * 3MF retains its declared unit; GLB/glTF use metres; STL/OBJ/PLY default to millimetres.
+ * The overloads with [ModelUnit] override unitless mesh units. Splats require `SplatNode` instead.
+ * Unknown formats throw [UnsupportedModelFormat] before any native parse.
  *
  * The `suspend` [loadModel] converts off the main thread; the [createModel] overloads convert on
  * the calling (main) thread, like the rest of their work.
@@ -320,10 +312,19 @@ class ModelLoader(
         buffer: Buffer,
         releaseSourceData: Boolean = true,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
+    ): Model = createModel(buffer, null, releaseSourceData, resourceResolver)
+
+    /** Create a model, choosing the unit for STL/OBJ/PLY; declared units always win. */
+    @MainThread
+    fun createModel(
+        buffer: Buffer,
+        unit: ModelUnit?,
+        releaseSourceData: Boolean = true,
+        resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): Model {
         lifecycle.checkCanCreate("create a model")
         checkMainThread("createModel")
-        val source = buffer.toFilamentModelSource()
+        val source = buffer.toFilamentModelSource(unit = unit)
         val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
         val model = assetLoader.createAsset(source.buffer)
             .also { recordingProvider.ownership.claim(it) }
@@ -348,7 +349,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { resourceFile ->
             context.assets.readBuffer(getFolderPath(assetFileLocation, resourceFile))
         }
-    ): Model = createModel(context.assets.readBuffer(assetFileLocation), releaseSourceData, resourceResolver)
+    ): Model = createModel(context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation), releaseSourceData, resourceResolver)
 
     /**
      * Creates a [Model] from the contents of a GLB or GLTF raw file.
@@ -374,7 +375,96 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { resourceFile ->
             File(file.parent, resourceFile).readBuffer()
         }
-    ): Model = createModel(file.readBuffer(), releaseSourceData, resourceResolver)
+    ): Model = createModel(file.readBuffer().toModelGlb(file.name), releaseSourceData, resourceResolver)
+
+    /** File formats accepted by this mesh loader; splats use their own renderer. */
+    val supportedFormats: Set<ModelFormat> get() = ModelConverter.supportedFormats
+
+    /** Create a model using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModel(
+        assetFileLocation: String,
+        unit: ModelUnit?,
+        releaseSourceData: Boolean = true,
+        resourceResolver: (String) -> Buffer? = { context.assets.readBuffer(getFolderPath(assetFileLocation, it)) },
+    ): Model = createModel(context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation, unit), releaseSourceData, resourceResolver)
+
+    /** Create a model using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModel(
+        @RawRes rawResId: Int,
+        unit: ModelUnit?,
+        releaseSourceData: Boolean = true,
+        resourceResolver: (String) -> Buffer? = { null },
+    ): Model = createModel(context.resources.readBuffer(rawResId).toModelGlb(unit = unit), releaseSourceData, resourceResolver)
+
+    /** Create a model using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModel(
+        file: File,
+        unit: ModelUnit?,
+        releaseSourceData: Boolean = true,
+        resourceResolver: (String) -> Buffer? = { File(file.parent, it).readBuffer() },
+    ): Model = createModel(file.readBuffer().toModelGlb(file.name, unit), releaseSourceData, resourceResolver)
+
+    /** Create an instance using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModelInstance(
+        buffer: Buffer,
+        unit: ModelUnit?,
+        resourceResolver: (String) -> Buffer? = { null },
+    ): ModelInstance = createModel(buffer, unit, true, resourceResolver).instance
+
+    /** Create an instance using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModelInstance(
+        assetFileLocation: String,
+        unit: ModelUnit?,
+        resourceResolver: (String) -> Buffer? = { context.assets.readBuffer(getFolderPath(assetFileLocation, it)) },
+    ): ModelInstance = createModel(assetFileLocation, unit, true, resourceResolver).instance
+
+    /** Create an instance using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModelInstance(
+        @RawRes rawResId: Int,
+        unit: ModelUnit?,
+        resourceResolver: (String) -> Buffer? = { null },
+    ): ModelInstance = createModel(rawResId, unit, true, resourceResolver).instance
+
+    /** Create an instance using [unit] for unitless mesh files. */
+    @MainThread
+    fun createModelInstance(
+        file: File,
+        unit: ModelUnit?,
+        resourceResolver: (String) -> Buffer? = { File(file.parent, it).readBuffer() },
+    ): ModelInstance = createModel(file, unit, true, resourceResolver).instance
+
+    /** Create instances using [unit] for unitless mesh files. */
+    @MainThread
+    fun createInstancedModel(
+        assetFileLocation: String,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (String) -> Buffer? = { context.assets.readBuffer(getFolderPath(assetFileLocation, it)) },
+    ): List<ModelInstance> = createInstancedModel(context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation, unit), count, resourceResolver)
+
+    /** Create instances using [unit] for unitless mesh files. */
+    @MainThread
+    fun createInstancedModel(
+        @RawRes rawResId: Int,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (String) -> Buffer? = { null },
+    ): List<ModelInstance> = createInstancedModel(context.resources.readBuffer(rawResId).toModelGlb(unit = unit), count, resourceResolver)
+
+    /** Create instances using [unit] for unitless mesh files. */
+    @MainThread
+    fun createInstancedModel(
+        file: File,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (String) -> Buffer? = { File(file.parent, it).readBuffer() },
+    ): List<ModelInstance> = createInstancedModel(file.readBuffer().toModelGlb(file.name, unit), count, resourceResolver)
 
     /**
      * Loads a [Model] from the contents of a GLB or GLTF file.
@@ -394,7 +484,14 @@ class ModelLoader(
     suspend fun loadModel(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): Model? = loadModelThen(fileLocation, resourceResolver, ::createAsset) { it }
+    ): Model? = loadModel(fileLocation, null, resourceResolver)
+
+    /** Load a supported format with [unit] for STL/OBJ/PLY. */
+    suspend fun loadModel(
+        fileLocation: String,
+        unit: ModelUnit?,
+        resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
+    ): Model? = loadModelThen(fileLocation, resourceResolver, ::createAsset, unit = unit) { it }
 
     /**
      * Shared body of every suspend load: reads and converts the file off the main thread, creates
@@ -430,6 +527,7 @@ class ModelLoader(
         onDestroyedMeanwhile: () -> Unit = { Log.w(TAG, "$fileLocation was destroyed while it loaded") },
         onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
         onRefused: (GltfLimitException) -> Unit = {},
+        unit: ModelUnit? = null,
         onLoadBegun: (Model) -> R,
     ): R? {
         onProgress?.invoke(ModelLoadProgress(Stage.Reading, 0f))
@@ -446,7 +544,7 @@ class ModelLoader(
         // decodes and re-encodes images, and the limits check parses the JSON: all stay off the
         // main thread. The extension check runs first, so its typed refusal comes before any other.
         val (source, gltf) = withContext(Dispatchers.Default) {
-            buffer.toFilamentModelSource(onUnsupported).let { it to GltfLimits.parse(it.buffer) }
+            buffer.toFilamentModelSource(fileLocation, unit, onUnsupported).let { it to GltfLimits.parse(it.buffer) }
         }
         val violations = withContext(Dispatchers.Default) { gltf.violations(maxTextureSize) }
         if (violations.isNotEmpty()) {
@@ -613,6 +711,18 @@ class ModelLoader(
         loadModel(fileLocation, resourceResolver)
     }
 
+    /** Load a supported format asynchronously, choosing the unit for STL/OBJ/PLY. */
+    fun loadModelAsync(
+        fileLocation: String,
+        unit: ModelUnit?,
+        resourceResolver: (resourceFileName: String) -> String = {
+            getFolderPath(fileLocation, it)
+        },
+        onResult: (Model?) -> Unit
+    ): Job = launchLoad(fileLocation, failed = null, onResult) {
+        loadModel(fileLocation, unit, resourceResolver)
+    }
+
     /**
      * Creates a single [ModelInstance] from the contents of a GLB or GLTF [Buffer].
      *
@@ -689,7 +799,14 @@ class ModelLoader(
     suspend fun loadModelInstance(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, ::createAsset) { model ->
+    ): ModelInstance? = loadModelInstance(fileLocation, null, resourceResolver)
+
+    /** Load a supported format with [unit] for STL/OBJ/PLY. */
+    suspend fun loadModelInstance(
+        fileLocation: String,
+        unit: ModelUnit?,
+        resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
+    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, ::createAsset, unit = unit) { model ->
         releasedInstance(model)
     }
 
@@ -748,6 +865,14 @@ class ModelLoader(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) },
         onProgress: (ModelLoadProgress) -> Unit = {},
+    ): ModelInstance = awaitModelInstance(fileLocation, null, resourceResolver, onProgress)
+
+    /** Load a supported format with [unit] for STL/OBJ/PLY. */
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        unit: ModelUnit?,
+        resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {},
     ): ModelInstance {
         // Called on the main thread only: by the reporter below and by the texture loop.
         var last: ModelLoadProgress? = null
@@ -782,6 +907,7 @@ class ModelLoader(
                         // Same for a glTF Filament's release build would crash on: the caller gets
                         // its reasons, not a generic "reason logged".
                         onRefused = { throw it },
+                        unit = unit,
                         onLoadBegun = { model -> releasedInstance(model).also { loaded = it } },
                     )
                 } finally {
@@ -850,6 +976,18 @@ class ModelLoader(
         loadModelInstance(fileLocation, resourceResolver)
     }
 
+    /** Load a supported format asynchronously, choosing the unit for STL/OBJ/PLY. */
+    fun loadModelInstanceAsync(
+        fileLocation: String,
+        unit: ModelUnit?,
+        resourceResolver: (resourceFileName: String) -> String = {
+            getFolderPath(fileLocation, it)
+        },
+        onResult: (ModelInstance?) -> Unit
+    ): Job = launchLoad(fileLocation, failed = null, onResult) {
+        loadModelInstance(fileLocation, unit, resourceResolver)
+    }
+
     /**
      * Creates a [Model] with one or more [ModelInstance]s from the contents of a GLB or GLTF file.
      *
@@ -883,10 +1021,19 @@ class ModelLoader(
         buffer: Buffer,
         count: Int,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
+    ): List<ModelInstance> = createInstancedModel(buffer, null, count, resourceResolver)
+
+    /** Create instances with the chosen unit for STL/OBJ/PLY. */
+    @MainThread
+    fun createInstancedModel(
+        buffer: Buffer,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
             lifecycle.checkCanCreate("create a model")
-            val source = buffer.toFilamentModelSource()
+            val source = buffer.toFilamentModelSource(unit = unit)
             val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
             (assetLoader.createInstancedAsset(source.buffer, this)
                 .also { recordingProvider.ownership.claim(it) }
@@ -915,7 +1062,7 @@ class ModelLoader(
             context.assets.readBuffer(getFolderPath(assetFileLocation, it))
         }
     ) = createInstancedModel(
-        context.assets.readBuffer(assetFileLocation),
+        context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation),
         count,
         resourceResolver
     )
@@ -955,7 +1102,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { resourceFile ->
             File(file.parent, resourceFile).readBuffer()
         }
-    ) = createInstancedModel(file.readBuffer(), count, resourceResolver)
+    ) = createInstancedModel(file.readBuffer().toModelGlb(file.name), count, resourceResolver)
 
     /**
      * Loads a primary [Model] with one or more [ModelInstance]s from the contents of a GLB or
@@ -979,6 +1126,14 @@ class ModelLoader(
         fileLocation: String,
         count: Int,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
+    ): List<ModelInstance> = loadInstancedModel(fileLocation, null, count, resourceResolver)
+
+    /** Load a supported format with [unit] for STL/OBJ/PLY. */
+    suspend fun loadInstancedModel(
+        fileLocation: String,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): List<ModelInstance> {
         val instances = arrayOfNulls<ModelInstance>(count)
         return loadModelThen(
@@ -988,6 +1143,7 @@ class ModelLoader(
                 assetLoader.createInstancedAsset(source, instances)
                     ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
             },
+            unit = unit,
             onLoadBegun = { instances.filterNotNull() },
         ) ?: listOf()
     }
@@ -1019,6 +1175,19 @@ class ModelLoader(
         onResult: (List<ModelInstance>) -> Unit
     ): Job = launchLoad(fileLocation, failed = listOf(), onResult) {
         loadInstancedModel(fileLocation, count, resourceResolver)
+    }
+
+    /** Load a supported format asynchronously, choosing the unit for STL/OBJ/PLY. */
+    fun loadInstancedModelAsync(
+        fileLocation: String,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (resourceFileName: String) -> String = {
+            getFolderPath(fileLocation, it)
+        },
+        onResult: (List<ModelInstance>) -> Unit
+    ): Job = launchLoad(fileLocation, failed = listOf(), onResult) {
+        loadInstancedModel(fileLocation, unit, count, resourceResolver)
     }
 
     /**
@@ -1766,9 +1935,11 @@ private class FilamentModelSource(val buffer: Buffer, private val externalWebP: 
  * prevent native uniform panics (see [GltfMaterialCompatibility]).
  */
 private fun Buffer.toFilamentModelSource(
+    fileName: String? = null,
+    unit: ModelUnit? = null,
     onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
 ): FilamentModelSource {
-    val converted = convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().convertPlyToGlb()
+    val converted = toModelGlb(fileName, unit)
     // Before the transcode: a model refused here is not worth decoding its images.
     GltfRequiredExtensions.unsupported(converted)
         .takeIf { it.isNotEmpty() }
@@ -1786,80 +1957,4 @@ private fun Buffer.toFilamentModelSource(
  */
 private fun logUnsupported(unsupported: UnsupportedGltfExtensionException) {
     Log.w("ModelLoader", "${unsupported.message}; loading it without them")
-}
-
-/**
- * Converts a **3MF** payload to GLB, so `.3mf` is loadable through every entry point on this class
- * with no separate API — the format ChatGPT and every slicer emit for a printable model, which no
- * Android app opened in 3D before (#3482).
- *
- * The sniff is a ZIP-magic check plus a central-directory lookup for `3D/3dmodel.model`, so a glTF,
- * a GLB or anything else costs one 4-byte comparison and is returned untouched.
- */
-private fun Buffer.convertThreeMfToGlb(): Buffer {
-    val source = this as? ByteBuffer ?: return this
-    // Cheap gate first: no ZIP magic, no copy. A 100 MB GLB must not be duplicated in memory just
-    // to find out it is not a 3MF.
-    if (!source.startsWithZipMagic()) return this
-    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
-    if (!ThreeMfLoader.isThreeMf(bytes)) return this
-    val glb = ThreeMfLoader.toGlb(bytes)
-    // Direct, like every other buffer Filament's JNI layer reads (see WebPTextureTranscoder).
-    return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
-}
-
-/**
- * OBJ has no magic: inspect only a bounded prefix before copying the full payload. Absolute reads
- * and a duplicate preserve the caller's position/limit, including sliced and read-only buffers.
- * Automatic loading assumes millimetres and grey; use ObjLoader.toGlb with a resolver for MTL.
- */
-private fun Buffer.convertObjToGlb(): Buffer {
-    val source = this as? ByteBuffer ?: return this
-    if (!source.startsWithObjGeometry()) return this
-    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
-    val glb = ObjLoader.toGlb(bytes)
-    return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
-}
-
-/** PLY has an exact first line, so other formats cost at most a six-byte absolute comparison. */
-private fun Buffer.convertPlyToGlb(): Buffer {
-    val source = this as? ByteBuffer ?: return this
-    if (!source.startsWithPlyHeader()) return this
-    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
-    val glb = PlyLoader.toGlb(bytes)
-    return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
-}
-
-private fun ByteBuffer.startsWithPlyHeader(): Boolean {
-    val at = position()
-    if (!startsWithAscii(at, "ply\n") && !startsWithAscii(at, "ply\r\n")) return false
-    return true
-}
-
-/** JSON and binary GLB fail the cheap gate; other candidates cost at most a 4 KB prefix copy. */
-private fun ByteBuffer.startsWithObjGeometry(): Boolean {
-    if (!hasRemaining()) return false
-    val start = position()
-    val first = get(start).toInt() and 0xff
-    if (first !in OBJ_LEAD_BYTES) return false
-    if (startsWithAscii(start, "glTF")) return false
-    // Include one extra byte so isObj can distinguish a truncated line from a real EOF at 4096.
-    val prefix = ByteArray(minOf(remaining(), 4097)).also { duplicate().get(it) }
-    return ObjLoader.isObj(prefix)
-}
-
-/** Whitespace, '#', the UTF-8 BOM lead byte, and the first letter of every OBJ keyword. */
-private val OBJ_LEAD_BYTES: Set<Int> = (9..13).toSet() + setOf(32, 35, 0xef) + "vfogmuslp".map { it.code }
-
-private fun ByteBuffer.startsWithAscii(start: Int, text: String): Boolean =
-    remaining() >= text.length && text.indices.all { get(start + it) == text[it].code.toByte() }
-
-/** `PK` — the local-file-header magic every ZIP, and so every 3MF, starts with. */
-private fun ByteBuffer.startsWithZipMagic(): Boolean {
-    val at = position()
-    return remaining() >= 4 &&
-        get(at) == 'P'.code.toByte() &&
-        get(at + 1) == 'K'.code.toByte() &&
-        get(at + 2) == 0x03.toByte() &&
-        get(at + 3) == 0x04.toByte()
 }

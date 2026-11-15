@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **One Android model entry point across mesh formats ([#3489](https://github.com/sceneview/sceneview/issues/3489)).** Shared `ModelFormat` sniffing and `ModelConverter` dispatch GLB, glTF, 3MF, STL, OBJ and PLY meshes; `ModelUnit` overrides unitless mesh sizes through `ModelLoader` and Compose. Unsupported inputs fail with `UnsupportedModelFormat` before native parsing. The new "Open any 3D file" reference lists units, materials and real-size loading; splats retain their dedicated renderer.
