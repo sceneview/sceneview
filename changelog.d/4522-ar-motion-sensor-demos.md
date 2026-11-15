@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: explain an unresponsive motion sensor in every rear-camera AR demo ([#4522](https://github.com/sceneview/sceneview/issues/4522)).** After ten seconds without ever tracking, the demos check the motion sensors for one second. A silent gyroscope replaces the startup guidance with a request to restart the phone, records the existing AR funnel reason once, and adds both sensor counts to the bug report.

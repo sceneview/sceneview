@@ -6365,18 +6365,28 @@
    * Give a disposed viewer's WebGL context back to the browser.
    *
    * Filament.js registers every context in Emscripten's GL table and never removes it,
-   * so a context outlives its engine. Browsers cap the live contexts of a page (16 in
-   * Chromium) and force-lose the least recently used one past the cap: after some 16
+   * so a context outlives its engine. Drop that record's GLctx reference so a detached
+   * canvas can be collected: WebKit counts even explicitly lost contexts until then.
+   * Browsers cap a page's live contexts (16 in Chromium) and force-lose the least
+   * recently used one past the cap: after some 16
    * create/dispose cycles, an idle viewer still on the page went black. Losing the
-   * context here frees its GPU memory and, in Chromium, takes it out of that count
-   * (WebKit goes on counting a lost context: Safari still evicts past 16). The canvas
-   * fires `webglcontextlost` when it happens.
+   * context here frees its GPU memory and, in Chromium, takes it out of that count.
+   * The canvas fires `webglcontextlost` when it happens. Collection timing in WebKit
+   * remains up to the browser; callers must detach canvases they no longer need.
    *
    * A canvas keeps its context for life, lost or not: create() restores it before it
    * builds a new engine on the same canvas (see _restoreContext).
    */
   function _releaseContext(canvas) {
     var gl = canvas.getContext('webgl2');
+    // Engine.destroy() has finished. GL is private to the vendored runtime, but
+    // registerContext() puts the very same record on the canvas. Clear only this
+    // viewer's reference, even if its context was already lost or cannot be lost.
+    var registered = canvas.GLctxObject;
+    if (registered && registered.GLctx === gl) {
+      registered.GLctx = null;
+      canvas.GLctxObject = undefined;
+    }
     if (!gl || gl.isContextLost()) return;
     // Taken now: getExtension() returns null once the context is lost.
     var ext = gl.getExtension('WEBGL_lose_context');

@@ -6,7 +6,8 @@ import java.nio.ByteBuffer
  * Pure-Kotlin helpers for the ARCore Scene Semantics label-overlay demo (#1730 / #1868).
  *
  * ARCore's [com.google.ar.core.Frame.acquireSemanticImage] returns an `R8` image — one byte
- * per pixel, the byte being a [com.google.ar.core.SemanticLabel] ordinal (`0..11`). The
+ * per pixel, the byte being a [com.google.ar.core.SemanticLabel] ordinal (`0..11`), in ARCore's
+ * own order: `UNLABELED` is `0`, `SKY` is `1`, `WATER` is `11` (see [LABEL_NAMES]). The
  * `ARSceneSemanticsDemo` colours that raster into an `ARGB_8888` [android.graphics.Bitmap] via
  * [labelBufferToArgb] and composites it as a Compose `Image` **on top of** the `ARSceneView** —
  * the same architecture [DepthVisualization] already uses for the depth-visualization demo.
@@ -46,20 +47,31 @@ internal object SemanticsOverlay {
     /** Number of ARCore Scene Semantics outdoor classes (`SemanticLabel` enum size). */
     const val LABEL_COUNT: Int = 12
 
-    /** Ordinal of the `UNLABELED` class — rendered fully transparent by the overlay shader. */
-    const val UNLABELED_ORDINAL: Int = 11
+    /**
+     * Ordinal of the `UNLABELED` class — rendered fully transparent by the overlay. ARCore
+     * numbers it **first** (`SemanticLabel.UNLABELED.ordinal == 0`), ahead of the 11 real classes.
+     */
+    const val UNLABELED_ORDINAL: Int = 0
 
     /**
-     * Per-class `0xFFRRGGBB` colours for the 12 ARCore semantic labels, indexed by ordinal:
+     * Per-class `0xFFRRGGBB` colours for the 12 ARCore semantic labels, indexed by the byte
+     * ARCore writes in the semantic image, which is the `SemanticLabel` ordinal:
      *
-     * `0 SKY · 1 BUILDING · 2 TREE · 3 ROAD · 4 SIDEWALK · 5 TERRAIN · 6 STRUCTURE · 7 OBJECT ·
-     * 8 VEHICLE · 9 PERSON · 10 WATER · 11 UNLABELED`.
+     * `0 UNLABELED · 1 SKY · 2 BUILDING · 3 TREE · 4 ROAD · 5 SIDEWALK · 6 TERRAIN ·
+     * 7 STRUCTURE · 8 OBJECT · 9 VEHICLE · 10 PERSON · 11 WATER`.
+     *
+     * This table and [LABEL_NAMES] used to start at `SKY` and end at `UNLABELED`, one place off
+     * ARCore's order: every class was painted in the colour the legend gave to the next one (a
+     * wall ARCore called `BUILDING` came out in the legend's "Tree" green, a chair it called
+     * `OBJECT` in the legend's "Vehicle" blue), unclassified pixels were tinted "Sky" blue and
+     * water was left transparent (#4036). `SemanticsOverlayTest` now pins both tables against
+     * the live ARCore enum.
      *
      * Mirrors `const vec3 SEMANTIC_PALETTE[12]` in
-     * `sceneview/src/main/materials/semantics_overlay.mat`. The `.mat` shader is the source of
-     * truth; this table only backs the demo's on-screen colour legend — keep the two in sync.
+     * `sceneview/src/main/materials/semantics_overlay.mat` — keep the two in sync.
      */
     val PALETTE_ARGB: IntArray = intArrayOf(
+        0xFF000000.toInt(), // UNLABELED  — black, never drawn (transparent)
         0xFF66B0F5.toInt(), // SKY        — light blue
         0xFFD95F57.toInt(), // BUILDING   — terracotta
         0xFF4CB050.toInt(), // TREE       — green
@@ -69,15 +81,14 @@ internal object SemanticsOverlay {
         0xFF9E75BD.toInt(), // STRUCTURE  — purple
         0xFFFFC207.toInt(), // OBJECT     — amber
         0xFF2196F2.toInt(), // VEHICLE    — strong blue
-        0xFFF54290.toInt(), // PERSON     — pink
-        0xFF00BDD4.toInt(), // WATER      — cyan
-        0xFF000000.toInt()  // UNLABELED  — black
+        0xFFF5428C.toInt(), // PERSON     — pink
+        0xFF00BDD4.toInt()  // WATER      — cyan
     )
 
     /** Human-readable label names indexed by ordinal — matches `SemanticLabel.values()`. */
     val LABEL_NAMES: Array<String> = arrayOf(
-        "Sky", "Building", "Tree", "Road", "Sidewalk", "Terrain",
-        "Structure", "Object", "Vehicle", "Person", "Water", "Unlabeled"
+        "Unlabeled", "Sky", "Building", "Tree", "Road", "Sidewalk", "Terrain",
+        "Structure", "Object", "Vehicle", "Person", "Water"
     )
 
     /** Sentinel written for [UNLABELED_ORDINAL] pixels — fully transparent. */
@@ -114,7 +125,8 @@ internal object SemanticsOverlay {
      *
      * Each source byte is a [com.google.ar.core.SemanticLabel] ordinal (`0..11`); it is mapped
      * through [PALETTE_ARGB], with [UNLABELED_ORDINAL] painted fully transparent so un-classified
-     * pixels show the live camera through instead of a solid colour. The demo composites the
+     * pixels show the live camera through instead of a solid colour. A byte past the last class
+     * is no classification either, and is left transparent too. The demo composites the
      * result via Compose `Image(alpha = blend)`, on top of the `ARSceneView` — see the class
      * KDoc above for why a Filament 3D quad could never make this composite over the camera feed.
      *
@@ -151,9 +163,8 @@ internal object SemanticsOverlay {
         for (y in 0 until height) {
             val rowStart = y * rowStrideBytes
             for (x in 0 until width) {
-                val ordinal = (labelBytes.get(rowStart + x).toInt() and 0xFF)
-                    .coerceIn(0, LABEL_COUNT - 1)
-                val argb = if (ordinal == UNLABELED_ORDINAL) {
+                val ordinal = labelBytes.get(rowStart + x).toInt() and 0xFF
+                val argb = if (ordinal == UNLABELED_ORDINAL || ordinal >= LABEL_COUNT) {
                     ARGB_TRANSPARENT
                 } else {
                     PALETTE_ARGB[ordinal]

@@ -134,6 +134,61 @@ class ReflectionProbeNodeCompositionTest {
         assertNull(host.scene.indirectLight)
     }
 
+    @Test
+    fun `AR estimates update the fallback behind a composed local probe`() = runTest {
+        val host = Host(this)
+        host.a = Environment(office) to 0
+        host.aRadius = 3f
+        host.camera = inOffice
+        host.frame()
+
+        // The cross-module hook ARSceneView calls after each successful IBL rebuild.
+        host.scene.setEnvironmentLight(night)
+        host.scene.setEnvironmentLight(garage)
+        night.destroyWithoutJni()
+        assertSame(office, host.scene.indirectLight)
+
+        host.camera = outside
+        host.frame()
+        assertSame(garage, host.scene.indirectLight)
+    }
+
+    @Test
+    fun `AR teardown releases its estimate without clearing a composed probe`() = runTest {
+        val host = Host(this)
+        host.a = Environment(office) to 0
+        host.frame()
+        host.scene.setEnvironmentLight(night)
+
+        // Both AR effects dispose: the baseline release must not clear the newer estimate,
+        // and the estimate release must not clear a probe or leave a dangling fallback.
+        host.scene.releaseEnvironmentLight(day)
+        host.scene.releaseEnvironmentLight(night)
+        night.destroyWithoutJni()
+        assertSame(office, host.scene.indirectLight)
+
+        host.a = null
+        host.frame()
+        assertNull(host.scene.indirectLight)
+    }
+
+    @Test
+    fun `AR baseline disposal detaches a direct reattachment after an estimate supersedes it`() = runTest {
+        val host = Host(this)
+        host.scene.setEnvironmentLight(night)
+        host.scene.indirectLight = day
+
+        // Dispose the baseline effect while retaining the scene and the separately owned estimate.
+        host.present = false
+        host.frame()
+        assertSame("baseline disposal must restore the current estimate", night, host.scene.indirectLight)
+
+        host.scene.releaseEnvironmentLight(night)
+        night.destroyWithoutJni()
+        day.destroyWithoutJni()
+        assertNull("no freed IBL may remain attached to the retained scene", host.scene.indirectLight)
+    }
+
     /** Filament 1.77 made the handle constructor package-private. */
     private fun indirectLight(handle: Long): IndirectLight =
         IndirectLight::class.java.getDeclaredConstructor(Long::class.javaPrimitiveType)
@@ -173,8 +228,8 @@ class ReflectionProbeNodeCompositionTest {
                     val environment = environment
                     // `SceneView`'s environment effect.
                     DisposableEffect(scene, environment) {
-                        scene.reflectionProbes.setEnvironmentLight(environment.indirectLight)
-                        onDispose { scene.reflectionProbes.releaseEnvironmentLight(environment.indirectLight) }
+                        scene.setEnvironmentLight(environment.indirectLight)
+                        onDispose { scene.releaseEnvironmentLight(environment.indirectLight) }
                     }
                     a?.let { (env, priority) ->
                         ReflectionProbeNode(
