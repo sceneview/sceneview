@@ -10,10 +10,11 @@ import kotlin.math.sin
 
 /** [ScanSubject]: the object a scan went round is boxed; a scan that went round none gets no box. */
 class ScanSubjectTest {
-    /** A floor of [FLOOR_M] a side with a crate standing at ([CRATE_X], [CRATE_Z]), sampled finer than a voxel. */
-    private val cloud: DenseCloud by lazy {
-        val positions = ArrayList<Float>()
-        val normals = ArrayList<Float>()
+    /** A scan drawn by hand: each patch sampled finer than a voxel, with its normal. */
+    private class Drawn {
+        private val positions = ArrayList<Float>()
+        private val normals = ArrayList<Float>()
+
         fun rect(origin: Vec3, u: Vec3, v: Vec3, normal: Vec3) {
             val nu = (u.length() / STEP).toInt()
             val nv = (v.length() / STEP).toInt()
@@ -23,15 +24,29 @@ class ScanSubjectTest {
                 normals += listOf(normal.x, normal.y, normal.z)
             }
         }
-        rect(Vec3(-FLOOR_M / 2, 0f, -FLOOR_M / 2), Vec3(FLOOR_M, 0f, 0f), Vec3(0f, 0f, FLOOR_M), Vec3.Up)
-        val corner = Vec3(CRATE_X - LENGTH / 2, 0f, CRATE_Z - DEPTH / 2)
-        val up = Vec3(0f, HEIGHT, 0f)
-        rect(corner + up, Vec3(LENGTH, 0f, 0f), Vec3(0f, 0f, DEPTH), Vec3.Up)
-        rect(corner, Vec3(LENGTH, 0f, 0f), up, Vec3(0f, 0f, -1f))
-        rect(corner + Vec3(0f, 0f, DEPTH), Vec3(LENGTH, 0f, 0f), up, Vec3(0f, 0f, 1f))
-        rect(corner, Vec3(0f, 0f, DEPTH), up, Vec3(-1f, 0f, 0f))
-        rect(corner + Vec3(LENGTH, 0f, 0f), Vec3(0f, 0f, DEPTH), up, Vec3(1f, 0f, 0f))
-        DenseCloud(positions.toFloatArray(), IntArray(positions.size / 3), normals.toFloatArray())
+
+        fun floor() = rect(Vec3(-FLOOR_M / 2, 0f, -FLOOR_M / 2), Vec3(FLOOR_M, 0f, 0f), Vec3(0f, 0f, FLOOR_M), Vec3.Up)
+
+        /** The top and the four sides of a block [length] by [depth] round ([x], [z]), from [y] up [height]. */
+        fun block(x: Float, z: Float, length: Float, depth: Float, height: Float, y: Float = 0f) {
+            val corner = Vec3(x - length / 2, y, z - depth / 2)
+            val up = Vec3(0f, height, 0f)
+            rect(corner + up, Vec3(length, 0f, 0f), Vec3(0f, 0f, depth), Vec3.Up)
+            rect(corner, Vec3(length, 0f, 0f), up, Vec3(0f, 0f, -1f))
+            rect(corner + Vec3(0f, 0f, depth), Vec3(length, 0f, 0f), up, Vec3(0f, 0f, 1f))
+            rect(corner, Vec3(0f, 0f, depth), up, Vec3(-1f, 0f, 0f))
+            rect(corner + Vec3(length, 0f, 0f), Vec3(0f, 0f, depth), up, Vec3(1f, 0f, 0f))
+        }
+
+        fun cloud() = DenseCloud(positions.toFloatArray(), IntArray(positions.size / 3), normals.toFloatArray())
+    }
+
+    /** A floor of [FLOOR_M] a side with a crate standing at ([CRATE_X], [CRATE_Z]). */
+    private val cloud: DenseCloud by lazy {
+        Drawn().apply {
+            floor()
+            block(CRATE_X, CRATE_Z, LENGTH, DEPTH, HEIGHT)
+        }.cloud()
     }
 
     /** [count] looks from a circle [radius] round ([x], [z]) at eye height, each at the point [height] over its centre. */
@@ -50,6 +65,25 @@ class ScanSubjectTest {
         assertEquals(HEIGHT, box.height, 2 * VOXEL)
         assertEquals(CRATE_X, box.centerX, 2 * VOXEL)
         assertEquals(CRATE_Z, box.centerZ, 2 * VOXEL)
+    }
+
+    @Test
+    fun `a stool the scan saw the seat and the feet of is boxed from the floor up`() {
+        val stool = Drawn().apply {
+            floor()
+            // Four feet, and a seat on legs too thin for a scan to hold.
+            for (dx in listOf(-FOOT_OUT, FOOT_OUT)) for (dz in listOf(-FOOT_OUT, FOOT_OUT)) {
+                block(CRATE_X + dx, CRATE_Z + dz, FOOT, FOOT, FOOT_HEIGHT)
+            }
+            block(CRATE_X, CRATE_Z, SEAT, SEAT, SEAT_THICK, y = SEAT_TOP - SEAT_THICK)
+            rect(Vec3(CRATE_X - SEAT / 2, SEAT_TOP - SEAT_THICK, CRATE_Z - SEAT / 2), Vec3(SEAT, 0f, 0f), Vec3(0f, 0f, SEAT), Vec3(0f, -1f, 0f))
+        }.cloud()
+        val box = ScanSubject.of(stool, VOXEL, round(CRATE_X, CRATE_Z, SEAT_TOP))
+        assertNotNull("no object for a stool looked at all the way round", box)
+        assertEquals("it stands on the floor, not where its seat hangs", 0f, box!!.baseY, VOXEL)
+        assertEquals(SEAT_TOP, box.height, VOXEL)
+        assertEquals(SEAT, box.length, 2 * VOXEL)
+        assertEquals(SEAT, box.depth, 2 * VOXEL)
     }
 
     @Test
@@ -115,5 +149,11 @@ class ScanSubjectTest {
         const val DEPTH = 0.5f
         const val HEIGHT = 0.6f
         const val EYE_M = 1.4f
+        const val SEAT = 0.5f
+        const val SEAT_TOP = 0.48f
+        const val SEAT_THICK = 0.08f
+        const val FOOT = 0.06f
+        const val FOOT_HEIGHT = 0.1f
+        const val FOOT_OUT = 0.18f
     }
 }

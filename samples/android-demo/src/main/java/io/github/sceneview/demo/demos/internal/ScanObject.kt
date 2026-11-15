@@ -295,6 +295,48 @@ class ScanObjects private constructor(
     }
 
     /**
+     * [found] as the whole of what stands in its place: the same rectangle on the floor, as high
+     * as everything of an object the scan holds over it, not only the region the ray grew. A scan
+     * sees a chair's wheels and its seat and nothing of the thin column between them: the region
+     * stops at that gap, the chair does not. What hangs with nothing of an object under it keeps
+     * its own base, as a region does ([boxOf]).
+     *
+     * For an object the phone went round ([ScanSubject]), never for a tap: under a finger, the
+     * shelf over a sideboard is not the sideboard. The wall a pick cut away behind [found] stays
+     * out of it: the rectangle of what was left stops short of that wall.
+     */
+    fun whole(found: ScanPick.Found, limit: Int = cloud.count): ScanBox {
+        val box = found.box
+        val ux = cos(box.yaw)
+        val uz = sin(box.yaw)
+        var ys = FloatArray(found.surfels.size)
+        var grounds = FloatArray(found.surfels.size)
+        var n = 0
+        for (i in 0 until min(limit, cloud.count)) {
+            if (kinds[i] != OBJECT) continue
+            val dx = cloud.positions[i * 3] - box.centerX
+            val dz = cloud.positions[i * 3 + 2] - box.centerZ
+            if (abs(dx * ux + dz * uz) > box.length / 2 || abs(-dx * uz + dz * ux) > box.depth / 2) continue
+            if (n == ys.size) {
+                ys = ys.copyOf(n * 2 + 1)
+                grounds = grounds.copyOf(n * 2 + 1)
+            }
+            ys[n] = cloud.positions[i * 3 + 1]
+            grounds[n++] = ground.at(cloud.positions[i * 3], cloud.positions[i * 3 + 2])
+        }
+        if (n == 0) return box
+        ys = ys.copyOf(n).also { it.sort() }
+        grounds = grounds.copyOf(n).also { it.sort() }
+        val floorY = grounds[n / 2]
+        val lowest = trimmed(ys, low = true)
+        val standing = lowest - floorY <= floorTolerance + voxelM * REACH_VOXELS
+        // Never less than the region itself: its own strays are trimmed off it already.
+        val baseY = min(box.baseY, if (standing) min(floorY, lowest) else lowest)
+        val top = max(box.baseY + box.height, trimmed(ys, low = false))
+        return ScanBox(box.centerX, box.centerZ, baseY, box.yaw, box.length, box.depth, top - baseY)
+    }
+
+    /**
      * The first answer along [cast] between [near] and [far]. With [objectsOnly] the floor and the
      * walls are looked past and only an object is an answer: the wide cast adds a box, it never
      * takes away the "nothing" of a tap on the floor.

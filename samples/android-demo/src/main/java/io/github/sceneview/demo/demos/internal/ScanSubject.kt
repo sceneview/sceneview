@@ -12,8 +12,12 @@ import kotlin.math.sin
  * [MIN_SHARE] of them agree on it. `null` when they do not: a room walked through, a thing the
  * scan holds too little of to box, or a capture with no pose kept.
  *
- * On the first object scanned by hand (2026-11-14), 21 aims in 24 landed on the same 74 × 68 ×
- * 53 cm; on a room and three outdoor areas of the same day, never more than 7, and no box.
+ * On the first object scanned by hand (2026-11-14), 21 aims in 24 landed on the same one; on a
+ * room and three outdoor areas of the same day, never more than 7, and no box.
+ *
+ * The box is of all that stands there ([ScanObjects.whole]), not of the part the looks landed
+ * on. That first object was an office chair: the looks landed on its seat, the scan held nothing
+ * of the column under it, and the seat's own box hung over the floor, half as high as the chair.
  */
 object ScanSubject {
     /** Where the phone was and which way it looked. */
@@ -37,13 +41,14 @@ object ScanSubject {
         val objects = ScanObjects.of(cloud, voxelM)
         val seen = ArrayList<Votes>()
         for (aim in aims) {
-            val box = (objects.pick(aim.eye, aim.ahead) as? ScanPick.Found)?.box ?: continue
+            val found = objects.pick(aim.eye, aim.ahead) as? ScanPick.Found ?: continue
+            val box = found.box
             // The same object whichever of its points the ray met: its box stands in the same place.
-            val same = seen.firstOrNull { hypot(it.box.centerX - box.centerX, it.box.centerZ - box.centerZ) <= SAME_M }
-            if (same != null) same.count++ else seen += Votes(box)
+            val same = seen.firstOrNull { hypot(it.found.box.centerX - box.centerX, it.found.box.centerZ - box.centerZ) <= SAME_M }
+            if (same != null) same.count++ else seen += Votes(found)
         }
-        val most = seen.maxByOrNull { it.count } ?: return null
-        return most.box.takeIf { most.count >= aims.size * MIN_SHARE }
+        val most = seen.maxByOrNull { it.count }?.takeIf { it.count >= aims.size * MIN_SHARE } ?: return null
+        return objects.whole(most.found)
     }
 
     /**
@@ -77,7 +82,7 @@ object ScanSubject {
         )
     }
 
-    private class Votes(val box: ScanBox, var count: Int = 1)
+    private class Votes(val found: ScanPick.Found, var count: Int = 1)
 
     /** Enough to outvote the looks at the floor and past the object on the way round it. */
     const val AIMS = 24
