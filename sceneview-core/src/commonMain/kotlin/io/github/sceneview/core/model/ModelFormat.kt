@@ -32,9 +32,12 @@ enum class ModelFormat {
             if (bytes.size >= 4 && bytes[0] == 0x67.toByte() && bytes[1] == 0x6c.toByte() &&
                 bytes[2] == 0x54.toByte() && bytes[3] == 0x46.toByte()
             ) return GLB
-            val prefix = bytes.decodeToString(0, minOf(bytes.size, 4096)).trimStart()
+            // JSON whitespace can extend beyond any bounded sniff window.
+            val jsonStart = bytes.indexOfFirst { it.toInt().toChar() !in " \t\r\n" }
             // JSON object keys are unordered: asset can follow a large extras/buffer value.
-            if (prefix.startsWith("{") && Regex("\"asset\"\\s*:").containsMatchIn(bytes.decodeToString())) return GLTF
+            if (bytes.getOrNull(jsonStart) == '{'.code.toByte() &&
+                Regex("\"asset\"\\s*:").containsMatchIn(bytes.decodeToString())
+            ) return GLTF
             if (ThreeMfLoader.isThreeMf(bytes)) return THREE_MF
             if (StlLoader.isStl(bytes)) return STL
             if (PlyLoader.isPly(bytes)) return PLY

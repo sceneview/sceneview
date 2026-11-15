@@ -49,6 +49,22 @@ class ModelFormatTest {
         }
     }
 
+    @Test fun gltfMayHaveLeadingWhitespaceBeyondTheSniffWindow() {
+        for (whitespace in listOf(" ", "\t", "\r", "\n", " \t\r\n")) {
+            for (length in listOf(4095, 4096, 4097, 8192)) {
+                val bytes = (whitespace.repeat(length) + "{\"asset\":{\"version\":\"2.0\"}}")
+                    .encodeToByteArray()
+                for (hint in listOf(null, "model.gltf", "https://example.com/model.gltf?download=1#file")) {
+                    assertEquals(ModelFormat.GLTF, ModelFormat.sniff(bytes, hint))
+                    assertSame(bytes, ModelFormat.sniff(bytes, hint).toGlb(bytes))
+                }
+            }
+            assertFailsWith<UnsupportedModelFormatException> {
+                ModelFormat.sniff(whitespace.repeat(8192).encodeToByteArray(), "model.gltf")
+            }
+        }
+    }
+
     @Test fun unitsChangeConvertedMeshScaleAndDefaultToMillimeters() {
         for ((format, text) in meshes) {
             val bytes = text.encodeToByteArray()

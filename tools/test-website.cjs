@@ -37,6 +37,19 @@ test('the deployed converter detects and converts mesh formats used by /open and
   assert.throws(() => api.modelFormat(new ArrayBuffer(4)), { name: 'UnsupportedModelFormatError', code: 'unsupported-format' });
 });
 
+test('the deployed converter preserves glTF beyond the leading whitespace sniff window', () => {
+  const window = {};
+  runInNewContext(read('js/sceneview-web.js'), { window, Filament: {}, console, ArrayBuffer, Uint8Array, Int8Array });
+  const api = window.sceneview;
+  for (const whitespace of [' ', '\t', '\r', '\n', ' \t\r\n']) {
+    const bytes = new TextEncoder().encode(whitespace.repeat(8192) + '{"asset":{"version":"2.0"}}');
+    for (const hint of [undefined, 'model.gltf']) {
+      assert.equal(api.modelFormat(bytes.buffer, hint), 'GLTF');
+      assert.deepEqual(Buffer.from(api.modelToGlb(bytes.buffer, hint)), Buffer.from(bytes));
+    }
+  }
+});
+
 test('both pages use only the approved public repository count claim', () => {
   for (const [page, html] of [['index.html', home], ['companies.html', companies]]) {
     const text = staticHtml(html).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
