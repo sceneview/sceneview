@@ -1,11 +1,15 @@
 package io.github.sceneview.demo.demos.internal
 
+import com.google.ar.core.SemanticLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * JVM unit tests for [SemanticsOverlay]. ARCore's `Image` is not mockable on the JVM, so
@@ -15,7 +19,7 @@ import java.nio.ByteBuffer
  * Pins the contract that backs the `ARSceneSemanticsDemo` Compose bitmap overlay (#1868,
  * #3396, #3527): row-strided input compacts and colours correctly regardless of stride, rotation
  * re-indexes without resampling, `UNLABELED` stays transparent, and the 12-class colour
- * palette / label tables stay the right size.
+ * palette / label tables stay the right size and in ARCore's own order (#4036).
  */
 class SemanticsOverlayTest {
 
@@ -27,9 +31,9 @@ class SemanticsOverlayTest {
         val height = 2
         val rowStride = 5 // 2 padding bytes per row
         val source = ByteBuffer.allocateDirect(rowStride * height)
-        // Row 0: ordinals 0(SKY),1(BUILDING),2(TREE) then padding.
-        // Row 1: ordinals 3(ROAD),4(SIDEWALK),5(TERRAIN) then padding.
-        val ordinals = intArrayOf(0, 1, 2, 3, 4, 5)
+        // Row 0: ordinals 1(SKY),2(BUILDING),3(TREE) then padding.
+        // Row 1: ordinals 4(ROAD),5(SIDEWALK),6(TERRAIN) then padding.
+        val ordinals = intArrayOf(1, 2, 3, 4, 5, 6)
         for (y in 0 until height) {
             for (x in 0 until width) {
                 source.put(y * rowStride + x, ordinals[y * width + x].toByte())
@@ -50,27 +54,92 @@ class SemanticsOverlayTest {
         val height = 1
         val source = ByteBuffer.allocateDirect(width * height)
         source.put(0, SemanticsOverlay.UNLABELED_ORDINAL.toByte())
-        source.put(1, 0) // SKY
+        source.put(1, 1) // SKY
 
         val pixels = SemanticsOverlay.labelBufferToArgb(source, width, height, width)
 
         assertEquals(0x00000000, pixels[0])
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[0], pixels[1])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[1])
     }
 
     @Test
-    fun `labelBufferToArgb clamps an out-of-range byte to UNLABELED and paints it transparent`() {
-        val source = ByteBuffer.allocateDirect(1)
+    fun `labelBufferToArgb leaves a byte past the last class transparent`() {
+        val source = ByteBuffer.allocateDirect(2)
         source.put(0, 200.toByte()) // way past LABEL_COUNT - 1
+        source.put(1, SemanticsOverlay.LABEL_COUNT.toByte()) // the first value past it
 
-        val pixels = SemanticsOverlay.labelBufferToArgb(source, width = 1, height = 1, rowStrideBytes = 1)
+        val pixels = SemanticsOverlay.labelBufferToArgb(source, width = 2, height = 1, rowStrideBytes = 2)
 
-        // coerceIn(0, LABEL_COUNT - 1) folds any garbage ordinal onto UNLABELED_ORDINAL (11), the
-        // last valid entry — and UNLABELED is by contract painted fully transparent (see the
-        // "paints UNLABELED fully transparent" test above), not PALETTE_ARGB[11]'s opaque black.
-        // A corrupt/unrecognized byte should show the live camera through, never a solid colour
-        // that looks like a deliberate classification.
+        // A corrupt or unrecognised byte should show the live camera through, never a solid
+        // colour that looks like a deliberate classification — and never the last class's one.
         assertEquals(0x00000000, pixels[0])
+        assertEquals(0x00000000, pixels[1])
+    }
+
+    @Test
+    fun `labelBufferToArgb paints each class in the colour the legend gives its name`() {
+        // The byte ARCore writes is the SemanticLabel ordinal. Read against a table that starts
+        // at SKY, a BUILDING wall came out in the legend's "Tree" green and a chair ARCore called
+        // OBJECT in its "Vehicle" blue (#4036).
+        val labels = SemanticLabel.values().filter { it != SemanticLabel.UNLABELED }
+        val source = ByteBuffer.allocateDirect(labels.size)
+        labels.forEachIndexed { i, label -> source.put(i, label.ordinal.toByte()) }
+
+        val pixels = SemanticsOverlay.labelBufferToArgb(
+            source,
+            width = labels.size,
+            height = 1,
+            rowStrideBytes = labels.size,
+        )
+
+        // Each colour is written out here, by the class's name: read back through the palette,
+        // the comparison would hold whatever order the palette is in.
+        val expected = mapOf(
+            SemanticLabel.SKY to 0xFF66B0F5, // light blue
+            SemanticLabel.BUILDING to 0xFFD95F57, // terracotta
+            SemanticLabel.TREE to 0xFF4CB050, // green
+            SemanticLabel.ROAD to 0xFF757575, // grey
+            SemanticLabel.SIDEWALK to 0xFFBDBD8C, // khaki
+            SemanticLabel.TERRAIN to 0xFFCC9E6B, // tan
+            SemanticLabel.STRUCTURE to 0xFF9E75BD, // purple
+            SemanticLabel.OBJECT to 0xFFFFC207, // amber
+            SemanticLabel.VEHICLE to 0xFF2196F2, // strong blue
+            SemanticLabel.PERSON to 0xFFF5428C, // pink
+            SemanticLabel.WATER to 0xFF00BDD4, // cyan, not left transparent
+        )
+        assertEquals("every class but UNLABELED has its colour here", labels.toSet(), expected.keys)
+        labels.forEachIndexed { i, label ->
+            assertEquals(label.name, expected.getValue(label).toInt(), pixels[i])
+        }
+    }
+
+    @Test
+    fun `the overlay material's palette is this one, class for class`() {
+        // Two tables in two languages paint the same classes: this one for the demo's bitmap
+        // overlay, `SEMANTIC_PALETTE` in `semantics_overlay.mat` for the SDK's material. Both
+        // were one place off ARCore's order at once (#4036); nothing held them together.
+        val material = listOf(File("../.."), File("."))
+            .map { File(it, "sceneview/src/main/materials/semantics_overlay.mat") }
+            .first { it.isFile }
+            .readText()
+        val table = material.substringAfter("SEMANTIC_PALETTE[12] = vec3[12](").substringBefore(");")
+        val entry = Regex("""vec3\(([\d.]+),\s*([\d.]+),\s*([\d.]+)\),?\s*//\s*(\w+)""")
+        val rows = entry.findAll(table).map { it.groupValues }.toList()
+
+        assertEquals(
+            "the material's rows, in ARCore's order",
+            SemanticLabel.values().map { it.name },
+            rows.map { it[4] },
+        )
+        rows.forEachIndexed { ordinal, row ->
+            val argb = SemanticsOverlay.PALETTE_ARGB[ordinal]
+            val channels = listOf(argb shr 16 and 0xFF, argb shr 8 and 0xFF, argb and 0xFF)
+            channels.forEachIndexed { c, here ->
+                // The material writes each channel to two decimals: within 2 in 255 of this one.
+                val there = (row[c + 1].toFloat() * 255f).roundToInt()
+                assertTrue("${row[4]} channel $c: $here here, $there in the material", abs(here - there) <= 2)
+            }
+        }
     }
 
     @Test
@@ -105,13 +174,13 @@ class SemanticsOverlayTest {
 
     @Test
     fun `labelBufferToArgb rotates 90 degrees clockwise without resampling`() {
-        // 2x1 source: [SKY(0), BUILDING(1)] -> rotated 90 becomes a 1x2 column,
+        // 2x1 source: [SKY(1), BUILDING(2)] -> rotated 90 becomes a 1x2 column,
         // reading top-to-bottom as [SKY, BUILDING] (matches DepthVisualization's indexing).
         val width = 2
         val height = 1
         val source = ByteBuffer.allocateDirect(width * height)
-        source.put(0, 0) // SKY
-        source.put(1, 1) // BUILDING
+        source.put(0, 1) // SKY
+        source.put(1, 2) // BUILDING
 
         val pixels = SemanticsOverlay.labelBufferToArgb(
             source,
@@ -125,8 +194,8 @@ class SemanticsOverlayTest {
 
         assertEquals(1, outWidth)
         assertEquals(2, outHeight)
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[0], pixels[0])
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[1])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[0])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[2], pixels[1])
     }
 
     @Test
@@ -156,12 +225,20 @@ class SemanticsOverlayTest {
     }
 
     @Test
-    fun `unlabeled is the last ordinal and renders black`() {
+    fun `label names and the unlabeled ordinal follow ARCore's own SemanticLabel order`() {
+        // The pin that was missing: both tables are indexed by the byte ARCore writes, so they
+        // have to list the classes in the order the SDK declares them (UNLABELED first).
         assertEquals(
-            SemanticsOverlay.LABEL_COUNT - 1,
-            SemanticsOverlay.UNLABELED_ORDINAL
+            SemanticLabel.values().map { it.name },
+            SemanticsOverlay.LABEL_NAMES.map { it.uppercase() },
         )
-        // UNLABELED is painted transparent by the shader; its legend colour is black.
+        assertEquals(SemanticLabel.UNLABELED.ordinal, SemanticsOverlay.UNLABELED_ORDINAL)
+    }
+
+    @Test
+    fun `unlabeled is ARCore's first ordinal and renders black`() {
+        assertEquals(0, SemanticsOverlay.UNLABELED_ORDINAL)
+        // UNLABELED is painted transparent by the overlay; its table colour is black.
         assertEquals(
             0xFF000000.toInt(),
             SemanticsOverlay.PALETTE_ARGB[SemanticsOverlay.UNLABELED_ORDINAL]
@@ -209,7 +286,15 @@ class SemanticsOverlayTest {
     fun `a real top label is never reported as unclassified, however high its fraction`() {
         assertFalse(
             SemanticsOverlay.isOutdoorSceneUnclassified(
-                topOrdinal = 0, // SKY
+                topOrdinal = 1, // SKY
+                topFraction = 1.0f,
+            )
+        )
+        // WATER is the last ordinal, where this table used to keep UNLABELED: a lake filling
+        // the frame is a classified scene, not "nothing classified yet".
+        assertFalse(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = SemanticLabel.WATER.ordinal,
                 topFraction = 1.0f,
             )
         )

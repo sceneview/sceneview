@@ -531,6 +531,51 @@ ARSceneView(
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
 
+### GroundContact — depth occlusion with custom placement (Android)
+
+`AutoPlacementScene` registers the surface contact of each placed model automatically. With your
+own placement, contact shadow or ring, call `ARSceneScope.GroundContact` in the `ARSceneView`
+content block. It draws nothing: it registers the contact disc used by the bundled depth and
+people occlusion materials to keep surface depth noise from cutting the shadow, ring and feet.
+
+Signature: `@Composable fun ARSceneScope.GroundContact(center: () -> Position?, radius: Float, normal: Direction = Direction(y = 1f))`.
+This is a scope member and needs no import. The centre provider runs on the main thread each
+rendered frame, after nodes move; return `null` while nothing is placed or the node is invalid.
+Leaving the composition removes the contact. Recomposition updates the provider, radius and normal.
+
+```kotlin
+import androidx.compose.runtime.Composable
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.scene.SceneUnderstanding
+import io.github.sceneview.math.Position
+import com.google.ar.core.Config
+
+@Composable
+fun CustomPlacementOcclusion(contactCenter: () -> Position?, ringRadius: Float) {
+    ARSceneView(
+        depthMode = Config.DepthMode.AUTOMATIC,
+        sceneUnderstanding = SceneUnderstanding(occlusion = true),
+    ) {
+        // Declare your custom placement nodes here too.
+        GroundContact(center = contactCenter, radius = ringRadius)
+    }
+}
+```
+
+Pass the **world-space supporting surface** centre and normal, including for nodes parented to
+an `AnchorNode`; local coordinates and the model's bounding-box centre are wrong. If its origin is on the
+floor, `center = { node.takeUnless { it.isDestroyed }?.worldPosition }` follows it without
+recomposition. Radius is in world metres: include any scale applied by the placement hierarchy.
+The normal defaults to +Y (floor); supply the world-space surface normal for a wall or slope.
+Invalid values (non-finite coordinates, non-positive radius or zero normal) suspend that contact.
+
+Only the valid contact nearest the camera is used per frame. The band tolerates up to 10 cm of
+surface depth noise inside its disc and fades out to zero at 1.5 times the radius. Real geometry
+sufficiently in front still occludes. This does not turn on depth capture or occlusion; use the
+configuration above on a depth-capable device. Custom camera materials need `groundContact`
+and `groundNormal` parameters. Other platforms use different occlusion pipelines; this API is
+specific to Android's ARCore/Filament camera stream.
+
 ### Plane rendering — one renderer, one mark per surface type (#4307)
 
 `ARSceneView(planeRenderer = true)` (the default) draws every surface ARCore tracks with a field of soft, world-anchored marks, and **the mark says what the surface is** (`Plane.type`):
@@ -1479,11 +1524,20 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 - with no active probe (camera outside every local zone, or the last probe removed), the scene
   shows its `SceneView(environment = …)` light again — the current one, even if it changed
   meanwhile;
-- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+- a new scene environment (dark/light toggle, `environment.copy(skybox = …)`) never
   overrides an active probe; a destroyed light is never handed back.
-- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
-  estimation's) directly, so in AR a new environment can replace an active probe until the next
-  probe change (see #4928).
+- in `ARSceneView`, a probe overrides the entire estimated IBL without blending. Estimates keep
+  updating the fallback: leaving the zone restores the latest estimate, or the base environment
+  before the first estimate (reset on environment change). Directional-light estimation continues
+  independently (#4939);
+- a light written directly to `scene.indirectLight` is restored after a probe cycle, until a new
+  environment or AR estimate supersedes it. A released environment no longer owns the fallback.
+
+Android library integration uses the `@RestrictTo(LIBRARY_GROUP_PREFIX)` hooks
+`Scene.setEnvironmentLight(light: IndirectLight?)` and
+`Scene.releaseEnvironmentLight(light: IndirectLight?)` in `io.github.sceneview.node`.
+They share the probe registry across `sceneview` and `arsceneview`; release the fallback before
+destroying its light. These are Android Filament integration hooks; other renderers do not use them.
 
 ---
 
@@ -2971,8 +3025,8 @@ fine-grained control. See the `ar-depth-of-field` demo for the canonical wiring.
 ### Scene Semantics — per-pixel outdoor classification (#1730)
 
 ARCore's Scene Semantics labels every pixel of an **outdoor** camera frame with one of 12 classes
-through an on-device ML model (`SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`, `TERRAIN`,
-`STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`, `UNLABELED`). The AI-first use case is
+through an on-device ML model (`UNLABELED`, `SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`,
+`TERRAIN`, `STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`). The AI-first use case is
 semantic placement rules — "place models only on `TERRAIN`, never on `SKY`/`PERSON`/`VEHICLE`" —
 that an assistant can generate without reading per-pixel rasters.
 
@@ -2998,7 +3052,8 @@ ARSceneView(
         val groundFraction = frame.semanticLabelFraction(SemanticLabel.TERRAIN)
         if (groundFraction > 0.3f) { /* enough ground in view to place a model */ }
 
-        // Per-pixel raster (R8, label ordinal per pixel — `SemanticLabel.forNumber(byte)`).
+        // Per-pixel raster (R8, label ordinal per pixel, UNLABELED = 0 … WATER = 11 —
+        // decode with `SemanticLabel.values()[byte.toInt() and 0xFF]`).
         // Caller-owned Image — close in `use { }` or ARCore will throw ResourceExhausted
         // after 2-3 leaked frames. Returns null while semantics are warming up.
         frame.semanticImage()?.use { image -> /* walk image.planes[0].buffer */ }
@@ -3018,8 +3073,8 @@ available — making "place on TERRAIN" rules naturally wait for the first usabl
 **Visualizing the segmentation (#1868).** To render the per-pixel labels as a tinted overlay
 instead of just reading them, use the built-in `semantics_overlay.filamat` material. Upload the
 `semanticImage()` R8 raster into a Filament `R8` `Texture`, then paint a quad with the overlay
-material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`
-stays transparent):
+material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`,
+ordinal `0`, stays transparent):
 
 ```kotlin
 import io.github.sceneview.material.setSemanticsOpacity
@@ -3028,6 +3083,10 @@ import io.github.sceneview.material.setSemanticsOpacity
 val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
 overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
 ```
+
+The label texture is sampled at the nearest texel, clamped at the edges, by default
+(`setSemanticsTexture(texture, sampler = …)`). A texel is a class number, not a colour: never
+filter it, or every boundary between two classes is painted with the classes numbered between.
 
 Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
 semantic blend slider over the overlay material, plus the top-3 label HUD.

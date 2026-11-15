@@ -93,14 +93,15 @@ import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.demos.internal.MaterialCaptionPlacement
-import io.github.sceneview.demo.demos.internal.canPublishLiveGalleryCaptionSpacing
 import io.github.sceneview.demo.demos.internal.compareCaptionPlacements
 import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionDepth
 import io.github.sceneview.demo.demos.internal.galleryCaptionSpacingAtRadiusPx
 import io.github.sceneview.demo.demos.internal.galleryCaptionSpacingPx
 import io.github.sceneview.demo.demos.internal.galleryCaptionVisible
 import io.github.sceneview.demo.demos.internal.galleryCaptionWidthPx
 import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
+import io.github.sceneview.demo.demos.internal.publishedGalleryCaptionSpacingPx
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
@@ -143,7 +144,6 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * **Materials** — what a physically based surface is, shown rather than described.
@@ -995,25 +995,26 @@ private fun StudioSection(
                         if (centre != null && neighbour != null) {
                             val eye = comparisonCamera.worldPosition
                             val headOnSpacingPx = abs(neighbour.x - centre.x)
-                            val cameraDistance = sqrt(eye.x * eye.x + eye.y * eye.y + eye.z * eye.z)
-                            val spacing = if (canPublishLiveGalleryCaptionSpacing(inspecting, focusIndex, focusZoom.value)) {
-                                galleryCaptionSpacingPx(
+                            val cameraDepth = galleryCaptionDepth(eye, comparisonCamera.forwardDirection)
+                            val spacing = publishedGalleryCaptionSpacingPx(
+                                liveSpacingPx = galleryCaptionSpacingPx(
                                     headOnSpacingPx = headOnSpacingPx,
-                                    cameraDistance = cameraDistance,
+                                    cameraDepth = cameraDepth,
                                     ballSpacing = MaterialStudio.BALL_SPACING,
                                     columns = MaterialStudio.COLUMNS,
                                     yawDegrees = DEFAULT_LABEL_FADE_START_DEGREES,
-                                )
-                            } else {
-                                galleryCaptionSpacingAtRadiusPx(
+                                ),
+                                gallerySpacingPx = galleryCaptionSpacingAtRadiusPx(
                                     headOnSpacingPx = headOnSpacingPx,
-                                    cameraDistance = cameraDistance,
+                                    cameraDepth = cameraDepth,
                                     galleryRadius = galleryRadius,
                                     ballSpacing = MaterialStudio.BALL_SPACING,
                                     columns = MaterialStudio.COLUMNS,
                                     yawDegrees = DEFAULT_LABEL_FADE_START_DEGREES,
-                                )
-                            }
+                                ),
+                                focusIndex = focusIndex,
+                                focusZoom = focusZoom.value,
+                            )
                             if (opaqueSpacingPx.isNaN() || abs(spacing - opaqueSpacingPx) > 1f) {
                                 opaqueSpacingPx = spacing
                             }
