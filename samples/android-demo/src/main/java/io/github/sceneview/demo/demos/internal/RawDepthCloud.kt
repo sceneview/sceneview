@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.ln
 import kotlin.math.max
 
 /**
@@ -34,6 +35,12 @@ internal object RawDepthCloud {
     /** Default minimum confidence (0..255) to keep a point. */
     const val DEFAULT_CONFIDENCE_THRESHOLD: Int = 64
 
+    // Keep a fixed 0.3–5 m range so a surface retains its color between frames.
+    // Logarithmic spacing gives nearby surfaces more of the ramp than linear depth.
+    private val logDepthRange = ln(
+        DepthVisualization.FAR_MM_DEFAULT.toFloat() / DepthVisualization.NEAR_MM_DEFAULT
+    )
+
     /**
      * Packed per-point datum, laid out as 4 ints per point in a flat [IntArray] so
      * a per-frame point cloud is one allocation rather than thousands.
@@ -41,7 +48,8 @@ internal object RawDepthCloud {
      * `[x, y, depthMm, argbColor]`: the depth-image pixel coordinates (for screen-space
      * draw at fractional `x/width`, `y/height`), the raw depth in millimetres (so the
      * UI can render a per-point legend or filter further), and the false-color packed
-     * ARGB (turbo-style ramp from [DepthVisualization.falseColorArgb]).
+     * ARGB (turbo-style ramp from [DepthVisualization.falseColorArgb], with logarithmic
+     * depth spacing to distinguish nearby surfaces).
      */
     const val STRIDE_INTS: Int = 4
 
@@ -67,8 +75,8 @@ internal object RawDepthCloud {
      *                              scatters points into the wrong region — reading as "almost
      *                              nothing visible" rather than a clean rotation. Use
      *                              [DepthVisualization.displayRotationToDegrees] to derive it from
-     *                              the current display rotation. `0` (the default) preserves the
-     *                              original, byte-for-byte behavior.
+     *                              the current display rotation. `0` (the default) leaves
+     *                              coordinates unchanged.
      *
      * @return Packed array length = `nPoints * STRIDE_INTS`. `x`/`y` are already rotated — the
      *         caller must size its overlay to [DepthVisualization.rotatedWidth] /
@@ -127,7 +135,8 @@ internal object RawDepthCloud {
                         val hi = depthBytes.get(depthIdx + 1).toInt() and 0xFF
                         val mm = (hi shl 8) or lo
                         if (mm > 0) {
-                            val t = DepthVisualization.normalize(mm) ?: 0f
+                            val t = (ln(mm.toFloat() / DepthVisualization.NEAR_MM_DEFAULT) /
+                                logDepthRange).coerceIn(0f, 1f)
                             val color = DepthVisualization.falseColorArgb(t)
                             // Rotate (x, y) the same way DepthVisualization.depthBufferToArgb
                             // re-indexes pixels while writing (#3271 / #3184): the destination

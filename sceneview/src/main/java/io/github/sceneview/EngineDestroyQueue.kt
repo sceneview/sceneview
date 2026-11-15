@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import androidx.compose.runtime.mutableIntStateOf
 import com.google.android.filament.Engine
 import com.google.android.filament.Stream
 import com.google.android.filament.Texture
@@ -215,6 +216,9 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
     private class Entry(val runAtFrame: Long, val action: () -> Unit)
 
     private val pending = ArrayDeque<Entry>()
+    // Only writes when entries change, not on every frame. SceneView observes this count to
+    // wake a parked OnDemand loop and keep ticking until the grace period has drained the queue.
+    private val pendingSize = mutableIntStateOf(0)
     private var frame = 0L
 
     /**
@@ -233,7 +237,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
     private var drainedAll = false
 
     /** Number of actions currently waiting to run. */
-    val size: Int get() = pending.size
+    val size: Int get() = pendingSize.intValue
 
     /**
      * Enqueues [action] to run after [graceFrames] frames.
@@ -246,6 +250,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
             action()
         } else {
             pending.addLast(Entry(frame + graceFrames, action))
+            pendingSize.intValue = pending.size
         }
     }
 
@@ -260,7 +265,9 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
         while (true) {
             val head = pending.firstOrNull() ?: break
             if (head.runAtFrame > frame) break
-            pending.removeFirst().action()
+            val entry = pending.removeFirst()
+            pendingSize.intValue = pending.size
+            entry.action()
         }
     }
 
@@ -307,7 +314,9 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
     fun drainAll() {
         drainedAll = true
         while (pending.isNotEmpty()) {
-            pending.removeFirst().action()
+            val entry = pending.removeFirst()
+            pendingSize.intValue = pending.size
+            entry.action()
         }
     }
 }

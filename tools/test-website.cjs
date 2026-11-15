@@ -151,3 +151,98 @@ test('a successful swap keeps the live viewer', async () => {
   assert.equal(f.classes.has('is-live'), true);
   assert.equal(f.classes.has('is-loading'), false);
 });
+
+// Exercise the real dispose/restore path without a GPU. Emscripten's registry
+// keeps the same record as canvas.GLctxObject after Filament.Engine.destroy().
+function contextFixture({ lost = false, extension = true, registered = true } = {}) {
+  const viewerSource = read('js/sceneview.js');
+  const seam = 'global.SceneView = {';
+  assert.ok(viewerSource.includes(seam));
+  const sandbox = { setTimeout, clearTimeout };
+  runInNewContext(viewerSource.replace(seam,
+    'global.contextTests = { Instance: SceneViewInstance, released: _releasedContexts, ' +
+    'restore: _restoreContext }; ' + seam), sandbox);
+  const api = sandbox.contextTests;
+  const calls = [];
+  const canvas = new EventTarget();
+  const gl = { isContextLost: () => lost, getExtension: () => extension ? ext : null };
+  gl.canvas = canvas;
+  const ext = {
+    loseContext() {
+      calls.push('lose');
+      lost = true;
+      setImmediate(() => {
+        const event = new Event('webglcontextlost', { cancelable: true });
+        canvas.dispatchEvent(event);
+        assert.equal(event.defaultPrevented, true, 'same-canvas reuse requires cancellation');
+      });
+    },
+    restoreContext() {
+      calls.push('restore');
+      setImmediate(() => {
+        lost = false;
+        canvas.dispatchEvent(new Event('webglcontextrestored'));
+      });
+    },
+  };
+  canvas.getContext = () => gl;
+  const record = { GLctx: gl };
+  if (registered) canvas.GLctxObject = record;
+  // The table survives for the page's lifetime, even when the canvas is detached.
+  const registry = [record, { GLctx: { otherViewer: true } }];
+  for (const hook of ['_setupControls', '_setupResizeObserver', '_setupVisibilityGating',
+    '_startRenderLoop']) api.Instance.prototype[hook] = () => {};
+  function viewer() {
+    const instance = new api.Instance(canvas);
+    instance._releaseNative = () => {
+      assert.equal(record.GLctx, gl, 'native teardown must precede registry cleanup');
+      calls.push('destroy');
+    };
+    return instance;
+  }
+  return { api, canvas, gl, record, registry, calls, viewer };
+}
+
+test('dispose severs the Emscripten registry reference after native teardown (#4443)', () => {
+  const f = contextFixture();
+  const instance = f.viewer();
+  instance.dispose();
+  assert.equal(f.registry[0].GLctx, null, 'the global registry must not retain the canvas/context');
+  assert.equal(f.canvas.GLctxObject, undefined);
+  assert.equal(f.registry[1].GLctx.otherViewer, true, 'another viewer must stay registered');
+  assert.equal(f.gl.isContextLost(), true, 'Chromium still needs explicit context loss');
+  instance.dispose();
+  assert.deepEqual(f.calls, ['destroy', 'lose'], 'dispose must remain idempotent');
+});
+
+test('dispose leaves an unrecognised Emscripten record alone', () => {
+  const f = contextFixture();
+  const other = { GLctx: {} };
+  f.canvas.GLctxObject = other;
+  f.viewer().dispose();
+  assert.equal(f.canvas.GLctxObject, other);
+  assert.equal(f.record.GLctx, f.gl);
+  assert.deepEqual(f.calls, ['destroy', 'lose']);
+});
+
+for (const options of [{ lost: true }, { extension: false }]) {
+  test(`dispose drops the registry reference even with ${JSON.stringify(options)} (#4443)`, () => {
+    const f = contextFixture(options);
+    f.viewer().dispose();
+    assert.equal(f.record.GLctx, null);
+    assert.equal(f.canvas.GLctxObject, undefined);
+    assert.deepEqual(f.calls, ['destroy']);
+    assert.equal(f.api.released.has(f.canvas), false, 'no restore may wait for a loss event');
+  });
+}
+
+for (const registered of [true, false]) {
+  test(`a disposed canvas can restore its context (Emscripten record: ${registered})`, async () => {
+    const f = contextFixture({ registered });
+    f.viewer().dispose();
+    await f.api.restore(f.canvas, f.api.released.get(f.canvas));
+    assert.equal(f.gl.isContextLost(), false);
+    assert.equal(f.api.released.has(f.canvas), false);
+    assert.deepEqual(f.calls, ['destroy', 'lose', 'restore']);
+  });
+}

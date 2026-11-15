@@ -1985,6 +1985,7 @@ private fun RerunLiveScreen(
     val stagePanes = rememberScanStagePanes(stageWidth, stageHeight, split, cameraHidden = finishing)
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBackFromLive,
         // A capture owns the screen (#4807): no dock, and Send feedback / QA mode in the ⋮ menu

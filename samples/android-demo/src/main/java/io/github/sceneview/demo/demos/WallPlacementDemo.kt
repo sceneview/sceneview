@@ -11,6 +11,7 @@ import com.google.android.filament.Engine
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.SceneScope
 import io.github.sceneview.ar.*
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
@@ -99,6 +100,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         else -> null
     }
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.wall_title),
         onBack = onBack,
         controls = {
@@ -156,6 +158,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         },
     ) {
         AutoPlacementScene(
+            coaching = !LocalMotionSensorSilent.current,
             assetReady = true,
             modifier = Modifier.fillMaxSize(),
             state = state,
