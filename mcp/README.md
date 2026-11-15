@@ -240,6 +240,15 @@ Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOS
 
 **Everything is free, but not everything is remote.** Three generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 32.
 
+**Mesh formats.** `view_3d_model` accepts CORS-enabled `.glb`, `.gltf`, `.3mf`,
+`.stl`, `.obj` and mesh `.ply` URLs. Pass optional `fileName` for extensionless
+links or long OBJ headers, and `unit` (`micron`, `millimeter`, `centimeter`,
+`inch`, `foot`, `meter`) for unitless STL/OBJ/PLY; the default is millimeters.
+3MF keeps its declared unit. Conversion runs in the browser through SceneView's
+shared KMP core. OBJ without an MTL renders grey; point-cloud PLY uses the splat
+loader. `/open/?url=<encoded URL>&unit=millimeter` also supports these formats,
+local file drop/picker, unit selection and a phone QR for remote files.
+
 **Inline 3D viewer.** `view_3d_model` returns `structuredContent` plus `_meta.ui.resourceUri = ui://widget/3d-viewer.html`; the widget (SceneView.js + Filament.js, served by `resources/read` with the `text/html;profile=mcp-app` mime type and its `_meta.ui.csp`) renders the model inline in ChatGPT and any MCP Apps host.
 
 Smoke test with curl (the `Accept` header is required by the spec):
@@ -327,7 +336,7 @@ Six tools carry most of what assistants actually do with SceneView. If you read 
 
 | Tool | What it does |
 |---|---|
-| `view_3d_model` | Renders a public GLB / glTF URL in an interactive SceneView.js + Filament.js viewer inline in ChatGPT and any MCP Apps host (orbit, auto-rotate). For an https model it adds an "Open in AR on your phone" action (an `ar.sceneview.dev/open` link to the 3D AR Model Viewer app, with a QR code on desktop). Returns `structuredContent` + `_meta.ui.resourceUri` |
+| `view_3d_model` | Renders a public GLB / glTF / 3MF / STL / OBJ / mesh PLY URL in an interactive SceneView.js + Filament.js viewer inline in ChatGPT and any MCP Apps host (orbit, auto-rotate). For an https model it adds an "Open in AR on your phone" action (an `ar.sceneview.dev/open` link to the 3D AR Model Viewer app, with a QR code on desktop). Returns `structuredContent` + `_meta.ui.resourceUri` |
 
 ### 5 resources
 

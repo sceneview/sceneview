@@ -570,6 +570,7 @@ internal object WebPTextureTranscoder {
     private fun toArrayBuffer(bytes: Uint8Array): ArrayBuffer =
         bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)
 
+    @Suppress("SwallowedException") // An invalid optional data URI uses the existing texture fallback.
     private fun decodeDataUri(uri: String): Uint8Array? = try {
         fromBase64(uri.substringAfter("base64,"))
     } catch (throwable: Throwable) {

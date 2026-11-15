@@ -789,6 +789,31 @@ public final class io/github/sceneview/collision/Vector3$Companion {
 	public final fun zero ()Lio/github/sceneview/collision/Vector3;
 }
 
+public final class io/github/sceneview/core/model/ModelFormat : java/lang/Enum {
+	public static final field Companion Lio/github/sceneview/core/model/ModelFormat$Companion;
+	public static final field GLB Lio/github/sceneview/core/model/ModelFormat;
+	public static final field GLTF Lio/github/sceneview/core/model/ModelFormat;
+	public static final field OBJ Lio/github/sceneview/core/model/ModelFormat;
+	public static final field PLY Lio/github/sceneview/core/model/ModelFormat;
+	public static final field STL Lio/github/sceneview/core/model/ModelFormat;
+	public static final field THREE_MF Lio/github/sceneview/core/model/ModelFormat;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun isUnitless ()Z
+	public final fun toGlb ([BLio/github/sceneview/core/threemf/ThreeMfUnit;)[B
+	public static synthetic fun toGlb$default (Lio/github/sceneview/core/model/ModelFormat;[BLio/github/sceneview/core/threemf/ThreeMfUnit;ILjava/lang/Object;)[B
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/core/model/ModelFormat;
+	public static fun values ()[Lio/github/sceneview/core/model/ModelFormat;
+}
+
+public final class io/github/sceneview/core/model/ModelFormat$Companion {
+	public final fun sniff ([BLjava/lang/String;)Lio/github/sceneview/core/model/ModelFormat;
+	public static synthetic fun sniff$default (Lio/github/sceneview/core/model/ModelFormat$Companion;[BLjava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/core/model/ModelFormat;
+}
+
+public final class io/github/sceneview/core/model/UnsupportedModelFormatException : java/lang/IllegalArgumentException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public final class io/github/sceneview/core/obj/ObjGroup {
 	public fun <init> (Ljava/lang/String;[F[F[FLjava/util/List;)V
 	public final fun getName ()Ljava/lang/String;

@@ -156,8 +156,8 @@ const CDN_BASE = "https://sceneview.github.io";
 const FILAMENT_JS_URL = `${CDN_BASE}/js/filament/filament.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 const SCENEVIEW_JS_URL = `${CDN_BASE}/js/sceneview.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 /**
- * The compiled SceneView KMP core, loaded by the widget ONLY to convert a `.3mf` to GLB
- * (`sceneview.threeMfToGlb`) — never to render, which stays `sceneview.js` + the site's own
+ * The compiled SceneView KMP core, loaded by the widget ONLY to convert a mesh to GLB
+ * (`sceneview.modelToGlb`) — never to render, which stays `sceneview.js` + the site's own
  * Filament build. Fetched lazily, so a GLB preview never pays for it (#3482).
  */
 const SCENEVIEW_WEB_URL = `${CDN_BASE}/js/sceneview-web.js?v=${LATEST_SCENEVIEW_RELEASE}`;
@@ -582,6 +582,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         if (!modelUrl) return null;
         return {
           modelUrl: modelUrl,
+          fileName: p.get("fileName") || undefined,
+          unit: p.get("unit") || undefined,
           title: p.get("title") || undefined,
           autoRotate: p.get("autoRotate") !== "false",
           alt: p.get("alt") || undefined,
@@ -637,6 +639,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
 
       function updateArAction(data) {
         arLink = data.ar === false ? null : openInArUrl(data.modelUrl, linkSource());
+        if (arLink && data.unit) arLink += "&unit=" + encodeURIComponent(data.unit);
+        if (arLink && data.fileName) arLink += "&name=" + encodeURIComponent(data.fileName);
         arEl.classList.remove("has-qr");
         arQr.textContent = "";
         if (!arLink) { arEl.hidden = true; return; }
@@ -732,7 +736,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       // ── Rendering ────────────────────────────────────────────────────────
 
       function render(data) {
-        if (rendered && rendered.modelUrl === data.modelUrl) return;
+        if (rendered && rendered.modelUrl === data.modelUrl && rendered.fileName === data.fileName && rendered.unit === data.unit) return;
         pending = data;
         placeholder.hidden = true;
         errorEl.hidden = true;
@@ -747,87 +751,55 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         whenSceneViewReady(function () { start(data); });
       }
 
-      // ── 3MF (#3482) ──────────────────────────────────────────────────────
-      //
-      // ChatGPT emits a \`.3mf\` when it turns a drawing into a printable model.
-      // The conversion is NOT reimplemented here: \`sceneview-web.js\` is the
-      // compiled SceneView KMP core, the same \`ThreeMfLoader\` Android runs,
-      // exposed as \`sceneview.threeMfToGlb(bytes)\`. It is loaded lazily and
-      // only for that call, so a GLB preview never downloads it.
-
-      var threeMfScriptPromise = null;
-      function loadThreeMfConverter() {
-        if (!threeMfScriptPromise) {
-          threeMfScriptPromise = new Promise(function (resolve, reject) {
+      // Shared KMP mesh conversion, loaded lazily for non-glTF inputs.
+      var converterPromise = null;
+      function loadModelConverter() {
+        if (!converterPromise) {
+          converterPromise = new Promise(function (resolve, reject) {
             var el = document.createElement("script");
             el.src = CONVERTER_URL;
-            el.onload = function () { resolve(); };
-            el.onerror = function () { reject(new Error("could not load the 3MF converter")); };
+            el.onload = resolve;
+            el.onerror = function () { reject(new Error("could not load the model converter")); };
             document.head.appendChild(el);
           });
         }
-        return threeMfScriptPromise;
+        return converterPromise;
       }
 
-      /** \`PK\\x03\\x04\` — the ZIP magic every 3MF starts with. Four bytes, no parse. */
-      function looksLikeZip(buffer) {
-        if (!buffer || buffer.byteLength < 4) return false;
-        var b = new Uint8Array(buffer, 0, 4);
-        return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
-      }
-
-      /**
-       * The URL the renderer should load: a \`blob:\` GLB for a 3MF, or the URL
-       * unchanged for anything else.
-       *
-       * Only a \`.3mf\` URL — or one with no recognised model extension, which is
-       * what a generated-file link usually looks like — is fetched and sniffed
-       * here. A \`.glb\` / \`.gltf\` goes straight through, so the common case
-       * still costs exactly one download, and a glTF keeps resolving its own
-       * external buffers and textures against its own URL.
-       */
-      function resolveModelUrl(url) {
-        var path = String(url).split("?")[0].split("#")[0].toLowerCase();
-        var isThreeMfUrl = /.3mf$/.test(path);
-        var isKnownGltf = /.(glb|gltf)$/.test(path);
-        if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);
-
-        return fetch(url)
-          .then(function (r) {
-            if (!r.ok) throw new Error("HTTP " + r.status + " loading the model");
-            var type = (r.headers.get("content-type") || "").toLowerCase();
-            return r.arrayBuffer().then(function (buffer) {
-              return { buffer: buffer, isThreeMfType: type.indexOf("model/3mf") !== -1 };
-            });
-          })
-          .then(function (payload) {
-            if (!looksLikeZip(payload.buffer) && !payload.isThreeMfType) return url;
-            return loadThreeMfConverter().then(function () {
-              if (!window.sceneview || typeof window.sceneview.threeMfToGlb !== "function") {
-                throw new Error("the 3MF converter did not load");
-              }
-              if (!window.sceneview.isThreeMf(payload.buffer)) {
-                if (isThreeMfUrl) throw new Error("this file is not a readable 3MF");
-                return url;
-              }
-              var glb = window.sceneview.threeMfToGlb(payload.buffer);
-              formatEl.textContent = "3MF";
-              return URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
-            });
+      function resolveModelUrl(url, fileName, unit) {
+        var path = String(fileName || url).split("?")[0].split("#")[0].toLowerCase();
+        // Keep external glTF buffers/textures relative to the original URL.
+        if (/\\.(glb|gltf)$/.test(path)) return Promise.resolve(url);
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status + " loading the model");
+          return r.arrayBuffer();
+        }).then(function (buffer) {
+          return loadModelConverter().then(function () {
+            var format = window.sceneview.modelFormat(buffer, fileName || url);
+            formatEl.textContent = format === "THREE_MF" ? "3MF" : format;
+            if (format === "GLB" || format === "GLTF") return url;
+            var glb = window.sceneview.modelToGlb(buffer, fileName || url, unit);
+            return URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
           });
+        });
       }
 
       function start(data) {
         if (pending !== data) return; // superseded by a newer payload
-        resolveModelUrl(data.modelUrl).then(function (url) {
-          if (pending !== data) return; // superseded while the 3MF was converting
+        resolveModelUrl(data.modelUrl, data.fileName, data.unit).then(function (url) {
+          if (pending !== data) { releaseModelUrl(url); return; }
           startWith(data, url);
         }).catch(fail);
       }
 
+      function releaseModelUrl(url) {
+        if (url.indexOf("blob:") === 0) URL.revokeObjectURL(url);
+      }
+
       function startWith(data, url) {
         if (viewer && typeof viewer.loadModel === "function") {
-          viewer.loadModel(url).then(function () { reveal(data); }).catch(function (err) {
+          viewer.loadModel(url).then(function () { releaseModelUrl(url); reveal(data); }).catch(function (err) {
+            releaseModelUrl(url);
             // sceneview.js rejects a load that a later loadModel() replaced with an
             // AbortError: the later render() owns the viewer, so this is not a failure.
             if (err && err.name === "AbortError") return;
@@ -844,9 +816,10 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
           // sandbox origin, 404s, and leaves PBR materials almost black.
           iblUrl: IBL_URL,
         }).then(function (v) {
+          releaseModelUrl(url);
           viewer = v;
           reveal(data);
-        }).catch(fail);
+        }).catch(function (err) { releaseModelUrl(url); fail(err); });
       }
 
       function reveal(data) {
@@ -932,7 +905,7 @@ const WIDGETS: Record<string, { name: string; description: string; html: string 
   [WIDGET_3D_VIEWER_URI]: {
     name: "SceneView 3D Viewer",
     description:
-      "MCP Apps widget: interactive SceneView.js + Filament.js viewer for a GLB / glTF model, rendered inline by the host when `view_3d_model` is called.",
+      "MCP Apps widget: interactive SceneView.js + Filament.js viewer for a GLB / glTF / 3MF / STL / OBJ / PLY model, rendered inline by the host when `view_3d_model` is called.",
     html: WIDGET_3D_VIEWER_HTML,
   },
 };

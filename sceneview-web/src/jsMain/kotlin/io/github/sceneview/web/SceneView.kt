@@ -2,6 +2,8 @@ package io.github.sceneview.web
 
 import io.github.sceneview.collision.Ray
 import io.github.sceneview.collision.TransformProvider
+import io.github.sceneview.core.model.ModelFormat
+import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toTransform
 import io.github.sceneview.rendering.SceneNode
@@ -18,6 +20,7 @@ import io.github.sceneview.web.nodes.ModelNode
 import io.github.sceneview.web.nodes.Node
 import kotlinx.browser.window
 import org.khronos.webgl.ArrayBuffer
+import org.khronos.webgl.Int8Array
 import org.khronos.webgl.Uint8Array
 import org.w3c.dom.HTMLCanvasElement
 
@@ -580,10 +583,10 @@ class SceneView private constructor(
     }
 
     /**
-     * Load a glTF/GLB — or a **3MF** (`.3mf`) — model from a URL and add it to the scene.
+     * Load a GLB, glTF, 3MF, STL, OBJ or mesh PLY model from a URL and add it to the scene.
      *
      * This performs the full loading pipeline:
-     * 1. Fetch the .glb/.gltf/.3mf file as an ArrayBuffer
+     * 1. Fetch the model as an ArrayBuffer and convert non-glTF meshes to GLB
      * 1b. Convert it to GLB when it is a 3MF (#3482), through the shared KMP
      *    `ThreeMfLoader` — the same conversion Android runs, so no second parser
      * 2. Create a FilamentAsset via the AssetLoader
@@ -591,7 +594,7 @@ class SceneView private constructor(
      * 4. Call loadResources() to fetch external textures/buffers
      * 5. Release source data to free memory
      *
-     * @param url URL to the .glb, .gltf or .3mf file — including a `blob:` URL, which is how a
+     * @param url URL to a GLB, glTF, 3MF, STL, OBJ or mesh PLY file — including a `blob:` URL, which is how a
      *   file the user dropped on the page is loaded
      * @param onLoaded Optional callback when the model is fully loaded (with resources)
      * @param autoAnimate When `true` (default, matching Android `ModelNode`) the
@@ -617,6 +620,22 @@ class SceneView private constructor(
             null
         }
 
+    /** Load in-memory GLB, glTF, 3MF, STL, OBJ or mesh PLY. Unitless meshes default to mm. */
+    fun loadModel(
+        buffer: ArrayBuffer,
+        fileName: String? = null,
+        unit: ThreeMfUnit = ThreeMfUnit.Default,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+    ) = loadModelInternal(fileName ?: "memory", onLoaded, buffer = buffer, fileName = fileName, unit = unit)
+
+    /** Load a URL with a filename hint and an explicit unit for STL/OBJ/PLY. */
+    fun loadModel(
+        url: String,
+        fileName: String?,
+        unit: ThreeMfUnit,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+    ) = loadModelInternal(url, onLoaded, fileName = fileName, unit = unit)
+
     /**
      * The actual pipeline behind [loadModel]. [onAssetCreated] is the node
      * adoption hook (#2024 slice 2): it fires synchronously right after the
@@ -633,6 +652,10 @@ class SceneView private constructor(
         scale: Float = 1f,
         nodeOwned: Boolean = false,
         onAssetCreated: ((FilamentAsset) -> Unit)? = null,
+        buffer: ArrayBuffer? = null,
+        fileName: String? = null,
+        unit: ThreeMfUnit = ThreeMfUnit.Default,
+        onError: ((Throwable) -> Unit)? = null,
     ) {
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
 
@@ -653,9 +676,11 @@ class SceneView private constructor(
             }
         }
 
-        window.fetch(url).then { response ->
+        val source = if (buffer != null) kotlin.js.Promise.resolve(buffer) else window.fetch(url).then { response ->
+            check(response.ok) { "HTTP ${response.status} loading $url" }
             response.arrayBuffer()
-        }.then { buffer ->
+        }
+        source.then { fetched ->
             // #1597 (Tier-2): if destroy() ran while this initial GLB fetch was
             // in flight, the loader/engine/scene are freed WASM handles — bail
             // out before createAsset/addEntities touch them (use-after-free),
@@ -672,11 +697,9 @@ class SceneView private constructor(
                 settleLoad()
                 return@then null
             }
-            // #3482: a `.3mf` — what ChatGPT emits for a printable model, and what every slicer
-            // writes — is converted to GLB here, so the rest of this pipeline is unchanged and
-            // every caller of `loadModel` accepts the format with no new API. Anything that is
-            // not a ZIP costs a 4-byte comparison and is passed through as the same instance.
-            val payload = ThreeMfConverter.convert(buffer.unsafeCast<ArrayBuffer>())
+            val bytes = Int8Array(fetched.unsafeCast<ArrayBuffer>()).unsafeCast<ByteArray>()
+            val format = ModelFormat.sniff(bytes, fileName ?: url)
+            val payload = format.toGlb(bytes, unit).toArrayBuffer()
             // #3085: Filament.js registers no `image/webp` texture provider, so a glTF using
             // EXT_texture_webp renders untextured. Re-encode its embedded WebP images to PNG
             // BEFORE createAsset — the browser decode is async, hence the extra `then` hop.
@@ -789,12 +812,15 @@ class SceneView private constructor(
                     asyncInterval = null
                 )
             } else {
-                console.error("SceneView: AssetLoader failed to parse model from $url")
+                val error = IllegalArgumentException("Failed to parse model from $url")
+                console.error(error.message)
                 settleLoad()
+                onError?.invoke(error)
             }
         }.catch { error ->
             console.error("SceneView: Error fetching model from $url", error)
             settleLoad()
+            onError?.invoke(error)
         }
     }
 
@@ -830,7 +856,7 @@ class SceneView private constructor(
             }
             // Kotlin/JS ByteArray IS an Int8Array — view the fetched buffer directly,
             // no copy, and hand it to the shared KMP parser.
-            val bytes = org.khronos.webgl.Int8Array(buffer.unsafeCast<ArrayBuffer>())
+            val bytes = Int8Array(buffer.unsafeCast<ArrayBuffer>())
                 .unsafeCast<ByteArray>()
             val cloud = try {
                 io.github.sceneview.core.splat.SplatParser.parse(bytes)

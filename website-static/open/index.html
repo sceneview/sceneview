@@ -265,6 +265,8 @@
 </head>
 <body>
   <main>
+      <label class="btn">Choose a model <input id="model-file" type="file" accept=".glb,.gltf,.3mf,.stl,.obj,.ply"></label>
+
     <a class="brand" href="https://sceneview.github.io/">
       <span class="brand-mark" aria-hidden="true">SV</span>
       <span class="brand-text">SceneView</span>
@@ -310,6 +312,14 @@
           <div id="viewer-status-text">Loading the model…</div>
         </div>
       </div>
+      <label id="unit-control" hidden>Model unit
+        <select id="model-unit">
+          <option value="millimeter">Millimeters</option><option value="meter">Meters</option>
+          <option value="centimeter">Centimeters</option><option value="inch">Inches</option>
+          <option value="foot">Feet</option><option value="micron">Microns</option>
+        </select>
+      </label>
+      <div id="model-phone" hidden><h2><a id="model-phone-link">Open on your phone</a></h2><div id="model-qr"></div></div>
       <p id="viewer-source" class="file-name"></p>
       <div class="actions">
         <a class="btn" href="https://sceneview.github.io/">Browse SceneView</a>
@@ -322,17 +332,16 @@
         Open this page with <code class="url">?demo=&lt;id&gt;</code> — for
         example <code class="url">?demo=ar-rerun</code> — or with
         <code class="url">?url=&lt;model&gt;</code> to view a
-        <code class="url">.3mf</code>, <code class="url">.glb</code> or
-        <code class="url">.gltf</code> right here.
+        GLB, glTF, 3MF, STL, OBJ or PLY right here.
       </div>
-      <p id="drop-hint">…or drop a <code class="url">.3mf</code> file anywhere on this page.</p>
+      <p id="drop-hint">…or drop a 3MF, STL, OBJ or PLY file anywhere on this page.</p>
       <div class="actions">
         <a class="btn btn-primary" href="https://sceneview.github.io/">Browse SceneView</a>
       </div>
     </div>
   </main>
 
-  <div id="drop-overlay">Drop a .3mf, .glb or .gltf file to view it</div>
+  <div id="drop-overlay">Drop a GLB, glTF, 3MF, STL, OBJ or PLY file to view it</div>
 
   <script type="module">
     // ─── Config ──────────────────────────────────────────────────────────
@@ -443,10 +452,21 @@
     // A file can be dropped whatever panel is showing — the interstitial is
     // where a .3mf out of ChatGPT lands, and a dead-end error page is the worst
     // possible answer to it.
+    let localFileUrl = null;
+    let currentModel = null;
+    let modelViewer = null;
+    let viewTicket = 0;
+    const unitSelect = document.getElementById('model-unit');
+    unitSelect.value = params.get('unit') || 'millimeter';
+    if (!unitSelect.value) unitSelect.value = 'millimeter';
+    unitSelect.addEventListener('change', () => {
+      if (currentModel) viewModel(...currentModel);
+    });
+
     installFileDrop();
 
     if (modelUrl) {
-      viewModel(modelUrl, lastPathSegment(modelUrl));
+      viewModel(modelUrl, params.get('fileName') || params.get('name') || lastPathSegment(modelUrl));
     } else if (urlParam) {
       document.getElementById('content-loading').style.display = 'none';
       show('content-invalid');
@@ -521,21 +541,17 @@
 
     // ─── Model viewer (#3482) ────────────────────────────────────────────
     //
-    // ChatGPT emits a `.3mf` when it turns a drawing into a printable model,
-    // and so does every slicer. Nothing on the web opened one in 3D, so this
-    // page — the one an app link already sends people to — renders it.
-    //
     // The conversion is NOT reimplemented here. `sceneview-web.js` is the
     // compiled SceneView KMP core: the same `ThreeMfLoader` Android runs,
-    // exposed as `sceneview.threeMfToGlb(bytes)`. It is loaded ONLY for that
+    // exposed as `sceneview.modelToGlb(bytes, fileName, unit)`. It is loaded ONLY for that
     // call — never to create a viewer — so the site's own Filament build
     // (`filamentWebsite`, a different pin from the one the bundle compiles
     // against) is the only renderer on the page, and the two never meet.
     const VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.69.5'];
-    const THREEMF_SCRIPT = '/js/sceneview-web.js?v=4.34.0';
+    const MODEL_CONVERTER_SCRIPT = '/js/sceneview-web.js?v=4.69.5';
 
     let viewerScriptsPromise = null;
-    let threeMfScriptPromise = null;
+    let modelConverterPromise = null;
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
@@ -557,43 +573,25 @@
       return viewerScriptsPromise;
     }
 
-    function loadThreeMfConverter() {
-      if (!threeMfScriptPromise) threeMfScriptPromise = loadScript(THREEMF_SCRIPT);
-      return threeMfScriptPromise;
+    function loadModelConverter() {
+      if (!modelConverterPromise) modelConverterPromise = loadScript(MODEL_CONVERTER_SCRIPT);
+      return modelConverterPromise;
     }
 
-    /**
-     * `PK\x03\x04` — the ZIP magic every 3MF starts with. The same cheap gate
-     * the Android `ModelLoader` applies before it copies anything: a GLB costs
-     * a four-byte comparison instead of a 238 kB script download.
-     */
-    function looksLikeZip(buffer) {
-      if (buffer.byteLength < 4) return false;
-      const b = new Uint8Array(buffer, 0, 4);
-      return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
-    }
-
-    /**
-     * A URL the viewer can load: the 3MF converted to a GLB blob, or
-     * `fallbackUrl` untouched for anything else — a glTF's external buffers and
-     * textures resolve against their own URL, so re-wrapping one as a blob
-     * would break it.
-     */
-    async function toViewableUrl(buffer, fallbackUrl) {
-      if (!looksLikeZip(buffer)) return fallbackUrl;
-      // `filament.js` FIRST: the Kotlin bundle declares Filament as a webpack
-      // external and reads the global as it initialises, so loading it on a
-      // bare page throws. It never *renders* with it — `sceneview.js` owns the
-      // canvas — it only needs the symbol to exist.
+    async function toViewableUrl(buffer, fallbackUrl, fileName, unit) {
+      const head = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 4));
+      const prefix = new TextDecoder().decode(buffer.slice(0, 4096)).trimStart();
+      const isGlb = head[0] === 0x67 && head[1] === 0x6c && head[2] === 0x54 && head[3] === 0x46;
+      if (isGlb || (prefix.startsWith('{') && /"asset"\s*:/.test(prefix))) {
+        document.getElementById('unit-control').hidden = true;
+        return fallbackUrl;
+      }
       await loadViewerScripts();
-      await loadThreeMfConverter();
-      if (!window.sceneview || typeof window.sceneview.threeMfToGlb !== 'function') {
-        throw viewerError('converter', 'the 3MF converter did not load');
-      }
-      if (!window.sceneview.isThreeMf(buffer)) {
-        throw viewerError('not-3mf', 'a ZIP archive that is not a 3MF package');
-      }
-      const glb = window.sceneview.threeMfToGlb(buffer);
+      await loadModelConverter();
+      const format = window.sceneview.modelFormat(buffer, fileName);
+      document.getElementById('unit-control').hidden = !['STL', 'OBJ', 'PLY'].includes(format);
+      if (format === 'GLB' || format === 'GLTF') return fallbackUrl;
+      const glb = window.sceneview.modelToGlb(buffer, fileName, unit);
       return URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
     }
 
@@ -642,6 +640,9 @@
       document.getElementById('viewer-source').textContent = '';
       viewerStatus('Loading the model…', false);
 
+      const ticket = ++viewTicket;
+      currentModel = [url, label, prefetched];
+      let viewableUrl = url;
       try {
         let buffer = prefetched;
         if (!buffer) {
@@ -649,13 +650,17 @@
           if (!response.ok) throw new Error('HTTP ' + response.status);
           buffer = await response.arrayBuffer();
         }
-        const viewableUrl = await toViewableUrl(buffer, url);
+        if (ticket !== viewTicket) return;
+        currentModel = [url, label, buffer];
+        viewableUrl = await toViewableUrl(buffer, url, label, unitSelect.value);
+        if (ticket !== viewTicket) return;
         const converted = viewableUrl !== url;
 
         viewerStatus('Starting the 3D renderer…', false);
         await loadViewerScripts();
         try {
-          await SceneView.modelViewer('viewer-canvas', viewableUrl, {
+          if (modelViewer) await modelViewer.loadModel(viewableUrl);
+          else modelViewer = await SceneView.modelViewer('viewer-canvas', viewableUrl, {
             autoRotate: true,
             // DESIGN.md `stage-background` (#0B0F16), as displayed — so the
             // canvas matches the stage frame around it in both themes.
@@ -666,12 +671,31 @@
           throw viewerError('render', String(renderError && renderError.message));
         }
 
+        if (ticket !== viewTicket) return;
         viewerStatus(null);
         document.getElementById('viewer-source').textContent =
-          converted ? (label || '3D model') + ' — 3MF converted in your browser' : (label || '3D model');
+          converted ? (label || '3D model') + ' — converted in your browser' : (label || '3D model');
+        const phone = document.getElementById('model-phone');
+        phone.hidden = !safeModelUrl(url);
+        if (!phone.hidden) {
+          const link = new URL(location.pathname, location.origin);
+          link.searchParams.set('url', url);
+          link.searchParams.set('unit', unitSelect.value);
+          if (label) link.searchParams.set('fileName', label);
+          document.getElementById('model-phone-link').href = link.href;
+          try {
+            const { renderQrSvg } = await import('../js/qrcode-min.js');
+            document.getElementById('model-qr').innerHTML = await renderQrSvg(link.href, { size: 200 });
+          } catch (error) {
+            document.getElementById('model-qr').textContent = 'QR unavailable. Open this page on your phone.';
+          }
+        }
       } catch (e) {
+        if (ticket !== viewTicket) return;
         console.error('open: could not display the model', e);
-        viewerStatus(VIEWER_ERRORS[e && e.code] || VIEWER_ERRORS.fetch, true);
+        viewerStatus(VIEWER_ERRORS[e && e.code] || e.message || VIEWER_ERRORS.fetch, true);
+      } finally {
+        if (viewableUrl !== url) URL.revokeObjectURL(viewableUrl);
       }
     }
 
@@ -682,15 +706,26 @@
       fetch: 'Could not load this model. Check the link, and that its host allows ' +
         'cross-origin requests.',
       'not-3mf': 'This file is a ZIP archive, but not a 3MF package.',
-      converter: 'The 3MF converter could not be loaded. Try again in a moment.',
+      'unsupported-format': 'Unsupported model format. Choose GLB, glTF, 3MF, STL, OBJ or PLY.',
+      converter: 'The model converter could not be loaded. Try again in a moment.',
       render: 'This model could not be rendered. It may be corrupt, or use a glTF ' +
         'feature this viewer does not support.',
     };
 
     // ─── Drag and drop ───────────────────────────────────────────────────
+    function openFile(file) {
+      if (!file) return;
+      file.arrayBuffer().then((buffer) => {
+        if (localFileUrl) URL.revokeObjectURL(localFileUrl);
+        localFileUrl = URL.createObjectURL(file);
+        viewModel(localFileUrl, file.name, buffer);
+      });
+    }
+
     function installFileDrop() {
       const overlay = document.getElementById('drop-overlay');
       let depth = 0;
+      document.getElementById('model-file').addEventListener('change', (e) => openFile(e.target.files[0]));
 
       window.addEventListener('dragenter', (e) => {
         e.preventDefault();
@@ -708,12 +743,7 @@
         overlay.classList.remove('show');
         const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
         if (!file) return;
-        // A local file has no URL the viewer can fetch, so its bytes are read
-        // here and handed straight to the same fetch → sniff → convert path.
-        file.arrayBuffer().then(
-          (buffer) => viewModel(URL.createObjectURL(file), file.name, buffer),
-          (err) => console.error('open: could not read the dropped file', err),
-        );
+        openFile(file);
       });
     }
 

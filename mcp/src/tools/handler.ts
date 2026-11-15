@@ -1026,11 +1026,19 @@ export async function dispatchTool(
           content: [
             {
               type: "text",
-              text: "view_3d_model requires a `modelUrl` argument (a public HTTPS URL to a .glb, .gltf or .3mf file).",
+              text: "view_3d_model requires a `modelUrl` argument (a public HTTPS URL to a .glb, .gltf, .3mf, .stl, .obj or .ply file).",
             },
           ],
           isError: true,
         };
+      }
+      const fileName = typeof args?.fileName === "string" ? args.fileName : undefined;
+      const unit = typeof args?.unit === "string" ? args.unit : undefined;
+      if (
+        unit !== undefined &&
+        !["micron", "millimeter", "centimeter", "inch", "foot", "meter"].includes(unit)
+      ) {
+        return { content: [{ type: "text", text: "Unknown model unit." }], isError: true };
       }
       const title =
         typeof args?.title === "string" && args.title.trim() ? args.title.trim() : "3D model";
@@ -1052,6 +1060,8 @@ export async function dispatchTool(
         // `additionalProperties: false` and hosts validate against it.
         structuredContent: {
           modelUrl,
+          ...(fileName === undefined ? {} : { fileName }),
+          ...(unit === undefined ? {} : { unit }),
           title,
           autoRotate,
           ar,

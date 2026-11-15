@@ -1,6 +1,7 @@
 package io.github.sceneview.web
 
 import kotlin.js.Promise
+import org.khronos.webgl.ArrayBuffer
 
 /**
  * SceneViewer — the JavaScript-facing 3D viewer class.
@@ -71,20 +72,23 @@ class SceneViewJS {
     }
 
     /**
-     * Load a glTF/GLB model from a URL.
-     * Returns a Promise that resolves with the URL when loaded.
+     * Load a URL or ArrayBuffer. STL/OBJ/PLY use [unit] (millimetres by default);
+     * 3MF carries its own unit. [fileName] helps sniff files with long headers.
+     * Rejects unsupported formats with UnsupportedModelFormatError.
      */
     @JsName("loadModel")
-    fun loadModel(url: String): Promise<String> {
+    fun loadModel(url: dynamic, fileName: String? = null, unit: String? = null): Promise<String> {
         val sv = _sceneView ?: return Promise.reject(Throwable("SceneViewer not initialized"))
         return Promise { resolve, reject ->
             try {
-                // `onLoaded` is named: `loadModel` now has trailing `autoAnimate`
-                // / `scale` params (#2432), so a trailing-lambda would bind to the
-                // wrong parameter.
-                sv.loadModel(url, onLoaded = { resolve(url) })
-            } catch (e: Throwable) {
-                reject(e)
+                val buffer = url as? ArrayBuffer
+                val key = if (buffer == null) url as String else fileName ?: "memory"
+                sv.loadModelInternal(
+                    key, onLoaded = { resolve(key) }, buffer = buffer,
+                    fileName = fileName, unit = modelUnit(unit), onError = { reject(modelError(it)) },
+                )
+            } catch (error: Throwable) {
+                reject(error)
             }
         }
     }

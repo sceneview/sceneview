@@ -1,12 +1,15 @@
 package io.github.sceneview.web
 
+import io.github.sceneview.core.model.ModelFormat
+import io.github.sceneview.core.model.UnsupportedModelFormatException
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.core.threemf.ThreeMfUnit
+import kotlin.js.Promise
 import kotlinx.browser.document
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.Int8Array
 import org.khronos.webgl.Uint8Array
 import org.w3c.dom.HTMLCanvasElement
-import kotlin.js.Promise
 
 /**
  * Entry point for the SceneView Web library.
@@ -37,6 +40,8 @@ fun main() {
     // `loadModel` / `modelViewer` already accept a `.3mf` URL with no extra call; these two
     // are for a page that holds the *bytes* (a dropped file, a fetch it made itself) and
     // wants the GLB — e.g. to hand it to another glTF viewer, or to a Blob URL.
+    api["modelToGlb"] = ::jsModelToGlb
+    api["modelFormat"] = ::jsModelFormat
     api["isThreeMf"] = ::jsIsThreeMf
     api["threeMfToGlb"] = ::jsThreeMfToGlb
 
@@ -200,4 +205,39 @@ internal fun createViewerImpl(
             reject(e)
         }
     }
+}
+
+/** Sniff mesh bytes with an optional filename/URL hint; unknown formats throw UnsupportedModelFormatError. */
+fun jsModelFormat(bytes: ArrayBuffer, fileName: String? = null): String =
+    modelOperation {
+        ModelFormat.sniff(Int8Array(bytes).unsafeCast<ByteArray>(), fileName).name
+    }
+
+/** Convert a mesh to GLB. Unitless STL/OBJ/PLY default to millimetres; 3MF keeps its own unit. */
+fun jsModelToGlb(bytes: ArrayBuffer, fileName: String? = null, unit: String? = null): Uint8Array =
+    modelOperation {
+        val data = Int8Array(bytes).unsafeCast<ByteArray>()
+        val format = ModelFormat.sniff(data, fileName)
+        Uint8Array(format.toGlb(data, modelUnit(unit)).toArrayBuffer())
+    }
+
+internal fun modelUnit(id: String?): ThreeMfUnit {
+    val units = ThreeMfUnit.entries
+    require(id == null || units.any { it.id == id }) { "Unknown model unit: $id" }
+    return ThreeMfUnit.fromId(id)
+}
+
+internal fun <T> modelOperation(block: () -> T): T = try {
+    block()
+} catch (error: UnsupportedModelFormatException) {
+    throw modelError(error)
+}
+
+internal fun modelError(error: Throwable): Throwable {
+    if (error !is UnsupportedModelFormatException) return error
+    val failure = js("new Error()")
+    failure.message = error.message
+    failure.name = "UnsupportedModelFormatError"
+    failure.code = "unsupported-format"
+    return failure.unsafeCast<Throwable>()
 }

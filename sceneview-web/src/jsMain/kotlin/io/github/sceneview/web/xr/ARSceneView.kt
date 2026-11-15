@@ -5,8 +5,10 @@
 
 package io.github.sceneview.web.xr
 
+import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.web.SceneView
 import io.github.sceneview.web.bindings.*
+import org.khronos.webgl.ArrayBuffer
 import org.w3c.dom.HTMLCanvasElement
 
 /**
@@ -203,6 +205,23 @@ class ARSceneView private constructor(
     fun loadModel(url: String, onLoaded: ((FilamentAsset) -> Unit)? = null) {
         sceneView.loadModel(url, onLoaded)
     }
+
+    /** Load mesh bytes; STL/OBJ/PLY default to millimetres, 3MF keeps its own unit. */
+    fun loadModel(
+        buffer: ArrayBuffer,
+        fileName: String? = null,
+        unit: ThreeMfUnit = ThreeMfUnit.Default,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+    ) = sceneView.loadModel(buffer, fileName, unit, onLoaded)
+
+    /** Load a URL with a filename hint and an explicit unit. */
+    fun loadModel(
+        url: String,
+        fileName: String?,
+        unit: ThreeMfUnit,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+    ) = sceneView.loadModel(url, fileName, unit, onLoaded)
+
 
     /**
      * Tear down the Filament [SceneView] — engine, renderer, WebGL2 context and
@@ -468,6 +487,23 @@ class VRSceneView private constructor(
     fun loadModel(url: String, onLoaded: ((FilamentAsset) -> Unit)? = null) {
         sceneView.loadModel(url, onLoaded)
     }
+
+    /** Load mesh bytes; STL/OBJ/PLY default to millimetres, 3MF keeps its own unit. */
+    fun loadModel(
+        buffer: ArrayBuffer,
+        fileName: String? = null,
+        unit: ThreeMfUnit = ThreeMfUnit.Default,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+    ) = sceneView.loadModel(buffer, fileName, unit, onLoaded)
+
+    /** Load a URL with a filename hint and an explicit unit. */
+    fun loadModel(
+        url: String,
+        fileName: String?,
+        unit: ThreeMfUnit,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+    ) = sceneView.loadModel(url, fileName, unit, onLoaded)
+
 
     /**
      * Tear down the Filament [SceneView] — engine, renderer, WebGL2 context and

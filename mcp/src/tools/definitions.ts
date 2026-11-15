@@ -839,14 +839,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "view_3d_model",
     description:
-      "Render an interactive 3D model viewer inline in the conversation. Pass a public GLB / GLTF / 3MF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', after `search_models` to render the chosen result, or to show a `.3mf` you just produced for 3D printing — the widget converts 3MF to glTF in the browser, so a printable model is previewable without any download.",
+      "Render an interactive 3D model viewer inline in the conversation. Pass a public GLB / GLTF / 3MF / STL / OBJ / PLY URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', after `search_models` to render the chosen result, or to show a `.3mf` you just produced for 3D printing — the widget converts 3MF to glTF in the browser, so a printable model is previewable without any download. STL/OBJ/PLY default to millimeters; pass unit to override. 3MF keeps its declared unit.",
     inputSchema: {
       type: "object",
       properties: {
         modelUrl: {
           type: "string",
           description:
-            "Public HTTPS URL to a .glb, .gltf or .3mf 3D model file (`model/gltf-binary`, `model/gltf+json`, `model/3mf`). Must be CORS-enabled. Works with assets from sceneview.github.io, model-viewer-textured CDN, Sketchfab download URLs, or any CORS-friendly host. A 3MF — what a 3D-print flow or a slicer produces — is converted to glTF inside the widget, in real-world units.",
+            "Public HTTPS URL to a .glb, .gltf, .3mf, .stl, .obj or .ply 3D model file (`model/gltf-binary`, `model/gltf+json`, `model/3mf`). Must be CORS-enabled. Works with assets from sceneview.github.io, model-viewer-textured CDN, Sketchfab download URLs, or any CORS-friendly host. A 3MF — what a 3D-print flow or a slicer produces — is converted to glTF inside the widget, in real-world units. STL, OBJ and mesh PLY are unitless: default millimeter; use unit to override. 3MF uses its own declared unit. OBJ without an MTL renders grey.",
+        },
+        fileName: {
+          type: "string",
+          description: "Filename hint for extensionless URLs or OBJ files with long headers.",
+        },
+        unit: {
+          type: "string",
+          enum: ["micron", "millimeter", "centimeter", "inch", "foot", "meter"],
+          description:
+            "Length unit for STL/OBJ/PLY; default millimeter. Ignored for glTF/GLB and 3MF (which declares its unit).",
         },
         title: {
           type: "string",
@@ -876,6 +886,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         modelUrl: { type: "string" },
+        fileName: { type: "string" },
+        unit: { type: "string" },
         title: { type: "string" },
         autoRotate: { type: "boolean" },
         ar: { type: "boolean" },

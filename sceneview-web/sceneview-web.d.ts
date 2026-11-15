@@ -107,10 +107,10 @@ export interface NodeHandle {
  * doesn't surface in the JS runtime.
  */
 export interface SceneViewer {
-  /** Load a glTF / GLB model from a URL. Resolves with the URL when
+  /** Load GLB, glTF, 3MF, STL, OBJ or mesh PLY from a URL or ArrayBuffer. Resolves with the URL (or filename) when
    *  the model has finished decoding. Rejects if the viewer is
    *  uninitialised or the network fetch fails. */
-  loadModel(url: string): Promise<string>;
+  loadModel(url: string | ArrayBuffer, fileName?: string, unit?: ModelUnit): Promise<string>;
 
   /** Apply environment-map lighting (IBL only). `iblUrl` points at a
    *  Filament KTX1 environment file. */
@@ -319,3 +319,10 @@ export function isThreeMf(bytes: ArrayBuffer | ArrayBufferView): boolean;
  * ```
  */
 export function threeMfToGlb(bytes: ArrayBuffer | ArrayBufferView): Uint8Array;
+
+/** Length unit for STL, OBJ and PLY. Default: millimeter. 3MF uses its own metadata. */
+export type ModelUnit = 'micron' | 'millimeter' | 'centimeter' | 'inch' | 'foot' | 'meter';
+/** Sniff bytes; unknown input throws UnsupportedModelFormatError (code unsupported-format). */
+export function modelFormat(bytes: ArrayBuffer, fileName?: string): 'GLB' | 'GLTF' | 'THREE_MF' | 'STL' | 'OBJ' | 'PLY';
+/** Convert to GLB; OBJ materials without a companion MTL render grey. */
+export function modelToGlb(bytes: ArrayBuffer, fileName?: string, unit?: ModelUnit): Uint8Array;

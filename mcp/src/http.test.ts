@@ -123,6 +123,31 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(viewer?._meta).toMatchObject({ "openai/outputTemplate": "ui://widget/3d-viewer.html" });
   });
 
+  it.each(["stl", "3mf", "obj", "ply"])(
+    "previews a .%s URL with filename and units",
+    async (format) => {
+      const modelUrl = `https://example.com/part.${format}`;
+      const body = await rpc("tools/call", {
+        name: "view_3d_model",
+        arguments: { modelUrl, fileName: `part.${format}`, unit: "meter" },
+      });
+      expect(body.result?.structuredContent).toMatchObject({
+        modelUrl,
+        fileName: `part.${format}`,
+        unit: "meter",
+      });
+    }
+  );
+
+  it("rejects an unknown mesh unit", async () => {
+    const body = await rpc("tools/call", {
+      name: "view_3d_model",
+      arguments: { modelUrl: "https://example.com/part.stl", unit: "metre" },
+    });
+    expect(body.result?.isError).toBe(true);
+    expect(body.result?.structuredContent).toBeUndefined();
+  });
+
   it("tools/call view_3d_model returns structuredContent + _meta.ui.resourceUri", async () => {
     const body = await rpc("tools/call", {
       name: "view_3d_model",

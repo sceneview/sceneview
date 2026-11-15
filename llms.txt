@@ -8981,6 +8981,33 @@ After loading, the library registers itself on `window.sceneview`.
 
 ---
 
+### Loading mesh formats
+
+`viewer.loadModel(urlOrArrayBuffer, fileName?, unit?)` accepts GLB, glTF, 3MF, STL,
+OBJ and mesh PLY. Bytes are sniffed with the shared KMP `ModelFormat`; a filename
+hint helps OBJ files whose first face follows a long header. STL/OBJ/PLY default
+to `millimeter`; choose `micron`, `millimeter`, `centimeter`, `inch`, `foot` or
+`meter`. 3MF uses the unit declared in its package. OBJ without a companion MTL
+renders grey; this browser path does not fetch MTL or textures. Point-cloud PLY
+belongs to `loadSplatCloud`, not this mesh loader. External glTF resources need a
+URL base; an ArrayBuffer should contain self-contained data.
+
+```javascript
+await viewer.loadModel("part.stl", "part.stl", "millimeter");
+await viewer.loadModel(await file.arrayBuffer(), file.name, "meter");
+sceneview.modelFormat(bytes, fileName); // GLB | GLTF | THREE_MF | STL | OBJ | PLY
+sceneview.modelToGlb(bytes, fileName, "millimeter"); // Uint8Array
+```
+
+Unknown formats reject with `name === "UnsupportedModelFormatError"` and
+`code === "unsupported-format"`; corrupt recognised files report their parser error.
+Kotlin `SceneView`, `ARSceneView`, `VRSceneView` and `WebXRSession` retain their
+URL overload and also accept `loadModel(buffer, fileName, ThreeMfUnit, onLoaded)`
+or `loadModel(url, fileName, ThreeMfUnit, onLoaded)`.
+`https://sceneview.github.io/open/?url=<encoded URL>&unit=millimeter` previews the
+same formats and shares the remote URL in a phone QR; local files can be dropped
+or picked, with a unit selector for STL/OBJ/PLY.
+
 ### ⚠️ Web API model — builder DSL, plus a minimal exported `NodeHandle`
 
 **The Web target is still primarily a fire-and-forget builder DSL, but since slice 3

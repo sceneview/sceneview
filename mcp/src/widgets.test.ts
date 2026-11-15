@@ -3,7 +3,7 @@
  * payload-source order baked into the widget script.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import { isLocalOnlyTool } from "./surfaces.js";
 import { dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
@@ -99,27 +99,61 @@ describe("3D viewer widget HTML", () => {
     );
   });
 
-  it("converts a 3MF in the browser rather than handing it to the glTF renderer (#3482)", () => {
+  it("converts meshes with the shared KMP parser and forwards filename and unit", () => {
     const html = WIDGET_3D_VIEWER_HTML;
-    // The converter is the compiled KMP core, loaded from the CDN — never a
-    // second parser written into this widget.
     expect(html).toContain("sceneview-web.js");
-    expect(html).toContain("window.sceneview.threeMfToGlb(payload.buffer)");
-    expect(html).toContain("window.sceneview.isThreeMf(payload.buffer)");
-    // The MIME type routes a payload to the converter just as the extension does.
-    expect(html).toContain('indexOf("model/3mf")');
-    // The result reaches Filament as a GLB blob, and the format pill says so.
+    expect(html).toContain("window.sceneview.modelToGlb(buffer, fileName || url, unit)");
+    expect(html).toContain("resolveModelUrl(data.modelUrl, data.fileName, data.unit)");
     expect(html).toContain('new Blob([glb], { type: "model/gltf-binary" })');
-    expect(html).toContain('formatEl.textContent = "3MF"');
   });
 
   it("does not download the converter for a plain GLB", () => {
-    // The lazy-load gate: a `.glb` / `.gltf` URL short-circuits before any
-    // fetch, so the common preview costs one download and no extra script.
     expect(WIDGET_3D_VIEWER_HTML).toContain(
-      "if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);"
+      "if (/\\.(glb|gltf)$/.test(path)) return Promise.resolve(url);"
     );
   });
+
+  it.each(["THREE_MF", "STL", "OBJ", "PLY"])(
+    "routes %s bytes with filename and unit to the converter",
+    async (format) => {
+      const html = WIDGET_3D_VIEWER_HTML;
+      const source = html.slice(
+        html.indexOf("function resolveModelUrl("),
+        html.indexOf("function start(data)")
+      );
+      const buffer = new ArrayBuffer(8);
+      const glb = new Uint8Array([0x67, 0x6c, 0x54, 0x46]);
+      const modelToGlb = vi.fn(() => glb);
+      const fetchModel = vi.fn(async () => ({ ok: true, arrayBuffer: async () => buffer }));
+      const makeUrl = vi.fn(() => "blob:converted");
+      const resolve = new Function(
+        "fetch",
+        "loadModelConverter",
+        "window",
+        "formatEl",
+        "URL",
+        "Blob",
+        `${source}; return resolveModelUrl;`
+      )(
+        fetchModel,
+        async () => {},
+        { sceneview: { modelFormat: () => format, modelToGlb } },
+        {},
+        { createObjectURL: makeUrl },
+        Blob
+      );
+      expect(await resolve("https://example.com/download", "part.mesh", "meter")).toBe(
+        "blob:converted"
+      );
+      expect(modelToGlb).toHaveBeenCalledWith(buffer, "part.mesh", "meter");
+      expect(makeUrl).toHaveBeenCalledOnce();
+      fetchModel.mockClear();
+      expect(await resolve("https://example.com/part.glb", undefined, undefined)).toBe(
+        "https://example.com/part.glb"
+      );
+      expect(fetchModel).not.toHaveBeenCalled();
+    }
+  );
 
   it("treats a load a later render() replaced as no error (#4566)", () => {
     const html = WIDGET_3D_VIEWER_HTML;
@@ -234,13 +268,15 @@ describe("view_3d_model tool", () => {
     expect(def?.inputSchema.required).toEqual(["modelUrl"]);
     // 3MF is a first-class input, not a footnote: the assistant only reaches for
     // this tool on a `.3mf` if the schema says it is accepted (#3482).
-    expect(def?.description).toContain("3MF");
+    for (const format of ["3MF", "STL", "OBJ", "PLY"]) expect(def?.description).toContain(format);
     const properties = (def as NonNullable<typeof def>).inputSchema.properties as Record<
       string,
       { description: string }
     >;
     expect(properties.modelUrl.description).toContain(".3mf");
     expect(properties.modelUrl.description).toContain("model/3mf");
+    expect(properties.unit.description).toContain("default millimeter");
+    expect(def?.description).toContain("default to millimeters");
     expect(def?.annotations).toMatchObject({
       readOnlyHint: true,
       openWorldHint: true,
