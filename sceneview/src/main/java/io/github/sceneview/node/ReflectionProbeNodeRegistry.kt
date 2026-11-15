@@ -20,7 +20,8 @@ fun Scene.setEnvironmentLight(light: IndirectLight?) {
 }
 
 /**
- * Withdraws [light] before its owner destroys it, without clearing a probe or a newer fallback.
+ * Withdraws [light] before its owner destroys it, including direct reattachments after a newer
+ * fallback superseded it. Preserves an active probe and the newer fallback.
  * Main thread only. Pair with [setEnvironmentLight].
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
@@ -136,20 +137,24 @@ internal class ReflectionProbeRegistry<L : Any>(private val target: Target<L>) {
     }
 
     /**
-     * Withdraws [light] as the scene's own light, before its owner destroys it. Only lets go of a
-     * light the scene still got from here: a light the caller wrote since is left alone.
+     * Withdraws [light] before its owner destroys it, even after another fallback superseded it.
+     * Clears matching scene and caller references, leaving other lights and probes alone.
      */
     fun releaseEnvironmentLight(light: L?) {
-        if (!environmentDeclared || environmentLight !== light) return
+        val releasesEnvironment = environmentDeclared && environmentLight === light
+        val current = target.light
+        if (!releasesEnvironment && (light == null || (current !== light && callerLight !== light))) return
         captureCallerLight()
-        environmentDeclared = false
-        environmentLight = null
+        if (releasesEnvironment) {
+            environmentDeclared = false
+            environmentLight = null
+        }
         // Even a direct caller write must not keep this owner's soon-to-be-destroyed light.
         if (callerLight === light) {
             callerDeclared = false
             callerLight = null
         }
-        resolve(force = target.light === light, captureCaller = false)
+        resolve(force = current === light, captureCaller = false)
     }
 
     /** The light the scene would show now. Exposed for tests. */

@@ -2,6 +2,7 @@ package io.github.sceneview.node
 
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -342,6 +343,55 @@ class ReflectionProbeRegistryTest {
     }
 
     @Test
+    fun `AR teardown detaches a reattached superseded baseline in either release order`() {
+        for (baselineFirst in listOf(true, false)) {
+            val baseline = Light("baseline")
+            val estimate = Light("estimate")
+            registry.setEnvironmentLight(baseline)
+            registry.setEnvironmentLight(estimate)
+            slot.writeDirectly(baseline)
+
+            val releases = if (baselineFirst) listOf(baseline, estimate) else listOf(estimate, baseline)
+            for (light in releases) {
+                registry.releaseEnvironmentLight(light)
+                assertNotSame("detach each owned light before its destruction", light, slot.light)
+                light.isAlive = false
+            }
+
+            assertNull("the retained scene must not reference either destroyed IBL", slot.light)
+        }
+    }
+
+    @Test
+    fun `release forgets a superseded baseline captured as caller fallback behind a probe`() {
+        registry.setEnvironmentLight(sky)
+        registry.setEnvironmentLight(garage)
+        slot.writeDirectly(sky)
+        val probe = registry.newProbe()
+        probe.show(office)
+
+        registry.releaseEnvironmentLight(sky)
+        assertSame("release must preserve the active probe", office, slot.light)
+        registry.remove(probe)
+
+        assertSame("restore the live estimate rather than the released baseline", garage, slot.light)
+    }
+
+    @Test
+    fun `releasing a null baseline preserves an explicit null after a newer estimate`() {
+        registry.setEnvironmentLight(null)
+        registry.setEnvironmentLight(garage)
+        slot.writeDirectly(null)
+
+        registry.releaseEnvironmentLight(null)
+        val probe = registry.newProbe()
+        probe.show(office)
+        registry.remove(probe)
+
+        assertNull(slot.light)
+    }
+
+    @Test
     fun `fresh AR estimates stay behind a probe and the latest returns on exit`() {
         registry.setEnvironmentLight(sky)
         val probe = registry.newProbe()
@@ -376,7 +426,7 @@ class ReflectionProbeRegistryTest {
     }
 
     @Test
-    fun `releasing a light that is no longer the environment does nothing`() {
+    fun `releasing an unreferenced light leaves the current environment alone`() {
         val night = Light("night")
         registry.setEnvironmentLight(night)
 

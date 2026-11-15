@@ -172,6 +172,23 @@ class ReflectionProbeNodeCompositionTest {
         assertNull(host.scene.indirectLight)
     }
 
+    @Test
+    fun `AR baseline disposal detaches a direct reattachment after an estimate supersedes it`() = runTest {
+        val host = Host(this)
+        host.scene.setEnvironmentLight(night)
+        host.scene.indirectLight = day
+
+        // Dispose the baseline effect while retaining the scene and the separately owned estimate.
+        host.present = false
+        host.frame()
+        assertSame("baseline disposal must restore the current estimate", night, host.scene.indirectLight)
+
+        host.scene.releaseEnvironmentLight(night)
+        night.destroyWithoutJni()
+        day.destroyWithoutJni()
+        assertNull("no freed IBL may remain attached to the retained scene", host.scene.indirectLight)
+    }
+
     /** Filament 1.77 made the handle constructor package-private. */
     private fun indirectLight(handle: Long): IndirectLight =
         IndirectLight::class.java.getDeclaredConstructor(Long::class.javaPrimitiveType)
