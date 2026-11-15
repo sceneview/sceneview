@@ -259,6 +259,115 @@ class ReflectionProbeRegistryTest {
     }
 
     @Test
+    fun `a caller light over a declared environment survives a probe cycle`() {
+        registry.setEnvironmentLight(sky)
+        val custom = Light("custom")
+        slot.writeDirectly(custom)
+        val probe = registry.newProbe()
+
+        probe.show(office)
+        registry.remove(probe)
+
+        assertSame(custom, slot.light)
+    }
+
+    @Test
+    fun `a caller can explicitly disable IBL before a probe cycle`() {
+        registry.setEnvironmentLight(sky)
+        slot.writeDirectly(null)
+        val probe = registry.newProbe()
+
+        probe.show(office)
+        registry.remove(probe)
+
+        assertNull(slot.light)
+    }
+
+    @Test
+    fun `after environment release the caller's light becomes the fallback`() {
+        registry.setEnvironmentLight(sky)
+        val probe = registry.newProbe()
+        probe.show(office)
+        registry.releaseEnvironmentLight(sky)
+        val custom = Light("custom")
+        slot.writeDirectly(custom)
+
+        probe.show(garage)
+        registry.remove(probe)
+
+        assertSame(custom, slot.light)
+    }
+
+    @Test
+    fun `a new environment supersedes a previous caller override`() {
+        registry.setEnvironmentLight(sky)
+        slot.writeDirectly(Light("custom"))
+        val probe = registry.newProbe()
+        probe.show(office)
+
+        val night = Light("night")
+        registry.setEnvironmentLight(night)
+        registry.remove(probe)
+
+        assertSame(night, slot.light)
+    }
+
+    @Test
+    fun `releasing an environment also forgets a direct write of that same light`() {
+        registry.setEnvironmentLight(sky)
+        val probe = registry.newProbe()
+        probe.show(office)
+        slot.writeDirectly(sky)
+
+        registry.releaseEnvironmentLight(sky)
+        assertSame("detach the released light before its owner destroys it", office, slot.light)
+        sky.isAlive = false
+        registry.remove(probe)
+
+        assertNull(slot.light)
+    }
+
+    @Test
+    fun `release detaches its light even when the caller reattached it after a probe cycle`() {
+        registry.setEnvironmentLight(sky)
+        slot.writeDirectly(Light("custom"))
+        val probe = registry.newProbe()
+        probe.show(office)
+        registry.remove(probe)
+        slot.writeDirectly(sky)
+
+        registry.releaseEnvironmentLight(sky)
+
+        assertNull("detach before destruction even when it was a direct write", slot.light)
+    }
+
+    @Test
+    fun `fresh AR estimates stay behind a probe and the latest returns on exit`() {
+        registry.setEnvironmentLight(sky)
+        val probe = registry.newProbe()
+        probe.show(office, radius = 3f, camera = inOffice)
+        val writes = slot.writes.size
+
+        var previous = sky
+        repeat(60) { frame ->
+            val estimate = Light("estimate-$frame")
+            registry.setEnvironmentLight(estimate)
+            if (previous !== sky) previous.isAlive = false
+            previous = estimate
+            assertSame(office, slot.light)
+        }
+        assertEquals("no transient writes of estimates over the probe", writes, slot.writes.size)
+
+        probe.show(office, radius = 3f, camera = outside)
+        assertSame(previous, slot.light)
+
+        // ARSceneView releases its built IBL before destroying it.
+        registry.releaseEnvironmentLight(previous)
+        previous.isAlive = false
+        assertNull(slot.light)
+    }
+
+    @Test
     fun `releasing the environment with no probe empties the scene, like before`() {
         registry.setEnvironmentLight(sky)
         registry.releaseEnvironmentLight(sky)

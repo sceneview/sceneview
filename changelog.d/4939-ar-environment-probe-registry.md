@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **AR reflection probes keep their IBL through environment changes and light estimation ([#4939](https://github.com/sceneview/sceneview/issues/4939)).** Leaving a probe restores the latest estimated light, or the base environment before the first estimate. Scene probes also restore lights written directly by the app, and releasing an environment relinquishes its fallback ownership.
