@@ -160,6 +160,7 @@ fun ARImageDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_image_title),

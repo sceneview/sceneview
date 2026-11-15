@@ -184,6 +184,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     val legendShown = semanticsEverReceived && overlayBlend > LEGEND_MIN_BLEND
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_scene_semantics_title),

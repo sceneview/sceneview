@@ -178,6 +178,7 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_point_cloud_title),

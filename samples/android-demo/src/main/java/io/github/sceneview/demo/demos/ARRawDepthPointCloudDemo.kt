@@ -163,6 +163,7 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
         (now - (zeroPointsSince ?: now)) > 2000L
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_raw_depth_cloud_title),
         onBack = onBack,
         controls = {
