@@ -363,6 +363,8 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
  * same [state]. Content is composed on the main thread.
  * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
+ * Pass [content] by name when supplying instant-placement options, which follow it so existing
+ * positional content and trailing-lambda calls retain their original overload.
  *
  * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
  *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
@@ -398,9 +400,9 @@ fun AutoPlacementScene(
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
     instantPlacement: Boolean = false,
     instantPlacementSize: Float = 0.3f,
-    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var placement by remember(state) { mutableStateOf<AutoPlacementResult?>(null) }
@@ -512,8 +514,7 @@ fun AutoPlacementScene(
     }
 }
 
-/** Binary-compatibility shim for the descriptor before opt-in instant placement. */
-@Deprecated("Binary-compatibility overload. Use the overload with `instantPlacement`.", level = DeprecationLevel.HIDDEN)
+/** Retains positional content and trailing-lambda calls from before opt-in instant placement. */
 @Composable
 fun AutoPlacementScene(
     assetReady: Boolean,
@@ -1258,6 +1259,19 @@ private fun visiblePlacementPoint(frame: Frame, pose: Pose): Boolean {
         pose.tx(), pose.ty(), pose.tz())?.isInsideViewport == true
 }
 
+/** Detected floors win; only an instant placement may slide on an estimated contact plane. */
+internal fun horizontalDragCandidate(
+    placement: AutoPlacementResult,
+    hits: List<HitResult>,
+    fromHit: (HitResult) -> AutoPlacementCandidate,
+    onContactPlane: () -> AutoPlacementCandidate?,
+): AutoPlacementCandidate? = hits.firstOrNull {
+    val plane = it.trackable as? Plane
+    plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
+        plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
+        it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+}?.let(fromHit) ?: if (placement.trackable is InstantPlacementPoint) onContactPlane() else null
+
 /** Keeps the logical anchor alive while dragging; only a valid finished move replaces it. */
 private class AutomaticAnchorNode(
     engine: Engine,
@@ -1322,14 +1336,11 @@ private class AutomaticAnchorNode(
             // wall with none of those, the wall the object already stands on (#4070).
             hits.firstNotNullOfOrNull { hit -> wallHitKind(hit)?.let { hit to it } }
                 ?.let { (hit, kind) -> hitCandidate(frame, hit, kind, wallNormalOf(hit)) }
-                ?: slideAlongWall(e)
+                ?: slideAlongContactPlane(e)
         } else {
-            hits.firstOrNull {
-                val plane = it.trackable as? Plane
-                plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
-                    plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
-                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
-            }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+            horizontalDragCandidate(placement, hits, fromHit = {
+                hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f))
+            }, onContactPlane = { slideAlongContactPlane(e) })
         }
         if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
             invalidMove(true)
@@ -1399,10 +1410,10 @@ private class AutomaticAnchorNode(
     }
 
     /**
-     * The finger's ray against the wall the object stands on, treated as infinite — the only
-     * drag target on a plain wall that yields no plane and no depth hit under the finger.
+     * The finger's ray against the object's contact plane, treated as infinite. Used on plain
+     * walls with no hit and on an instant placement's estimated floor until a plane is found.
      */
-    private fun slideAlongWall(e: MotionEvent): AutoPlacementCandidate? {
+    private fun slideAlongContactPlane(e: MotionEvent): AutoPlacementCandidate? {
         val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
         val axis = pose.getTransformedAxis(1, 1f)
         val normal = Float3(axis[0], axis[1], axis[2])

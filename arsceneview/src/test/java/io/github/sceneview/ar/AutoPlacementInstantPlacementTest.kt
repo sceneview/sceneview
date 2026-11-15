@@ -1,13 +1,85 @@
 package io.github.sceneview.ar
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.google.android.filament.Engine
 import com.google.ar.core.*
 import com.google.ar.core.InstantPlacementPoint.TrackingMethod
 import io.github.sceneview.haptic.ARHapticEvent
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import org.junit.Assert.*
 import org.junit.Test
 
 class AutoPlacementInstantPlacementTest {
+    @Test fun `instant placements can drag with no plane hits in either tracking method`() {
+        for (method in TrackingMethod.entries) {
+            val point = FakeInstantPlacementPoint().apply { this.method = method }
+            val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
+            val movedPose = Pose(floatArrayOf(0.3f, -1.3f, -1.5f), placement.pose.rotationQuaternion)
+            val fallback = AutoPlacementCandidate(point, movedPose, null)
+            val target = horizontalDragCandidate(placement, emptyList(),
+                fromHit = { error("No plane exists") }, onContactPlane = { fallback })!!
+            assertSame(fallback, target)
+            assertTrue(target.accepts(target.pose))
+            val moved = target.createAnchor()!!
+            assertSame(point, moved.trackable)
+            assertArrayEquals(movedPose.translation, moved.anchor.pose.translation, 0f)
+        }
+    }
+
+    @Test fun `horizontal drag prefers a usable plane to the instant contact plane`() {
+        val point = FakeInstantPlacementPoint()
+        val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
+        val plane = TestPlane()
+        val hit = TestHit(plane, plane.centerPose)
+        val expected = AutoPlacementCandidate(plane, hit.hitPose)
+        assertSame(expected, horizontalDragCandidate(placement, listOf(hit),
+            fromHit = { assertSame(hit, it); expected },
+            onContactPlane = { error("A detected plane must win") }))
+    }
+
+    @Test fun `unusable hits still allow the instant contact plane fallback`() {
+        val point = FakeInstantPlacementPoint()
+        val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
+        val outside = TestPlane().apply { contains = false }
+        val expected = AutoPlacementCandidate(point, point.pose, null)
+        assertSame(expected, horizontalDragCandidate(placement,
+            listOf(TestHit(point, point.pose), TestHit(outside, outside.centerPose)),
+            fromHit = { error("Neither hit is a usable plane") }, onContactPlane = { expected }))
+    }
+
+    @Test fun `plane placements still require a hit within a tracked polygon`() {
+        val plane = TestPlane()
+        val placement = AutoPlacementCandidate(plane, plane.centerPose).createAnchor()!!
+        val expected = AutoPlacementCandidate(plane, plane.centerPose)
+        val hit = TestHit(plane, plane.centerPose)
+        assertSame(expected, horizontalDragCandidate(placement, listOf(hit),
+            fromHit = { expected }, onContactPlane = { error("No estimate for a plane placement") }))
+        plane.contains = false
+        for (hits in listOf(emptyList(), listOf(hit))) {
+            assertNull(horizontalDragCandidate(placement, hits,
+                fromHit = { error("No valid plane hit") },
+                onContactPlane = { error("No estimate for a plane placement") }))
+        }
+    }
+
+    @Test fun `an unusable contact ray or a paused instant point cannot commit a drag`() {
+        val point = FakeInstantPlacementPoint()
+        val placement = AutoPlacementCandidate(point, point.pose, null).createAnchor()!!
+        assertNull(horizontalDragCandidate(placement, emptyList(),
+            fromHit = { error("No plane exists") }, onContactPlane = { null }))
+        point.state = TrackingState.PAUSED
+        val candidate = horizontalDragCandidate(placement, emptyList(),
+            fromHit = { error("No plane exists") },
+            onContactPlane = { AutoPlacementCandidate(point, point.pose, null) })!!
+        assertFalse(candidate.accepts(candidate.pose))
+        assertNull(candidate.createAnchor())
+    }
+
     @Test fun `an instant point can create a placement before any plane exists`() {
         val point = FakeInstantPlacementPoint()
         val result = AutoPlacementCandidate(point, point.pose, null).createAnchor()
@@ -231,6 +303,25 @@ class AutoPlacementInstantPlacementTest {
         }
         updateInstantPlacement(placement, emptyList(), state, true, initial = true)
         return Triple(point, placement, state)
+    }
+
+    /** Compile-only regressions: never create Filament or an ARCore session on the JVM. */
+    @Composable
+    private fun sourceCompatibleCalls(
+        state: AutoPlacementState,
+        engine: Engine,
+        modelLoader: ModelLoader,
+        materialLoader: MaterialLoader,
+        content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+    ) {
+        AutoPlacementScene(true, Modifier, state, PlacementSurface.SURFACE, engine,
+            modelLoader, materialLoader, true, true, PaddingValues(0.dp), null,
+            null, null, null, null, content)
+        AutoPlacementScene(assetReady = true) { result -> content(result) }
+        AutoPlacementScene(assetReady = true, content = content, instantPlacement = true)
+        AutoPlacementScene(true, Modifier, state, PlacementSurface.SURFACE, engine,
+            modelLoader, materialLoader, true, true, PaddingValues(0.dp), null,
+            null, null, null, null, content, true, 2f)
     }
 
     private fun find(

@@ -51,6 +51,21 @@ class WallPlacementMathTest {
     }
 
     @Test
+    fun `estimated floor drag preserves height grab offset and rejects unusable rays`() {
+        val contact = Position(0f, -1.3f, -1.5f)
+        val eye = Position(0f)
+        val normal = Direction(0f, 1f, 0f)
+        val grab = wallGrabOffset(contact, normal, eye, Direction(0.2f, -1.3f, -1.5f))!!
+        val startHit = contact - grab
+        assertVecEquals(contact, startHit + wallTangentOffset(grab, normal))
+        val toRay = wallGrabOffset(contact, normal, eye, Direction(0.6f, -1.3f, -2f))!!
+        val moved = contact - toRay + wallTangentOffset(grab, normal)
+        assertVecEquals(Position(0.4f, -1.3f, -2f), moved)
+        assertNull(wallGrabOffset(contact, normal, eye, Direction(0f, 0f, -1f)))
+        assertNull(wallGrabOffset(contact, normal, eye, Direction(0f, 1f, -1f)))
+    }
+
+    @Test
     fun `wall contact survives combined twist scale and transfer to another wall`() {
         for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
             normalize(Direction(1f, 0.1f, -1f)))) {

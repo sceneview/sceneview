@@ -1653,6 +1653,10 @@ the camera, or 1.3 m below it. The floor must be visible in the viewport.
 provide it before placement because the content lambda, and thus `AutoPlacementModel`, has
 not run yet. Reach is `clamp(0.9 + 0.8 * size, 1, 3)` metres (1.14 m for the default preview,
 2.5 m for 2 m content), with the centre-ray floor intersection clamped to 0.6–1 times reach.
+Pass `content = { result -> /* scene nodes */ }` by name on the opt-in overload: the
+new options follow `content`, preserving existing positional and trailing-lambda calls.
+Before a plane is detected, dragging slides along the estimated contact plane, preserving
+height and the finger's grab offset; a usable plane hit takes priority.
 
 `state.trackingMethod` is `null` before placement, then ARCore's
 `InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE` or `FULL_TRACKING`.
