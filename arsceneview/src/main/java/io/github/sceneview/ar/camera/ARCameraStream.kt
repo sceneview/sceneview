@@ -589,6 +589,9 @@ open class ARCameraStream(
     }
 
     private val coordinates = CameraStreamCoordinates(CAMERA_VERTICES)
+    private val coordinateUploads = CameraStreamUploadRing(VERTEX_COUNT)
+    private var imageStabilizationEnabled = false
+    private var pendingDisplayGeometryChange = false
 
     private val vertexBuffer: VertexBuffer =
         VertexBuffer.Builder().vertexCount(VERTEX_COUNT).bufferCount(3).attribute(
@@ -618,7 +621,9 @@ open class ARCameraStream(
             // emulator (no ARCore, so `update()` never runs) that painted a garbage band across
             // the "AR couldn't start" fallback.
             setBufferAt(engine, UV_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_UVS))
-            setBufferAt(engine, CAMERA_UV_BUFFER_INDEX, coordinates.cameraUvs.cameraStreamUploadBuffer())
+            // One immutable initialization snapshot; subsequent uploads use the bounded ring.
+            setBufferAt(engine, CAMERA_UV_BUFFER_INDEX,
+                FloatBuffer.wrap(FloatArray(coordinates.cameraUvs.capacity()) { coordinates.cameraUvs[it] }))
         }
 
     // Hoisted into a field so destroy() can free it — building it inline in the
@@ -682,25 +687,42 @@ open class ARCameraStream(
             cameraTexture = it
         }
 
-        // EIS compensation changes every frame, including across a live config toggle (#2728).
-        // ARCore supplies identity compensation when EIS is OFF. Keep anchors untouched and
-        // render the camera texture with the matching screen/texture homography instead.
-        coordinates.update(
-            transform3d = { input, outputType, output ->
-                frame.transformCoordinates3d(
-                    Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input, outputType, output
-                )
-            },
-            transform2d = { input, output ->
-                frame.transformCoordinates2d(
-                    Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input,
-                    Coordinates2d.TEXTURE_NORMALIZED, output
-                )
-            },
-        )
-        vertexBuffer.setBufferAt(engine, POSITION_BUFFER_INDEX, coordinates.positions.cameraStreamUploadBuffer())
-        vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, coordinates.imageUvs.cameraStreamUploadBuffer())
-        vertexBuffer.setBufferAt(engine, CAMERA_UV_BUFFER_INDEX, coordinates.cameraUvs.cameraStreamUploadBuffer())
+        // EIS transforms are valid only while EIS is configured. OFF retains main's 2D path.
+        pendingDisplayGeometryChange = frame.hasDisplayGeometryChanged() || pendingDisplayGeometryChange
+        coordinateUploads.acquire()?.let { upload ->
+            val mode = session.config.imageStabilizationMode
+            val changed = coordinates.update(
+                mode = mode,
+                displayGeometryChanged = pendingDisplayGeometryChange,
+                transform3d = { input, outputType, output ->
+                    frame.transformCoordinates3d(
+                        Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
+                        input, outputType, output
+                    )
+                },
+                transform2d = { inputType, input, output ->
+                    frame.transformCoordinates2d(
+                        inputType, input, Coordinates2d.TEXTURE_NORMALIZED, output
+                    )
+                },
+            )
+            pendingDisplayGeometryChange = false
+            if (changed) {
+                upload.copyFrom(coordinates)
+                vertexBuffer.setBufferAt(engine, POSITION_BUFFER_INDEX, upload.positions, 0, 0, null, upload.onConsumed)
+                vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, upload.imageUvs, 0, 0, null, upload.onConsumed)
+                vertexBuffer.setBufferAt(engine, CAMERA_UV_BUFFER_INDEX, upload.cameraUvs, 0, 0, null, upload.onConsumed)
+                imageStabilizationEnabled = mode == Config.ImageStabilizationMode.EIS
+            } else {
+                upload.cancel()
+            }
+        }
+        // Custom materials may retain the legacy UV0-only contract.
+        materialInstance.let { instance ->
+            if (instance.material.hasParameter("imageStabilizationEnabled")) {
+                instance.setParameter("imageStabilizationEnabled", imageStabilizationEnabled)
+            }
+        }
 
         // Both the real camera texture and the real UVs are now bound, so the quad is safe to
         // draw. Reveal it once (#3373).

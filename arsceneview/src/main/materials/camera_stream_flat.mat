@@ -15,6 +15,10 @@ material {
     culling : none,
     parameters : [
         {
+            type : bool,
+            name : imageStabilizationEnabled
+        },
+        {
             type : samplerExternal,
             name : cameraTexture
         },
@@ -60,7 +64,9 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         // EIS supplies homogeneous texture coordinates. Divide AFTER interpolation (#2728).
-        highp vec2 cameraUv = variable_cameraUv.xy / variable_cameraUv.z;
+        // OFF samples UV0 exactly as before EIS support, without a second Y flip.
+        highp vec2 cameraUv = materialParams.imageStabilizationEnabled
+                ? variable_cameraUv.xy / variable_cameraUv.z : getUV0();
         // Inverse_Tonemap_Filmic is the exact analytic inverse of ToneMapper.Filmic,
         // which createARView() installs on the View — that leg already cancelled and is
         // kept as-is. Only the transfer-function leg changes (#3338).
