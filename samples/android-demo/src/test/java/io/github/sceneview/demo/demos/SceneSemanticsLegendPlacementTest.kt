@@ -8,6 +8,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import com.google.ar.core.SemanticLabel
@@ -39,7 +40,9 @@ import org.robolectric.annotation.GraphicsMode
  *
  * The split-screen half (393 × 400 dp) is short but narrow: the side-by-side layout does not fit
  * there — the HUD's "41 %" wrapped one character per line and the warning went under the dock —
- * so it must keep the portrait layout. The dock check runs below font scale 2 only.
+ * and neither does the portrait one: on the phone, from 130 % text up, the legend in the bottom
+ * band covered the warning, and the HUD too at 200 %. There the legend goes under the warning in
+ * the top band, which ends above the dock and scrolls what does not fit.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -52,52 +55,65 @@ class SceneSemanticsLegendPlacementTest {
     @Test
     @Config(qualifiers = LANDSCAPE)
     fun `landscape legend never covers the outdoor warning at font scale 1_3`() {
-        assertWarningClearOfLegend(fontScale = 1.3f, legendInTopBand = true)
+        assertLegendPlacement(fontScale = 1.3f, expected = LegendPlace.BesideHud)
     }
 
     @Test
     @Config(qualifiers = LANDSCAPE)
     fun `landscape legend never covers the outdoor warning at font scale 2`() {
-        assertWarningClearOfLegend(fontScale = 2.0f, legendInTopBand = true)
+        assertLegendPlacement(fontScale = 2.0f, expected = LegendPlace.BesideHud)
     }
 
     @Test
     @Config(qualifiers = PORTRAIT)
     fun `portrait keeps the legend in the bottom band below the warning`() {
-        assertWarningClearOfLegend(fontScale = 1.0f, legendInTopBand = false)
+        assertLegendPlacement(fontScale = 1.0f, expected = LegendPlace.BottomBand)
     }
 
     @Test
     @Config(qualifiers = PORTRAIT)
     fun `portrait keeps the legend in the bottom band at font scale 2`() {
-        assertWarningClearOfLegend(fontScale = 2.0f, legendInTopBand = false)
+        assertLegendPlacement(fontScale = 2.0f, expected = LegendPlace.BottomBand)
     }
 
     @Test
     @Config(qualifiers = SPLIT_SCREEN)
-    fun `split screen half keeps the portrait layout`() {
-        assertWarningClearOfLegend(fontScale = 1.0f, legendInTopBand = false)
+    fun `split screen half stacks the legend under the warning, all of it above the dock`() {
+        assertLegendPlacement(fontScale = 1.0f, expected = LegendPlace.UnderWarning)
+        // At the default text size everything fits: nothing to scroll to.
+        val legend = composeRule.onNodeWithTag(SEMANTIC_LEGEND_TAG).getUnclippedBoundsInRoot()
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).getUnclippedBoundsInRoot()
+        assertFalse("the legend $legend runs under the dock $dock", legend.intersects(dock))
     }
 
     @Test
     @Config(qualifiers = SPLIT_SCREEN)
-    fun `split screen half keeps the portrait layout at font scale 2`() {
-        // 400 dp cannot hold the identity row, the HUD, the warning, the legend and the dock at
-        // this scale (about 540 dp of content), in either layout: only the layout itself and the
-        // HUD's unwrapped percentages are asserted here.
-        assertWarningClearOfLegend(fontScale = 2.0f, legendInTopBand = false, checkFit = false)
+    fun `split screen half keeps the legend off the warning at font scale 1_3`() {
+        // The phone's largest text size on Android 13, where the legend covered the warning.
+        assertLegendPlacement(fontScale = 1.3f, expected = LegendPlace.UnderWarning)
     }
 
-    /**
-     * @param checkFit Require the warning pill to stay clear of the legend and, below font scale
-     * 2, of the dock: under 400 dp of height that scale cannot stack the identity row, the HUD and
-     * the warning above the dock, whichever band the legend is in.
-     */
-    private fun assertWarningClearOfLegend(
-        fontScale: Float,
-        legendInTopBand: Boolean,
-        checkFit: Boolean = true,
-    ) {
+    @Test
+    @Config(qualifiers = SPLIT_SCREEN)
+    fun `split screen half keeps the legend off the warning and the HUD at font scale 2`() {
+        // 400 dp cannot show the identity row, the HUD, the warning, the legend and the dock at
+        // this scale (about 540 dp of content): the band ends above the dock and scrolls.
+        assertLegendPlacement(fontScale = 2.0f, expected = LegendPlace.UnderWarning)
+    }
+
+    /** Where the color legend is expected for a window. */
+    private enum class LegendPlace {
+        /** Tall window: start-aligned in the bottom band, above the dock. */
+        BottomBand,
+
+        /** Short and wide: the end half of a Row in the top band. */
+        BesideHud,
+
+        /** Short and narrow: under the warning, in the top band's one scrolling Column. */
+        UnderWarning,
+    }
+
+    private fun assertLegendPlacement(fontScale: Float, expected: LegendPlace) {
         composeRule.setContent {
             ScaledDensity(fontScale) {
                 SceneViewDemoTheme(darkTheme = false) {
@@ -124,7 +140,6 @@ class SceneSemanticsLegendPlacementTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag(SEMANTIC_LEGEND_TAG).assertIsDisplayed()
         val warning = composeRule.onNodeWithTag(OUTDOOR_NOTICE_TAG).getUnclippedBoundsInRoot()
         val legend = composeRule.onNodeWithTag(SEMANTIC_LEGEND_TAG).getUnclippedBoundsInRoot()
         val topBand = composeRule.onNodeWithTag(DemoScaffoldTestTags.TOP_OVERLAY)
@@ -137,28 +152,58 @@ class SceneSemanticsLegendPlacementTest {
             "at font scale $fontScale the HUD's \"$TOP_PERCENT\" $percent wraps onto several lines",
             percent.right - percent.left > percent.bottom - percent.top,
         )
-        if (checkFit && fontScale < 2f) {
+        assertFalse(
+            "at font scale $fontScale the legend $legend overlaps the outdoor warning $warning",
+            warning.intersects(legend),
+        )
+        val besideHud = legend.left >= (topBand.left + topBand.right) / 2
+        if (expected == LegendPlace.UnderWarning) {
+            assertStackedAboveTheDock(fontScale, warning = warning, legend = legend, dock = dock)
+            assertFalse("the legend $legend should be start-aligned, not beside the HUD", besideHud)
+            return
+        }
+        composeRule.onNodeWithTag(SEMANTIC_LEGEND_TAG).assertIsDisplayed()
+        if (fontScale < 2f) {
             assertFalse(
                 "at font scale $fontScale the outdoor warning $warning runs under the dock $dock",
                 warning.intersects(dock),
             )
         }
-        if (checkFit) {
-            assertFalse(
-                "at font scale $fontScale the legend $legend overlaps the outdoor warning $warning",
-                warning.intersects(legend),
-            )
-        }
         // Side by side, the legend is the end half of a Row in the top band; in portrait it is
-        // start-aligned in the bottom band. In a 400 dp window the two bands overlap, so the
-        // layout is told by the legend's column, not by which band's bounds contain it.
-        val besideHud = legend.left >= (topBand.left + topBand.right) / 2
+        // start-aligned in the bottom band.
+        val legendInTopBand = expected == LegendPlace.BesideHud
         assertTrue(
             "the legend $legend should be " +
                 (if (legendInTopBand) "beside the HUD in the top band" else "in the bottom band") +
                 " (top band: $topBand)",
             legendInTopBand == besideHud && (!legendInTopBand || topBand.contains(legend)),
         )
+    }
+
+    /**
+     * The short and narrow window: HUD, warning and legend are one Column that stops above the
+     * dock. What does not fit is clipped by that Column, never drawn under the dock, and each of
+     * the three can be scrolled fully into view.
+     */
+    private fun assertStackedAboveTheDock(fontScale: Float, warning: DpRect, legend: DpRect, dock: DpRect) {
+        val band = composeRule.onNodeWithTag(SEMANTIC_STACKED_BAND_TAG).getUnclippedBoundsInRoot()
+        assertTrue(
+            "at font scale $fontScale the band $band runs under the dock $dock",
+            band.bottom <= dock.top,
+        )
+        assertTrue(
+            "at font scale $fontScale the legend $legend is not under the warning $warning",
+            legend.top >= warning.bottom,
+        )
+        for (tag in listOf(OUTDOOR_NOTICE_TAG, SEMANTIC_LEGEND_TAG)) {
+            composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+            val shown = composeRule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+            assertTrue(
+                "at font scale $fontScale, scrolled to, $tag $shown is not wholly inside the band $band",
+                shown.top >= band.top && shown.bottom <= band.bottom,
+            )
+        }
+        composeRule.onNodeWithText(TOP_PERCENT).performScrollTo().assertIsDisplayed()
     }
 
     private fun DpRect.intersects(other: DpRect): Boolean =
