@@ -170,13 +170,12 @@ open class ImageNode private constructor(
     /**
      * Releases the [MaterialInstance] and frame-defers destruction of the GPU [Texture].
      *
-     * Destroying the texture eagerly — before Filament has reclaimed the bound
-     * [MaterialInstance] — triggers a native SIGABRT (`Invalid texture still bound to
-     * MaterialInstance`), because MI reclamation is coupled to the render loop, not to this
-     * call. To avoid both that crash and a GPU-memory leak, the texture is handed to the
-     * per-`Engine` [io.github.sceneview.EngineDestroyQueue], which destroys it a few rendered
-     * frames later (and immediately at Engine teardown). This makes high-churn UIs (feeds,
-     * infinite scrollers, particle emitters) safe — see sceneview/sceneview#874.
+     * A live [MaterialInstance] must not sample a destroyed texture: `Renderer.beginFrame`
+     * commits every instance on the engine, and aborts natively on a dead binding. Destroying
+     * the instance removes it from that list synchronously. The per-`Engine`
+     * [io.github.sceneview.EngineDestroyQueue] gives other instances disposed later in the same
+     * teardown a few engine frames to release their bindings; it does not reclaim live instances
+     * for them. See the queue's contract and sceneview/sceneview#874.
      *
      * The instance destroyed is the one this node created, never [materialInstance]: that getter
      * reads back from the `RenderableManager` and builds a new wrapper on every call, which
@@ -190,7 +189,7 @@ open class ImageNode private constructor(
         if (isDestroyed) return
         super.destroy()
         materialLoader.destroyMaterialInstance(imageMaterialInstance)
-        // Frame-defer the texture destroy so Filament reclaims the MI first (see KDoc, #874).
+        // Leave the teardown margin for any other instances still sampling this texture (#874).
         EngineDestroyQueue.of(engine).enqueueTexture(texture)
     }
 }

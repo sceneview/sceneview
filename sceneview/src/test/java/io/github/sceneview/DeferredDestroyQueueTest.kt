@@ -1,5 +1,12 @@
 package io.github.sceneview
 
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -17,6 +24,39 @@ import kotlin.random.Random
  * the engine, however many renderers share it (sceneview/sceneview#4359).
  */
 class DeferredDestroyQueueTest {
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun enqueueWakesAParkedLoopAndTheLoopParksAgainAfterDraining() = runTest {
+        val queue = DeferredDestroyQueue(graceFrames = 3)
+        val pending = derivedStateOf { queue.size > 0 }
+        val source = Any()
+        var destroyed = 0
+        var ticks = 0
+        val loop = launch {
+            while (true) {
+                awaitRenderingEnabled(pending)
+                ticks++
+                queue.drainFrame(source)
+            }
+        }
+        runCurrent()
+        assertEquals(0, ticks)
+
+        repeat(2) { batch ->
+            queue.enqueue { destroyed++ }
+            Snapshot.sendApplyNotifications()
+            runCurrent()
+
+            assertEquals("a parked loop stranded a destroy", batch + 1, destroyed)
+            assertEquals("the grace period must still be counted", (batch + 1) * 3, ticks)
+            assertEquals(0, queue.size)
+            advanceTimeBy(5_000)
+            runCurrent()
+            assertEquals("an empty queue must let the loop park", (batch + 1) * 3, ticks)
+        }
+        loop.cancel()
+    }
 
     @Test
     fun actionRunsExactlyOnTheGraceFrame() {
