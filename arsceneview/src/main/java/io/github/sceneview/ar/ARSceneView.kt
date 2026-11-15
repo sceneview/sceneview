@@ -109,6 +109,8 @@ import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.node.ViewNode.WindowManager
+import io.github.sceneview.node.releaseEnvironmentLight
+import io.github.sceneview.node.setEnvironmentLight
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -807,7 +809,8 @@ fun ARSceneView(
      * What to draw over the scene while the camera permission is denied (#3308). Receives an
      * [ARCameraPermissionState] whose [ARCameraPermissionState.request] re-shows the system
      * dialog and whose [ARCameraPermissionState.openSettings] sends the user to App Info —
-     * the latter is the only way forward once [ARCameraPermissionState.permanentlyDenied].
+     * settings is recommended once [ARCameraPermissionState.permanentlyDenied]. Read
+     * [ARCameraPermissionState.recovery] to retain the request after an ambiguous answer.
      * Defaults to the built-in [ARCameraPermissionOverlay]; pass `null` to draw nothing and
      * handle the state yourself through [onCameraPermissionStateChanged].
      *
@@ -986,20 +989,14 @@ fun ARSceneView(
     // samples the baseline's cubemap, and the baseline now releases that cubemap when it is
     // destroyed. This effect is remembered after the caller's `rememberAREnvironment`, so it is
     // disposed first — on a baseline swap as on leaving the screen, the built light is gone
-    // before the texture it reads, and `LaunchedEffect(environment, scene)` below then installs
+    // before the texture it reads, and `DisposableEffect(environment, scene)` below then installs
     // the new baseline.
     DisposableEffect(engine, builtIndirectLightRef, scene, environment) {
         onDispose {
-            // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
-            // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
-            // could otherwise have an in-flight `onARFrame` (still queued on the GL thread) walk
-            // [scene.indirectLight] and dereference a freed native handle. Setting `null` first
-            // unblocks the destroy: Filament's renderer simply skips IBL sampling when the slot
-            // is null. If a third party overwrote `scene.indirectLight` with their own resource
-            // after we last set it, this null-out replaces *their* reference too — and that is
-            // fine: we're tearing the scene down, the slot owner is leaving anyway.
-            scene.indirectLight = null
+            // Withdraw the fallback BEFORE freeing it (#1814, #4939). A probe or a light the
+            // caller wrote remains attached; only the built light belongs to this effect.
             builtIndirectLightRef.getAndSet(null)?.let {
+                scene.releaseEnvironmentLight(it)
                 engine.safeDestroyIndirectLight(it)
             }
         }
@@ -1037,7 +1034,7 @@ fun ARSceneView(
         "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
             "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
-    // QA replay hook (null for every normal launch): see [ARSessionProbe].
+    // Frame observation and optional QA replay injection: see [ARSessionProbe].
     val sessionProbe = LocalARSessionProbe.current
     val sessionProbeRef = remember { AtomicReference(sessionProbe) }
     sessionProbeRef.set(sessionProbe)
@@ -1219,22 +1216,19 @@ fun ARSceneView(
     // One state per verdict, shared by the overlay and the host. Its actions read the handler
     // of the latest composition, so a state the host keeps never asks through a stale one.
     val currentPermissionHandler by rememberUpdatedState(permissionHandler)
-    arCore.onCameraPermissionDenied = { permanently ->
-        val state = ARCameraPermissionState(
-            permanentlyDenied = permanently,
-            request = { arCore.retryCameraPermission(currentPermissionHandler) },
-            openSettings = { arCore.openAppSettings(currentPermissionHandler) },
-        )
+    arCore.onCameraPermissionRecoveryChanged = { recovery ->
+        val state = recovery?.let {
+            ARCameraPermissionState(
+                recovery = it,
+                request = { arCore.retryCameraPermission(currentPermissionHandler) },
+                openSettings = { arCore.openAppSettings(currentPermissionHandler) },
+            )
+        }
+        // A grant clears the card before session creation or any later ARCore failure.
         cameraPermissionState = state
         onCameraPermissionStateChanged?.invoke(state)
     }
-    // The grant takes the explanation down on its own: waiting for a session to be created
-    // left "camera access needed" up when the grant was followed by another failure (#4452).
-    arCore.onCameraPermissionGranted = {
-        cameraPermissionState = null
-        onCameraPermissionStateChanged?.invoke(null)
-    }
-    // Reassigned on each composition like the denial callback above, so the host lambda is
+    // Reassigned on each composition like the recovery callback above, so the host lambda is
     // never stale. Both are set during composition, before the `DisposableEffect` below runs
     // `arCore.create()` — the first verdict is therefore never missed (#3374).
     arCore.onARCoreAvailability = { availability ->
@@ -1386,7 +1380,7 @@ fun ARSceneView(
 
     // Baseline IBL + skybox setup. Applied ONCE per `environment` instance change,
     // not on every recomposition (#1611). The per-frame `onARFrame` rebuild path
-    // overwrites `scene.indirectLight` with a fresh IBL each time ARCore surfaces
+    // updates the registry's fallback with a fresh IBL each time ARCore surfaces
     // a new light estimate; running this initialiser inside `SideEffect` instead
     // would reset the rebuilt IBL on the *next* recomposition (which fires every
     // frame in demos that surface `latestFrame` / `isTracking` to UI state) and
@@ -1403,11 +1397,11 @@ fun ARSceneView(
     // caller's, so its `onDispose` runs first. A light-estimation IBL built since is not this
     // effect's to clear — `builtIndirectLightRef` owns that one.
     DisposableEffect(environment, scene) {
-        scene.indirectLight = environment.indirectLight
+        scene.setEnvironmentLight(environment.indirectLight)
         scene.skybox = environment.skybox
         onDispose {
             if (scene.skybox === environment.skybox) scene.skybox = null
-            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+            scene.releaseEnvironmentLight(environment.indirectLight)
         }
     }
 
@@ -1747,6 +1741,8 @@ fun ARSceneView(
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
 
                     val childNodes = childNodesRef.get()
+                    // Use only this tick's frame; never retain it across Session.update() calls.
+                    var arFrame: Frame? = null
 
                     // AR frame update — feed ARCore data into camera, lights, planes.
                     arCore.session?.let { session ->
@@ -1777,6 +1773,7 @@ fun ARSceneView(
                                     session = session,
                                     frame = frame
                                 )
+                                arFrame = frame
                                 notifyHostOfFrame(
                                     prevTrackingFailureRef = prevTrackingFailureRef,
                                     onTrackingFailureChangedRef = onTrackingFailureChangedRef,
@@ -1821,6 +1818,16 @@ fun ARSceneView(
                     }
                     lastFrameTimeNanos = frameTimeNanos
                     gestureDetector.advanceInertia(inertiaDelta)
+
+                    // Custom placement can move in the host callback, node ticks (including smooth
+                    // transforms), or gesture inertia. Sample contacts only after all of them.
+                    arFrame?.let { frame ->
+                        try {
+                            cameraStreamRef.get()?.updateGroundContact(frame)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SceneView", "Ground contact update failed", e)
+                        }
+                    }
 
                     // Last, so the node ticks above are already accounted for: a glTF animation
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
@@ -2018,7 +2025,9 @@ private fun onARFrame(
                 indirectLight?.intensity?.let { intensity(it) }
                 indirectLight?.getRotation(null)?.let { rotation(it) }
             }.build(engine)
-            scene.indirectLight = newIbl
+            // A probe overrides the entire estimated IBL. Keep estimates current behind it,
+            // so leaving its zone immediately restores the latest one (#4939).
+            scene.setEnvironmentLight(newIbl)
             // #1756: destroy the IBL we built on the previous estimation update
             // (tracked via [builtIndirectLightRef]) — independent of what
             // `scene.indirectLight` happens to be now. The old path captured
@@ -2059,9 +2068,6 @@ private fun onARFrame(
         is DepthMeshNode -> n.update(session, frame)
         is PointCloudNode -> n.update(session, frame)
     }
-
-    // Last: the placed objects' contacts are read from the anchors moved just above.
-    cameraStream?.updateGroundContact(frame)
 }
 
 /**

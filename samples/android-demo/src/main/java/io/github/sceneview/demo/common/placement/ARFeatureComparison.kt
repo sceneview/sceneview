@@ -18,6 +18,7 @@ import com.google.ar.core.exceptions.FatalException
 import com.google.ar.core.exceptions.NotYetAvailableException
 import io.github.sceneview.ar.*
 import io.github.sceneview.ar.arcore.configure
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.*
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusCard
@@ -145,6 +146,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
         else -> null
     }
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(feature.title), onBack = onBack,
         chromeToggleOnTap = false,
         onReset = ::reset,
@@ -294,10 +296,8 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
             }
             // Silent while a card explains that AR could not start (#3986).
             ARCoachingOverlay(
-                cue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
-                surface = guidance.surface,
-                hint = guidance.hint,
-                scanLingering = guidance.scanLingering,
+                guidance = guidance,
+                cue = if (!LocalMotionSensorSilent.current && availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
             )
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
             if (startupTimedOut && availability == null) {

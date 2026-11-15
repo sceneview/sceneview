@@ -359,10 +359,8 @@ fun PlacementScene(
                 trackingFailureReason = trackingFailure,
             )
             ARCoachingOverlay(
+                guidance = guidance,
                 cue = if (cameraDenied || arCoreUnavailable) ArGuidanceCue.NONE else guidance.cue,
-                surface = guidance.surface,
-                hint = guidance.hint,
-                scanLingering = guidance.scanLingering,
                 contentPadding = PaddingValues(
                     bottom = (coachingBottomClearance - GUIDE_BOTTOM_CLEARANCE).coerceAtLeast(0.dp),
                 ),

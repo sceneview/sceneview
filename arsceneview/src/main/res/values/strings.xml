@@ -11,6 +11,7 @@
     <!-- ARCameraPermissionOverlay (#3308) — in-app explanation after a denial. -->
     <string name="sceneview_camera_permission_title">Camera access needed</string>
     <string name="sceneview_camera_permission_body">AR uses the camera to see the world around you. Nothing is recorded or uploaded.</string>
+    <string name="sceneview_camera_permission_body_fallback">Allow camera access to start AR. If no permission dialog appears, you can also allow it in Settings.</string>
     <string name="sceneview_camera_permission_body_settings">Camera access was turned off for this app. Turn it on in Settings to start AR.</string>
     <string name="sceneview_camera_permission_grant">Grant camera access</string>
     <string name="sceneview_camera_permission_settings">Open settings</string>
@@ -62,4 +63,10 @@
     <string name="sceneview_coaching_hint_too_fast_action">Move your phone more slowly</string>
     <string name="sceneview_coaching_hint_low_detail">Low detail</string>
     <string name="sceneview_coaching_hint_low_detail_action">Aim at something with more texture</string>
+    <string name="sceneview_coaching_hint_bad_state">AR error</string>
+    <string name="sceneview_coaching_hint_bad_state_action">Restart the AR view</string>
+    <string name="sceneview_coaching_hint_bad_state_detail">AR stopped working</string>
+    <string name="sceneview_coaching_hint_camera_unavailable">Camera busy</string>
+    <string name="sceneview_coaching_hint_camera_unavailable_action">Close the other camera app</string>
+    <string name="sceneview_coaching_hint_camera_unavailable_detail">Another app is using the camera</string>
 </resources>

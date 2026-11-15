@@ -110,18 +110,12 @@ fun Modifier.overMediaEdge(
 }
 
 /**
- * What a glass element paints under itself when nothing else says. Transparent where a band of
- * scrim runs behind the chrome; `DemoScaffold` provides its scrim on a phone held sideways, where
- * the bands keep to the system bars and the dock, so that every glass element floating over the
- * scene there — the scaffold's and a demo's own — stands on its own piece of it.
+ * What a glass element paints under itself when nothing else says. `DemoScaffold` provides a
+ * ground cut to each control's outline, leaving the surrounding scene and its overlays clear.
  */
 val LocalGlassGround = compositionLocalOf { Color.Transparent }
 
-/**
- * [ground] is painted under the glass, inside the same shape. Glass is see-through and counts on
- * a scrim behind it; where no band of scrim runs under the element — a phone held sideways — the
- * element carries that scrim itself, cut to its own outline ([LocalGlassGround]).
- */
+/** [ground] is painted under the translucent glass, inside the same shape. */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,

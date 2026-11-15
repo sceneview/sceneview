@@ -1,8 +1,11 @@
 package io.github.sceneview.demo.common.placement
 
+import com.google.android.filament.gltfio.FilamentAsset
+import io.github.sceneview.model.ModelInstance
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,6 +17,44 @@ class TapToPlaceStateTest {
 
     private val sofa = PlacementSpec(assetLocation = "models/sofa.glb", displayName = "Sofa")
     private val chair = PlacementSpec(assetLocation = "file:///cache/chair.glb", displayName = "Chair")
+
+    @Test
+    fun `reset reloads the selected model before each new placement`() {
+        val state = TapToPlaceState()
+        state.modelInstance = modelInstanceWithoutJni()
+        assertTrue(state.offerAsset(state.controller.selectModel(), sofa))
+        assertEquals(FrameEffect.PLACE, state.controller.onFrame(FrameInput(0L, true, surfaceAvailable = true)))
+
+        repeat(5) { reset ->
+            val retryBefore = state.assetRetry
+            val now = (reset + 1) * 100L
+            state.resetPlacement(nowMillis = now)
+
+            assertSame("Reset keeps the selected asset", sofa, state.spec)
+            assertNull("the disposed node's Filament instance must not be reused", state.modelInstance)
+            assertEquals("the experience must load a fresh instance", retryBefore + 1, state.assetRetry)
+            assertEquals(PlacementPhase.SCANNING, state.phase)
+            assertEquals(
+                "a surface must not commit a placement before the replacement model arrives",
+                FrameEffect.NONE,
+                state.controller.onFrame(FrameInput(now, true, surfaceAvailable = true)) {
+                    state.modelInstance != null
+                },
+            )
+            assertEquals(reset + 1, state.controller.placementsCreated)
+
+            // The experience reloads the same selection, then the next surface can place it.
+            state.modelInstance = modelInstanceWithoutJni()
+            assertTrue(state.offerAsset(state.controller.selectModel(), sofa))
+            assertEquals(
+                FrameEffect.PLACE,
+                state.controller.onFrame(FrameInput(now + 16L, true, surfaceAvailable = true)) {
+                    state.modelInstance != null
+                },
+            )
+            assertEquals(reset + 2, state.controller.placementsCreated)
+        }
+    }
 
     @Test
     fun `leaving the camera and coming back places again with the same holder`() {
@@ -77,4 +118,10 @@ class TapToPlaceStateTest {
         assertTrue(state.controller.hasPlacement)
         assertEquals(PlacementPhase.PLACED, state.controller.phase)
     }
+
+    /** A reference-only token: no native methods or rendering are exercised by this state test. */
+    private fun modelInstanceWithoutJni(): ModelInstance = ModelInstance::class.java
+        .getDeclaredConstructor(FilamentAsset::class.java, Long::class.javaPrimitiveType)
+        .apply { isAccessible = true }
+        .newInstance(null, 0L)
 }

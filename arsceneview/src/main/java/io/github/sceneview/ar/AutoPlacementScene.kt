@@ -500,10 +500,8 @@ fun AutoPlacementScene(
         if (coaching) {
             val guidance = rememberArGuidanceState(state, surface, trackingFailureReason = trackingFailure)
             ARCoachingOverlay(
+                guidance = guidance,
                 cue = if (availability == null && !cameraDenied) guidance.cue else ArGuidanceCue.NONE,
-                surface = guidance.surface,
-                hint = guidance.hint,
-                scanLingering = guidance.scanLingering,
                 contentPadding = coachingContentPadding,
             )
         }

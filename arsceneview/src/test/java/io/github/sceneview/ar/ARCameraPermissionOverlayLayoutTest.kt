@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -134,6 +135,54 @@ class ARCameraPermissionOverlayLayoutTest {
         val card = bounds(ARCameraPermissionOverlayTags.CARD)
         assertEquals("box $box, card $card", 24f, (card.left - box.left).value, 0.75f)
         assertEquals("box $box, card $card", 24f, (box.right - card.right).value, 0.75f)
+    }
+
+    @Test
+    fun ambiguousAnswers_keepBothActionsAndNeutralCopy() {
+        var requests = 0
+        var settingsOpened = 0
+        val state = ARCameraPermissionState(
+            recovery = ARCameraPermissionRecovery.RequestWithSettings,
+            request = { requests++ },
+            openSettings = { settingsOpened++ },
+        )
+        composeRule.setContent { ShortBox(240.dp) { ARCameraPermissionOverlay(state) } }
+        // The neutral explanation scrolls in the space left by the two complete actions.
+        composeRule.onNodeWithText(
+            RuntimeEnvironment.getApplication().getString(R.string.sceneview_camera_permission_body_fallback),
+        ).assertExists()
+        composeRule.onNodeWithText(
+            RuntimeEnvironment.getApplication().getString(R.string.sceneview_camera_permission_body_settings),
+        ).assertDoesNotExist()
+        val primary = bounds(ARCameraPermissionOverlayTags.ACTION)
+        val secondary = bounds(ARCameraPermissionOverlayTags.REQUEST_ACTION)
+        val card = bounds(ARCameraPermissionOverlayTags.CARD)
+        assertTrue("both buttons remain inside the card", secondary.top >= primary.bottom && secondary.bottom <= card.bottom)
+        composeRule.onNodeWithTag(ARCameraPermissionOverlayTags.ACTION).performClick()
+        assertEquals("settings must be the primary action", 1, settingsOpened)
+        assertEquals(0, requests)
+        composeRule.onNodeWithTag(ARCameraPermissionOverlayTags.REQUEST_ACTION).performClick()
+        assertEquals(1, requests)
+        assertEquals(1, settingsOpened)
+    }
+
+    @Test
+    fun confirmedDenial_offersOnlySettings() {
+        var requests = 0
+        var settingsOpened = 0
+        composeRule.setContent {
+            ShortBox(240.dp) {
+                ARCameraPermissionOverlay(ARCameraPermissionState(
+                    recovery = ARCameraPermissionRecovery.Settings,
+                    request = { requests++ },
+                    openSettings = { settingsOpened++ },
+                ))
+            }
+        }
+        composeRule.onNodeWithTag(ARCameraPermissionOverlayTags.REQUEST_ACTION).assertDoesNotExist()
+        composeRule.onNodeWithTag(ARCameraPermissionOverlayTags.ACTION).performClick()
+        assertEquals(1, settingsOpened)
+        assertEquals(0, requests)
     }
 
     private fun assertActionIsWholeInAShortBox(fontScale: Float) {
