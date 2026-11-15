@@ -19,6 +19,7 @@ import io.github.sceneview.safeDestroy
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 /**
@@ -121,21 +122,26 @@ class RenderTestHarness(
         // main-thread block so the backend thread can actually process the frame and fire our
         // callback — flushing while holding main would deadlock the callback delivery.
         runOnMain {
-            val frameTimeNanos = System.nanoTime()
-            if (renderer.beginFrame(swapChain, frameTimeNanos)) {
-                renderer.render(view)
-                renderer.readPixels(
-                    0, 0, width, height,
-                    Texture.PixelBufferDescriptor(
-                        buffer,
-                        Texture.Format.RGBA,
-                        Texture.Type.UBYTE,
-                        1, 0, 0, 0,
-                        null, Runnable { latch.countDown() }
-                    )
+            // The frame that carries the readback is drawn whatever beginFrame advises. It
+            // returns false when Filament would rather skip a frame, which is its advice for
+            // every frame asked right after renderFrames() on a Pixel 4a: guarded by that
+            // result, readPixels was never issued and the latch below timed out.
+            renderer.beginFrame(swapChain, System.nanoTime())
+            renderer.render(view)
+            renderer.readPixels(
+                0, 0, width, height,
+                Texture.PixelBufferDescriptor(
+                    buffer,
+                    Texture.Format.RGBA,
+                    Texture.Type.UBYTE,
+                    1, 0, 0, 0,
+                    // Run the callback where the backend completes the readback. Without a
+                    // handler it did not arrive within the five seconds below on that phone,
+                    // even with the frame drawn.
+                    Executor { it.run() }, Runnable { latch.countDown() }
                 )
-                renderer.endFrame()
-            }
+            )
+            renderer.endFrame()
         }
 
         // Drain the backend command queue. Running off-main so the backend thread can finish
