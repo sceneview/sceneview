@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.ar.core.Anchor
+import com.google.ar.core.AugmentedFace
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
@@ -24,10 +25,12 @@ import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.ar.arcore.ARSession
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.ar.node.AugmentedFaceNode
 import io.github.sceneview.ar.node.ReticleNode
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.ar.scene.OwnedVisualizers
 import io.github.sceneview.ar.scene.PlaneRenderer
+import io.github.sceneview.node.Node
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,6 +54,8 @@ import org.robolectric.annotation.RealObject
 import org.robolectric.shadows.ShadowLog
 import org.robolectric.util.ReflectionHelpers
 import java.util.IdentityHashMap
+import java.nio.FloatBuffer
+import java.nio.ShortBuffer
 
 /**
  * Runs the real ARCore failure/retry path, AnchorNode lifecycle and PlaneRenderer frame-cache
@@ -66,6 +71,7 @@ import java.util.IdentityHashMap
         ARSessionDependenciesTest.NativeCamera::class,
         ARSessionDependenciesTest.NativeAnchor::class,
         ARSessionDependenciesTest.NativePlane::class,
+        ARSessionDependenciesTest.NativeAugmentedFace::class,
         ARSessionDependenciesTest.NativeTrackable::class,
         SessionDependencyShadows.EngineHandles::class,
         SessionDependencyShadows.EntityHandles::class,
@@ -75,7 +81,7 @@ class ARSessionDependenciesTest {
     private lateinit var arCore: ARCore
     private lateinit var context: Context
     private lateinit var engine: Engine
-    private val nodes = mutableListOf<AnchorNode>()
+    private val nodes = mutableListOf<Node>()
     private val failures = mutableListOf<Exception>()
     private lateinit var planes: PlaneRenderer
     private lateinit var visualizers: OwnedVisualizers<Plane, PlaneVisualizer, MaterialInstance>
@@ -90,6 +96,7 @@ class ARSessionDependenciesTest {
         nextNativeHandle = 1L
         reportedPlanes.clear()
         nativeTrackableReads = 0
+        nativeFaceReads = 0
         updateFailure = null
         nextFrame = null
         val app = RuntimeEnvironment.getApplication()
@@ -192,6 +199,68 @@ class ARSessionDependenciesTest {
     }
 
     @Test
+    fun `a retained face node skips its closed face after fatal failure and retry`() {
+        arCore.resume(context, null)
+        val firstSession = arCore.session!!
+        val firstFace = nativeObject(AugmentedFace::class.java, firstSession)
+        val updates = mutableListOf<AugmentedFace>()
+        val trackingChanges = mutableListOf<TrackingState>()
+        val node = AugmentedFaceNode(
+            engine,
+            firstFace,
+            onTrackingStateChanged = { trackingChanges += it },
+            onUpdated = { updates += it },
+        ).also { nodes += it }
+        val firstFrame = frame(firstSession, 1_000_000_000L)
+        nextFrame = firstFrame
+        assertSame(firstFrame, arCore.updateSessionOrNull())
+        node.update(firstSession, firstFrame)
+        assertEquals(listOf(firstFace), updates)
+        assertTrue(nativeFaceReads > 0)
+        val readsBeforeFailure = nativeFaceReads
+
+        updateFailure = FatalException("EGL context creation failed")
+        assertNull(arCore.updateSessionOrNull())
+        assertTrue(firstSession.isClosed)
+        assertEquals(1, failures.size)
+        assertNull(node.trackable)
+        assertNull(node.session)
+        assertNull(node.frame)
+        assertEquals(TrackingState.STOPPED, node.trackingState)
+        assertFalse(node.isVisible)
+        assertEquals(listOf(TrackingState.TRACKING, TrackingState.STOPPED), trackingChanges)
+
+        updateFailure = null
+        arCore.retrySession()
+        val replacement = arCore.session!!
+        assertNotSame(firstSession, replacement)
+        val replacementFrame = frame(replacement, 2_000_000_000L)
+        nextFrame = replacementFrame
+        assertSame(replacementFrame, arCore.updateSessionOrNull())
+        node.update(replacement, replacementFrame)
+        assertNull(node.session)
+        assertNull(node.frame)
+        assertEquals(readsBeforeFailure, nativeFaceReads)
+        assertEquals(listOf(firstFace), updates)
+
+        // Retaining the old node must not stop faces from the replacement session updating.
+        val replacementFace = nativeObject(AugmentedFace::class.java, replacement)
+        val replacementNode = AugmentedFaceNode(engine, replacementFace, onUpdated = { updates += it })
+            .also { nodes += it }
+        replacementNode.update(replacement, replacementFrame)
+        assertEquals(listOf(firstFace, replacementFace), updates)
+        assertSame(replacementFrame, replacementNode.frame)
+
+        arCore.destroy()
+        val readsAfterClose = nativeFaceReads
+        node.destroy()
+        replacementNode.destroy()
+        assertEquals(readsAfterClose, nativeFaceReads)
+        assertTrue(node.isDestroyed)
+        assertTrue(replacementNode.isDestroyed)
+    }
+
+    @Test
     fun `placement controllers release anchors before close and later disposal is safe`() {
         arCore.resume(context, null)
         val session = arCore.session!!
@@ -220,12 +289,15 @@ class ARSessionDependenciesTest {
         val frame = frame(session, 1_000_000_000L)
         val node = anchorNode(session)
         val plane = nativeObject(Plane::class.java, session)
+        val face = nativeObject(AugmentedFace::class.java, session)
         arCore.destroy()
 
         assertThrows(IllegalStateException::class.java) { frame.timestamp }
         assertThrows(IllegalStateException::class.java) { node.anchor.detach() }
         assertThrows(IllegalStateException::class.java) { node.anchor.pose }
         assertThrows(IllegalStateException::class.java) { plane.trackingState }
+        assertThrows(IllegalStateException::class.java) { face.trackingState }
+        assertThrows(IllegalStateException::class.java) { face.meshVertices }
     }
 
     @Test
@@ -420,7 +492,33 @@ class ARSessionDependenciesTest {
     @Implements(className = "com.google.ar.core.TrackableBase", isInAndroidSdk = false)
     open class NativeTrackable {
         @RealObject private lateinit var real: Any
-        @Implementation protected fun getTrackingState(): TrackingState = open(real) { TrackingState.TRACKING }
+        @Implementation protected fun getTrackingState(): TrackingState = open(real) {
+            if (real is AugmentedFace) nativeFaceReads++
+            TrackingState.TRACKING
+        }
+    }
+
+    @Implements(AugmentedFace::class)
+    class NativeAugmentedFace : NativeTrackable() {
+        @RealObject private lateinit var real: AugmentedFace
+        // An initial TRACKING frame may have empty mesh buffers. Exercise real node updates
+        // without GPU allocation; every face read still checks the native session lifetime.
+        @Implementation protected fun getMeshTriangleIndices(): ShortBuffer = open(real) {
+            nativeFaceReads++
+            ShortBuffer.allocate(0)
+        }
+        @Implementation protected fun getMeshVertices(): FloatBuffer = open(real) {
+            nativeFaceReads++
+            FloatBuffer.allocate(0)
+        }
+        @Implementation protected fun getMeshNormals(): FloatBuffer = open(real) {
+            nativeFaceReads++
+            FloatBuffer.allocate(0)
+        }
+        @Implementation protected fun getMeshTextureCoordinates(): FloatBuffer = open(real) {
+            nativeFaceReads++
+            FloatBuffer.allocate(0)
+        }
     }
 
     private companion object {
@@ -433,6 +531,7 @@ class ARSessionDependenciesTest {
         var nextNativeHandle = 1L
         val reportedPlanes = IdentityHashMap<Session, List<Plane>>()
         var nativeTrackableReads = 0
+        var nativeFaceReads = 0
 
         fun <T> open(value: Any, block: () -> T): T {
             check(!owners.getValue(value).isClosed) { "Native access after session close: ${value.javaClass.simpleName}" }
