@@ -3,4 +3,3 @@
 
 <!-- category: Fixed -->
 - **Demo app: One call keeps its AR failure card clear of the mode selector.** The AR Placement sample includes camera denial in recovery-card visibility and measures landscape corners inside the safe area. Recovery cards keep their actions usable when large text and system bars leave only a short band above the controls; settings and permission-request actions scroll together when both cannot fit.
-- **Existing Kotlin placement callbacks remain source-compatible.** The original `AutoPlacementScene` overload stays source-visible; opting into camera-permission observation does not shift tracking, failure or placement callbacks.

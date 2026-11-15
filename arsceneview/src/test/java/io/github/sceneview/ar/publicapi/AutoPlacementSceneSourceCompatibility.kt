@@ -104,3 +104,21 @@ private fun permissionObserverAfterLegacyPositionalCallbacks(
         true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, permission,
     ) { _ -> }
 }
+
+@Composable
+private fun permissionObserverWithAllPositionalCallbacksAndContent(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+    state: AutoPlacementState,
+    tracking: (TrackingFailureReason?) -> Unit,
+    failed: (Exception) -> Unit,
+    placed: (AutoPlacementResult) -> Unit,
+    permission: (ARCameraPermissionState?) -> Unit,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) {
+    AutoPlacementScene(
+        true, Modifier, state, PlacementSurface.SURFACE, engine, models, materials,
+        true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, permission, content,
+    )
+}
