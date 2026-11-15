@@ -30,15 +30,16 @@ open class AnchorNode(
      */
     var updateAnchorPose = true
 
-    /** The tap's trackable and world pose, retained by PlacementScene while depth converges. */
+    /** The tap's trackable and independent world anchor, retained while depth converges. */
     internal var instantPlacement: InstantPlacement? = null
         set(value) {
+            if (field === value) return
+            field?.refinement?.close()
             field = value
-            instantPlacementPose = value?.let { InstantPlacementPose(it.dropPose) }
-            value?.let { pose = it.dropPose }
+            value?.let {
+                pose = if (it.refinement.isComplete) it.anchor.pose else it.refinement.heldPose
+            }
         }
-
-    private var instantPlacementPose: InstantPlacementPose? = null
 
     /**
      * The node world positioned anchor
@@ -153,7 +154,7 @@ open class AnchorNode(
                 // Run every frame, even when ARCore reports no anchor update, so the
                 // refinement animation completes after a stationary FULL_TRACKING pose.
                 if (placement.point.trackingState == TrackingState.TRACKING) {
-                    val refinement = checkNotNull(instantPlacementPose)
+                    val refinement = placement.refinement
                     pose = refinement.update(
                         fullTracking = placement.point.trackingMethod ==
                             InstantPlacementPoint.TrackingMethod.FULL_TRACKING,

@@ -134,7 +134,8 @@ class ARSceneScope internal constructor(
      * understanding of the environment. The node is only visible when the anchor is in
      * [TrackingState.TRACKING].
      * Inside [PlacementScene]'s `onPlaced`, approximate instant-placement anchors hold their
-     * drop pose until full tracking, then blend to the refined pose over 300 ms.
+     * physical drop location through an independent world anchor until full tracking, then blend
+     * between the anchors' current poses over 300 ms.
      *
      * Typical usage — place a model at a tapped surface:
      * ```kotlin

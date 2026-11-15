@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -28,6 +29,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
+import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.loaders.MaterialLoader
@@ -84,8 +86,8 @@ import java.io.File
  *    placed model can still be gesture-edited without spawning a duplicate on top.
  *  - An **instant-placement fallback** ([instantPlacement] = `true` by default): models can be
  *    dropped before ARCore has converged a plane. An `AnchorNode` declared in [onPlaced] holds
- *    its initial world pose while depth is approximate, then blends to the refined anchor pose
- *    over 300 ms once full tracking starts.
+ *    its physical location through an independent world anchor while depth is approximate, then
+ *    blends between the anchors' current poses over 300 ms once full tracking starts.
  *
  * The composable keeps the list of created anchors itself; everything the caller declares inside
  * [onPlaced] is composed once per anchor. Call [PlacementController.clear] (via the [controller]
@@ -211,8 +213,8 @@ fun PlacementScene(
     var cameraDenied by remember { mutableStateOf(false) }
     var arCoreUnavailable by remember { mutableStateOf(false) }
 
-    // Live session — captured so `groundShadows` can enumerate detected planes for shadow
-    // catchers. Only needed when that feature is on.
+    // Live session — used to create independent world anchors for approximate placements and
+    // enumerate detected planes for ground-shadow catchers.
     var session by remember { mutableStateOf<com.google.ar.core.Session?>(null) }
 
     // The plane grid guides discovery, then recedes once the first model is placed (Google AR
@@ -243,7 +245,7 @@ fun PlacementScene(
             sessionConfiguration = sessionConfiguration,
             onSessionUpdated = { updatedSession, frame ->
                 latestFrame = frame
-                if (groundShadows && session !== updatedSession) session = updatedSession
+                if (session !== updatedSession) session = updatedSession
                 // Tracked unconditionally since #3569: the reticle is only composed while the
                 // camera is TRACKING, so this is no longer a coaching-only signal.
                 isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -264,8 +266,9 @@ fun PlacementScene(
                     // rotate) — don't spawn a fresh anchor on top of it.
                     if (node != null) return@rememberOnGestureListener
                     val frame = latestFrame ?: return@rememberOnGestureListener
+                    val arSession = session ?: return@rememberOnGestureListener
                     placementHit(frame, event.x, event.y, instantPlacement)?.let { hit ->
-                        controller.add(hit)
+                        controller.add(arSession, hit)
                         // Confirm the commit in the hand. A tap that lands must feel different
                         // from a tap that misses, or a dropped tap reads as a dead screen
                         // (#3571).
@@ -330,8 +333,14 @@ fun PlacementScene(
             // single-parent).
             controller.anchors.forEach { anchor ->
                 key(anchor) {
+                    val placement = controller.instantPlacements[anchor]
+                    if (placement != null) {
+                        DisposableEffect(placement) {
+                            onDispose { placement.refinement.close() }
+                        }
+                    }
                     CompositionLocalProvider(
-                        LocalInstantPlacement provides controller.instantPlacements[anchor],
+                        LocalInstantPlacement provides placement,
                     ) {
                         onPlaced(anchor)
                     }
@@ -430,13 +439,19 @@ class PlacementController internal constructor() {
         _anchors += anchor
     }
 
-    internal fun add(hit: HitResult) {
+    internal fun add(session: Session, hit: HitResult) {
         val anchor = hit.createAnchor()
         val point = hit.trackable as? InstantPlacementPoint
         if (point?.trackingMethod ==
             InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE
         ) {
-            instantPlacements[anchor] = InstantPlacement(anchor, point, hit.hitPose)
+            // A cached Pose is frame-local. A Session anchor retains the physical drop location
+            // through world-origin corrections without following the approximate point's ray.
+            val heldAnchor = runCatching { session.createAnchor(hit.hitPose) }.getOrElse { error ->
+                anchor.detach()
+                throw error
+            }
+            instantPlacements[anchor] = InstantPlacement(anchor, point, heldAnchor)
         }
         add(anchor)
     }
@@ -449,6 +464,7 @@ class PlacementController internal constructor() {
     fun clear() {
         _anchors.forEach { runCatching { it.detach() } }
         _anchors.clear()
+        instantPlacements.values.forEach { runCatching { it.refinement.close() } }
         instantPlacements.clear()
     }
 }
