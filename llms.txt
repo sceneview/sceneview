@@ -1658,7 +1658,12 @@ bottom chrome so the card and the pill stay above it. `coachingContentPadding` a
 to the built-in camera-permission and ARCore-failure cards, even with `coaching = false`.
 Direct `ARSceneView` hosts can pass `contentPadding: PaddingValues` to
 `ARCameraPermissionOverlay` and `ARCoreAvailabilityOverlay` in their overlay slots. These
-Android-only ARCore cards keep their own margin in addition to the host padding:
+Android-only ARCore cards keep a preferred margin in addition to the host padding. In a short
+remaining band their vertical margin and padding yield to preserve the recovery action.
+`AutoPlacementScene.onCameraPermissionStateChanged` forwards the same nullable
+`ARCameraPermissionState` as `ARSceneView`: non-null means the permission card is up, `null`
+means camera access is granted. Track it separately from placement phase and ARCore availability;
+a refusal can precede session creation and leave both of those unchanged:
 
 ```kotlin
 val placement = rememberAutoPlacementState()

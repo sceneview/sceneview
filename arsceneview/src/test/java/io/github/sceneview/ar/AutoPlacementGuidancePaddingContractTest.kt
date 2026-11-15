@@ -20,4 +20,15 @@ class AutoPlacementGuidancePaddingContractTest {
                 )
             }
     }
+    @Test
+    fun permissionRecoveryIsForwardedToTheHostWithoutChangingPlacementPhase() {
+        val source = File("src/main/java/io/github/sceneview/ar/AutoPlacementScene.kt").readText()
+        val sceneCall = source.substringAfter("        ARSceneView(").substringBefore("        if (coaching")
+        assertTrue(
+            "hosts must observe the same nullable permission state as the SDK card",
+            Regex("""onCameraPermissionStateChanged\s*=\s*\{[^}]*cameraDenied\s*=\s*it != null[^}]*onCameraPermissionStateChanged\?\.invoke\(it\)""")
+                .containsMatchIn(sceneCall),
+        )
+    }
+
 }

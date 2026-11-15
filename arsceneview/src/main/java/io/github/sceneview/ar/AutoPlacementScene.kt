@@ -374,6 +374,9 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
  *   and add their own margin. Permission and failure cards respect it even when [coaching]
  *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
+ * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
+ *   receives, or `null` after a grant. A denial can precede session creation without changing
+ *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
  */
 @Composable
 fun AutoPlacementScene(
@@ -389,6 +392,7 @@ fun AutoPlacementScene(
     coachingContentPadding: PaddingValues = PaddingValues(0.dp),
     playbackDataset: File? = null,
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)? = null,
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
@@ -460,7 +464,10 @@ fun AutoPlacementScene(
                 availability = it
                 onARCoreAvailability?.invoke(it)
             },
-            onCameraPermissionStateChanged = { cameraDenied = it != null },
+            onCameraPermissionStateChanged = {
+                cameraDenied = it != null
+                onCameraPermissionStateChanged?.invoke(it)
+            },
             onTrackingFailureChanged = {
                 trackingFailure = it
                 onTrackingFailureChanged?.invoke(it)
@@ -505,6 +512,50 @@ fun AutoPlacementScene(
         }
     }
 }
+
+/** Retains the JVM descriptor from before the camera-permission callback was exposed. */
+@Deprecated(
+    "Binary-compatibility overload. Use the overload with onCameraPermissionStateChanged.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Suppress("LongParameterList")
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = coaching,
+    coachingContentPadding = coachingContentPadding,
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    onCameraPermissionStateChanged = null,
+    content = content,
+)
 
 /**
  * Binary-compatibility shim for the pre-`coachingContentPadding` descriptor of

@@ -5,12 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -58,6 +60,42 @@ class ARGuidanceContentPaddingTest {
 
     @Test
     fun permissionDenial_resolvesStartAndEndPaddingInRtl() = assertPaddedCard(permission = true, rtl = true)
+
+    @Test
+    fun sessionFailure_lendsVerticalMarginsWhenHostPaddingLeavesOnlyAnActionBand() = assertShortBand(permission = false)
+
+    @Test
+    fun permissionDenial_lendsVerticalMarginsWhenHostPaddingLeavesOnlyAnActionBand() = assertShortBand(permission = true)
+
+    private fun assertShortBand(permission: Boolean) {
+        var clicks = 0
+        composeRule.setContent {
+            Box(Modifier.size(320.dp, 240.dp).testTag("host")) {
+                val padding = PaddingValues(top = 80.dp, bottom = 90.dp)
+                if (permission) {
+                    ARCameraPermissionOverlay(
+                        ARCameraPermissionState(false, request = { clicks++ }, openSettings = {}),
+                        contentPadding = padding,
+                    )
+                } else {
+                    ARCoreAvailabilityOverlay(
+                        ARCoreAvailabilityState(ARCoreAvailability.SessionFailed, retry = { clicks++ }),
+                        contentPadding = padding,
+                    )
+                }
+            }
+        }
+        val cardTag = if (permission) ARCameraPermissionOverlayTags.CARD else ARCoreAvailabilityOverlayTags.CARD
+        val actionTag = if (permission) ARCameraPermissionOverlayTags.ACTION else ARCoreAvailabilityOverlayTags.ACTION
+        val host = composeRule.onNodeWithTag("host").getUnclippedBoundsInRoot()
+        val card = composeRule.onNodeWithTag(cardTag).getUnclippedBoundsInRoot()
+        val action = composeRule.onNodeWithTag(actionTag).getUnclippedBoundsInRoot()
+        assertTrue("card $card leaves the host's free band $host", card.top >= host.top + 80.dp && card.bottom <= host.bottom - 90.dp)
+        assertTrue("host insets squeeze the action to $action", action.bottom - action.top >= 40.dp)
+        assertTrue("action $action leaves card $card", action.top >= card.top && action.bottom <= card.bottom)
+        composeRule.onNodeWithTag(actionTag).performClick()
+        assertEquals(1, clicks)
+    }
 
     private fun assertPaddedCard(permission: Boolean, rtl: Boolean = false) {
         // A side panel as well as a bottom selector: test all edges, not just a vertical shift.

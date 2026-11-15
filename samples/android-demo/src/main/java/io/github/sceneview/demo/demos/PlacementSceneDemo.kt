@@ -3,6 +3,8 @@ package io.github.sceneview.demo.demos
 import android.os.SystemClock
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -14,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.TrackingFailureReason
@@ -54,10 +57,11 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     val state = rememberAutoPlacementState()
     // AutoPlacementScene draws the coaching card itself (coaching = true, the default); this
     // only tells the demo when to keep its own pill quiet, from the same tracking reason.
+    var cameraDenied by remember { mutableStateOf(false) }
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     val guidance = rememberArGuidanceState(state, trackingFailureReason = trackingFailure)
-    val recoveryCardShown = availability != null || state.phase == PlacementPhase.CAMERA_ERROR
+    val recoveryCardShown = autoPlacementRecoveryCardShown(cameraDenied, availability, state.phase)
     val playback = rememberArPlaybackDataset()
     ARHapticFeedback(state)
     DemoScaffold(
@@ -106,6 +110,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 ),
                 playbackDataset = playback,
                 onARCoreAvailability = { availability = it },
+                onCameraPermissionStateChanged = { cameraDenied = it != null },
                 onTrackingFailureChanged = { trackingFailure = it },
             ) { placement ->
                 instance?.let {
@@ -121,12 +126,18 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
 /** Gives recovery cards the free corner; animated coaching keeps the wider band above the dock. */
 @Composable
 internal fun autoPlacementGuidancePadding(bandWidth: Dp, recoveryCardShown: Boolean): PaddingValues {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val safeInsets = WindowInsets.safeDrawing
+    val safeWidth = (bandWidth - with(density) {
+        (safeInsets.getLeft(density, direction) + safeInsets.getRight(density, direction)).toDp()
+    }).coerceAtLeast(0.dp)
     val gutter = SceneViewTokens.Space.md
     val bottom = LocalDemoChromeBottomInset.current
     val slot = coachStackSlot(
         compactHeight = isDemoCompactHeight(),
         cardShown = recoveryCardShown,
-        bandWidth = bandWidth,
+        bandWidth = safeWidth,
         chromeWidth = LocalDemoChromeBottomWidth.current,
         chromeBottom = bottom,
         gutter = gutter,
@@ -135,8 +146,15 @@ internal fun autoPlacementGuidancePadding(bandWidth: Dp, recoveryCardShown: Bool
         maxWidth = SceneViewTokens.ArOverlay.maxWidth,
     )
     return PaddingValues(
-        start = if (slot.besideChrome) bandWidth - slot.width - gutter * 2 else 0.dp,
+        start = if (slot.besideChrome) safeWidth - slot.width - gutter * 2 else 0.dp,
         top = LocalDemoChromeTopInset.current,
         bottom = if (slot.besideChrome) 0.dp else bottom,
     )
 }
+
+/** The SDK can explain a refused camera before a session exists. */
+internal fun autoPlacementRecoveryCardShown(
+    cameraDenied: Boolean,
+    availability: ARCoreAvailability?,
+    phase: PlacementPhase,
+): Boolean = cameraDenied || availability != null || phase == PlacementPhase.CAMERA_ERROR

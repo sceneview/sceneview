@@ -2,7 +2,6 @@ package io.github.sceneview.ar
 
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
@@ -162,7 +161,8 @@ internal fun ARCoreAvailability.actionRes(): Int? = when (this) {
  * Public so hosts that pass their own `arCoreAvailabilityOverlay` can still reuse it, and so
  * previews can render every variant without an ARCore session.
  *
- * @param contentPadding space occupied by the host's chrome, in addition to the card's margin.
+ * @param contentPadding space occupied by the host's chrome. In a short remaining band, the
+ *   card's vertical margin and padding yield so its recovery action remains usable.
  */
 @Composable
 fun BoxScope.ARCoreAvailabilityOverlay(
@@ -177,7 +177,8 @@ fun BoxScope.ARCoreAvailabilityOverlay(
         onAction = { state.retry() },
         cardTag = ARCoreAvailabilityOverlayTags.CARD,
         actionTag = ARCoreAvailabilityOverlayTags.ACTION,
-        modifier = modifier.padding(contentPadding),
+        modifier = modifier,
+        contentPadding = contentPadding,
     )
 }
 
