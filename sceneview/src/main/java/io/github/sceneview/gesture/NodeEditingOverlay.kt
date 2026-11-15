@@ -55,6 +55,7 @@ import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.components.RenderableComponent
+import io.github.sceneview.math.Transform
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.utils.worldToScreen
@@ -496,45 +497,51 @@ internal class NodeScreenAnchors {
 private fun Node.localBounds(): Pair<Float3, Float3> =
     contentBounds() ?: (Float3(0f) to Float3(DEFAULT_HALF_EXTENT))
 
-/** Empty grouping nodes contribute no geometry, but their descendants keep their transforms. */
+/** Content corners are transformed directly into this node's local space before union. */
 private fun Node.contentBounds(): Pair<Float3, Float3>? {
     if (isDestroyed || (this is ModelNode && isModelDestroyed)) return null
-    val ownBounds = when (this) {
-        is ModelNode -> center to halfExtent
-        is RenderableComponent -> axisAlignedBoundingBox.let {
-            Float3(it.center[0], it.center[1], it.center[2]) to
-                Float3(it.halfExtent[0], it.halfExtent[1], it.halfExtent[2])
-        }
-        else -> null
-    }
-    ownBounds?.let { (_, extent) ->
-        if (extent.x > 0f || extent.y > 0f || extent.z > 0f) return ownBounds
-    }
-
     var minimum = Float3(Float.POSITIVE_INFINITY)
     var maximum = Float3(Float.NEGATIVE_INFINITY)
     var hasContent = false
-    for (child in childNodes) {
-        val (center, extent) = child.contentBounds() ?: continue
-        val transform = child.transform
-        // Transform all eight corners: translating just the center would lose rotation,
-        // non-uniform scale and reflected axes in the descendant hierarchy.
-        for (corner in 0 until 8) {
-            val offset = Float3(
-                if ((corner and 1) == 0) -extent.x else extent.x,
-                if ((corner and 2) == 0) -extent.y else extent.y,
-                if ((corner and 4) == 0) -extent.z else extent.z,
-            )
-            val point = (transform * Float4(center + offset, 1f)).xyz
-            minimum = Float3(
-                minOf(minimum.x, point.x), minOf(minimum.y, point.y), minOf(minimum.z, point.z),
-            )
-            maximum = Float3(
-                maxOf(maximum.x, point.x), maxOf(maximum.y, point.y), maxOf(maximum.z, point.z),
-            )
-            hasContent = true
+
+    fun collect(node: Node, toPivot: Transform) {
+        val ownBounds = when (node) {
+            is ModelNode -> node.center to node.halfExtent
+            is RenderableComponent -> node.axisAlignedBoundingBox.let {
+                Float3(it.center[0], it.center[1], it.center[2]) to
+                    Float3(it.halfExtent[0], it.halfExtent[1], it.halfExtent[2])
+            }
+            else -> null
+        }
+        if (ownBounds != null) {
+            val (center, extent) = ownBounds
+            if (extent.x > 0f || extent.y > 0f || extent.z > 0f) {
+                for (corner in 0 until 8) {
+                    val offset = Float3(
+                        if ((corner and 1) == 0) -extent.x else extent.x,
+                        if ((corner and 2) == 0) -extent.y else extent.y,
+                        if ((corner and 4) == 0) -extent.z else extent.z,
+                    )
+                    val point = (toPivot * Float4(center + offset, 1f)).xyz
+                    minimum = Float3(
+                        minOf(minimum.x, point.x), minOf(minimum.y, point.y), minOf(minimum.z, point.z),
+                    )
+                    maximum = Float3(
+                        maxOf(maximum.x, point.x), maxOf(maximum.y, point.y), maxOf(maximum.z, point.z),
+                    )
+                }
+                hasContent = true
+                return
+            }
+        }
+        for (child in node.childNodes) {
+            if (child.isDestroyed || (child is ModelNode && child.isModelDestroyed)) continue
+            // Keep the full transform chain. Reboxing at intermediate groups inflates
+            // the final AABB even when their rotations cancel each other out.
+            collect(child, toPivot * child.transform)
         }
     }
+    collect(this, Transform())
     return if (hasContent) (minimum + maximum) * 0.5f to (maximum - minimum) * 0.5f else null
 }
 

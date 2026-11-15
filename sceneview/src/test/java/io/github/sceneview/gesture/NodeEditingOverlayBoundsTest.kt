@@ -96,6 +96,22 @@ class NodeEditingOverlayBoundsTest {
     }
 
     @Test
+    fun `cancelling nested rotations keep the content base at zero`() {
+        val pivot = Node(engine)
+        val group = Node(engine).apply { rotation = Rotation(z = 45f) }
+        group.addChildNode(content(Float3(0f, 1f, 0f), Float3(1f)).apply {
+            rotation = Rotation(z = -45f)
+        })
+        pivot.addChildNode(group)
+
+        val (center, halfExtent) = bounds(pivot)
+
+        assertEquals("ring is at the content base", 0f, center.y - halfExtent.y, 1e-4f)
+        assertVector(Float3(0f, 1f, 0f), center)
+        assertVector(Float3(1f), halfExtent)
+    }
+
+    @Test
     fun `truly empty nodes keep the fallback`() {
         val (center, halfExtent) = bounds(Node(engine))
 
