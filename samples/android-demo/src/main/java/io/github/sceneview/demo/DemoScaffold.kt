@@ -1262,6 +1262,7 @@ fun DemoScaffold(
                         Box(Modifier.matchParentSize().hiddenInFullScreen { focusAlpha }) {
                             DemoTopOverlay(
                                 reservedTop = identityRow,
+                                reservedBottom = dockBandClearance + navigationBarInset,
                                 shown = overlaysShown,
                                 onBandHeightChanged = { topOverlayBandPx = it },
                                 content = topOverlay,
@@ -2516,6 +2517,15 @@ class DemoTopOverlayScope internal constructor(
      * keep compiling as a no-op.
      */
     val assetSourceChipReservedSpace: Dp,
+    /**
+     * Height of the band the dock covers at the bottom of the window, navigation-bar inset
+     * included.
+     *
+     * The slot runs down to the bottom of the window, under the dock. An overlay that can grow
+     * tall — a short window, large text — ends its content this far up, and scrolls what does
+     * not fit, or its last rows sit under the settings button (#4036).
+     */
+    val dockReservedSpace: Dp,
 ) : ColumnScope by columnScope
 
 /**
@@ -2526,6 +2536,7 @@ class DemoTopOverlayScope internal constructor(
 @Composable
 private fun BoxScope.DemoTopOverlay(
     reservedTop: Dp,
+    reservedBottom: Dp,
     shown: Boolean,
     onBandHeightChanged: (Int) -> Unit,
     content: @Composable DemoTopOverlayScope.() -> Unit,
@@ -2550,7 +2561,7 @@ private fun BoxScope.DemoTopOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(OVERLAY_STACK_SPACING),
         ) {
-            DemoTopOverlayScope(this, 0.dp).content()
+            DemoTopOverlayScope(this, 0.dp, reservedBottom).content()
         }
     }
 }
