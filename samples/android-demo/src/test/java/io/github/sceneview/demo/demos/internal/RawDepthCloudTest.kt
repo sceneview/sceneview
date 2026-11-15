@@ -68,6 +68,51 @@ class RawDepthCloudTest {
     }
 
     @Test
+    fun `buildCloud separates nearby surfaces into warm green and cool colors`() {
+        val (depth, conf) = buildPair(
+            depthMm = intArrayOf(500, 1_000, 2_000),
+            confidence = intArrayOf(200, 200, 200),
+            width = 3,
+            height = 1,
+        )
+        val packed = RawDepthCloud.buildCloud(depth, 6, conf, 3, 3, 1, stride = 1)
+        val near = RawDepthCloud.argb(packed, 0)
+        val middle = RawDepthCloud.argb(packed, 1)
+        val far = RawDepthCloud.argb(packed, 2)
+
+        fun red(argb: Int) = (argb ushr 16) and 0xFF
+        fun green(argb: Int) = (argb ushr 8) and 0xFF
+        fun blue(argb: Int) = argb and 0xFF
+
+        assertTrue("0.5 m should be warm", red(near) > green(near))
+        assertTrue("1 m should be green rather than another red", green(middle) > red(middle))
+        assertTrue(green(middle) > blue(middle))
+        assertTrue("2 m should be cool", blue(far) > red(far))
+        for (i in 0 until 3) {
+            assertEquals("Points stay opaque regardless of distance", 255, RawDepthCloud.argb(packed, i) ushr 24)
+        }
+    }
+
+    @Test
+    fun `buildCloud clamps color range and keeps colors independent of other samples`() {
+        val (depth, conf) = buildPair(
+            depthMm = intArrayOf(100, 300, 1_000, 5_000, 65_535),
+            confidence = IntArray(5) { 200 },
+            width = 5,
+            height = 1,
+        )
+        val packed = RawDepthCloud.buildCloud(depth, 10, conf, 5, 5, 1, stride = 1)
+        assertEquals(0xFFFF0000.toInt(), RawDepthCloud.argb(packed, 0))
+        assertEquals(0xFFFF0000.toInt(), RawDepthCloud.argb(packed, 1))
+        assertEquals(0xFF0000FF.toInt(), RawDepthCloud.argb(packed, 3))
+        assertEquals(0xFF0000FF.toInt(), RawDepthCloud.argb(packed, 4))
+
+        val (singleDepth, singleConf) = buildPair(intArrayOf(1_000), intArrayOf(64), 1, 1)
+        val single = RawDepthCloud.buildCloud(singleDepth, 2, singleConf, 1, 1, 1, stride = 1)
+        assertEquals(RawDepthCloud.argb(packed, 2), RawDepthCloud.argb(single, 0))
+    }
+
+    @Test
     fun `buildCloud drops pixels below confidence threshold`() {
         val (depth, conf) = buildPair(
             depthMm = intArrayOf(1_000, 1_000, 1_000, 1_000),
@@ -283,7 +328,7 @@ class RawDepthCloudTest {
     @Test
     fun `buildCloud packs four ints per point in declared order`() {
         val (depth, conf) = buildPair(
-            depthMm = intArrayOf(1_500),
+            depthMm = intArrayOf(300),
             confidence = intArrayOf(180),
             width = 1,
             height = 1,
@@ -293,11 +338,8 @@ class RawDepthCloudTest {
         // Layout: [x, y, depthMm, argb]
         assertEquals(0, packed[0])
         assertEquals(0, packed[1])
-        assertEquals(1_500, packed[2])
-        val expectedColor = DepthVisualization.falseColorArgb(
-            DepthVisualization.normalize(1_500)!!
-        )
-        assertEquals(expectedColor, packed[3])
+        assertEquals(300, packed[2])
+        assertEquals(DepthVisualization.falseColorArgb(0f), packed[3])
     }
 
     @Test

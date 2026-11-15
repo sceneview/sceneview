@@ -75,12 +75,22 @@ fun MaterialInstance.setExternalTexture(name: String, texture: Texture) =
  * (created by [io.github.sceneview.loaders.MaterialLoader.createSemanticsOverlayInstance]).
  *
  * [texture] must be a single-channel `R8` [Texture] whose red channel holds a `SemanticLabel`
- * ordinal (`0..11`) scaled to `[0, 1]`. Re-call this — or re-upload into the same [Texture] — on
+ * ordinal (`0..11`, `UNLABELED` first) scaled to `[0, 1]`. Re-call this — or re-upload into the same [Texture] — on
  * every frame to refresh the overlay (#1868).
+ *
+ * [sampler] defaults to the nearest texel, clamped at the edges. A texel is a class number, not
+ * a colour: blended with its neighbour's it becomes another class's number. The default used to
+ * filter linearly and repeat, and where `SKY` met `WATER` the nine classes numbered between
+ * them were each painted in a band across the boundary. Pass a filtering sampler only for a
+ * texture that holds something other than label ordinals.
  */
 fun MaterialInstance.setSemanticsTexture(
     texture: Texture,
-    sampler: TextureSampler = TextureSampler2D()
+    sampler: TextureSampler = TextureSampler(
+        TextureSampler.MinFilter.NEAREST,
+        TextureSampler.MagFilter.NEAREST,
+        TextureSampler.WrapMode.CLAMP_TO_EDGE
+    )
 ) = setParameter("semanticTexture", texture, sampler)
 
 /**
