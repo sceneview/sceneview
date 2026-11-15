@@ -572,7 +572,7 @@ internal object WebPTextureTranscoder {
 
     private fun decodeDataUri(uri: String): Uint8Array? = try {
         fromBase64(uri.substringAfter("base64,"))
-    } catch (throwable: Throwable) {
+    } catch (ignored: Throwable) {
         null
     }
 

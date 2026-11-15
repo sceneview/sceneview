@@ -196,8 +196,9 @@ class SplatWebBuffersTest {
         assertFailsWith<IllegalArgumentException> { SplatWebBuffers.packOrder(intArrayOf(1), 1) }
     }
 
-    // What the view applies after the shader: ToneMapper.Filmic (Filament's FilmicToneMapper,
-    // the Narkowicz 2015 ACES fit) then the sRGB OETF (IEC 61966-2-1).
+    // On greys, luminance-scaled Filmic reduces to the scalar Narkowicz 2015 ACES fit,
+    // followed by the sRGB OETF (IEC 61966-2-1). RGB round trips are pinned by the JVM
+    // WebToneMapInverseContractTest and the real-renderer splat-bundle spec.
     private fun filmic(x: Double): Double =
         (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)
 
@@ -205,8 +206,8 @@ class SplatWebBuffersTest {
         if (value < 0.0031308) value * 12.92 else 1.055 * value.pow(1.0 / 2.4) - 0.055
 
     @Test
-    fun colourRoundTripThroughFilmicAndSrgbIsTheIdentity() {
-        // Every 8-bit display level: shader side (EOTF, inverse Filmic), then view side
+    fun greyRoundTripThroughFilmicAndSrgbIsTheIdentity() {
+        // Every 8-bit grey level: shader side (EOTF, inverse Filmic), then view side
         // (Filmic, OETF), must give the level back. Both inverses are analytic and this is
         // Double arithmetic, so the only error is rounding: 1e-9 is a millionth of the
         // 1/255 step, and far below the two levels the browser spec allows for the view's

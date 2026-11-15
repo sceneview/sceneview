@@ -490,10 +490,17 @@
     return (0.03 - 0.59 * y - Math.sqrt(0.0009 + 1.3702 * y - 1.0127 * y * y)) / (-5.02 + 4.86 * y);
   }
 
+  /** Invert Filmic on Rec.709 luminance, matching ColorGrading.luminanceScaling(true). */
+  function _inverseLuminanceFilmic(rgb) {
+    var y = rgb[0] * 0.2126730 + rgb[1] * 0.7151520 + rgb[2] * 0.0721750;
+    var scale = y > 0 ? _inverseFilmic(y) / y : 0;
+    return [rgb[0] * scale, rgb[1] * scale, rgb[2] * scale];
+  }
+
   /**
    * The clear colour that puts the background [r, g, b, a] (sRGB as displayed, 0-1) on screen.
    *
-   * An opaque view clears inside the HDR pass, so its clear colour goes through the Filmic
+   * An opaque view clears inside the HDR pass, so its clear colour goes through luminance-scaled Filmic
    * tone mapper and the sRGB transfer before it reaches the canvas: both are undone here, the
    * way the Android demo paints its backdrop. A transparent view is composited over the raw
    * clear, which is already the colour on screen.
@@ -502,10 +509,11 @@
     if (transparent) return color;
     function channel(c) {
       c = Math.min(Math.max(+c || 0, 0), 1);
-      return _inverseFilmic(_srgbToLinear(c)) || 0;
+      return _srgbToLinear(c);
     }
     var alpha = color[3] !== undefined ? color[3] : 1;
-    return [channel(color[0]), channel(color[1]), channel(color[2]), alpha];
+    var hdr = _inverseLuminanceFilmic([channel(color[0]), channel(color[1]), channel(color[2])]);
+    return [hdr[0], hdr[1], hdr[2], alpha];
   }
 
   // ---------------------------------------------------------------
@@ -1672,10 +1680,13 @@
         var rho = p.rho * (1 - _smoothstep(_STUDIO_UNDERBODY[0], _STUDIO_UNDERBODY[1], sh.u[i]));
         px[i * 4 + 3] = Math.round(255 * (1 - rho));
         if (!(s > 0) && rho === p.rho) continue;
+        var shown = p.t.map(function(t, channel) {
+          return _srgbToLinear(Math.min(1, Math.max(0, (t * (1 - s) - rho * H[channel]) / (1 - rho))));
+        });
+        var hdr = _inverseLuminanceFilmic(shown);
         for (c = 0; c < 3; c++) {
           if (!(p.hdr[c] > 0)) continue;
-          var shown = Math.min(1, Math.max(0, (p.t[c] * (1 - s) - rho * H[c]) / (1 - rho)));
-          var f = (_inverseFilmic(_srgbToLinear(shown)) || 0) / p.hdr[c];
+          var f = hdr[c] / p.hdr[c];
           px[i * 4 + c] = Math.round(255 * _linearToSrgb(f));
         }
       }
@@ -6459,10 +6470,11 @@
     var cameraEntity = Filament.EntityManager.get().create();
     var camera = engine.createCamera(cameraEntity);
     var view = engine.createView();
-    // Tone mapping: Filmic, as on Android (SceneFactories.createView) and in the Kotlin/JS
-    // bundle, instead of Filament's default ACES (legacy) — one model grades the same everywhere.
+    // The JS builder lacks PBR Neutral. Scale Filmic by luminance instead of channel
+    // so material chroma survives below the highlight shoulder, as in the Kotlin/JS bundle.
     var colorGrading = Filament.ColorGrading.Builder()
       .toneMapping(Filament.ColorGrading$ToneMapping.FILMIC)
+      .luminanceScaling(true)
       .build(engine);
     view.setColorGrading(colorGrading);
     var swapChain = engine.createSwapChain();

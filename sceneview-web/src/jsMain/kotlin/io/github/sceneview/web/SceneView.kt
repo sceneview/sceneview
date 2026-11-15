@@ -54,7 +54,7 @@ class SceneView private constructor(
     val camera: Camera,
     val swapChain: SwapChain,
     private val cameraEntity: Entity,
-    /** The view's Filmic `ColorGrading`, owned here and destroyed with the view. */
+    /** The view's luminance-scaled Filmic grading, owned and destroyed with the view. */
     private val colorGrading: dynamic,
 ) {
     private var animationFrameId: Int? = null
@@ -450,9 +450,8 @@ class SceneView private constructor(
                     view.setBlendMode(viewBlendModeTranslucent())
                     renderer.setClearOptions(backgroundClearOptions(BackgroundColor.DEFAULT))
 
-                    // Tone mapping: Filmic, as on Android (SceneFactories.createView).
-                    // Filament's default is ACES (legacy); with Filmic the same model
-                    // grades the same on both platforms.
+                    // Preserve material chroma with the Filmic binding's luminance scaling.
+                    // PBR Neutral (Android's default) is not exposed by these JS bindings.
                     val colorGrading = filmicColorGrading(engine)
                     view.setColorGrading(colorGrading)
 

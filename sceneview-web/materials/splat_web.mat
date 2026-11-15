@@ -19,8 +19,8 @@
 //   * Attributes stay in cloud order; only splatOrder is re-uploaded on a re-sort.
 //
 // Colour: splat colours are display-referred. The vertex stage applies the exact sRGB
-// EOTF then the inverse of ToneMapper.Filmic, so the view's Filmic + sRGB OETF lands them
-// unchanged. This only holds on a Filmic view — SceneView (web) sets one, as Android does.
+// EOTF then the inverse of luminance-scaled Filmic, so the view's tone mapping + sRGB
+// OETF lands them unchanged. SceneView (web) configures the matching luminance scaling.
 // Vertex domain stays `object`; the shader writes worldPosition along camera right/up.
 material {
     "name" : "SplatWeb",
@@ -89,10 +89,13 @@ vertex {
                    step(float3(0.04045), s));
     }
 
-    // Exact analytic inverse of ToneMapper.Filmic (Filament's Inverse_Tonemap_Filmic, inlined
-    // so it is available in the vertex stage — the colour is per splat, not per fragment).
+    // Invert Filmic on Rec.709 luminance, then scale RGB together. Inverting channels
+    // separately would shift splat colours under the view's luminance scaling (#4623).
     float3 splatInverseFilmic(float3 x) {
-        return (0.03 - 0.59 * x - sqrt(0.0009 + 1.3702 * x - 1.0127 * x * x)) / (-5.02 + 4.86 * x);
+        float y = dot(x, float3(0.2126730, 0.7151520, 0.0721750));
+        if (y <= 0.0) return float3(0.0);
+        float inverse = (0.03 - 0.59 * y - sqrt(0.0009 + 1.3702 * y - 1.0127 * y * y)) / (-5.02 + 4.86 * y);
+        return x * (inverse / y);
     }
 
     void materialVertex(inout MaterialVertexInputs material) {

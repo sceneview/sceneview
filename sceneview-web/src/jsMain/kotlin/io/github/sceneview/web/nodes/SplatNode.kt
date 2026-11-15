@@ -43,9 +43,9 @@ import kotlin.math.max
  * Four static RGBA16F attribute textures are uploaded in cloud order; a fifth, RGBA8,
  * texture carries the draw order (one 3-byte index per slot) and is the only upload on a
  * painter's re-sort.
- * The shader reverses sRGB/Filmic before the View applies its display colour transform:
+ * The shader reverses sRGB/luminance-scaled Filmic before the View's display transform:
  * splat colours are display-referred, and [io.github.sceneview.web.SceneView] tone-maps
- * with Filmic (as Android does), so a 0.5 grey splat reads 0.5 on screen. A view switched
+ * with luminance-scaled Filmic, so a 0.5 grey splat reads 0.5 on screen. A view switched
  * to another tone mapper shows splats with shifted colours.
  * Draws are split at 65535 instances, sharing textures and using global blend order.
  * A cloud holds at most 2^24 splats ([SplatWebBuffers.MAX_SPLATS]).

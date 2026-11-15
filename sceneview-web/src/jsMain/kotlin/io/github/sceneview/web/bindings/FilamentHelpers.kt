@@ -71,14 +71,15 @@ fun fovVertical(): dynamic = js("Filament.Camera\$Fov.VERTICAL")
 fun viewBlendModeTranslucent(): dynamic = js("Filament.View\$BlendMode.TRANSLUCENT")
 
 /**
- * A `ColorGrading` with the Filmic tone mapper — the default of SceneView Android
- * (`SceneFactories.createView`), so one model grades the same on both platforms.
- * Filament's own default is ACES (legacy), which grades PBR content cooler and less
- * saturated — Android kept Filmic for that reason.
+ * Filmic with luminance scaling: tone-map luminance instead of each colour channel,
+ * preserving material chroma until highlights exhaust their display range (#4623).
+ * The pinned JS bindings do not expose Android's PBR Neutral tone mapper.
  *
  * The caller owns the returned object: `engine.destroyColorGrading(it)` at teardown.
  */
 internal fun filmicColorGrading(engine: Engine): dynamic {
     val builder: dynamic = js("Filament.ColorGrading.Builder()")
-    return builder.toneMapping(js("Filament.ColorGrading\$ToneMapping.FILMIC")).build(engine)
+    return builder.toneMapping(js("Filament.ColorGrading\$ToneMapping.FILMIC"))
+        .luminanceScaling(true)
+        .build(engine)
 }
