@@ -93,6 +93,30 @@ class SemanticsOverlayRenderTest {
         return texture
     }
 
+    /**
+     * Points the view at the origin from 5 m, over a red background: red, so a pixel left
+     * transparent cannot be mistaken for UNLABELED's own black. Main thread.
+     */
+    private fun lookAtTheOriginOverRed() {
+        val engine = harness.engine
+        val entity = cameraEntity ?: EntityManager.get().create().also { cameraEntity = it }
+        harness.view.camera = (engine.getCameraComponent(entity) ?: engine.createCamera(entity)).apply {
+            setProjection(45.0, 1.0, 0.1, 100.0, Camera.Fov.VERTICAL)
+            lookAt(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+            setExposure(1.0f)
+        }
+        harness.scene.skybox = Skybox.Builder().color(1f, 0f, 0f, 1f).build(engine)
+    }
+
+    /** A quad wider than the view at the camera's distance, facing it: it fills the frame. */
+    private fun fullFrameQuad(instance: MaterialInstance) = PlaneNode(
+        engine = harness.engine,
+        size = Size(6f, 6f),
+        center = Position(0f, 0f, 0f),
+        normal = Direction(0f, 0f, 1f),
+        materialInstances = listOf(instance)
+    )
+
     @Test
     fun material_loadsWithItsTwoParameters() {
         harness.runOnMain {
@@ -115,15 +139,7 @@ class SemanticsOverlayRenderTest {
         val centre = SIZE / 2
 
         harness.runOnMain {
-            val engine = harness.engine
-            val entity = EntityManager.get().create().also { cameraEntity = it }
-            harness.view.camera = engine.createCamera(entity).apply {
-                setProjection(45.0, 1.0, 0.1, 100.0, Camera.Fov.VERTICAL)
-                lookAt(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
-                setExposure(1.0f)
-            }
-            // Red, so a pixel left transparent cannot be mistaken for UNLABELED's own black.
-            harness.scene.skybox = Skybox.Builder().color(1f, 0f, 0f, 1f).build(engine)
+            lookAtTheOriginOverRed()
             harness.renderFrames(5)
         }
         // Read back from the test's own thread, never inside runOnMain: the callback that hands
@@ -139,14 +155,7 @@ class SemanticsOverlayRenderTest {
                 val labels = labelTexture(label).also { texture = it }
                 val overlay = materialLoader.createSemanticsOverlayInstance(labels, opacity = 1f)
                     .also { instance = it }
-                // Wider than the view at the camera's distance, facing it: the quad fills the frame.
-                val node = PlaneNode(
-                    engine = harness.engine,
-                    size = Size(6f, 6f),
-                    center = Position(0f, 0f, 0f),
-                    normal = Direction(0f, 0f, 1f),
-                    materialInstances = listOf(overlay)
-                ).also { quad = it }
+                val node = fullFrameQuad(overlay).also { quad = it }
                 harness.scene.addEntity(node.entity)
                 harness.renderFrames(5)
             }
@@ -186,6 +195,62 @@ class SemanticsOverlayRenderTest {
         assertTrue(
             "WATER (11) is cyan — green and blue with no red: $said",
             Color.red(water) <= 40 && Color.green(water) >= 150 && Color.blue(water) >= 150
+        )
+    }
+
+    @Test
+    fun twoClassesSideBySide_showOnlyThoseTwo() {
+        RenderTestCapabilities.assumeGpuReadbackAvailable()
+        harness.resetScene()
+
+        var texture: Texture? = null
+        var instance: MaterialInstance? = null
+        var quad: PlaneNode? = null
+        harness.runOnMain {
+            lookAtTheOriginOverRed()
+            // Two texels, SKY beside WATER: the classes furthest apart in ARCore's numbering.
+            val labels = Texture.Builder()
+                .width(2)
+                .height(1)
+                .levels(1)
+                .sampler(Texture.Sampler.SAMPLER_2D)
+                .format(Texture.InternalFormat.R8)
+                .build(harness.engine)
+                .also { texture = it }
+            val bytes = ByteBuffer.allocateDirect(2).put(0, 1.toByte()).put(1, 11.toByte())
+            labels.setImage(
+                harness.engine,
+                0,
+                Texture.PixelBufferDescriptor(bytes, Texture.Format.R, Texture.Type.UBYTE)
+            )
+            val overlay = materialLoader.createSemanticsOverlayInstance(labels, opacity = 1f)
+                .also { instance = it }
+            val node = fullFrameQuad(overlay).also { quad = it }
+            harness.scene.addEntity(node.entity)
+            harness.renderFrames(5)
+        }
+        val frame = harness.capturePixels()
+        harness.runOnMain {
+            quad?.let {
+                harness.scene.remove(it.entity)
+                it.destroy()
+            }
+            instance?.let { materialLoader.destroyMaterialInstance(it) }
+            texture?.let { harness.engine.destroyTexture(it) }
+        }
+
+        val row = (0 until SIZE).map { frame.getPixel(it, SIZE / 2) }
+        val oneSide = row.first()
+        val otherSide = row.last()
+        assertFalse("The two ends of the row are two classes", colorsMatch(oneSide, otherSide, tolerance = 40))
+        // A texel is a class number. Blended with its neighbour's it is another class's number:
+        // filtered linearly, the nine classes between SKY and WATER were each painted in a band
+        // across the boundary. One pixel either side of it is left to the view's anti-aliasing.
+        val neither = row.count { !colorsMatch(it, oneSide, tolerance = 12) && !colorsMatch(it, otherSide, tolerance = 12) }
+        assertTrue(
+            "$neither of $SIZE pixels across SKY | WATER are in neither class's colour: " +
+                row.joinToString(" ") { "%06X".format(it and 0xFFFFFF) },
+            neither <= 2
         )
     }
 }

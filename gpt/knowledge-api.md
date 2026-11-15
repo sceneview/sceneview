@@ -3025,6 +3025,10 @@ val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opa
 overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
 ```
 
+The label texture is sampled at the nearest texel, clamped at the edges, by default
+(`setSemanticsTexture(texture, sampler = …)`). A texel is a class number, not a colour: never
+filter it, or every boundary between two classes is painted with the classes numbered between.
+
 Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
 semantic blend slider over the overlay material, plus the top-3 label HUD.
 
