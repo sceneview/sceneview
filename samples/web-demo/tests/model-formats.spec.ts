@@ -38,7 +38,8 @@ test.beforeEach(async ({ page }) => {
       : Buffer.from(ext === 'obj' ? obj : ext === 'ply' ? ply : stl);
     await route.fulfill({ contentType: 'application/octet-stream', body });
   });
-  await page.route('**/open/', async route => {
+  // Match the pathname so ?url=...&unit=... also receives the local /open page.
+  await page.route(url => url.pathname === '/open/', async route => {
     await route.fulfill({ contentType: 'text/html', body: await readFile(join(root, 'website-static/open/index.html'), 'utf8') });
   });
   await page.route('http://localhost:8080/js/**', route => route.fulfill({ path: join(root, 'website-static', new URL(route.request().url()).pathname) }));
@@ -106,6 +107,7 @@ test('/open drops an STL, changes units, and picks an OBJ', async ({ page }, inf
 test('/open shares the remote model URL and unit in its phone QR', async ({ page }) => {
   const modelUrl = 'http://localhost:8080/formats/part.stl';
   await page.goto(`/open/?url=${encodeURIComponent(modelUrl)}&unit=meter`);
+  await expect(page.locator('#viewer-canvas')).toBeVisible();
   await expect(page.locator('#viewer-status')).toBeHidden({ timeout: 45000 });
   await expect(page.locator('#model-phone')).toBeVisible();
   await expect(page.locator('#model-qr svg')).toBeVisible();
