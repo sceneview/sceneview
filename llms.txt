@@ -3097,8 +3097,8 @@ fine-grained control. See the `ar-depth-of-field` demo for the canonical wiring.
 ### Scene Semantics — per-pixel outdoor classification (#1730)
 
 ARCore's Scene Semantics labels every pixel of an **outdoor** camera frame with one of 12 classes
-through an on-device ML model (`SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`, `TERRAIN`,
-`STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`, `UNLABELED`). The AI-first use case is
+through an on-device ML model (`UNLABELED`, `SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`,
+`TERRAIN`, `STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`). The AI-first use case is
 semantic placement rules — "place models only on `TERRAIN`, never on `SKY`/`PERSON`/`VEHICLE`" —
 that an assistant can generate without reading per-pixel rasters.
 
@@ -3155,6 +3155,10 @@ import io.github.sceneview.material.setSemanticsOpacity
 val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
 overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
 ```
+
+The label texture is sampled at the nearest texel, clamped at the edges, by default
+(`setSemanticsTexture(texture, sampler = …)`). A texel is a class number, not a colour: never
+filter it, or every boundary between two classes is painted with the classes numbered between.
 
 Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
 semantic blend slider over the overlay material, plus the top-3 label HUD.
