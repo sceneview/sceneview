@@ -87,46 +87,55 @@ class ScanLiveInstructionTest {
     @Test
     fun `a face is asked for once the opening line has had its time, a problem still first`() {
         val line = ScanLiveInstruction()
-        assertFalse(line.introOver(0))
         line.update(nowMs = 0)
-        assertFalse(line.introOver(ScanLiveInstruction.INTRO_MS - 1))
-        assertTrue(line.introOver(ScanLiveInstruction.INTRO_MS))
         assertEquals(ScanInstruction.Sweep, line.update(nowMs = 3_000, face = SpaceFace.Back))
         assertEquals(ScanInstruction.FaceBack, line.update(nowMs = 6_000, face = SpaceFace.Back))
         assertEquals(ScanInstruction.FaceBottom, line.update(nowMs = 8_000, face = SpaceFace.Bottom))
         assertEquals(ScanInstruction.StayPut, line.update(nowMs = 10_000, face = SpaceFace.Bottom, strayed = true))
-        assertEquals(ScanInstruction.FaceTop, line.update(nowMs = 12_000, face = SpaceFace.Top))
+        assertEquals(ScanInstruction.Slower, line.update(nowMs = 12_000, face = SpaceFace.Bottom, tooFast = true))
+        assertEquals(ScanInstruction.FaceTop, line.update(nowMs = 14_000, face = SpaceFace.Top))
         // Every face asked for: the scan looks complete, or the line asks.
-        assertEquals(ScanInstruction.Complete, line.update(nowMs = 14_000, complete = true, whenReady = true))
-        assertEquals(ScanInstruction.WhenReady, line.update(nowMs = 16_000, whenReady = true))
+        assertEquals(ScanInstruction.Complete, line.update(nowMs = 16_000, complete = true, whenReady = true))
+        assertEquals(ScanInstruction.WhenReady, line.update(nowMs = 18_000, whenReady = true))
         // The opening itself is never asked for.
         assertEquals(null, ScanInstruction.faceOf(SpaceFace.Front))
     }
 
     @Test
-    fun `the faces are asked one at a time, each until seen twice running or for eight seconds`() {
+    fun `the faces are asked one at a time, each until seen twice running or shown for eight seconds`() {
         val guide = SpaceFaceGuide()
-        assertEquals(SpaceFace.Back, guide.ask(0))
-        // Its turn does not run while the line cannot say it.
-        assertEquals(SpaceFace.Back, guide.ask(20_000, asking = false))
+        assertEquals(SpaceFace.Back, guide.face)
+        // Its turn does not run while its line is not on screen: the opening line, a pause, "slower".
+        guide.tick(0, shown = false)
+        guide.tick(20_000, shown = false)
+        assertEquals(SpaceFace.Back, guide.face)
         // One reading closes nothing: the left side it saw is gone at the next.
         guide.found(setOf(SpaceFace.Back, SpaceFace.Left))
-        assertEquals(SpaceFace.Back, guide.ask(20_100))
+        assertEquals(SpaceFace.Back, guide.face)
         guide.found(setOf(SpaceFace.Back))
-        assertEquals(SpaceFace.Bottom, guide.ask(20_200))
+        assertEquals(SpaceFace.Bottom, guide.face)
         assertEquals(0.2f, guide.share, 1e-6f)
-        // A bottom that does not show is asked for eight seconds, then the line moves on.
-        assertEquals(SpaceFace.Bottom, guide.ask(20_200 + SpaceFaceGuide.ASK_MS - 1))
-        assertEquals(SpaceFace.Left, guide.ask(20_200 + SpaceFaceGuide.ASK_MS))
+        // A bottom that does not show: eight seconds with its line up, a pause between not counted.
+        guide.tick(20_200, shown = true)
+        guide.tick(24_200, shown = true)
+        guide.tick(40_000, shown = false)
+        guide.tick(40_000 + SpaceFaceGuide.ASK_MS - 4_001, shown = true)
+        assertEquals(SpaceFace.Bottom, guide.face)
+        guide.tick(40_000 + SpaceFaceGuide.ASK_MS - 4_000, shown = true)
+        assertEquals(SpaceFace.Left, guide.face)
         assertFalse(guide.asked)
         // Seen late, it still counts; the left side seen, the right is next.
         repeat(2) { guide.found(setOf(SpaceFace.Back, SpaceFace.Bottom, SpaceFace.Left)) }
-        assertEquals(SpaceFace.Right, guide.ask(30_000))
+        assertEquals(SpaceFace.Right, guide.face)
         assertEquals(0.6f, guide.share, 1e-6f)
         assertFalse(guide.complete)
         // A shelf: no right side, no top. Both asked for, the scan looks complete with what it holds.
-        assertEquals(SpaceFace.Top, guide.ask(30_000 + SpaceFaceGuide.ASK_MS))
-        assertEquals(null, guide.ask(30_000 + 2 * SpaceFaceGuide.ASK_MS))
+        guide.tick(50_000, shown = true)
+        guide.tick(50_000 + SpaceFaceGuide.ASK_MS, shown = true)
+        assertEquals(SpaceFace.Top, guide.face)
+        guide.tick(60_000, shown = true)
+        guide.tick(60_000 + SpaceFaceGuide.ASK_MS, shown = true)
+        assertEquals(null, guide.face)
         assertTrue(guide.asked)
         assertTrue(guide.complete)
     }
@@ -137,9 +146,10 @@ class ScanLiveInstructionTest {
         var now = 0L
         val asked = ArrayList<SpaceFace?>()
         repeat(SpaceFaceGuide.ORDER.size + 1) {
-            asked += guide.ask(now)
+            asked += guide.face
+            guide.tick(now, shown = true)
             now += SpaceFaceGuide.ASK_MS
-            guide.ask(now)
+            guide.tick(now, shown = true)
         }
         assertEquals(SpaceFaceGuide.ORDER + null, asked)
         assertTrue(guide.asked)

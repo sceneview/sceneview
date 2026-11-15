@@ -189,6 +189,7 @@ import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanFollow
 import io.github.sceneview.demo.demos.internal.ScanHoleGuide
+import io.github.sceneview.demo.demos.internal.ScanInstruction
 import io.github.sceneview.demo.demos.internal.ScanLens
 import io.github.sceneview.demo.demos.internal.ScanLiveInstruction
 import io.github.sceneview.demo.demos.internal.ScanPhase
@@ -1952,10 +1953,7 @@ private fun RerunLiveScreen(
             delay(SPACE_FACES_MS)
         }
     }
-    val spaceFace = spaceFaces.takeIf { recording && scanScope == ScanScope.Space }?.ask(
-        nowMs,
-        asking = !strayed && !trackingLost && !poseSlipped && !dark && instructionState.introOver(nowMs),
-    )
+    val spaceFace = spaceFaces.takeIf { recording && scanScope == ScanScope.Space }?.face
     // When it is finished: the turn the phone has made is the circle on the red button, and a
     // full one says so, in the line and under the thumb.
     val scanSeconds = scan?.elapsedSeconds() ?: 0f
@@ -1985,6 +1983,11 @@ private fun RerunLiveScreen(
         floorOnly = scanScope.hasFloorPlan && !scanCoverage.facingWall,
         hole = hole,
         holeId = holeSide.gapId,
+    )
+    // A face's turn only runs while its line is on screen and the capture takes frames.
+    spaceFaces.tick(
+        nowMs,
+        shown = spaceFace != null && (scan == null || phase.integrates) && instruction == ScanInstruction.faceOf(spaceFace),
     )
 
     // Where the recorder's camera window is: the live model's ground leaves it open.

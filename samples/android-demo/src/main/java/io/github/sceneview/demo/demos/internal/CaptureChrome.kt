@@ -102,7 +102,7 @@ class ScanLiveInstruction {
         hole: ScanTurn? = null,
         /** Which area [hole] is the side of ([ScanHoleGuide.gapId]). */
         holeId: Int = 0,
-        /** The face of a cupboard or a shelf to film now ([SpaceFaceGuide.ask]), `null` with none. */
+        /** The face of a cupboard or a shelf to film now ([SpaceFaceGuide.face]), `null` with none. */
         face: SpaceFace? = null,
     ): ScanInstruction? {
         if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
@@ -145,9 +145,6 @@ class ScanLiveInstruction {
         }
         return shown
     }
-
-    /** Whether the opening line has had its time at [nowMs]: what follows it can be said. */
-    fun introOver(nowMs: Long): Boolean = startedAt?.let { nowMs - it >= INTRO_MS } == true
 
     companion object {
         const val HOLD_MS = 2_000L
