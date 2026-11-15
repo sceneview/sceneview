@@ -25,6 +25,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import io.github.sceneview.ar.ARCameraPermissionOverlay
 import io.github.sceneview.ar.ARCameraPermissionOverlayTags
+import io.github.sceneview.ar.ARCameraPermissionRecovery
 import io.github.sceneview.ar.ARCameraPermissionState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARCoreAvailabilityOverlay
@@ -77,6 +78,15 @@ class AutoPlacementRecoveryInsetsTest {
 
     @Test
     @Config(qualifiers = "w640dp-h360dp-land-notnight-xhdpi")
+    fun narrowLandscape_atMaximumFont_withGestureBars_keepsBothPermissionActionsReachable() = verify(
+        permission = true,
+        fontScale = 2f,
+        bottomBar = 24,
+        permissionRecovery = ARCameraPermissionRecovery.RequestWithSettings,
+    )
+
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-notnight-xhdpi")
     fun narrowLandscape_withSideNavigation_keepsExplanationVisible() = verify(rightBar = 48)
 
     @Test
@@ -87,10 +97,17 @@ class AutoPlacementRecoveryInsetsTest {
     @Config(qualifiers = "w580dp-h360dp-land-notnight-xhdpi")
     fun smallLandscape_withSideNavigation_usesSafeWidth() = verify(rightBar = 48)
 
-    private fun verify(permission: Boolean = false, fontScale: Float = 1f, bottomBar: Int = 0, rightBar: Int = 0) {
+    private fun verify(
+        permission: Boolean = false,
+        fontScale: Float = 1f,
+        bottomBar: Int = 0,
+        rightBar: Int = 0,
+        permissionRecovery: ARCameraPermissionRecovery = ARCameraPermissionRecovery.Request,
+    ) {
         var host: View? = null
         var density = 1f
         var clicks = 0
+        var settingsOpened = 0
         composeRule.setContent {
             host = LocalView.current
             density = LocalDensity.current.density
@@ -110,7 +127,11 @@ class AutoPlacementRecoveryInsetsTest {
                             val modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
                             if (permission) {
                                 ARCameraPermissionOverlay(
-                                    ARCameraPermissionState(false, request = { clicks++ }, openSettings = {}),
+                                    ARCameraPermissionState(
+                                        recovery = permissionRecovery,
+                                        request = { clicks++ },
+                                        openSettings = { settingsOpened++ },
+                                    ),
                                     modifier = modifier,
                                     contentPadding = padding,
                                 )
@@ -170,7 +191,34 @@ class AutoPlacementRecoveryInsetsTest {
             assertTrue("explanation cannot be read even after scrolling: $where", visibleBody.height >= 15f * fontScale * density)
         }
         actionNode.performClick()
-        assertEquals("the recovery action must remain usable", 1, clicks)
+        if (permission && permissionRecovery == ARCameraPermissionRecovery.RequestWithSettings) {
+            assertEquals("settings must remain the primary action", 1, settingsOpened)
+            assertEquals(0, clicks)
+            val requestNode = composeRule.onNodeWithTag(ARCameraPermissionOverlayTags.REQUEST_ACTION)
+            val requestHeight = requestNode.getUnclippedBoundsInRoot().let { it.bottom - it.top }
+            assertTrue("secondary label is squeezed: $where height=$requestHeight", requestHeight >= 24.dp + 15.dp * fontScale)
+            // At 200% text the label can wrap: scroll its text into view even if the
+            // button's padding makes the complete touch target taller than the band.
+            val requestLabel = composeRule.onNodeWithText(
+                RuntimeEnvironment.getApplication().getString(io.github.sceneview.ar.R.string.sceneview_camera_permission_grant),
+                useUnmergedTree = true,
+            )
+            requestLabel.performScrollTo()
+            val label = requestLabel.getUnclippedBoundsInRoot()
+            val visibleLabel = requestLabel.fetchSemanticsNode().boundsInRoot
+            val visibleRequest = requestNode.fetchSemanticsNode().boundsInRoot
+            assertTrue("secondary label is clipped: $where label=$label", visibleLabel.height >= (label.bottom - label.top).value * density - 1f)
+            assertTrue("secondary label leaves its card: $where label=$label", label.top >= card.top && label.bottom <= card.bottom)
+            assertTrue("secondary touch target is too short: $where", visibleRequest.height >= 48f * density)
+            requestNode.performClick()
+            assertEquals("the request path must remain usable", 1, clicks)
+            assertEquals(1, settingsOpened)
+            // Users must also be able to return to the first action after reaching the second.
+            actionNode.performScrollTo()
+            assertTrue("settings action cannot be reached again", actionNode.fetchSemanticsNode().boundsInRoot.height >= visibleAction.height - 1f)
+        } else {
+            assertEquals("the recovery action must remain usable", 1, clicks)
+        }
     }
 
     private fun bounds(tag: String) = composeRule.onNodeWithTag(tag).getUnclippedBoundsInRoot()

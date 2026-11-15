@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.sp
  * what is drawn (#4533).
  *
  * With host [contentPadding], vertical margins and padding yield before the explanation;
- * recovery actions keep their label's height even in a narrow band above the host's controls.
+ * recovery actions scroll as a group when they cannot fit in the band above the host's controls.
  *
  * @param action the action's label, or `null` for a card that only explains.
  */
@@ -99,7 +99,10 @@ internal fun BoxScope.AROverlayCard(
                 )
             }
             if (action != null) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     AROverlayCardAction(action, onAction, actionTag)
                     if (secondaryAction != null) {
                         Spacer(Modifier.height(8.dp))
@@ -119,7 +122,13 @@ internal fun BoxScope.AROverlayCard(
             .padding(horizontal = AROverlayCardPadding),
     ) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val actionPlaceable = measurables.getOrNull(1)?.measure(loose)
+        val actionPlaceable = measurables.getOrNull(1)?.let { actions ->
+            // Like the explanation, a scrollable action group needs a finite viewport even
+            // inside a scrolling host. Its natural height keeps both actions whole there.
+            val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight
+            else actions.maxIntrinsicHeight(constraints.maxWidth)
+            actions.measure(loose.copy(maxHeight = maxHeight))
+        }
         val actionHeight = actionPlaceable?.height ?: 0
         val padding = AROverlayCardPadding.roundToPx() * 2
         val gap = if (actionPlaceable != null) AROverlayCardActionGap.roundToPx() else 0

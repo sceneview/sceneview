@@ -57,7 +57,7 @@ object ARCameraPermissionOverlayTags {
  * previews can render all variants without an ARCore session.
  *
  * @param contentPadding space occupied by the host's chrome. In a short remaining band, the
- *   card's vertical margin and padding yield so its recovery action remains usable.
+ *   card's vertical margin and padding yield; recovery actions scroll together when needed.
  */
 @Composable
 fun BoxScope.ARCameraPermissionOverlay(
