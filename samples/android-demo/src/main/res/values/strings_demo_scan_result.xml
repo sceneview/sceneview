@@ -53,9 +53,11 @@
     <string name="scan_live_map_swap_map">Make the map bigger</string>
 
     <!-- A space's result: its inside measurements and the biggest box that fits -->
-    <string name="scan_space_inside">Inside %1$d × %2$d × %3$d cm</string>
+    <string name="scan_space_inside">Inside %1$s × %2$s × %3$s %4$s</string>
+    <string name="scan_space_unit_cm">cm</string>
+    <string name="scan_space_unit_in">in</string>
     <string name="scan_space_order">width × depth × height</string>
-    <string name="scan_space_fits">A box of %1$d × %2$d × %3$d cm fits</string>
+    <string name="scan_space_fits">A box of %1$s × %2$s × %3$s %4$s fits</string>
     <string name="scan_space_fits_none">Too tight for a box</string>
     <string name="scan_space_fits_no_bottom">Film the bottom too, to get the box that fits</string>
     <plurals name="scan_space_obstacles">

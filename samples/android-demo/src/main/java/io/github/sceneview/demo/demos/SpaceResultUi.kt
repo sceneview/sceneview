@@ -5,15 +5,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.MeasureUnitSystem
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.SpaceFace
 import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.SpaceFitter
+import io.github.sceneview.demo.demos.internal.SurveyFormat
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens.Type
@@ -65,9 +68,17 @@ internal fun rememberSpaceMeasure(scope: ScanScope, surfels: DenseCloud?, eye: V
     return measure
 }
 
-/** [measure] on its card: nothing while it is read, then the figures, or what to film again. */
+/**
+ * [measure] on its card: nothing while it is read, then the figures, or what to film again.
+ * The figures are in the language's [units], as everywhere else in a scan ([SurveyFormat.units]):
+ * inches in US English, centimetres in every other language.
+ */
 @Composable
-internal fun SpaceMeasureCard(measure: SpaceMeasure, modifier: Modifier = Modifier) {
+internal fun SpaceMeasureCard(
+    measure: SpaceMeasure,
+    modifier: Modifier = Modifier,
+    units: MeasureUnitSystem = SurveyFormat.units(LocalLocale.current.platformLocale),
+) {
     val chrome = LocalStageChrome.current
     when (measure) {
         SpaceMeasure.Measuring -> Unit
@@ -81,8 +92,11 @@ internal fun SpaceMeasureCard(measure: SpaceMeasure, modifier: Modifier = Modifi
         }
         is SpaceMeasure.Found -> OverlayCard(testTag = SPACE_CARD_TAG, modifier = modifier.semantics(mergeDescendants = true) { }) {
             val fit = measure.fit
+            val unit = stringResource(
+                if (units == MeasureUnitSystem.Imperial) R.string.scan_space_unit_in else R.string.scan_space_unit_cm,
+            )
             Text(
-                stringResource(R.string.scan_space_inside, cm(fit.width), cm(fit.depth), cm(fit.height)),
+                stringResource(R.string.scan_space_inside, side(fit.width, units), side(fit.depth, units), side(fit.height, units), unit),
                 style = Type.card,
                 color = chrome.onCard,
             )
@@ -90,7 +104,10 @@ internal fun SpaceMeasureCard(measure: SpaceMeasure, modifier: Modifier = Modifi
             val box = fit.fits
             Text(
                 text = when {
-                    box != null -> stringResource(R.string.scan_space_fits, cm(box.width), cm(box.depth), cm(box.height))
+                    box != null -> stringResource(
+                        R.string.scan_space_fits,
+                        side(box.width, units), side(box.depth, units), side(box.height, units), unit,
+                    )
                     // No bottom seen is a bottom not filmed: what to do, not a verdict on the space.
                     SpaceFace.Bottom in fit.open -> stringResource(R.string.scan_space_fits_no_bottom)
                     else -> stringResource(R.string.scan_space_fits_none)
@@ -115,7 +132,26 @@ internal fun SpaceMeasureCard(measure: SpaceMeasure, modifier: Modifier = Modifi
  */
 internal fun cm(metres: Float): Int = ((metres * MM_PER_M).roundToInt() / MM_PER_CM)
 
+/**
+ * [metres] as the card writes a side in [units], rounded down for the same reason: whole
+ * centimetres, or inches to the half inch as a tape reads them ("23½").
+ */
+internal fun side(metres: Float, units: MeasureUnitSystem): String = when (units) {
+    MeasureUnitSystem.Metric -> cm(metres).toString()
+    MeasureUnitSystem.Imperial -> {
+        val halves = ((metres * MM_PER_M).roundToInt() / MM_PER_HALF_INCH).toInt()
+        val whole = halves / 2
+        when {
+            halves % 2 == 0 -> whole.toString()
+            whole == 0 -> HALF
+            else -> "$whole$HALF"
+        }
+    }
+}
+
 private const val MM_PER_M = 1000f
 private const val MM_PER_CM = 10
+private const val MM_PER_HALF_INCH = 12.7f
+private const val HALF = "½"
 
 internal const val SPACE_CARD_TAG = "rerun_space_card"

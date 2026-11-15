@@ -22,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.MeasureUnitSystem
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.SpaceBox
@@ -55,6 +56,7 @@ class SpaceResultUiTest {
     private var dark by mutableStateOf(true)
     private var measure by mutableStateOf<SpaceMeasure>(SpaceMeasure.Found(CUPBOARD))
     private var choosing by mutableStateOf(false)
+    private var units by mutableStateOf(MeasureUnitSystem.Metric)
 
     private fun show() {
         composeRule.setContent {
@@ -67,7 +69,7 @@ class SpaceResultUiTest {
                     // The result's own stage: dark in both themes, its card the media one.
                     CompositionLocalProvider(LocalStageChrome provides StageChrome.Media) {
                         Box(Modifier.width(CARD_WIDTH).background(StageChrome.Media.ground).padding(vertical = Space.md).testTag(STAGE_TAG)) {
-                            SpaceMeasureCard(measure)
+                            SpaceMeasureCard(measure, units = units)
                         }
                     }
                 }
@@ -143,6 +145,21 @@ class SpaceResultUiTest {
         assertEquals(60, cm(0.5996f))
         assertEquals(59, cm(0.598f))
         assertEquals(4, cm(0.04f))
+    }
+
+    @Test
+    fun `in US English the figures are inches to the half inch, rounded down too`() {
+        units = MeasureUnitSystem.Imperial
+        show()
+        // 60 × 50 × 56 cm: 23.6, 19.7 and 22.05 in.
+        composeRule.onNodeWithText("Inside 23½ × 19½ × 22 in").assertIsDisplayed()
+        composeRule.onNodeWithText("A box of 22½ × 11 × 21½ in fits").assertIsDisplayed()
+        save("result-card-inches")
+        assertEquals("24", side(0.6096f, MeasureUnitSystem.Imperial))
+        assertEquals("23½", side(0.609f, MeasureUnitSystem.Imperial))
+        assertEquals("½", side(0.02f, MeasureUnitSystem.Imperial))
+        assertEquals("0", side(0.012f, MeasureUnitSystem.Imperial))
+        assertEquals("60", side(0.5996f, MeasureUnitSystem.Metric))
     }
 
     private fun text(id: Int) = ApplicationProvider.getApplicationContext<Context>().getString(id)
