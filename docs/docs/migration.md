@@ -301,7 +301,9 @@ Two things to check in every per-frame callback you own:
   One `requestRender()` would draw the old pose, then park one frame behind, permanently.
 
 Tie the subscription to the state that decides — `isPlaying`, `isReplaying`, "is this band on
-screen". Changing `onAnimationFrame` from `null` to a callback wakes a parked loop automatically.
+screen". Changing `onAnimationFrame` from `null` to a callback wakes a parked loop automatically
+and queues a presentation. If a short animation ends before `maxFps` allows a frame, its final
+edits remain pending until the cap permits presentation, even after the callback is cleared.
 For example:
 
 `SceneView(onAnimationFrame = if (isPlaying) animationDriver else null) { … }`, where

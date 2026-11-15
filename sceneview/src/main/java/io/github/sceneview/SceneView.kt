@@ -232,7 +232,8 @@ import io.github.sceneview.node.setEnvironmentLight
  *                              surface before scene updates, even if the GPU declines to present.
  *                              A non-null callback wakes a parked scene and keeps
  *                              [FrameRatePolicy.OnDemand] rendering; pass `null` to let it settle
- *                              again. [FrameRatePolicy.maxFps] still caps presentation. Use this
+ *                              again. Subscribing queues a frame even if the callback is cleared
+ *                              before [FrameRatePolicy.maxFps] permits presentation. Use this
  *                              for animation clocks or simulations, and [onFrame] to observe
  *                              presented frames. Disable [cameraManipulator] when driving the camera.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
@@ -1097,6 +1098,7 @@ fun SceneView(
     // reading the ref inside the loop.
     val currentOnFrame = rememberUpdatedState(onFrame)
     val currentOnAnimationFrame = rememberUpdatedState(onAnimationFrame)
+    AnimationFrameInvalidationEffect(frameRateGate, onAnimationFrame != null)
     // The frame loop captures `cameraManipulator` in its lambda. Without
     // [rememberUpdatedState] the closure freezes on the manipulator that was active
     // at LaunchedEffect launch time, so callers that swap manipulators at runtime

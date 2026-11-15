@@ -342,7 +342,9 @@ Measured on a parked demo screen (#3718): dragging an *Environment rotation* sli
 **Drive animations with `SceneView(onAnimationFrame = …)`; observe presentations with `onFrame`.**
 A non-null `onAnimationFrame: ((Long) -> Unit)?` wakes a parked `OnDemand` scene and keeps it active
 without `requestRender()` or a switch to `Continuous()`. Pass `null` to let the settle tail finish
-and park again. The callback runs before scene updates on every render-loop tick with a ready
+and park again. Subscribing queues a frame so a short animation's final edits still reach the
+surface if the callback is cleared before the FPS cap permits presentation.
+The callback runs before scene updates on every render-loop tick with a ready
 surface, including ticks the GPU declines to present; `maxFps` still caps presentation. Mutating
 Compose state here is supported; direct node writes can affect the same frame, while Compose
 changes reach nodes after recomposition. `onFrame` stays a pure observer called only after a

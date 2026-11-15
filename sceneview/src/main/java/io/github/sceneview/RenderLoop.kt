@@ -4,6 +4,8 @@
 // rule for every file in the module.
 package io.github.sceneview
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
@@ -42,6 +44,18 @@ internal fun isSceneRenderingEnabled(
     isDirty: Boolean,
     hasAnimationFrame: Boolean
 ): Boolean = policy !is FrameRatePolicy.OnDemand || isDirty || hasAnimationFrame
+
+/**
+ * Latches a frame on subscription: a short driver can finish before the FPS cap permits a
+ * presentation. The pending invalidation must outlive the driver so its final edits reach the
+ * surface. Key on presence, so replacing a live lambda does not invalidate on every recomposition.
+ */
+@Composable
+internal fun AnimationFrameInvalidationEffect(gate: FrameRateGate, hasAnimationFrame: Boolean) {
+    LaunchedEffect(gate, hasAnimationFrame) {
+        if (hasAnimationFrame) gate.requestRender()
+    }
+}
 
 /**
  * Folds the per-frame **pull** invalidation sources into the single `active` flag that
