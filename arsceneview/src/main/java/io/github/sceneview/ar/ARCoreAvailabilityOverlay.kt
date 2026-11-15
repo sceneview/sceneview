@@ -1,10 +1,13 @@
 package io.github.sceneview.ar
 
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.exceptions.UnavailableApkTooOldException
 import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException
@@ -158,11 +161,14 @@ internal fun ARCoreAvailability.actionRes(): Int? = when (this) {
  *
  * Public so hosts that pass their own `arCoreAvailabilityOverlay` can still reuse it, and so
  * previews can render every variant without an ARCore session.
+ *
+ * @param contentPadding space occupied by the host's chrome, in addition to the card's margin.
  */
 @Composable
 fun BoxScope.ARCoreAvailabilityOverlay(
     state: ARCoreAvailabilityState,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     AROverlayCard(
         title = stringResource(state.availability.titleRes()),
@@ -171,6 +177,14 @@ fun BoxScope.ARCoreAvailabilityOverlay(
         onAction = { state.retry() },
         cardTag = ARCoreAvailabilityOverlayTags.CARD,
         actionTag = ARCoreAvailabilityOverlayTags.ACTION,
-        modifier = modifier,
+        modifier = modifier.padding(contentPadding),
     )
 }
+
+/** Binary-compatibility shim for the pre-`contentPadding` descriptor. */
+@Deprecated("Use the overload that takes contentPadding.", level = DeprecationLevel.HIDDEN)
+@Composable
+fun BoxScope.ARCoreAvailabilityOverlay(
+    state: ARCoreAvailabilityState,
+    modifier: Modifier = Modifier,
+) = ARCoreAvailabilityOverlay(state, modifier, contentPadding = PaddingValues(0.dp))

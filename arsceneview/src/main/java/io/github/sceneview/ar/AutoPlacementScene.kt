@@ -8,7 +8,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -367,9 +370,10 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
  *   status chrome while [ArGuidanceState.isCoaching] is true either way.
  * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
- *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay] as its `contentPadding`. The card
- *   and its "Surface found" pill already keep clear of the system bars and a 16 dp gutter; this
- *   is what they cannot measure, because you draw it. Only read while [coaching] is `true`.
+ *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
+ *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
+ *   and add their own margin. Permission and failure cards respect it even when [coaching]
+ *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
  */
 @Composable
 fun AutoPlacementScene(
@@ -429,6 +433,20 @@ fun AutoPlacementScene(
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
             depthMode = autoPlacementDepthMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            cameraPermissionOverlay = {
+                ARCameraPermissionOverlay(
+                    state = it,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentPadding = coachingContentPadding,
+                )
+            },
+            arCoreAvailabilityOverlay = {
+                ARCoreAvailabilityOverlay(
+                    state = it,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentPadding = coachingContentPadding,
+                )
+            },
             onGestureListener = rememberOnGestureListener(
                 // Tap the object to select it (the selection ring appears), tap empty space
                 // to deselect — Scene Viewer's selection model.

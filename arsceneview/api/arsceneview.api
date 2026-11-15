@@ -1,5 +1,6 @@
 public final class io/github/sceneview/ar/ARCameraPermissionOverlayKt {
-	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
@@ -129,7 +130,8 @@ public final class io/github/sceneview/ar/ARCoreAvailability : java/lang/Enum {
 }
 
 public final class io/github/sceneview/ar/ARCoreAvailabilityOverlayKt {
-	public static final fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 	public static final fun isActionable (Lio/github/sceneview/ar/ARCoreAvailability;)Z
 	public static final fun toARCoreAvailability (Lcom/google/ar/core/ArCoreApk$Availability;)Lio/github/sceneview/ar/ARCoreAvailability;
 	public static final fun toARCoreAvailability (Ljava/lang/Throwable;)Lio/github/sceneview/ar/ARCoreAvailability;

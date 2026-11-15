@@ -1654,7 +1654,11 @@ dark", "Too fast", "Low detail"). When the object is placed the card steps aside
 reads "Keep looking around"; a placed anchor that relocalizes reads "Point back at your
 object". It is silent when a card of yours is due (`NO_SURFACE`, `RECOVERY_FAILED`,
 `CAMERA_ERROR`). Hide your own status pills while it shows, and pass the height of your own
-bottom chrome so the card and the pill stay above it:
+bottom chrome so the card and the pill stay above it. `coachingContentPadding` also applies
+to the built-in camera-permission and ARCore-failure cards, even with `coaching = false`.
+Direct `ARSceneView` hosts can pass `contentPadding: PaddingValues` to
+`ARCameraPermissionOverlay` and `ARCoreAvailabilityOverlay` in their overlay slots. These
+Android-only ARCore cards keep their own margin in addition to the host padding:
 
 ```kotlin
 val placement = rememberAutoPlacementState()
