@@ -136,6 +136,7 @@ import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ResultFilm
 import io.github.sceneview.demo.demos.internal.ResultFloor
 import io.github.sceneview.demo.demos.internal.ResultShading
+import io.github.sceneview.demo.demos.internal.RoomFigures
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
@@ -147,6 +148,7 @@ import io.github.sceneview.demo.demos.internal.ScanResultFrame
 import io.github.sceneview.demo.demos.internal.ScanResultFraming
 import io.github.sceneview.demo.demos.internal.ScanResultTurntable
 import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.ScanSubject
 import io.github.sceneview.demo.demos.internal.SpaceFit
 import io.github.sceneview.demo.demos.internal.SpaceView
 import io.github.sceneview.demo.demos.internal.groundSource
@@ -759,6 +761,8 @@ internal fun RerunModelScreen(
     onSpace: (SpaceFit?) -> Unit = {},
     /** How the capture was filmed, read off its path: what a space's measure starts from. */
     captureView: SpaceView? = null,
+    /** Where the phone looked as it went ([ScanSubject.aims]): what an object's scan went round. */
+    captureAims: List<ScanSubject.Aim>? = null,
     /** The grid [surfels] were kept on, in metres, when the scan says it. */
     surfelsVoxelM: Float? = null,
 ) {
@@ -862,8 +866,8 @@ internal fun RerunModelScreen(
     }
     // The room's dimensions, read off its walls (#4735) with the parts it missed (#4736): worked
     // out, never drawn but for More › Measure. The coverage is the capture's to show now.
-    val rescan by produceState<RescanBuild?>(null, source, ground) {
-        value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground) } }
+    val rescan by produceState<RescanBuild?>(null, source, ground, surfels) {
+        value = ground?.let { g -> withContext(Dispatchers.Default) { rescanOf(source, g.ground, surfels) } }
     }
     // Its frame: square to the walls it saw, on its own box (ScanResultFraming), read once off the
     // model it is framed by ([resultFramedBy]). A new frame — a stale model built again — is read
@@ -947,6 +951,9 @@ internal fun RerunModelScreen(
     var measuring by remember(stageKey) { mutableStateOf(scope.hasFloorPlan) }
     var more by remember { mutableStateOf(false) }
     var shown by remember(stageKey) { mutableStateOf(false) }
+    // The heading the result was shown at, kept from then on: what it learns late — an object's
+    // box, a card under the model that narrows the zone — moves its framing, never its side.
+    var shownAzimuth by remember(stageKey) { mutableStateOf<Float?>(null) }
     // The dark stage's floor pool waits for the camera to rise: from the low entrance it is seen
     // edge-on, a flat lit band under the place instead of the floor that carries it.
     var risen by remember(stageKey, entersLow) { mutableStateOf(!entersLow) }
@@ -989,8 +996,12 @@ internal fun RerunModelScreen(
         animate = animateReveal,
     )
     // The first mesh takes over from Photo as soon as it can draw. Texturing refines it in place.
-    LaunchedEffect(layers, settled, instance, wirePending, filming) {
-        if (layers.handsOverToModel(modelReady = instance != null && !wirePending, busy = filming)) {
+    // An outdoor area whose surface came out in pieces stays on the points (AreaSurface): its
+    // model is a tap away, it is not what the result is left on.
+    val outdoor = rememberAreaResult(scope, model, surfels)
+    val keepsPhoto = scope == ScanScope.Area && outdoor?.inPieces != false
+    LaunchedEffect(layers, settled, instance, wirePending, filming, keepsPhoto) {
+        if (!keepsPhoto && layers.handsOverToModel(modelReady = instance != null && !wirePending, busy = filming)) {
             layers.photoPicked = false
         }
     }
@@ -1020,6 +1031,8 @@ internal fun RerunModelScreen(
     // A space's inside (SpaceResultUi): what its result is for, on a card under the model.
     val space = rememberSpaceMeasure(scope, surfels, captureView, surfelsVoxelM)
     LaunchedEffect(space) { onSpace((space as? SpaceMeasure.Found)?.fit) }
+    // An object's own box (ObjectResultUi): its three sides on a card, the box on the model.
+    val subject = rememberScanSubject(scope, surfels, captureAims, surfelsVoxelM)
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
@@ -1045,8 +1058,14 @@ internal fun RerunModelScreen(
             }
             val hintAlpha by animateFloatAsState(if (hintShown) 1f else 0f, label = "hint")
             space?.let { SpaceMeasureCard(it) }
+            subject?.let { ScanSubjectCard(it) }
+            outdoor?.let { AreaResultCard(it, measure) }
+            // A room's figures, said to be the scan's until its walls say they are the room's.
+            val figures = measure?.takeIf { scope.hasFloorPlan && measuring }
+            val walls = rescan
+            if (figures != null && walls != null && RoomFigures.of(figures, walls.walls) == RoomFigures.Scanned) RoomFiguresCard()
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-                slot?.let { ModelStatusLine(it) }
+                slot?.let { ModelStatusLine(it, scope = scope) }
                 ModelHint(
                     text = stringResource(R.string.scan_result_hint),
                     modifier = Modifier
@@ -1059,6 +1078,7 @@ internal fun RerunModelScreen(
                 plan = plan,
                 ready = shown && instance != null && !filming,
                 seen = shown,
+                photoNote = if (scope == ScanScope.Area) R.string.scan_result_photo_points else R.string.scan_result_photo_preview,
                 onPlan = {
                     plan = it
                     cinematics.request(ScanResultCinematics.Request.Recenter)
@@ -1195,14 +1215,18 @@ internal fun RerunModelScreen(
             // A space measured is what its result shows: its inside, from its opening, not the
             // whole of a scan that holds the wall behind it too.
             val spaceFrame = remember(space) { (space as? SpaceMeasure.Found)?.fit?.let(SpaceFitDrawing::frame) }
-            val shownFrame = remember(frame, spaceFrame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
+            // An object boxed is what its result shows too: the object, not the floor the scan holds round it.
+            val subjectFrame = remember(subject, frame) { (subject as? SubjectMeasure.Found)?.box?.let { ScanSubject.frame(it, frame) } }
+            val shownFrame = remember(frame, spaceFrame, subjectFrame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
                 val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
                 // The dimensions stand outside the walls: a room measured keeps room for them.
                 val drawnFrame = if (measuring && squareOn) cut?.padded(MEASURE_MARGIN_M) else cut
-                spaceFrame ?: if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
+                spaceFrame ?: subjectFrame ?: if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
             }
-            val view3d = remember(shownFrame, elevation, offset, aspect, area, fov) {
-                shownFrame?.pose(elevation, offset, fov, aspect, area)
+            val view3d = remember(shownFrame, shownAzimuth, elevation, offset, aspect, area, fov) {
+                val f = shownFrame
+                val held = shownAzimuth
+                if (f != null && held != null) f.poseFrom(held, elevation, fov, aspect, area) else f?.pose(elevation, offset, fov, aspect, area)
             }
             val viewPlan = remember(shownFrame, aspect, area, fov) {
                 shownFrame?.pose(ArDebugFraming.MAP_ELEVATION, 0f, fov, aspect, area)
@@ -1214,7 +1238,7 @@ internal fun RerunModelScreen(
                 when {
                     plan -> viewPlan
                     f == null || view3d == null -> view3d
-                    else -> turntable.pose(f, view3d, elevation, offset, fov, aspect, zone)
+                    else -> turntable.pose(f, view3d, elevation, fov, aspect, zone)
                 }
             }
             SideEffect {
@@ -1304,7 +1328,10 @@ internal fun RerunModelScreen(
                     // A result opened on its Photo layer is seen as soon as its splats are there.
                     val modelDrawn = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
                     val ready = if (preview != null) layers.photoShown || (!layers.photoPicked && modelDrawn) else modelDrawn
-                    if (cinematics.frameDrawn(opening, framed, ready = ready)) shown = true
+                    if (cinematics.frameDrawn(opening, framed, ready = ready)) {
+                        if (!plan) shownAzimuth = framed.azimuthDegrees
+                        shown = true
+                    }
                     if (!risen && cinematics.revealed) {
                         val entrance = cinematics.animator
                         if (!entrance.isPlaying || entrance.elapsed >= ScanOpening.RISEN_SECONDS) risen = true
@@ -1395,6 +1422,15 @@ internal fun RerunModelScreen(
                         constraints.maxHeight,
                     )
                     SpaceFitLayer(fit, style, engine, materialLoader)
+                }
+                // An object's box, drawn on the model it was read off, once the model is there to carry it.
+                (subject as? SubjectMeasure.Found)?.box?.takeIf { layers.photoShown || (instance != null && revealOver) }?.let { box ->
+                    val style = ArDebugStyle.forOrbit(
+                        home.value()?.distance ?: 1f,
+                        orbit.verticalFovDegrees,
+                        constraints.maxHeight,
+                    )
+                    ScanSubjectLayer(box, style, engine, materialLoader)
                 }
                 ResultPhotoLayer(layers, instance, live = rendered::live)
             }
@@ -1600,6 +1636,11 @@ internal enum class ModelStatus(@StringRes val text: Int) {
     Finished(R.string.scan_result_finished),
     ;
 
+    /** The line said for [scope]: an object and an outdoor area have no walls to speak of. */
+    @StringRes
+    fun text(scope: ScanScope): Int =
+        if (this == Finishing && (scope == ScanScope.Object || scope == ScanScope.Area)) R.string.scan_result_finishing_surface else text
+
     companion object {
         /**
          * The lines a big scan's raw surface can have under it, from its finish to each way the
@@ -1647,12 +1688,12 @@ internal class ModelStatusSlot(val status: ModelStatus, val visible: Boolean) {
 
 /** [slot] as the model screen lays it out under the model: faded, and not heard, once it is not [ModelStatusSlot.visible]. */
 @Composable
-internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifier) {
+internal fun ModelStatusLine(slot: ModelStatusSlot, modifier: Modifier = Modifier, scope: ScanScope = ScanScope.Room) {
     // Faded, not removed, once said: the model is framed above this slot (as the hint).
     val statusAlpha by animateFloatAsState(if (slot.visible) 1f else 0f, motionFade(), label = "status")
     ModelStatusCard(
-        text = stringResource(slot.status.text),
-        reserve = slot.reserve.map { stringResource(it.text) },
+        text = stringResource(slot.status.text(scope)),
+        reserve = slot.reserve.map { stringResource(it.text(scope)) },
         modifier = modifier
             .alpha(statusAlpha)
             .then(if (slot.visible) Modifier else Modifier.clearAndSetSemantics { }),

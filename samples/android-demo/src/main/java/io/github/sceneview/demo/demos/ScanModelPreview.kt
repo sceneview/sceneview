@@ -98,6 +98,8 @@ internal fun ScanModelPreview(
     onHoles: (List<Pair<Float, Float>>) -> Unit = {},
     /** The point aimed at in the area the line names, whose area alone is hatched; `null` while the line names none. */
     target: () -> Pair<Float, Float>? = { null },
+    /** Whether the floor's width and depth are written on the model: a room's or an area's, not the floor round an object. */
+    measuresRoom: Boolean = true,
 ) {
     val snapshot by produceState<ReplayDenseLayer?>(null, media) {
         var previous: ReplayDenseLayer? = null
@@ -309,7 +311,7 @@ internal fun ScanModelPreview(
                 maxFps = 30,
                 onShown = { rendered = true },
                 // The floor's grid, a line every metre, and the room's dimensions as the replay drew them.
-                measuresRoom = true,
+                measuresRoom = measuresRoom,
                 stageAxes = false,
                 measureWithoutPlanes = true,
                 measureFit = measureFit,

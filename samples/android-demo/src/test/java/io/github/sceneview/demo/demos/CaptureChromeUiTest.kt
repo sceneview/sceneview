@@ -117,6 +117,26 @@ class CaptureChromeUiTest {
     }
 
     @Test
+    fun `an object left for the room is told to stay on it, in its own words`() {
+        composeRule.setContent {
+            ScanControls(
+                instruction = ScanInstruction.StayPut, doneEnabled = true, onFinish = {},
+                scope = ScanScope.Object,
+            )
+        }
+        composeRule.onNodeWithText(text(R.string.scan_capture_stay_object)).assertIsDisplayed()
+        composeRule.onNodeWithText(text(R.string.scan_capture_stay_space)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a scan that is complete names the circle and the red button`() {
+        composeRule.setContent {
+            ScanControls(instruction = ScanInstruction.Complete, doneEnabled = true, onFinish = {})
+        }
+        composeRule.onNodeWithText("The circle is full. Tap the red button to finish").assertIsDisplayed()
+    }
+
+    @Test
     fun `an object that cannot be walked round asks in its own words`() {
         composeRule.setContent {
             ScanControls(

@@ -74,7 +74,7 @@ internal fun ScanInstructionLine(
         ScanInstruction.Starting -> R.string.scan_capture_starting
         ScanInstruction.GoBack -> R.string.scan_capture_go_back
         ScanInstruction.Stuck -> R.string.scan_capture_stuck
-        ScanInstruction.StayPut -> R.string.scan_capture_stay_space
+        ScanInstruction.StayPut -> if (scope == ScanScope.Object) R.string.scan_capture_stay_object else R.string.scan_capture_stay_space
         ScanInstruction.FaceBack -> R.string.scan_capture_face_back
         ScanInstruction.FaceBottom -> R.string.scan_capture_face_bottom
         ScanInstruction.FaceLeft -> R.string.scan_capture_face_left

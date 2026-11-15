@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import io.github.sceneview.demo.demos.internal.RerunScanModel
+import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -59,6 +60,18 @@ class RerunModelStatusCardTest {
             .fetchSemanticsNodes()
         assertEquals("the live region is not the line's", 1, line.size)
         assertEquals(LiveRegionMode.Polite, line.single().config.getOrNull(SemanticsProperties.LiveRegion))
+    }
+
+    @Test
+    fun `an object's second step speaks of its surface, not of walls and a floor`() {
+        val finishing = checkNotNull(ModelStatus.slot(mesh(finished = false), settled = false, rawShownFirst = false))
+        rule.setContent {
+            SceneViewDemoTheme(darkTheme = false) {
+                Box(Modifier.width(CARD_WIDTH.dp)) { ModelStatusLine(finishing, scope = ScanScope.Object) }
+            }
+        }
+        assertEquals(1, rule.onAllNodesWithText(FINISHING_SURFACE, useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithText(FINISHING, useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
     @Test
@@ -111,6 +124,7 @@ class RerunModelStatusCardTest {
 
     private companion object {
         const val FINISHING = "Cleaning up walls and floor · step 2 of 2"
+        const val FINISHING_SURFACE = "Cleaning up the surface · step 2 of 2"
         const val FINISHED = "Your model is ready."
         const val CARD_WIDTH = 240
         const val PROBE = "status-probe"

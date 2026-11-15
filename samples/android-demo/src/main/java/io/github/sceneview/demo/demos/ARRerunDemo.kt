@@ -152,6 +152,7 @@ import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DollhouseCopy
 import io.github.sceneview.demo.demos.internal.HomeRoom
 import io.github.sceneview.demo.demos.internal.HomeScan
+import io.github.sceneview.demo.demos.internal.ObjectStay
 import io.github.sceneview.demo.demos.internal.OpenedCapture
 import io.github.sceneview.demo.demos.internal.OrbitBand
 import io.github.sceneview.demo.demos.internal.PlanOffer
@@ -196,6 +197,7 @@ import io.github.sceneview.demo.demos.internal.ScanLiveInstruction
 import io.github.sceneview.demo.demos.internal.ScanPhase
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
 import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.ScanSubject
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanWallWalk
 import io.github.sceneview.demo.demos.internal.SpaceAnswer
@@ -365,6 +367,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var resultSpace by remember { mutableStateOf<SpaceFit?>(null) }
     // How the scan shown was filmed, off its path: a space opens towards the phone, round what it aimed at.
     val scanView = remember(scanMedia, showingScan) { scanMedia?.takeIf { showingScan }?.trace?.let(SpaceFitter::viewOf) }
+    // Where the phone looked as it went: what an object's scan went round (ScanSubject).
+    val scanAims = remember(scanMedia, showingScan) { scanMedia?.takeIf { showingScan }?.trace?.let(ScanSubject::aims) }
     // Whether the scan shown has a result screen: the replay's Back returns to it.
     var hasResult by remember { mutableStateOf(modelSource != null) }
 
@@ -878,6 +882,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             openingPhoto = scanStill.takeIf { showingScan },
             onSpace = { resultSpace = it },
             captureView = scanView ?: qaSpaceView,
+            captureAims = scanAims,
             surfelsVoxelM = scanMedia?.takeIf { showingScan }?.dense?.voxelM,
         )
     }
@@ -1946,7 +1951,13 @@ private fun RerunLiveScreen(
     }
     // A cupboard or a shelf is filmed from before its opening: the phone that walks off is told.
     val spaceStay = remember(scanMedia) { SpaceStay() }
-    val strayed = recording && scanScope == ScanScope.Space && spaceStay.strayed(scanCoverage.camera)
+    // An object is gone round, the phone on it all the way: the one that films the room instead is told.
+    val objectStay = remember(scanMedia) { ObjectStay() }
+    val strayed = recording && when (scanScope) {
+        ScanScope.Space -> spaceStay.strayed(scanCoverage.camera)
+        ScanScope.Object -> objectStay.strayed(scanCoverage.camera, nowMs)
+        else -> false
+    }
     // It is asked for one face at a time, each done once the live scan closes it.
     val spaceFaces = remember(scanMedia) { SpaceFaceGuide() }
     LaunchedEffect(scanMedia, scanScope) {
@@ -2008,8 +2019,8 @@ private fun RerunLiveScreen(
         top = {
             ScanHud(
                 seconds = scan?.elapsedSeconds() ?: qaLong?.shownSeconds ?: stats.duration,
-                // The floor a cupboard's scan covers says nothing of the cupboard: its time only.
-                floorSquareMetres = scanCoverage.coveredSquareMetres.takeIf { scanScope != ScanScope.Space },
+                // The floor an object's scan or a cupboard's covers says nothing of them: their time only.
+                floorSquareMetres = scanCoverage.coveredSquareMetres.takeIf { !scanScope.closeUp },
                 label = ScanScopeCopy.label(scanScope, roomNumber),
                 recording = recording && phase == ScanPhase.Scanning,
             )
@@ -2212,6 +2223,8 @@ private fun RerunLiveScreen(
                     coverage = scanCoverage,
                     onHoles = { scanHoles = it },
                     target = { holeSide.marked(instructionState.namedHole) },
+                    // The floor round an object or before a cupboard is not what is measured: no figures on it.
+                    measuresRoom = !scanScope.closeUp,
                 )
             }
 

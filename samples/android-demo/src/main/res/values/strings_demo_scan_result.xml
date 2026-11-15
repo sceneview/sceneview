@@ -69,6 +69,16 @@
     <string name="scan_space_none_hint">Scan again from the opening: the back, the sides and the bottom.</string>
     <string name="scan_space_wide">This is more than one cupboard or shelf</string>
     <string name="scan_space_wide_hint">Film just one, standing in front of its opening. For a whole room, choose A room.</string>
+    <string name="scan_object_size">%1$s × %2$s × %3$s %4$s</string>
+    <string name="scan_object_size_hint">Length × depth × height of the object, as scanned</string>
+    <string name="scan_object_none">No single object stands out</string>
+    <string name="scan_object_none_hint">Go round one object, keeping it in the middle of the picture. For a whole room, choose A room.</string>
+    <string name="scan_area_span">Scanned: %1$s × %2$s</string>
+    <string name="scan_area_ground">%1$s of ground in the scan</string>
+    <string name="scan_area_in_pieces">Shown as the points the scan took: outdoors, only part of them became a surface. Tap Model to see it.</string>
+    <string name="scan_result_photo_points">Photo · the points the scan took</string>
+    <string name="scan_room_figures_scanned">Not the room\'s size yet</string>
+    <string name="scan_room_figures_scanned_hint">These figures span what was scanned. To measure the room, film every wall from the floor up, all the way round.</string>
 
     <!-- Export sheet -->
     <string name="scan_export_title">Export scan</string>

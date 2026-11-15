@@ -154,7 +154,7 @@ internal fun SpaceMeasureCard(
  * How one of a space's boxes is drawn on its model ([SpaceFitLayer]): its edges, and the wash of
  * its faces if it has one, over the [ground] the model stands on.
  */
-private class SpaceKey(val ground: Color, val edge: Color, val fill: Color = Color.Transparent)
+internal class SpaceKey(val ground: Color, val edge: Color, val fill: Color = Color.Transparent)
 
 /**
  * One line of a space's figures beside its [key]: a square of the model's own stage, outlined
@@ -163,7 +163,7 @@ private class SpaceKey(val ground: Color, val edge: Color, val fill: Color = Col
  * same place.
  */
 @Composable
-private fun SpaceLine(text: String, style: TextStyle, color: Color, key: SpaceKey? = null) {
+internal fun SpaceLine(text: String, style: TextStyle, color: Color, key: SpaceKey? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
         Box(
             Modifier

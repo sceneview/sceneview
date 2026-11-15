@@ -61,6 +61,31 @@ class ScanResultFrame(
         ),
     )
 
+    /**
+     * The pose that shows the box from [azimuthDegrees] of the world — the heading a camera
+     * already has — at [elevationDegrees], whole in the [insets] of a view of [aspect] through
+     * [verticalFovDegrees]. What a result learns once it is shown (an object's box, a card that
+     * narrows the zone) moves its framing, never the side it is seen from: [pose] on a frame whose
+     * widest side had changed framed the box for a view the camera, which keeps its heading, did
+     * not have, and the room stood off to one side of the screen (Pixel 4a, 2026-11-15).
+     */
+    fun poseFrom(
+        azimuthDegrees: Float,
+        elevationDegrees: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        insets: FramingInsets,
+    ): OrbitPose = toWorld(
+        ArDebugFraming.fit(
+            bounds = local,
+            azimuthDegrees = azimuthDegrees + yawDegrees,
+            elevationDegrees = elevationDegrees,
+            verticalFovDegrees = verticalFovDegrees,
+            aspect = aspect,
+            insets = insets,
+        ),
+    ).copy(azimuthDegrees = azimuthDegrees)
+
     /** [pose], read in the turned frame, in the world: the same picture. */
     fun toWorld(pose: OrbitPose): OrbitPose {
         val (x, z) = world(pose.target.x, pose.target.z)

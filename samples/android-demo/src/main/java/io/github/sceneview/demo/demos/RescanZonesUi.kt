@@ -49,6 +49,7 @@ import io.github.sceneview.demo.demos.internal.RescanSources
 import io.github.sceneview.demo.demos.internal.RescanZone
 import io.github.sceneview.demo.demos.internal.RescanZoneMesh
 import io.github.sceneview.demo.demos.internal.ResultFloor
+import io.github.sceneview.demo.demos.internal.RoomFigures
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.RoomSurvey
 import io.github.sceneview.demo.demos.internal.ScanGround
@@ -77,6 +78,8 @@ internal class RescanBuild(
     val cloud: DenseCloud,
     val veil: DebugMesh = RescanZoneMesh.veil(zones),
     val measure: RoomMeasure? = null,
+    /** The room its walls close, `null` unless one was seen on every side ([RoomFigures.wallsOf]). */
+    val walls: RoomMeasure? = null,
 ) {
     /**
      * "Re-scan this part" for [onRescan], `null` when there is none or the cloud has no normals
@@ -89,12 +92,13 @@ internal class RescanBuild(
 /**
  * The parts of [source]'s scan worth scanning again (#4736), [ground] the floor read off its
  * model, and the room's dimensions read off the same walls (#4735); `null` when there is neither,
- * or no points to read them from. Off the main thread: it reads the whole cloud.
+ * or no points to read them from. [kept] is the points of a kept scan reopened, whose [source]
+ * carries none: it measures as it did when it was scanned. Off the main thread: it reads the whole cloud.
  */
-internal fun rescanOf(source: RerunModelSource?, ground: ScanGround?): RescanBuild? = runCatching {
+internal fun rescanOf(source: RerunModelSource?, ground: ScanGround?, kept: DenseCloud? = null): RescanBuild? = runCatching {
     val cloud = (source as? RerunModelSource.Live)?.cloud
         ?: (source as? RerunModelSource.Surfels)?.cloud
-        ?: if (source is RerunModelSource.Synthetic) syntheticCloud() else null
+        ?: if (source is RerunModelSource.Synthetic) syntheticCloud() else kept
     if (cloud == null || cloud.count == 0) return@runCatching null
     val started = System.nanoTime()
     // One survey for both: the zones' walls are the walls the dimensions are read off.
@@ -106,7 +110,10 @@ internal fun rescanOf(source: RerunModelSource?, ground: ScanGround?): RescanBui
     val measure = pointsMeasure(cloud, ground, survey?.structure?.yaw) ?: survey?.let(ResultFloor::measureOf)
     Log.i(TAG, "${zones.size} zones from ${cloud.count} points in ${(System.nanoTime() - started) / NS_PER_MS} ms")
     zones.forEach { Log.i(TAG, "  $it") }
-    if (zones.isEmpty() && measure == null) null else RescanBuild(zones, RescanZoneMesh.of(zones), cloud, measure = measure)
+    val walls = RoomFigures.wallsOf(survey)
+    Log.i(TAG, "figures: points ${measure?.let { "%.2f × %.2f".format(it.width, it.depth) }}, " +
+        "walls ${walls?.let { "%.2f × %.2f".format(it.width, it.depth) }}")
+    if (zones.isEmpty() && measure == null) null else RescanBuild(zones, RescanZoneMesh.of(zones), cloud, measure = measure, walls = walls)
 }.onFailure { Log.w(TAG, "zones failed", it) }.getOrNull()
 
 /**

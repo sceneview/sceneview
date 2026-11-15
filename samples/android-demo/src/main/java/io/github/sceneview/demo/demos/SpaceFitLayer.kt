@@ -81,7 +81,9 @@ private class SpaceFitNodes(private val engine: Engine, private val materialLoad
             it.setCullingMode(Material.CullingMode.NONE)
             // Over the model and through it, never cut by its walls.
             it.setDepthCulling(false)
-            it.setDepthWrite(false)
+            // An edge writes its depth: the stage's backdrop is drawn last, wherever nothing
+            // was, and would take back every stretch of it seen through a hole in the scan.
+            it.setDepthWrite(priority == EDGE_PRIORITY)
             materials += it
         }
         return DebugLayerNode(engine, material, priority)
