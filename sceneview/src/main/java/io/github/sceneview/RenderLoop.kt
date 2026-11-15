@@ -34,6 +34,16 @@ internal suspend fun awaitRenderingEnabled(shouldRender: State<Boolean>) {
 }
 
 /**
+ * Snapshot-observed wake condition, including a driver installed while the loop is parked.
+ * The view-level `onFrame` observer deliberately has no term here.
+ */
+internal fun isSceneRenderingEnabled(
+    policy: FrameRatePolicy,
+    isDirty: Boolean,
+    hasAnimationFrame: Boolean
+): Boolean = policy !is FrameRatePolicy.OnDemand || isDirty || hasAnimationFrame
+
+/**
  * Folds the per-frame **pull** invalidation sources into the single `active` flag that
  * [FrameRateGate.shouldRender] consumes.
  *
@@ -68,6 +78,8 @@ internal suspend fun awaitRenderingEnabled(shouldRender: State<Boolean>) {
  *                        a recording that drops to 0 fps on an idle scene is a broken recording.
  * @param framingPending  Auto-center or auto-fit has not latched yet — both need presented frames
  *                        to converge on a content union that async loads are still growing.
+ * @param hasAnimationFrame A view-level animation driver is subscribed. Unlike the `onFrame`
+ *                          observer, it is a standing request for frames until cleared.
  */
 internal fun isSceneFrameActive(
     gestureInFlight: Boolean,
@@ -76,9 +88,10 @@ internal fun isSceneFrameActive(
     hasActiveNode: Boolean,
     isLoading: Boolean,
     isMirroring: Boolean,
-    framingPending: Boolean
+    framingPending: Boolean,
+    hasAnimationFrame: Boolean = false
 ): Boolean = gestureInFlight || cameraMoved || cameraPending || hasActiveNode || isLoading ||
-        isMirroring || framingPending
+        isMirroring || framingPending || hasAnimationFrame
 
 /**
  * The `framingPending` argument of [isSceneFrameActive]: whether a framing pass still owes work

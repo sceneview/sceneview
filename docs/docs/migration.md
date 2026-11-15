@@ -147,6 +147,13 @@ SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
 SceneView { /* … */ }
 ```
 
+**What keeps your scene awake:** a gesture or camera motion, an active node (animation,
+physics, video, hosted view), an async load, mirroring, pending framing, or a non-null
+`SceneView(onAnimationFrame = …)` driver. `SceneView(onFrame = …)` is an observer and does **not**
+keep the loop awake. Subscribing to `onAnimationFrame` also wakes an already parked scene;
+passing `null` lets it draw its settle tail and park again. The driver runs before scene updates
+on each render-loop tick, even when the GPU declines to present; `maxFps` still caps presentation.
+
 **Key differences:**
 
 - `isRendering = true` (or omitting the parameter) becomes
@@ -286,31 +293,33 @@ stopped".
 
 Two things to check in every per-frame callback you own:
 
-- **Does it drive motion?** Then say so: `frameRatePolicy = FrameRatePolicy.Continuous()` while it
-  runs, and back to `OnDemand()` when the user pauses it. This is what the mode is for, and it also
-  lets the cadence vote tell the display. A `RenderInvalidator.requestRender()` called from inside
-  `onFrame` works too — each rendered frame buys the next — but it says "one more frame" sixty times
-  a second to mean "keep going", and nothing tells the panel.
+- **Does it drive motion?** Move it to `SceneView(onAnimationFrame = …)`. A non-null callback
+  declares continuous activity under `OnDemand()` without `requestRender()` or a policy switch.
+  Pass `null` while paused. Use `FrameRatePolicy.Continuous()` for work driven outside this callback.
 - **Does it apply a change the user just made?** Then apply it **outside** `onFrame` and request the
   frame after: `onFrame` runs after presentation, so a pose written there lands in the *next* frame.
   One `requestRender()` would draw the old pose, then park one frame behind, permanently.
 
-The state that decides — `isPlaying`, `isReplaying`, "is this band on screen" — also needs a rising
-edge. Going from paused to playing while the loop is parked changes a flag no one is reading;
-request one frame from a `LaunchedEffect` on that flag, and the callback takes it from there.
+Tie the subscription to the state that decides — `isPlaying`, `isReplaying`, "is this band on
+screen". Changing `onAnimationFrame` from `null` to a callback wakes a parked loop automatically.
+For example:
 
-And it must follow the motion, not a flag only a gesture clears. A `Continuous()` held by
+`SceneView(onAnimationFrame = if (isPlaying) animationDriver else null) { … }`, where
+`animationDriver` has type `(Long) -> Unit`.
+
+The subscription must follow the motion, not a flag only a gesture clears. A driver held by
 `isReplaying`, where `isReplaying` goes false only when the user presses Reset, is the same lie as a
 loader that never resolves: the spheres stop bouncing, the flag stays true, and the screen renders a
 frozen picture at 57 fps until someone touches it. Tie the declaration to the thing that is actually
 moving.
 
-### `Node.onFrame` holds the loop open; `SceneView(onFrame = …)` does not
+### Animation drivers hold the loop open; `SceneView(onFrame = …)` does not
 
-They share a name and nothing else, and the asymmetry is deliberate:
+The callback you drive from keeps the loop awake; the callback you watch from does not:
 
 | | when it runs | effect on the loop |
 |---|---|---|
+| `SceneView(onAnimationFrame = …)` | before scene updates and rendering | **pins** — pass `null` to let the scene park |
 | `SceneView(onFrame = …)` | after its frame was presented | **none** — it is an observer |
 | `node.onFrame = { … }` | before the frame is drawn | **pins** — a non-null slot asks for a frame every tick |
 

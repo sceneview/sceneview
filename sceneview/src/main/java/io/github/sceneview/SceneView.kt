@@ -209,17 +209,12 @@ import io.github.sceneview.node.reflectionProbes
  *                              which is most of them while the GPU warms a heavy material up — is
  *                              not a rendered frame and does not call this back (#3444), so "I was
  *                              called" is a sound signal that there are pixels on screen. Use it to
- *                              drop a loading cover or drive per-frame logic; it does not fire
+ *                              drop a loading cover or observe per-frame state; it does not fire
  *                              while the render loop is parked on a settled scene.
- *                              **It therefore cannot be what keeps the loop awake.** A callback
- *                              that advances a clock or steps a simulation, and relies on nothing
- *                              but its own next invocation to run again, stops the first time the
- *                              scene parks — and never restarts. If your screen wants every vsync,
- *                              say so with [FrameRatePolicy.Continuous]; if it wants one more frame
- *                              after a change the library cannot see, push it through
- *                              [renderInvalidator], *before* `onFrame` rather than from inside it:
- *                              this fires after the frame it is named for was already presented, so
- *                              what you write here lands in the next one.
+ *                              Subscribing does not keep the loop awake. Use [onAnimationFrame]
+ *                              to drive motion while keeping [FrameRatePolicy.OnDemand], or
+ *                              [renderInvalidator] after a change the library cannot observe.
+ *                              A write here lands in the next frame, since this one is presented.
  *
  *                              **Driving the camera from `onFrame`:** On the next frame, an
  *                              installed [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator]
@@ -232,6 +227,13 @@ import io.github.sceneview.node.reflectionProbes
  *                              `getTransform()` returns the pose you want — for example, a wrapper
  *                              around the default manipulator that returns `cameraNode.transform`
  *                              while the script owns the camera.
+ * @param onAnimationFrame      Animation driver, called on each render-loop tick with a ready
+ *                              surface before scene updates, even if the GPU declines to present.
+ *                              A non-null callback wakes a parked scene and keeps
+ *                              [FrameRatePolicy.OnDemand] rendering; pass `null` to let it settle
+ *                              again. [FrameRatePolicy.maxFps] still caps presentation. Use this
+ *                              for animation clocks or simulations, and [onFrame] to observe
+ *                              presented frames. Disable [cameraManipulator] when driving the camera.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
@@ -478,9 +480,14 @@ fun SceneView(
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     /**
-     * Invoked once per frame immediately before the scene is updated and rendered.
+     * Observes each presented frame after rendering; does not keep the loop awake.
      */
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    /**
+     * Drives animation before scene updates. A non-null callback keeps on-demand rendering awake;
+     * pass `null` to stop. Unlike [onFrame], it also runs on ticks that are not presented.
+     */
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
     /**
      * Declare scene nodes using the [SceneScope] DSL.
      */
@@ -1088,6 +1095,7 @@ fun SceneView(
     // else 0`) would see only the initial null state, forever. rememberUpdatedState solves this by
     // reading the ref inside the loop.
     val currentOnFrame = rememberUpdatedState(onFrame)
+    val currentOnAnimationFrame = rememberUpdatedState(onAnimationFrame)
     // The frame loop captures `cameraManipulator` in its lambda. Without
     // [rememberUpdatedState] the closure freezes on the manipulator that was active
     // at LaunchedEffect launch time, so callers that swap manipulators at runtime
@@ -1115,18 +1123,22 @@ fun SceneView(
     // The `reset()` and wake-up for these framing inputs live in one keyed effect next to the
     // auto-fit state above.
 
-    // The loop's wake condition: the policy draws unconditionally, *or* something invalidated the
-    // gate. Derived state so the park below observes both through a single snapshot read.
+    // Wake on a continuous policy, an invalidation, or an animation driver being installed.
+    // The observer is deliberately absent: watching frames must not prevent parking.
     //
     // Only the gate's *dirty* flag is snapshot state; its settle debt is a plain counter, read
     // directly at the park site below. That split is deliberate. The debt is written once per
     // frame from inside the loop, so making it observable would apply a snapshot 60 times a second
     // on every rendering scene — the exact per-frame cost this whole change exists to remove —
     // and it would buy nothing, because the loop is by definition awake while it owes frames.
-    // Only the wake-up needs to be observable, and that is the dirty flag.
-    val shouldRender = remember(currentFrameRatePolicy, frameRateGate) {
+    // Only the wake-up needs to be observable: the dirty flag, policy, and driver subscription.
+    val shouldRender = remember(currentFrameRatePolicy, frameRateGate, currentOnAnimationFrame) {
         derivedStateOf {
-            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty
+            isSceneRenderingEnabled(
+                policy = currentFrameRatePolicy.value,
+                isDirty = frameRateGate.isDirty,
+                hasAnimationFrame = currentOnAnimationFrame.value != null
+            )
         }
     }
 
@@ -1188,6 +1200,7 @@ fun SceneView(
                                 // lifetime of every procedural scene. See [isAsyncLoadPending].
                                 isLoading = modelLoader.isLoading,
                                 isMirroring = surfaceMirrorer?.mirroredSurfaces?.isNotEmpty() == true,
+                                hasAnimationFrame = currentOnAnimationFrame.value != null,
                                 // Exactly the condition of the work this guard waits for — the
                                 // same `if`s the update block above runs the passes under. See
                                 // [isFramingPending] for the two ways a looser guard held every
@@ -1221,6 +1234,7 @@ fun SceneView(
                             ) { frameRateGate.shouldRender(active, frameTimeNanos) }
                         }
                     ) {
+                        currentOnAnimationFrame.value?.invoke(frameTimeNanos)
                         // Before any node's onFrame: the animator commits this frame then find the
                         // TransformManager already sorted and reindex nothing (Engine.kt).
                         engine.sortTransformsIfUnsorted()
@@ -2502,6 +2516,86 @@ private fun ScenePreview(modifier: Modifier) {
         }
     }
 }
+
+/**
+ * Compatibility overload preserving the published JVM descriptor and positional calls made before
+ * `onAnimationFrame` was added. Calls without an animation driver keep their existing cadence.
+ */
+@Composable
+fun SceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    view: View = rememberView(engine),
+    isOpaque: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
+    renderInvalidator: RenderInvalidator? = null,
+    renderQuality: RenderQuality = RenderQuality.Default,
+    autoCenterContent: Boolean = true,
+    autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: CameraNode = rememberCameraNode(engine),
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
+    ),
+    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    content: (@Composable SceneScope.() -> Unit)? = null
+) = SceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    view = view,
+    isOpaque = isOpaque,
+    frameRatePolicy = frameRatePolicy,
+    renderInvalidator = renderInvalidator,
+    renderQuality = renderQuality,
+    autoCenterContent = autoCenterContent,
+    autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
+    contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    collisionSystem = collisionSystem,
+    cameraManipulator = cameraManipulator,
+    viewNodeWindowManager = viewNodeWindowManager,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    activity = activity,
+    lifecycle = lifecycle,
+    onFrame = onFrame,
+    content = content,
+    onAnimationFrame = null,
+)
 
 /**
  * @deprecated Use [SceneView] instead. This function is a direct alias provided for backward
