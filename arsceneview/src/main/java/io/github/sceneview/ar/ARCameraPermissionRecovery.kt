@@ -1,6 +1,13 @@
 package io.github.sceneview.ar
 
-/** The actions to offer after an Android camera permission request is refused. */
+import io.github.sceneview.ExperimentalSceneViewApi
+
+/**
+ * The actions to offer after an Android camera permission request is refused.
+ *
+ * Experimental alongside [resolveCameraPermissionRecovery]; the recovery policy may evolve.
+ */
+@ExperimentalSceneViewApi
 enum class ARCameraPermissionRecovery {
     /** Offer another permission request; Android may still suppress its dialog. */
     Request,
@@ -33,6 +40,7 @@ enum class ARCameraPermissionRecovery {
  *   excluding this answer. Reset to zero on a grant or a raised rationale flag.
  * @return The recovery actions to offer for this refused request; settings leads when available.
  */
+@ExperimentalSceneViewApi
 fun resolveCameraPermissionRecovery(
     rationaleBefore: Boolean,
     rationaleAfter: Boolean,

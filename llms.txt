@@ -252,6 +252,11 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ## Android camera permission recovery
 
+`resolveCameraPermissionRecovery`, `ARCameraPermissionRecovery` and
+`ARCameraPermissionState.recovery` are `@ExperimentalSceneViewApi`. Opt in where you use
+them with `@OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)`: the recovery
+policy may evolve. The legacy boolean constructor and `permanentlyDenied` remain stable.
+
 The built-in camera card and the Android demo share `resolveCameraPermissionRecovery(rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals)` in `io.github.sceneview.ar`. Call it only after a refused request. The rationale parameters have Android's `shouldShowRequestPermissionRationale(CAMERA)` meaning (`true` recommends a rationale), the inverse of `ARPermissionHandler.shouldShowPermissionRationale()`. Pass monotonic elapsed milliseconds and the number of earlier consecutive answers with no rationale flag; reset that count on a grant or a raised rationale flag. The timing threshold and refusal heuristic may evolve; use the returned enum instead of duplicating them.
 
 `ARCameraPermissionState.recovery` is the single source of truth for custom overlays: `Request` offers **Allow camera**, `RequestWithSettings` makes **Open settings** primary and keeps **Allow camera** as a secondary action with neutral copy, and `Settings` offers settings alone. Repeated Back dismissals and fast answers are ambiguous, so neither removes the request action nor claims camera access was turned off. Only a raised rationale flag falling after refusal selects settings alone. This policy is Android-specific; other platforms use their native permission flow.
