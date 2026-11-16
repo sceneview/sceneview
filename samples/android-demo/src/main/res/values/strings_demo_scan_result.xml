@@ -10,7 +10,7 @@
     <string name="scan_result_rename_field">Name</string>
     <string name="scan_result_rename_save">Save</string>
     <string name="scan_result_cancel">Cancel</string>
-    <string name="scan_result_creating">Creating your model…</string>
+    <string name="scan_result_creating">Building the surface · step 1 of 2</string>
     <string name="scan_result_partial">Only part of the surface could be built</string>
     <string name="scan_result_failed">Couldn\'t build a model from this scan. Scan slowly, 1–3 m from the surfaces.</string>
     <string name="scan_result_hint">Drag to turn · Pinch to zoom.</string>
@@ -52,6 +52,34 @@
     <string name="scan_live_map_swap_camera">Make the camera bigger</string>
     <string name="scan_live_map_swap_map">Make the map bigger</string>
 
+    <!-- A space's result: its inside measurements and the biggest box that fits -->
+    <string name="scan_space_inside">Inside %1$s × %2$s × %3$s %4$s</string>
+    <string name="scan_space_unit_cm">cm</string>
+    <string name="scan_space_unit_in">in</string>
+    <string name="scan_space_order">width × depth × height</string>
+    <string name="scan_space_fits">A box of %1$s × %2$s × %3$s %4$s fits</string>
+    <string name="scan_space_fits_none">Too tight for a box</string>
+    <string name="scan_space_fits_no_bottom">Film the bottom too, to get the box that fits</string>
+    <string name="scan_space_no_top">No top seen. If it has one, scan again and tilt up to it.</string>
+    <plurals name="scan_space_obstacles">
+        <item quantity="one">%d thing in the way</item>
+        <item quantity="other">%d things in the way</item>
+    </plurals>
+    <string name="scan_space_none">Couldn\'t measure the inside</string>
+    <string name="scan_space_none_hint">Scan again from the opening: the back, the sides and the bottom.</string>
+    <string name="scan_space_wide">This is more than one cupboard or shelf</string>
+    <string name="scan_space_wide_hint">Film just one, standing in front of its opening. For a whole room, choose A room.</string>
+    <string name="scan_object_size">%1$s × %2$s × %3$s %4$s</string>
+    <string name="scan_object_size_hint">Length × depth × height of the object, as scanned</string>
+    <string name="scan_object_none">No single object stands out</string>
+    <string name="scan_object_none_hint">Go round one object, keeping it in the middle of the picture. For a whole room, choose A room.</string>
+    <string name="scan_area_span">Scanned: %1$s × %2$s</string>
+    <string name="scan_area_ground">%1$s of ground in the scan</string>
+    <string name="scan_area_in_pieces">Shown as the points the scan took: outdoors, only part of them became a surface. Tap Model to see it.</string>
+    <string name="scan_result_photo_points">Photo · the points the scan took</string>
+    <string name="scan_room_figures_scanned">Not the room\'s size yet</string>
+    <string name="scan_room_figures_scanned_hint">These figures span what was scanned. To measure the room, film every wall from the floor up, all the way round.</string>
+
     <!-- Export sheet -->
     <string name="scan_export_title">Export scan</string>
     <string name="scan_export_model">3D model</string>
@@ -62,6 +90,7 @@
     <string name="scan_export_points">Coloured points — PLY</string>
     <string name="scan_export_scan">Original scan — SVSCAN</string>
     <string name="scan_export_recording">Recording — RRD</string>
+    <string name="scan_export_measurements">Inside measurements — JSON</string>
     <string name="scan_export_preparing">Preparing file…</string>
     <string name="scan_export_failed">Couldn\'t create this file</string>
     <!-- The model's row once its file is written, when it is not the light copy as planned (#4334). -->
