@@ -4,8 +4,10 @@ import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.ReconstructionMethod
+import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.demos.internal.ScanBox
+import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.ScanSubject
 import io.github.sceneview.demo.demos.internal.ScreenedPoisson
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
@@ -51,6 +53,17 @@ internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubje
     val subject = runCatching { ScanSubject.of(cloud, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
     return if (fillsObject(subject)) ReconstructionMethod.Poisson else ReconstructionMethod.Fused
 }
+
+/**
+ * Whether a kept model an earlier finish pipeline built ([RerunScanModel.stalePipeline]) is built
+ * again from its reopened scan, [source]: only where this pipeline finishes it differently — an
+ * object filled now ([objectReconstruction], pipeline 9). Anywhere else a rebuild could only
+ * lose: a model meshed at capture from the raw depth (1.25 cm for an object) would be meshed
+ * again from the surfels the recording keeps, coarser for good, and a room would come out the
+ * same. A pipeline that changes another finish says so here.
+ */
+internal fun rebuildsStale(scope: ScanScope, source: RerunModelSource, aims: List<ScanSubject.Aim>?, voxelM: Float?): Boolean =
+    scope == ScanScope.Object && objectReconstruction(source, aims, voxelM) == ReconstructionMethod.Poisson
 
 /** Whether an object as big as [subject] is filled ([objectReconstruction]): `false` for none. */
 internal fun fillsObject(subject: ScanBox?): Boolean =

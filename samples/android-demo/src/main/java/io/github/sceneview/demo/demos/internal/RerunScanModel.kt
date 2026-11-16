@@ -119,6 +119,25 @@ class RerunScanModel(
     }
 
     /**
+     * This model as this app's finish pipeline's ([PIPELINE]): kept so when it was built again
+     * ([stalePipeline]) and the rebuild did not finish, so that it is not tried again at every
+     * open — the attempts counted for a raw surface ([retriesFinish]) are not a finished model's.
+     */
+    fun asCurrentPipeline(): RerunScanModel = RerunScanModel(
+        kind = kind,
+        glb = glb,
+        bounds = bounds,
+        triangles = triangles,
+        vertices = vertices,
+        budgetReached = budgetReached,
+        finished = finished,
+        outOfMemoryInHeap = outOfMemoryInHeap,
+        outOfMemoryAttempts = outOfMemoryAttempts,
+        earlierFormat = earlierFormat,
+        pipeline = PIPELINE,
+    )
+
+    /**
      * [glb] in a native buffer, for the renderer to read; `null` when the heap has no room left
      * for the copy — a big scan's 12 MB, beside its finish — so the model is left unshown instead
      * of taking the app down. [allocate] is the allocation, for a test.
@@ -172,7 +191,8 @@ class RerunScanModel(
         /**
          * The finish pipeline's version, kept in `model.json` as the `.glb` cache's key: bumped
          * whenever the finish makes a different model of the same scan, so the models kept by an
-         * earlier one are built again ([stalePipeline]). 2: cut to the scan's box. 3: the pieces
+         * earlier one are built again ([stalePipeline]) where it finishes them differently
+         * (`rebuildsStale`). 2: cut to the scan's box. 3: the pieces
          * standing apart from it dropped (ScanTidy). 4: retain medium-confidence depth boundaries.
          * 5: bounded Poisson. 6: observed planar completion. 7: measured depth surface without plane completion.
          * 8: Poisson kept, the measured depth surface dropped. 9: an object 60 cm across or more filled

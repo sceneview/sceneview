@@ -723,8 +723,9 @@ private val ModelState.settled: Boolean get() = this == ModelState.Failed || (th
  * an object on its own box, a room square to its walls, three quarters on its front, from
  * outside ([ScanResultFraming], by [scope]) — and left there: the camera only moves when the user
  * moves it (Scan redesign, PR 1). Kept with the scan ([store], [id]) — reopened, it shows the
- * same model without building it again; never kept, it is built from [source] with the default
- * finish, without a question first, and saved.
+ * same model without building it again, unless the opening hands it a [source] to finish it
+ * again (a raw surface, or a model this pipeline finishes differently: rebuildsStale); never
+ * kept, it is built from [source] with the default finish, without a question first, and saved.
  *
  * One bar under it, three actions: Share, View in AR, and More (Plan, Measure, Watch capture).
  * Nothing is drawn over the model by default: no grid, slab, dimensions, zones nor pill.
@@ -844,6 +845,15 @@ internal fun RerunModelScreen(
                     .isSuccess
             }
             if (saved) (source as? RerunModelSource.Live)?.release()
+        }
+        // A rebuild over a stale model that did not finish leaves it in place, kept as this
+        // pipeline's (RerunScanModel.asCurrentPipeline): not built again at every open.
+        val staleStore = store.takeIf { stale != null && rebuilt == null }
+        if (staleStore != null && stale != null && id != null) {
+            withContext(Dispatchers.IO) {
+                runCatching { staleStore.saveModel(id, stale.asCurrentPipeline()) }
+                    .onFailure { Log.w(TAG, "stale model not kept", it) }
+            }
         }
         value = if (model != null) {
             ModelState.Ready(model, framedBy = resultFramedBy(model, shownFirst, stale), opensOn = shownFirst ?: model)
