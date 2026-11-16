@@ -69,6 +69,9 @@ internal interface CameraClient {
     /** `true` when there is a session that can be resumed: created, and not closed. */
     val canRun: Boolean
 
+    /** The host still wants the camera, but another session has taken its turn. */
+    var isWaitingForCamera: Boolean
+
     /** Returns a native resume failure, or null. Host callback exceptions propagate. */
     fun start(): Exception?
 
@@ -103,7 +106,10 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
     @MainThread
     fun resume(client: CameraClient) {
         if (!client.canRun || client.isRunning) return
-        handover.claim(client)?.takeIf { it.isRunning }?.stop()
+        handover.claim(client)?.let { previous ->
+            if (previous.isRunning) previous.stop()
+            previous.isWaitingForCamera = true
+        }
         if (!start(client)) {
             handover.release(client)
             handBack(reportExceptions = false)
@@ -122,6 +128,7 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
     @MainThread
     fun pause(client: CameraClient) {
         handover.release(client)
+        client.isWaitingForCamera = false
         if (client.isRunning) client.stop()
         if (handover.holder != null) postToMainThread { handBack() }
     }
@@ -138,6 +145,7 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
     @MainThread
     fun destroy(client: CameraClient, close: (onClosed: () -> Unit) -> Unit) {
         handover.release(client)
+        client.isWaitingForCamera = false
         close { handBack() }
     }
 
@@ -151,12 +159,15 @@ internal class CameraArbiter(private val postToMainThread: (() -> Unit) -> Unit)
         if (next.isRunning) return
         if (!next.canRun || !start(next, reportExceptions)) {
             handover.release(next)
+            next.isWaitingForCamera = false
             handBack(reportExceptions)
         }
     }
 
     /** Direct calls propagate host exceptions; a posted hand-back has no caller to catch them. */
     private fun start(client: CameraClient, reportExceptions: Boolean = false): Boolean {
+        // Clear before start: onSessionResumed may throw after the native resume succeeded.
+        client.isWaitingForCamera = false
         try {
             val failure = client.start() ?: return true
             client.onStartFailed(failure)

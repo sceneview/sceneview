@@ -275,7 +275,9 @@ private fun CoachCard(content: CardContent, surface: PlacementSurface, layout: C
     val text = cardText(content, surface)
     val chip = hintLabel(content.hint, content.trackingReason)
     val spoken = listOfNotNull(chip, text.headline, text.detail).joinToString(". ")
-    val polite = content.cue != ArGuidanceCue.INITIALIZING
+    val polite = content.cue != ArGuidanceCue.INITIALIZING ||
+        content.trackingReason == TrackingFailureReason.BAD_STATE ||
+        content.trackingReason == TrackingFailureReason.CAMERA_UNAVAILABLE
     val illustrationSize = if (layout == CardLayout.REGULAR) {
         CoachSpec.ILLUSTRATION_W to CoachSpec.ILLUSTRATION_H
     } else {

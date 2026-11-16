@@ -216,14 +216,26 @@ final class RerunWireFormatTests: XCTestCase {
             "{\"type\":\"control\",\"ack\":\"saved\"," +
                 "\"path\":\"/Users/dev/.sceneview/recordings/2026-05-06.rrd\"," +
                 "\"events\":1234," +
-                "\"viewerUrl\":\"https://sceneview.github.io/rerun/?url=file%3A%2F%2F%2Ftmp%2Fa.rrd\"}"
+                "\"viewerUrl\":\"https://sceneview.github.io/rerun/?url=https%3A%2F%2Fexample.com%2Fa.rrd\"}"
         )
         XCTAssertNotNil(ack)
         XCTAssertTrue(ack!.success)
         XCTAssertEqual(ack!.path, "/Users/dev/.sceneview/recordings/2026-05-06.rrd")
         XCTAssertEqual(ack!.events, 1234)
         XCTAssertEqual(ack!.viewerUrl,
-                       "https://sceneview.github.io/rerun/?url=file%3A%2F%2F%2Ftmp%2Fa.rrd")
+                       "https://sceneview.github.io/rerun/?url=https%3A%2F%2Fexample.com%2Fa.rrd")
+        XCTAssertNil(ack!.reason)
+    }
+
+    func testParseControlAckAcceptsLocalSaveWithoutViewerUrl() {
+        let ack = RerunWireFormat.parseControlAck(
+            #"{"type":"control","ack":"saved","path":"/tmp/a.rrd","events":42}"#
+        )
+        XCTAssertNotNil(ack)
+        XCTAssertTrue(ack!.success)
+        XCTAssertEqual(ack!.path, "/tmp/a.rrd")
+        XCTAssertEqual(ack!.events, 42)
+        XCTAssertNil(ack!.viewerUrl)
         XCTAssertNil(ack!.reason)
     }
 

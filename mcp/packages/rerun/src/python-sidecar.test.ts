@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { generatePythonSidecar } from "./python-sidecar.js";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 describe("generatePythonSidecar", () => {
   it("emits a script that uses rerun-sdk", () => {
@@ -79,4 +84,52 @@ describe("generatePythonSidecar", () => {
     expect(src).toContain('kind == "anchor"');
     expect(src).toContain('kind == "hit_result"');
   });
+});
+
+describe("local save protocol (sample and generated sidecars)", () => {
+  for (const mode of ["explicit", "disconnect"]) {
+    it(`prints matching usable instructions on ${mode}, without a local viewer URL`, () => {
+      const dir = realpathSync(mkdtempSync(join(tmpdir(), "rerun-save-")));
+      try {
+        const generated = join(dir, "rerun-bridge.py");
+        writeFileSync(generated, generatePythonSidecar());
+        const path = join(dir, "recording with spaces.rrd");
+        const outputs = [
+          fileURLToPath(new URL("../../../../samples/android-demo/tools/rerun-bridge.py", import.meta.url)),
+          generated,
+        ].map((script) => {
+          const result = spawnSync("python3", [
+            fileURLToPath(new URL("../src/__fixtures__/sidecar-save.py", import.meta.url)),
+            script, path, mode,
+          ], { encoding: "utf8" });
+          expect(result.stderr).toBe("");
+          expect(result.status).toBe(0);
+          expect(result.stdout).toContain(`SDK_SAVE=${path}`);
+          expect(result.stdout).toContain("saved 1 events");
+          expect(result.stdout).not.toMatch(/file:|file%3a|open in browser/i);
+          const instructions = result.stdout.split("\n").filter((line) =>
+            line.startsWith("[rerun-bridge] view locally ->") ||
+            line.startsWith("[rerun-bridge] to share ->"),
+          );
+          expect(instructions).toHaveLength(2);
+          expect(instructions[0]).toContain("drop the .rrd file on https://sceneview.github.io/rerun/");
+          expect(instructions[1]).toContain("public HTTPS address ending in .rrd");
+          expect(instructions[1]).toContain("CORS");
+          expect(instructions[1]).toContain("https://sceneview.github.io/rerun/?url=<encoded-public-url>");
+          const ackLine = result.stdout.split("\n").find((line) => line.startsWith("ACK="));
+          if (mode === "explicit") {
+            expect(JSON.parse(ackLine!.slice(4))).toEqual({
+              type: "control", ack: "saved", path, events: 1,
+            });
+          } else {
+            expect(ackLine).toBeUndefined();
+          }
+          return instructions;
+        });
+        expect(outputs[0]).toEqual(outputs[1]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
 });
