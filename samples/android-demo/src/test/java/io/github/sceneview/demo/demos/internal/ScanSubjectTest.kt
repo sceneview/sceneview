@@ -142,6 +142,50 @@ class ScanSubjectTest {
         assertEquals(CRATE_Z, box.centerZ, 2 * VOXEL)
     }
 
+    /** A floor as a phone's depth draws it: a sheet a centimetre or two thick. */
+    private fun Drawn.roughFloor() {
+        floor()
+        rect(Vec3(-FLOOR_M / 2, 0.015f, -FLOOR_M / 2), Vec3(FLOOR_M, 0f, 0f), Vec3(0f, 0f, FLOOR_M), Vec3.Up)
+    }
+
+    @Test
+    fun `the toes of a pair of shoes, lower than their heels, are in its box`() {
+        val shoes = Drawn().apply {
+            roughFloor()
+            val heels = SHOES_LENGTH - TOES
+            block(CRATE_X - TOES / 2, CRATE_Z, heels, SHOES_WIDTH, SHOES_HEIGHT)
+            block(CRATE_X + heels / 2, CRATE_Z, TOES, SHOES_WIDTH, TOES_HEIGHT)
+        }.cloud()
+        val box = ScanSubject.of(shoes, VOXEL, round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f))
+        assertNotNull("no object for shoes looked at all the way round", box)
+        assertEquals("heels and toes", SHOES_LENGTH, box!!.length, 2.5f * VOXEL)
+        assertEquals(SHOES_WIDTH, box.depth, 2.5f * VOXEL)
+    }
+
+    @Test
+    fun `a mat a pair of shoes stands on is not in its box`() {
+        val shoes = Drawn().apply {
+            roughFloor()
+            block(CRATE_X, CRATE_Z, MAT, MAT, TOES_HEIGHT)
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT, y = TOES_HEIGHT)
+        }.cloud()
+        val box = ScanSubject.of(shoes, VOXEL, round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f))
+        assertNotNull("no object for shoes on a mat looked at all the way round", box)
+        assertEquals("the shoes, not the mat", SHOES_LENGTH, box!!.length, 2.5f * VOXEL)
+        assertEquals(SHOES_WIDTH, box.depth, 2.5f * VOXEL)
+    }
+
+    @Test
+    fun `shoes whose looks meet at the floor's own height are boxed`() {
+        val shoes = Drawn().apply {
+            roughFloor()
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT)
+        }.cloud()
+        val box = ScanSubject.of(shoes, VOXEL, round(CRATE_X, CRATE_Z, -0.02f, radius = 0.25f, eyeM = 0.4f))
+        assertNotNull("no object for shoes whose looks meet at the floor", box)
+        assertEquals(SHOES_LENGTH, box!!.length, 2.5f * VOXEL)
+    }
+
     @Test
     fun `a box on a table is measured from the table's top, not as the table`() {
         val scene = Drawn().apply {
@@ -196,6 +240,9 @@ class ScanSubjectTest {
         const val SHOES_LENGTH = 0.28f
         const val SHOES_WIDTH = 0.2f
         const val SHOES_HEIGHT = 0.11f
+        const val TOES = 0.08f
+        const val TOES_HEIGHT = 0.045f
+        const val MAT = 0.6f
         const val TABLE_TOP = 0.75f
         const val SMALL = 0.12f
         const val SMALL_HEIGHT = 0.25f

@@ -504,6 +504,21 @@ class ScanObjectTest {
     }
 
     @Test
+    fun `a cabinet hung on a piece of wall too narrow to be told a wall stays where it hangs`() {
+        val scene = Scene()
+        scene.floor(HALF_ROOM, HALF_ROOM, y = 0f)
+        // A strip of wall a metre wide: too small for a wall, upright all the same.
+        scene.rect(Vec3(-0.5f, 0f, -1f), Vec3(1f, 0f, 0f), Vec3(0f, 2f, 0f), Vec3(0f, 0f, 1f))
+        scene.box(0f, -0.8f, yawDeg = 0f, length = 0.8f, depth = 0.4f, height = 0.5f, y = 0.8f)
+        scene.rect(Vec3(-0.4f, 0.8f, -1f), Vec3(0.8f, 0f, 0f), Vec3(0f, 0f, 0.4f), Vec3(0f, -1f, 0f))
+        val objects = ScanObjects.of(scene.cloud())
+        val cabinet = objects.pick(EYE, toward(Vec3(0f, 1.1f, -0.6f))) as ScanPick.Found
+        val whole = objects.whole(cabinet)
+        assertEquals("it hangs from that piece of wall", 0.8f, whole.baseY, 2 * VOXEL)
+        assertEquals(0.5f, whole.height, 2 * VOXEL)
+    }
+
+    @Test
     fun `furniture against a piece of wall a noisy scan drew thick is whole without that wall`() {
         // A phone's depth draws the floor and the wall as several sheets; the furniture's back is in among the wall's.
         val scene = Scene()
