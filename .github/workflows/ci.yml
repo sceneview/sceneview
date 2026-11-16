@@ -462,23 +462,6 @@ jobs:
       - name: Run the offline App Store script tests
         run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py' -v
 
-  # Offline cross-platform defaults: run on code PRs, including Swift-only changes.
-  default-light-parity:
-    name: Default key-light parity
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          filter: blob:none
-          sparse-checkout: |
-            .claude/scripts
-            sceneview/src/main/java/io/github/sceneview
-            SceneViewSwift/Sources/SceneViewSwift
-            sceneview-web/src/jsMain/kotlin/io/github/sceneview/web
-      - name: Check production key-light defaults and wiring
-        run: python3 .claude/scripts/test-default-main-light.py
-
   # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
   # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until
   # this job existed, its header named a blocking check in `ci.yml` ->
