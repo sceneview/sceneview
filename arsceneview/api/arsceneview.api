@@ -944,6 +944,20 @@ public final class io/github/sceneview/ar/Ndc {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/ar/PlacementBoundsFit {
+	public static final field $stable I
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFits ()Z
+	public final fun getMarginMeters ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlacementBoundsFitKt {
+	public static final fun placementBoundsFit (Lcom/google/ar/core/Plane;Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Mat4;)Lio/github/sceneview/ar/PlacementBoundsFit;
+	public static final fun placementBoundsFit (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;[F)Lio/github/sceneview/ar/PlacementBoundsFit;
+}
+
 public final class io/github/sceneview/ar/PlacementController {
 	public static final field $stable I
 	public final fun clear ()V

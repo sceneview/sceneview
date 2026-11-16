@@ -52,16 +52,14 @@ public final class RerunBridge: ObservableObject {
     public static let defaultRateHz: Int = 10
 
     /// Result of ``requestSaveAndShare(_:)`` — either the sidecar wrote a
-    /// `.rrd` file (`success = true` and `path` / `viewerUrl` populated) or
+    /// `.rrd` file (`success = true` and `path` populated) or
     /// it couldn't (`success = false` with a human-readable ``reason``).
     ///
-    /// `viewerUrl` is the SceneView Rerun page pre-filled with the recording
-    /// location. The underlying URL usually points at a `file://` path on the
-    /// dev machine which most browsers won't fetch from an HTTPS page — drop
-    /// the `.rrd` onto https://sceneview.github.io/rerun/ to render it
-    /// in-place, or host the file first at an https address whose host
-    /// allows cross-origin requests (CORS) — the page reads it from the
-    /// browser.
+    /// `viewerUrl` is optional and only populated when a public HTTPS recording
+    /// address is known. The bundled sidecar saves locally and leaves it `nil`.
+    /// Drop the `.rrd` onto https://sceneview.github.io/rerun/ to inspect it,
+    /// or host it at a public HTTPS address ending in `.rrd` with cross-origin
+    /// requests (CORS) allowed, then share a viewer link to that address.
     public struct ShareResult: Equatable {
         public let success: Bool
         public let path: String?
@@ -261,7 +259,8 @@ public final class RerunBridge: ObservableObject {
     // MARK: - Save & share
 
     /// Ask the Python sidecar to flush its in-memory recording to a `.rrd`
-    /// file on disk and reply with the path + the SceneView Rerun viewer URL.
+    /// file on disk and reply with its local path. A viewer URL is optional and
+    /// only available when a public HTTPS recording address is known.
     ///
     /// Requires the sidecar to be running with `--save` (the demo's
     /// `rerun-bridge.py` defaults to live mode). If the sidecar is in live

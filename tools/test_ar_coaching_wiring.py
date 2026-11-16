@@ -16,15 +16,15 @@ CALLS = {
         "if (cameraDenied || arCoreUnavailable) ArGuidanceCue.NONE else guidance.cue",
     DEMO + "common/placement/TapToPlaceArSession.kt": "coachingCue",
     DEMO + "common/placement/ARFeatureComparison.kt":
-        "if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE",
+        "if (!LocalMotionSensorSilent.current && availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE",
     DEMO + "demos/ARPlaneNodeDemo.kt":
-        "if (arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE",
+        "if (!LocalMotionSensorSilent.current && arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE",
     DEMO + "demos/ARSurfacesDemo.kt":
-        "if (arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE",
+        "if (!LocalMotionSensorSilent.current && arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE",
     DEMO + "demos/ARMeasureDemo.kt":
-        "if (arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE",
+        "if (!LocalMotionSensorSilent.current && arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE",
     DEMO + "demos/ARPoolDemo.kt":
-        "if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE",
+        "if (!LocalMotionSensorSilent.current && availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE",
 }
 
 

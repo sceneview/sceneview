@@ -123,6 +123,11 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ## Android camera permission recovery
 
+`resolveCameraPermissionRecovery`, `ARCameraPermissionRecovery` and
+`ARCameraPermissionState.recovery` are `@ExperimentalSceneViewApi`. Opt in where you use
+them with `@OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)`: the recovery
+policy may evolve. The legacy boolean constructor and `permanentlyDenied` remain stable.
+
 The built-in camera card and the Android demo share `resolveCameraPermissionRecovery(rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals)` in `io.github.sceneview.ar`. Call it only after a refused request. The rationale parameters have Android's `shouldShowRequestPermissionRationale(CAMERA)` meaning (`true` recommends a rationale), the inverse of `ARPermissionHandler.shouldShowPermissionRationale()`. Pass monotonic elapsed milliseconds and the number of earlier consecutive answers with no rationale flag; reset that count on a grant or a raised rationale flag. The timing threshold and refusal heuristic may evolve; use the returned enum instead of duplicating them.
 
 `ARCameraPermissionState.recovery` is the single source of truth for custom overlays: `Request` offers **Allow camera**, `RequestWithSettings` makes **Open settings** primary and keeps **Allow camera** as a secondary action with neutral copy, and `Settings` offers settings alone. Repeated Back dismissals and fast answers are ambiguous, so neither removes the request action nor claims camera access was turned off. Only a raised rationale flag falling after refusal selects settings alone. This policy is Android-specific; other platforms use their native permission flow.
@@ -525,6 +530,51 @@ ARSceneView(
 ```
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+
+### GroundContact — depth occlusion with custom placement (Android)
+
+`AutoPlacementScene` registers the surface contact of each placed model automatically. With your
+own placement, contact shadow or ring, call `ARSceneScope.GroundContact` in the `ARSceneView`
+content block. It draws nothing: it registers the contact disc used by the bundled depth and
+people occlusion materials to keep surface depth noise from cutting the shadow, ring and feet.
+
+Signature: `@Composable fun ARSceneScope.GroundContact(center: () -> Position?, radius: Float, normal: Direction = Direction(y = 1f))`.
+This is a scope member and needs no import. The centre provider runs on the main thread each
+rendered frame, after nodes move; return `null` while nothing is placed or the node is invalid.
+Leaving the composition removes the contact. Recomposition updates the provider, radius and normal.
+
+```kotlin
+import androidx.compose.runtime.Composable
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.scene.SceneUnderstanding
+import io.github.sceneview.math.Position
+import com.google.ar.core.Config
+
+@Composable
+fun CustomPlacementOcclusion(contactCenter: () -> Position?, ringRadius: Float) {
+    ARSceneView(
+        depthMode = Config.DepthMode.AUTOMATIC,
+        sceneUnderstanding = SceneUnderstanding(occlusion = true),
+    ) {
+        // Declare your custom placement nodes here too.
+        GroundContact(center = contactCenter, radius = ringRadius)
+    }
+}
+```
+
+Pass the **world-space supporting surface** centre and normal, including for nodes parented to
+an `AnchorNode`; local coordinates and the model's bounding-box centre are wrong. If its origin is on the
+floor, `center = { node.takeUnless { it.isDestroyed }?.worldPosition }` follows it without
+recomposition. Radius is in world metres: include any scale applied by the placement hierarchy.
+The normal defaults to +Y (floor); supply the world-space surface normal for a wall or slope.
+Invalid values (non-finite coordinates, non-positive radius or zero normal) suspend that contact.
+
+Only the valid contact nearest the camera is used per frame. The band tolerates up to 10 cm of
+surface depth noise inside its disc and fades out to zero at 1.5 times the radius. Real geometry
+sufficiently in front still occludes. This does not turn on depth capture or occlusion; use the
+configuration above on a depth-capable device. Custom camera materials need `groundContact`
+and `groundNormal` parameters. Other platforms use different occlusion pipelines; this API is
+specific to Android's ARCore/Filament camera stream.
 
 ### Plane rendering — one renderer, one mark per surface type (#4307)
 
@@ -1474,11 +1524,20 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 - with no active probe (camera outside every local zone, or the last probe removed), the scene
   shows its `SceneView(environment = …)` light again — the current one, even if it changed
   meanwhile;
-- a new `SceneView` environment (dark/light toggle, `environment.copy(skybox = …)`) never
+- a new scene environment (dark/light toggle, `environment.copy(skybox = …)`) never
   overrides an active probe; a destroyed light is never handed back.
-- `SceneView` only: `ARSceneView` still writes its environment's light (and AR light
-  estimation's) directly, so in AR a new environment can replace an active probe until the next
-  probe change (see #4928).
+- in `ARSceneView`, a probe overrides the entire estimated IBL without blending. Estimates keep
+  updating the fallback: leaving the zone restores the latest estimate, or the base environment
+  before the first estimate (reset on environment change). Directional-light estimation continues
+  independently (#4939);
+- a light written directly to `scene.indirectLight` is restored after a probe cycle, until a new
+  environment or AR estimate supersedes it. A released environment no longer owns the fallback.
+
+Android library integration uses the `@RestrictTo(LIBRARY_GROUP_PREFIX)` hooks
+`Scene.setEnvironmentLight(light: IndirectLight?)` and
+`Scene.releaseEnvironmentLight(light: IndirectLight?)` in `io.github.sceneview.node`.
+They share the probe registry across `sceneview` and `arsceneview`; release the fallback before
+destroying its light. These are Android Filament integration hooks; other renderers do not use them.
 
 ---
 
