@@ -16,6 +16,10 @@
     <string name="sceneview_camera_permission_grant">Grant camera access</string>
     <string name="sceneview_camera_permission_settings">Open settings</string>
 
+    <!-- Camera contention between ARSceneView instances (#4491). -->
+    <string name="sceneview_camera_in_use_title">Camera in use</string>
+    <string name="sceneview_camera_in_use_body">Another AR view is using the camera. This view will resume automatically when the camera is available.</string>
+
     <!-- ARCoreAvailabilityOverlay (#3374) — ARCore cannot start a session on this device. -->
     <string name="sceneview_arcore_unsupported_title">AR isn\'t available on this device</string>
     <string name="sceneview_arcore_unsupported_body">This device doesn\'t support ARCore, so the camera experience can\'t start. The other demos still work.</string>
