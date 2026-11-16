@@ -678,9 +678,9 @@ When `sceneUnderstanding` is non-null, its four flags override the individual on
 
 ### GroundContact — depth occlusion with custom placement (Android)
 
-`AutoPlacementScene` registers the surface contact of each placed model automatically. With your
-own placement, contact shadow or ring, call `ARSceneScope.GroundContact` in the `ARSceneView`
-content block. It draws nothing: it registers the contact disc used by the bundled depth and
+`AutoPlacementModel` registers its surface contact automatically. With custom `AutoPlacementScene`
+content or your own placement, contact shadow or ring, call `ARSceneScope.GroundContact` in the
+`ARSceneView` content block. It draws nothing: it registers the contact disc used by the bundled depth and
 people occlusion materials to keep surface depth noise from cutting the shadow, ring and feet.
 
 Signature: `@Composable fun ARSceneScope.GroundContact(center: () -> Position?, radius: Float, normal: Direction = Direction(y = 1f))`.
