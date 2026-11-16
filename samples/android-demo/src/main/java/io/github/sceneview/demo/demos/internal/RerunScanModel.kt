@@ -175,9 +175,11 @@ class RerunScanModel(
          * earlier one are built again ([stalePipeline]). 2: cut to the scan's box. 3: the pieces
          * standing apart from it dropped (ScanTidy). 4: retain medium-confidence depth boundaries.
          * 5: bounded Poisson. 6: observed planar completion. 7: measured depth surface without plane completion.
+         * 8: Poisson kept, the measured depth surface dropped. 9: an object 60 cm across or more filled
+         * by Poisson too.
          * A `model.json` without one is 1.
          */
-        const val PIPELINE = 8
+        const val PIPELINE = 9
 
         private const val EARLIER_PIPELINE = 1
 

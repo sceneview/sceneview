@@ -5,6 +5,8 @@ import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.ReconstructionMethod
 import io.github.sceneview.demo.demos.internal.RerunTsdf
+import io.github.sceneview.demo.demos.internal.ScanBox
+import io.github.sceneview.demo.demos.internal.ScanSubject
 import io.github.sceneview.demo.demos.internal.ScreenedPoisson
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import kotlinx.coroutines.CompletableDeferred
@@ -33,6 +35,32 @@ internal fun reconstructedTsdf(
     val cloud = reconstructionCloud(source) ?: return null
     return ScreenedPoisson.reconstruct(cloud, voxelM = voxelM, progress = progress)?.tsdf
 }
+
+/**
+ * How an object's scan ([ScanScope.Object]) is finished: the thing it went round ([ScanSubject])
+ * at least [FILLED_OBJECT_M] across is filled ([ReconstructionMethod.Poisson]) on the room's
+ * grid; a smaller one, or none found, keeps the fused surface. On real scans the fused
+ * office chair is shreds — its thin stem and open back give the depth too little to hold —
+ * where the fill draws the seat, the stem and the back whole; a pair of shoes keeps its two
+ * shoes fused, which a grid that coarse rounds into one lump. [aims] is where the phone looked
+ * ([ScanSubject.aims]); [voxelM] the grid the surfels were kept on, when the scan says it.
+ */
+internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubject.Aim>?, voxelM: Float?): ReconstructionMethod {
+    if (aims.isNullOrEmpty()) return ReconstructionMethod.Fused
+    val cloud = reconstructionCloud(source) ?: return ReconstructionMethod.Fused
+    val subject = runCatching { ScanSubject.of(cloud, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
+    return if (fillsObject(subject)) ReconstructionMethod.Poisson else ReconstructionMethod.Fused
+}
+
+/** Whether an object as big as [subject] is filled ([objectReconstruction]): `false` for none. */
+internal fun fillsObject(subject: ScanBox?): Boolean =
+    subject != null && maxOf(subject.length, subject.depth, subject.height) >= FILLED_OBJECT_M
+
+/**
+ * The smallest object filled ([objectReconstruction]), in metres across its largest side: twelve
+ * cells of the room's 5 cm grid. The chair (97 cm) is over it; the shoes (29 cm) are well under.
+ */
+internal const val FILLED_OBJECT_M = 0.6f
 
 /** What "Filled" ([ReconstructionMethod.Poisson]) can make of a scan, told before it is picked. */
 internal sealed interface FillPlan {

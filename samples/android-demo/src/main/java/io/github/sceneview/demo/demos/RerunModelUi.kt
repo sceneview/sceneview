@@ -804,13 +804,19 @@ internal fun RerunModelScreen(
                         value = ModelState.Ready(surface, final = false)
                     }
                 }
-                // Close measured gaps with the bounded Poisson reconstruction (#4805).
-                // It falls back to fused depth when no oriented cloud fits the budget.
+                // Close measured gaps with the bounded Poisson reconstruction (#4805): a room's,
+                // and a big object's (objectReconstruction). It falls back to fused depth when no
+                // oriented cloud fits the budget.
+                val reconstruction = when {
+                    scope.hasFloorPlan -> ReconstructionMethod.Poisson
+                    scope == ScanScope.Object -> objectReconstruction(from, captureAims, surfelsVoxelM)
+                    else -> ReconstructionMethod.Fused
+                }
                 runCatching {
                     buildScanModel(from, raw, retry?.glb,
-                        reconstruction = if (scope.hasFloorPlan) ReconstructionMethod.Poisson else ReconstructionMethod.Fused,
+                        reconstruction = reconstruction,
                         // Room depth is sparse: a 5 cm grid bridges small floor gaps and costs
-                        // less than the fine solve. Object and outdoor scans keep fused detail.
+                        // less than the fine solve. Small objects and outdoor scans keep fused detail.
                         reconstructionVoxelM = 0.05f,
                         progress = report)
                 }
