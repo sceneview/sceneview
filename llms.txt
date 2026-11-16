@@ -1678,12 +1678,6 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 - a light written directly to `scene.indirectLight` is restored after a probe cycle, until a new
   environment or AR estimate supersedes it. A released environment no longer owns the fallback.
 
-Android library integration uses the `@RestrictTo(LIBRARY_GROUP_PREFIX)` hooks
-`Scene.setEnvironmentLight(light: IndirectLight?)` and
-`Scene.releaseEnvironmentLight(light: IndirectLight?)` in `io.github.sceneview.node`.
-They share the probe registry across `sceneview` and `arsceneview`; release the fallback before
-destroying its light. These are Android Filament integration hooks; other renderers do not use them.
-
 ---
 
 ## ARSceneScope — AR Node DSL
@@ -9908,7 +9902,7 @@ SceneView { root in root.addChild(hero.entity) }
 
 iOS now ships the Android-parity 2-light setup out of the box (matches the v4.1.0 BREAKING render-defaults change finally landing on iOS):
 
-- **Main / key light**: `LightNode.directional(intensity: 10_000, castsShadow: true)` pointing straight down (`(0, -1, 0)`)
+- **Main / key light**: directional at `10_000` lux with shadow casting enabled, travelling along `(-0.25, -1, -0.25)` in world space — the same steep studio angle as Android. Applies to both `SceneView` and `ARSceneView`.
 - **Fill light**: `LightNode.fill(intensity: 3_000, castsShadow: false)` from `(0.5, -0.5, 0.5)` (upper-back-left → down-front-right) — 30% of main intensity, lifts the shadow side without flattening
 - **Defaults applied via `.systemDefault` slot value** — overridable per-slot
 

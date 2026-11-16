@@ -1145,7 +1145,7 @@ fun SceneView(
                 policy = currentFrameRatePolicy.value,
                 isDirty = frameRateGate.isDirty,
                 hasAnimationFrame = currentOnAnimationFrame.value != null
-            ) || destroyQueue.size > 0
+            ) || destroyQueue.hasPending
         }
     }
 
