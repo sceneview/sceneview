@@ -5,7 +5,7 @@
 
 **Interior Design 3D MCP — give any AI assistant everything it needs to build room planners, AR furniture placement, material switchers, lighting designers, and virtual room tours with [SceneView](https://sceneview.github.io) on Android.**
 
-Tools return Kotlin code written against SceneView's Compose APIs (`rememberModelInstance`, `ModelNode`, `ARSceneView`, `LightNode` with its `type` and the named `apply` parameter). The 3D lighting template targets SceneView 4.69.4 for skinning-corrected room bounds; the other templates target 4.53.0.
+Tools return Kotlin code written against SceneView's Compose APIs (`rememberModelInstance`, `ModelNode`, `ARSceneView`, `LightNode` with its `type` and the named `apply` parameter). The 3D and AR lighting templates target SceneView 4.69.4; the other templates target 4.53.0.
 
 ## Installation
 
@@ -70,10 +70,12 @@ local lights do not relight the camera image.
 Directional intensity uses lux. Point and `SPOT` intensity uses lumens, converted
 from the preview illuminance below each fixture using its floor distance:
 `lumens = lux × height² × 4π` for points and `lux × height² × π` for Filament's
-cone-independent `SPOT`. These daylight-level preview presets preserve the legacy
-brightness targets; they are not household bulb ratings or a photometric design
-calculation. Finite-radius attenuation, materials, exposure, and the environment
-also affect the rendered result. See [Filament's lighting model](https://google.github.io/filament/main/filament.html#lighting).
+cone-independent `SPOT`. Preview targets range from 3,000 to 15,000 lux, one tenth
+of the previous presets, preserving their relative brightness while matching the
+scale of SceneView's 10,000-lux default main light. These are not household bulb
+ratings or a photometric design calculation. Combined lights, finite-radius
+attenuation, materials, exposure, and the environment also affect the rendered
+result. See [Filament's lighting model](https://google.github.io/filament/main/filament.html#lighting).
 
 ## Requirements
 
