@@ -1,0 +1,1120 @@
+{
+  "beforeIntensity": 40000,
+  "afterIntensity": 28000,
+  "browser": "149.0.7827.55",
+  "colors": [
+    {
+      "name": "red",
+      "linear": [
+        0.8,
+        0.05,
+        0.04
+      ]
+    },
+    {
+      "name": "green",
+      "linear": [
+        0.06,
+        0.65,
+        0.08
+      ]
+    },
+    {
+      "name": "blue",
+      "linear": [
+        0.04,
+        0.1,
+        0.8
+      ]
+    },
+    {
+      "name": "yellow",
+      "linear": [
+        0.9,
+        0.55,
+        0.04
+      ]
+    },
+    {
+      "name": "magenta",
+      "linear": [
+        0.65,
+        0.04,
+        0.6
+      ]
+    },
+    {
+      "name": "cyan",
+      "linear": [
+        0.04,
+        0.65,
+        0.7
+      ]
+    }
+  ],
+  "camera": {
+    "distance": 5,
+    "fov": 30
+  },
+  "radius": 0.48,
+  "metallic": 0,
+  "roughness": 0.45,
+  "hashes": {
+    "/before.html": "6df05644cf4c0b8defdbaf3793796761e4191580a2c93b264521efa21ecbbb1d",
+    "/after.html": "d86235c92faf8bc54b919783e401b430840ee6c9ec06686fcbbd9dcfb60abc4d",
+    "/before/sceneview.js": "fabd4eaa4de2c5e39e250360356e0c448f7721236039d3a4f882cc6cf15f95e7",
+    "/after/sceneview.js": "cd6c1f80153c693e22fab74659e338bc09cc3d14aad46414bad60209453fc824",
+    "/board.glb": "a74d2e5bbc091de1b75ad4d7e3891b368a53d88275823dd4c9867826d5f82768",
+    "/js/filament/filament.js": "2ce3bd306d1a28fe02238268b17ee8c56538128353249c47bff06228865ab520",
+    "/js/filament/filament.wasm": "4fd4d298afba5fdb9df61def28ebf2906c668a65e1c89f5deab661ee9f0069f3",
+    "/environments/neutral_ibl.ktx": "85b0b5239ecf0cec36c7d59ddd1e2131d4ae6685716daf2f63e8f93bd1cb28e5",
+    "/environments/studio_showroom_light_ibl.ktx": "9b6f3c77d7adeaecbb8f48be839c202a02bd67030db4c19b5abf31feb826c6ae",
+    "/environments/studio_showroom_dark_ibl.ktx": "d45b509193979328807f4c72d0432ff2cfa803f3e88e679145ae2063ef2474cb"
+  },
+  "results": [
+    {
+      "column": "before",
+      "theme": "light",
+      "ktxLoaded": true,
+      "source": {
+        "url": "/environments/studio_showroom_light_ibl.ktx",
+        "intensity": 40000,
+        "studio": true
+      },
+      "orbit": {
+        "angle": 0,
+        "height": 0,
+        "radius": 5,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "fov": 30
+      },
+      "qualityTier": 3,
+      "samples": [
+        {
+          "name": "red",
+          "sphereMask": {
+            "x": 196.9385127825613,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 196.9385127825613,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6958193510685656,
+            "lightness": 50.275380202069144,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 52.76838329021121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "green",
+          "sphereMask": {
+            "x": 358.1631076695367,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 358.1631076695367,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6109373184072525,
+            "lightness": 73.40258648033067,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.6729857819905196,
+            "lightness": 75.09536607142557,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "blue",
+          "sphereMask": {
+            "x": 519.3877025565123,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 519.3877025565123,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6735554937103935,
+            "lightness": 47.09337540426488,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 43.87637548341121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "yellow",
+          "sphereMask": {
+            "x": 680.6122974434877,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 680.6122974434877,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6785257781179386,
+            "lightness": 79.89456829446223,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7695473251028824,
+            "lightness": 81.19468143830177,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "magenta",
+          "sphereMask": {
+            "x": 841.8368923304633,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 841.8368923304633,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6644710860675332,
+            "lightness": 53.811895719839704,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.7345971563981045,
+            "lightness": 52.940841194814546,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "cyan",
+          "sphereMask": {
+            "x": 1003.0614872174388,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 1003.0614872174388,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6795896467878613,
+            "lightness": 75.0826506300391,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7431192660550384,
+            "lightness": 77.57093578465332,
+            "pixels": 400
+          }
+        }
+      ]
+    },
+    {
+      "column": "after",
+      "theme": "light",
+      "ktxLoaded": true,
+      "source": {
+        "url": "/environments/studio_showroom_light_ibl.ktx",
+        "intensity": 28000,
+        "studio": true
+      },
+      "orbit": {
+        "angle": 0,
+        "height": 0,
+        "radius": 5,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "fov": 30
+      },
+      "qualityTier": 3,
+      "samples": [
+        {
+          "name": "red",
+          "sphereMask": {
+            "x": 196.9385127825613,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 196.9385127825613,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7506625296951859,
+            "lightness": 44.35461306445523,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 52.76838329021121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "green",
+          "sphereMask": {
+            "x": 358.1631076695367,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 358.1631076695367,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6719394801004869,
+            "lightness": 66.50005557603485,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.6729857819905196,
+            "lightness": 75.09536607142557,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "blue",
+          "sphereMask": {
+            "x": 519.3877025565123,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 519.3877025565123,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.732693565238269,
+            "lightness": 39.24590957962081,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 43.87637548341121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "yellow",
+          "sphereMask": {
+            "x": 680.6122974434877,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 680.6122974434877,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7387939763979615,
+            "lightness": 72.9824940858048,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7695473251028824,
+            "lightness": 81.19468143830177,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "magenta",
+          "sphereMask": {
+            "x": 841.8368923304633,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 841.8368923304633,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7207330224774579,
+            "lightness": 47.565769624829784,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.7345971563981045,
+            "lightness": 52.940841194814546,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "cyan",
+          "sphereMask": {
+            "x": 1003.0614872174388,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 1003.0614872174388,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7346428949523183,
+            "lightness": 68.1956230527196,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7431192660550384,
+            "lightness": 77.57093578465332,
+            "pixels": 400
+          }
+        }
+      ]
+    },
+    {
+      "column": "before",
+      "theme": "dark",
+      "ktxLoaded": true,
+      "source": {
+        "url": "/environments/studio_showroom_dark_ibl.ktx",
+        "intensity": 40000,
+        "studio": true
+      },
+      "orbit": {
+        "angle": 0,
+        "height": 0,
+        "radius": 5,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "fov": 30
+      },
+      "qualityTier": 3,
+      "samples": [
+        {
+          "name": "red",
+          "sphereMask": {
+            "x": 196.9385127825613,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 196.9385127825613,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8244567614520371,
+            "lightness": 32.619280701323156,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 52.76838329021121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "green",
+          "sphereMask": {
+            "x": 358.1631076695367,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 358.1631076695367,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7376830160133009,
+            "lightness": 53.84085924732923,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.6729857819905196,
+            "lightness": 75.09536607142557,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "blue",
+          "sphereMask": {
+            "x": 519.3877025565123,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 519.3877025565123,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7824559669809424,
+            "lightness": 31.50983165197792,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 43.87637548341121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "yellow",
+          "sphereMask": {
+            "x": 680.6122974434877,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 680.6122974434877,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7884970464805846,
+            "lightness": 62.52536625726845,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7695473251028824,
+            "lightness": 81.19468143830177,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "magenta",
+          "sphereMask": {
+            "x": 841.8368923304633,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 841.8368923304633,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7819881436529259,
+            "lightness": 37.71302700476893,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.7345971563981045,
+            "lightness": 52.940841194814546,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "cyan",
+          "sphereMask": {
+            "x": 1003.0614872174388,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 1003.0614872174388,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8092427849786775,
+            "lightness": 52.1903482265651,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7431192660550384,
+            "lightness": 77.57093578465332,
+            "pixels": 400
+          }
+        }
+      ]
+    },
+    {
+      "column": "after",
+      "theme": "dark",
+      "ktxLoaded": true,
+      "source": {
+        "url": "/environments/studio_showroom_dark_ibl.ktx",
+        "intensity": 28000,
+        "studio": true
+      },
+      "orbit": {
+        "angle": 0,
+        "height": 0,
+        "radius": 5,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "fov": 30
+      },
+      "qualityTier": 3,
+      "samples": [
+        {
+          "name": "red",
+          "sphereMask": {
+            "x": 196.9385127825613,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 196.9385127825613,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8559051350315457,
+            "lightness": 26.357937687262968,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 52.76838329021121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "green",
+          "sphereMask": {
+            "x": 358.1631076695367,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 358.1631076695367,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.7753209903774227,
+            "lightness": 45.34012366616388,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.6729857819905196,
+            "lightness": 75.09536607142557,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "blue",
+          "sphereMask": {
+            "x": 519.3877025565123,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 519.3877025565123,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8204639021349933,
+            "lightness": 25.058161069482438,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 43.87637548341121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "yellow",
+          "sphereMask": {
+            "x": 680.6122974434877,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 680.6122974434877,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8271037586625059,
+            "lightness": 53.79594230359626,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7695473251028824,
+            "lightness": 81.19468143830177,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "magenta",
+          "sphereMask": {
+            "x": 841.8368923304633,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 841.8368923304633,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8177113278121891,
+            "lightness": 31.00173105794942,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.7345971563981045,
+            "lightness": 52.940841194814546,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "cyan",
+          "sphereMask": {
+            "x": 1003.0614872174388,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 1003.0614872174388,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.8419159106986163,
+            "lightness": 43.52907368848939,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7431192660550384,
+            "lightness": 77.57093578465332,
+            "pixels": 400
+          }
+        }
+      ]
+    },
+    {
+      "column": "before",
+      "theme": "plain",
+      "ktxLoaded": true,
+      "source": {
+        "url": "/environments/neutral_ibl.ktx",
+        "intensity": 40000,
+        "studio": false
+      },
+      "orbit": {
+        "angle": 0,
+        "height": 0,
+        "radius": 5,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "fov": 30
+      },
+      "qualityTier": 3,
+      "samples": [
+        {
+          "name": "red",
+          "sphereMask": {
+            "x": 196.9385127825613,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 196.9385127825613,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6165180189832782,
+            "lightness": 58.2064584226592,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 52.76838329021121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "green",
+          "sphereMask": {
+            "x": 358.1631076695367,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 358.1631076695367,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5182084921133633,
+            "lightness": 80.7454569017548,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.6729857819905196,
+            "lightness": 75.09536607142557,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "blue",
+          "sphereMask": {
+            "x": 519.3877025565123,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 519.3877025565123,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.585743753653553,
+            "lightness": 58.239636641080914,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 43.87637548341121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "yellow",
+          "sphereMask": {
+            "x": 680.6122974434877,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 680.6122974434877,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5934671201324068,
+            "lightness": 87.39434497283129,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7695473251028824,
+            "lightness": 81.19468143830177,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "magenta",
+          "sphereMask": {
+            "x": 841.8368923304633,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 841.8368923304633,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5756202360005538,
+            "lightness": 62.69857755018429,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.7345971563981045,
+            "lightness": 52.940841194814546,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "cyan",
+          "sphereMask": {
+            "x": 1003.0614872174388,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 1003.0614872174388,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5733160402513939,
+            "lightness": 83.52231197699297,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7431192660550384,
+            "lightness": 77.57093578465332,
+            "pixels": 400
+          }
+        }
+      ]
+    },
+    {
+      "column": "after",
+      "theme": "plain",
+      "ktxLoaded": true,
+      "source": {
+        "url": "/environments/neutral_ibl.ktx",
+        "intensity": 40000,
+        "studio": false
+      },
+      "orbit": {
+        "angle": 0,
+        "height": 0,
+        "radius": 5,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "fov": 30
+      },
+      "qualityTier": 3,
+      "samples": [
+        {
+          "name": "red",
+          "sphereMask": {
+            "x": 196.9385127825613,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 196.9385127825613,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.6165312601048427,
+            "lightness": 58.20460841883867,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 52.76838329021121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "green",
+          "sphereMask": {
+            "x": 358.1631076695367,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 358.1631076695367,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5182310568100775,
+            "lightness": 80.74273955641938,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.6729857819905196,
+            "lightness": 75.09536607142557,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "blue",
+          "sphereMask": {
+            "x": 519.3877025565123,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 519.3877025565123,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5857402631772912,
+            "lightness": 58.23953518424468,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7575757575757522,
+            "lightness": 43.87637548341121,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "yellow",
+          "sphereMask": {
+            "x": 680.6122974434877,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 680.6122974434877,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5934954147106548,
+            "lightness": 87.39050325600088,
+            "pixels": 5060
+          },
+          "swatch": {
+            "saturation": 0.7695473251028824,
+            "lightness": 81.19468143830177,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "magenta",
+          "sphereMask": {
+            "x": 841.8368923304633,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 841.8368923304633,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5755779835398759,
+            "lightness": 62.70159917471776,
+            "pixels": 5058
+          },
+          "swatch": {
+            "saturation": 0.7345971563981045,
+            "lightness": 52.940841194814546,
+            "pixels": 400
+          }
+        },
+        {
+          "name": "cyan",
+          "sphereMask": {
+            "x": 1003.0614872174388,
+            "y": 160,
+            "radius": 40.127010282980564,
+            "circle": true
+          },
+          "swatchMask": {
+            "x": 1003.0614872174388,
+            "y": 366,
+            "radius": 10,
+            "circle": false
+          },
+          "sphere": {
+            "saturation": 0.5733599472947208,
+            "lightness": 83.52000247424878,
+            "pixels": 5057
+          },
+          "swatch": {
+            "saturation": 0.7431192660550384,
+            "lightness": 77.57093578465332,
+            "pixels": 400
+          }
+        }
+      ]
+    }
+  ]
+}
