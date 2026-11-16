@@ -10,16 +10,15 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import io.github.sceneview.ar.ARCoreAvailability
-import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARCoreAvailabilityOverlayTags
-import io.github.sceneview.ar.ARCoreAvailabilityState
 import io.github.sceneview.demo.DEMO_MODE_PILL_TAG
 import io.github.sceneview.demo.DemoModeSwitch
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoModeSwitch
 import io.github.sceneview.demo.demos.autoPlacementGuidancePadding
+import io.github.sceneview.demo.demos.AutoPlacementStartFailedQaOverlay
 import io.github.sceneview.demo.fragments.ArPlacementFragment
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertTrue
@@ -63,11 +62,9 @@ class AutoPlacementCardClearsChromeTest {
                     LocalDemoModeSwitch provides DemoModeSwitch(ArPlacementFragment.modes, selected = 2, onSelect = {}),
                 ) {
                     DemoScaffold(title = "One call", onBack = {}, controls = { Text("Reset placement") }) {
-                        // The same public SDK overlay and padding that AutoPlacementScene forwards.
-                        // Avoid native Filament/ARCore, which cannot be composed on the JVM.
+                        // Exercise the emulator's QA seam, which draws the SDK card without ARCore.
                         BoxWithConstraints(Modifier.fillMaxSize()) {
-                            ARCoreAvailabilityOverlay(
-                                ARCoreAvailabilityState(ARCoreAvailability.SessionFailed, retry = {}),
+                            AutoPlacementStartFailedQaOverlay(
                                 contentPadding = autoPlacementGuidancePadding(maxWidth, recoveryCardShown = true),
                             )
                         }
@@ -93,5 +90,7 @@ class AutoPlacementCardClearsChromeTest {
         )
         assertTrue("SDK action $action is clipped by its card $card", action.top >= card.top && action.bottom <= card.bottom)
         assertTrue("SDK action $action loses its touch target", action.bottom - action.top >= 40.dp)
+        composeRule.onNodeWithText("Try again").performClick()
+        composeRule.onNodeWithTag(ARCoreAvailabilityOverlayTags.CARD).assertExists()
     }
 }

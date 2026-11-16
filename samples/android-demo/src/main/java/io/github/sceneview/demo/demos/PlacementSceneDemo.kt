@@ -33,6 +33,7 @@ import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LocalDemoChromeBottomWidth
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -41,6 +42,7 @@ import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.LocalDemoChromeTopInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberCatalogueProduct
+import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
@@ -62,7 +64,8 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     val guidance = rememberArGuidanceState(state, trackingFailureReason = trackingFailure)
-    val recoveryCardShown = autoPlacementRecoveryCardShown(cameraDenied, availability, state.phase)
+    val startFailedForced = arStartFailedForced(DemoSettings.qaDemoState, qaStateOverridesAllowed())
+    val recoveryCardShown = startFailedForced || autoPlacementRecoveryCardShown(cameraDenied, availability, state.phase)
     val playback = rememberArPlaybackDataset()
     ARHapticFeedback(state)
     DemoScaffold(
@@ -99,6 +102,15 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
         },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Recovery cards clear the title; coaching keeps its full band above the dock.
+            val guidancePadding = autoPlacementGuidancePadding(
+                bandWidth = maxWidth,
+                recoveryCardShown = recoveryCardShown,
+            )
+            if (startFailedForced) {
+                AutoPlacementStartFailedQaOverlay(guidancePadding)
+                return@BoxWithConstraints
+            }
             AutoPlacementScene(
                 coaching = !LocalMotionSensorSilent.current,
                 assetReady = instance != null,
@@ -106,11 +118,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 state = state,
                 engine = engine,
                 modelLoader = modelLoader,
-                // Recovery cards clear the title; coaching keeps its full band above the dock.
-                coachingContentPadding = autoPlacementGuidancePadding(
-                    bandWidth = maxWidth,
-                    recoveryCardShown = recoveryCardShown,
-                ),
+                coachingContentPadding = guidancePadding,
                 playbackDataset = playback,
                 onARCoreAvailability = { availability = it },
                 onCameraPermissionStateChanged = { cameraDenied = it != null },
