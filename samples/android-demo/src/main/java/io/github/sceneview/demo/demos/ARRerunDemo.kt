@@ -567,8 +567,12 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     }
                     // A raw surface kept for running out of memory, with attempts left, is finished
                     // again from the recording, behind the surface already shown
-                    // ([io.github.sceneview.demo.demos.internal.RerunScanModel.retriesFinish]).
-                    if (keptModel?.retriesFinish == true) modelSource = RerunModelSource.of(capture, opened)
+                    // ([io.github.sceneview.demo.demos.internal.RerunScanModel.retriesFinish]); so is
+                    // a model an earlier finish pipeline built (stalePipeline), which without a
+                    // source to build from would stay as that pipeline made it.
+                    if (keptModel?.retriesFinish == true || keptModel?.stalePipeline == true) {
+                        modelSource = RerunModelSource.of(capture, opened)
+                    }
                 }
                 kept -> Unit
                 else -> {
