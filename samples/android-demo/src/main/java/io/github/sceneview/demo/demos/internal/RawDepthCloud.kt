@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos.internal
 
-import androidx.compose.ui.geometry.Offset
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.ln
@@ -175,6 +174,7 @@ internal object RawDepthCloud {
     /**
      * Map already-rotated depth pixels to canvas coordinates, preserving packed order so
      * the batched outlines and per-point colors share the same centers.
+     * Returns packed `[x, y]` pairs for the native Canvas without per-point allocations.
      * [depthWidth] and [depthHeight] must be the positive, post-rotation image dimensions.
      */
     fun canvasPoints(
@@ -183,12 +183,15 @@ internal object RawDepthCloud {
         depthHeight: Int,
         canvasWidth: Float,
         canvasHeight: Float,
-    ): List<Offset> {
+    ): FloatArray {
         val widthF = depthWidth.toFloat()
         val heightF = depthHeight.toFloat()
-        return List(pointCount(packed)) { i ->
-            Offset(x(packed, i) / widthF * canvasWidth, y(packed, i) / heightF * canvasHeight)
+        val points = FloatArray(pointCount(packed) * 2)
+        for (i in 0 until pointCount(packed)) {
+            points[i * 2] = x(packed, i) / widthF * canvasWidth
+            points[i * 2 + 1] = y(packed, i) / heightF * canvasHeight
         }
+        return points
     }
 
     /** Number of points encoded in a packed cloud array. */

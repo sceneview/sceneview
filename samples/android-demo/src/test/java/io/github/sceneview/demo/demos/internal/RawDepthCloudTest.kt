@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos.internal
 
-import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -26,7 +25,7 @@ class RawDepthCloudTest {
 
         val points = RawDepthCloud.canvasPoints(packed, 4, 2, 200f, 600f)
 
-        assertEquals(listOf(Offset.Zero, Offset(150f, 300f), Offset(50f, 0f)), points)
+        assertArrayEquals(floatArrayOf(0f, 0f, 150f, 300f, 50f, 0f), points, 0f)
         assertArrayEquals(original, packed)
     }
 
@@ -39,12 +38,13 @@ class RawDepthCloudTest {
 
         val points = RawDepthCloud.canvasPoints(packed, 2, 3, 200f, 600f)
 
-        assertEquals(
-            listOf(
-                Offset(100f, 0f), Offset(100f, 200f), Offset(100f, 400f),
-                Offset.Zero, Offset(0f, 200f), Offset(0f, 400f),
+        assertArrayEquals(
+            floatArrayOf(
+                100f, 0f, 100f, 200f, 100f, 400f,
+                0f, 0f, 0f, 200f, 0f, 400f,
             ),
             points,
+            0f,
         )
     }
 
