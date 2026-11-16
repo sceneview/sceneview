@@ -467,6 +467,43 @@ class ScanObjectTest {
     }
 
     @Test
+    fun `a table whose legs the scan did not hold stands on the floor, not where its top hangs`() {
+        val scene = Scene()
+        scene.floor(HALF_ROOM, HALF_ROOM, 0f)
+        // A dining table's top, 4 cm thick at 0.75 m, its underside seen; nothing of its legs.
+        scene.box(0f, -1f, yawDeg = 0f, length = 1.2f, depth = 0.8f, height = 0.04f, y = 0.71f)
+        scene.rect(Vec3(-0.6f, 0.71f, -1.4f), Vec3(1.2f, 0f, 0f), Vec3(0f, 0f, 0.8f), Vec3(0f, -1f, 0f))
+        val objects = ScanObjects.of(scene.cloud())
+        val top = objects.pick(EYE, toward(Vec3(0f, 0.75f, -1f))) as ScanPick.Found
+        assertEquals("a tap still boxes the top alone", 0.71f, top.box.baseY, VOXEL)
+
+        val table = objects.whole(top)
+        assertEquals("it stands on the floor", 0f, table.baseY, VOXEL)
+        assertEquals("as high as its top", 0.75f, table.height, VOXEL)
+        assertEquals(1.2f, table.length, 2 * VOXEL)
+        assertEquals(0.8f, table.depth, 2 * VOXEL)
+    }
+
+    @Test
+    fun `a cabinet hung on a wall stays where it hangs`() {
+        val scene = Scene()
+        scene.room(HALF_ROOM, HALF_ROOM, ROOM_HEIGHT)
+        // A bathroom's wall cabinet, its underside 0.8 m up, against the room's back wall.
+        scene.box(0f, -HALF_ROOM + 0.2f, yawDeg = 0f, length = 0.8f, depth = 0.4f, height = 0.5f, y = 0.8f)
+        scene.rect(
+            Vec3(-0.4f, 0.8f, -HALF_ROOM),
+            Vec3(0.8f, 0f, 0f),
+            Vec3(0f, 0f, 0.4f),
+            Vec3(0f, -1f, 0f),
+        )
+        val objects = ScanObjects.of(scene.cloud())
+        val cabinet = objects.pick(EYE, toward(Vec3(0f, 1.1f, -HALF_ROOM + 0.4f))) as ScanPick.Found
+        val whole = objects.whole(cabinet)
+        assertEquals("it hangs from the wall", 0.8f, whole.baseY, 2 * VOXEL)
+        assertEquals(0.5f, whole.height, 2 * VOXEL)
+    }
+
+    @Test
     fun `furniture against a piece of wall a noisy scan drew thick is whole without that wall`() {
         // A phone's depth draws the floor and the wall as several sheets; the furniture's back is in among the wall's.
         val scene = Scene()

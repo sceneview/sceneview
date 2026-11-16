@@ -50,9 +50,9 @@ class ScanSubjectTest {
     }
 
     /** [count] looks from a circle [radius] round ([x], [z]) at eye height, each at the point [height] over its centre. */
-    private fun round(x: Float, z: Float, height: Float, radius: Float = 1.2f, count: Int = ScanSubject.AIMS) = List(count) { i ->
+    private fun round(x: Float, z: Float, height: Float, radius: Float = 1.2f, count: Int = ScanSubject.AIMS, eyeM: Float = EYE_M) = List(count) { i ->
         val angle = 2.0 * PI * i / count
-        val eye = Vec3(x + radius * cos(angle).toFloat(), EYE_M, z + radius * sin(angle).toFloat())
+        val eye = Vec3(x + radius * cos(angle).toFloat(), eyeM, z + radius * sin(angle).toFloat())
         ScanSubject.Aim(eye, (Vec3(x, height, z) - eye).normalized())
     }
 
@@ -120,6 +120,44 @@ class ScanSubjectTest {
     }
 
     @Test
+    fun `a pair of shoes on a floor drawn as two sheets is boxed, too small and too low for a tap`() {
+        val shoes = Drawn().apply {
+            // A phone's depth draws the floor as a sheet a centimetre or two thick.
+            floor()
+            rect(Vec3(-FLOOR_M / 2, 0.015f, -FLOOR_M / 2), Vec3(FLOOR_M, 0f, 0f), Vec3(0f, 0f, FLOOR_M), Vec3.Up)
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT)
+        }.cloud()
+        // Under a finger it is nothing: smaller than any piece of furniture.
+        val objects = ScanObjects.of(shoes, VOXEL)
+        val eye = Vec3(CRATE_X + 0.25f, 0.4f, CRATE_Z)
+        assertEquals(ScanPick.Empty, objects.pick(eye, (Vec3(CRATE_X, SHOES_HEIGHT / 2, CRATE_Z) - eye).normalized()))
+
+        // Gone round at arm's length, it is the scan's object.
+        val box = ScanSubject.of(shoes, VOXEL, round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f))
+        assertNotNull("no object for shoes looked at all the way round", box)
+        assertEquals(SHOES_LENGTH, box!!.length, 2.5f * VOXEL)
+        assertEquals(SHOES_WIDTH, box.depth, 2.5f * VOXEL)
+        assertEquals(SHOES_HEIGHT, box.height, 2 * VOXEL)
+        assertEquals(CRATE_X, box.centerX, 2 * VOXEL)
+        assertEquals(CRATE_Z, box.centerZ, 2 * VOXEL)
+    }
+
+    @Test
+    fun `a box on a table is measured from the table's top, not as the table`() {
+        val scene = Drawn().apply {
+            floor()
+            block(CRATE_X, CRATE_Z, 1.2f, 0.8f, TABLE_TOP)
+            block(CRATE_X + 0.1f, CRATE_Z, SMALL, SMALL, SMALL_HEIGHT, y = TABLE_TOP)
+        }.cloud()
+        val box = ScanSubject.of(scene, VOXEL, round(CRATE_X + 0.1f, CRATE_Z, TABLE_TOP + SMALL_HEIGHT / 2, radius = 0.3f, eyeM = 1.1f))
+        assertNotNull("no object for a box on a table looked at all the way round", box)
+        assertEquals(SMALL, box!!.length, 2.5f * VOXEL)
+        assertEquals(SMALL, box.depth, 2.5f * VOXEL)
+        assertEquals("from the table's top", TABLE_TOP, box.baseY, VOXEL)
+        assertEquals(SMALL_HEIGHT, box.height, 2 * VOXEL)
+    }
+
+    @Test
     fun `a scan that looked at the floor all the way has no object`() {
         // Round a bare spot of the floor, the crate never in the middle of the picture.
         assertNull(ScanSubject.of(cloud, VOXEL, round(-1f, -1f, 0f, radius = 0.5f)))
@@ -155,5 +193,11 @@ class ScanSubjectTest {
         const val FOOT = 0.06f
         const val FOOT_HEIGHT = 0.1f
         const val FOOT_OUT = 0.18f
+        const val SHOES_LENGTH = 0.28f
+        const val SHOES_WIDTH = 0.2f
+        const val SHOES_HEIGHT = 0.11f
+        const val TABLE_TOP = 0.75f
+        const val SMALL = 0.12f
+        const val SMALL_HEIGHT = 0.25f
     }
 }

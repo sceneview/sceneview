@@ -1,7 +1,9 @@
 package io.github.sceneview.demo.demos.internal
 
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -47,9 +49,73 @@ object ScanSubject {
             val same = seen.firstOrNull { hypot(it.found.box.centerX - box.centerX, it.found.box.centerZ - box.centerZ) <= SAME_M }
             if (same != null) same.count++ else seen += Votes(found)
         }
-        val most = seen.maxByOrNull { it.count }?.takeIf { it.count >= aims.size * MIN_SHARE } ?: return null
-        return objects.whole(most.found)
+        val most = seen.maxByOrNull { it.count }?.takeIf { it.count >= aims.size * MIN_SHARE }
+        val whole = most?.let { objects.whole(it.found) }
+        val looked = lookedAt(aims) ?: return whole
+        // What the looks landed on is the object when the phone could go round it: no wider than
+        // the circle it walked. Else it is the table a bottle stands on, or a chair and its table.
+        if (whole != null && whole.length <= looked.orbit * MAX_SIZE_PER_ORBIT) return whole
+        return objects.around(looked.at, looked.reach)?.box
     }
+
+    /** Where the looks meet ([at]), and how far the phone stayed from there on the plan ([orbit]). */
+    class Looked(val at: Vec3, val orbit: Float) {
+        /**
+         * How far from [at] the object may reach: to the circle the phone walked, and a little past
+         * it, since a small thing is filmed from above its own edge.
+         */
+        val reach: Float get() = (orbit + REACH_PAST_ORBIT_M).coerceIn(MIN_REACH_M, MAX_REACH_M)
+    }
+
+    /**
+     * The point nearest to all of [aims]' lines of sight (least squares), when at least
+     * [MIN_SHARE] of them pass within [MEET_M] of it, or [MEET_PER_ORBIT] of the phone's distance,
+     * and no more than [MAX_BEHIND_SHARE] have it behind the phone. `null` for a walk through a
+     * room, whose looks meet nowhere.
+     */
+    fun lookedAt(aims: List<Aim>): Looked? {
+        val at = meeting(aims) ?: return null
+        val orbits = aims.map { hypot(it.eye.x - at.x, it.eye.z - at.z) }.sorted()
+        val orbit = orbits[orbits.size / 2]
+        val meet = max(MEET_M, orbit * MEET_PER_ORBIT)
+        val misses = aims.map { missed(it, at) }
+        // A walk through a room looks every way: a good part of its looks have the point behind them.
+        if (misses.count { it == null } > aims.size * MAX_BEHIND_SHARE) return null
+        val agree = misses.count { it != null && it <= meet }
+        return Looked(at, orbit).takeIf { agree >= aims.size * MIN_SHARE }
+    }
+
+    /** How far [aim]'s line of sight passes from [at]; `null` when [at] is behind the phone. */
+    fun missed(aim: Aim, at: Vec3): Float? {
+        val d = aim.ahead.normalized()
+        val v = at - aim.eye
+        val along = v.dot(d)
+        return if (along <= 0f) null else (v - d * along).length()
+    }
+
+    /** The point nearest to all of [aims]' lines of sight, least squares; `null` when they are near parallel. */
+    fun meeting(aims: List<Aim>): Vec3? {
+        if (aims.size < MIN_AIMS) return null
+        val a = DoubleArray(9)
+        val b = DoubleArray(3)
+        for (aim in aims) {
+            val d = aim.ahead.normalized()
+            val dv = doubleArrayOf(d.x.toDouble(), d.y.toDouble(), d.z.toDouble())
+            val o = doubleArrayOf(aim.eye.x.toDouble(), aim.eye.y.toDouble(), aim.eye.z.toDouble())
+            for (i in 0..2) for (j in 0..2) {
+                val m = (if (i == j) 1.0 else 0.0) - dv[i] * dv[j]
+                a[i * 3 + j] += m
+                b[i] += m * o[j]
+            }
+        }
+        val det = det3(a)
+        if (abs(det) < MIN_DET * aims.size * aims.size * aims.size) return null
+        val p = DoubleArray(3) { col -> det3(a.copyOf().also { m -> for (r in 0..2) m[r * 3 + col] = b[r] }) / det }
+        return Vec3(p[0].toFloat(), p[1].toFloat(), p[2].toFloat())
+    }
+
+    private fun det3(m: DoubleArray): Double =
+        m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6])
 
     /**
      * The frame [box]'s result is shown in ([ScanResultFrame]): the object, square to its own
@@ -95,6 +161,31 @@ object ScanSubject {
 
     /** Two boxes whose centres are this close on the floor are the same object, grown from two of its points. */
     const val SAME_M = 0.2f
+
+    /** An object is no wider than this many times the phone's distance from its middle: it was gone round. */
+    const val MAX_SIZE_PER_ORBIT = 2f
+
+    /** And it reaches no further from its middle than the phone's distance and this. */
+    const val REACH_PAST_ORBIT_M = 0.3f
+    const val MIN_REACH_M = 0.3f
+    const val MAX_REACH_M = 1.5f
+
+    /**
+     * A look passes "through" the point where they meet within this, or 0.7 of the phone's
+     * distance from it. On Thomas's object scans of 2026-11-14 and 15 (two chairs, two pairs of
+     * shoes, a bottle) the looks miss it by 0.4 of that distance, the median; 10 to 24 looks in 24
+     * pass within 0.7, and none has it behind.
+     */
+    const val MEET_M = 0.15f
+    const val MEET_PER_ORBIT = 0.7f
+
+    /**
+     * More of the looks than this with the point behind the phone is a walk, not a turn round
+     * one thing: 7 to 24 in 24 on a room and three outdoor scans of the same days.
+     */
+    const val MAX_BEHIND_SHARE = 0.125f
+    private const val MIN_AIMS = 6
+    private const val MIN_DET = 1e-4
 
     private const val QUARTER = 90f
     private const val FULL_TURN = 360f
