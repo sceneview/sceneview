@@ -33,18 +33,18 @@ function viewerFixture(env = { url: '/custom.ktx', intensity: 17000 }) {
   return { viewer, lights, loads, clears };
 }
 
-test('both studio themes use one stop less IBL and remove the plain-viewer lights', () => {
+test('both studio themes reduce IBL by 30% and remove the plain-viewer lights', () => {
   const { viewer, lights, loads } = viewerFixture();
   const original = viewer._envSource;
   viewer.setStudio('light');
   assert.equal(lights.size, 0);
   assert.equal(viewer._envSource.url, '/environments/studio_showroom_light_ibl.ktx');
-  assert.equal(viewer._envSource.intensity / BEFORE_INTENSITY, 0.5);
+  assert.equal(viewer._envSource.intensity / BEFORE_INTENSITY, 0.7);
   viewer.setStudio('light');
   assert.equal(loads.length, 1, 'reapplying a theme does not reload it');
   viewer.setStudio('dark');
   assert.equal(viewer._envSource.url, '/environments/studio_showroom_dark_ibl.ktx');
-  assert.equal(viewer._envSource.intensity / BEFORE_INTENSITY, 0.5);
+  assert.equal(viewer._envSource.intensity / BEFORE_INTENSITY, 0.7);
   assert.equal(viewer._studioSaved.env, original, 'theme switch preserves the original environment');
 });
 
@@ -114,7 +114,7 @@ test('studio shadow texels preserve the coloured floor shade', () => {
 test('the render comparison restores only the old studio intensity', () => {
   const before = beforeSource(source);
   assert.equal(studioIntensity(before), BEFORE_INTENSITY);
-  assert.equal(before.replace('var _STUDIO_IBL_INTENSITY = 40000;', 'var _STUDIO_IBL_INTENSITY = 20000;'), source);
+  assert.equal(before.replace('var _STUDIO_IBL_INTENSITY = 40000;', 'var _STUDIO_IBL_INTENSITY = 28000;'), source);
 });
 
 test('colour metrics use per-pixel HSV S and D65 CIELAB L*, including black', () => {

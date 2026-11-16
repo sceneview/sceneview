@@ -534,10 +534,10 @@
       environment: '/environments/studio_showroom_dark_ibl.ktx'
     }
   };
-  // One stop below the plain viewer's IBL: the showroom's large softboxes otherwise
-  // push coloured materials into Filmic's highlight shoulder and turn them pastel.
+  // Reduce the showroom's large softboxes by 30% to keep coloured materials below
+  // Filmic's highlight shoulder while retaining visibility in the dark showroom.
   // Scale the lighting, not camera exposure, so the unlit wall and floor keep their colours.
-  var _STUDIO_IBL_INTENSITY = 20000;
+  var _STUDIO_IBL_INTENSITY = 28000;
   var _STUDIO_FOV = 30;            // a moderate telephoto: less perspective distortion
   var _STUDIO_REVEAL_MS = 1600;
   // The longest the move-in and the quality tiers wait for the model's textures: one
