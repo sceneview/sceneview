@@ -1678,12 +1678,6 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 - a light written directly to `scene.indirectLight` is restored after a probe cycle, until a new
   environment or AR estimate supersedes it. A released environment no longer owns the fallback.
 
-Android library integration uses the `@RestrictTo(LIBRARY_GROUP_PREFIX)` hooks
-`Scene.setEnvironmentLight(light: IndirectLight?)` and
-`Scene.releaseEnvironmentLight(light: IndirectLight?)` in `io.github.sceneview.node`.
-They share the probe registry across `sceneview` and `arsceneview`; release the fallback before
-destroying its light. These are Android Filament integration hooks; other renderers do not use them.
-
 ---
 
 ## ARSceneScope — AR Node DSL
