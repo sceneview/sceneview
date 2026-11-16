@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Place the same model again after Reset in automatic placement and Cloud Anchors ([#4490](https://github.com/sceneview/sceneview/issues/4490)).** Release the automatic placement's anchor on Reset even while camera frames are paused. Disposing model nodes now preserves the caller-owned glTF instance and its authored hierarchy, so a new placement can reuse it without reloading the model.

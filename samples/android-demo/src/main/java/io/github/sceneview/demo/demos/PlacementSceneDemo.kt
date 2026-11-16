@@ -56,7 +56,6 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val product = rememberCatalogueProduct(modelLoader, CatalogueProducts.KITCHENAID_STAND_MIXER)
-    val instance = product.instance
     val state = rememberAutoPlacementState()
     // AutoPlacementScene draws the coaching card itself (coaching = true, the default); this
     // only tells the demo when to keep its own pill quiet, from the same tracking reason.
@@ -78,12 +77,13 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 // Until the product is in, its pill names it and narrates the download.
                 CatalogueProductPill(product)
                 val message = when {
-                    instance == null -> if (product.needsPill) null else R.string.ar_place_loading_model
+                    product.instance == null -> if (product.needsPill) null else R.string.ar_place_loading_model
                     state.phase == PlacementPhase.SCANNING -> R.string.ar_place_move_slowly
                     state.phase == PlacementPhase.NO_SURFACE -> R.string.ar_place_no_surface_title
                     state.phase == PlacementPhase.TRACKING_LOST -> R.string.ar_place_tracking_paused
                     state.phase == PlacementPhase.RECOVERING -> R.string.ar_place_finding_placement
                     state.phase == PlacementPhase.RECOVERY_FAILED -> R.string.ar_place_recovery_failed_title
+                    state.phase == PlacementPhase.CAMERA_ERROR -> R.string.ar_place_camera_error_title
                     else -> null
                 }
                 DemoStatusBanner(text = message?.let { stringResource(it) }, tone = DemoStatusTone.Guidance)
@@ -113,7 +113,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             }
             AutoPlacementScene(
                 coaching = !LocalMotionSensorSilent.current,
-                assetReady = instance != null,
+                assetReady = product.instance != null,
                 modifier = Modifier.fillMaxSize(),
                 state = state,
                 engine = engine,
@@ -124,7 +124,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 onCameraPermissionStateChanged = { cameraDenied = it != null },
                 onTrackingFailureChanged = { trackingFailure = it },
             ) { placement ->
-                instance?.let {
+                product.instance?.let {
                     // Real size, not the API's 0.3 m preview: a mixer reads as a mixer next to the
                     // user's own kitchen counter.
                     AutoPlacementModel(placement, state, it, scaleToUnits = product.realSizeMetres)
