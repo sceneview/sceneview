@@ -111,6 +111,10 @@ open class ModelNode(
         ChildNode {
         override var name = super<ChildNode>.name
 
+        init {
+            restoreModelGeometry()
+        }
+
         /**
          * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]): gltfio
          * destroyed this entity with it, and its id can already name another renderable.

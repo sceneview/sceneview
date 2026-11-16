@@ -8,7 +8,8 @@ package io.github.sceneview.geometries
  * - a pair replaced by a topology change is [retire]d, then released by [rebind] right after every
  *   consumer has been re-pointed at the replacement;
  * - the live pair is released by [destroy] once the last consumer has [detach]ed — a node destroys
- *   its renderable before it detaches, so nothing draws from it at that point.
+ *   its renderable before its binding detaches. A preserved glTF component keeps that binding
+ *   across node disposal until the asset is destroyed, so nothing draws from released buffers.
  *
  * Nothing here waits for a rendered frame, so buffers are freed just the same when no view is
  * rendering (a shared engine whose scene was disposed) and nothing is left queued against an
