@@ -194,6 +194,8 @@ fun rememberRestartPhoneAdvice(neverTracked: Boolean): Boolean {
 }
 ```
 
+Apps with many AR screens can observe their frames with `io.github.sceneview.ar.replay.LocalARSessionProbe`: provide an `ARSessionProbe` whose `onSessionFrame(session, frame, nodes)` reads `frame.camera.trackingState` and `frame.camera.trackingFailureReason`. This also observes frames from `AutoPlacementScene`. Leave `playbackDataset` null for live diagnostics; when wrapping an enclosing observer, forward its dataset and frames so replay QA still works. Keep the startup watch scoped to the screen's lifecycle, cancel it on tracking or navigation, and skip recorded sessions and front-camera face tracking. This is Android-specific: [ARKit documents `ARError.sensorFailed` and `sensorUnavailable`](https://developer.apple.com/documentation/arkit/arerror) for missing sensor input; no equivalent iOS probe has been added without a reproduction.
+
 For apps that route many subtypes to the same action, extract a tiny helper that returns a coarse category and `when` on that — still exhaustive, no `else ->`:
 
 ```kotlin

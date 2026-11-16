@@ -90,7 +90,8 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.node.findActivity
-import io.github.sceneview.node.reflectionProbes
+import io.github.sceneview.node.releaseEnvironmentLight
+import io.github.sceneview.node.setEnvironmentLight
 
 /**
  * A Filament 3D scene declared as Compose UI.
@@ -580,7 +581,7 @@ fun SceneView(
     DisposableEffect(scene, environment) {
         // Through the scene's probe registry: an active `ReflectionProbeNode` keeps the scene's
         // light, and this one comes back when the last probe lets go (#4928).
-        scene.reflectionProbes.setEnvironmentLight(environment.indirectLight)
+        scene.setEnvironmentLight(environment.indirectLight)
         scene.skybox = environment.skybox
         // The first frozen image anyone would have hit: a dark/light toggle that swaps the
         // environment while the scene is parked. The IBL and skybox are replaced in Filament and
@@ -591,7 +592,7 @@ fun SceneView(
             // Only what this effect put there: a `ReflectionProbeNode`, or the caller, may have
             // given the scene another light since.
             if (scene.skybox === environment.skybox) scene.skybox = null
-            scene.reflectionProbes.releaseEnvironmentLight(environment.indirectLight)
+            scene.releaseEnvironmentLight(environment.indirectLight)
         }
     }
     LaunchedEffect(view, scene) {
@@ -1125,10 +1126,13 @@ fun SceneView(
     // frame from inside the loop, so making it observable would apply a snapshot 60 times a second
     // on every rendering scene — the exact per-frame cost this whole change exists to remove —
     // and it would buy nothing, because the loop is by definition awake while it owes frames.
-    // Only the wake-up needs to be observable, and that is the dirty flag.
-    val shouldRender = remember(currentFrameRatePolicy, frameRateGate) {
+    // Wake-ups observe the dirty flag and pending destroys: even a quiet scene must finish the
+    // queue's grace frames before parking (#4436).
+    val destroyQueue = remember(engine) { EngineDestroyQueue.of(engine) }
+    val shouldRender = remember(currentFrameRatePolicy, frameRateGate, destroyQueue) {
         derivedStateOf {
-            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty
+            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty ||
+                destroyQueue.size > 0
         }
     }
 

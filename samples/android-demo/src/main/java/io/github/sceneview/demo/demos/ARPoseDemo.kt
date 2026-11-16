@@ -91,6 +91,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
     var basePose by remember { mutableStateOf<Pose?>(null) }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_pose_title),
         onBack = onBack,
         controls = {
