@@ -196,6 +196,7 @@ import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
 import io.github.sceneview.demo.demos.internal.rerunSaveFailureMessage
+import io.github.sceneview.demo.demos.internal.rerunShareableViewerUrl
 import io.github.sceneview.demo.demos.internal.rerunShowsSaveAction
 import io.github.sceneview.demo.demos.internal.rerunStatusUx
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -2672,7 +2673,7 @@ private fun ShareResultDialog(
     onCopyUrl: (String) -> Unit,
     onShare: (String?) -> Unit,
 ) {
-    val viewerUrl = result.viewerUrl
+    val viewerUrl = rerunShareableViewerUrl(result.viewerUrl)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -2697,7 +2698,7 @@ private fun ShareResultDialog(
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
         },
-        dismissButton = if (result.success) {
+        dismissButton = if (result.success && viewerUrl != null) {
             { TextButton(onClick = onDismiss) { Text("Done") } }
         } else null,
     )
@@ -2726,12 +2727,16 @@ private fun ShareResultBody(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Copy path") }
         }
-        result.viewerUrl?.let { url ->
-            Text(
-                "Drop the file onto sceneview.github.io/rerun to scrub through it. To share " +
-                    "it, upload the file somewhere public and send this link:",
-                style = MaterialTheme.typography.labelSmall,
-            )
+        Text(
+            "To view: drop the .rrd file onto sceneview.github.io/rerun/.\n\n" +
+                "To share: host the file at a public HTTPS address ending in .rrd, " +
+                "with cross-origin requests (CORS) allowed. Then send " +
+                "https://sceneview.github.io/rerun/?url=<encoded-public-url> " +
+                "using that address.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        rerunShareableViewerUrl(result.viewerUrl)?.let { url ->
+            Text("Hosted recording:", style = MaterialTheme.typography.labelSmall)
             Text(
                 url,
                 style = MaterialTheme.typography.bodySmall,
@@ -2943,7 +2948,7 @@ private const val QA_EVENTS_PER_SECOND = 10f
 private val QA_SHARE_RESULT = RerunBridge.ShareResult(
     success = true,
     path = "~/sceneview/recording.rrd",
-    viewerUrl = "https://sceneview.github.io/rerun/?url=https://example.com/recording.rrd",
+    viewerUrl = null,
     events = 1_204,
     reason = null,
 )

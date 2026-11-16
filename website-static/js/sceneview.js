@@ -6365,14 +6365,19 @@
    * Give a disposed viewer's WebGL context back to the browser.
    *
    * Filament.js registers every context in Emscripten's GL table and never removes it,
-   * so a context outlives its engine. Drop that record's GLctx reference so a detached
-   * canvas can be collected: WebKit counts even explicitly lost contexts until then.
+   * so a registry reference outlives its engine. Drop that record's GLctx reference
+   * to remove one retention path for detached canvases. The runtime's GLctx and
+   * Module.ctx still retain the last WebGL2RenderingContext (GL.currentContext keeps only
+   * its emptied record) until another viewer is created or executes; indefinitely if none
+   * does.
    * Browsers cap a page's live contexts (16 in Chromium) and force-lose the least
    * recently used one past the cap: after some 16
    * create/dispose cycles, an idle viewer still on the page went black. Losing the
    * context here frees its GPU memory and, in Chromium, takes it out of that count.
-   * The canvas fires `webglcontextlost` when it happens. Collection timing in WebKit
-   * remains up to the browser; callers must detach canvases they no longer need.
+   * The canvas fires `webglcontextlost` when it happens. No eviction reproduced in
+   * Safari on an iOS 27 simulator, with or without this change, so an effect on
+   * WebKit's context limit is unproven. Collection timing remains browser-controlled; callers must detach
+   * canvases they no longer need.
    *
    * A canvas keeps its context for life, lost or not: create() restores it before it
    * builds a new engine on the same canvas (see _restoreContext).

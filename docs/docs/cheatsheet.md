@@ -493,7 +493,7 @@ fun ARDebugScreen() {
 ```kotlin
 bridge.requestSaveAndShare { result ->
     // result.path     -> /Users/dev/.sceneview/recordings/<ts>.rrd
-    // result.viewerUrl -> https://sceneview.github.io/rerun/?url=<…>
+    // result.viewerUrl -> null (local save; host the file before sharing a link)
     // result.events   -> 1234
 }
 ```

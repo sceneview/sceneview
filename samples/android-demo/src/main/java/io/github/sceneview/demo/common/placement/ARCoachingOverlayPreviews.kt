@@ -14,22 +14,26 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.tooling.preview.Preview
+import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ArGuidanceCue
+import io.github.sceneview.ar.ArGuidanceState
 import io.github.sceneview.ar.ArTrackingHint
+import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.PlacementSurface
 import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
  * One moment of the SDK's AR coaching card: a cue, the surface it looks for, the reason chip
  * and the long-scan line. The visual-QA set below walks the whole journey — getting ready,
- * the phone sweep, the found beat, and the three reasons tracking can struggle for.
+ * the phone sweep, the found beat, movement advice and recovery errors.
  */
 internal data class ARCoachingSample(
     val label: String,
@@ -37,6 +41,7 @@ internal data class ARCoachingSample(
     val surface: PlacementSurface = PlacementSurface.SURFACE,
     val hint: ArTrackingHint = ArTrackingHint.NONE,
     val scanLingering: Boolean = false,
+    val trackingReason: TrackingFailureReason? = null,
 )
 
 /** Every state worth looking at, in the order a session meets them. */
@@ -52,6 +57,12 @@ internal val ARCoachingSamples = listOf(
     ARCoachingSample("limited-too-fast", ArGuidanceCue.TRACKING_LIMITED, hint = ArTrackingHint.TOO_FAST),
     ARCoachingSample("limited-low-detail", ArGuidanceCue.TRACKING_LIMITED, hint = ArTrackingHint.LOW_DETAIL),
     ARCoachingSample("relocalizing", ArGuidanceCue.RELOCALIZING),
+    ARCoachingSample("bad-state", ArGuidanceCue.INITIALIZING, trackingReason = TrackingFailureReason.BAD_STATE),
+    ARCoachingSample(
+        "camera-unavailable",
+        ArGuidanceCue.TRACKING_LIMITED,
+        trackingReason = TrackingFailureReason.CAMERA_UNAVAILABLE,
+    ),
 )
 
 /**
@@ -78,12 +89,28 @@ internal fun ARCoachingFrame(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        ARCoachingOverlay(
-            cue = sample.cue,
-            surface = sample.surface,
-            hint = sample.hint,
-            scanLingering = sample.scanLingering,
-        )
+        if (sample.trackingReason != null) {
+            // Exercise the same public guidance overload as the built-in placement scenes.
+            val guidance = remember(sample) {
+                val phase = if (sample.cue == ArGuidanceCue.INITIALIZING) {
+                    PlacementPhase.INITIALIZING
+                } else {
+                    PlacementPhase.TRACKING_LOST
+                }
+                ArGuidanceState(sample.surface).apply {
+                    update(phase, 0L, sample.trackingReason, 0L)
+                    update(phase, 0L, sample.trackingReason, ArGuidanceState.HINT_STABLE_MS)
+                }
+            }
+            ARCoachingOverlay(guidance = guidance, cue = sample.cue)
+        } else {
+            ARCoachingOverlay(
+                cue = sample.cue,
+                surface = sample.surface,
+                hint = sample.hint,
+                scanLingering = sample.scanLingering,
+            )
+        }
         if (showLabel) {
             Text(
                 text = sample.label,
@@ -134,3 +161,12 @@ private fun ARCoachingFoundLightPreview() = ARCoachingFrame(ARCoachingSamples[5]
 @Preview(name = "AR coaching — landscape", widthDp = 915, heightDp = 412)
 @Composable
 private fun ARCoachingLandscapePreview() = ARCoachingFrame(ARCoachingSamples[3])
+
+@Preview(name = "AR coaching — AR error", widthDp = 412, heightDp = 915)
+@Composable
+private fun ARCoachingBadStatePreview() = ARCoachingFrame(ARCoachingSamples.first { it.label == "bad-state" })
+
+@Preview(name = "AR coaching — camera busy", widthDp = 412, heightDp = 915)
+@Composable
+private fun ARCoachingCameraUnavailablePreview() =
+    ARCoachingFrame(ARCoachingSamples.first { it.label == "camera-unavailable" })
