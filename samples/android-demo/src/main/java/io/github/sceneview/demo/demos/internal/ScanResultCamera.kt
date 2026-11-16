@@ -150,6 +150,9 @@ internal class ScanResultCamera(
     private var steady = 0
     private var beforePlan: OrbitPose? = null
     private var move: Move? = null
+
+    /** A double tap asked for a fly since the last frame: its own finger down must not cut it. */
+    private var flewByTap = false
     private var grabbing = false
     private var turning = false
     private var lastX = 0
@@ -242,14 +245,19 @@ internal class ScanResultCamera(
         return Transform(lookAt(eye = CameraRig.eye(pose) + moved, target = pose.target + moved, up = PictureAxes.WORLD_UP))
     }
 
-    /** A touch-down: whatever moved the camera stops where it is, a coast or a fly. */
+    /**
+     * A touch-down: whatever moved the camera stops where it is, a coast or a fly — but the fly a
+     * double tap has just asked for, which is told before its own finger down.
+     */
     override fun stopInertia() {
         stopCoast()
-        move = null
+        if (!flewByTap) move = null
     }
 
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
-        stopInertia()
+        // A drag takes the camera from anything, a double tap's fly included.
+        stopCoast()
+        move = null
         if (!shown) return
         grabbing = true
         // Two fingers dragged together would pan: the result has no pan, the scan cannot leave the screen.
@@ -277,7 +285,8 @@ internal class ScanResultCamera(
     }
 
     override fun scrollBegin(x: Int, y: Int, separation: Float) {
-        stopInertia()
+        stopCoast()
+        move = null
     }
 
     override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {
@@ -289,13 +298,16 @@ internal class ScanResultCamera(
 
     /** A double tap flies back to the start; a two-finger tap does nothing. */
     override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
-        if (zoomIn) recenter()
+        if (!zoomIn) return
+        recenter()
+        flewByTap = moving
     }
 
     override val isFrameActive: Boolean
         get() = !shown || move != null || azimuthVelocity != 0f || elevationVelocity != 0f
 
     override fun update(deltaTime: Float) {
+        flewByTap = false
         val dt = deltaTime.takeIf { it.isFinite() && it > 0f }?.coerceAtMost(MAX_STEP_SECONDS) ?: return
         if (grabbing) {
             // The finger's speed, smoothed over a few frames: a finger held still before it lifts throws nothing.

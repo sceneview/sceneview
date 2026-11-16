@@ -227,7 +227,9 @@ class ScanResultCameraTest {
         camera.run(1f)
         assertEquals(moved, camera.pose)
 
+        // As the gesture detector does: the double tap is told before its own finger down.
         camera.doubleTapZoom(0, 0, zoomIn = true)
+        camera.stopInertia()
         assertTrue(camera.moving)
         repeat((ScanResultCamera.FLY_SECONDS / FRAME).toInt() - 1) {
             camera.update(FRAME)
@@ -236,6 +238,18 @@ class ScanResultCameraTest {
         camera.update(FRAME)
         camera.update(FRAME)
         assertEquals(start.pose, camera.pose)
+        assertFalse(camera.moving)
+    }
+
+    @Test
+    fun `a touch on a later frame still cuts a double tap's fly`() {
+        val (camera, _) = shownCamera()
+        camera.drag(dx = 500, dy = 0)
+        camera.run(1f)
+        camera.doubleTapZoom(0, 0, zoomIn = true)
+        camera.stopInertia()
+        camera.update(FRAME)
+        camera.stopInertia()
         assertFalse(camera.moving)
     }
 
