@@ -1,32 +1,49 @@
 package io.github.sceneview.demo.demos.internal
 
+import dev.romainguy.kotlin.math.dot
+import io.github.sceneview.math.Direction
+import io.github.sceneview.math.Position
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Live spacing follows the camera only after both legs of the focus flight have ended. */
+/** Signed camera-forward depth of the gallery origin, including off-centre framing. */
+internal fun galleryCaptionDepth(eye: Position, forward: Direction): Float = dot(-eye, forward)
+
+/** Only an idle gallery can publish live spacing without the return-radius cap. */
 internal fun canPublishLiveGalleryCaptionSpacing(
-    inspecting: Boolean,
     focusIndex: Int?,
     focusZoom: Float,
-): Boolean = !inspecting && focusIndex == null && focusZoom == 0f
+): Boolean = focusIndex == null && focusZoom == 0f
+
+/** A focus flight must fit both the live projection and the gallery it returns to. */
+internal fun publishedGalleryCaptionSpacingPx(
+    liveSpacingPx: Float,
+    gallerySpacingPx: Float,
+    focusIndex: Int?,
+    focusZoom: Float,
+): Float = if (canPublishLiveGalleryCaptionSpacing(focusIndex, focusZoom)) {
+    liveSpacingPx
+} else {
+    minOf(liveSpacingPx, gallerySpacingPx)
+}
 
 /** Smallest edge-column gap at the last fully opaque yaw, independent of the live sweep. */
 internal fun galleryCaptionSpacingPx(
     headOnSpacingPx: Float,
-    cameraDistance: Float,
+    cameraDepth: Float,
     ballSpacing: Float,
     columns: Int,
     yawDegrees: Float,
 ): Float {
     val yaw = Math.toRadians(yawDegrees.toDouble()).toFloat()
     val halfSpan = (columns - 1) * ballSpacing / 2f
-    if (cameraDistance <= halfSpan * abs(sin(yaw))) return 0f
+    if (cameraDepth <= halfSpan * abs(sin(yaw))) return 0f
 
     // Rotate the wall into the camera frame; positive depth is farther from the eye.
     fun projectX(wallX: Float): Float =
-        headOnSpacingPx * cameraDistance * wallX * cos(yaw) /
-            (ballSpacing * (cameraDistance + wallX * sin(yaw)))
+        headOnSpacingPx * cameraDepth * wallX * cos(yaw) /
+            (ballSpacing * (cameraDepth + wallX * sin(yaw)))
 
     val leftGap = abs(projectX(-halfSpan + ballSpacing) - projectX(-halfSpan))
     val rightGap = abs(projectX(halfSpan) - projectX(halfSpan - ballSpacing))
@@ -36,14 +53,14 @@ internal fun galleryCaptionSpacingPx(
 /** During a focus flight, size captions for the gallery radius the camera returns to. */
 internal fun galleryCaptionSpacingAtRadiusPx(
     headOnSpacingPx: Float,
-    cameraDistance: Float,
+    cameraDepth: Float,
     galleryRadius: Float,
     ballSpacing: Float,
     columns: Int,
     yawDegrees: Float,
 ): Float = galleryCaptionSpacingPx(
-    headOnSpacingPx = headOnSpacingPx * cameraDistance / galleryRadius,
-    cameraDistance = galleryRadius,
+    headOnSpacingPx = headOnSpacingPx * cameraDepth / galleryRadius,
+    cameraDepth = galleryRadius,
     ballSpacing = ballSpacing,
     columns = columns,
     yawDegrees = yawDegrees,

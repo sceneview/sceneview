@@ -372,8 +372,8 @@ fun TapToPlaceArSession(
                 }
             )
         ) {
-            // The one placement. `key(id)` gives a reset-then-replaced object its own
-            // remember slot, so the model instance inside loads fresh per anchor.
+            // The one placement. `key(id)` gives each anchor its own node hierarchy;
+            // Reset also asks the experience to reload the disposed model instance.
             state.placed?.let { placed ->
                 key(placed.id) {
                     PlacedModelNode(
