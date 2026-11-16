@@ -504,18 +504,19 @@ class ScanObjectTest {
     }
 
     @Test
-    fun `a cabinet hung on a piece of wall too narrow to be told a wall stays where it hangs`() {
+    fun `a table whose legs the scan did not hold, a chair beside it, still stands on the floor`() {
         val scene = Scene()
-        scene.floor(HALF_ROOM, HALF_ROOM, y = 0f)
-        // A strip of wall a metre wide: too small for a wall, upright all the same.
-        scene.rect(Vec3(-0.5f, 0f, -1f), Vec3(1f, 0f, 0f), Vec3(0f, 2f, 0f), Vec3(0f, 0f, 1f))
-        scene.box(0f, -0.8f, yawDeg = 0f, length = 0.8f, depth = 0.4f, height = 0.5f, y = 0.8f)
-        scene.rect(Vec3(-0.4f, 0.8f, -1f), Vec3(0.8f, 0f, 0f), Vec3(0f, 0f, 0.4f), Vec3(0f, -1f, 0f))
+        scene.floor(HALF_ROOM, HALF_ROOM, 0f)
+        scene.box(0f, -1f, yawDeg = 0f, length = 1.2f, depth = 0.8f, height = 0.04f, y = 0.71f)
+        scene.rect(Vec3(-0.6f, 0.71f, -1.4f), Vec3(1.2f, 0f, 0f), Vec3(0f, 0f, 0.8f), Vec3(0f, -1f, 0f))
+        // A chair 10 cm off the table's side: its seat on a solid base, its back rising past the top.
+        scene.box(0f, -0.375f, yawDeg = 0f, length = 0.45f, depth = 0.45f, height = 0.46f)
+        scene.box(0f, -0.175f, yawDeg = 0f, length = 0.45f, depth = 0.05f, height = 0.45f, y = 0.46f)
         val objects = ScanObjects.of(scene.cloud())
-        val cabinet = objects.pick(EYE, toward(Vec3(0f, 1.1f, -0.6f))) as ScanPick.Found
-        val whole = objects.whole(cabinet)
-        assertEquals("it hangs from that piece of wall", 0.8f, whole.baseY, 2 * VOXEL)
-        assertEquals(0.5f, whole.height, 2 * VOXEL)
+        val top = objects.pick(EYE, toward(Vec3(0f, 0.75f, -1.1f))) as ScanPick.Found
+        val table = objects.whole(top)
+        assertEquals("a chair is not a wall it hangs from", 0f, table.baseY, VOXEL)
+        assertEquals(0.75f, table.height, VOXEL)
     }
 
     @Test

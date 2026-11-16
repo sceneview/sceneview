@@ -163,16 +163,18 @@ class ScanSubjectTest {
     }
 
     @Test
-    fun `a mat a pair of shoes stands on is not in its box`() {
-        val shoes = Drawn().apply {
-            roughFloor()
-            block(CRATE_X, CRATE_Z, MAT, MAT, TOES_HEIGHT)
-            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT, y = TOES_HEIGHT)
-        }.cloud()
-        val box = ScanSubject.of(shoes, VOXEL, round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f))
-        assertNotNull("no object for shoes on a mat looked at all the way round", box)
-        assertEquals("the shoes, not the mat", SHOES_LENGTH, box!!.length, 2.5f * VOXEL)
-        assertEquals(SHOES_WIDTH, box.depth, 2.5f * VOXEL)
+    fun `a mat a pair of shoes stands on is not in its box, however far it stands out`() {
+        for (mat in listOf(SMALL_MAT, MAT)) {
+            val shoes = Drawn().apply {
+                roughFloor()
+                block(CRATE_X, CRATE_Z, mat, mat * 0.8f, TOES_HEIGHT)
+                block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT, y = TOES_HEIGHT)
+            }.cloud()
+            val box = ScanSubject.of(shoes, VOXEL, round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f))
+            assertNotNull("no object for shoes on a mat of $mat m looked at all the way round", box)
+            assertEquals("the shoes, not a mat of $mat m", SHOES_LENGTH, box!!.length, 2.5f * VOXEL)
+            assertEquals(SHOES_WIDTH, box.depth, 2.5f * VOXEL)
+        }
     }
 
     @Test
@@ -241,8 +243,9 @@ class ScanSubjectTest {
         const val SHOES_WIDTH = 0.2f
         const val SHOES_HEIGHT = 0.11f
         const val TOES = 0.08f
-        const val TOES_HEIGHT = 0.045f
+        const val TOES_HEIGHT = 0.055f
         const val MAT = 0.6f
+        const val SMALL_MAT = 0.44f
         const val TABLE_TOP = 0.75f
         const val SMALL = 0.12f
         const val SMALL_HEIGHT = 0.25f
