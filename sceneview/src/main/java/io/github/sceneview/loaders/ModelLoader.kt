@@ -34,7 +34,6 @@ import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.loaders.ModelLoadProgress.Stage
 import io.github.sceneview.material.EmissiveScale
-import io.github.sceneview.node.ModelGeometryBindings
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.FileLoader
 import io.github.sceneview.utils.loadFileBuffer
@@ -1112,7 +1111,6 @@ class ModelLoader(
             claimAndDestroy(models, model) {
                 recordingProvider.ownership.release(it)
                 AnimationEnvelopes.forget(it)
-                ModelGeometryBindings.release(it)
             }
             return
         }
@@ -1133,7 +1131,6 @@ class ModelLoader(
                         else {
                             recordingProvider.ownership.release(model)
                             AnimationEnvelopes.forget(model)
-                            ModelGeometryBindings.release(model)
                         }
                     },
                 )
@@ -1144,10 +1141,7 @@ class ModelLoader(
             EmissiveScale.forget(it)
             RestPoseBounds.forget(it)
             AnimationEnvelopes.forget(it)
-            if (!lifecycle.canTouchNatives) {
-                ModelGeometryBindings.release(it)
-                return@destroyAfterCancellingLoad
-            }
+            if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
             // Node.destroy() entirely — the sibling Nodes' cached handles need to know a

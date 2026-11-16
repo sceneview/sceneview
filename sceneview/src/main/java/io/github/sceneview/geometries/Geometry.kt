@@ -75,11 +75,10 @@ open class Geometry internal constructor(
     internal fun detach(consumer: Consumer) = lifetime.detach(consumer)
 
     /**
-     * Releases the buffers immediately unless a tracked renderable is still bound to this
-     * geometry. A model component can outlive its wrapper; the last binding releases the buffers.
-     * Main-thread only.
+     * Releases the buffers, immediately, unless a node is still bound to this geometry — in which
+     * case this is a no-op and the last node to go releases them. Main-thread only.
      *
-     * Bindings are the only references counted. A raw renderable that was lent [vertexBuffer] and
+     * Nodes are the only references counted. A raw renderable that was lent [vertexBuffer] and
      * [indexBuffer] (a `MeshNode`) is not: destroy it before, or in the same pass as, this call.
      */
     internal fun destroy(engine: Engine) {

@@ -29,7 +29,6 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.material.materialRegistry
 import io.github.sceneview.model.Model
-import io.github.sceneview.node.ModelGeometryBindings
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -276,14 +275,9 @@ internal fun Engine.whenIdle(
 fun AssetLoader.safeDestroyModel(model: Model) {
     // Destroyed already, through this path or another: gltfio zeroed its handle, and both calls
     // below would hand that zero to native code.
-    if (model.isReleased) {
-        ModelGeometryBindings.release(model)
-        return
-    }
+    if (model.isReleased) return
     runCatching { model.releaseSourceData() }
     runCatching { destroyAsset(model) }
-    // Replacement buffers belong to the surviving component until gltfio removes it.
-    if (model.isReleased) ModelGeometryBindings.release(model)
 }
 
 fun Engine.safeDestroy() = runCatching {
@@ -522,10 +516,9 @@ fun Engine.safeDestroyLight(@FilamentEntity entity: Entity) =
 /**
  * Destroys [geometry]'s vertex and index buffers, right away — no rendered frame is needed.
  *
- * A no-op while a tracked renderable is still bound to [geometry] (`GeometryNode`, or any
- * `RenderableNode.setGeometry`). Ordinary nodes release their binding on disposal; a glTF
- * component keeps its binding across model-node disposal until the geometry is replaced or the
- * asset is destroyed. The last binding releases the buffers, never under a live renderable.
+ * A no-op while a node is still bound to [geometry] (`GeometryNode`, or any
+ * `RenderableNode.setGeometry`): the last of those nodes to be destroyed releases the buffers
+ * itself, so a geometry shared between nodes is freed once and never under a live renderable.
  * Idempotent.
  *
  * A raw renderable that was lent the buffers (`MeshNode(vertexBuffer = geometry.vertexBuffer, …)`)
