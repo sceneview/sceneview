@@ -86,6 +86,7 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
@@ -1482,6 +1483,11 @@ fun ARSceneView(
     // Placed objects' contacts, registered through the scope and grounding the occlusion around
     // them; handed to whichever camera stream is current.
     val groundContacts = remember { GroundContacts() }
+    val groundContactUpdate = remember {
+        GroundContactUpdate { exception ->
+            android.util.Log.e("SceneView", "Ground contact update failed", exception)
+        }
+    }
     SideEffect {
         cameraStreamRef.set(cameraStream)
         cameraStream?.groundContacts = groundContacts
@@ -1809,10 +1815,8 @@ fun ARSceneView(
                     // Custom placement can move in the host callback, node ticks (including smooth
                     // transforms), or gesture inertia. Sample contacts only after all of them.
                     arFrame?.let { frame ->
-                        try {
+                        groundContactUpdate.update {
                             cameraStreamRef.get()?.updateGroundContact(frame)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SceneView", "Ground contact update failed", e)
                         }
                     }
 

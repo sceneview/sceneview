@@ -678,9 +678,9 @@ When `sceneUnderstanding` is non-null, its four flags override the individual on
 
 ### GroundContact — depth occlusion with custom placement (Android)
 
-`AutoPlacementScene` registers the surface contact of each placed model automatically. With your
-own placement, contact shadow or ring, call `ARSceneScope.GroundContact` in the `ARSceneView`
-content block. It draws nothing: it registers the contact disc used by the bundled depth and
+`AutoPlacementModel` registers its surface contact automatically. With custom `AutoPlacementScene`
+content or your own placement, contact shadow or ring, call `ARSceneScope.GroundContact` in the
+`ARSceneView` content block. It draws nothing: it registers the contact disc used by the bundled depth and
 people occlusion materials to keep surface depth noise from cutting the shadow, ring and feet.
 
 Signature: `@Composable fun ARSceneScope.GroundContact(center: () -> Position?, radius: Float, normal: Direction = Direction(y = 1f))`.
@@ -1722,7 +1722,18 @@ dark", "Too fast", "Low detail"). When the object is placed the card steps aside
 reads "Keep looking around"; a placed anchor that relocalizes reads "Point back at your
 object". It is silent when a card of yours is due (`NO_SURFACE`, `RECOVERY_FAILED`,
 `CAMERA_ERROR`). Hide your own status pills while it shows, and pass the height of your own
-bottom chrome so the card and the pill stay above it:
+bottom chrome so the card and the pill stay above it. `coachingContentPadding` also applies
+to the built-in camera-permission and ARCore-failure cards, even with `coaching = false`.
+Direct `ARSceneView` hosts can pass `contentPadding: PaddingValues` to
+`ARCameraPermissionOverlay` and `ARCoreAvailabilityOverlay` in their overlay slots. These
+Android-only ARCore cards keep a preferred margin in addition to the host padding. In a short
+remaining band their vertical margin and padding yield to preserve the recovery action.
+`AutoPlacementScene.onCameraPermissionStateChanged` forwards the same nullable
+`ARCameraPermissionState` as `ARSceneView`: non-null means the permission card is up, `null`
+means camera access is granted. This observer is required by a separate overload and follows
+the existing callbacks; the original overload retains every positional callback and the content argument.
+Track it separately from placement phase and ARCore availability;
+a refusal can precede session creation and leave both of those unchanged:
 
 ```kotlin
 val placement = rememberAutoPlacementState()

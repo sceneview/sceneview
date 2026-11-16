@@ -3,15 +3,28 @@ package io.github.sceneview.demo
 import android.content.res.Resources
 import android.util.LruCache
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.md_theme_dark_surfaceContainer
+import io.github.sceneview.demo.theme.md_theme_light_surfaceContainer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Captured preview images for the home grid, keyed by [DemoEntry.id].
@@ -90,7 +103,8 @@ object DemoPreviews {
      * platform's own drawable cache holds weak references, so by the time a demo is closed
      * the list behind it has lost every picture and decodes them again, on the main thread,
      * in the one frame that starts the exit transition (about 8 ms a card on a Pixel 4a).
-     * Holding the last few screens of pictures here makes coming back to a list free.
+     * Holding the last few screens of pictures here avoids decoding again on Back. A cache
+     * miss (including after memory pressure) is decoded off the main thread by [bitmap].
      *
      * Bounded by size, not by count: [PREVIEW_CACHE_BYTES] is about sixteen 800x640 captures.
      */
@@ -98,9 +112,14 @@ object DemoPreviews {
         override fun sizeOf(key: Int, value: ImageBitmap): Int = value.asAndroidBitmap().allocationByteCount
     }
 
-    /** The picture for [res], decoded once and kept while the cache has room for it. */
-    internal fun bitmap(resources: Resources, @DrawableRes res: Int): ImageBitmap =
-        decoded[res] ?: ImageBitmap.imageResource(resources, res).also { decoded.put(res, it) }
+    /** A picture that can be drawn immediately, without decoding on the composition thread. */
+    internal fun cachedBitmap(@DrawableRes res: Int): ImageBitmap? = decoded[res]
+
+    /** The picture for [res], decoded off the main thread and kept while the cache has room. */
+    internal suspend fun bitmap(resources: Resources, @DrawableRes res: Int): ImageBitmap =
+        withContext(Dispatchers.IO) {
+            decoded[res] ?: ImageBitmap.imageResource(resources, res).also { decoded.put(res, it) }
+        }
 
     /** Lets go of every decoded picture; the next card to need one decodes it again. */
     fun trimMemory() = decoded.evictAll()
@@ -109,8 +128,9 @@ object DemoPreviews {
 }
 
 /**
- * The captured preview for this demo in the current colour scheme, or `null`
- * when the pipeline has not produced one — callers draw the icon tile instead.
+ * The captured preview for this demo in the current colour scheme, or `null` when no
+ * capture exists. An uncached picture fades in over a neutral placeholder after loading.
+ * Cached pictures are available in the first composition, including on Back.
  *
  * [dark] picks the capture explicitly. A surface that is dark in both themes — the
  * home hero band over the live stage — passes `true`, so its white copy never sits
@@ -120,5 +140,32 @@ object DemoPreviews {
 fun DemoEntry.previewPainter(dark: Boolean = isSystemInDarkTheme()): Painter? =
     DemoPreviews.resourceFor(id, dark = dark)?.let { res ->
         val resources = LocalContext.current.resources
-        remember(res, resources) { BitmapPainter(DemoPreviews.bitmap(resources, res)) }
+        key(res, resources) {
+            val bitmap by produceState<ImageBitmap?>(initialValue = DemoPreviews.cachedBitmap(res)) {
+                if (value == null) value = DemoPreviews.bitmap(resources, res)
+            }
+            val alpha = animateFloatAsState(
+                targetValue = if (bitmap == null) 0f else 1f,
+                animationSpec = SceneViewTokens.Motion.fade(),
+                label = "previewFade",
+            )
+            val placeholder = if (dark) md_theme_dark_surfaceContainer else md_theme_light_surfaceContainer
+            remember(bitmap, placeholder) {
+                PreviewPainter(bitmap?.let { BitmapPainter(it) }, placeholder, alpha)
+            }
+        }
     }
+
+/** The same loading treatment for grid, carousel and pager, without changing their layout. */
+private class PreviewPainter(
+    private val image: Painter?,
+    private val placeholder: Color,
+    private val alpha: State<Float>,
+) : Painter() {
+    override val intrinsicSize: Size = image?.intrinsicSize ?: Size.Unspecified
+
+    override fun DrawScope.onDraw() {
+        drawRect(placeholder)
+        image?.let { with(it) { draw(size, alpha = alpha.value) } }
+    }
+}

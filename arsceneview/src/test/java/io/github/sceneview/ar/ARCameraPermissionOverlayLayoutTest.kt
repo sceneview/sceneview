@@ -93,6 +93,22 @@ class ARCameraPermissionOverlayLayoutTest {
     }
 
     @Test
+    fun inAScrollingColumn_bothPermissionActionsAreWhole() {
+        val state = ARCameraPermissionState(ARCameraPermissionRecovery.RequestWithSettings, {}, {})
+        composeRule.setContent {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Box(Modifier.fillMaxWidth()) { ARCameraPermissionOverlay(state) }
+            }
+        }
+        assertWholeCard(R.string.sceneview_camera_permission_body_fallback)
+        val primary = bounds(ARCameraPermissionOverlayTags.ACTION)
+        val secondary = bounds(ARCameraPermissionOverlayTags.REQUEST_ACTION)
+        val card = bounds(ARCameraPermissionOverlayTags.CARD)
+        assertTrue("the secondary action must keep its label and padding", secondary.bottom - secondary.top >= 40.dp)
+        assertTrue("both actions must fit without scrolling", secondary.top >= primary.bottom && secondary.bottom <= card.bottom)
+    }
+
+    @Test
     fun inABoxShorterThanTheCard_theTextGivesWay_andTheActionKeepsItsHeight() {
         composeRule.setContent { ShortBox(160.dp) { ARCameraPermissionOverlay(askAgain) } }
         assertActionIsWholeInAShortBox(fontScale = 1.0f)
