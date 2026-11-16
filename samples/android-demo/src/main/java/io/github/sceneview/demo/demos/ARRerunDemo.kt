@@ -523,7 +523,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         showingScan = true
         mode = RerunMode.Scene
         openCount++
-        // A kept model is read back as it is: no source, so nothing is built again.
+        // A kept model is read back as it is: no source, so nothing is built again — unless the
+        // opening gives it one to finish it again (openStored).
         modelSource = if (kept) null else RerunModelSource.of(pack, media)
         hasResult = kept || modelSource != null
         resultModel = null
@@ -567,8 +568,19 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     }
                     // A raw surface kept for running out of memory, with attempts left, is finished
                     // again from the recording, behind the surface already shown
-                    // ([io.github.sceneview.demo.demos.internal.RerunScanModel.retriesFinish]).
-                    if (keptModel?.retriesFinish == true) modelSource = RerunModelSource.of(capture, opened)
+                    // ([io.github.sceneview.demo.demos.internal.RerunScanModel.retriesFinish]); so is
+                    // a model an earlier finish pipeline built (stalePipeline), where this one
+                    // finishes it differently (rebuildsStale) — nowhere else, as the recording
+                    // reopened no longer holds the raw depth a model meshed at capture came from.
+                    val source = RerunModelSource.of(capture, opened)
+                    val rebuilds = source != null && when {
+                        keptModel?.retriesFinish == true -> true
+                        keptModel?.stalePipeline == true -> withContext(Dispatchers.Default) {
+                            rebuildsStale(kind, source, ScanSubject.aims(opened.trace), opened.dense?.voxelM)
+                        }
+                        else -> false
+                    }
+                    if (rebuilds) modelSource = source
                 }
                 kept -> Unit
                 else -> {

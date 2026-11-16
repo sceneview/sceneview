@@ -1,8 +1,15 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.demos.FILLED_OBJECT_M
+import io.github.sceneview.demo.demos.RerunModelSource
+import io.github.sceneview.demo.demos.fillsObject
+import io.github.sceneview.demo.demos.objectReconstruction
+import io.github.sceneview.demo.demos.rebuildsStale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.PI
 import kotlin.math.cos
@@ -201,6 +208,68 @@ class ScanSubjectTest {
         assertEquals(SMALL, box.depth, 2.5f * VOXEL)
         assertEquals("from the table's top", TABLE_TOP, box.baseY, VOXEL)
         assertEquals(SMALL_HEIGHT, box.height, 2 * VOXEL)
+    }
+
+    @Test
+    fun `an object 60 cm across or more is filled, a pair of shoes and a scan of no object keep the fused surface`() {
+        val crate = round(CRATE_X, CRATE_Z, HEIGHT / 2)
+        assertEquals(ReconstructionMethod.Poisson, objectReconstruction(RerunModelSource.Surfels(cloud), crate, VOXEL))
+
+        val shoes = Drawn().apply {
+            floor()
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT)
+        }.cloud()
+        val aroundShoes = round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f)
+        assertNotNull("the shoes are not boxed", ScanSubject.of(shoes, VOXEL, aroundShoes))
+        assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(shoes), aroundShoes, VOXEL))
+
+        assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), round(-1f, -1f, 0f, radius = 0.5f), VOXEL))
+        assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), null, VOXEL))
+        assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), emptyList(), VOXEL))
+    }
+
+    @Test
+    fun `a stale kept model is built again only where it is filled now`() {
+        val crate = round(CRATE_X, CRATE_Z, HEIGHT / 2)
+        assertTrue(rebuildsStale(ScanScope.Object, RerunModelSource.Surfels(cloud), crate, VOXEL))
+        // A room, a cupboard or an outdoor area finishes as it did: its model meshed at capture stays.
+        for (scope in ScanScope.entries - ScanScope.Object) {
+            assertFalse("$scope", rebuildsStale(scope, RerunModelSource.Surfels(cloud), crate, VOXEL))
+        }
+        val shoes = Drawn().apply {
+            floor()
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT)
+        }.cloud()
+        val aroundShoes = round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f)
+        assertFalse(rebuildsStale(ScanScope.Object, RerunModelSource.Surfels(shoes), aroundShoes, VOXEL))
+    }
+
+    @Test
+    fun `a stale model kept as this pipeline's is the same model, no longer stale`() {
+        val stale = RerunScanModel(
+            kind = RerunScanModel.Kind.Mesh,
+            glb = byteArrayOf(1, 2, 3),
+            bounds = floatArrayOf(0f, 0f, 0f, 1f, 1f, 1f),
+            triangles = 12,
+            vertices = 8,
+            pipeline = RerunScanModel.PIPELINE - 1,
+        )
+        assertTrue(stale.stalePipeline)
+        val kept = stale.asCurrentPipeline()
+        assertFalse(kept.stalePipeline)
+        assertTrue(kept.glb.contentEquals(stale.glb))
+        assertTrue(kept.bounds.contentEquals(stale.bounds))
+        assertEquals(stale.triangles, kept.triangles)
+        assertEquals(stale.finished, kept.finished)
+    }
+
+    @Test
+    fun `the fill starts at 60 cm across the object's largest side, its height included`() {
+        assertTrue(fillsObject(ScanBox(0f, 0f, 0f, 0f, length = 0.3f, depth = 0.3f, height = FILLED_OBJECT_M)))
+        assertTrue(fillsObject(ScanBox(0f, 0f, 0f, 0f, length = 0.74f, depth = 0.68f, height = 0.97f)))
+        assertFalse(fillsObject(ScanBox(0f, 0f, 0f, 0f, length = 0.59f, depth = 0.4f, height = 0.5f)))
+        assertFalse(fillsObject(ScanBox(0f, 0f, 0f, 0f, length = 0.29f, depth = 0.22f, height = 0.14f)))
+        assertFalse(fillsObject(null))
     }
 
     @Test
