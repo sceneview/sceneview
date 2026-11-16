@@ -8,7 +8,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -353,23 +356,12 @@ private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: P
 fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementState() }
 
 /**
- * Places once on the first usable detected plane after [assetReady]. No tap, reticle or
- * plane visualization. Load the asset before setting [assetReady]; keep the old asset
- * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
+ * Places content as documented by the default [AutoPlacementScene] overload, with an explicit
+ * permission-recovery observer. Existing placement callback positions are unchanged.
  *
- * [state] exposes recovery, reset and explicit request actions. Camera/capability events
- * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
- * same [state]. Content is composed on the main thread.
- * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
- *
- * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
- *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
- *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
- *   status chrome while [ArGuidanceState.isCoaching] is true either way.
- * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
- *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay] as its `contentPadding`. The card
- *   and its "Surface found" pill already keep clear of the system bars and a 16 dp gutter; this
- *   is what they cannot measure, because you draw it. Only read while [coaching] is `true`.
+ * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
+ *   receives, or `null` after a grant. A denial can precede session creation without changing
+ *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
  */
 @Composable
 fun AutoPlacementScene(
@@ -388,6 +380,7 @@ fun AutoPlacementScene(
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -429,6 +422,20 @@ fun AutoPlacementScene(
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
             depthMode = autoPlacementDepthMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            cameraPermissionOverlay = {
+                ARCameraPermissionOverlay(
+                    state = it,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentPadding = coachingContentPadding,
+                )
+            },
+            arCoreAvailabilityOverlay = {
+                ARCoreAvailabilityOverlay(
+                    state = it,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentPadding = coachingContentPadding,
+                )
+            },
             onGestureListener = rememberOnGestureListener(
                 // Tap the object to select it (the selection ring appears), tap empty space
                 // to deselect — Scene Viewer's selection model.
@@ -442,7 +449,10 @@ fun AutoPlacementScene(
                 availability = it
                 onARCoreAvailability?.invoke(it)
             },
-            onCameraPermissionStateChanged = { cameraDenied = it != null },
+            onCameraPermissionStateChanged = {
+                cameraDenied = it != null
+                onCameraPermissionStateChanged?.invoke(it)
+            },
             onTrackingFailureChanged = {
                 trackingFailure = it
                 onTrackingFailureChanged?.invoke(it)
@@ -487,6 +497,68 @@ fun AutoPlacementScene(
         }
     }
 }
+
+/**
+ * Places once on the first usable detected plane after [assetReady]. No tap, reticle or
+ * plane visualization. Load the asset before setting [assetReady]; keep the old asset
+ * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
+ *
+ * [state] exposes recovery, reset and explicit request actions. Camera/capability events
+ * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
+ * same [state]. Content is composed on the main thread.
+ * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
+ *
+ * Callback positions and positional/trailing content retain the original API. Use the
+ * permission-observer overload when host chrome depends on the permission-recovery card.
+ *
+ * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
+ *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
+ *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
+ *   status chrome while [ArGuidanceState.isCoaching] is true either way.
+ * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
+ *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
+ *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
+ *   and add their own margin. Permission and failure cards respect it even when [coaching]
+ *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
+ */
+@Suppress("LongParameterList")
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = coaching,
+    coachingContentPadding = coachingContentPadding,
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    onCameraPermissionStateChanged = null,
+    content = content,
+)
 
 /**
  * Binary-compatibility shim for the pre-`coachingContentPadding` descriptor of

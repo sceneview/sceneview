@@ -54,6 +54,19 @@ appId: io.github.sceneview.demo.qa
     env:
       DEMO_ID: ar-placement
       DEMO_NAME: AR Placement
+# One call's SDK availability card cannot be reached through ARCore on an emulator (#4525).
+- launchApp:
+    appId: io.github.sceneview.demo.qa
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-placement
+      tab: one-call
+      qa_mode: true
+      qa_state: ar_start_failed
+- assertVisible: "Couldn't start AR"
+- assertVisible: "Try again"
+- takeScreenshot: "ar-placement-one-call-start-failed"
 - runFlow:
     file: flows/demo.yaml
     env:
