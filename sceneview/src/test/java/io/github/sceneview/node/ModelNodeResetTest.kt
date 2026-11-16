@@ -129,6 +129,7 @@ class ModelNodeResetTest {
         assertTrue(destroyed.isEmpty())
     }
 
+    @Suppress("FunctionOnlyReturningConstant")
     @Implements(FilamentInstance::class)
     class Instance {
         @Implementation fun getRoot(): Int = 100
@@ -140,7 +141,7 @@ class ModelNodeResetTest {
         @Implementation fun getBoundingBox(): Box = Box(0f, 0f, 0f, 1f, 1f, 1f)
     }
 
-    @Suppress("UnusedParameter")
+    @Suppress("UnusedParameter", "FunctionOnlyReturningConstant")
     @Implements(TransformManager::class)
     class Transforms {
         @Implementation fun hasComponent(entity: Int): Boolean = true
@@ -155,7 +156,7 @@ class ModelNodeResetTest {
         @Implementation fun getWorldTransform(instance: Int, out: FloatArray?) = identity(out)
     }
 
-    @Suppress("UnusedParameter")
+    @Suppress("UnusedParameter", "FunctionOnlyReturningConstant")
     @Implements(RenderableManager::class)
     class Renderables {
         @Implementation fun hasComponent(entity: Int): Boolean = entity == 7
