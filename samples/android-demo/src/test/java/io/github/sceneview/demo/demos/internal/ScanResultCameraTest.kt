@@ -168,6 +168,18 @@ class ScanResultCameraTest {
     }
 
     @Test
+    fun `a margin kept for the dimensions widens the framing, not the box the zoom stops at`() {
+        val camera = ScanResultCamera()
+        val padded = room.padded(0.7f)
+        val start = ScanResultStart.of(padded, camera.verticalFovDegrees, aspect, insets, box = room)
+        val alongB = room.toWorld(OrbitPose(azimuthDegrees = 0f)).azimuthDegrees
+        assertEquals(1.5f + ScanResultCamera.NEAR_CLEARANCE_M, start.minDistance(alongB, 0f), 1e-3f)
+        assertEquals(room.worldMiddle, start.pose.target)
+        val framedWide = room.pose(ScanResultCamera.START_ELEVATION, ScanResultFraming.THREE_QUARTER, camera.verticalFovDegrees, aspect, insets)
+        assertTrue(start.pose.distance > framedWide.distance)
+    }
+
+    @Test
     fun `turning at the near bound keeps the eye out of the box`() {
         val (camera, start) = shownCamera()
         camera.pinch(from = 300f, to = 3000f)

@@ -57,7 +57,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -1119,7 +1118,7 @@ internal fun RerunModelScreen(
                 caption = stringResource(R.string.scan_result_more),
                 onClick = { more = true },
                 // An object has no plan to show: with no capture to watch either, More is empty.
-                enabled = instance != null && !filming && (scope.hasFloorPlan || onReplay != null || offersShading),
+                enabled = shown && instance != null && !filming && (scope.hasFloorPlan || onReplay != null || offersShading),
                 selected = more,
             ),
         ),
@@ -1177,18 +1176,23 @@ internal fun RerunModelScreen(
             val spaceFrame = remember(space) { (space as? SpaceMeasure.Found)?.fit?.let(SpaceFitDrawing::frame) }
             // An object boxed is what its result shows too: the object, not the floor the scan holds round it.
             val subjectFrame = remember(subject, frame) { (subject as? SubjectMeasure.Found)?.box?.let { ScanSubject.frame(it, frame) } }
-            val shownFrame = remember(frame, spaceFrame, subjectFrame, cuts, measuring) {
-                val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+            val cut = remember(frame, cuts) { if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame }
+            // What the zoom stops short of: what is drawn, never the margin kept round it.
+            val drawnBox = spaceFrame ?: subjectFrame ?: cut
+            val shownFrame = remember(drawnBox, cut, spaceFrame, subjectFrame, measuring) {
                 // The dimensions stand outside the walls: a room measured keeps room for them.
-                val drawnFrame = if (measuring && !scope.closeUp) cut?.padded(MEASURE_MARGIN_M) else cut
-                spaceFrame ?: subjectFrame ?: drawnFrame
+                if (spaceFrame == null && subjectFrame == null && measuring && !scope.closeUp) cut?.padded(MEASURE_MARGIN_M) else drawnBox
             }
             // The start (camera.md, rule 7): a three-quarter 35° above the side the scan was taken
             // from, whole in the zone the chrome frees. Not before an object's box or a space's
             // inside is read, unless that takes too long: the centre is fixed once the view is shown.
-            val measured = subject !is SubjectMeasure.Measuring && space !is SpaceMeasure.Measuring
-            val start = remember(shownFrame, aspect, area, fov, measured || measureWaited) {
-                shownFrame?.takeIf { measured || measureWaited }?.let { ScanResultStart.of(it, fov, aspect, area) }
+            // A kept object reopened has no aims until its recording is read: its box is still to come.
+            val aimsToCome = scope == ScanScope.Object && subject == null && captureAims == null
+            val measured = !aimsToCome && subject !is SubjectMeasure.Measuring && space !is SpaceMeasure.Measuring
+            val start = remember(shownFrame, drawnBox, aspect, area, fov, measured || measureWaited) {
+                val fitted = shownFrame?.takeIf { measured || measureWaited }
+                val bounded = drawnBox
+                if (fitted != null && bounded != null) ScanResultStart.of(fitted, fov, aspect, area, box = bounded) else null
             }
             // Until the view is shown, the camera is put on the start before each frame is drawn.
             SideEffect { camera.aim(start) }
@@ -1238,6 +1242,8 @@ internal fun RerunModelScreen(
                     }
                     if (!shared) Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
                 } finally {
+                    // A take dropped mid-sweep leaves the camera where it is, not sweeping on.
+                    if (camera.filming) camera.stopInertia()
                     if (recorder.isRecording) recorder.stopRecording()
                     if (!shared) file.delete()
                     filming = false
@@ -1270,18 +1276,8 @@ internal fun RerunModelScreen(
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
-                // Revealed (ModelReveal): its wire sweeps up, then it rises into it, in place.
-                instance?.let {
-                    RevealedModel(
-                        instance = it,
-                        build = null,
-                        // Read here, in the scene, so only the scene recomposes as the reveal plays.
-                        elapsedMs = ModelReveal.TOTAL_MS,
-                        color = chrome.accent,
-                        engine = engine,
-                        materialLoader = materialLoader,
-                    )
-                }
+                // Drawn whole where it stands: no wire, no rise (camera.md, rule 6).
+                instance?.let { ModelNode(modelInstance = it, autoAnimate = false) }
                 // The model stands on a soft contact shadow, once it is revealed: an object's just
                 // over its floor, a room's just under its scanned floor, which hides its core —
                 // its rim shows round the room. On the dark stage a black pool reads as nothing,
@@ -1738,7 +1734,6 @@ internal const val RERUN_MODEL_NAME_TAG = "rerun_model_name"
 internal const val RERUN_MODEL_HINT_TAG = "rerun_model_hint"
 internal const val RERUN_MODEL_MORE_TAG = "rerun_model_more"
 internal const val RERUN_MODEL_VEIL_TAG = "rerun_model_veil"
-private const val MILLIS_PER_SECOND = 1000f
 
 /** Floor kept round a measured room's frame for the dimensions outside its walls: line and label. */
 private const val MEASURE_MARGIN_M = 0.7f

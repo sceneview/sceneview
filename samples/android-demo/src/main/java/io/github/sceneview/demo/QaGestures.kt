@@ -38,7 +38,8 @@ internal object QaGestures {
 
     /**
      * Registers the receiver for [activity]'s life, in a debug build only. Exported, so `adb shell`
-     * reaches it: what a debug build is for.
+     * reaches it, but only from a sender holding [SENDER_PERMISSION], which the shell has and an
+     * app on the phone does not: a debug APK installed from a release page takes no taps from them.
      */
     fun install(activity: ComponentActivity) {
         if (!BuildConfig.DEBUG) return
@@ -66,7 +67,9 @@ internal object QaGestures {
         }
         activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onCreate(owner: LifecycleOwner) {
-                ContextCompat.registerReceiver(activity, receiver, IntentFilter(ACTION), ContextCompat.RECEIVER_EXPORTED)
+                ContextCompat.registerReceiver(
+                    activity, receiver, IntentFilter(ACTION), SENDER_PERMISSION, null, ContextCompat.RECEIVER_EXPORTED,
+                )
             }
 
             override fun onDestroy(owner: LifecycleOwner) {
@@ -130,9 +133,13 @@ internal object QaGestures {
     /** Posts [touches] on the main thread at their times, each one built as the platform would. */
     private fun play(touches: List<Touch>, dispatch: (MotionEvent) -> Unit) {
         val handler = Handler(Looper.getMainLooper())
-        val downTime = SystemClock.uptimeMillis() + LEAD_MS
+        val origin = SystemClock.uptimeMillis() + LEAD_MS
+        var downTime = origin
         for (touch in touches) {
-            val at = downTime + touch.atMs
+            val at = origin + touch.atMs
+            // Each first finger down starts its own stream, as a second tap's does on a screen.
+            if (touch.action == MotionEvent.ACTION_DOWN) downTime = at
+            val down = downTime
             handler.postAtTime({
                 val properties = Array(touch.pointers.size) { i ->
                     MotionEvent.PointerProperties().apply {
@@ -149,7 +156,7 @@ internal object QaGestures {
                     }
                 }
                 val event = MotionEvent.obtain(
-                    downTime, at, touch.action, touch.pointers.size, properties, coords,
+                    down, at, touch.action, touch.pointers.size, properties, coords,
                     0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
                 )
                 dispatch(event)
@@ -159,6 +166,9 @@ internal object QaGestures {
     }
 
     private fun min(a: Float, b: Float) = if (a < b) a else b
+
+    /** What a sender must hold: `adb shell` does, an app installed on the phone does not. */
+    private const val SENDER_PERMISSION = "android.permission.DUMP"
 
     private val SQRT2 = sqrt(2f)
     private const val DEFAULT_X = 0.5f

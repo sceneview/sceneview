@@ -50,8 +50,16 @@ internal class ScanResultStart(
          * shows the whole box inside what [insets] leave free of a view of [aspect] (width / height)
          * through [verticalFovDegrees]. The fit's slide in the picture plane is kept as [shiftX] and
          * [shiftY], so the box is placed the way the fit placed it without moving the pivot.
+         * [box] is what the zoom stops short of and the centre is the middle of: what is drawn,
+         * where [frame] may keep a margin round it (a room's dimensions written outside its walls).
          */
-        fun of(frame: ScanResultFrame, verticalFovDegrees: Double, aspect: Float, insets: FramingInsets): ScanResultStart {
+        fun of(
+            frame: ScanResultFrame,
+            verticalFovDegrees: Double,
+            aspect: Float,
+            insets: FramingInsets,
+            box: ScanResultFrame = frame,
+        ): ScanResultStart {
             val fitted = frame.pose(
                 ScanResultCamera.START_ELEVATION,
                 ScanResultFraming.THREE_QUARTER,
@@ -59,7 +67,7 @@ internal class ScanResultStart(
                 aspect,
                 insets,
             )
-            val pose = fitted.copy(target = frame.worldMiddle)
+            val pose = fitted.copy(target = box.worldMiddle)
             val axes = PictureAxes.of(pose)
             val slide = fitted.target - pose.target
             val height = ScanResultCamera.viewHeight(pose.distance, verticalFovDegrees)
@@ -68,7 +76,7 @@ internal class ScanResultStart(
                 pose = pose,
                 shiftX = dot(slide, axes.right) / width,
                 shiftY = dot(slide, axes.up) / height,
-                box = frame,
+                box = box,
             )
         }
 
@@ -232,7 +240,7 @@ internal class ScanResultCamera(
 
     private fun flyTo(to: OrbitPose) {
         stopCoast()
-        move = Move.Fly(pose, to)
+        move = Move.Fly(pose, bounded(to))
     }
 
     override fun setViewport(width: Int, height: Int) {
