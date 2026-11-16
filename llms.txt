@@ -303,7 +303,8 @@ fun SceneView(
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
-    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null, // observes presented frames; does not keep the loop awake
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null, // drives animation; keeps OnDemand awake until null
     content: (@Composable SceneScope.() -> Unit)? = null
 )
 ```
@@ -314,7 +315,7 @@ fun SceneView(
 
 Three policies:
 
-- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
+- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a non-null `onAnimationFrame` driver, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
 - **`FrameRatePolicy.Continuous()`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
 - **`maxFps`** — an optional ceiling on **either** mode (`OnDemand(maxFps = 30)`, `Continuous(maxFps = 30)`), never a mode of its own: the type asks two independent questions, *when* may a frame be drawn and *how fast at most*. A capped scene never presents faster than `maxFps` and votes for `maxFps` rather than the display maximum (never above what the panel can do) — for a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. A cap can only be met on a whole number of vsyncs, so the requested period is rounded **up** to whole vsyncs of the real display: `maxFps = 90` on a 120 Hz panel therefore runs at 60, because 90 is not reachable there and 120 would break the promise. `maxFps` is `null` (the display's cadence, the default) or strictly positive (`require` at construction).
 
@@ -343,7 +344,18 @@ Measured on a parked demo screen (#3718): dragging an *Environment rotation* sli
 
 **A `ViewNode` and a `VideoNode` are driven from outside the library** — an Android `View` hierarchy redrawing on its own schedule, a `MediaPlayer` decoding — so neither can be tracked through the scene graph. Both report themselves active from the one observable fact, every buffer their `SurfaceTexture` receives: an animating view or a playing video holds the full cadence, a finished view or a paused video parks with the rest of the scene (a paused player's **seek** or frame-step is one such buffer, and it is drawn). Neither is "permanently active" — do not generate a warning saying a `ViewNode` costs a screen its idle saving.
 
-**`onFrame` fires only for a *presented* frame, right after it reached the surface — so it can never be what keeps the loop awake.** Do not generate a screen whose animation clock, physics step or turntable is advanced from `onFrame` and relies on nothing but its own next call: under `OnDemand` the scene settles, parks, the callback stops and the motion freezes on open. A screen that drives motion states it — `frameRatePolicy = FrameRatePolicy.Continuous()` while it plays, `OnDemand()` when it pauses — and takes a rising edge (`LaunchedEffect(isPlaying) { if (isPlaying) invalidator.requestRender() }`) because flipping the flag on a parked loop otherwise changes a value nobody reads. A change the *user* just made (a scrub, a chip) is applied **outside** `onFrame`, then `requestRender()`: `onFrame` runs after presentation, so a pose written inside it lands one frame late, and under `OnDemand` that frame never comes.
+**Drive animations with `SceneView(onAnimationFrame = …)`; observe presentations with `onFrame`.**
+A non-null `onAnimationFrame: ((Long) -> Unit)?` wakes a parked `OnDemand` scene and keeps it active
+without `requestRender()` or a switch to `Continuous()`. Pass `null` to let the settle tail finish
+and park again. Subscribing queues a frame so a short animation's final edits still reach the
+surface if the callback is cleared before the FPS cap permits presentation.
+The callback runs before scene updates on every render-loop tick with a ready
+surface, including ticks the GPU declines to present; `maxFps` still caps presentation. Mutating
+Compose state here is supported; direct node writes can affect the same frame, while Compose
+changes reach nodes after recomposition. `onFrame` stays a pure observer called only after a
+presented frame and never keeps the scene awake. The existing overload is retained for binary
+compatibility and hidden from source calls. This callback is Android `SceneView`-specific: `ARSceneView` uses
+its ARCore session loop, and other platforms have separate render loops and callback APIs.
 
 **A camera pose written from `onFrame` is overwritten on the next frame while a `cameraManipulator` is installed:** the loop updates the manipulator, calls its `getTransform()` exactly once, passes that pose through the camera-swap continuity resolver, and applies the resolved transform when it differs from `cameraNode.transform`. Pass `cameraManipulator = null` while a script owns the camera (as `applyCinematicOrbit` requires), or install a manipulator whose `getTransform()` returns the scripted pose—for example, a wrapper around the default manipulator that returns `cameraNode.transform` while the script owns it.
 
