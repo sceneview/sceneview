@@ -391,18 +391,14 @@ fun AutoPlacementScene(
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    var placement by remember(state) { mutableStateOf<AutoPlacementResult?>(null) }
+    val placementHolder = remember(state) { mutableStateOf<AutoPlacementResult?>(null) }
+    var placement by placementHolder
     var planes by remember { mutableStateOf<List<Plane>>(emptyList()) }
     val ready by rememberUpdatedState(assetReady)
     val placedCallback by rememberUpdatedState(onPlaced)
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
     }
-    // Keyed on [state] alone, the disposal lambda below would capture the `placement` of the
-    // composition that created the effect — normally null. Reading the latest value through
-    // [rememberUpdatedState] is what makes `detach()` actually run when the host navigates away
-    // after a placement, including when the content composes no AnchorNode of its own.
-    val currentPlacement by rememberUpdatedState(placement)
     // The coaching card sits where ARSceneView draws its "Couldn't start AR" card, and the
     // old glyph kept sweeping over that card's copy and its Try again button (#3986).
     // DESIGN.md: the coaching is silent whenever a card explains the state.
@@ -413,8 +409,15 @@ fun AutoPlacementScene(
     // The coaching card names the reason ("Too dark", "Too fast") while tracking struggles.
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
+        val release: () -> Unit = {
+            val owned = placementHolder.value
+            placementHolder.value = null
+            owned?.anchor?.detach()
+        }
+        state.releasePlacement = release
         onDispose {
-            currentPlacement?.anchor?.detach()
+            state.releasePlacement = null
+            release()
             state.dismiss()
         }
     }
@@ -450,10 +453,6 @@ fun AutoPlacementScene(
             onSessionResumed = { state.cameraResumed() },
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
-                if (!state.hasPlacement && placement != null) {
-                    placement?.anchor?.detach()
-                    placement = null
-                }
                 val tracked = session.getAllTrackables(Plane::class.java)
                     .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                 if (tracked != planes) planes = tracked
