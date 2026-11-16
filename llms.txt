@@ -252,6 +252,11 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ## Android camera permission recovery
 
+`resolveCameraPermissionRecovery`, `ARCameraPermissionRecovery` and
+`ARCameraPermissionState.recovery` are `@ExperimentalSceneViewApi`. Opt in where you use
+them with `@OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)`: the recovery
+policy may evolve. The legacy boolean constructor and `permanentlyDenied` remain stable.
+
 The built-in camera card and the Android demo share `resolveCameraPermissionRecovery(rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals)` in `io.github.sceneview.ar`. Call it only after a refused request. The rationale parameters have Android's `shouldShowRequestPermissionRationale(CAMERA)` meaning (`true` recommends a rationale), the inverse of `ARPermissionHandler.shouldShowPermissionRationale()`. Pass monotonic elapsed milliseconds and the number of earlier consecutive answers with no rationale flag; reset that count on a grant or a raised rationale flag. The timing threshold and refusal heuristic may evolve; use the returned enum instead of duplicating them.
 
 `ARCameraPermissionState.recovery` is the single source of truth for custom overlays: `Request` offers **Allow camera**, `RequestWithSettings` makes **Open settings** primary and keeps **Allow camera** as a secondary action with neutral copy, and `Settings` offers settings alone. Repeated Back dismissals and fast answers are ambiguous, so neither removes the request action nor claims camera access was turned off. Only a raised rationale flag falling after refusal selects settings alone. This policy is Android-specific; other platforms use their native permission flow.
@@ -298,7 +303,8 @@ fun SceneView(
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
-    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null, // observes presented frames; does not keep the loop awake
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null, // drives animation; keeps OnDemand awake until null
     content: (@Composable SceneScope.() -> Unit)? = null
 )
 ```
@@ -309,7 +315,7 @@ fun SceneView(
 
 Three policies:
 
-- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
+- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a non-null `onAnimationFrame` driver, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
 - **`FrameRatePolicy.Continuous()`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
 - **`maxFps`** — an optional ceiling on **either** mode (`OnDemand(maxFps = 30)`, `Continuous(maxFps = 30)`), never a mode of its own: the type asks two independent questions, *when* may a frame be drawn and *how fast at most*. A capped scene never presents faster than `maxFps` and votes for `maxFps` rather than the display maximum (never above what the panel can do) — for a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. A cap can only be met on a whole number of vsyncs, so the requested period is rounded **up** to whole vsyncs of the real display: `maxFps = 90` on a 120 Hz panel therefore runs at 60, because 90 is not reachable there and 120 would break the promise. `maxFps` is `null` (the display's cadence, the default) or strictly positive (`require` at construction).
 
@@ -338,7 +344,18 @@ Measured on a parked demo screen (#3718): dragging an *Environment rotation* sli
 
 **A `ViewNode` and a `VideoNode` are driven from outside the library** — an Android `View` hierarchy redrawing on its own schedule, a `MediaPlayer` decoding — so neither can be tracked through the scene graph. Both report themselves active from the one observable fact, every buffer their `SurfaceTexture` receives: an animating view or a playing video holds the full cadence, a finished view or a paused video parks with the rest of the scene (a paused player's **seek** or frame-step is one such buffer, and it is drawn). Neither is "permanently active" — do not generate a warning saying a `ViewNode` costs a screen its idle saving.
 
-**`onFrame` fires only for a *presented* frame, right after it reached the surface — so it can never be what keeps the loop awake.** Do not generate a screen whose animation clock, physics step or turntable is advanced from `onFrame` and relies on nothing but its own next call: under `OnDemand` the scene settles, parks, the callback stops and the motion freezes on open. A screen that drives motion states it — `frameRatePolicy = FrameRatePolicy.Continuous()` while it plays, `OnDemand()` when it pauses — and takes a rising edge (`LaunchedEffect(isPlaying) { if (isPlaying) invalidator.requestRender() }`) because flipping the flag on a parked loop otherwise changes a value nobody reads. A change the *user* just made (a scrub, a chip) is applied **outside** `onFrame`, then `requestRender()`: `onFrame` runs after presentation, so a pose written inside it lands one frame late, and under `OnDemand` that frame never comes.
+**Drive animations with `SceneView(onAnimationFrame = …)`; observe presentations with `onFrame`.**
+A non-null `onAnimationFrame: ((Long) -> Unit)?` wakes a parked `OnDemand` scene and keeps it active
+without `requestRender()` or a switch to `Continuous()`. Pass `null` to let the settle tail finish
+and park again. Subscribing queues a frame so a short animation's final edits still reach the
+surface if the callback is cleared before the FPS cap permits presentation.
+The callback runs before scene updates on every render-loop tick with a ready
+surface, including ticks the GPU declines to present; `maxFps` still caps presentation. Mutating
+Compose state here is supported; direct node writes can affect the same frame, while Compose
+changes reach nodes after recomposition. `onFrame` stays a pure observer called only after a
+presented frame and never keeps the scene awake. The existing overload is retained for binary
+compatibility and hidden from source calls. This callback is Android `SceneView`-specific: `ARSceneView` uses
+its ARCore session loop, and other platforms have separate render loops and callback APIs.
 
 **A camera pose written from `onFrame` is overwritten on the next frame while a `cameraManipulator` is installed:** the loop updates the manipulator, calls its `getTransform()` exactly once, passes that pose through the camera-swap continuity resolver, and applies the resolved transform when it differs from `cameraNode.transform`. Pass `cameraManipulator = null` while a script owns the camera (as `applyCinematicOrbit` requires), or install a manipulator whose `getTransform()` returns the scripted pose—for example, a wrapper around the default manipulator that returns `cameraNode.transform` while the script owns it.
 
@@ -479,9 +496,12 @@ fun ArDestination() {   // the content of a NavHost `composable("ar") { ArDestin
 Keep the default where the host keeps the AR screen composed but not visible (a `ViewPager2`
 page, a screen under a full-screen `dialog()` destination): with `rememberHostLifecycle()` the
 camera would stay on there. Two `ARSceneView`s resumed at once share the single camera: the one
-that resumed last runs, the other keeps its last frame and gets the camera back when the newer
-one is disposed, paused or fails to resume. Known limit: on a predictive back gesture from one AR
-screen to another, the screen under the finger is frozen until the gesture ends.
+that resumed last runs; the other shows the built-in **Camera in use** card (in light and dark
+themes), rather than an unexplained black or frozen view. The card clears and the waiting view
+resumes automatically when the holder is disposed, paused or fails to resume. A camera turn
+yielded to another scene is not a failure and does not call `onSessionFailed` / `onSessionFailure`.
+Known limit: on a predictive back gesture from one AR screen to another, the screen under the
+finger waits for the camera until the gesture ends.
 
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
@@ -1963,6 +1983,54 @@ the identity pose before the first hit (#3569). Its default look is deliberately
 white hairline ring over a faint dark contact halo, with a small `#a4c1ff` centre dot appearing
 only in the *ready* phase (#3570). Reticle colour is a design decision: if you re-tint it, tint
 the dot, not the ring.
+
+### Placement bounds fit — does the object fit on the tracked surface? (#3446)
+
+`io.github.sceneview.ar.placementBoundsFit` checks the projection of the **whole transformed
+bounding box** inside a convex plane polygon, including rotation, scale, authored centre offsets
+and the height of a tilted model. A hit inside a plane or inside its rectangular extents does
+not establish that the model fits.
+
+```kotlin
+fun placementBoundsFit(
+    boundsCenter: Position,          // model-local authored box centre
+    boundsHalfExtent: Size,          // HALF-side lengths, in the same coordinates
+    modelToPlane: Transform,        // complete model-local → plane-local affine transform
+    planePolygon: FloatArray,       // plane-local [x0, z0, x1, z1, …], metres, either winding
+): PlacementBoundsFit?
+
+fun Plane.placementBoundsFit(
+    bounds: com.google.android.filament.Box,
+    modelTransform: Transform,      // complete model-local → WORLD transform
+): PlacementBoundsFit?
+```
+
+`PlacementBoundsFit.fits` includes boundary contact with a 0.00001 m (10 micrometre) numerical
+tolerance for pose/transform roundoff. `marginMeters` stays unrounded, so a tiny negative margin
+within that tolerance still fits. It is the smallest inward
+distance from the projected box to any polygon edge's supporting line: positive clearance,
+zero contact, negative greatest perpendicular overhang. It is not the translation needed to
+make the object fit or a Euclidean distance to a corner. `null` means no verdict (untracked
+plane, missing/invalid/degenerate/nonconvex polygon or bounds, non-affine transform). Flat
+models and duplicate/collinear polygon vertices are supported, with the same 10 micrometre
+tolerance for polygon convexity roundoff. The plane adapter follows `subsumedBy` to the
+current top plane before reading its tracking state, pose and polygon.
+
+For a plane hit, import `io.github.sceneview.ar.placementBoundsFit` and
+`io.github.sceneview.ar.arcore.transform`, plus `io.github.sceneview.model.restPoseBoundingBox`, then call
+`(hit.trackable as? Plane)?.placementBoundsFit(modelInstance.model.restPoseBoundingBox, hit.hitPose.transform)`
+for an unscaled model. For a rendered model, pass that model node's `worldTransform` to account
+for its final scale, asset rotation and pivot corrections. Re-evaluate when the model or plane
+changes; instant/depth hits have no plane polygon and cannot confirm a fit. This checks the
+**tracked surface coverage**, not room height, support or collisions, and leaves the app's
+placement gate and copy to the app.
+
+This ARCore-specific addition provides geometry helpers toward the bounds-check portion of
+#3446, alongside the public `AutoPlacementState`, scale detent, `UsableSurfacePolicy` and
+plane-first `placementHitSource`. It adds no bounds-check composable; no production code in
+this repository calls the new API yet, and ARMV integration remains to be implemented.
+Scope is Android/ARCore for this `arsceneview` follow-up; other platforms need their native
+plane-polygon adapters. All existing placement signatures remain available.
 
 ### WallPlacementScene — manual wall placement, aligned to the floor↔wall edge (#2740)
 
@@ -5554,7 +5622,7 @@ Same wire format on Android and iOS. A single sidecar handles both platforms.
 ### Save & share flow
 
 1. Run sidecar in save mode: `python rerun-bridge.py --save`
-2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","viewerUrl":"…","events":N}`.
+2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","events":N}`.
 3. Open https://sceneview.github.io/rerun/ — when no session is loaded the page shows a drop-zone (drag the `.rrd` onto it to render in-place) and a QR code that opens the 3D Scan demo (`ar-rerun`) on a phone for users who don't have one to start from.
 4. To share with a remote teammate, host the `.rrd` at a public https address and send them `https://sceneview.github.io/rerun/?url=<encoded-public-url>`. The page downloads the file from the visitor's browser, so the link has to end in `.rrd` and its host has to allow cross-origin requests (CORS). A file in a public GitHub repository does, through its `raw.githubusercontent.com` link, and so does GitHub Pages; a GitHub release asset does not: GitHub sends no CORS header for it (checked 2026-10-13). A Cloudflare R2 or S3 bucket does once it has a CORS rule that allows `https://sceneview.github.io`. When the page cannot read the file, it says so on screen, with the likely causes.
 
@@ -5564,7 +5632,7 @@ The Kotlin API surface for step 2:
 bridge.requestSaveAndShare { result: RerunBridge.ShareResult ->
     if (result.success) {
         // result.path = "/home/dev/.sceneview/recordings/2026-05-06_23-30-12.rrd"
-        // result.viewerUrl = "https://sceneview.github.io/rerun/?url=file%3A%2F%2F…"
+        // result.viewerUrl = null // local save; no public recording address is known
         // result.events = 1234
     } else {
         // result.reason explains why (e.g. "sidecar started in live mode; relaunch with --save")

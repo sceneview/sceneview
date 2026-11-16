@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
+import java.net.URI
+import java.net.URLDecoder
+
 /**
  * Headless-testable UX derivation for the Rerun Debug demo's "Save & Share
  * recording" action (issue
@@ -40,6 +43,19 @@ fun rerunSaveActionUx(sharing: Boolean, isConnected: Boolean): RerunSaveActionUx
     !isConnected -> RerunSaveActionUx(label = "Connect a computer to save", enabled = false)
     else -> RerunSaveActionUx(label = "Save & Share recording", enabled = true)
 }
+
+/** Only offer viewer links backed by HTTPS recordings, including with older sidecars. */
+internal fun rerunShareableViewerUrl(viewerUrl: String?): String? = runCatching {
+    val viewer = URI(viewerUrl ?: return null)
+    if (!viewer.scheme.equals("https", ignoreCase = true) || viewer.host == null) return null
+    val encodedRecording = viewer.rawQuery.orEmpty().split('&')
+        .firstOrNull { it.startsWith("url=") }?.substringAfter('=') ?: return null
+    val recording = URI(URLDecoder.decode(encodedRecording, "UTF-8"))
+    viewerUrl.takeIf {
+        recording.scheme.equals("https", ignoreCase = true) && recording.host != null &&
+            recording.path.orEmpty().endsWith(".rrd", ignoreCase = true)
+    }
+}.getOrNull()
 
 /**
  * Maps a [io.github.sceneview.ar.rerun.RerunBridge.ShareResult.reason] to a
