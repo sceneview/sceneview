@@ -211,8 +211,8 @@ fun WhatsNewRow(
  *
  * A row its text makes taller widens the picture with it, up to the
  * [SceneViewTokens.Home.rowMediaFraction] a catalogue row gives its own; only past that
- * (a large font on a narrow window) is the picture cropped, from its sides, around
- * [alignment].
+ * (a large font on a narrow window) does the picture shrink to fit that width, with
+ * [pictureEdge] filling the unused height so no part of the subject is cropped.
  */
 @Composable
 private fun WholePictureRow(
@@ -244,7 +244,10 @@ private fun WholePictureRow(
                 RowPicture(
                     painter = picture,
                     alignment = alignment,
-                    modifier = Modifier.dissolve(DissolveEdge.End, home.rowWholeDissolveStart),
+                    modifier = Modifier
+                        .dissolve(DissolveEdge.End, home.rowWholeDissolveStart)
+                        .background(pictureEdge),
+                    contentScale = ContentScale.Fit,
                 )
                 RowCaption(
                     title = title,
@@ -434,13 +437,18 @@ private fun BadgeLine(badges: @Composable RowScope.() -> Unit) {
     }
 }
 
-/** A demo's capture, cropped to fill whatever box the row gives it. */
+/** A demo's capture, cropped to fill the row's box unless it must be shown whole. */
 @Composable
-private fun RowPicture(painter: Painter, alignment: Alignment, modifier: Modifier) {
+private fun RowPicture(
+    painter: Painter,
+    alignment: Alignment,
+    modifier: Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+) {
     Image(
         painter = painter,
         contentDescription = null,
-        contentScale = ContentScale.Crop,
+        contentScale = contentScale,
         alignment = alignment,
         modifier = modifier,
     )
