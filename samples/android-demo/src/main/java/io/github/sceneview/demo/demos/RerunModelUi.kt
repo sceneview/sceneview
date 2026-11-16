@@ -57,9 +57,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,17 +106,13 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.demoContentPadding
-import io.github.sceneview.demo.demos.internal.ArDebugFraming
-import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.BakePhoto
-import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.DepthFrame
-import io.github.sceneview.demo.demos.internal.DollhouseOpening
 import io.github.sceneview.demo.demos.internal.FramingInsets
 import io.github.sceneview.demo.demos.internal.LightingStage
 import io.github.sceneview.demo.demos.internal.ReconstructionMethod
@@ -140,13 +134,12 @@ import io.github.sceneview.demo.demos.internal.RoomFigures
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
-import io.github.sceneview.demo.demos.internal.ScanOpening
 import io.github.sceneview.demo.demos.internal.ScanPreset
-import io.github.sceneview.demo.demos.internal.ScanResultCinematics
+import io.github.sceneview.demo.demos.internal.ScanResultCamera
 import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
 import io.github.sceneview.demo.demos.internal.ScanResultFraming
-import io.github.sceneview.demo.demos.internal.ScanResultTurntable
+import io.github.sceneview.demo.demos.internal.ScanResultStart
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.ScanSubject
 import io.github.sceneview.demo.demos.internal.SpaceFit
@@ -160,8 +153,6 @@ import io.github.sceneview.demo.demos.internal.model.ModelPhotos
 import io.github.sceneview.demo.demos.internal.model.RawSurface
 import io.github.sceneview.demo.demos.internal.model.SplatFaces
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
-import io.github.sceneview.demo.demos.internal.rememberResultCinematics
-import io.github.sceneview.demo.demos.internal.toShot
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.recording.VIDEO_MIME
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
@@ -203,7 +194,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -720,12 +710,13 @@ private val ModelState.settled: Boolean get() = this == ModelState.Failed || (th
 
 /**
  * A scan's result: its model, full screen and still on the themed stage, framed as what it is —
- * an object on its own box, a room square to its walls, three quarters on its front, from
- * outside ([ScanResultFraming], by [scope]) — and left there: the camera only moves when the user
- * moves it (Scan redesign, PR 1). Kept with the scan ([store], [id]) — reopened, it shows the
- * same model without building it again, unless the opening hands it a [source] to finish it
- * again (a raw surface, or a model this pipeline finishes differently: rebuildsStale); never
- * kept, it is built from [source] with the default finish, without a question first, and saved.
+ * an object on its own box, a room on what is drawn of it — at a three-quarter on the side it was
+ * scanned from, and left there ([ScanResultCamera]): the centre never moves, and the camera only
+ * moves when the user moves it or asks it to (a double tap, Plan, Video). Kept with the scan
+ * ([store], [id]) — reopened, it shows the same model without building it again, unless the
+ * opening hands it a [source] to finish it again (a raw surface, or a model this pipeline
+ * finishes differently: rebuildsStale); never kept, it is built from [source] with the default
+ * finish, without a question first, and saved.
  *
  * One bar under it, three actions: Share, View in AR, and More (Plan, Measure, Watch capture).
  * Nothing is drawn over the model by default: no grid, slab, dimensions, zones nor pill.
@@ -944,80 +935,44 @@ internal fun RerunModelScreen(
     }
     SideEffect { copy?.release() }
     val instance = rendered.instance
-    // The slow turn the result opens on (ScanResultTurntable), until the first touch; never
-    // under reduced motion, nor in QA mode's still pictures unless their motion is asked for.
-    val spins = false // The result moves only after a gesture or an explicit Video / Plan action.
-    val turntable = remember(stageKey, spins) { ScanResultTurntable().also { if (!spins) it.stop() } }
     // Which sides of the room its dimensions are written on: the two the camera faces.
     val facing = remember(id ?: source) { FacingSides() }
-    // No drift and no reveal: the camera opens on the frame and holds still there until the user
-    // moves it, its pitch between a look across and the plan's look down. Kept across a source
-    // that arrives for a scan already shown, whose finish is run again.
-    val orbit = remember(id ?: source) { ArDebugOrbitCamera(drift = false, elevationRange = ScanResultFraming.PITCHES, allowPan = false, maxCoastDegrees = 8f) }
-    // 3D ↔ Plan, the one camera move, and only when the user asks for it; a touch cuts it short.
-    // A result that opens on its Photo layer is entered from inside the place, then seen whole
-    // ([ScanOpening]); one that opens on its model stays on its framing, as before.
-    val entersLow = false
+    // The result's one camera (ScanResultCamera, camera.md): its centre fixed on the first thing
+    // shown, then moved by the finger only — a double tap, the plan and the film fly when asked.
     // One per stage, as the veil below is: a stage started over is let seen again (#5098).
-    val cinematics = rememberResultCinematics(stageKey, orbit, reveals = entersLow)
-    // Read live by the framing below, so a toggle and the frame that flies to it agree.
+    val camera = remember(stageKey) { ScanResultCamera() }
     var plan by remember(stageKey) { mutableStateOf(false) }
     // The grid, the slab and the room's dimensions: a room's result opens with them, as its capture
     // showed them; More › Measure takes them away and back.
     var measuring by remember(stageKey) { mutableStateOf(scope.hasFloorPlan) }
     var more by remember { mutableStateOf(false) }
     var shown by remember(stageKey) { mutableStateOf(false) }
-    // The heading the result was shown at, kept from then on: what it learns late — an object's
-    // box, a card under the model that narrows the zone — moves its framing, never its side.
-    var shownAzimuth by remember(stageKey) { mutableStateOf<Float?>(null) }
-    // The dark stage's floor pool waits for the camera to rise: from the low entrance it is seen
-    // edge-on, a flat lit band under the place instead of the floor that carries it.
-    var risen by remember(stageKey, entersLow) { mutableStateOf(!entersLow) }
+    // An object's box or a space's inside is what the result opens on: the view waits a moment
+    // for it to be read, since the centre is not moved once the view is shown.
+    var measureWaited by remember(stageKey) { mutableStateOf(false) }
+    LaunchedEffect(stageKey) {
+        delay(MEASURE_WAIT_MS)
+        measureWaited = true
+    }
     // Photo | Model | Plan (ResultLayers.kt): the scan's surfels as splats.
     val animateReveal = LocalMotionEnabled.current || DemoSettings.qaMotion
     val layers = rememberResultLayers(
         source, surfels, stageKey, settled,
         photoFirst = preview != null, prebuilt = photo,
     )
-    // The film (ResultFilm): each take plays the reveal again, one turn and the look from above,
+    // The film (ResultFilm): each take sweeps the camera either side of the start and back,
     // recorded off the scene's own surface — the chrome is not in it — then handed to the share
     // sheet. What leaves the phone is the scan as it is drawn, Photo or Model.
     val recorder = rememberDemoSceneRecorder()
     var filmTake by remember(stageKey) { mutableIntStateOf(0) }
     var filming by remember(stageKey) { mutableStateOf(false) }
-    // A new take of the film replays the reveal from its first frame.
-    val revealKey = stageKey to filmTake
-    var revealOver by remember(revealKey, animateReveal) { mutableStateOf(!animateReveal) }
-    // The reveal's wire (ModelReveal): of a finished model the result opens on only, and only for
-    // as long as the reveal plays. A raw surface or a retry, whose finish needs the heap, gets
-    // none (ModelReveal.buildsWire), nor does the finished model that later takes its place.
-    // Opened on its Photo layer, the model the result hands over to is revealed as it takes the
-    // preview's place; no wire is built for a Photo layer the user chose to stay on.
-    val revealOf = model?.takeIf {
-        val revealed = if (preview != null) !(layers.userPicked && layers.photoPicked) else it === opensOn
-        ModelReveal.buildsWire(settled, opensOn = revealed, animate = animateReveal)
-    }
-    val wireBuild by rememberRevealWire(
-        glb = revealOf?.takeIf { drawn != null }?.glb,
-        triangles = revealOf?.triangles ?: 0,
-        needed = !revealOver,
-        cutY = cutY,
-    )
-    val wirePending = wireBuild is RevealWireBuild.Pending
-    // The reveal starts once its wire is read, so it never opens on the whole model, then cuts.
-    // On the model only: under the Photo layer there is no model on screen to reveal.
-    val revealClock = rememberRevealClock(
-        key = revealKey,
-        started = shown && !wirePending && instance != null && !layers.photoShown,
-        animate = animateReveal,
-    )
     // The first mesh takes over from Photo as soon as it can draw. Texturing refines it in place.
     // An outdoor area whose surface came out in pieces stays on the points (AreaSurface): its
     // model is a tap away, it is not what the result is left on.
     val outdoor = rememberAreaResult(scope, model, surfels)
     val keepsPhoto = scope == ScanScope.Area && outdoor?.inPieces != false
-    LaunchedEffect(layers, settled, instance, wirePending, filming, keepsPhoto) {
-        if (!keepsPhoto && layers.handsOverToModel(modelReady = instance != null && !wirePending, busy = filming)) {
+    LaunchedEffect(layers, settled, instance, filming, keepsPhoto) {
+        if (!keepsPhoto && layers.handsOverToModel(modelReady = instance != null, busy = filming)) {
             layers.photoPicked = false
         }
     }
@@ -1026,10 +981,6 @@ internal fun RerunModelScreen(
         if (shown && layers.photoShown && layers.grown < 1f) layers.grow(animateReveal)
     }
     LaunchedEffect(shown, layers.unavailable) { if (shown || layers.unavailable) previewSeen.complete(Unit) }
-    LaunchedEffect(revealClock) {
-        snapshotFlow { revealClock.value >= ModelReveal.TOTAL_MS }.first { it }
-        revealOver = true
-    }
     var hintVisible by remember(stageKey) { mutableStateOf(true) }
     // The finished model in a big scan's raw surface's place: framed by the raw one. The line
     // says so once, heard as it changes, then fades as the hint does.
@@ -1097,7 +1048,7 @@ internal fun RerunModelScreen(
                 photoNote = if (scope == ScanScope.Area) R.string.scan_result_photo_points else R.string.scan_result_photo_preview,
                 onPlan = {
                     plan = it
-                    cinematics.request(ScanResultCinematics.Request.Recenter)
+                    camera.showPlan(it)
                 },
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
@@ -1110,7 +1061,7 @@ internal fun RerunModelScreen(
                     onPlan = {
                         more = false
                         plan = !plan
-                        cinematics.request(ScanResultCinematics.Request.Recenter)
+                        camera.showPlan(plan)
                     },
                     measuring = measuring.takeIf { scope.hasFloorPlan },
                     canMeasure = ground != null,
@@ -1167,7 +1118,7 @@ internal fun RerunModelScreen(
                 caption = stringResource(R.string.scan_result_more),
                 onClick = { more = true },
                 // An object has no plan to show: with no capture to watch either, More is empty.
-                enabled = instance != null && !filming && (scope.hasFloorPlan || onReplay != null || offersShading),
+                enabled = shown && instance != null && !filming && (scope.hasFloorPlan || onReplay != null || offersShading),
                 selected = more,
             ),
         ),
@@ -1191,7 +1142,6 @@ internal fun RerunModelScreen(
             view.configureForDebug(colorGrading)
             onDispose { }
         }
-        val opening = remember(stageKey, orbit) { DollhouseOpening() }
         BoxWithConstraints(Modifier.fillMaxSize().background(chrome.ground)) {
             // What the chrome leaves of the view at rest — below the name, above the bar, between
             // the window's safe sides — less a gutter: the model opens centred on it, and whole in
@@ -1220,104 +1170,80 @@ internal fun RerunModelScreen(
             val aspect = constraints.maxWidth.toFloat() / constraints.maxHeight.coerceAtLeast(1)
             // Four fifths of the zone between the name and the bar, on its fuller axis.
             val area = RerunResultView.area(insets)
-            // Three quarters on its front, from outside and above; the plan straight down on the
-            // same walls, its front at the bottom of the screen.
-            val fov = orbit.verticalFovDegrees
-            // A room framed on what is drawn of it — its box cut where its walls are — square on
-            // the side it shows largest from; an object at a three-quarter on its own front.
-            val elevation = ScanResultFraming.elevation(scope)
-            val offset = ScanResultFraming.offset(scope)
-            val squareOn = !scope.closeUp
+            val fov = camera.verticalFovDegrees
             // A space measured is what its result shows: its inside, from its opening, not the
             // whole of a scan that holds the wall behind it too.
             val spaceFrame = remember(space) { (space as? SpaceMeasure.Found)?.fit?.let(SpaceFitDrawing::frame) }
             // An object boxed is what its result shows too: the object, not the floor the scan holds round it.
             val subjectFrame = remember(subject, frame) { (subject as? SubjectMeasure.Found)?.box?.let { ScanSubject.frame(it, frame) } }
-            val shownFrame = remember(frame, spaceFrame, subjectFrame, cuts, squareOn, measuring, elevation, aspect, area, fov) {
-                val cut = if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame
+            val cut = remember(frame, cuts) { if (cuts) frame?.cappedAt(ScanResultCut.HEIGHT_M) else frame }
+            // What the zoom stops short of: what is drawn, never the margin kept round it.
+            val drawnBox = spaceFrame ?: subjectFrame ?: cut
+            val shownFrame = remember(drawnBox, cut, spaceFrame, subjectFrame, measuring) {
                 // The dimensions stand outside the walls: a room measured keeps room for them.
-                val drawnFrame = if (measuring && squareOn) cut?.padded(MEASURE_MARGIN_M) else cut
-                spaceFrame ?: subjectFrame ?: if (squareOn) drawnFrame?.widestSide(elevation, fov, aspect, area) else drawnFrame
+                if (spaceFrame == null && subjectFrame == null && measuring && !scope.closeUp) cut?.padded(MEASURE_MARGIN_M) else drawnBox
             }
-            val view3d = remember(shownFrame, shownAzimuth, elevation, offset, aspect, area, fov) {
-                val f = shownFrame
-                val held = shownAzimuth
-                if (f != null && held != null) f.poseFrom(held, elevation, fov, aspect, area) else f?.pose(elevation, offset, fov, aspect, area)
+            // The start (camera.md, rule 7): a three-quarter 35° above the side the scan was taken
+            // from, whole in the zone the chrome frees. Not before an object's box or a space's
+            // inside is read, unless that takes too long: the centre is fixed once the view is shown.
+            // A kept object reopened has no aims until its recording is read: its box is still to come.
+            val aimsToCome = scope == ScanScope.Object && subject == null && captureAims == null
+            val measured = !aimsToCome && subject !is SubjectMeasure.Measuring && space !is SpaceMeasure.Measuring
+            val start = remember(shownFrame, drawnBox, aspect, area, fov, measured || measureWaited) {
+                val fitted = shownFrame?.takeIf { measured || measureWaited }
+                val bounded = drawnBox
+                if (fitted != null && bounded != null) ScanResultStart.of(fitted, fov, aspect, area, box = bounded) else null
             }
-            val viewPlan = remember(shownFrame, aspect, area, fov) {
-                shownFrame?.pose(ArDebugFraming.MAP_ELEVATION, 0f, fov, aspect, area)
-            }
-            // The turntable's pose about the opening, at its distance, whole in the zone the chrome frees.
-            val zone = remember(insets) { insets.bounded() }
-            val home = rememberUpdatedState {
-                val f = shownFrame
-                when {
-                    plan -> viewPlan
-                    f == null || view3d == null -> view3d
-                    else -> turntable.pose(f, view3d, elevation, fov, aspect, zone)
-                }
-            }
-            SideEffect {
-                // The gestures keep the eye outside the box and above its floor, never past a
-                // pinch beyond the framing: the scan cannot be lost, nor entered.
-                val f = shownFrame
-                if (f != null && view3d != null) orbit.limits = f.limits(*listOfNotNull(view3d, viewPlan).toTypedArray())
-                // A double tap comes back to the opening, not to where the turntable had got to.
-                (if (plan) viewPlan else view3d)?.let { orbit.frontAzimuth = it.azimuthDegrees }
-                home.value()?.let { opening.aim(orbit, it) }
-            }
+            // Until the view is shown, the camera is put on the start before each frame is drawn.
+            SideEffect { camera.aim(start) }
+            // The grid's and the boxes' line widths, sized for the distance the result opens at.
+            val styleDistance = (camera.start ?: start)?.pose?.distance ?: 1f
             val context = LocalContext.current
             val lifecycle = LocalLifecycleOwner.current.lifecycle
             LaunchedEffect(filmTake) {
                 if (filmTake == 0) return@LaunchedEffect
-                // The reveal's wire is read again first: the take opens on the reveal, not on the
-                // whole model that the wire's arrival would then cut away.
-                snapshotFlow { wireBuild }.first { ResultFilm.canStart(wirePending = it is RevealWireBuild.Pending) }
                 // No frame while the app is stopped, so the take starts on screen; the check covers a racing stop.
                 withFrameNanos { }
-                val from = view3d?.let { ArDebugFraming.clamp(it) }
-                val to = viewPlan?.let { ArDebugFraming.clamp(it) }
-                val film = if (from != null && to != null) ResultFilm.of(from.toShot(), to.toShot()) else null
+                // Shot on the start: the plan is left, and the camera flies back first where it is not there.
+                plan = false
+                camera.startFilm()
+                while (camera.filming && !camera.sweeping) withFrameNanos { }
                 // Its own file, rewritten each take, in the share sheet's cache folder: only this
                 // take, complete, is ever shared, and nothing piles up in the captures.
                 val file = File(context.cacheDir, "$RERUN_SHARE_DIR/film/scan_film.mp4")
                 file.parentFile?.mkdirs()
                 file.delete()
-                val started = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && to != null && film != null &&
-                    recorder.startRecording(file = file, settings = film.video)
-                if (to == null || film == null || !started) {
+                val landedBefore = camera.filmsLanded
+                val started = camera.sweeping && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                    recorder.startRecording(file = file, settings = ResultFilm.video)
+                if (!started) {
+                    camera.stopInertia()
                     filming = false
                     Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
                     return@LaunchedEffect
                 }
                 var shared = false
                 try {
-                    // It lands on the look from above: the orbit camera waits there, so when the
-                    // film ends the camera the user takes over is that one, with no jump. Filmed
-                    // on the model, the screen stays on its plan; on the Photo layer, which has
-                    // none, the slow turn takes the camera back.
-                    if (!layers.photoShown) plan = true
-                    orbit.recenter()
-                    orbit.snapTo(to)
                     // The camera moves in frame time (each step capped), not on the wall clock:
-                    // follow it frame by frame to the plan, then hold, however slowly frames come.
-                    // A touch that takes the camera over, or a recording stopped (the app left
-                    // the foreground, the encoder failed or hit its hard stop), drops the take.
-                    var landed = false
+                    // follow it frame by frame to the sweep's end, however slowly frames come. A
+                    // touch that stops the camera, or a recording stopped (the app left the
+                    // foreground, the encoder failed or hit its hard stop), drops the take.
                     // Filmed on its Photo layer, the scan grows again as the take opens.
                     if (layers.photoShown) launch { layers.grow(animateReveal) }
-                    film.play(cinematics.animator, onLanded = { landed = true })
+                    var landed = false
                     while (!landed) {
                         withFrameNanos { }
-                        if (ResultFilm.aborts(landed, cinematics.animator.isPlaying, recorder.isRecording)) break
+                        landed = camera.filmsLanded > landedBefore
+                        if (ResultFilm.aborts(landed, camera.filming, recorder.isRecording)) break
                     }
-                    if (landed) delay((ResultFilm.HOLD_SECONDS * MILLIS_PER_SECOND).toLong())
                     val take = if (landed && recorder.isRecording) recorder.stopRecording() else null
                     if (take != null && take.file == file && !take.reachedMaxDuration) {
                         shared = shareCapture(context, file, VIDEO_MIME)
                     }
                     if (!shared) Toast.makeText(context, R.string.scan_result_film_interrupted, Toast.LENGTH_SHORT).show()
                 } finally {
+                    // A take dropped mid-sweep leaves the camera where it is, not sweeping on.
+                    if (camera.filming) camera.stopInertia()
                     if (recorder.isRecording) recorder.stopRecording()
                     if (!shared) file.delete()
                     filming = false
@@ -1335,54 +1261,28 @@ internal fun RerunModelScreen(
                 frameRatePolicy = FrameRatePolicy.Continuous(),
                 autoCenterContent = false,
                 environment = environment,
-                cameraManipulator = cinematics.manipulator,
+                cameraManipulator = camera,
                 surfaceMirrorer = recorder.surfaceMirrorer,
-                onFrame = { frameTimeNanos ->
-                    val framed = home.value() ?: return@SceneView
-                    // The view is let to be seen once the model is drawn on its framing, not before.
-                    // The wire is read first, so the model's reveal starts with it, not a frame after.
-                    // A result opened on its Photo layer is seen as soon as its splats are there.
-                    val modelDrawn = instance != null && (revealOf == null || wireBuild !is RevealWireBuild.Pending)
+                onFrame = {
+                    // The view is let to be seen once the model, or a result's Photo layer, is
+                    // drawn on its start, that start unchanged over a few frames: then it is fixed.
+                    val modelDrawn = instance != null
                     val ready = if (preview != null) layers.photoShown || (!layers.photoPicked && modelDrawn) else modelDrawn
-                    if (cinematics.frameDrawn(opening, framed, ready = ready)) {
-                        if (!plan) shownAzimuth = framed.azimuthDegrees
-                        shown = true
-                    }
-                    if (!risen && cinematics.revealed) {
-                        val entrance = cinematics.animator
-                        if (!entrance.isPlaying || entrance.elapsed >= ScanOpening.RISEN_SECONDS) risen = true
-                    }
-                    // The turntable, once the model is revealed: the first touch, or the plan, stops it for good.
-                    if (!orbit.following || plan) {
-                        turntable.stop()
-                    } else if (turntable.running && shown && (revealOver || layers.photoShown) && !cinematics.animator.isPlaying) {
-                        turntable.advanceTo(frameTimeNanos)
-                        home.value()?.let { orbit.followTo(ArDebugFraming.clamp(it)) }
-                    }
-                    CameraRig.eye(orbit.pose).let { eye ->
+                    if (camera.frameDrawn(start, ready = ready)) shown = true
+                    camera.eye.let { eye ->
                         facing.look(measure, eye.x, eye.z)
                         layers.look(eye)
                     }
                 },
             ) {
                 // The scan in its own world space, metres, Y up: framed by its bounds, not moved.
-                // Revealed (ModelReveal): its wire sweeps up, then it rises into it, in place.
-                instance?.let {
-                    RevealedModel(
-                        instance = it,
-                        build = (wireBuild as? RevealWireBuild.Done)?.takeIf { model === revealOf },
-                        // Read here, in the scene, so only the scene recomposes as the reveal plays.
-                        elapsedMs = revealClock.value,
-                        color = chrome.accent,
-                        engine = engine,
-                        materialLoader = materialLoader,
-                    )
-                }
+                // Drawn whole where it stands: no wire, no rise (camera.md, rule 6).
+                instance?.let { ModelNode(modelInstance = it, autoAnimate = false) }
                 // The model stands on a soft contact shadow, once it is revealed: an object's just
                 // over its floor, a room's just under its scanned floor, which hides its core —
                 // its rim shows round the room. On the dark stage a black pool reads as nothing,
                 // so it lies on a pool of the lit floor's tone fading into the stage.
-                shownFrame?.takeIf { layers.photoShown || (instance != null && revealOver) }?.let { f ->
+                shownFrame?.takeIf { layers.photoShown || instance != null }?.let { f ->
                     val (x, z) = f.worldCentre
                     val width = f.local[3] - f.local[0]
                     val depth = f.local[5] - f.local[2]
@@ -1390,7 +1290,7 @@ internal fun RerunModelScreen(
                     val shadowY = f.local[1] + if (isObject) SHADOW_LIFT_M else -SHADOW_DROP_M
                     val spread = if (isObject) SHADOW_SPREAD else ROOM_SHADOW_SPREAD
                     // The image plane's size is baked when it is made: a new box, a new plane.
-                    if (darkStage && risen) key(width, depth) {
+                    if (darkStage) key(width, depth) {
                         ImageNode(
                             bitmap = shadowPool,
                             size = Size(x = width * POOL_SPREAD, y = 0f, z = depth * POOL_SPREAD),
@@ -1417,8 +1317,8 @@ internal fun RerunModelScreen(
                     // The replay's grid round the slab (QA 2026-10-22), its lines sized for the
                     // camera the result opens on, bucketed so a reframe rarely rebuilds them.
                     val style = ArDebugStyle.forOrbit(
-                        home.value()?.distance ?: 1f,
-                        orbit.verticalFovDegrees,
+                        styleDistance,
+                        camera.verticalFovDegrees,
                         constraints.maxHeight,
                     )
                     ScanGridLayer(it.ground, style, engine, materialLoader)
@@ -1431,19 +1331,19 @@ internal fun RerunModelScreen(
                 }
                 // A space's measure, drawn on the model it was read off: its inside, what is in
                 // the way and the box that fits, once the model is there to carry them.
-                (space as? SpaceMeasure.Found)?.fit?.takeIf { layers.photoShown || (instance != null && revealOver) }?.let { fit ->
+                (space as? SpaceMeasure.Found)?.fit?.takeIf { layers.photoShown || instance != null }?.let { fit ->
                     val style = ArDebugStyle.forOrbit(
-                        home.value()?.distance ?: 1f,
-                        orbit.verticalFovDegrees,
+                        styleDistance,
+                        camera.verticalFovDegrees,
                         constraints.maxHeight,
                     )
                     SpaceFitLayer(fit, style, engine, materialLoader)
                 }
                 // An object's box, drawn on the model it was read off, once the model is there to carry it.
-                (subject as? SubjectMeasure.Found)?.box?.takeIf { layers.photoShown || (instance != null && revealOver) }?.let { box ->
+                (subject as? SubjectMeasure.Found)?.box?.takeIf { layers.photoShown || instance != null }?.let { box ->
                     val style = ArDebugStyle.forOrbit(
-                        home.value()?.distance ?: 1f,
-                        orbit.verticalFovDegrees,
+                        styleDistance,
+                        camera.verticalFovDegrees,
                         constraints.maxHeight,
                     )
                     ScanSubjectLayer(box, style, engine, materialLoader)
@@ -1834,7 +1734,6 @@ internal const val RERUN_MODEL_NAME_TAG = "rerun_model_name"
 internal const val RERUN_MODEL_HINT_TAG = "rerun_model_hint"
 internal const val RERUN_MODEL_MORE_TAG = "rerun_model_more"
 internal const val RERUN_MODEL_VEIL_TAG = "rerun_model_veil"
-private const val MILLIS_PER_SECOND = 1000f
 
 /** Floor kept round a measured room's frame for the dimensions outside its walls: line and label. */
 private const val MEASURE_MARGIN_M = 0.7f
@@ -1929,4 +1828,10 @@ private const val MESH_PART = 0.9f
 
 /** How long the gesture hint stays once the model is on screen. */
 private const val HINT_MS = 4_000L
+
+/**
+ * The longest the view waits for an object's box or a space's inside before it opens on the whole
+ * scan: a kept scan's points, which they are read from, come after its model.
+ */
+private const val MEASURE_WAIT_MS = 2_500L
 private const val NAME_MAX_LENGTH = 80
