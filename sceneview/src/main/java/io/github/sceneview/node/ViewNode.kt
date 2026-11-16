@@ -443,10 +443,10 @@ class ViewNode(
         // Capture MI before super.destroy() removes the renderable component (after which
         // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream
         // → surface/surfaceTexture. The texture/stream destroys are frame-deferred via
-        // EngineDestroyQueue so Filament has reclaimed the MaterialInstance before the external
-        // Texture it was bound to is freed — destroying it eagerly can race that reclamation,
-        // mirroring the ImageNode crash that sceneview/sceneview#874 fixes. The queue keeps the
-        // FIFO texture-before-stream order.
+        // EngineDestroyQueue to leave a teardown margin for any other instances still sampling
+        // the external Texture (#874). Destroying the MI removes it from the engine's list
+        // synchronously; the queue cannot make a binding left on a live instance safe. It keeps
+        // the FIFO texture-before-stream order.
         //
         // The Surface/SurfaceTexture backing the Stream must outlive it for the same reason: the
         // Stream's native `stream()` binding reads from the SurfaceTexture, and Filament's stream

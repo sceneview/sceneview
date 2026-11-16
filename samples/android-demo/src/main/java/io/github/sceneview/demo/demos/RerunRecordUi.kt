@@ -129,6 +129,14 @@ import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.ar.replay.LocalARSessionProbe
+import io.github.sceneview.demo.common.DemoMotionSensors
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
+import io.github.sceneview.demo.common.MotionSensorSessionProbe
+import io.github.sceneview.demo.common.motionSensorSilentForced
+import io.github.sceneview.demo.common.rememberDemoMotionSensorSilent
+import io.github.sceneview.demo.common.placement.PlacementActionCard
+import io.github.sceneview.demo.common.placement.PlacementCard
 
 /** Camera content fills the window; only Back, the figures and Done sit inside the safe insets. */
 @Composable
@@ -138,8 +146,21 @@ internal fun ScanCaptureLayout(
     bottom: @Composable () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    // The capture has no DemoScaffold: it watches the phone's motion sensors itself (#4522), so a
+    // gyroscope that delivers nothing says "restart" instead of a capture that never starts.
+    val motionSensors = remember { DemoMotionSensors() }
+    val motionSensorSilent = rememberDemoMotionSensorSilent(motionSensors) || motionSensorSilentForced()
+    val enclosingProbe = LocalARSessionProbe.current
+    val sessionProbe = remember(motionSensors, enclosingProbe) {
+        MotionSensorSessionProbe(motionSensors, enclosingProbe)
+    }
     Box(Modifier.fillMaxSize().testTag(SCAN_CAPTURE_TAG)) {
-        content()
+        CompositionLocalProvider(
+            LocalARSessionProbe provides sessionProbe,
+            LocalMotionSensorSilent provides motionSensorSilent,
+        ) {
+            content()
+        }
         Row(
             modifier = Modifier.align(Alignment.TopCenter)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
@@ -156,7 +177,14 @@ internal fun ScanCaptureLayout(
             modifier = Modifier.align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(Space.md),
-        ) { bottom() }
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                if (motionSensorSilent) {
+                    PlacementActionCard(PlacementCard.MOTION_SENSOR_SILENT, null, {}, {}, null, edgeMargin = 0.dp)
+                }
+                bottom()
+            }
+        }
     }
 }
 

@@ -3891,6 +3891,11 @@ public final class io/github/sceneview/node/ReflectionProbeNodeKt {
 	public static final fun ReflectionProbeNode (Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Ldev/romainguy/kotlin/math/Float3;FILdev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
 }
 
+public final class io/github/sceneview/node/ReflectionProbeNodeRegistryKt {
+	public static final fun releaseEnvironmentLight (Lcom/google/android/filament/Scene;Lcom/google/android/filament/IndirectLight;)V
+	public static final fun setEnvironmentLight (Lcom/google/android/filament/Scene;Lcom/google/android/filament/IndirectLight;)V
+}
+
 public class io/github/sceneview/node/RenderableNode : io/github/sceneview/node/Node, io/github/sceneview/components/RenderableComponent {
 	public static final field $stable I
 	public fun <init> (Lcom/google/android/filament/Engine;I)V

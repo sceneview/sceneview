@@ -6,7 +6,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * JVM unit tests for [SemanticsOverlay]. ARCore's `Image` is not mockable on the JVM, so
@@ -89,13 +92,54 @@ class SemanticsOverlayTest {
             rowStrideBytes = labels.size,
         )
 
-        val byName = SemanticsOverlay.LABEL_NAMES.map { it.uppercase() }
+        // Each colour is written out here, by the class's name: read back through the palette,
+        // the comparison would hold whatever order the palette is in.
+        val expected = mapOf(
+            SemanticLabel.SKY to 0xFF66B0F5, // light blue
+            SemanticLabel.BUILDING to 0xFFD95F57, // terracotta
+            SemanticLabel.TREE to 0xFF4CB050, // green
+            SemanticLabel.ROAD to 0xFF757575, // grey
+            SemanticLabel.SIDEWALK to 0xFFBDBD8C, // khaki
+            SemanticLabel.TERRAIN to 0xFFCC9E6B, // tan
+            SemanticLabel.STRUCTURE to 0xFF9E75BD, // purple
+            SemanticLabel.OBJECT to 0xFFFFC207, // amber
+            SemanticLabel.VEHICLE to 0xFF2196F2, // strong blue
+            SemanticLabel.PERSON to 0xFFF5428C, // pink
+            SemanticLabel.WATER to 0xFF00BDD4, // cyan, not left transparent
+        )
+        assertEquals("every class but UNLABELED has its colour here", labels.toSet(), expected.keys)
         labels.forEachIndexed { i, label ->
-            assertEquals(label.name, SemanticsOverlay.PALETTE_ARGB[byName.indexOf(label.name)], pixels[i])
+            assertEquals(label.name, expected.getValue(label).toInt(), pixels[i])
         }
-        assertEquals("BUILDING is terracotta", 0xFFD95F57.toInt(), pixels[labels.indexOf(SemanticLabel.BUILDING)])
-        assertEquals("OBJECT is amber", 0xFFFFC207.toInt(), pixels[labels.indexOf(SemanticLabel.OBJECT)])
-        assertEquals("WATER is cyan, not left transparent", 0xFF00BDD4.toInt(), pixels[labels.indexOf(SemanticLabel.WATER)])
+    }
+
+    @Test
+    fun `the overlay material's palette is this one, class for class`() {
+        // Two tables in two languages paint the same classes: this one for the demo's bitmap
+        // overlay, `SEMANTIC_PALETTE` in `semantics_overlay.mat` for the SDK's material. Both
+        // were one place off ARCore's order at once (#4036); nothing held them together.
+        val material = listOf(File("../.."), File("."))
+            .map { File(it, "sceneview/src/main/materials/semantics_overlay.mat") }
+            .first { it.isFile }
+            .readText()
+        val table = material.substringAfter("SEMANTIC_PALETTE[12] = vec3[12](").substringBefore(");")
+        val entry = Regex("""vec3\(([\d.]+),\s*([\d.]+),\s*([\d.]+)\),?\s*//\s*(\w+)""")
+        val rows = entry.findAll(table).map { it.groupValues }.toList()
+
+        assertEquals(
+            "the material's rows, in ARCore's order",
+            SemanticLabel.values().map { it.name },
+            rows.map { it[4] },
+        )
+        rows.forEachIndexed { ordinal, row ->
+            val argb = SemanticsOverlay.PALETTE_ARGB[ordinal]
+            val channels = listOf(argb shr 16 and 0xFF, argb shr 8 and 0xFF, argb and 0xFF)
+            channels.forEachIndexed { c, here ->
+                // The material writes each channel to two decimals: within 2 in 255 of this one.
+                val there = (row[c + 1].toFloat() * 255f).roundToInt()
+                assertTrue("${row[4]} channel $c: $here here, $there in the material", abs(here - there) <= 2)
+            }
+        }
     }
 
     @Test

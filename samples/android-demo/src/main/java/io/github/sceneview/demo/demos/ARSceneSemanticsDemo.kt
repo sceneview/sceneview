@@ -82,8 +82,8 @@ import io.github.sceneview.rememberModelLoader
 /**
  * AR demo — Scene Semantics: read ARCore's per-pixel 12-class outdoor semantic model and render
  * it two ways at once — a live top-3 label HUD plus a color-coded segmentation **overlay** that
- * blends over the camera feed via a Camera ↔ Semantic slider (12 classes: SKY, BUILDING, TREE,
- * ROAD, SIDEWALK, TERRAIN, STRUCTURE, OBJECT, VEHICLE, PERSON, WATER, UNLABELED).
+ * blends over the camera feed via a Camera ↔ Semantic slider (12 classes: UNLABELED, SKY,
+ * BUILDING, TREE, ROAD, SIDEWALK, TERRAIN, STRUCTURE, OBJECT, VEHICLE, PERSON, WATER).
  *
  * Pipeline:
  *
@@ -190,6 +190,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     val legendShown = semanticsEverReceived && overlayBlend > LEGEND_MIN_BLEND
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_scene_semantics_title),

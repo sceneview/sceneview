@@ -233,10 +233,10 @@ fun Frame.rawDepthConfidenceImage(): Image? = try {
 /**
  * Acquires the **Scene Semantics label image** (`R8` 8-bit per pixel) for this frame — every
  * pixel of the live camera feed is classified into one of 12 outdoor classes via ARCore's
- * on-device ML model: [SemanticLabel.SKY], [SemanticLabel.BUILDING], [SemanticLabel.TREE],
- * [SemanticLabel.ROAD], [SemanticLabel.SIDEWALK], [SemanticLabel.TERRAIN],
+ * on-device ML model: [SemanticLabel.UNLABELED], [SemanticLabel.SKY], [SemanticLabel.BUILDING],
+ * [SemanticLabel.TREE], [SemanticLabel.ROAD], [SemanticLabel.SIDEWALK], [SemanticLabel.TERRAIN],
  * [SemanticLabel.STRUCTURE], [SemanticLabel.OBJECT], [SemanticLabel.VEHICLE],
- * [SemanticLabel.PERSON], [SemanticLabel.WATER], [SemanticLabel.UNLABELED] (#1730).
+ * [SemanticLabel.PERSON], [SemanticLabel.WATER] (#1730).
  *
  * Wraps [Frame.acquireSemanticImage]. Each pixel byte is the ordinal of the matching
  * [SemanticLabel], in the order ARCore declares them — `0 UNLABELED`, `1 SKY`, `2 BUILDING`,

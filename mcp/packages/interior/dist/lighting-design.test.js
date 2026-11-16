@@ -26,27 +26,34 @@ describe("COLOR_TEMPERATURES", () => {
 describe("generateLightingDesign", () => {
     describe.each([false, true])("fixture types with ar=%s", (ar) => {
         const fixtures = [
-            ["ambient", "POINT", "0f, 2.5f, 0f"],
-            ["spot", "SPOT", "0f, 2.4f, 0f"],
-            ["accent", "SPOT", "1.5f, 1.5f, -1.5f"],
-            ["pendant", "POINT", "0f, 2.2f, 0f"],
-            ["recessed", "SPOT", "0f, 2.6f, 0f"],
-            ["track", "SPOT", "-1f, 2.4f, 0f"],
-            ["sconce", "POINT", "2f, 1.8f, -2f"],
-            ["floor-lamp", "POINT", "1.5f, 1.4f, 1.5f"],
-            ["table-lamp", "POINT", "0.8f, 0.9f, -0.5f"],
-            ["chandelier", "POINT", "0f, 2.0f, 0f"],
-            ["strip-led", "POINT", "0f, 2.5f, -2f"],
-            ["natural", "DIRECTIONAL", null],
+            ["ambient", "POINT", 40_000],
+            ["spot", "SPOT", 120_000],
+            ["accent", "SPOT", 60_000],
+            ["pendant", "POINT", 80_000],
+            ["recessed", "SPOT", 100_000],
+            ["track", "SPOT", 90_000],
+            ["sconce", "POINT", 50_000],
+            ["floor-lamp", "POINT", 60_000],
+            ["table-lamp", "POINT", 40_000],
+            ["chandelier", "POINT", 150_000],
+            ["strip-led", "POINT", 30_000],
+            ["natural", "DIRECTIONAL", 80_000],
         ];
-        it.each(fixtures)("emits %s as %s", (light, type, position) => {
+        // Already scaled model bounds, including wide, deep, and tall rooms.
+        const rooms = [
+            { x: 2, y: 1.35, z: 2 },
+            { x: 2, y: 0.4, z: 0.8 },
+            { x: 0.6, y: 1, z: 2 },
+            { x: 0.5, y: 2, z: 0.7 },
+        ];
+        it.each(fixtures)("emits %s as %s", (light, type) => {
             const code = generateLightingDesign({ lights: [light], ar });
             expect(code.match(/type = LightManager.Type.\w+/g)).toEqual([
                 `type = LightManager.Type.${type}`,
             ]);
-            if (position) {
+            if (type !== "DIRECTIONAL") {
                 expect(code).toContain("import io.github.sceneview.math.Position");
-                expect(code).toContain(`position = Position(${position})`);
+                expect(code).toContain("position = Position(");
             }
             else {
                 expect(code).not.toContain("position = Position(");
@@ -64,19 +71,48 @@ describe("generateLightingDesign", () => {
                 expect(code).toContain("direction(0f, -1f, 0f)");
             }
         });
-        it.each(fixtures)("lets %s reach the floor", (light, type) => {
+        it.each(fixtures)("keeps %s inside the room and lets it reach the floor", (light, type) => {
             const code = generateLightingDesign({ lights: [light], ar });
-            const falloff = code.match(/falloff\(([\d.]+)f\)/);
+            const falloff = code.match(/falloff\((.+)\)/);
             if (type === "DIRECTIONAL") {
                 expect(falloff).toBeNull();
                 return;
             }
-            expect(falloff).not.toBeNull();
-            const position = code.match(/position = Position\(([^)]+)\)/);
-            expect(position).not.toBeNull();
-            const height = Number.parseFloat(position[1].split(",")[1]);
-            // At the falloff radius Filament contributes no light, so equality is insufficient.
-            expect(Number(falloff[1])).toBeGreaterThan(Math.abs(height));
+            const coordinates = code.match(/position = Position\((.+)\),/)[1].split(",");
+            for (const roomSize of ar ? [{ x: 4, y: 2.7, z: 4 }] : rooms) {
+                const [x, y, z] = coordinates.map((value) => evaluateKotlin(value, { roomSize }));
+                expect(Math.abs(x)).toBeLessThan(roomSize.x / 2);
+                expect(y).toBeGreaterThan(0);
+                expect(y).toBeLessThan(roomSize.y);
+                expect(Math.abs(z)).toBeLessThan(roomSize.z / 2);
+                const roomFalloff = ar ? 0 : evaluateKotlin(code.match(/val roomFalloff = (.+)/)[1], { roomSize });
+                const radius = evaluateKotlin(falloff[1], { roomFalloff });
+                // AR floors can be above or below the session origin. Anchor-local y=0 follows them.
+                for (const floorWorldY of ar ? [-3, 0.8, 7] : [0]) {
+                    const fixtureWorldY = floorWorldY + y;
+                    // Filament contributes no light at the radius itself, so equality is insufficient.
+                    expect(radius).toBeGreaterThan(Math.abs(fixtureWorldY - floorWorldY));
+                }
+            }
+        });
+        it.each(fixtures)("emits %s in Filament's expected photometric unit", (light, type, lux) => {
+            const code = generateLightingDesign({ lights: [light], ar });
+            const intensity = code.match(/intensity\((.+)\)/)[1];
+            if (type === "DIRECTIONAL") {
+                expect(evaluateKotlin(intensity)).toBe(lux);
+                expect(code).toContain("// lux");
+                return;
+            }
+            expect(code).toContain("import kotlin.math.PI");
+            expect(code).toContain("Convert preview lux to lumens");
+            for (const roomSize of rooms) {
+                const height = evaluateKotlin(code.match(/val height = (.+)/)[1], { roomSize });
+                const lumens = evaluateKotlin(intensity, { height });
+                // Inverse-square lighting at normal incidence: E = Phi / (solid angle * distance^2).
+                // Filament's SPOT uses pi; FOCUSED_SPOT (not emitted here) depends on its cone.
+                const solidAngle = type === "POINT" ? 4 * Math.PI : Math.PI;
+                expect(lumens / (solidAngle * height * height)).toBeCloseTo(lux);
+            }
         });
         it("keeps the types and positions of a mixed lighting setup", () => {
             const code = generateLightingDesign({ lights: LIGHT_TYPES, ar });
@@ -84,8 +120,72 @@ describe("generateLightingDesign", () => {
             expect(code.match(/position = Position\(/g)).toHaveLength(11);
             expect(code.match(/spotLightCone\(/g)).toHaveLength(4);
         });
+        it("keeps wall lights near the walls and the accent light in a corner", () => {
+            const roomSize = ar ? { x: 4, y: 2.7, z: 4 } : { x: 0.6, y: 1, z: 2 };
+            for (const [light, inset] of [["sconce", 0.475], ["strip-led", 0.475], ["accent", 0.375]]) {
+                const code = generateLightingDesign({ lights: [light], ar });
+                const [x, , z] = code.match(/position = Position\((.+)\),/)[1]
+                    .split(",").map((value) => evaluateKotlin(value, { roomSize }));
+                expect(z / roomSize.z).toBeCloseTo(-inset);
+                expect(x / roomSize.x).toBeCloseTo(light === "strip-led" ? 0 : inset);
+            }
+        });
     });
-    it("generates valid Kotlin code for ambient + spot", () => {
+    it("normalizes the room dimensions and bottom-centers the model", () => {
+        const code = generateLightingDesign({ lights: ["sconce", "accent"] });
+        expect(code).toContain("scaleToUnits = 2.0f");
+        expect(code).toContain("centerOrigin = Position(0f, -1f, 0f)");
+        for (const halfExtent of [[4, 2.7, 4], [0.5, 2, 1], [2, 1, 8], [0, 0, 0]]) {
+            const size = Object.values(evaluateRoomSize(code, halfExtent, halfExtent));
+            expect(size.every(Number.isFinite)).toBe(true);
+            expect(Math.max(...size)).toBeCloseTo(halfExtent.some((value) => value > 0) ? 2 : 0);
+        }
+    });
+    it("keeps fixtures inside a skinned room when raw and rest-pose bounds diverge", () => {
+        const code = generateLightingDesign({ lights: LIGHT_TYPES });
+        // A 4 x 2.7 x 4 m room containing a centimeter-exported skin: the unskinned
+        // accessor box is 20 x 189 x 20 m, while the SDK's corrected box is the room.
+        // Supply both boxes so the emitted accessor, not the test, chooses the bounds.
+        const roomSize = evaluateRoomSize(code, [10, 94.5, 10], [2, 1.35, 2]);
+        const positions = [...code.matchAll(/position = Position\((.+)\),/g)].map((match) => match[1].split(",").map((value) => evaluateKotlin(value, { roomSize })));
+        // The old accessor places ambient at 1.85185, above ModelNode's 1.35 m ceiling.
+        expect(positions[0][1]).toBeCloseTo(1.25);
+        expect(roomSize).toEqual({ x: 2, y: 1.35, z: 2 });
+        expect(positions).toHaveLength(11);
+        for (const [x, y, z] of positions) {
+            expect(Math.abs(x)).toBeLessThan(1);
+            expect(y).toBeGreaterThan(0);
+            expect(y).toBeLessThan(1.35);
+            expect(Math.abs(z)).toBeLessThan(1);
+        }
+        expect(code).toContain("import io.github.sceneview.model.restPoseBoundingBox");
+        expect(code).toContain('implementation("io.github.sceneview:sceneview:4.69.4")');
+    });
+    it("places every AR fixture under the tapped horizontal plane's anchor", () => {
+        const code = generateLightingDesign({ lights: LIGHT_TYPES, ar: true });
+        expect(code).toContain("mutableStateOf<Anchor?>(null)");
+        expect(code).toContain("anchor = latestFrame?.hitTest(e)?.firstOrNull");
+        expect(code).toContain("Plane.Type.HORIZONTAL_UPWARD_FACING");
+        expect(code).toContain("plane.isPoseInPolygon(hit.hitPose)");
+        expect(code).toContain("?.createAnchorOrNull()");
+        expect(code).toContain("anchor?.let { placedAnchor ->");
+        const start = code.indexOf("AnchorNode(anchor = placedAnchor) {");
+        expect(start).toBeGreaterThan(0);
+        const open = code.indexOf("{", start);
+        let depth = 1;
+        let end = open + 1;
+        for (; end < code.length && depth > 0; end++) {
+            if (code[end] === "{")
+                depth++;
+            if (code[end] === "}")
+                depth--;
+        }
+        expect(code.slice(open, end).match(/LightNode\(/g)).toHaveLength(LIGHT_TYPES.length);
+        expect(code.slice(0, open)).not.toContain("LightNode(");
+        expect(code.slice(end)).not.toContain("LightNode(");
+        expect(code).not.toContain("roomSize");
+    });
+    it("emits the Kotlin scene scaffold for ambient + spot", () => {
         const code = generateLightingDesign({ lights: ["ambient", "spot"] });
         expect(code).toContain("package com.example.interior.lighting");
         expect(code).toContain("import io.github.sceneview.SceneView");
@@ -205,3 +305,26 @@ describe("generateLightingDesign", () => {
         expect(LIGHT_TYPES).toContain("strip-led");
     });
 });
+// Evaluate only arithmetic emitted in these trusted generator fixtures, not arbitrary Kotlin.
+function evaluateKotlin(expression, values = {}) {
+    const arithmetic = expression
+        .replace(/(\d)f\b/g, "$1")
+        .replace(/PI\.toFloat\(\)/g, "Math.PI")
+        .replace(/maxOf\(/g, "Math.max(")
+        .replace(/if \((.+)\) (.+) else (.+)/, "($1) ? ($2) : ($3)");
+    return Function(...Object.keys(values), `return (${arithmetic});`)(...Object.values(values));
+}
+function evaluateRoomSize(code, rawHalfExtent, correctedHalfExtent) {
+    const instance = {
+        asset: {
+            boundingBox: { halfExtent: rawHalfExtent },
+            restPoseBoundingBox: { halfExtent: correctedHalfExtent },
+        },
+    };
+    const halfExtent = evaluateKotlin(code.match(/val halfExtent = (.+)/)[1], { instance });
+    const largestDimension = evaluateKotlin(code.match(/val largestDimension = (.+)/)[1], { halfExtent });
+    const roomScale = evaluateKotlin(code.match(/val roomScale = (.+)/)[1], { largestDimension });
+    const dimensions = code.match(/Position\(\s*(halfExtent[\s\S]+?)\s*\)/)[1].split(",");
+    const [x, y, z] = dimensions.map((value) => evaluateKotlin(value, { halfExtent, roomScale }));
+    return { x, y, z };
+}
