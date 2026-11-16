@@ -13,14 +13,14 @@ import kotlin.math.max
  * Confidence is a single-channel image where each byte (0..255) encodes the confidence
  * for the corresponding raw-depth pixel — 0 = "unreliable", 255 = "high confidence".
  *
- * This object turns the (raw-depth, confidence) pair into a flat list of
- * [DepthPoint]s sub-sampled and filtered, ready to be drawn by a Compose `Canvas`
- * overlay. The two image buffers are read by a pure-Kotlin loop and the resulting
- * `IntArray` packs `[x, y, depthMm, argbColor]` quadruplets so the per-frame
- * allocation is a single primitive array.
+ * [buildCloud] sub-samples and filters the (raw-depth, confidence) image pair into an
+ * [IntArray] of `[x, y, depthMm, argbColor]` quadruplets. [canvasPoints] projects those
+ * depth pixels into a [FloatArray] of screen-space `[x, y]` pairs, preserving the order
+ * so the batched outlines and per-point colors use the same centers on the Compose
+ * `Canvas` overlay.
  *
- * Extracted as `internal` top-level functions so they can be unit-tested without
- * ARCore on the classpath. See `RawDepthCloudTest`.
+ * Buffer processing and projection use pure Kotlin so they can be unit-tested without
+ * ARCore images. See `RawDepthCloudTest`.
  *
  * Closes part of [#1715](https://github.com/sceneview/sceneview/issues/1715).
  */
