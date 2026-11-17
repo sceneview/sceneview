@@ -4368,9 +4368,11 @@ Box {
 }
 ```
 
-`NodeEditingOverlay` draws the ready-made visuals: a selection ring at the node's base,
-a rotation ring with a live sweep arc and yaw badge, a scale percentage badge that
-bounces at the `editableScaleRange` bounds, and a contact shadow while dragging.
+`NodeEditingOverlay` draws the ready-made visuals: a selection ring at the node's base
+(ring only, no badge at rest), a rotation ring with a live sweep arc and a signed
+rotation-delta badge shown and announced only during the two-finger twist, a scale
+percentage badge that bounces at the `editableScaleRange` bounds, and a contact shadow
+while dragging.
 
 To build custom feedback instead, read `rememberNodeEditingFeedback(node)` directly —
 it is snapshot state, so a composable reading it recomposes live during the gesture:

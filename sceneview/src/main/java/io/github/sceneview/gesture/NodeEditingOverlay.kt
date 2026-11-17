@@ -41,16 +41,22 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.filament.Box
 import com.google.android.filament.View
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.components.RenderableComponent
+import io.github.sceneview.math.Transform
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.utils.worldToScreen
@@ -71,9 +77,9 @@ private fun bothOrNull(a: Float2?, b: Float2?): Pair<Float2, Float2>? =
  *
  * Renders, anchored to [NodeEditingFeedbackState.node] by world→screen projection:
  * - **Selection** (when [selected] and no gesture is active): a white ring around the
- *   node's base.
+ *   node's base, with no badge.
  * - **Rotate** (two-finger twist): an accent ring around the base with a live sweep arc
- *   and a yaw-angle badge.
+ *   and a signed rotation-delta badge, shown (and announced) only while the twist lasts.
  * - **Scale** (pinch): a live percentage badge above the node that bounces and tints
  *   [NodeEditingOverlayColors.limit] when the pinch presses against
  *   [Node.editableScaleRange].
@@ -113,9 +119,10 @@ fun NodeEditingOverlay(
 
     // Re-project the node every displayed frame: the node moves under the gesture and
     // the camera moves in AR, so the anchors are only valid for one frame.
-    LaunchedEffect(state.node, view) {
+    LaunchedEffect(state, view) {
         while (true) {
             withFrameNanos { }
+            state.refreshRotationFromNode()
             anchors.update(state.node, view)
         }
     }
@@ -317,11 +324,9 @@ fun NodeEditingOverlay(
 
         if (showRotation && badgeBase != null && overlaySize != Size.Zero) {
             val ry = anchors.radiusYInCanvas(overlaySize)
-            FeedbackBadge(
-                text = "${state.yawDegrees.roundToInt()}°",
-                textColor = colors.badgeText,
-                background = colors.badgeBackground,
-                border = colors.badgeBorder,
+            RotationBadge(
+                state = state,
+                colors = colors,
                 modifier = Modifier.offset {
                     IntOffset(
                         badgeBase.x.roundToInt(),
@@ -335,6 +340,7 @@ fun NodeEditingOverlay(
             val atLimit = state.scaleLimit != null
             FeedbackBadge(
                 text = "${state.scalePercent.roundToInt()} %",
+                description = "Scale ${state.scalePercent.roundToInt()} percent",
                 textColor = if (atLimit) colors.limit else colors.badgeText,
                 background = colors.badgeBackground,
                 border = if (atLimit) colors.limit else colors.badgeBorder,
@@ -354,10 +360,46 @@ fun NodeEditingOverlay(
     }
 }
 
+/**
+ * The signed rotation-delta badge, composed only while a rotate gesture is active.
+ *
+ * A selected node at rest gets its ring alone: an angle under a model nobody is turning
+ * reads as noise and, as a polite live region, would be announced whenever the app
+ * rotates the node. Leaving the composition when the twist ends removes the badge and
+ * its live region together.
+ */
+@Composable
+internal fun RotationBadge(
+    state: NodeEditingFeedbackState,
+    colors: NodeEditingOverlayColors,
+    modifier: Modifier = Modifier,
+) {
+    if (NodeEditingKind.Rotate !in state.activeKinds) return
+    val angleText = rotationBadgeText(state.rotationDeltaDegrees)
+    FeedbackBadge(
+        text = angleText,
+        description = "Rotation $angleText",
+        textColor = colors.badgeText,
+        background = colors.badgeBackground,
+        border = colors.badgeBorder,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The live angle: the signed delta since the twist began, never the absolute heading, so
+ * it stays continuous across the heading's ±180° seam and each new twist starts at `0°`.
+ */
+internal fun rotationBadgeText(deltaDegrees: Float): String {
+    val angle = deltaDegrees.roundToInt()
+    return "${if (angle > 0) "+" else ""}$angle°"
+}
+
 /** Dark scrim pill with a hairline border — centered horizontally on its offset. */
 @Composable
 private fun FeedbackBadge(
     text: String,
+    description: String,
     textColor: Color,
     background: Color,
     border: Color,
@@ -375,7 +417,11 @@ private fun FeedbackBadge(
                 .offset { IntOffset(-BADGE_HALF_WIDTH_HINT_PX, -BADGE_HALF_HEIGHT_HINT_PX) }
                 .background(background, RoundedCornerShape(50))
                 .border(1.dp, border, RoundedCornerShape(50))
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+                .clearAndSetSemantics {
+                    contentDescription = description
+                    liveRegion = LiveRegionMode.Polite
+                },
         )
     }
 }
@@ -395,6 +441,7 @@ internal class NodeScreenAnchors {
     private var radiusX by mutableFloatStateOf(0f)
     private var radiusY by mutableFloatStateOf(0f)
     private var viewportSize by mutableStateOf(Size.Zero)
+    private val boundsScratch = ContentBoundsScratch()
 
     fun update(node: Node, view: View) {
         if (node.isDestroyed || (node is ModelNode && node.isModelDestroyed)) {
@@ -405,7 +452,7 @@ internal class NodeScreenAnchors {
             top = null
             return
         }
-        val (center, halfExtent) = node.localBounds()
+        val (center, halfExtent) = node.localBounds(boundsScratch)
         val transform = node.worldTransform
         fun world(p: Float3) = (transform * Float4(p, 1f)).xyz
 
@@ -464,26 +511,129 @@ internal class NodeScreenAnchors {
         canvasScale(canvasSize)?.let { radiusY * it.y } ?: 0f
 }
 
+/** Local-space content bounds, falling back only when the entire subtree is empty. */
+private fun Node.localBounds(): Pair<Float3, Float3> = localBounds(ContentBoundsScratch())
+
 /**
- * Local-space bounds used to anchor the feedback visuals.
+ * Runs on every displayed frame, at rest too, so it allocates as little as possible.
  *
- * An empty AABB is a real state for a model whose geometry is not ready yet
- * (`sanitizeEmptyBoundingBoxes`) — fall back to a small default so the ring never
- * collapses to zero.
+ * A node with its own non-empty bounds (the common single [ModelNode]) returns them as is:
+ * one box read, no corner loop, no matrix. Only a pivot without bounds of its own walks its
+ * subtree, through the overlay-held [scratch].
  */
-private fun Node.localBounds(): Pair<Float3, Float3> {
-    val (center, halfExtent) = when (this) {
-        is ModelNode -> center to halfExtent
-        is RenderableComponent -> axisAlignedBoundingBox.let {
-            Float3(it.center[0], it.center[1], it.center[2]) to
-                Float3(it.halfExtent[0], it.halfExtent[1], it.halfExtent[2])
-        }
-        else -> Float3(0f) to Float3(0f)
+private fun Node.localBounds(scratch: ContentBoundsScratch): Pair<Float3, Float3> {
+    if (isDestroyed || (this is ModelNode && isModelDestroyed)) return defaultBounds()
+    ownBoundingBox()?.takeIf { it.isNonEmpty() }?.let { box ->
+        val c = box.center
+        val e = box.halfExtent
+        return Float3(c[0], c[1], c[2]) to Float3(e[0], e[1], e[2])
     }
-    return if (halfExtent.x <= 0f && halfExtent.y <= 0f && halfExtent.z <= 0f) {
-        center to Float3(DEFAULT_HALF_EXTENT)
-    } else {
-        center to halfExtent
+    return scratch.contentBounds(this) ?: defaultBounds()
+}
+
+private fun defaultBounds() = Float3(0f) to Float3(DEFAULT_HALF_EXTENT)
+
+/** The node's own local-space box, read once, or `null` for a node that draws nothing itself. */
+private fun Node.ownBoundingBox(): Box? = when (this) {
+    is ModelNode -> boundingBox
+    is RenderableComponent -> axisAlignedBoundingBox
+    else -> null
+}
+
+private fun Box.isNonEmpty(): Boolean = halfExtent.let { it[0] > 0f || it[1] > 0f || it[2] > 0f }
+
+/**
+ * Union of a pivot's descendant content boxes in the pivot's local space.
+ *
+ * Box corners are transformed straight into pivot space through the full transform chain:
+ * reboxing at intermediate groups would inflate the result even when their rotations cancel
+ * out. The union lives in six floats and the chain in one matrix per depth level, both kept
+ * across frames by the overlay: beyond each node's own box read, the walk allocates no
+ * vector or matrix per corner, per box or per level.
+ * Hidden descendants (e.g. the inactive variants under one pivot) are skipped.
+ */
+internal class ContentBoundsScratch {
+    private var minX = 0f
+    private var minY = 0f
+    private var minZ = 0f
+    private var maxX = 0f
+    private var maxY = 0f
+    private var maxZ = 0f
+    private var hasContent = false
+    private val chain = ArrayList<Transform>()
+
+    fun contentBounds(pivot: Node): Pair<Float3, Float3>? {
+        minX = Float.POSITIVE_INFINITY
+        minY = Float.POSITIVE_INFINITY
+        minZ = Float.POSITIVE_INFINITY
+        maxX = Float.NEGATIVE_INFINITY
+        maxY = Float.NEGATIVE_INFINITY
+        maxZ = Float.NEGATIVE_INFINITY
+        hasContent = false
+        // `isVisible` folds in the ancestors: under a hidden pivot every child reads hidden,
+        // so only filter when the pivot itself is shown.
+        collectChildren(pivot, toPivot = null, depth = 0, skipHidden = pivot.isVisible)
+        if (!hasContent) return null
+        return Float3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f) to
+            Float3((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, (maxZ - minZ) * 0.5f)
+    }
+
+    private fun collectChildren(parent: Node, toPivot: Transform?, depth: Int, skipHidden: Boolean) {
+        for (child in parent.childNodes) {
+            if (child.isDestroyed || (child is ModelNode && child.isModelDestroyed)) continue
+            if (skipHidden && !child.isVisible) continue
+            // `child.transform` is the node's cached matrix: read it, never write it.
+            val childToPivot = toPivot?.let { multiplyInto(slot(depth), it, child.transform) }
+                ?: child.transform
+            val box = child.ownBoundingBox()
+            if (box != null && box.isNonEmpty()) {
+                // A node's own bounds take precedence over its children's.
+                addBox(box, childToPivot)
+            } else {
+                collectChildren(child, childToPivot, depth + 1, skipHidden)
+            }
+        }
+    }
+
+    private fun slot(depth: Int): Transform {
+        while (chain.size <= depth) chain += Transform()
+        return chain[depth]
+    }
+
+    private fun addBox(box: Box, m: Transform) {
+        val c = box.center
+        val e = box.halfExtent
+        for (corner in 0 until 8) {
+            val x = if ((corner and 1) == 0) c[0] - e[0] else c[0] + e[0]
+            val y = if ((corner and 2) == 0) c[1] - e[1] else c[1] + e[1]
+            val z = if ((corner and 4) == 0) c[2] - e[2] else c[2] + e[2]
+            val px = m.x.x * x + m.y.x * y + m.z.x * z + m.w.x
+            val py = m.x.y * x + m.y.y * y + m.z.y * z + m.w.y
+            val pz = m.x.z * x + m.y.z * y + m.z.z * z + m.w.z
+            if (px < minX) minX = px
+            if (py < minY) minY = py
+            if (pz < minZ) minZ = pz
+            if (px > maxX) maxX = px
+            if (py > maxY) maxY = py
+            if (pz > maxZ) maxZ = pz
+        }
+        hasContent = true
+    }
+
+    /** `out = a × b` for column-major matrices, in place; [out] must alias neither input. */
+    private fun multiplyInto(out: Transform, a: Transform, b: Transform): Transform {
+        multiplyColumn(out.x, a, b.x)
+        multiplyColumn(out.y, a, b.y)
+        multiplyColumn(out.z, a, b.z)
+        multiplyColumn(out.w, a, b.w)
+        return out
+    }
+
+    private fun multiplyColumn(out: Float4, a: Transform, v: Float4) {
+        out.x = a.x.x * v.x + a.y.x * v.y + a.z.x * v.z + a.w.x * v.w
+        out.y = a.x.y * v.x + a.y.y * v.y + a.z.y * v.z + a.w.y * v.w
+        out.z = a.x.z * v.x + a.y.z * v.y + a.z.z * v.z + a.w.z * v.w
+        out.w = a.x.w * v.x + a.y.w * v.y + a.z.w * v.z + a.w.w * v.w
     }
 }
 
