@@ -37,7 +37,7 @@ material {
             "name": "radius"
         },
         {
-            "type": "float4",
+            "type": "float2",
             "name": "profile"
         },
         {
