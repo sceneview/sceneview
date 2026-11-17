@@ -125,20 +125,27 @@ class SceneAnimationFrameTest {
     }
 
     @Test
-    fun compatibilityOverloadRemainsInBytecodeButIsHiddenFromKotlinCalls() {
+    fun compatibilityOverloadsRemainInBytecodeButAreHiddenFromKotlinCalls() {
         val overloads = Class.forName("io.github.sceneview.SceneKt").declaredMethods
             .filter { it.name == "SceneView" }
-        assertEquals("both JVM descriptors must remain available", 2, overloads.size)
-
-        val compatibilityOverload = overloads.minBy { it.parameterCount }
         assertEquals(
-            DeprecationLevel.HIDDEN,
-            compatibilityOverload.getAnnotation(Deprecated::class.java)?.level
+            "every released JVM descriptor must remain available (pre-onAnimationFrame, " +
+                "pre-disallowParentIntercept, current)",
+            3,
+            overloads.size,
         )
-        assertTrue("the compatibility overload must be binary-only", compatibilityOverload.isSynthetic)
+
+        val widest = overloads.maxBy { it.parameterCount }
         assertFalse(
-            "source calls must use the overload with the animation driver and full KDoc",
-            overloads.maxBy { it.parameterCount }.isSynthetic
+            "source calls must use the widest overload, with every option and the full KDoc",
+            widest.isSynthetic
         )
+        overloads.filter { it != widest }.forEach { shim ->
+            assertEquals(
+                DeprecationLevel.HIDDEN,
+                shim.getAnnotation(Deprecated::class.java)?.level
+            )
+            assertTrue("compatibility overloads must be binary-only", shim.isSynthetic)
+        }
     }
 }
