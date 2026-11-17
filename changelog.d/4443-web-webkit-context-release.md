@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Web: release disposed contexts from Filament's registry ([#4443](https://github.com/sceneview/sceneview/issues/4443)).** Disposal now clears the registry's context reference after native teardown, removing one retention path for detached canvases. Explicit context loss and restoration when reusing the same canvas are preserved. No eviction reproduced in Safari on an iOS 27 simulator, with or without this change, so an effect on WebKit's context limit is unproven; collection timing remains browser-controlled.

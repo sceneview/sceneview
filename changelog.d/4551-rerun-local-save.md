@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: Rerun recordings no longer offer unusable local-file share links ([#4551](https://github.com/sceneview/sceneview/issues/4551)).** Both sidecars return the saved path without inventing a viewer URL. The dialog keeps Copy path and explains how to view the file locally or share it after hosting it over HTTPS; Android and Apple retain the optional `viewerUrl` API for hosted recordings.
