@@ -53,6 +53,25 @@ class ARSession(
 
     var isResumed = false
 
+    private val closeListeners = mutableListOf<() -> Unit>()
+
+    /** SDK controllers register their session-owned state once, when the session is created. */
+    internal fun onClosing(release: () -> Unit) {
+        closeListeners += release
+    }
+
+    internal fun releaseOwnedObjects() {
+        val listeners = closeListeners.toList()
+        closeListeners.clear()
+        listeners.forEach { release ->
+            try {
+                release()
+            } catch (exception: Exception) {
+                android.util.Log.w("ARCore", "Could not release a closing session's controller", exception)
+            }
+        }
+    }
+
     private val closeGate = SessionCloseGate()
 
     /**

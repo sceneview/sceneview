@@ -52,7 +52,7 @@ internal class ScanResultTurntable(
     }
 
     /**
-     * The pose [opening] — the three-quarter the result opens on, in [frame]'s world — turned
+     * The pose [opening] — the view the result is shown on, in [frame]'s world — turned
      * [angle] about the model, at [opening]'s distance unless the box needs more room at that
      * angle to stay whole in [zone] on a view of [aspect] through [verticalFovDegrees].
      */
@@ -61,7 +61,6 @@ internal class ScanResultTurntable(
         frame: ScanResultFrame,
         opening: OrbitPose,
         elevationDegrees: Float,
-        offsetDegrees: Float,
         verticalFovDegrees: Double,
         aspect: Float,
         zone: FramingInsets,
@@ -72,7 +71,9 @@ internal class ScanResultTurntable(
         val turned = frame.toWorld(
             ArDebugFraming.fit(
                 bounds = frame.local,
-                azimuthDegrees = frame.frontDegrees + frame.turn * offsetDegrees + angle,
+                // From the opening's own heading, read in the frame: its front's three-quarter
+                // when it opened there, the side it was shown on when its frame changed since.
+                azimuthDegrees = opening.azimuthDegrees + frame.yawDegrees + angle,
                 elevationDegrees = elevationDegrees,
                 verticalFovDegrees = verticalFovDegrees,
                 aspect = aspect,

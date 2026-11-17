@@ -388,14 +388,14 @@ public enum RerunWireFormat {
     //
     // Wire format:
     //   client -> sidecar : {"type":"control","cmd":"save_now"}
-    //   sidecar -> client : {"type":"control","ack":"saved","path":"…","viewerUrl":"…","events":N}
+    //   sidecar -> client : {"type":"control","ack":"saved","path":"…","events":N}
     //                       {"type":"control","ack":"save_unsupported","reason":"…"}
     //
     // Mirrors `RerunWireFormat.controlSaveNow()` and `parseControlAck` on the
     // Kotlin side — adding a new command requires touching both files plus
     // the Python sidecar generator (`mcp/packages/rerun/src/python-sidecar.ts`).
 
-    /// "Save the current recording and reply with the resulting path + URL."
+    /// "Save the current recording and reply with its local path."
     public static func controlSaveNow() -> String {
         return "{\"type\":\"control\",\"cmd\":\"save_now\"}\n"
     }
@@ -406,10 +406,8 @@ public enum RerunWireFormat {
         public let success: Bool
         /// Local path of the .rrd on the sidecar host (dev machine).
         public let path: String?
-        /// URL into the SceneView Rerun viewer that already encodes the
-        /// recording's location. Useful as a copy-paste hint — file:// URLs
-        /// won't be fetched from an HTTPS page, so re-host first, on an https
-        /// host that allows cross-origin requests (CORS).
+        /// Optional viewer link to a public HTTPS recording with CORS allowed.
+        /// `nil` when only a local file was saved.
         public let viewerUrl: String?
         /// Number of events that made it into the file.
         public let events: Int

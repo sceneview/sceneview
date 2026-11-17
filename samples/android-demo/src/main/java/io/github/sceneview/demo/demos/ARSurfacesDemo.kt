@@ -186,7 +186,20 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { arSessionFailed = true },
+                onSessionFailure = {
+                    arSessionFailed = true
+                    // The failed session is closed: its last frame and the sofa's anchor are
+                    // freed native objects, and a tap under the "Try again" card would read
+                    // them (a native crash, not an exception). The SDK already released the
+                    // node's anchor; drop every reference and scan again on the new session.
+                    latestFrame.frame = null
+                    sofaAnchorNode.node = null
+                    placedAnchor = null
+                    showcase = showcase.onRemoved()
+                    planeDetected = false
+                    cameraReady = false
+                    isTracking = false
+                },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

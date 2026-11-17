@@ -152,6 +152,9 @@ renders oriented ellipses; the web port is tracked in
 
 ## Environment Lighting
 
+The default key light travels along `(-0.25, -1, -0.25)` in world space, matching
+Android's steep studio angle in both the Kotlin DSL and JavaScript viewer factories.
+
 ```kotlin
 environment(
     iblUrl = "environments/pillars_2k_ibl.ktx",

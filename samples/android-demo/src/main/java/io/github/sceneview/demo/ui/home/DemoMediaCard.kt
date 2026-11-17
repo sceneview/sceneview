@@ -80,7 +80,7 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
  * One demo on the home grid (design spec §2, "Card").
  *
  * Anatomy, top to bottom: a square picture ([SceneViewTokens.Home.cardMediaAspect])
- * showing the captured preview when the image pipeline has produced one
+ * showing a neutral placeholder that fades into the captured preview when available
  * ([DemoEntry.previewPainter]) and the category-tinted [DemoEntry.icon] tile
  * otherwise; then title (`type-card`) and subtitle (`type-caption`, weight 400), never
  * truncated. There is no white box under the picture any more: the caption sits on

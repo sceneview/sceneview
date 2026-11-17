@@ -8,7 +8,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -61,7 +64,18 @@ class AutoPlacementResult internal constructor(
         this(anchor, plane, pose, plane.wallKindOrNull())
 
     var anchor: Anchor = anchor
-        internal set
+        internal set(value) {
+            field = value
+            isAnchorReleased = false
+        }
+
+    private var isAnchorReleased = false
+
+    internal fun releaseAnchor() {
+        if (isAnchorReleased) return
+        isAnchorReleased = true
+        anchor.detach()
+    }
     var pose: Pose = pose
         internal set
 
@@ -353,23 +367,12 @@ private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: P
 fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementState() }
 
 /**
- * Places once on the first usable detected plane after [assetReady]. No tap, reticle or
- * plane visualization. Load the asset before setting [assetReady]; keep the old asset
- * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
+ * Places content as documented by the default [AutoPlacementScene] overload, with an explicit
+ * permission-recovery observer. Existing placement callback positions are unchanged.
  *
- * [state] exposes recovery, reset and explicit request actions. Camera/capability events
- * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
- * same [state]. Content is composed on the main thread.
- * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
- *
- * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
- *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
- *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
- *   status chrome while [ArGuidanceState.isCoaching] is true either way.
- * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
- *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay] as its `contentPadding`. The card
- *   and its "Surface found" pill already keep clear of the system bars and a 16 dp gutter; this
- *   is what they cannot measure, because you draw it. Only read while [coaching] is `true`.
+ * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
+ *   receives, or `null` after a grant. A denial can precede session creation without changing
+ *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
  */
 @Composable
 fun AutoPlacementScene(
@@ -388,21 +391,18 @@ fun AutoPlacementScene(
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    var placement by remember(state) { mutableStateOf<AutoPlacementResult?>(null) }
+    val placementHolder = remember(state) { mutableStateOf<AutoPlacementResult?>(null) }
+    var placement by placementHolder
     var planes by remember { mutableStateOf<List<Plane>>(emptyList()) }
     val ready by rememberUpdatedState(assetReady)
     val placedCallback by rememberUpdatedState(onPlaced)
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
     }
-    // Keyed on [state] alone, the disposal lambda below would capture the `placement` of the
-    // composition that created the effect — normally null. Reading the latest value through
-    // [rememberUpdatedState] is what makes `detach()` actually run when the host navigates away
-    // after a placement, including when the content composes no AnchorNode of its own.
-    val currentPlacement by rememberUpdatedState(placement)
     // The coaching card sits where ARSceneView draws its "Couldn't start AR" card, and the
     // old glyph kept sweeping over that card's copy and its Try again button (#3986).
     // DESIGN.md: the coaching is silent whenever a card explains the state.
@@ -413,8 +413,15 @@ fun AutoPlacementScene(
     // The coaching card names the reason ("Too dark", "Too fast") while tracking struggles.
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
+        val release: () -> Unit = {
+            val owned = placementHolder.value
+            placementHolder.value = null
+            owned?.releaseAnchor()
+        }
+        state.releasePlacement = release
         onDispose {
-            currentPlacement?.anchor?.detach()
+            state.releasePlacement = null
+            release()
             state.dismiss()
         }
     }
@@ -429,6 +436,20 @@ fun AutoPlacementScene(
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
             depthMode = autoPlacementDepthMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            cameraPermissionOverlay = {
+                ARCameraPermissionOverlay(
+                    state = it,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentPadding = coachingContentPadding,
+                )
+            },
+            arCoreAvailabilityOverlay = {
+                ARCoreAvailabilityOverlay(
+                    state = it,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentPadding = coachingContentPadding,
+                )
+            },
             onGestureListener = rememberOnGestureListener(
                 // Tap the object to select it (the selection ring appears), tap empty space
                 // to deselect — Scene Viewer's selection model.
@@ -442,18 +463,26 @@ fun AutoPlacementScene(
                 availability = it
                 onARCoreAvailability?.invoke(it)
             },
-            onCameraPermissionStateChanged = { cameraDenied = it != null },
+            onCameraPermissionStateChanged = {
+                cameraDenied = it != null
+                onCameraPermissionStateChanged?.invoke(it)
+            },
             onTrackingFailureChanged = {
                 trackingFailure = it
                 onTrackingFailureChanged?.invoke(it)
             },
             onSessionResumed = { state.cameraResumed() },
+            onSessionCreated = { created ->
+                (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
+                    val previous = placement
+                    placement = null
+                    planes = emptyList()
+                    state.resetPlacement(SystemClock.uptimeMillis())
+                    previous?.releaseAnchor()
+                }
+            },
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
-                if (!state.hasPlacement && placement != null) {
-                    placement?.anchor?.detach()
-                    placement = null
-                }
                 val tracked = session.getAllTrackables(Plane::class.java)
                     .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                 if (tracked != planes) planes = tracked
@@ -487,6 +516,68 @@ fun AutoPlacementScene(
         }
     }
 }
+
+/**
+ * Places once on the first usable detected plane after [assetReady]. No tap, reticle or
+ * plane visualization. Load the asset before setting [assetReady]; keep the old asset
+ * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
+ *
+ * [state] exposes recovery, reset and explicit request actions. Camera/capability events
+ * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
+ * same [state]. Content is composed on the main thread.
+ * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
+ *
+ * Callback positions and positional/trailing content retain the original API. Use the
+ * permission-observer overload when host chrome depends on the permission-recovery card.
+ *
+ * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
+ *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
+ *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
+ *   status chrome while [ArGuidanceState.isCoaching] is true either way.
+ * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
+ *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
+ *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
+ *   and add their own margin. Permission and failure cards respect it even when [coaching]
+ *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
+ */
+@Suppress("LongParameterList")
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = coaching,
+    coachingContentPadding = coachingContentPadding,
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    onCameraPermissionStateChanged = null,
+    content = content,
+)
 
 /**
  * Binary-compatibility shim for the pre-`coachingContentPadding` descriptor of
@@ -1226,6 +1317,26 @@ private class AutomaticAnchorNode(
     private var dragStartMs = 0L
     init { isEditable = true }
 
+    private fun cancelAutomaticMove() {
+        val wasDragging = dragging
+        pending = null
+        offset = null
+        dragging = false
+        dragStartMs = 0L
+        interruptedMove = false
+        updateAnchorPose = true
+        if (wasDragging) state.endAdjustment()
+        invalidMove(false)
+    }
+
+    internal override fun releaseSessionAnchor() {
+        try {
+            cancelAutomaticMove()
+        } finally {
+            super.releaseSessionAnchor()
+        }
+    }
+
     /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
     fun moveBy(x: Float, y: Float): Boolean {
         val frame = frame ?: return false
@@ -1286,6 +1397,15 @@ private class AutomaticAnchorNode(
     }
 
     override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) {
+        // Gesture delivery can outlive the session (or the node itself). Check Java-side
+        // lifetime state before reading the anchor's native pose, even for a pending drag.
+        if (isDestroyed || frame == null ||
+            (session as? io.github.sceneview.ar.arcore.ARSession)?.isClosed == true
+        ) {
+            cancelAutomaticMove()
+            return
+        }
+        if (!dragging) return
         val target = pending?.pose
         val travel = if (target == null) 0f else ViewportProjection.distance(
             target.tx(), target.ty(), target.tz(), anchor.pose.tx(), anchor.pose.ty(), anchor.pose.tz(),
@@ -1303,7 +1423,7 @@ private class AutomaticAnchorNode(
             DragEnd.REVERT -> {
                 pending = null
                 interruptedMove = false
-                if (anchor.trackingState == TrackingState.TRACKING) pose = anchor.pose
+                if (trackingState == TrackingState.TRACKING) pose = anchor.pose
             }
         }
         dragging = false
@@ -1379,7 +1499,7 @@ private class AutomaticAnchorNode(
 
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
-            anchor.trackingState == TrackingState.TRACKING
+            trackingState == TrackingState.TRACKING
 
     /** [source] shifted by [delta] in world space, keeping this node's authored rotation. */
     private fun translated(source: Pose, delta: FloatArray) = Pose(
@@ -1390,7 +1510,7 @@ private class AutomaticAnchorNode(
     private fun commitMove(): Boolean {
         val candidate = pending ?: return false
         val frame = frame ?: return false
-        if (anchor.trackingState != TrackingState.TRACKING ||
+        if (trackingState != TrackingState.TRACKING ||
             !visiblePlacementPoint(frame, candidate.pose)
         ) return false
         val next = candidate.createAnchor() ?: return false
@@ -1405,7 +1525,7 @@ private class AutomaticAnchorNode(
 
     override fun update(session: Session, frame: Frame) {
         val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
-            anchor.trackingState == TrackingState.TRACKING
+            trackingState == TrackingState.TRACKING
         if (!tracking) {
             if (!updateAnchorPose) {
                 // Freeze the last valid drag pose without replacing the logical anchor.

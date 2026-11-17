@@ -226,15 +226,27 @@ class RerunWireFormatTest {
             "{\"type\":\"control\",\"ack\":\"saved\"," +
                 "\"path\":\"/home/dev/.sceneview/recordings/2026-05-06.rrd\"," +
                 "\"events\":1234," +
-                "\"viewerUrl\":\"https://sceneview.github.io/rerun/?url=file%3A%2F%2F%2Ftmp%2Fa.rrd\"}",
+                "\"viewerUrl\":\"https://sceneview.github.io/rerun/?url=https%3A%2F%2Fexample.com%2Fa.rrd\"}",
         )!!
         assertTrue(ack.success)
         assertEquals("/home/dev/.sceneview/recordings/2026-05-06.rrd", ack.path)
         assertEquals(1234, ack.events)
         assertEquals(
-            "https://sceneview.github.io/rerun/?url=file%3A%2F%2F%2Ftmp%2Fa.rrd",
+            "https://sceneview.github.io/rerun/?url=https%3A%2F%2Fexample.com%2Fa.rrd",
             ack.viewerUrl,
         )
+        assertEquals(null, ack.reason)
+    }
+
+    @Test
+    fun `parseControlAck accepts a local save without viewerUrl`() {
+        val ack = RerunWireFormat.parseControlAck(
+            """{"type":"control","ack":"saved","path":"/tmp/a.rrd","events":42}""",
+        )!!
+        assertTrue(ack.success)
+        assertEquals("/tmp/a.rrd", ack.path)
+        assertEquals(42, ack.events)
+        assertEquals(null, ack.viewerUrl)
         assertEquals(null, ack.reason)
     }
 

@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.ar
 
 import com.google.ar.core.ArCoreApk
