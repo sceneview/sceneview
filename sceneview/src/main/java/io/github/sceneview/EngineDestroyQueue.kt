@@ -1,6 +1,6 @@
 package io.github.sceneview
 
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import com.google.android.filament.Engine
 import com.google.android.filament.Stream
 import com.google.android.filament.Texture
@@ -71,6 +71,9 @@ class EngineDestroyQueue private constructor(
 
     /** Number of resources currently waiting to be destroyed. Exposed for tests. */
     val size: Int get() = queue.size
+
+    /** Observable empty/non-empty state used to wake and park the OnDemand loop. */
+    internal val hasPending: Boolean get() = queue.hasPending
 
     /**
      * Enqueues [texture] to be destroyed [GRACE_FRAMES] engine frames from now.
@@ -216,9 +219,8 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
     private class Entry(val runAtFrame: Long, val action: () -> Unit)
 
     private val pending = ArrayDeque<Entry>()
-    // Only writes when entries change, not on every frame. SceneView observes this count to
-    // wake a parked OnDemand loop and keep ticking until the grace period has drained the queue.
-    private val pendingSize = mutableIntStateOf(0)
+    // Only empty/non-empty transitions wake observers; queue churn needs no snapshot writes.
+    private val pendingState = mutableStateOf(false)
     private var frame = 0L
 
     /**
@@ -237,7 +239,10 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
     private var drainedAll = false
 
     /** Number of actions currently waiting to run. */
-    val size: Int get() = pendingSize.intValue
+    val size: Int get() = pending.size
+
+    /** Observable empty/non-empty state for the render loop, independent of the exact size. */
+    internal val hasPending: Boolean get() = pendingState.value
 
     /**
      * Enqueues [action] to run after [graceFrames] frames.
@@ -250,7 +255,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
             action()
         } else {
             pending.addLast(Entry(frame + graceFrames, action))
-            pendingSize.intValue = pending.size
+            if (pending.size == 1) pendingState.value = true
         }
     }
 
@@ -266,7 +271,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
             val head = pending.firstOrNull() ?: break
             if (head.runAtFrame > frame) break
             val entry = pending.removeFirst()
-            pendingSize.intValue = pending.size
+            if (pending.isEmpty()) pendingState.value = false
             entry.action()
         }
     }
@@ -315,7 +320,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
         drainedAll = true
         while (pending.isNotEmpty()) {
             val entry = pending.removeFirst()
-            pendingSize.intValue = pending.size
+            if (pending.isEmpty()) pendingState.value = false
             entry.action()
         }
     }

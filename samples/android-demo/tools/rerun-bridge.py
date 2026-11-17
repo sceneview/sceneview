@@ -41,10 +41,11 @@ Then on your Android device (connected via USB with adb):
     # open the Samples tab -> AR Debug (Rerun)
 
 Inside the app, tap the "Save & Share" button to ask this sidecar to flush
-the current recording and print the path + viewer URL. The sidecar prints:
+the current recording and print its path and viewing instructions. The sidecar prints:
 
     [rerun-bridge] saved 1234 events -> /home/you/.sceneview/recordings/2026-05-06_23-30-12.rrd
-    [rerun-bridge] open in browser -> https://sceneview.github.io/rerun/?url=file:///home/you/...
+    [rerun-bridge] view locally -> drop the .rrd file on https://sceneview.github.io/rerun/
+    [rerun-bridge] to share -> host the file at a public HTTPS address ending in .rrd with CORS enabled, then share https://sceneview.github.io/rerun/?url=<encoded-public-url>
 
 To share, host the .rrd at a public https address that ends in .rrd and pass
 it to https://sceneview.github.io/rerun/?url=<encoded-url>. The host has to
@@ -68,7 +69,6 @@ import sys
 from collections import deque
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote as _urlquote
 
 import numpy as np
 import rerun as rr
@@ -311,14 +311,14 @@ def _timestamp_filename() -> str:
     return _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".rrd"
 
 
-def _viewer_url_for_local_file(path: Path) -> str:
-    """Build the SceneView viewer URL pointing at a local file:// URL.
-
-    Mostly useful as a copy-paste hint — most browsers refuse to fetch
-    file:// from an HTTPS page, so the user typically uploads first. We
-    print this anyway so the workflow is discoverable.
-    """
-    return SHARE_BASE_URL + "?url=" + _urlquote(path.as_uri(), safe="")
+def _print_save_instructions() -> None:
+    """Explain local viewing and sharing without inventing a hosted address."""
+    print(f"[rerun-bridge] view locally -> drop the .rrd file on {SHARE_BASE_URL}", flush=True)
+    print(
+        f"[rerun-bridge] to share -> host the file at a public HTTPS address ending in .rrd "
+        f"with CORS enabled, then share {SHARE_BASE_URL}?url=<encoded-public-url>",
+        flush=True,
+    )
 
 
 def _send_control_ack(conn: socket.socket, payload: dict[str, Any]) -> None:
@@ -418,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         if save_mode and save_path is not None:
             _flush_and_save(save_path)
             print(f"[rerun-bridge] replayed {events} events -> {save_path}", flush=True)
+            _print_save_instructions()
         else:
             print(f"[rerun-bridge] replayed {events} events into the viewer", flush=True)
         return 0
@@ -462,18 +463,16 @@ def main(argv: list[str] | None = None) -> int:
                             if cmd == "save_now" and save_mode and save_path is not None:
                                 _flush_and_save(save_path)
                                 saved_for_this_client = True
-                                url = _viewer_url_for_local_file(save_path)
                                 print(
                                     f"[rerun-bridge] saved {events} events -> {save_path}",
                                     flush=True,
                                 )
-                                print(f"[rerun-bridge] open in browser -> {url}", flush=True)
+                                _print_save_instructions()
                                 _send_control_ack(conn, {
                                     "type": "control",
                                     "ack": "saved",
                                     "path": str(save_path),
                                     "events": events,
-                                    "viewerUrl": url,
                                 })
                             elif cmd == "save_now":
                                 # Sidecar in live mode: nothing to save.
@@ -496,12 +495,11 @@ def main(argv: list[str] | None = None) -> int:
                 # Auto-save on disconnect if no explicit save_now happened.
                 if save_mode and not saved_for_this_client and events > 0 and save_path is not None:
                     _flush_and_save(save_path)
-                    url = _viewer_url_for_local_file(save_path)
                     print(
                         f"[rerun-bridge] saved {events} events on disconnect -> {save_path}",
                         flush=True,
                     )
-                    print(f"[rerun-bridge] open in browser -> {url}", flush=True)
+                    _print_save_instructions()
                 else:
                     print(
                         f"[rerun-bridge] client disconnected (logged {events} events)",

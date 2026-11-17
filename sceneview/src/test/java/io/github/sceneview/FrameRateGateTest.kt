@@ -384,16 +384,16 @@ class FrameRateGateTest {
 
     @Test
     fun everyPullSourceAloneKeepsTheSceneActive() {
-        val none = BooleanArray(7)
+        val none = BooleanArray(8)
         assertFalse(
-            isSceneFrameActive(none[0], none[1], none[2], none[3], none[4], none[5], none[6])
+            isSceneFrameActive(none[0], none[1], none[2], none[3], none[4], none[5], none[6], none[7])
         )
         repeat(none.size) { i ->
             val one = none.copyOf().also { it[i] = true }
             assertTrue(
                 "pull source #$i must alone be enough to hold the cadence: each one is a state " +
                     "that lasts many frames and sends no event of its own",
-                isSceneFrameActive(one[0], one[1], one[2], one[3], one[4], one[5], one[6])
+                isSceneFrameActive(one[0], one[1], one[2], one[3], one[4], one[5], one[6], one[7])
             )
         }
     }

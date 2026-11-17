@@ -22,6 +22,49 @@ class CameraArbiterTest {
     private val b = FakeSession("B")
 
     @Test
+    fun `the first resumed view reports waiting while the second holds the camera`() {
+        arbiter.resume(a)
+        assertTrue(!a.isWaitingForCamera)
+
+        arbiter.resume(b)
+
+        assertTrue(a.isWaitingForCamera)
+        assertTrue(!b.isWaitingForCamera)
+        assertTrue(b.isRunning && !a.isRunning)
+    }
+
+    @Test
+    fun `all displaced sessions wait and only the next holder clears its explanation`() {
+        val c = FakeSession("C")
+        arbiter.resume(a)
+        arbiter.resume(b)
+        arbiter.resume(c)
+        assertTrue(a.isWaitingForCamera && b.isWaitingForCamera)
+        assertTrue(!c.isWaitingForCamera)
+
+        arbiter.destroy(c) { onClosed -> c.close(); onClosed() }
+        assertTrue(a.isWaitingForCamera)
+        assertTrue(b.isRunning && !b.isWaitingForCamera)
+
+        arbiter.destroy(b) { onClosed -> b.close(); onClosed() }
+        assertTrue(a.isRunning && !a.isWaitingForCamera)
+    }
+
+    @Test
+    fun `pausing or disposing a waiting view clears its explanation without stopping the holder`() {
+        arbiter.resume(a)
+        arbiter.resume(b)
+        arbiter.pause(a)
+        runPosted()
+        assertTrue(!a.isWaitingForCamera && b.isRunning)
+
+        arbiter.resume(a)
+        assertTrue(b.isWaitingForCamera)
+        arbiter.destroy(b) { onClosed -> b.close(); onClosed() }
+        assertTrue(!b.isWaitingForCamera && a.isRunning)
+    }
+
+    @Test
     fun `retrying a running session never calls native resume again`() {
         arbiter.resume(a)
         a.failure = IllegalStateException("a second native resume would fail")
@@ -65,6 +108,7 @@ class CameraArbiterTest {
 
         assertEquals(listOf("A start", "A stop", "B start", "B failed", "A start"), calls)
         assertTrue(a.isRunning && !b.isRunning)
+        assertTrue(!a.isWaitingForCamera && !b.isWaitingForCamera)
 
         // B gave up its turn: when A is closed there is nobody to hand the camera to.
         arbiter.destroy(a) { onClosed -> a.close(); onClosed() }
@@ -108,10 +152,12 @@ class CameraArbiterTest {
             releaseCamera = onClosed
         }
         assertEquals(listOf("B start", "B stop", "A start", "A close"), calls)
+        assertTrue(b.isWaitingForCamera)
 
         releaseCamera!!.invoke()
         assertEquals(listOf("B start", "B stop", "A start", "A close", "B start"), calls)
         assertTrue(b.isRunning)
+        assertTrue(!b.isWaitingForCamera)
     }
 
     @Test
@@ -203,6 +249,7 @@ class CameraArbiterTest {
 
         assertEquals(listOf("B stop"), calls)
         assertTrue(!a.isRunning && !b.isRunning)
+        assertTrue(!a.isWaitingForCamera && !b.isWaitingForCamera)
     }
 
     @Test
@@ -265,6 +312,7 @@ class CameraArbiterTest {
         assertTrue(a.isRunning)
         assertTrue(exceptions.isEmpty())
         assertEquals(listOf("A start", "A stop", "B start", "B failed", "A start"), calls)
+        assertTrue(!a.isWaitingForCamera)
     }
 
     @Test
@@ -312,6 +360,7 @@ class CameraArbiterTest {
     private inner class FakeSession(private val name: String) : CameraClient {
         override var isRunning = false
         override var canRun = true
+        override var isWaitingForCamera = false
         var failure: Exception? = null
         var afterResumeFailure: Exception? = null
 

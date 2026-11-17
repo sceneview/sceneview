@@ -239,6 +239,17 @@ fun PlacementScene(
                 Config.InstantPlacementMode.DISABLED
             },
             sessionConfiguration = sessionConfiguration,
+            onSessionCreated = { created ->
+                (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
+                    latestFrame = null
+                    session = null
+                    cameraReady = false
+                    isTracking = false
+                    anyPlaneTracked = false
+                    reticlePhase = ReticlePhase.SEARCHING
+                    controller.clear()
+                }
+            },
             onSessionUpdated = { updatedSession, frame ->
                 latestFrame = frame
                 if (groundShadows && session !== updatedSession) session = updatedSession

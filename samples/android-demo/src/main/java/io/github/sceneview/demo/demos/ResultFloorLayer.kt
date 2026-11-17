@@ -142,8 +142,12 @@ internal class FacingSides {
 /** Under everything the result draws on its floor: the grid is the stage. */
 internal const val GRID_PRIORITY = 0
 
-/** Over the grid, the floor and the parts still to scan, as the replay draws them. */
-private const val MEASURE_PRIORITY = 4
+/**
+ * Over the grid, the floor and the parts still to scan, and after the model's contact shadow
+ * (Filament's default, 4): the figures lie a hair under the floor, the shadow a hair over them
+ * on a kept scan reopened, and drawn before it they came out dark on the dark stage (2026-11-15).
+ */
+private const val MEASURE_PRIORITY = 5
 
 private const val MIN_METRES_PER_PIXEL = 1e-6f
 

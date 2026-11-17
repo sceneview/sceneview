@@ -123,6 +123,14 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
      */
     private var projectionInvalidated: Boolean = false
 
+    internal fun resetSession() {
+        session = null
+        frame = null
+        cachedProjectionTransform = null
+        displayGeometryChanged = true
+        projectionInvalidated = true
+    }
+
     /**
      * Always [ViewportPadding.Zero]: an AR camera ignores content padding, and writing it does
      * nothing. `SceneView(clipToContentPadding = true)` is also ignored with this camera:

@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 // ARScene lives in the separate `arsceneview` module intentionally: apps that only need 3D
 // can depend on `sceneview` alone without pulling in ARCore.
 //
@@ -85,6 +87,7 @@ import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.camera.cameraFramePresented
+import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
@@ -145,6 +148,10 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * Drive AR state with ordinary Compose `mutableStateOf`: when state changes, the composition
  * updates and the 3D scene reflects it on the next frame.
+ *
+ * When several scenes are resumed, the last one to resume holds the device camera. The others
+ * show a built-in "Camera in use" card until the holder pauses or leaves composition, then
+ * resume automatically. This temporary wait is not a session failure.
  *
  * ### Minimal usage
  * ```kotlin
@@ -269,7 +276,8 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionCreated         Called once when the ARCore [Session] is ready.
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
- * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
+ * @param onSessionFailed          Called if ARCore initialization fails or a fatal frame update closes
+ *                                 the session. Discard app-held objects belonging to that session.
  *                                 Receives a raw [Exception]. **Soft-deprecated (#1844)** in favour
  *                                 of [onSessionFailure] for typed, exhaustive `when` matching
  *                                 (#1759). The legacy callback stays available indefinitely for
@@ -718,7 +726,10 @@ fun ARSceneView(
     onSessionPaused: ((session: Session) -> Unit)? = null,
     /**
      * Invoked when an ARCore error occurred during session creation / resume / configuration
-     * (missing ARCore install, permission denied, device-unsupported, etc.).
+     * (missing ARCore install, permission denied, device-unsupported, etc.), or when a fatal
+     * frame-update error closes the session. Fatal update failures are reported once per session.
+     * SDK-owned anchors and frame/plane caches are released before close. Discard app-held
+     * session objects and placement state; a retry creates a new session and needs fresh anchors.
      *
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
@@ -1477,6 +1488,11 @@ fun ARSceneView(
     // Placed objects' contacts, registered through the scope and grounding the occlusion around
     // them; handed to whichever camera stream is current.
     val groundContacts = remember { GroundContacts() }
+    val groundContactUpdate = remember {
+        GroundContactUpdate { exception ->
+            android.util.Log.e("SceneView", "Ground contact update failed", exception)
+        }
+    }
     SideEffect {
         cameraStreamRef.set(cameraStream)
         cameraStream?.groundContacts = groundContacts
@@ -1705,6 +1721,17 @@ fun ARSceneView(
 
     // ── Render loop ───────────────────────────────────────────────────────────────────────────────
 
+    arCore.onSessionClosing = {
+        try {
+            releaseSessionNodes(scopeChildNodes.toList())
+        } finally {
+            cameraNode.resetSession()
+            lastArFrameTimestamp.set(0L)
+            prevTrackingFailureRef.set(null)
+            arPlaneRenderer.resetSession()
+        }
+    }
+
     LaunchedEffect(engine, renderer, view, scene, cameraStream) {
         // Previous frame time for the node-edit coast's time step; 0 = none yet (or paused).
         var lastFrameTimeNanos = 0L
@@ -1723,7 +1750,8 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        hasNewArFrame || sceneChanged || arFramesOwed.get() > 0
+                        arCore.arCoreAvailability != ARCoreAvailability.SessionFailed &&
+                            (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
                     }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
@@ -1735,7 +1763,7 @@ fun ARSceneView(
                     // AR frame update — feed ARCore data into camera, lights, planes.
                     arCore.session?.let { session ->
                         try {
-                            session.updateOrNull()?.let { frame ->
+                            arCore.updateSessionOrNull()?.let { frame ->
                                 hasNewArFrame =
                                     lastArFrameTimestamp.getAndSet(frame.timestamp) != frame.timestamp
                                 val trackingFailureReason = readTrackingFailureReason(
@@ -1787,6 +1815,9 @@ fun ARSceneView(
                         }
                     }
 
+                    // A fatal update closed the session; nodes may still hold its native handles.
+                    if (arCore.arCoreAvailability == ARCoreAvailability.SessionFailed) return@renderFrame
+
                     // Before any node's onFrame, as in SceneView: animator commits then reindex
                     // nothing under the nodes' cached transform handles.
                     engine.sortTransformsIfUnsorted()
@@ -1807,10 +1838,8 @@ fun ARSceneView(
                     // Custom placement can move in the host callback, node ticks (including smooth
                     // transforms), or gesture inertia. Sample contacts only after all of them.
                     arFrame?.let { frame ->
-                        try {
+                        groundContactUpdate.update {
                             cameraStreamRef.get()?.updateGroundContact(frame)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SceneView", "Ground contact update failed", e)
                         }
                     }
 
@@ -1897,6 +1926,9 @@ fun ARSceneView(
                 )
             }
             arCoreAvailabilityOverlay(state)
+        }
+        if (denial == null && availability == null) {
+            ARCameraInUseOverlay(arCore.isCameraInUseByAnotherSession)
         }
     }
 
