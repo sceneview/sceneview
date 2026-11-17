@@ -70,6 +70,7 @@ internal fun BoxScope.AROverlayCard(
     secondaryActionTag: String = "",
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
+    ReportAROverlayVisibility()
     // Hosts supplying insets may leave less room than our own margins and padding ask for.
     // Default callers retain their existing spacing (including hosts that already lend margins).
     val hostPadded = contentPadding != PaddingValues(0.dp)
