@@ -5,8 +5,8 @@ import org.junit.Test
 
 class RerunExportFormatTest {
     @Test
-    fun `the model comes first, then the scan's raw material`() {
-        assertEquals(listOf("glb", "ply", "svscan", "rrd"), RerunExportFormat.entries.map { it.extension })
+    fun `the model comes first, then the scan's raw material, then a space's measurements`() {
+        assertEquals(listOf("glb", "ply", "svscan", "rrd", "json"), RerunExportFormat.entries.map { it.extension })
     }
 
     @Test
@@ -19,11 +19,25 @@ class RerunExportFormatTest {
 
     @Test
     fun `only the formats the source can make are offered`() {
-        assertEquals(RerunExportFormat.entries, RerunExportFormat.available(hasModel = true, hasCapture = true))
+        val files = RerunExportFormat.entries - RerunExportFormat.Measurements
+        assertEquals(files, RerunExportFormat.available(hasModel = true, hasCapture = true))
         assertEquals(listOf(RerunExportFormat.Model), RerunExportFormat.available(hasModel = true, hasCapture = false))
         // A recording without a result: its planes as a glTF scene, and the rest.
-        assertEquals(RerunExportFormat.entries, RerunExportFormat.available(hasModel = false, hasCapture = true))
+        assertEquals(files, RerunExportFormat.available(hasModel = false, hasCapture = true))
         assertEquals(emptyList<RerunExportFormat>(), RerunExportFormat.available(hasModel = false, hasCapture = false))
+    }
+
+    @Test
+    fun `a space's measurements are offered only where a space was measured`() {
+        assertEquals(
+            RerunExportFormat.entries,
+            RerunExportFormat.available(hasModel = true, hasCapture = true, hasMeasurements = true),
+        )
+        assertEquals("application/json", RerunExportFormat.Measurements.mimeType)
+        assertEquals(
+            "cupboard-or-shelf-nov-14-5-40-pm.json",
+            RerunExportFormat.Measurements.fileName("Cupboard or shelf · Nov 14, 5:40 PM"),
+        )
     }
 
     @Test

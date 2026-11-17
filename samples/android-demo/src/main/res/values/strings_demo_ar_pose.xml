@@ -6,4 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_pose_title">Pose Placement</string>
+    <string name="ar_pose_reflection_probe">Sunset reflections</string>
+    <string name="ar_pose_reflection_probe_hint">Turn on for sunset reflections, off for live room lighting.</string>
+    <string name="ar_pose_reflection_probe_loading">Loading sunset reflections…</string>
 </resources>

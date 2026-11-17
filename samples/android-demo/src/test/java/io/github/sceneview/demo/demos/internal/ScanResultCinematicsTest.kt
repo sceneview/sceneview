@@ -118,6 +118,32 @@ class ScanResultCinematicsTest {
     }
 
     @Test
+    fun `a framing whose pivot is outside the gestures' limits is still followed once a move lands on it`() {
+        val screen = Screen()
+        // A tall card under the model slides the pivot below the box the gestures keep it in.
+        screen.orbit.limits = OrbitLimits(bounds = floatArrayOf(-1f, 1.5f, -1f, 1f, 2.5f, 1f), floorY = 1.5f)
+        screen.reveal()
+        assertFalse(screen.cinematics.animator.isPlaying)
+        assertTrue("the camera was taken from its framing", screen.orbit.following)
+        assertEquals(ArDebugFraming.clamp(home), screen.orbit.pose)
+    }
+
+    @Test
+    fun `a framing that moves while the reveal plays is where the camera goes once it lands`() {
+        val screen = Screen()
+        screen.opening.aim(screen.orbit, home)
+        while (!screen.cinematics.revealed) screen.frame()
+        screen.run(0.3f)
+        // A card arrives under the model: the same view, the picture higher.
+        val raised = home.copy(target = Position(home.target.x, home.target.y - 0.4f, home.target.z))
+        screen.framing = raised
+        screen.run(CameraPath.REVEAL_SECONDS + 3f)
+        assertFalse(screen.cinematics.animator.isPlaying)
+        assertTrue("the camera was taken from its framing", screen.orbit.following)
+        assertEquals(raised.target.y, screen.orbit.pose.target.y, 0.02f)
+    }
+
+    @Test
     fun `a touch during the reveal takes the camera where it is, moving`() {
         val screen = Screen()
         screen.opening.aim(screen.orbit, home)

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.69.5)
+  Source of truth: /llms.txt  (SceneView 4.69.6)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.69.5). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.69.6). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -194,6 +194,8 @@ fun rememberRestartPhoneAdvice(neverTracked: Boolean): Boolean {
 }
 ```
 
+Apps with many AR screens can observe their frames with `io.github.sceneview.ar.replay.LocalARSessionProbe`: provide an `ARSessionProbe` whose `onSessionFrame(session, frame, nodes)` reads `frame.camera.trackingState` and `frame.camera.trackingFailureReason`. This also observes frames from `AutoPlacementScene`. Leave `playbackDataset` null for live diagnostics; when wrapping an enclosing observer, forward its dataset and frames so replay QA still works. Keep the startup watch scoped to the screen's lifecycle, cancel it on tracking or navigation, and skip recorded sessions and front-camera face tracking. This is Android-specific: [ARKit documents `ARError.sensorFailed` and `sensorUnavailable`](https://developer.apple.com/documentation/arkit/arerror) for missing sensor input; no equivalent iOS probe has been added without a reproduction.
+
 For apps that route many subtypes to the same action, extract a tiny helper that returns a coarse category and `when` on that — still exhaustive, no `else ->`:
 
 ```kotlin
@@ -292,7 +294,7 @@ Same wire format on Android and iOS. A single sidecar handles both platforms.
 ### Save & share flow
 
 1. Run sidecar in save mode: `python rerun-bridge.py --save`
-2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","viewerUrl":"…","events":N}`.
+2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","events":N}`.
 3. Open https://sceneview.github.io/rerun/ — when no session is loaded the page shows a drop-zone (drag the `.rrd` onto it to render in-place) and a QR code that opens the 3D Scan demo (`ar-rerun`) on a phone for users who don't have one to start from.
 4. To share with a remote teammate, host the `.rrd` at a public https address and send them `https://sceneview.github.io/rerun/?url=<encoded-public-url>`. The page downloads the file from the visitor's browser, so the link has to end in `.rrd` and its host has to allow cross-origin requests (CORS). A file in a public GitHub repository does, through its `raw.githubusercontent.com` link, and so does GitHub Pages; a GitHub release asset does not: GitHub sends no CORS header for it (checked 2026-10-13). A Cloudflare R2 or S3 bucket does once it has a CORS rule that allows `https://sceneview.github.io`. When the page cannot read the file, it says so on screen, with the likely causes.
 
@@ -302,7 +304,7 @@ The Kotlin API surface for step 2:
 bridge.requestSaveAndShare { result: RerunBridge.ShareResult ->
     if (result.success) {
         // result.path = "/home/dev/.sceneview/recordings/2026-05-06_23-30-12.rrd"
-        // result.viewerUrl = "https://sceneview.github.io/rerun/?url=file%3A%2F%2F…"
+        // result.viewerUrl = null // local save; no public recording address is known
         // result.events = 1234
     } else {
         // result.reason explains why (e.g. "sidecar started in live mode; relaunch with --save")

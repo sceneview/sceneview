@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -193,6 +194,12 @@ internal fun rememberResultLayers(
             prebuilt?.takeIf { it.all.count > 0 }?.let {
                 layers.faces = it
                 layers.splats = it.all
+                if (photoFirst) {
+                    // A scan handed over from its live model is already whole. Keep it visible
+                    // instead of replaying its growth from an empty stage after Done.
+                    layers.photoShown = true
+                    layers.grown = 1f
+                }
             }
         }
     }
@@ -329,6 +336,8 @@ internal fun ResultLayerPicker(
     onPlan: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     seen: Boolean = ready,
+    /** What the Photo layer is called under the pill: a preview of the model, or, outdoors, the points themselves. */
+    @StringRes photoNote: Int = R.string.scan_result_photo_preview,
 ) {
     if (!layers.offered) return
     // The dock's Plan leaves Photo too: the plan is read on the model.
@@ -348,7 +357,7 @@ internal fun ResultLayerPicker(
         !ready || !layers.photoPicked || plan -> null
         layers.unavailable -> null
         layers.splats == null -> stringResource(R.string.scan_result_photo_preparing)
-        else -> stringResource(R.string.scan_result_photo_preview)
+        else -> stringResource(photoNote)
     }
     val noteAlpha by animateFloatAsState(if (note != null) 1f else 0f, tween(SceneViewTokens.Duration.fadeMillis), label = "note")
     // The last note stays written while it fades out.
@@ -364,7 +373,7 @@ internal fun ResultLayerPicker(
         val shape = RoundedCornerShape(SceneViewTokens.Radius.full)
         // Space kept for the note at all times: it comes and goes without moving the pill.
         Text(
-            text = lastNote.ifEmpty { stringResource(R.string.scan_result_photo_preview) },
+            text = lastNote.ifEmpty { stringResource(photoNote) },
             style = SceneViewTokens.Type.caption,
             color = chrome.onCard,
             modifier = Modifier
@@ -492,7 +501,7 @@ private const val NOT_READY_ALPHA = 0.38f
 internal const val RESULT_LAYERS_TAG = "result-layers"
 
 /** How far the stage colour comes up at the swap: the room stays faintly seen through it. */
-internal const val VEIL_PEAK = 0.9f
+internal const val VEIL_PEAK = 0.35f
 
 /** Face filters [ResultLayers.shownOf] keeps: the one drawn and the one an orbit back returns to. */
 private const val SHOWN_FILTERS = 2

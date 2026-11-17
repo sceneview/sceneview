@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.ar
 
 import android.content.ComponentName
@@ -88,6 +90,22 @@ class ARCameraPermissionOverlayLayoutTest {
             }
         }
         assertWholeCard(R.string.sceneview_camera_permission_body_settings)
+    }
+
+    @Test
+    fun inAScrollingColumn_bothPermissionActionsAreWhole() {
+        val state = ARCameraPermissionState(ARCameraPermissionRecovery.RequestWithSettings, {}, {})
+        composeRule.setContent {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Box(Modifier.fillMaxWidth()) { ARCameraPermissionOverlay(state) }
+            }
+        }
+        assertWholeCard(R.string.sceneview_camera_permission_body_fallback)
+        val primary = bounds(ARCameraPermissionOverlayTags.ACTION)
+        val secondary = bounds(ARCameraPermissionOverlayTags.REQUEST_ACTION)
+        val card = bounds(ARCameraPermissionOverlayTags.CARD)
+        assertTrue("the secondary action must keep its label and padding", secondary.bottom - secondary.top >= 40.dp)
+        assertTrue("both actions must fit without scrolling", secondary.top >= primary.bottom && secondary.bottom <= card.bottom)
     }
 
     @Test

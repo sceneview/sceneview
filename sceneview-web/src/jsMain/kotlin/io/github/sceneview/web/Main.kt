@@ -1,6 +1,7 @@
 package io.github.sceneview.web
 
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.web.nodes.defaultMainLightConfig
 import kotlinx.browser.document
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.Int8Array
@@ -166,11 +167,7 @@ internal fun createViewerImpl(
                         target(0.0, 0.0, 0.0)
                         fov(fov)
                     }
-                    light {
-                        directional()
-                        intensity(lightIntensity)
-                        direction(0.6f, -1.0f, -0.8f)
-                    }
+                    light(defaultMainLightConfig(lightIntensity))
                     autoRotate(autoRotate)
                     cameraControls(cameraControls)
                 },

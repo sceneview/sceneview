@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.69.5")     // 3D
-implementation("io.github.sceneview:arsceneview:4.69.5")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.69.6")     // 3D
+implementation("io.github.sceneview:arsceneview:4.69.6")    // AR + 3D
 ```
 
 ---
@@ -493,7 +493,7 @@ fun ARDebugScreen() {
 ```kotlin
 bridge.requestSaveAndShare { result ->
     // result.path     -> /Users/dev/.sceneview/recordings/<ts>.rrd
-    // result.viewerUrl -> https://sceneview.github.io/rerun/?url=<…>
+    // result.viewerUrl -> null (local save; host the file before sharing a link)
     // result.events   -> 1234
 }
 ```

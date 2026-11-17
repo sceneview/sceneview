@@ -140,7 +140,7 @@ open class LightNode(
         // packed array and reindexes another live light's handle, so it must bump the engine's
         // light generation or every other LightNode keeps a cache that now points elsewhere
         // (#2991).
-        engine.safeDestroyLight(entity)
+        if (!preserveModelComponents) engine.safeDestroyLight(entity)
         super.destroy()
     }
 }

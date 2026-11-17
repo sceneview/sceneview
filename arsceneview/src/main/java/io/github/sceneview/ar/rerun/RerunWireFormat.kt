@@ -316,13 +316,13 @@ internal object RerunWireFormat {
     //
     // Wire format:
     //   client -> sidecar : {"type":"control","cmd":"save_now"}
-    //   sidecar -> client : {"type":"control","ack":"saved","path":"…","viewerUrl":"…","events":N}
+    //   sidecar -> client : {"type":"control","ack":"saved","path":"…","events":N}
     //                       {"type":"control","ack":"save_unsupported","reason":"…"}
     //
     // The control protocol is intentionally minimal — adding a new command is
     // a paired change in this file and `samples/.../tools/rerun-bridge.py`.
 
-    /** "Save the current recording and reply with the resulting path + URL." */
+    /** "Save the current recording and reply with its local path." */
     fun controlSaveNow(): String =
         """{"type":"control","cmd":"save_now"}""" + "\n"
 
@@ -331,10 +331,8 @@ internal object RerunWireFormat {
      *
      * @param success  `true` iff the sidecar wrote a file successfully.
      * @param path     local path of the .rrd on the sidecar host (dev machine), or `null` on failure.
-     * @param viewerUrl URL into the SceneView Rerun viewer that already encodes the
-     *                  recording's location (often a `file://` link the user must
-     *                  re-host before sharing, on an https host that allows
-     *                  cross-origin requests — useful as a copy-paste hint).
+     * @param viewerUrl optional viewer link to a public HTTPS recording with CORS
+     *                  allowed; `null` when only a local file was saved.
      * @param events   number of events that made it into the file.
      * @param reason   human-readable error reason on failure (e.g. live-mode sidecar).
      */

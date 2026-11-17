@@ -1,6 +1,7 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import XCTest
 import RealityKit
+import simd
 @testable import SceneViewSwift
 
 /// Validates the by-reference light-entity removal invariant introduced by
@@ -23,12 +24,19 @@ import RealityKit
 @MainActor
 final class LightSlotCachingTests: XCTestCase {
 
-    /// Builds the system-default main-slot light exactly as
-    /// `provisionLightSlot(.main, slot: .systemDefault)` does.
+    /// Uses the production factory shared by the 3D and AR default main slots.
     private func makeMainLight() -> Entity {
-        let main = LightNode.directional(color: .white, intensity: 10_000, castsShadow: true)
-        main.entity.look(at: .zero, from: [0, 1, 0], relativeTo: nil)
-        return main.entity
+        LightNode.defaultMainLight().entity
+    }
+
+    func testMainLightDirectionMatchesAndroid() {
+        let main = LightNode.defaultMainLight().entity
+        // Directional lights emit along local -Z; compare the world-space ray.
+        let direction = main.orientation.act(SIMD3<Float>(0, 0, -1))
+        let expected = simd_normalize(SIMD3<Float>(-0.25, -1, -0.25))
+        XCTAssertEqual(direction.x, expected.x, accuracy: 0.000001)
+        XCTAssertEqual(direction.y, expected.y, accuracy: 0.000001)
+        XCTAssertEqual(direction.z, expected.z, accuracy: 0.000001)
     }
 
     /// Builds the system-default fill-slot light exactly as
