@@ -723,6 +723,8 @@ open class ARCameraStream(
         // `session.setCameraTextureNames(cameraTextureIds)` hands ARCore all 6 ids and ARCore
         // rotates through them so the previous frame's texture stays readable while the next one
         // is written. Caching the name would pin one texture and tear. Read it every frame.
+        // Latch a geometry change first: a frame skipped below must not swallow it.
+        pendingDisplayGeometryChange = frame.hasDisplayGeometryChanged() || pendingDisplayGeometryChange
         cameraTexture = cameraTextureForFrame(
             timestamp = frame.timestamp,
             textureName = frame.cameraTextureName,
@@ -730,7 +732,6 @@ open class ARCameraStream(
         ) ?: return
 
         // EIS transforms are valid only while EIS is configured. OFF retains main's 2D path.
-        pendingDisplayGeometryChange = frame.hasDisplayGeometryChanged() || pendingDisplayGeometryChange
         coordinateUploads.acquire()?.let { upload ->
             val mode = session.config.imageStabilizationMode
             transformFrame = frame

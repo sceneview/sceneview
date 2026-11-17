@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
@@ -86,7 +87,8 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
-import io.github.sceneview.ar.camera.cameraFramePresented
+import io.github.sceneview.ar.camera.cameraCoverVisible
+import io.github.sceneview.ar.camera.presentedCameraFrames
 import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
@@ -1640,8 +1642,9 @@ fun ARSceneView(
     // a frame even on a vsync where ARCore returns a duplicate.
     val arFramesOwed = remember { AtomicInteger(1) }
     // A host callback runs before Renderer.beginFrame, which can refuse the frame. Keep a
-    // neutral cover until an image has actually been submitted, including on quick re-entry.
-    var cameraImagePresented by remember(sceneRenderer, cameraStream) { mutableStateOf(false) }
+    // neutral cover until a camera image has actually been submitted, and a couple of presented
+    // frames beyond it (see [presentedCameraFrames]), including on quick re-entry.
+    var presentedCameraFrameCount by remember(sceneRenderer, cameraStream) { mutableIntStateOf(0) }
 
     // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
     // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
@@ -1859,8 +1862,8 @@ fun ARSceneView(
                 // Pay the surface's debt down only on a frame that really reached it —
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
-                cameraImagePresented = cameraFramePresented(
-                    alreadyPresented = cameraImagePresented,
+                presentedCameraFrameCount = presentedCameraFrames(
+                    count = presentedCameraFrameCount,
                     hasCameraImage = cameraStreamRef.get()?.hasCameraFrame == true,
                     submitted = presented,
                 )
@@ -1908,8 +1911,8 @@ fun ARSceneView(
 
         // Compose draws above either surface type. Leave translucent/custom-background views
         // alone; permission and availability overlays below must remain above this cover.
-        if (isOpaque && cameraStream != null && !cameraImagePresented) {
-            Box(Modifier.fillMaxSize().background(Color(0xFF202124)))
+        if (isOpaque && cameraStream != null && cameraCoverVisible(presentedCameraFrameCount)) {
+            Box(Modifier.fillMaxSize().background(CameraStartupCoverColor))
         }
 
         val denial = cameraPermissionState
@@ -1955,6 +1958,12 @@ fun ARSceneView(
 
 /** Time step of the first node-edit coast frame after a start or a resume (one 60 Hz frame). */
 private const val NOMINAL_INERTIA_FRAME_SECONDS = 1f / 60f
+
+/**
+ * `surface-container`, dark-scheme value (`DESIGN.md`), in both themes: the cover stands in for
+ * the camera image, and the coaching scrim and its dark-scheme accents ([CoachColors]) sit on it.
+ */
+private val CameraStartupCoverColor = Color(0xFF1D2026)
 
 /** Largest step one frame advances a node-edit coast by — a stall resumes, it never jumps. */
 private const val MAX_INERTIA_FRAME_SECONDS = 0.05f
