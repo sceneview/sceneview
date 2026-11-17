@@ -444,8 +444,9 @@ class SceneRenderer(
             if (action == MotionEvent.ACTION_DOWN) {
                 interceptDisallowed = disallowParentIntercept
                 if (interceptDisallowed) {
-                    // AndroidView's interop filter then delivers moves in Initial, before a
-                    // Compose parent's draggable/scrollable can consume them in Main (#3898).
+                    // AndroidView's interop filter then consumes the moves it delivers in
+                    // Initial, so a Compose parent's draggable/scrollable cannot take them
+                    // in Main (#3898).
                     touchView.parent?.requestDisallowInterceptTouchEvent(true)
                 }
             }

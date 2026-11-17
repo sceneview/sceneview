@@ -53,7 +53,7 @@ class SceneComposableCompatibilityTest {
                 throw AssertionError("The $label SceneView descriptor was removed", missing)
             }
             assertTrue("The $label shim must be hidden from source", shim.isSynthetic)
-            assertReachesTheRealEntryPoint(shim)
+            assertDescriptorIsCallable(shim)
         }
     }
 
@@ -83,10 +83,12 @@ class SceneComposableCompatibilityTest {
     }
 
     /**
-     * Invokes [method] with null resources: reaching `SceneKt` and failing there on the null
-     * Composer proves the descriptor dispatches to real code (a missing one would not resolve).
+     * Invokes [method] with null resources: it resolves, returns `void` like the composable,
+     * and fails inside `SceneKt` on the null Composer. That proves the descriptor exists and is
+     * callable, not that it delegates to the widest overload.
      */
-    private fun assertReachesTheRealEntryPoint(method: Method) {
+    private fun assertDescriptorIsCallable(method: Method) {
+        assertEquals(Void.TYPE, method.returnType)
         val args = method.parameterTypes.map<Class<*>, Any?> { type ->
             when (type) {
                 java.lang.Boolean.TYPE -> false
