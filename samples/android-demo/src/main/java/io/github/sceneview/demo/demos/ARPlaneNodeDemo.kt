@@ -219,7 +219,9 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 lifecycle = rememberHostLifecycle(),
                 onSessionFailure = {
                     arSessionFailed = true
-                    arSession = null
+                    // Keep arSession: a non-fatal resume failure retries on the same session
+                    // and onSessionCreated does not fire again. rememberDetectedPlanes already
+                    // stops reading a session once it is closed.
                     cameraReady = false
                     isTracking = false
                 },
