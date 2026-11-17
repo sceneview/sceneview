@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -7,6 +8,10 @@ import android.view.ViewTreeObserver
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewConfiguration
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -16,13 +21,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -48,6 +60,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -76,6 +90,7 @@ import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterFrameTimes
 import io.github.sceneview.demo.demos.internal.feel.MatterIdle
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
+import io.github.sceneview.demo.demos.internal.feel.MatterHint
 import io.github.sceneview.demo.demos.internal.feel.MatterIdentity
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
@@ -263,6 +278,13 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     // Wait for the actual lit scene before starting; reduced motion/QA dismiss it permanently.
     val simulation = remember { FeelSimulation(openingEnabled = true) }
+    val hint = remember(context) {
+        val prefs = context.getSharedPreferences(MATTER_PREFS, Context.MODE_PRIVATE)
+        MatterHint(object : MatterHint.Store {
+            override val done get() = prefs.getBoolean(HINT_DONE, false)
+            override fun markDone() = prefs.edit { putBoolean(HINT_DONE, true) }
+        })
+    }
     val idle = remember { MatterIdle() }
     val haptics = remember(touchView) { FeelHapticPlayer(touchView) }
     val touch = remember(simulation, view, haptics, stage, touchView) {
@@ -410,6 +432,8 @@ fun FeelDemo(onBack: () -> Unit) {
         touch.followIndentation()
         simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && motion)
             ?.let(haptics::play)
+        hint.update(stageReady = firstFrame.sceneReady.value && simulation.opening.finished,
+            pressed = simulation.active != null)
         // Only the opening mark needs a mapped shadow. Re-rendering the dense, deformed
         // slab into a shadow atlas doubled its vertex work during every press and orbit.
         val warmingOpening = !firstFrame.sceneReady.value && motion
@@ -586,6 +610,13 @@ fun FeelDemo(onBack: () -> Unit) {
                             }
                         }
                     }
+                    // Not the enclosing Column's scoped overload: this Box overlays the stage.
+                    androidx.compose.animation.AnimatedVisibility(hint.visible,
+                        Modifier.align(Alignment.BottomCenter).padding(SceneViewTokens.Space.md),
+                        enter = if (motion) fadeIn(SceneViewTokens.Motion.fade()) else EnterTransition.None,
+                        exit = if (motion) fadeOut(SceneViewTokens.Motion.fade()) else ExitTransition.None) {
+                        MatterHintPill()
+                    }
                     // Apply after SceneView's defaults. No mirror, SSAO, bloom or vignette passes.
                     LaunchedEffect(view) {
                         view.fogOptions = view.fogOptions.apply { enabled = false }
@@ -608,6 +639,27 @@ fun FeelDemo(onBack: () -> Unit) {
                     readout.material == switch.selected && readout.showDisplacement, motion, choose)
             }
         }
+    }
+}
+
+private const val MATTER_PREFS = "matter"
+private const val HINT_DONE = "hint_done"
+
+/**
+ * One line, once per install. A plain Box, not a Surface: a non-clickable M3 Surface still
+ * consumes pointer events, and a fling may start on the floor under this pill.
+ */
+@Composable
+private fun MatterHintPill() {
+    val colors = MaterialTheme.colorScheme
+    Row(Modifier.background(colors.surfaceContainerHigh, CircleShape)
+        .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Filled.TouchApp, contentDescription = null, tint = colors.primary,
+            modifier = Modifier.size(18.dp))
+        Text(stringResource(R.string.demo_feel_instruction), style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurface)
     }
 }
 
