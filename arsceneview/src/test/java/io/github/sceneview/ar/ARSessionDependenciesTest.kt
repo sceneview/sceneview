@@ -8,13 +8,18 @@ import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.ar.core.Anchor
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.Camera
+import com.google.ar.core.Earth
 import com.google.ar.core.Frame
+import com.google.ar.core.GeospatialPose
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
@@ -23,7 +28,9 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.ar.arcore.ARSession
+import io.github.sceneview.ar.arcore.rememberCameraGeospatialPose
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
+import io.github.sceneview.ar.arcore.rememberEarthState
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.node.AugmentedFaceNode
 import io.github.sceneview.ar.node.ReticleNode
@@ -72,6 +79,7 @@ import java.nio.ShortBuffer
         ARSessionDependenciesTest.NativeAnchor::class,
         ARSessionDependenciesTest.NativePlane::class,
         ARSessionDependenciesTest.NativeAugmentedFace::class,
+        ARSessionDependenciesTest.NativeEarth::class,
         ARSessionDependenciesTest.NativeTrackable::class,
         SessionDependencyShadows.EngineHandles::class,
         SessionDependencyShadows.EntityHandles::class,
@@ -97,6 +105,9 @@ class ARSessionDependenciesTest {
         reportedPlanes.clear()
         nativeTrackableReads = 0
         nativeFaceReads = 0
+        reportedEarths.clear()
+        cameraPoses.clear()
+        nativeEarthReads = 0
         updateFailure = null
         nextFrame = null
         val app = RuntimeEnvironment.getApplication()
@@ -408,6 +419,62 @@ class ARSessionDependenciesTest {
         rule.apply(body, Description.createTestDescription(javaClass, "closed plane discovery")).evaluate()
     }
 
+    @Test
+    fun `geospatial state clears and stops native reads after a fatal close`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        // Their real constructors run, so Robolectric attaches the shadows below.
+        val earth = sessionObject(Earth::class.java, session)
+        val cameraPose = sessionObject(GeospatialPose::class.java, session)
+        reportedEarths[session] = earth
+        cameraPoses[earth] = cameraPose
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).addActivityIfNotPresent(
+            ComponentName(app.packageName, ComponentActivity::class.java.name)
+        )
+        val rule = createComposeRule()
+        var earthState: State<Earth.EarthState?>? = null
+        var pose: State<GeospatialPose?>? = null
+        // Composed only after the close: the guard before the first frame must hold too.
+        var composeLate by mutableStateOf(false)
+        var lateEarthState: State<Earth.EarthState?>? = null
+        var latePose: State<GeospatialPose?>? = null
+        val body = object : Statement() {
+            override fun evaluate() {
+                rule.mainClock.autoAdvance = false
+                rule.setContent {
+                    earthState = rememberEarthState(session)
+                    pose = rememberCameraGeospatialPose(session)
+                    if (composeLate) {
+                        lateEarthState = rememberEarthState(session)
+                        latePose = rememberCameraGeospatialPose(session)
+                    }
+                }
+                rule.mainClock.advanceTimeByFrame()
+                var readsBeforeClose = 0
+                rule.runOnIdle {
+                    assertEquals(Earth.EarthState.ENABLED, earthState!!.value)
+                    assertSame(cameraPose, pose!!.value)
+                    assertTrue(nativeEarthReads > 0)
+                    readsBeforeClose = nativeEarthReads
+                    updateFailure = FatalException("EGL context creation failed")
+                    assertNull(arCore.updateSessionOrNull())
+                    assertTrue(session.isClosed)
+                    composeLate = true
+                }
+                repeat(3) { rule.mainClock.advanceTimeByFrame() }
+                rule.runOnIdle {
+                    assertNull(earthState!!.value)
+                    assertNull(pose!!.value)
+                    assertNull(lateEarthState!!.value)
+                    assertNull(latePose!!.value)
+                    assertEquals(readsBeforeClose, nativeEarthReads)
+                }
+            }
+        }
+        rule.apply(body, Description.createTestDescription(javaClass, "closed geospatial state")).evaluate()
+    }
+
     private fun anchorNode(session: ARSession, automatic: Boolean = false): AnchorNode {
         val anchor = nativeObject(Anchor::class.java, session)
         val node = if (automatic) {
@@ -427,6 +494,13 @@ class ARSessionDependenciesTest {
             timestamps[it] = timestamp
             cameras[it] = nativeObject(Camera::class.java, session)
         }
+
+    /** An ARCore wrapper whose only constructor is `(nativeHandle, session)`. */
+    private fun <T : Any> sessionObject(type: Class<T>, session: ARSession): T =
+        type.getDeclaredConstructor(java.lang.Long.TYPE, Session::class.java)
+            .apply { isAccessible = true }
+            .newInstance(nextNativeHandle++, session)
+            .also { owners[it] = session }
 
     private fun <T : Any> nativeObject(type: Class<T>, session: ARSession): T =
         type.getDeclaredConstructor().apply { isAccessible = true }.newInstance().also {
@@ -456,6 +530,11 @@ class ARSessionDependenciesTest {
         @Implementation protected fun pause() = Unit
         @Implementation protected fun close() = Unit
         @Implementation protected fun getRecordingStatus(): RecordingStatus = RecordingStatus.NONE
+        @Implementation protected fun getEarth(): Earth? {
+            check(!(real as ARSession).isClosed) { "Native getEarth after session close" }
+            nativeEarthReads++
+            return reportedEarths[real]
+        }
     }
 
     @Implements(Frame::class)
@@ -492,9 +571,27 @@ class ARSessionDependenciesTest {
     @Implements(className = "com.google.ar.core.TrackableBase", isInAndroidSdk = false)
     open class NativeTrackable {
         @RealObject private lateinit var real: Any
-        @Implementation protected fun getTrackingState(): TrackingState = open(real) {
+        @Implementation protected open fun getTrackingState(): TrackingState = open(real) {
             if (real is AugmentedFace) nativeFaceReads++
             TrackingState.TRACKING
+        }
+    }
+
+    @Implements(Earth::class)
+    class NativeEarth : NativeTrackable() {
+        @RealObject private lateinit var real: Earth
+        // Earth declares its own getTrackingState(), so TrackableBase's shadow never sees it.
+        @Implementation override fun getTrackingState(): TrackingState = open(real) {
+            nativeEarthReads++
+            TrackingState.TRACKING
+        }
+        @Implementation protected fun getEarthState(): Earth.EarthState = open(real) {
+            nativeEarthReads++
+            Earth.EarthState.ENABLED
+        }
+        @Implementation protected fun getCameraGeospatialPose(): GeospatialPose = open(real) {
+            nativeEarthReads++
+            cameraPoses.getValue(real)
         }
     }
 
@@ -532,6 +629,9 @@ class ARSessionDependenciesTest {
         val reportedPlanes = IdentityHashMap<Session, List<Plane>>()
         var nativeTrackableReads = 0
         var nativeFaceReads = 0
+        val reportedEarths = IdentityHashMap<Session, Earth>()
+        val cameraPoses = IdentityHashMap<Earth, GeospatialPose>()
+        var nativeEarthReads = 0
 
         fun <T> open(value: Any, block: () -> T): T {
             check(!owners.getValue(value).isClosed) { "Native access after session close: ${value.javaClass.simpleName}" }
