@@ -20,9 +20,12 @@ Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `A
 [3D and AR library, per platform](https://sceneview.github.io/docs/3d-ar-library/).
 
 **Used in production.** More than 1,300 stars on GitHub, and over 500 public repositories declare
-SceneView as a dependency. It ships in Medal, IKEA, Lenskart and Safie on Google Play, is declared by the
-open-source apps Bitkey (Block) and Vocable (WillowTree), and is a dependency of the GeneXus
-Augmented Reality module and the TruVideo camera SDK. The Niantic Spatial SDK samples use it for AR.
+SceneView as a dependency. It ships on Google Play in the Volkswagen, Audi, Porsche and CUPRA
+apps, Philips Hue, Medal and IKEA, is declared by the open-source apps Bitkey (Block) and Vocable
+(WillowTree), and is a dependency of the GeneXus Augmented Reality module and the TruVideo camera
+SDK. The Niantic Spatial SDK samples use it for AR. Lenskart ships
+[Sceneform Maintained](https://github.com/sceneview/sceneform-android), SceneView's predecessor, and Safie presented
+SceneView in [a public talk](https://speakerdeck.com/jeromecha/mobile-dev-japan-number-3-safie-viewer-android-and-sceneview).
 
 **AI-first** means one thing here: an assistant that reads [`llms.txt`](./llms.txt) or
 [the MCP server](./mcp/) writes SceneView code that works on the first try. When it doesn't, the
@@ -570,6 +573,17 @@ sceneview-core (Kotlin Multiplatform)
 | `samples/react-native-demo` | React Native | See its README |
 
 ## Used in
+
+In Google Play apps (checked in their published builds: the Volkswagen Group and Philips Hue apps on
+November 17, 2026, Medal and IKEA on November 9, 2026):
+
+- **[Volkswagen](https://www.volkswagen.com/)** — [Volkswagen](https://play.google.com/store/apps/details?id=com.volkswagen.weconnect).
+- **[Audi](https://www.audi.com/)** — [myAudi](https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant).
+- **[Porsche](https://www.porsche.com/)** — [My Porsche](https://play.google.com/store/apps/details?id=de.porsche.one).
+- **[CUPRA](https://www.cupra.com/)** — [My CUPRA](https://play.google.com/store/apps/details?id=com.cupra.mycupra).
+- **[Philips Hue](https://www.philips-hue.com/)** — [Philips Hue](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2): ships SceneView's AR module (`ARSceneView`).
+- **[Medal](https://medal.tv/)** — [Medal](https://play.google.com/store/apps/details?id=tv.medal.recorder).
+- **[IKEA](https://www.ikea.com/)** — [IKEA](https://play.google.com/store/apps/details?id=com.ingka.ikea.app).
 
 Declared in their public source code or published build files (checked November 17, 2026):
 
