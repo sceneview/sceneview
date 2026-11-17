@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.filament.Box
 import com.google.android.filament.View
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
@@ -167,7 +168,6 @@ fun NodeEditingOverlay(
             modifier = Modifier
                 .matchParentSize()
                 .onSizeChanged { overlaySize = Size(it.width.toFloat(), it.height.toFloat()) }
-                .clearAndSetSemantics { }
         ) {
             val base = anchors.baseInCanvas(size) ?: return@Canvas
             val rx = anchors.radiusXInCanvas(size)
@@ -322,7 +322,7 @@ fun NodeEditingOverlay(
         val badgeBase = anchors.baseInCanvas(overlaySize)
         val badgeTop = anchors.topInCanvas(overlaySize)
 
-        if (badgeBase != null && overlaySize != Size.Zero) {
+        if (showRotation && badgeBase != null && overlaySize != Size.Zero) {
             val ry = anchors.radiusYInCanvas(overlaySize)
             RotationBadge(
                 state = state,
@@ -441,6 +441,7 @@ internal class NodeScreenAnchors {
     private var radiusX by mutableFloatStateOf(0f)
     private var radiusY by mutableFloatStateOf(0f)
     private var viewportSize by mutableStateOf(Size.Zero)
+    private val boundsScratch = ContentBoundsScratch()
 
     fun update(node: Node, view: View) {
         if (node.isDestroyed || (node is ModelNode && node.isModelDestroyed)) {
@@ -451,7 +452,7 @@ internal class NodeScreenAnchors {
             top = null
             return
         }
-        val (center, halfExtent) = node.localBounds()
+        val (center, halfExtent) = node.localBounds(boundsScratch)
         val transform = node.worldTransform
         fun world(p: Float3) = (transform * Float4(p, 1f)).xyz
 
@@ -511,55 +512,129 @@ internal class NodeScreenAnchors {
 }
 
 /** Local-space content bounds, falling back only when the entire subtree is empty. */
-private fun Node.localBounds(): Pair<Float3, Float3> =
-    contentBounds() ?: (Float3(0f) to Float3(DEFAULT_HALF_EXTENT))
+private fun Node.localBounds(): Pair<Float3, Float3> = localBounds(ContentBoundsScratch())
 
-/** Content corners are transformed directly into this node's local space before union. */
-private fun Node.contentBounds(): Pair<Float3, Float3>? {
-    if (isDestroyed || (this is ModelNode && isModelDestroyed)) return null
-    var minimum = Float3(Float.POSITIVE_INFINITY)
-    var maximum = Float3(Float.NEGATIVE_INFINITY)
-    var hasContent = false
+/**
+ * Runs on every displayed frame, at rest too, so it allocates as little as possible.
+ *
+ * A node with its own non-empty bounds (the common single [ModelNode]) returns them as is:
+ * one box read, no corner loop, no matrix. Only a pivot without bounds of its own walks its
+ * subtree, through the overlay-held [scratch].
+ */
+private fun Node.localBounds(scratch: ContentBoundsScratch): Pair<Float3, Float3> {
+    if (isDestroyed || (this is ModelNode && isModelDestroyed)) return defaultBounds()
+    ownBoundingBox()?.takeIf { it.isNonEmpty() }?.let { box ->
+        val c = box.center
+        val e = box.halfExtent
+        return Float3(c[0], c[1], c[2]) to Float3(e[0], e[1], e[2])
+    }
+    return scratch.contentBounds(this) ?: defaultBounds()
+}
 
-    fun collect(node: Node, toPivot: Transform) {
-        val ownBounds = when (node) {
-            is ModelNode -> node.center to node.halfExtent
-            is RenderableComponent -> node.axisAlignedBoundingBox.let {
-                Float3(it.center[0], it.center[1], it.center[2]) to
-                    Float3(it.halfExtent[0], it.halfExtent[1], it.halfExtent[2])
-            }
-            else -> null
-        }
-        if (ownBounds != null) {
-            val (center, extent) = ownBounds
-            if (extent.x > 0f || extent.y > 0f || extent.z > 0f) {
-                for (corner in 0 until 8) {
-                    val offset = Float3(
-                        if ((corner and 1) == 0) -extent.x else extent.x,
-                        if ((corner and 2) == 0) -extent.y else extent.y,
-                        if ((corner and 4) == 0) -extent.z else extent.z,
-                    )
-                    val point = (toPivot * Float4(center + offset, 1f)).xyz
-                    minimum = Float3(
-                        minOf(minimum.x, point.x), minOf(minimum.y, point.y), minOf(minimum.z, point.z),
-                    )
-                    maximum = Float3(
-                        maxOf(maximum.x, point.x), maxOf(maximum.y, point.y), maxOf(maximum.z, point.z),
-                    )
-                }
-                hasContent = true
-                return
-            }
-        }
-        for (child in node.childNodes) {
+private fun defaultBounds() = Float3(0f) to Float3(DEFAULT_HALF_EXTENT)
+
+/** The node's own local-space box, read once, or `null` for a node that draws nothing itself. */
+private fun Node.ownBoundingBox(): Box? = when (this) {
+    is ModelNode -> boundingBox
+    is RenderableComponent -> axisAlignedBoundingBox
+    else -> null
+}
+
+private fun Box.isNonEmpty(): Boolean = halfExtent.let { it[0] > 0f || it[1] > 0f || it[2] > 0f }
+
+/**
+ * Union of a pivot's descendant content boxes in the pivot's local space.
+ *
+ * Box corners are transformed straight into pivot space through the full transform chain:
+ * reboxing at intermediate groups would inflate the result even when their rotations cancel
+ * out. The union lives in six floats and the chain in one matrix per depth level, both kept
+ * across frames by the overlay: beyond each node's own box read, the walk allocates no
+ * vector or matrix per corner, per box or per level.
+ * Hidden descendants (e.g. the inactive variants under one pivot) are skipped.
+ */
+internal class ContentBoundsScratch {
+    private var minX = 0f
+    private var minY = 0f
+    private var minZ = 0f
+    private var maxX = 0f
+    private var maxY = 0f
+    private var maxZ = 0f
+    private var hasContent = false
+    private val chain = ArrayList<Transform>()
+
+    fun contentBounds(pivot: Node): Pair<Float3, Float3>? {
+        minX = Float.POSITIVE_INFINITY
+        minY = Float.POSITIVE_INFINITY
+        minZ = Float.POSITIVE_INFINITY
+        maxX = Float.NEGATIVE_INFINITY
+        maxY = Float.NEGATIVE_INFINITY
+        maxZ = Float.NEGATIVE_INFINITY
+        hasContent = false
+        // `isVisible` folds in the ancestors: under a hidden pivot every child reads hidden,
+        // so only filter when the pivot itself is shown.
+        collectChildren(pivot, toPivot = null, depth = 0, skipHidden = pivot.isVisible)
+        if (!hasContent) return null
+        return Float3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f) to
+            Float3((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, (maxZ - minZ) * 0.5f)
+    }
+
+    private fun collectChildren(parent: Node, toPivot: Transform?, depth: Int, skipHidden: Boolean) {
+        for (child in parent.childNodes) {
             if (child.isDestroyed || (child is ModelNode && child.isModelDestroyed)) continue
-            // Keep the full transform chain. Reboxing at intermediate groups inflates
-            // the final AABB even when their rotations cancel each other out.
-            collect(child, toPivot * child.transform)
+            if (skipHidden && !child.isVisible) continue
+            // `child.transform` is the node's cached matrix: read it, never write it.
+            val childToPivot = toPivot?.let { multiplyInto(slot(depth), it, child.transform) }
+                ?: child.transform
+            val box = child.ownBoundingBox()
+            if (box != null && box.isNonEmpty()) {
+                // A node's own bounds take precedence over its children's.
+                addBox(box, childToPivot)
+            } else {
+                collectChildren(child, childToPivot, depth + 1, skipHidden)
+            }
         }
     }
-    collect(this, Transform())
-    return if (hasContent) (minimum + maximum) * 0.5f to (maximum - minimum) * 0.5f else null
+
+    private fun slot(depth: Int): Transform {
+        while (chain.size <= depth) chain += Transform()
+        return chain[depth]
+    }
+
+    private fun addBox(box: Box, m: Transform) {
+        val c = box.center
+        val e = box.halfExtent
+        for (corner in 0 until 8) {
+            val x = if ((corner and 1) == 0) c[0] - e[0] else c[0] + e[0]
+            val y = if ((corner and 2) == 0) c[1] - e[1] else c[1] + e[1]
+            val z = if ((corner and 4) == 0) c[2] - e[2] else c[2] + e[2]
+            val px = m.x.x * x + m.y.x * y + m.z.x * z + m.w.x
+            val py = m.x.y * x + m.y.y * y + m.z.y * z + m.w.y
+            val pz = m.x.z * x + m.y.z * y + m.z.z * z + m.w.z
+            if (px < minX) minX = px
+            if (py < minY) minY = py
+            if (pz < minZ) minZ = pz
+            if (px > maxX) maxX = px
+            if (py > maxY) maxY = py
+            if (pz > maxZ) maxZ = pz
+        }
+        hasContent = true
+    }
+
+    /** `out = a × b` for column-major matrices, in place; [out] must alias neither input. */
+    private fun multiplyInto(out: Transform, a: Transform, b: Transform): Transform {
+        multiplyColumn(out.x, a, b.x)
+        multiplyColumn(out.y, a, b.y)
+        multiplyColumn(out.z, a, b.z)
+        multiplyColumn(out.w, a, b.w)
+        return out
+    }
+
+    private fun multiplyColumn(out: Float4, a: Transform, v: Float4) {
+        out.x = a.x.x * v.x + a.y.x * v.y + a.z.x * v.z + a.w.x * v.w
+        out.y = a.x.y * v.x + a.y.y * v.y + a.z.y * v.z + a.w.y * v.w
+        out.z = a.x.z * v.x + a.y.z * v.y + a.z.z * v.z + a.w.z * v.w
+        out.w = a.x.w * v.x + a.y.w * v.y + a.z.w * v.z + a.w.w * v.w
+    }
 }
 
 /**

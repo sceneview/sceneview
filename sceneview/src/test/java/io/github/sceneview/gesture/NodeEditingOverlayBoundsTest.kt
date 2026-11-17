@@ -8,7 +8,9 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
+import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.node.FilamentWithoutJni
+import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -129,4 +131,71 @@ class NodeEditingOverlayBoundsTest {
         assertVector(Float3(1f, 2f, 3f), center)
         assertVector(Float3(0.1f, 0.2f, 0.3f), halfExtent)
     }
+
+    @Test
+    fun `a single model node gives exactly its own bounds`() {
+        val model = modelNode(minMax = floatArrayOf(-0.4f, 0f, -0.3f, 0.2f, 1.6f, 0.5f))
+        model.addChildNode(content(Float3(0f), Float3(10f)))
+
+        val (center, halfExtent) = bounds(model)
+
+        // Exact, not within a tolerance: the box is returned as read, never re-derived.
+        assertEquals(model.center, center)
+        assertEquals(model.halfExtent, halfExtent)
+        assertVector(Float3(-0.1f, 0.8f, 0.1f), center)
+        assertVector(Float3(0.3f, 0.8f, 0.4f), halfExtent)
+    }
+
+    @Test
+    fun `a model node under a bare pivot contributes its bounds`() {
+        val pivot = Node(engine)
+        pivot.addChildNode(
+            modelNode(minMax = floatArrayOf(-0.5f, 0f, -0.5f, 0.5f, 2f, 0.5f)).apply {
+                position = Position(0f, 1f, 0f)
+            },
+        )
+
+        val (center, halfExtent) = bounds(pivot)
+
+        assertVector(Float3(0f, 2f, 0f), center)
+        assertVector(Float3(0.5f, 1f, 0.5f), halfExtent)
+    }
+
+    @Test
+    fun `hidden descendants do not widen the bounds`() {
+        val pivot = Node(engine)
+        // A variant switcher: one shown variant, a hidden one, and a hidden nested group.
+        pivot.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
+        pivot.addChildNode(content(Float3(0f, 5f, 0f), Float3(5f)).apply { isVisible = false })
+        pivot.addChildNode(
+            Node(engine).apply {
+                transform = Transform()
+                isVisible = false
+                addChildNode(content(Float3(0f, -3f, 0f), Float3(3f)))
+            },
+        )
+
+        val (center, halfExtent) = bounds(pivot)
+
+        assertVector(Float3(0f, 0.5f, 0f), center)
+        assertVector(Float3(0.2f, 0.5f, 0.2f), halfExtent)
+    }
+
+    @Test
+    fun `a pivot whose only content is hidden keeps the fallback`() {
+        val pivot = Node(engine)
+        pivot.addChildNode(content(Float3(0f, 5f, 0f), Float3(5f)).apply { isVisible = false })
+
+        val (center, halfExtent) = bounds(pivot)
+
+        assertVector(Float3(0f), center)
+        assertVector(Float3(0.25f), halfExtent)
+    }
+
+    /** A real [ModelNode] whose rest-pose box is [minMax] (`[minX, minY, minZ, maxX, maxY, maxZ]`). */
+    private fun modelNode(minMax: FloatArray): ModelNode =
+        ModelNode(FilamentWithoutJni.modelInstance(engine)).apply {
+            RestPoseBounds.record(model, minMax)
+            transform = Transform()
+        }
 }
