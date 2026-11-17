@@ -1,6 +1,6 @@
 {
   "$schema": "https://fundingjson.org/schema/v1.1.0.json",
-  "version": "v1.0.0",
+  "version": "v1.1.0",
   "entity": {
     "type": "group",
     "role": "maintainer",
@@ -15,7 +15,7 @@
     {
       "guid": "sceneview",
       "name": "SceneView",
-      "description": "Open source 3D and AR SDK for Android (Jetpack Compose, on Filament and ARCore), Apple platforms (SwiftUI, on RealityKit and ARKit) and the web (Kotlin/JS on Filament.js), with Flutter and React Native bridges and an MCP server that lets AI coding assistants produce working 3D and AR code. Apache-2.0, published on Maven Central, Swift Package Manager, npm and pub.dev. SDKs published by commercial vendors on Maven Central and npm declare SceneView as a dependency.",
+      "description": "Open source 3D and AR SDK for Android: Jetpack Compose components on Google Filament and ARCore, a Kotlin Multiplatform core (math, collision, geometry, physics) and a web viewer on Filament.js, plus an MCP server that lets AI coding assistants produce working 3D and AR code. Started in 2021 as the community successor of Google's discontinued Sceneform. Apache-2.0, published on Maven Central and npm. More than 1,300 stars on GitHub, and over 500 public repositories declare it as a dependency, among them the Meshtastic Android app, Block's open-source Bitkey wallet, WillowTree's Vocable AAC and the Niantic Spatial SDK samples; SDKs published by commercial vendors on Maven Central depend on it.",
       "webpageUrl": {
         "url": "https://sceneview.github.io"
       },
@@ -31,7 +31,6 @@
         "3d-modeling",
         "graphics",
         "android",
-        "ios",
         "mobile",
         "developer-tools",
         "virtual-reality",
@@ -60,7 +59,7 @@
         "guid": "maintenance-year",
         "status": "active",
         "name": "One year of maintenance and security hardening",
-        "description": "Covers one year of what the project consumes: release, build and device-test infrastructure; test devices for ARCore and ARKit; maintenance tooling; and a security pass on the code that parses untrusted 3D files (glTF/GLB, USDZ, 3MF) plus signed, provenance-attested releases on Maven Central, npm and Swift Package Manager.",
+        "description": "Covers one year of what the project consumes: release, build and device-test infrastructure; Android test devices across ARCore generations; maintenance tooling; a security pass on the code that parses untrusted 3D files (glTF/GLB, OBJ, STL, PLY, 3MF) before they reach native rendering code inside the apps that embed the SDK; and signed, provenance-attested releases on Maven Central and npm.",
         "amount": 10000,
         "currency": "USD",
         "frequency": "yearly",
@@ -184,9 +183,9 @@
       {
         "year": 2026,
         "income": 300,
-        "expenses": 806.33,
+        "expenses": 1047.02,
         "currency": "USD",
-        "description": "January to 8 October 2026. No corporate sponsor to date."
+        "description": "January to 17 November 2026. No corporate sponsor to date."
       }
     ]
   }

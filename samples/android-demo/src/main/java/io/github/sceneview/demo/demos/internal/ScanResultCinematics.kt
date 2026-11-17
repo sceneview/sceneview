@@ -144,8 +144,8 @@ internal class ScanResultCinematics(
  * surfels it opened on or the model it did. A stage that starts over gets its own — a kept scan's
  * points are read beside its model, and when the model is on screen first the result is staged
  * again on the points. [ScanResultCinematics.frameDrawn] lets a view be seen once: kept across the
- * two stages it never said so again, and the second stayed behind its veil for good — with the
- * phone's animations off, when nothing else made a new one (#5098).
+ * two stages it never said so again, and the second stayed behind its veil for good (#5098;
+ * 2026-11-15, five reopenings in six on a Pixel 4a).
  */
 @Composable
 internal fun rememberResultCinematics(stage: Any?, orbit: ArDebugOrbitCamera, reveals: Boolean): ScanResultCinematics =

@@ -397,17 +397,13 @@ jobs:
   # repository + `release.yml` as its trusted publisher. No secret, no expiry,
   # no 2FA prompt, provenance attached automatically.
   #
-  # NODE_AUTH_TOKEN stays wired ON PURPOSE: npm tries OIDC first and, when the
-  # exchange is refused (trusted publisher not configured yet), silently falls
-  # back to the token (lib/utils/oidc.js returns undefined on every failure).
-  # So this change is safe to merge before or after the npmjs.com side is set
-  # up — it never makes a publish that works today stop working.
-  #
-  # That fallback is NOT a second way to publish, though. Measured on
-  # 2026-10-08 for sceneview-mcp: NPM_TOKEN alone is still refused with EOTP
-  # ("npm tokens that bypass 2FA are being restricted for account changes and
-  # direct publishing"). A publish succeeds through OIDC or not at all, and
-  # OIDC is only granted to this file.
+  # No npm token is used anywhere any more. Every publish since the trusted
+  # publishers were set up went through OIDC (npm shows `GitHub Actions` as the
+  # publisher, with SLSA provenance, for sceneview-web 4.69.5, sceneview-mcp
+  # 4.2.0 and @sceneview-sdk/react-native 4.68.0), and the NPM_TOKEN fallback
+  # never worked anyway: measured on 2026-10-08, a token alone is refused with
+  # EOTP. The secret expires on 2026-11-24 and is not renewed. A publish
+  # succeeds through OIDC or not at all, and OIDC is only granted to this file.
 
   # ── 3. Publish MCP to npm ──────────────────────────────────────────────────
   # REPUBLISHING THE MCP BETWEEN SDK RELEASES
@@ -500,8 +496,6 @@ jobs:
         if: steps.check-mcp.outputs.skip != 'true'
         working-directory: mcp
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # Post-publish registry verification (#3021). The version verified is
       # the one `check-mcp` read out of mcp/package.json — sceneview-mcp is on
@@ -526,11 +520,6 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
 
       - name: Check if version already published
         id: check-web
@@ -573,19 +562,18 @@ jobs:
 
       - name: Build sceneview-web JS library
         if: steps.check-web.outputs.skip != 'true'
-        # NODE_AUTH_TOKEN is needed by the BUILD step, not just the publish one.
-        # `setup-node` with `registry-url` writes an .npmrc containing
-        # `_authToken=${NODE_AUTH_TOKEN}`; the Kotlin/JS `:kotlinNpmInstall`
-        # task shells out to yarn, yarn expands that .npmrc, and when the var
-        # is unset it aborts with `Failed to replace env in config` instead of
-        # ignoring it. This is the only job that combines `registry-url` with
-        # a Gradle task, which is why the sibling npm jobs never hit it.
-        # Regression surfaced by the setup-node v6 -> v7 bump (#2787): it broke
-        # the v4.25.0 release *after* Maven Central had already published, and
-        # is invisible to PR CI because no PR job publishes. See #2787.
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Runs BEFORE setup-node on purpose (#2787): setup-node's `registry-url`
+        # writes an .npmrc with `_authToken=${NODE_AUTH_TOKEN}`, and the Kotlin/JS
+        # `:kotlinNpmInstall` task shells out to yarn, which aborts on that line
+        # when the variable is unset. Kotlin/JS downloads its own Node and yarn,
+        # so the build needs neither setup-node nor any npm token.
         run: ./gradlew :sceneview-web:jsBrowserProductionWebpack
+
+      - uses: actions/setup-node@v7
+        if: steps.check-web.outputs.skip != 'true'
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
 
       - name: Upgrade npm for Trusted Publishing (OIDC needs npm >= 11.5.1)
         if: steps.check-web.outputs.skip != 'true'
@@ -596,7 +584,10 @@ jobs:
       - name: Prepare and publish npm package
         if: steps.check-web.outputs.skip != 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Defined but empty: setup-node v7 no longer exports a placeholder, and
+          # the .npmrc it wrote references this variable. npm publishes through
+          # OIDC (id-token: write), never with a token.
+          NODE_AUTH_TOKEN: ""
         run: |
           VERSION="${{ steps.check-web.outputs.version }}"
           BUILD_DIR="sceneview-web/build/kotlin-webpack/js/productionExecutable"

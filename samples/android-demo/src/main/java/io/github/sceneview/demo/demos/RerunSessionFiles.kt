@@ -94,13 +94,16 @@ internal object RerunCaptureBuilder {
         denseVoxelM: Float = DenseFusion.VOXEL_M,
         denseMs: Long = 0L,
         camera: String? = null,
+        bakePlanes: Boolean = true,
     ): RerunCapturePack = withContext(Dispatchers.Default) {
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         val whole = trace.frameAt(trace.duration)
         val reads = ArrayList<ScanPhotoPolicy.BakeRead>()
 
         val viewpoint = centroid(whole.trail)
-        val planes = trace.lastPlanes()
+        // Dense results texture their mesh from the original photos. Plane baking is
+        // only needed for the sparse replay; keep the measured polygons in the trace.
+        val planes = if (bakePlanes) trace.lastPlanes() else emptyList()
         // What stands in front of a plane hides it from a photo: its own dense cloud and the other planes.
         val bakeStart = System.nanoTime()
         val occlusion = BakeOcclusion.of(dense, planes)

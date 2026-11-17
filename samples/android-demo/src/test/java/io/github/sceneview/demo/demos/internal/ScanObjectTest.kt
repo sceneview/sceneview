@@ -424,6 +424,118 @@ class ScanObjectTest {
         assertSame(ScanPick.Empty, objects.pick(EYE, toward(Vec3(0.12f, 0.9f, -2.5f))))
     }
 
+    // ── All of what a look landed on (ScanSubject) ────────────────────────────
+
+    @Test
+    fun `a chair the scan saw the wheels, the seat and the back of is whole from the floor to its top`() {
+        val scene = Scene()
+        scene.floor(HALF_ROOM, HALF_ROOM, 0f)
+        // Five wheels, a seat held over them by a column no scan sees, a back held over the seat by a bar.
+        for (k in 0 until 5) {
+            val angle = 2.0 * PI * k / 5
+            scene.box(0.2f * cos(angle).toFloat(), -1f + 0.2f * sin(angle).toFloat(), 0f, 0.06f, 0.06f, 0.08f)
+        }
+        scene.box(0f, -1f, yawDeg = 0f, length = 0.5f, depth = 0.5f, height = 0.1f, y = 0.42f)
+        scene.rect(Vec3(-0.25f, 0.42f, -1.25f), Vec3(0.5f, 0f, 0f), Vec3(0f, 0f, 0.5f), Vec3(0f, -1f, 0f))
+        scene.rect(Vec3(-0.25f, 0.62f, -1.25f), Vec3(0.5f, 0f, 0f), Vec3(0f, 0.38f, 0f), Vec3(0f, 0f, 1f))
+        val objects = ScanObjects.of(scene.cloud())
+
+        // Under a finger the seat is the seat: it hangs where the scan saw it.
+        val seat = objects.pick(EYE, toward(Vec3(0f, 0.52f, -1f))) as ScanPick.Found
+        assertEquals(0.42f, seat.box.baseY, VOXEL)
+        assertEquals(0.1f, seat.box.height, VOXEL)
+
+        val chair = objects.whole(seat)
+        assertEquals("it stands on the floor", 0f, chair.baseY, VOXEL)
+        assertEquals("up to the top of its back", 1f, chair.height, VOXEL)
+        assertEquals(seat.box.length, chair.length, 0f)
+        assertEquals(seat.box.depth, chair.depth, 0f)
+        assertEquals(seat.box.centerX, chair.centerX, 0f)
+        assertEquals(seat.box.centerZ, chair.centerZ, 0f)
+    }
+
+    @Test
+    fun `what hangs with nothing of an object under it is whole where it hangs`() {
+        val scene = Scene()
+        scene.floor(HALF_ROOM, HALF_ROOM, 0f)
+        scene.box(0f, -1f, yawDeg = 0f, length = 0.6f, depth = 0.4f, height = 0.3f, y = 1.2f)
+        scene.rect(Vec3(-0.3f, 1.2f, -1.2f), Vec3(0.6f, 0f, 0f), Vec3(0f, 0f, 0.4f), Vec3(0f, -1f, 0f))
+        val objects = ScanObjects.of(scene.cloud())
+        val whole = objects.whole(objects.pick(EYE, toward(Vec3(0f, 1.35f, -0.8f))) as ScanPick.Found)
+        assertEquals(1.2f, whole.baseY, VOXEL)
+        assertEquals(0.3f, whole.height, VOXEL)
+    }
+
+    @Test
+    fun `a table whose legs the scan did not hold stands on the floor, not where its top hangs`() {
+        val scene = Scene()
+        scene.floor(HALF_ROOM, HALF_ROOM, 0f)
+        // A dining table's top, 4 cm thick at 0.75 m, its underside seen; nothing of its legs.
+        scene.box(0f, -1f, yawDeg = 0f, length = 1.2f, depth = 0.8f, height = 0.04f, y = 0.71f)
+        scene.rect(Vec3(-0.6f, 0.71f, -1.4f), Vec3(1.2f, 0f, 0f), Vec3(0f, 0f, 0.8f), Vec3(0f, -1f, 0f))
+        val objects = ScanObjects.of(scene.cloud())
+        val top = objects.pick(EYE, toward(Vec3(0f, 0.75f, -1f))) as ScanPick.Found
+        assertEquals("a tap still boxes the top alone", 0.71f, top.box.baseY, VOXEL)
+
+        val table = objects.whole(top)
+        assertEquals("it stands on the floor", 0f, table.baseY, VOXEL)
+        assertEquals("as high as its top", 0.75f, table.height, VOXEL)
+        assertEquals(1.2f, table.length, 2 * VOXEL)
+        assertEquals(0.8f, table.depth, 2 * VOXEL)
+    }
+
+    @Test
+    fun `a cabinet hung on a wall stays where it hangs`() {
+        val scene = Scene()
+        scene.room(HALF_ROOM, HALF_ROOM, ROOM_HEIGHT)
+        // A bathroom's wall cabinet, its underside 0.8 m up, against the room's back wall.
+        scene.box(0f, -HALF_ROOM + 0.2f, yawDeg = 0f, length = 0.8f, depth = 0.4f, height = 0.5f, y = 0.8f)
+        scene.rect(
+            Vec3(-0.4f, 0.8f, -HALF_ROOM),
+            Vec3(0.8f, 0f, 0f),
+            Vec3(0f, 0f, 0.4f),
+            Vec3(0f, -1f, 0f),
+        )
+        val objects = ScanObjects.of(scene.cloud())
+        val cabinet = objects.pick(EYE, toward(Vec3(0f, 1.1f, -HALF_ROOM + 0.4f))) as ScanPick.Found
+        val whole = objects.whole(cabinet)
+        assertEquals("it hangs from the wall", 0.8f, whole.baseY, 2 * VOXEL)
+        assertEquals(0.5f, whole.height, 2 * VOXEL)
+    }
+
+    @Test
+    fun `a table whose legs the scan did not hold, a chair beside it, still stands on the floor`() {
+        val scene = Scene()
+        scene.floor(HALF_ROOM, HALF_ROOM, 0f)
+        scene.box(0f, -1f, yawDeg = 0f, length = 1.2f, depth = 0.8f, height = 0.04f, y = 0.71f)
+        scene.rect(Vec3(-0.6f, 0.71f, -1.4f), Vec3(1.2f, 0f, 0f), Vec3(0f, 0f, 0.8f), Vec3(0f, -1f, 0f))
+        // A chair 10 cm off the table's side: its seat on a solid base, its back rising past the top.
+        scene.box(0f, -0.375f, yawDeg = 0f, length = 0.45f, depth = 0.45f, height = 0.46f)
+        scene.box(0f, -0.175f, yawDeg = 0f, length = 0.45f, depth = 0.05f, height = 0.45f, y = 0.46f)
+        val objects = ScanObjects.of(scene.cloud())
+        val top = objects.pick(EYE, toward(Vec3(0f, 0.75f, -1.1f))) as ScanPick.Found
+        val table = objects.whole(top)
+        assertEquals("a chair is not a wall it hangs from", 0f, table.baseY, VOXEL)
+        assertEquals(0.75f, table.height, VOXEL)
+    }
+
+    @Test
+    fun `furniture against a piece of wall a noisy scan drew thick is whole without that wall`() {
+        // A phone's depth draws the floor and the wall as several sheets; the furniture's back is in among the wall's.
+        val scene = Scene()
+        for (sheet in 0..2) scene.floor(HALF_ROOM, HALF_ROOM, y = sheet * 0.03f)
+        for (sheet in 0..2) {
+            scene.rect(Vec3(-0.7f, 0f, -1f + sheet * 0.03f), Vec3(1.4f, 0f, 0f), Vec3(0f, 2.2f, 0f), Vec3(0f, 0f, 1f))
+        }
+        scene.box(0f, -0.72f, yawDeg = 0f, length = 0.8f, depth = 0.5f, height = 0.7f)
+        val objects = ScanObjects.of(scene.cloud())
+        val found = objects.pick(EYE, toward(Vec3(0f, 0.7f, -0.6f))) as ScanPick.Found
+        assertEquals(0.7f, found.box.height, 2 * VOXEL)
+        val whole = objects.whole(found)
+        assertEquals("not as high as the wall behind it", found.box.height, whole.height, VOXEL)
+        assertEquals(found.box.baseY, whole.baseY, VOXEL)
+    }
+
     // ── The camera ────────────────────────────────────────────────────────────
 
     @Test

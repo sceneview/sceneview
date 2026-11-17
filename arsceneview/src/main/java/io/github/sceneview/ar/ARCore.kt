@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.ar
 
 import android.content.Context
@@ -6,6 +8,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.annotation.MainThread
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.google.ar.core.ArCoreApk.Availability
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -125,6 +130,10 @@ class ARCore(
 
     /** `true` between [resume] and [pause]. */
     private var isHostResumed = false
+
+    /** Observable by [ARSceneView]: another resumed scene currently owns the camera (#4491). */
+    internal var isCameraInUseByAnotherSession by mutableStateOf(false)
+        private set
 
     /** `true` from [detachHost] until the next [create]: nothing may start or publish. */
     private var isHostDetached = false
@@ -285,6 +294,9 @@ class ARCore(
     private val cameraClient = object : CameraClient {
         override val isRunning: Boolean get() = session?.isResumed == true
         override val canRun: Boolean get() = session?.isClosed == false
+        override var isWaitingForCamera: Boolean
+            get() = isCameraInUseByAnotherSession
+            set(value) { isCameraInUseByAnotherSession = value }
         override fun start(): Exception? {
             val session = session ?: return null
             var failure: Exception? = null

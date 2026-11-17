@@ -39,11 +39,11 @@
 JSON-lines over TCP. Two channels on the same socket:
 
 - **Events** — `camera_pose`, `plane`, `point_cloud`, `anchor`, `hit_result` (client → sidecar)
-- **Control** — `{"type":"control","cmd":"save_now"}` (client → sidecar) and `{"type":"control","ack":"saved","path":…,"viewerUrl":…}` (sidecar → client)
+- **Control** — `{"type":"control","cmd":"save_now"}` (client → sidecar) and `{"type":"control","ack":"saved","path":…}` (sidecar → client)
 
 ## Save & share
 
-Run sidecar with `--save` to write a shareable `.rrd` instead of spawning the live viewer. The Android app's `RerunBridge.requestSaveAndShare(callback)` triggers a flush via the control channel and surfaces the resulting path + viewer URL in a dialog. Host the `.rrd` at an https address that ends in `.rrd` and open `https://sceneview.github.io/rerun/?url=<encoded>` to view in any browser. The host has to allow cross-origin requests (CORS): a public GitHub repository's `raw.githubusercontent.com` link and GitHub Pages do, a GitHub release asset does not (checked 2026-10-13); an R2 or S3 bucket does with a CORS rule that allows `https://sceneview.github.io`.
+Run sidecar with `--save` to write a shareable `.rrd` instead of spawning the live viewer. The Android app's `RerunBridge.requestSaveAndShare(callback)` triggers a flush via the control channel and shows the local path with a copy action and viewing/sharing instructions. Local saves omit `viewerUrl`; the public API field remains nullable. Drop the file onto https://sceneview.github.io/rerun/ for local inspection. Host the `.rrd` at an https address that ends in `.rrd` and open `https://sceneview.github.io/rerun/?url=<encoded>` to view in any browser. The host has to allow cross-origin requests (CORS): a public GitHub repository's `raw.githubusercontent.com` link and GitHub Pages do, a GitHub release asset does not (checked 2026-10-13); an R2 or S3 bucket does with a CORS rule that allows `https://sceneview.github.io`.
 
 ## Built on SceneView SDK
 

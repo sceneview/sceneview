@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 // ARScene lives in the separate `arsceneview` module intentionally: apps that only need 3D
 // can depend on `sceneview` alone without pulling in ARCore.
 //
@@ -84,6 +86,7 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
@@ -144,6 +147,10 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * Drive AR state with ordinary Compose `mutableStateOf`: when state changes, the composition
  * updates and the 3D scene reflects it on the next frame.
+ *
+ * When several scenes are resumed, the last one to resume holds the device camera. The others
+ * show a built-in "Camera in use" card until the holder pauses or leaves composition, then
+ * resume automatically. This temporary wait is not a session failure.
  *
  * ### Minimal usage
  * ```kotlin
@@ -1480,6 +1487,11 @@ fun ARSceneView(
     // Placed objects' contacts, registered through the scope and grounding the occlusion around
     // them; handed to whichever camera stream is current.
     val groundContacts = remember { GroundContacts() }
+    val groundContactUpdate = remember {
+        GroundContactUpdate { exception ->
+            android.util.Log.e("SceneView", "Ground contact update failed", exception)
+        }
+    }
     SideEffect {
         cameraStreamRef.set(cameraStream)
         cameraStream?.groundContacts = groundContacts
@@ -1822,10 +1834,8 @@ fun ARSceneView(
                     // Custom placement can move in the host callback, node ticks (including smooth
                     // transforms), or gesture inertia. Sample contacts only after all of them.
                     arFrame?.let { frame ->
-                        try {
+                        groundContactUpdate.update {
                             cameraStreamRef.get()?.updateGroundContact(frame)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SceneView", "Ground contact update failed", e)
                         }
                     }
 
@@ -1901,6 +1911,9 @@ fun ARSceneView(
                 )
             }
             arCoreAvailabilityOverlay(state)
+        }
+        if (denial == null && availability == null) {
+            ARCameraInUseOverlay(arCore.isCameraInUseByAnotherSession)
         }
     }
 

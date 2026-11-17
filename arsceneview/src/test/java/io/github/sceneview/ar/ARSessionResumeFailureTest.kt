@@ -109,6 +109,39 @@ class ARSessionResumeFailureTest {
     }
 
     @Test
+    fun `a displaced scene explains its wait until the camera holder pauses or closes`() {
+        val second = newARCore(onSessionResumed = {})
+        try {
+            arCore.resume(context, handler = null)
+            assertFalse(arCore.isCameraInUseByAnotherSession)
+
+            second.resume(context, handler = null)
+            assertTrue(arCore.isCameraInUseByAnotherSession)
+            assertFalse(second.isCameraInUseByAnotherSession)
+            assertFalse(arCore.session!!.isResumed)
+
+            second.pause()
+            // Hand-back is posted so an activity pausing both sessions cannot reopen the camera.
+            assertTrue(arCore.isCameraInUseByAnotherSession)
+            ShadowLooper.idleMainLooper()
+            assertFalse(arCore.isCameraInUseByAnotherSession)
+            assertTrue(arCore.session!!.isResumed)
+
+            second.resume(context, handler = null)
+            assertTrue(arCore.isCameraInUseByAnotherSession)
+            // Native-free synchronous close, as in tearDown; destroy still performs the hand-back.
+            second.session!!.close()
+            second.destroy()
+            assertFalse(arCore.isCameraInUseByAnotherSession)
+            assertTrue(arCore.session!!.isResumed)
+            assertTrue(failures.isEmpty())
+        } finally {
+            second.session?.close()
+            second.destroy()
+        }
+    }
+
+    @Test
     fun `every documented resume failure reaches onArSessionFailed from the host resume`() {
         listOf(
             CameraNotAvailableException("camera held by another app"),

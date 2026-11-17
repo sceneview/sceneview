@@ -1782,6 +1782,11 @@ open class Node protected constructor(
     var isDestroyed = false
         private set
 
+    // gltfio owns a model's components as well as its entity ids. Disposing a wrapper must
+    // leave both intact so another placement can wrap the same caller-owned instance.
+    internal val preserveModelComponents: Boolean
+        get() = this is ModelNode || this is ModelNode.ChildNode
+
     /**
      * Detach and destroy the node and all its children.
      *
@@ -1793,15 +1798,27 @@ open class Node protected constructor(
      * Releases the entity's components, then returns its id to the [EntityManager] — but only
      * for a self-allocated entity, never a borrowed one (see the `ownsEntity` constructor
      * parameter and #2859).
+     * Model wrappers also leave their glTF components and hierarchy to the asset's owner.
      */
     open fun destroy() {
         if (isDestroyed) return
         isDestroyed = true
+        // Keep the authored glTF hierarchy, but never keep a placement's external pivot.
+        val modelParent = (this as? ModelNode.ChildNode)?.let { child ->
+            parent?.takeIf {
+                child.modelInstance === when (it) {
+                    is ModelNode -> it.modelInstance
+                    is ModelNode.ChildNode -> it.modelInstance
+                    else -> null
+                }
+            }?.entity
+        }
         // Snapshot the children before iterating: each child's destroy() mutates
         // childNodes (via `parent = null`), so iterating the live set would throw
         // ConcurrentModificationException.
         childNodes.toList().forEach { it.destroy() }
         runCatching { parent = null }
+        if (modelParent != null) runCatching { parentEntity = modelParent }
         // Un-register before the id is recycled: a Scene holding a reissued id would render
         // whatever renderable is built on it next (see [attachedScene]). No-op on the
         // composable path, where SceneScope.detach() already removed the node.
@@ -1812,8 +1829,10 @@ open class Node protected constructor(
         // safeDestroyTransformable bumps the engine-wide transform generation counter (see
         // Engine.kt), so every other live Node's cached transformInstance/parentInstance
         // re-resolves on next read instead of silently operating on a stale/reassigned slot.
-        engine.safeDestroyTransformable(entity)
-        engine.safeDestroyEntity(entity)
+        if (!preserveModelComponents) {
+            engine.safeDestroyTransformable(entity)
+            engine.safeDestroyEntity(entity)
+        }
         // Components are gone; the id itself is only ours to give back when we allocated it.
         if (ownsEntity) {
             engine.safeRecycleEntity(entity)

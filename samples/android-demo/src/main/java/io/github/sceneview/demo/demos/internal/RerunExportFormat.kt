@@ -11,6 +11,8 @@ class RerunExportSource(
     val capture: (suspend () -> RerunCapturePack?)? = null,
     val model: (suspend () -> RerunScanModel?)? = null,
     val scope: ScanScope = ScanScope.Room,
+    /** A space's inside measurements as their JSON text ([SpaceAnswer]), when the scan is one and was measured. */
+    val measurements: (suspend () -> String)? = null,
 )
 
 /**
@@ -34,6 +36,9 @@ enum class RerunExportFormat(
 
     /** The whole timeline, for the Rerun viewer. */
     Recording("rrd", OCTET_STREAM),
+
+    /** A space's inside measurements, for whoever designs what goes in it ([SpaceAnswer]). */
+    Measurements(SpaceAnswer.EXTENSION, SpaceAnswer.MIME_TYPE),
     ;
 
     /** `recorded-room.glb`: the scan's title as a file name; a scan file keeps its title as it is. */
@@ -43,10 +48,18 @@ enum class RerunExportFormat(
     }
 
     companion object {
-        /** The formats a source can make: the model from a model or a recording, the rest from a recording. */
-        fun available(hasModel: Boolean, hasCapture: Boolean): List<RerunExportFormat> = entries.filter {
-            if (it == Model) hasModel || hasCapture else hasCapture
-        }
+        /**
+         * The formats a source can make: the model from a model or a recording, a space's
+         * measurements where it has them, the rest from a recording.
+         */
+        fun available(hasModel: Boolean, hasCapture: Boolean, hasMeasurements: Boolean = false): List<RerunExportFormat> =
+            entries.filter {
+                when (it) {
+                    Model -> hasModel || hasCapture
+                    Measurements -> hasMeasurements
+                    else -> hasCapture
+                }
+            }
 
         /** The dock button that opens the sheet. */
         const val DOCK_LABEL = "Export and share this space"

@@ -255,7 +255,7 @@ class AutoPlacementState {
         private set
 
     /** An anchor exists for this session (it may be paused — see [PlacementPhase.RECOVERING]). */
-    var hasPlacement: Boolean = false
+    var hasPlacement: Boolean by mutableStateOf(false)
         private set
 
     /** Total anchors ever created by this controller — the number the tests count. */
@@ -314,6 +314,9 @@ class AutoPlacementState {
     private var recoveringSince: Long? = null
     private var phaseBeforeLoss: PlacementPhase = PlacementPhase.SCANNING
     private var dismissed = false
+
+    /** The scene releases its placement immediately, including while AR frames are paused. */
+    internal var releasePlacement: (() -> Unit)? = null
 
     /** Gesture permission is revoked immediately on tracking loss. */
     var isSelected: Boolean by mutableStateOf(false)
@@ -394,6 +397,7 @@ class AutoPlacementState {
      * no frame is acted on until the next [selectModel] opens a new session generation.
      */
     fun dismiss() {
+        releasePlacement?.invoke()
         adjustmentCount = 0
         isAdjusting = false
         isSelected = false
@@ -417,10 +421,11 @@ class AutoPlacementState {
 
     /**
      * *Reset placement* / *Scan again*: the anchor goes, the asset stays, the search restarts.
-     * The caller detaches the anchor; this only rewrites the decision state.
+     * [AutoPlacementScene] releases its anchor and content; custom adapters own their anchors.
      */
     fun resetPlacement(nowMillis: Long) {
         if (dismissed) return
+        releasePlacement?.invoke()
         adjustmentCount = 0
         isAdjusting = false
         isSelected = false
