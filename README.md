@@ -574,14 +574,14 @@ sceneview-core (Kotlin Multiplatform)
 In Google Play apps (checked in their published builds: the Volkswagen Group and Philips Hue apps on
 November 17, 2026, Medal and IKEA on November 9, 2026):
 
-- **[Volkswagen](https://www.volkswagen.com/)** — [Volkswagen](https://play.google.com/store/apps/details?id=com.volkswagen.weconnect): the 3D view of the car.
-- **[Audi](https://www.audi.com/)** — [myAudi](https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant): the 3D view of the car.
-- **[Porsche](https://www.porsche.com/)** — [My Porsche](https://play.google.com/store/apps/details?id=de.porsche.one): the 3D view of the car.
-- **[CUPRA](https://www.cupra.com/)** — [My CUPRA](https://play.google.com/store/apps/details?id=com.cupra.mycupra): the 3D view of the car.
+- **[Volkswagen](https://www.volkswagen.com/)** — [Volkswagen](https://play.google.com/store/apps/details?id=com.volkswagen.weconnect): 3D rendering.
+- **[Audi](https://www.audi.com/)** — [myAudi](https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant): 3D rendering.
+- **[Porsche](https://www.porsche.com/)** — [My Porsche](https://play.google.com/store/apps/details?id=de.porsche.one): 3D rendering.
+- **[CUPRA](https://www.cupra.com/)** — [My CUPRA](https://play.google.com/store/apps/details?id=com.cupra.mycupra): 3D rendering.
 - **[Philips Hue](https://www.philips-hue.com/)** — [Philips Hue](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2): AR, through `ARSceneView`.
 - **[Medal](https://medal.tv/)** — [Medal](https://play.google.com/store/apps/details?id=tv.medal.recorder).
 - **[IKEA](https://www.ikea.com/)** — [IKEA](https://play.google.com/store/apps/details?id=com.ingka.ikea.app).
-- **[Škoda](https://www.skoda-auto.com/)** — [MyŠkoda](https://play.google.com/store/apps/details?id=cz.skodaauto.myskoda): SceneView's rendering materials, byte-identical to its releases.
+- **[Škoda](https://www.skoda-auto.com/)** — [MyŠkoda](https://play.google.com/store/apps/details?id=cz.skodaauto.myskoda): 3D rendering.
 
 Declared in their public source code or published build files (checked November 17, 2026):
 
