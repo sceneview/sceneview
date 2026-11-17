@@ -265,16 +265,20 @@ The original three-argument state constructor and `permanentlyDenied` getter rem
 
 ## Android overlay and transient-message coordination
 
-`io.github.sceneview.ar.LocalAROverlayVisibility` is a Compose local with type
-`ProvidableCompositionLocal<((Boolean) -> Unit)?>`, default `null`. Provide a stable
-listener above `ARSceneView` or standalone SDK overlays to defer snackbars while a
-centred card is shown. Each coaching card, camera permission card and ARCore
-availability card emits `true` on entering composition and `false` on leaving,
-including the coaching exit transition. Count these balanced events when several
-cards may coexist; the "Surface found" pill emits none. Removing a `SnackbarHost`
-while the count is positive keeps its queued message from timing out before it can
-be shown. This contract is Android-specific; other platforms use native overlay
-lifecycles. Existing overlay signatures are unchanged.
+`io.github.sceneview.ar.LocalAROverlayVisibility` is an `@ExperimentalSceneViewApi`
+Compose local with type `ProvidableCompositionLocal<((Boolean) -> Unit)?>`, default
+`null`; opt in with `@OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)`.
+Provide a stable listener above `ARSceneView` or standalone SDK overlays to defer
+snackbars while any centred SDK card is shown. Each centred card emits `true` on
+entering composition and `false` on leaving: coaching cards (including their exit
+transition), the camera permission card, the ARCore availability card and the
+"camera in use" card `ARSceneView` shows while another scene holds the camera.
+Count these balanced events when several cards may coexist; the "Surface found" pill
+emits none. Replacing the listener releases every card from the old one before
+registering it with the new one. Removing a `SnackbarHost` while the count is
+positive keeps its queued message from timing out before it can be shown. This
+contract is Android-specific; other platforms use native overlay lifecycles.
+Existing overlay signatures are unchanged.
 
 ## Core Composables
 
