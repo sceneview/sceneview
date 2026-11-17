@@ -23,22 +23,16 @@ class NodeEditingFeedbackStateTest {
         feedback = NodeEditingFeedbackState(node, scaleBaseline = 1f)
     }
 
-    private fun badgeText() = rotationBadgeText(
-        rotating = NodeEditingKind.Rotate in feedback.activeKinds,
-        deltaDegrees = feedback.rotationDeltaDegrees,
-        absoluteDegrees = feedback.yawDegrees,
-    )
-
     @Test
-    fun `refresh updates the idle badge after an application rotation`() {
-        assertEquals("0°", badgeText())
+    fun `refresh follows an application rotation at rest`() {
+        assertEquals(0f, feedback.yawDegrees, 0.01f)
 
         node.rotation = Rotation(y = 90f)
         // Invoke the same refresh hook as the overlay's frame loop.
         feedback.refreshRotationFromNode()
 
         assertEquals(90f, feedback.yawDegrees, 0.01f)
-        assertEquals("90°", badgeText())
+        assertEquals(0f, feedback.rotationDeltaDegrees, 0f)
     }
 
     @Test
@@ -52,9 +46,17 @@ class NodeEditingFeedbackStateTest {
 
         assertEquals(-120f, feedback.yawDegrees, 0.01f)
         assertEquals(3f, feedback.rotationDeltaDegrees, 0f)
-        assertEquals("+3°", badgeText())
+        assertEquals("+3°", rotationBadgeText(feedback.rotationDeltaDegrees))
+    }
 
+    @Test
+    fun `a new twist restarts the delta at zero`() {
+        feedback.onEditingBegin(node, NodeEditingKind.Rotate)
+        feedback.onRotationEdited(node, -22f)
         feedback.onEditingEnd(node, NodeEditingKind.Rotate)
-        assertEquals("-120°", badgeText())
+
+        feedback.onEditingBegin(node, NodeEditingKind.Rotate)
+
+        assertEquals(0f, feedback.rotationDeltaDegrees, 0f)
     }
 }

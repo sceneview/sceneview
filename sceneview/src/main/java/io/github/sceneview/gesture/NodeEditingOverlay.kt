@@ -76,9 +76,9 @@ private fun bothOrNull(a: Float2?, b: Float2?): Pair<Float2, Float2>? =
  *
  * Renders, anchored to [NodeEditingFeedbackState.node] by world→screen projection:
  * - **Selection** (when [selected] and no gesture is active): a white ring around the
- *   node's base and an absolute-heading badge.
+ *   node's base, with no badge.
  * - **Rotate** (two-finger twist): an accent ring around the base with a live sweep arc
- *   and a signed rotation-delta badge.
+ *   and a signed rotation-delta badge, shown (and announced) only while the twist lasts.
  * - **Scale** (pinch): a live percentage badge above the node that bounces and tints
  *   [NodeEditingOverlayColors.limit] when the pinch presses against
  *   [Node.editableScaleRange].
@@ -322,19 +322,11 @@ fun NodeEditingOverlay(
         val badgeBase = anchors.baseInCanvas(overlaySize)
         val badgeTop = anchors.topInCanvas(overlaySize)
 
-        if ((showRotation || showSelection) && badgeBase != null && overlaySize != Size.Zero) {
+        if (badgeBase != null && overlaySize != Size.Zero) {
             val ry = anchors.radiusYInCanvas(overlaySize)
-            val angleText = rotationBadgeText(
-                rotating = showRotation,
-                deltaDegrees = state.rotationDeltaDegrees,
-                absoluteDegrees = state.yawDegrees,
-            )
-            FeedbackBadge(
-                text = angleText,
-                description = "Rotation $angleText",
-                textColor = colors.badgeText,
-                background = colors.badgeBackground,
-                border = colors.badgeBorder,
+            RotationBadge(
+                state = state,
+                colors = colors,
                 modifier = Modifier.offset {
                     IntOffset(
                         badgeBase.x.roundToInt(),
@@ -368,14 +360,39 @@ fun NodeEditingOverlay(
     }
 }
 
-/** Keep the live angle continuous across the absolute heading's ±180° seam. */
-internal fun rotationBadgeText(
-    rotating: Boolean,
-    deltaDegrees: Float,
-    absoluteDegrees: Float,
-): String {
-    val angle = (if (rotating) deltaDegrees else absoluteDegrees).roundToInt()
-    return "${if (rotating && angle > 0) "+" else ""}$angle°"
+/**
+ * The signed rotation-delta badge, composed only while a rotate gesture is active.
+ *
+ * A selected node at rest gets its ring alone: an angle under a model nobody is turning
+ * reads as noise and, as a polite live region, would be announced whenever the app
+ * rotates the node. Leaving the composition when the twist ends removes the badge and
+ * its live region together.
+ */
+@Composable
+internal fun RotationBadge(
+    state: NodeEditingFeedbackState,
+    colors: NodeEditingOverlayColors,
+    modifier: Modifier = Modifier,
+) {
+    if (NodeEditingKind.Rotate !in state.activeKinds) return
+    val angleText = rotationBadgeText(state.rotationDeltaDegrees)
+    FeedbackBadge(
+        text = angleText,
+        description = "Rotation $angleText",
+        textColor = colors.badgeText,
+        background = colors.badgeBackground,
+        border = colors.badgeBorder,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The live angle: the signed delta since the twist began, never the absolute heading, so
+ * it stays continuous across the heading's ±180° seam and each new twist starts at `0°`.
+ */
+internal fun rotationBadgeText(deltaDegrees: Float): String {
+    val angle = deltaDegrees.roundToInt()
+    return "${if (angle > 0) "+" else ""}$angle°"
 }
 
 /** Dark scrim pill with a hairline border — centered horizontally on its offset. */
