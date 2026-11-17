@@ -65,16 +65,18 @@ class ModelInstanceDisposeContractTest {
     }
 
     @Test
-    fun `both rememberModelInstance overloads dispose - the asymmetry with the remember siblings is closed`() {
-        // The original bug shipped two leaking overloads (asset-path + URL/URI). A partial fix
-        // wiring only one would still leak the other. The URL overload's no-scheme fast path
-        // delegates to the asset overload (which owns its own disposal), so each overload still
-        // contributes exactly one disposal lambda → two in total.
+    fun `every rememberModelInstance overload disposes through one shared body`() {
+        // The original bug shipped two leaking overloads (asset-path + URL/URI); a partial fix
+        // wiring only one would still leak the other. A later `unit` overload got a body of its
+        // own and diverged (it neither logged failures nor loaded like its neighbours). Now the
+        // asset-path and URL/URI overloads delegate to the `unit` overload (`unit = null`), so
+        // exactly one disposal lambda exists: a second one means an overload copied the body
+        // again, and can drift from the others.
         val disposers = sceneClass.declaredMethods.count { it.isModelInstanceDisposalLambda() }
         assertEquals(
-            "Exactly the two rememberModelInstance overloads (asset-path + URL/URI) must each emit " +
-                "a Model disposal effect (#2459).",
-            2,
+            "Every rememberModelInstance overload must share the one body that emits the Model " +
+                "disposal effect (#2459).",
+            1,
             disposers
         )
     }
@@ -107,9 +109,9 @@ class ModelInstanceDisposeContractTest {
                 it.parameterTypes.any { p -> p == ModelLoader::class.java }
         }
         assertTrue(
-            "Expected the two public rememberModelInstance overloads (#2459); found " +
+            "Expected the three public rememberModelInstance overloads (#2459); found " +
                 overloads.joinToString { it.signature() },
-            overloads.size >= 2
+            overloads.size >= 3
         )
         overloads.forEach { factory ->
             assertTrue(
