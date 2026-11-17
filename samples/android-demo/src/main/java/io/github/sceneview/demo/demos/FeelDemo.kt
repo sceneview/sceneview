@@ -7,12 +7,11 @@ import android.view.ViewTreeObserver
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewConfiguration
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -81,6 +80,7 @@ import io.github.sceneview.demo.demos.internal.feel.MatterIdentity
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
 import io.github.sceneview.demo.demos.internal.feel.MatterPreparation
+import io.github.sceneview.demo.demos.internal.feel.MatterSwitch
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
@@ -295,12 +295,8 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val pads = remember { arrayOfNulls<Node>(FeelMaterial.entries.size) }
     val mark = remember { arrayOfNulls<Node>(1) }
-    var selected by remember { mutableStateOf(FeelMaterial.MemoryFoam) }
-    var displayed by remember { mutableStateOf(selected) }
-    var outgoing by remember { mutableStateOf<FeelMaterial?>(null) }
-    val slide = remember { Animatable(1f) }
-    var transitionStarted by remember { mutableStateOf<Long?>(null) }
-    val switching = selected != displayed || outgoing != null
+    // Selection, the solid on stage and the slide between them, advanced per presented frame.
+    val switch = remember { MatterSwitch() }
     var openingPrepared by remember(materials) { mutableStateOf(false) }
     // Only the opening belongs behind the cover. Never draw another sample to warm it:
     // Material.compile queues backend work without putting its slab in the visible set.
@@ -340,41 +336,22 @@ fun FeelDemo(onBack: () -> Unit) {
             if (BuildConfig.DEBUG) Log.d("Matter", "Background material ready: ${kind.name}")
         }
         launch {
-            snapshotFlow { selected }.collect { kind ->
+            snapshotFlow { switch.selected }.collect { kind ->
                 if (kind != FeelMaterial.MemoryFoam) prepareSample(kind)
             }
         }
         while (true) {
             // Space background submissions out. Explicit selections may overtake a slow bake.
             repeat(MatterPreparation.FRAMES_BETWEEN_MATERIALS) { withFrameNanos { } }
-            val kind = preparation.next(selected, revealed = firstFrame.sceneReady.value) ?: break
+            val kind = preparation.next(switch.selected, revealed = firstFrame.sceneReady.value) ?: break
             prepareSample(kind).await()
         }
     }
-    val targetReady = selected in materials.samples
-    LaunchedEffect(selected, targetReady, motion, materials) {
-        if (!targetReady) return@LaunchedEffect
-        val target = selected
-        wakeRender()
-        val previous = displayed
-        if (!motion || previous == target) {
-            displayed = target; outgoing = null; slide.snapTo(1f)
-            transitionStarted = null
-        } else {
-            transitionStarted = SystemClock.uptimeMillis()
-            idle.touch(transitionStarted!!, down = false)
-            slide.snapTo(0f)
-            outgoing = previous
-            displayed = target
-            slide.animateTo(1f, tween(SceneViewTokens.Motion.containerMillis, easing = LinearEasing))
-            outgoing = null
-        }
-    }
+    // Never refused while a slide runs: the chips stay enabled and the latest request queues.
     val choose: (FeelMaterial) -> Unit = { next ->
-        if (firstFrame.sceneReady.value && next != selected && outgoing == null) {
+        if (firstFrame.sceneReady.value && switch.request(next)) {
             touch.cancel()
             simulation.select(next, SystemClock.uptimeMillis())
-            selected = next
             wakeRender()
         }
     }
@@ -400,16 +377,23 @@ fun FeelDemo(onBack: () -> Unit) {
     // Changing state is read by the FIRST SceneView callbacks through these updated delegates.
     val onTouchNow by rememberUpdatedState<(MotionEvent) -> Boolean>({ event ->
         wakeRender()
-        firstFrame.sceneReady.value && touch.onEvent(event, displayed, switching, choose)
+        firstFrame.sceneReady.value && touch.onEvent(event, switch, choose)
     })
     val onFrameNow by rememberUpdatedState<(Long) -> Unit>({ nanos ->
         val now = SystemClock.uptimeMillis()
         if (BuildConfig.DEBUG && firstFrame.sceneReady.value) frameTimes.frame(nanos)?.let { window ->
             Log.d("MatterPerf", String.format(Locale.US,
                 "material=%s mode=%s avg=%.2fms fps=%.1f intervals=%d",
-                displayed.name, cadence.name, window.averageMillis, window.fps, window.intervals))
+                switch.displayed.name, cadence.name, window.averageMillis, window.fps, window.intervals))
         }
         val focused = touchView.hasWindowFocus()
+        // The incoming solid's node must exist (its sample is composed), or its hidden first
+        // draw would not happen. The slide itself advances only on presented frames.
+        if (switch.advance(now, ready = pads[switch.selected.ordinal] != null, motion)) idle.touch(now, down = false)
+        val shown = switch.displayed
+        val leaving = switch.outgoing
+        val switching = switch.switching
+        val progress = switch.progress
         val cameraMoved = idle.advance(now, motion && focused && simulation.opening.finished && !switching)
         if (cameraMoved) stage.orbit(idle.yawDegrees)
         val reframed = stage.frame()
@@ -422,6 +406,7 @@ fun FeelDemo(onBack: () -> Unit) {
         // Initial composition can precede window focus. Do not dismiss an opening not yet shown.
         if (!focused && (simulation.active != null || simulation.opening.visible)) touch.cancel()
         haptics.onFrame()
+        touch.resumeAfterSwitch(switch)
         touch.followIndentation()
         simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && motion)
             ?.let(haptics::play)
@@ -430,56 +415,65 @@ fun FeelDemo(onBack: () -> Unit) {
         val warmingOpening = !firstFrame.sceneReady.value && motion
         val needsMappedShadow = simulation.opening.visible || warmingOpening
         if (light.isShadowCaster != needsMappedShadow) light.isShadowCaster = needsMappedShadow
-        val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
-        val progress = if (motion) slide.value else 1f
+        val direction = switch.direction
         FeelMaterial.entries.forEach { kind ->
-            val visible = (kind == displayed && (outgoing == null || progress >= .40f)) ||
-                    (kind == outgoing && progress < .40f)
+            // The incoming solid is drawn from the first frame of a slide, at its hidden pose
+            // under the floor: the stall of its first draw happens before it has to move.
+            val visible = kind == shown || (kind == leaving && progress < MatterTransition.HIDDEN)
             pads[kind.ordinal]?.apply {
                 isVisible = visible
                 if (visible) {
                     val offset = when (kind) {
-                        outgoing -> -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
+                        leaving -> -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
                         else -> MatterTransition.incomingTravel(progress) * direction * .28f
                     }
-                    val height = MatterTransition.height(kind, progress, kind == outgoing)
+                    val height = MatterTransition.height(kind, progress, kind == leaving)
                     position = Position(offset * MatterStage.COS_AZIMUTH, height, -offset * MatterStage.SIN_AZIMUTH)
                     materials.update(kind, simulation, now, motion,
                         hairlinePx * stage.halfWidth * 2f / stage.widthPx.coerceAtLeast(1),
-                        landingAge = if (kind == displayed) transitionStarted?.let {
-                            (now - it) / 1000f - SceneViewTokens.Motion.containerMillis * .82f / 1000f
-                        } ?: -1f else -1f)
+                        landingAge = if (kind == shown) switch.landingAge(now) else -1f)
                 }
             }
         }
-        if (motion && displayed.rigid && transitionStarted != null &&
-            now - transitionStarted!! >= SceneViewTokens.Motion.containerMillis * .82f &&
-            simulation.contactMillis[displayed.ordinal] < transitionStarted!!
-        ) {
-            simulation.contactX[displayed.ordinal] = 0f
-            simulation.contactZ[displayed.ordinal] = 0f
-            simulation.contactMillis[displayed.ordinal] = now
+        // The floor's soft contact shadow follows whichever solid stands on it.
+        val shadowLeaving = leaving != null && progress < MatterTransition.HIDDEN
+        val shadowOffset = if (shadowLeaving) {
+            -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
+        } else MatterTransition.incomingTravel(progress) * direction * .28f
+        val shadowKind = if (shadowLeaving) leaving!! else shown
+        val contactStrength = MatterTransition.shadow(progress) *
+            if (shadowKind == FeelMaterial.Gel) MatterStage.GEL_CONTACT_SHADOW else 1f
+        val contactX = shadowOffset * MatterStage.COS_AZIMUTH
+        val contactZ = -shadowOffset * MatterStage.SIN_AZIMUTH
+        materials.floor.setParameter("contact", contactX, contactZ, contactStrength)
+        materials.samples[FeelMaterial.Gel]?.setParameter("contact", contactX, contactZ, contactStrength)
+        val landedAt = switch.landedAt
+        if (motion && shown.rigid && landedAt != null && simulation.contactMillis[shown.ordinal] < landedAt) {
+            // One landing tap per arrival, when the rigid solid reaches its rest height.
+            simulation.contactX[shown.ordinal] = 0f
+            simulation.contactZ[shown.ordinal] = 0f
+            simulation.contactMillis[shown.ordinal] = now
         }
         mark[0]?.apply {
-            isVisible = warmingOpening || (simulation.opening.visible && displayed == FeelMaterial.MemoryFoam)
+            isVisible = warmingOpening || (simulation.opening.visible && shown == FeelMaterial.MemoryFoam)
             if (isVisible) position = if (warmingOpening) Position(y = 1f) else
                 Position(y = simulation.opening.heightAbovePad -
                     MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) - simulation.opening.squash)
         }
         if (now - timing[0] >= 50L) {
             timing[0] = now
-            val indentation = simulation.pads[displayed.ordinal]
-            val peakMm = simulation.captionDepthMm(displayed)
-            readout = FeelReadout(displayed, peakMm,
-                MatterSurfaces.showsDisplacement(displayed, indentation, simulation.active == displayed, peakMm))
+            val indentation = simulation.pads[shown.ordinal]
+            val peakMm = simulation.captionDepthMm(shown)
+            readout = FeelReadout(shown, peakMm,
+                MatterSurfaces.showsDisplacement(shown, indentation, simulation.active == shown, peakMm))
         }
         firstFrame.onFrame(nanos)
         val orbitAt = idle.wakeAt
-        val settling = motion && transitionStarted?.let { now - it in 0L..1100L } == true
+        val settling = motion && switch.startedAt?.let { now - it in 0L..1100L } == true
         val next = when {
             !focused -> MatterCadence.Parked
             !firstFrame.sceneReady.value || switching || settling ||
-                simulation.needsFrames(displayed, now, motion) -> MatterCadence.Active
+                simulation.needsFrames(shown, now, motion) -> MatterCadence.Active
             motion && orbitAt != null && now >= orbitAt -> MatterCadence.Orbit
             else -> MatterCadence.Parked
         }
@@ -537,20 +531,6 @@ fun FeelDemo(onBack: () -> Unit) {
                         onTouchEvent = { event, _ -> onTouchNow(event) },
                         onFrame = { onFrameNow(it) },
                     ) {
-                        val progress = if (motion) slide.value else 1f
-                        val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
-                        val shadowOffset = if (outgoing != null && progress < .40f) {
-                            -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
-                        } else MatterTransition.incomingTravel(progress) * direction * .28f
-                        val shadowKind = if (outgoing != null && progress < .40f) outgoing!! else displayed
-                        SideEffect {
-                            val contactX = shadowOffset * MatterStage.COS_AZIMUTH
-                            val contactZ = -shadowOffset * MatterStage.SIN_AZIMUTH
-                            val contactStrength = MatterTransition.shadow(progress) *
-                                if (shadowKind == FeelMaterial.Gel) MatterStage.GEL_CONTACT_SHADOW else 1f
-                            materials.floor.setParameter("contact", contactX, contactZ, contactStrength)
-                            materials.samples[FeelMaterial.Gel]?.setParameter("contact", contactX, contactZ, contactStrength)
-                        }
                         PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = MatterStage.FLOOR_Y),
                             materialInstance = materials.floor, apply = {
                                 isShadowCaster = false
@@ -624,8 +604,8 @@ fun FeelDemo(onBack: () -> Unit) {
                         invalidator.requestRender()
                     }
                 }
-                FeelControls(selected, if (readout.material == selected) readout.depth else 0f,
-                    readout.material == selected && readout.showDisplacement, outgoing != null, motion, choose)
+                FeelControls(switch.selected, if (readout.material == switch.selected) readout.depth else 0f,
+                    readout.material == switch.selected && readout.showDisplacement, motion, choose)
             }
         }
     }
@@ -649,11 +629,21 @@ private fun materialName(kind: FeelMaterial): String = stringResource(when (kind
 
 @Composable
 private fun FeelControls(selected: FeelMaterial, depth: Float, showDisplacement: Boolean,
-                         switching: Boolean, motion: Boolean,
-                         choose: (FeelMaterial) -> Unit) {
+                         motion: Boolean, choose: (FeelMaterial) -> Unit) {
     val chips = rememberLazyListState()
+    val marginPx = with(LocalDensity.current) { SceneViewTokens.Space.md.roundToPx() }
     LaunchedEffect(selected, motion) {
-        if (motion) chips.animateScrollToItem(selected.ordinal) else chips.scrollToItem(selected.ordinal)
+        // Bring the chip into view, no further: a visible chip never slides under the finger,
+        // and the first chips stay reachable instead of scrolling off the left edge.
+        val info = chips.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == selected.ordinal }
+        if (item == null) {
+            if (motion) chips.animateScrollToItem(selected.ordinal) else chips.scrollToItem(selected.ordinal)
+            return@LaunchedEffect
+        }
+        val delta = MatterSwitch.chipScroll(item.offset, item.offset + item.size,
+            info.viewportStartOffset, info.viewportEndOffset, marginPx)
+        if (delta != 0f) if (motion) chips.animateScrollBy(delta) else chips.scrollBy(delta)
     }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(vertical = SceneViewTokens.Space.sm)) {
@@ -680,7 +670,7 @@ private fun FeelControls(selected: FeelMaterial, depth: Float, showDisplacement:
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 itemsIndexed(FeelMaterial.entries, key = { _, kind -> kind.name }) { _, kind ->
                     FilterChip(selected = kind == selected, onClick = { choose(kind) },
-                        enabled = !switching, label = { Text(materialName(kind)) })
+                        label = { Text(materialName(kind)) })
                 }
             }
         }
@@ -703,19 +693,24 @@ private class FeelTouch(
     private var downY = 0f
     private var emptyGesture = false
     private var velocity: VelocityTracker? = null
+    // A finger that landed during a switch: it becomes a press once the new solid has landed.
+    private var waitingForSwitch = false
+    private var pressure = 0f
+    private var size = 0f
 
-    fun onEvent(event: MotionEvent, selected: FeelMaterial, switching: Boolean, choose: (FeelMaterial) -> Unit): Boolean {
+    fun onEvent(event: MotionEvent, switch: MatterSwitch, choose: (FeelMaterial) -> Unit): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 cancel()
                 idle.touch(event.eventTime, down = true)
-                if (switching) return true
                 pointerId = event.getPointerId(0)
                 screenX = event.x; screenY = event.y; downX = event.x; downY = event.y
-                val point = pointOnPad(selected, deformed = false)
+                pressure = event.pressure; size = event.size
+                val point = if (switch.switching) null else pointOnPad(switch.displayed, deformed = false)
+                waitingForSwitch = switch.switching
                 emptyGesture = point == null
                 if (point != null) {
-                    simulation.begin(selected, point.first, point.second, event.pressure, event.size, event.eventTime)
+                    simulation.begin(switch.displayed, point.first, point.second, event.pressure, event.size, event.eventTime)
                     simulation.advance(event.eventTime, startOpening = false)?.let(haptics::play)
                 } else {
                     velocity = VelocityTracker.obtain().also { it.addMovement(event) }
@@ -725,6 +720,7 @@ private class FeelTouch(
                 val index = event.findPointerIndex(pointerId)
                 if (index < 0) { cancel(); return true }
                 velocity?.addMovement(event)
+                pressure = event.getPressure(index); size = event.getSize(index)
                 val active = simulation.active
                 if (active != null) {
                     for (history in 0 until event.historySize) {
@@ -749,14 +745,28 @@ private class FeelTouch(
                 val dx = event.x - downX; val dy = event.y - downY
                 val fling = emptyGesture && abs(dx) > configuration.scaledTouchSlop && abs(dx) > abs(dy) * 1.5f &&
                     abs(vx) >= configuration.scaledMinimumFlingVelocity && dx * vx > 0f
-                val next = (selected.ordinal + if (vx < 0f) 1 else -1).coerceIn(0, FeelMaterial.entries.lastIndex)
                 cancel(released = true)
-                if (fling && !switching) choose(FeelMaterial.entries[next])
+                // Relative to the latest request, so two quick flings step two materials.
+                if (fling) choose(MatterSwitch.flingTarget(switch.selected, vx))
             }
             MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == pointerId) cancel(released = true)
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> cancel()
         }
         return true
+    }
+
+    /** Per frame: a finger held since the switch presses the new solid as soon as it has landed. */
+    fun resumeAfterSwitch(switch: MatterSwitch) {
+        if (!waitingForSwitch || pointerId < 0 || switch.switching) return
+        waitingForSwitch = false
+        // A finger already travelling is a fling on its way, not a press.
+        if (abs(screenX - downX) > configuration.scaledTouchSlop || abs(screenY - downY) > configuration.scaledTouchSlop) return
+        val point = pointOnPad(switch.displayed, deformed = false) ?: return
+        val now = SystemClock.uptimeMillis()
+        emptyGesture = false
+        velocity?.recycle(); velocity = null
+        simulation.begin(switch.displayed, point.first, point.second, pressure, size, now)
+        simulation.advance(now, startOpening = false)?.let(haptics::play)
     }
 
     fun followIndentation() {
@@ -772,6 +782,7 @@ private class FeelTouch(
         idle.touch(SystemClock.uptimeMillis(), down = false)
         pointerId = -1
         emptyGesture = false
+        waitingForSwitch = false
         velocity?.recycle(); velocity = null
         simulation.release(SystemClock.uptimeMillis(), hapticRelease = released)
     }

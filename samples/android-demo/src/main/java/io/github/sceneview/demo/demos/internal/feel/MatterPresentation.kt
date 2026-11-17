@@ -7,6 +7,8 @@ import kotlin.math.sin
 
 /** Product-shot travel in model space. The caller supplies the 450 ms motion-token clock. */
 internal object MatterTransition {
+    /** Progress at which the outgoing solid has left and the incoming one waits under the floor. */
+    const val HIDDEN = .40f
     private fun smooth(t: Float) = t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
     fun outgoingTravel(progress: Float): Float = (progress / .40f).coerceIn(0f, 1f).let { it * it }
     fun incomingTravel(progress: Float): Float = 1f - smooth((progress - .40f) / .42f)
