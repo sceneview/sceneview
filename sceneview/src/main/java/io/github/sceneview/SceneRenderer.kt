@@ -277,6 +277,7 @@ class SceneRenderer(
      * Call this from a `withFrameNanos` block. The [onBeforeRender] callback is invoked
      * after the swap chain check but before `beginFrame`, giving the caller a chance to
      * run per-frame logic (model loading, node updates, camera manipulator, AR frame, etc.).
+     * Pending resource destroys advance even when no swap chain is available.
      *
      * Returns `true` when a frame actually reached the surface, `false` when it did not: no swap
      * chain yet, [shouldPresent] declined, or `Renderer.beginFrame` refused the frame for pacing.
@@ -297,7 +298,12 @@ class SceneRenderer(
         shouldPresent: (() -> Boolean)? = null,
         onBeforeRender: () -> Unit
     ): Boolean {
-        val sc = swapChainRef.get() ?: return false
+        val sc = swapChainRef.get() ?: run {
+            // Pending destroys keep an OnDemand loop awake even while its surface is absent.
+            // Advance their grace period so the loop can finish draining and park again.
+            EngineDestroyQueue.of(engine).drainFrame(frameSource)
+            return false
+        }
 
         onBeforeRender()
 
@@ -326,9 +332,9 @@ class SceneRenderer(
 
         // Destroy GPU resources whose grace period has elapsed, after endFrame on the main (render)
         // thread — see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from
-        // a Choreographer callback so it advances in lock-step with real rendered frames, and
-        // stops the moment the surface (and thus the render loop) goes away. Reported under this
-        // renderer's identity: the queue belongs to the engine, and counts one frame per pass of
+        // a Choreographer callback so it advances with render-loop ticks, including attempts that
+        // cannot present while the surface is absent. Reported under this renderer's identity:
+        // the queue belongs to the engine, and counts one frame per pass of
         // the renderers sharing it, not one per renderer (sceneview/sceneview#4359).
         EngineDestroyQueue.of(engine).drainFrame(frameSource)
 

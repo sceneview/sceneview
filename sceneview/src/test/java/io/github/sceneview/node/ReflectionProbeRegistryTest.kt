@@ -273,6 +273,49 @@ class ReflectionProbeRegistryTest {
     }
 
     @Test
+    fun `a destroyed caller light falls back to the environment when the probe is removed`() {
+        registry.setEnvironmentLight(sky)
+        val custom = Light("custom")
+        slot.writeDirectly(custom)
+        val probe = registry.newProbe()
+        probe.show(office)
+
+        custom.isAlive = false
+        registry.remove(probe)
+
+        assertSame(sky, slot.light)
+    }
+
+    @Test
+    fun `a destroyed caller light falls back to the environment when leaving a probe zone`() {
+        registry.setEnvironmentLight(sky)
+        val custom = Light("custom")
+        slot.writeDirectly(custom)
+        val probe = registry.newProbe()
+        probe.show(office, radius = 3f, camera = inOffice)
+
+        custom.isAlive = false
+        probe.show(office, radius = 3f, camera = outside)
+
+        assertSame(sky, slot.light)
+    }
+
+    @Test
+    fun `a destroyed caller light never restores a destroyed environment`() {
+        registry.setEnvironmentLight(sky)
+        val custom = Light("custom")
+        slot.writeDirectly(custom)
+        val probe = registry.newProbe()
+        probe.show(office)
+
+        custom.isAlive = false
+        sky.isAlive = false
+        registry.remove(probe)
+
+        assertNull(slot.light)
+    }
+
+    @Test
     fun `a caller can explicitly disable IBL before a probe cycle`() {
         registry.setEnvironmentLight(sky)
         slot.writeDirectly(null)

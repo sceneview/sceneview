@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: Materials names stay put when entering full screen and fade from the sheet's real edge ([#5057](https://github.com/sceneview/sceneview/pull/5057)).** The bottom row no longer blinks out on short screens, and in Compare the stacked second name fades where it is drawn. Since #5047, the Gallery names also really fade as the camera turns away instead of popping out.

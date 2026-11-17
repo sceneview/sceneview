@@ -1,2 +1,2 @@
-<!-- category: Fixed -->
-- **Keep SceneView drags inside a scrolling or draggable Compose parent ([#3898](https://github.com/sceneview/sceneview/issues/3898)).** Opt in with `disallowParentIntercept = true` to let either Android surface claim its touch stream; the original `SceneView` and `Scene` overloads preserve parent scrolling and remain source- and binary-compatible. Document that editable nodes absorb gestures instead of moving the camera.
+<!-- category: Added -->
+- **`SceneView(disallowParentIntercept = true)` keeps scene drags inside a scrolling or draggable Compose parent ([#3898](https://github.com/sceneview/sceneview/issues/3898)).** Works with both Android surface types. The default (`false`) keeps today's behaviour, so parent scrolling is unchanged; existing calls compile and link as before. Docs now note that an `isEditable = true` node absorbs gestures instead of moving the camera.

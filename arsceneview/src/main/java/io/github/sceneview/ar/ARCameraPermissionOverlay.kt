@@ -1,15 +1,20 @@
+@file:OptIn(ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.ar
 
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import io.github.sceneview.ExperimentalSceneViewApi
 
 /**
  * What [ARSceneView] knows about a denied camera permission (#3308).
  *
- * @property recovery The available recovery actions. Settings is the primary action for
+ * @property recovery The experimental recovery actions. Settings is the primary action for
  *   [ARCameraPermissionRecovery.RequestWithSettings], with [request] still available.
  * @property permanentlyDenied Legacy conservative recommendation: `true` when settings is
  *   available, including ambiguous answers. It does not prove the dialog is blocked. Hosts
@@ -20,6 +25,7 @@ import androidx.compose.ui.res.stringResource
  */
 @Immutable
 class ARCameraPermissionState(
+    @ExperimentalSceneViewApi
     val recovery: ARCameraPermissionRecovery,
     val request: () -> Unit,
     val openSettings: () -> Unit,
@@ -53,11 +59,15 @@ object ARCameraPermissionOverlayTags {
  *
  * Public so hosts that pass their own `cameraPermissionOverlay` can still reuse it, and so
  * previews can render all variants without an ARCore session.
+ *
+ * @param contentPadding space occupied by the host's chrome. In a short remaining band, the
+ *   card's vertical margin and padding yield; recovery actions scroll together when needed.
  */
 @Composable
 fun BoxScope.ARCameraPermissionOverlay(
     state: ARCameraPermissionState,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     AROverlayCard(
         title = stringResource(R.string.sceneview_camera_permission_title),
@@ -76,6 +86,7 @@ fun BoxScope.ARCameraPermissionOverlay(
         cardTag = ARCameraPermissionOverlayTags.CARD,
         actionTag = ARCameraPermissionOverlayTags.ACTION,
         modifier = modifier,
+        contentPadding = contentPadding,
         secondaryAction = if (state.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
             stringResource(R.string.sceneview_camera_permission_grant)
         } else null,
@@ -83,3 +94,11 @@ fun BoxScope.ARCameraPermissionOverlay(
         secondaryActionTag = ARCameraPermissionOverlayTags.REQUEST_ACTION,
     )
 }
+
+/** Binary-compatibility shim for the pre-`contentPadding` descriptor. */
+@Deprecated("Use the overload that takes contentPadding.", level = DeprecationLevel.HIDDEN)
+@Composable
+fun BoxScope.ARCameraPermissionOverlay(
+    state: ARCameraPermissionState,
+    modifier: Modifier = Modifier,
+) = ARCameraPermissionOverlay(state, modifier, contentPadding = PaddingValues(0.dp))

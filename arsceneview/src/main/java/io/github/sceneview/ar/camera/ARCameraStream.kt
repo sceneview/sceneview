@@ -15,6 +15,7 @@ import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Config
 import com.google.ar.core.Coordinates2d
+import com.google.ar.core.Coordinates3d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
@@ -27,6 +28,7 @@ import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.managers.safeDestroy
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.material.setExternalTexture
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
@@ -37,12 +39,12 @@ import io.github.sceneview.safeRecycleEntity
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.utils.OpenGL
-import io.github.sceneview.utils.clone
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executor
 
 const val kUVTransformParameter = "uvTransform"
 const val kCameraTextureParameter = "cameraTexture"
@@ -67,6 +69,10 @@ const val kFogEndParameter = "fogEnd"
 internal const val kGroundContactParameter = "groundContact"
 internal const val kGroundNormalParameter = "groundNormal"
 
+// Electronic image stabilization (#2728): `true` makes the camera materials sample the
+// homogeneous EIS coordinates in CUSTOM0 instead of UV0. Absent from custom legacy materials.
+internal const val kImageStabilizationParameter = "imageStabilizationEnabled"
+
 /**
  * Renders the live AR camera feed as the scene background using Filament.
  *
@@ -76,6 +82,8 @@ internal const val kGroundNormalParameter = "groundNormal"
  * behind real-world surfaces using the ARCore depth image — and **people occlusion**
  * ([isPersonOcclusionEnabled], #1761) — virtual content is hidden behind real people using
  * the ARCore Scene Semantics `PERSON`-class segmentation mask.
+ * Electronic image stabilization uses ARCore's per-frame compensated geometry and homogeneous
+ * camera texture coordinates, so live EIS configuration changes preserve registration (#2728).
  *
  * Typically created via [rememberARCameraStream] and passed to `ARSceneView(cameraStream = ...)`.
  *
@@ -388,6 +396,15 @@ open class ARCameraStream(
     }
 
     /**
+     * Every binding path ([setMaterialInstances], the [materialInstance] and [materialInstances]
+     * setters) ends here, so this is where the EIS flag learns which instance to drive (#5091).
+     */
+    override fun setMaterialInstanceAt(primitiveIndex: Int, materialInstance: MaterialInstance) {
+        super.setMaterialInstanceAt(primitiveIndex, materialInstance)
+        if (primitiveIndex == 0) stabilizationFlag.bind(materialInstance)
+    }
+
+    /**
      * ### Enable the depth occlusion material
      *
      * This will process the incoming DepthImage to occlude virtual objects behind real world
@@ -587,8 +604,36 @@ open class ARCameraStream(
         )
     }
 
+    private val coordinates = CameraStreamCoordinates(CAMERA_VERTICES)
+    private val coordinateUploads = CameraStreamUploadRing(VERTEX_COUNT)
+    private var pendingDisplayGeometryChange = false
+
+    // Whether the bound material declares the EIS flag is resolved when it is bound, never per
+    // frame: since Filament 1.77 the `materialInstance` read back from the renderable has a null
+    // `material`, and the per-frame `hasParameter` on it threw on every frame (#5091).
+    private val stabilizationFlag = CameraStreamStabilizationFlag<MaterialInstance>(
+        accepts = ::acceptsImageStabilizationFlag,
+        write = { instance, enabled -> instance.setParameter(kImageStabilizationParameter, enabled) },
+    )
+
+    // Allocated once: [update] points them at the current frame instead of capturing it in two
+    // new lambdas every frame.
+    private var transformFrame: Frame? = null
+    private val transform3d: (FloatBuffer, Coordinates3d, FloatBuffer) -> Unit =
+        { input, outputType, output ->
+            checkNotNull(transformFrame).transformCoordinates3d(
+                Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input, outputType, output
+            )
+        }
+    private val transform2d: (Coordinates2d, FloatBuffer, FloatBuffer) -> Unit =
+        { inputType, input, output ->
+            checkNotNull(transformFrame).transformCoordinates2d(
+                inputType, input, Coordinates2d.TEXTURE_NORMALIZED, output
+            )
+        }
+
     private val vertexBuffer: VertexBuffer =
-        VertexBuffer.Builder().vertexCount(VERTEX_COUNT).bufferCount(2).attribute(
+        VertexBuffer.Builder().vertexCount(VERTEX_COUNT).bufferCount(3).attribute(
             VertexBuffer.VertexAttribute.POSITION,
             POSITION_BUFFER_INDEX,
             VertexBuffer.AttributeType.FLOAT3,
@@ -600,6 +645,12 @@ open class ARCameraStream(
             VertexBuffer.AttributeType.FLOAT2,
             0,
             CAMERA_UVS.size / VERTEX_COUNT * FLOAT_SIZE_IN_BYTES
+        ).attribute(
+            VertexBuffer.VertexAttribute.CUSTOM0,
+            CAMERA_UV_BUFFER_INDEX,
+            VertexBuffer.AttributeType.FLOAT3,
+            0,
+            3 * FLOAT_SIZE_IN_BYTES
         ).build(engine).apply {
             setBufferAt(engine, POSITION_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_VERTICES))
             // Seed identity UVs at build time (#3373). `update()` overwrites these with the
@@ -607,20 +658,12 @@ open class ARCameraStream(
             // buffer 1 would otherwise be unset, and Filament draws the quad every frame from
             // the moment the entity joins the scene — with undefined attribute data. On the
             // emulator (no ARCore, so `update()` never runs) that painted a garbage band across
-            // the "AR couldn't start" fallback. Note: `CAMERA_UVS` directly, not `uvCoordinates`
-            // — that property is declared below and is still null inside this initializer.
+            // the "AR couldn't start" fallback.
             setBufferAt(engine, UV_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_UVS))
+            // One immutable initialization snapshot; subsequent uploads use the bounded ring.
+            setBufferAt(engine, CAMERA_UV_BUFFER_INDEX,
+                FloatBuffer.wrap(FloatArray(coordinates.cameraUvs.capacity()) { coordinates.cameraUvs[it] }))
         }
-
-    private val uvCoordinates: FloatBuffer =
-        ByteBuffer.allocateDirect(CAMERA_UVS.size * FLOAT_SIZE_IN_BYTES)
-            .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
-                put(CAMERA_UVS)
-                rewind()
-            }
-
-    // Note: ARCore expects the UV buffers to be direct or will assert in transformDisplayUvCoords
-    private var transformedUvCoordinates: FloatBuffer? = null
 
     // Hoisted into a field so destroy() can free it — building it inline in the
     // RenderableManager.Builder.geometry(...) call dropped the reference and leaked
@@ -652,6 +695,7 @@ open class ARCameraStream(
                 indexBuffer)
             .material(0, standardMaterial.defaultInstance)
             .build(engine, entity)
+        stabilizationFlag.bind(standardMaterial.defaultInstance)
 
         // Hidden until the first ARCore frame (#3373). The external OES textures created above
         // have no image attached until ARCore writes into them, so sampling them is
@@ -683,26 +727,33 @@ open class ARCameraStream(
             cameraTexture = it
         }
 
-        // Recalculate camera Uvs if necessary.
-        if (transformedUvCoordinates == null || frame.hasDisplayGeometryChanged()) {
-            val transformedUvCoordinates = transformedUvCoordinates ?: uvCoordinates.clone().also {
-                transformedUvCoordinates = it
+        // EIS transforms are valid only while EIS is configured. OFF retains main's 2D path.
+        pendingDisplayGeometryChange = frame.hasDisplayGeometryChanged() || pendingDisplayGeometryChange
+        coordinateUploads.acquire()?.let { upload ->
+            val mode = session.config.imageStabilizationMode
+            transformFrame = frame
+            val changed = try {
+                coordinates.update(
+                    mode = mode,
+                    displayGeometryChanged = pendingDisplayGeometryChange,
+                    transform3d = transform3d,
+                    transform2d = transform2d,
+                )
+            } catch (e: RuntimeException) {
+                upload.cancel()
+                throw e
+            } finally {
+                transformFrame = null
             }
-
-            // If display rotation changed (also includes view size change), we need to re-query the UV
-            // coordinates for the screen rect, as they may have changed as well.
-            frame.transformCoordinates2d(
-                Coordinates2d.VIEW_NORMALIZED,
-                uvCoordinates,
-                Coordinates2d.TEXTURE_NORMALIZED,
-                transformedUvCoordinates
-            )
-            // Adjust Camera Uvs for OpenGL
-            for (i in 1 until (VERTEX_COUNT * 2) step 2) {
-                // Correct for vertical coordinates to match OpenGL
-                transformedUvCoordinates.put(i, 1.0f - transformedUvCoordinates[i])
+            pendingDisplayGeometryChange = false
+            if (changed) {
+                upload.copyFrom(coordinates)
+                uploadCoordinates(engine, vertexBuffer, upload)
+                // Written only when it flips, to the instance resolved at bind time (#5091).
+                stabilizationFlag.enabled = mode == Config.ImageStabilizationMode.EIS
+            } else {
+                upload.cancel()
             }
-            vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, transformedUvCoordinates)
         }
 
         // Both the real camera texture and the real UVs are now bound, so the quad is safe to
@@ -930,12 +981,26 @@ open class ARCameraStream(
         // owns its entity — it is created in the constructor above, never handed in — so there
         // is no borrowed-entity case to guard, unlike `Node.ownsEntity`.
         engine.safeRecycleEntity(entity)
-        uvCoordinates.clear()
-        transformedUvCoordinates?.clear()
         Log.d("Sceneview", "CameraStream destroyed")
     }
 
     companion object {
+        // Filament only delivers completion callbacks with a non-null Handler or Executor.
+        // Completion only decrements an atomic counter, so it can run on the notifying thread.
+        private val coordinateUploadExecutor = Executor { it.run() }
+
+        internal fun uploadCoordinates(engine: Engine, vertexBuffer: VertexBuffer, upload: CameraStreamUploadRing.Slot) {
+            vertexBuffer.setBufferAt(
+                engine, POSITION_BUFFER_INDEX, upload.positions, 0, 0, coordinateUploadExecutor, upload.onConsumed
+            )
+            vertexBuffer.setBufferAt(
+                engine, UV_BUFFER_INDEX, upload.imageUvs, 0, 0, coordinateUploadExecutor, upload.onConsumed
+            )
+            vertexBuffer.setBufferAt(
+                engine, CAMERA_UV_BUFFER_INDEX, upload.cameraUvs, 0, 0, coordinateUploadExecutor, upload.onConsumed
+            )
+        }
+
         /**
          * Camera-stream draw priority while depth occlusion is OFF (issue #1617).
          *
@@ -987,6 +1052,7 @@ open class ARCameraStream(
             -1.0f, 1.0f, 1.0f, -1.0f, -3.0f, 1.0f, 3.0f, 1.0f, 1.0f
         )
         private const val UV_BUFFER_INDEX = 1
+        private const val CAMERA_UV_BUFFER_INDEX = 2
         private val CAMERA_UVS = floatArrayOf(
             0.0f, 0.0f, 0.0f, 2.0f, 2.0f, 0.0f
         )
@@ -1004,6 +1070,15 @@ open class ARCameraStream(
  * ([ARCameraStream.CAMERA_PRIORITY_BACKGROUND]) so early-Z skips the texels already covered.
  * Kept outside the class so the decision is unit-testable without Filament or ARCore.
  */
+/**
+ * Whether [instance]'s material declares the EIS flag. Read through [materialOrNull], so a wrapper
+ * Filament built from a native pointer (null `material` since Filament 1.77) reads as "no flag"
+ * instead of throwing (#5091). Called at bind time only, never per frame. Top-level, like
+ * [cameraStreamPriority], so a JVM test can call it without the companion's native samplers.
+ */
+internal fun acceptsImageStabilizationFlag(instance: MaterialInstance): Boolean =
+    instance.materialOrNull?.hasParameter(kImageStabilizationParameter) == true
+
 internal fun cameraStreamPriority(
     depthOcclusion: Boolean,
     personOcclusion: Boolean,
