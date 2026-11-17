@@ -25,3 +25,30 @@ internal class MatterFrameTimes {
         return result
     }
 }
+
+/**
+ * Debug measurement of one slide: the longest presented-frame interval from the first frame
+ * of a switch to its landing. A cold first draw of a material shows up here as one long frame.
+ */
+internal class MatterSwitchFrames {
+    data class Slide(val material: FeelMaterial, val worstMillis: Long, val totalMillis: Long)
+    private var last = 0L
+    private var first = 0L
+    private var worst = 0L
+    private var measuring = false
+
+    fun frame(nanos: Long, switching: Boolean, displayed: FeelMaterial): Slide? {
+        if (!measuring) {
+            if (!switching) return null
+            // The interval before the request is idle time, not part of the slide.
+            measuring = true
+            first = nanos; last = nanos; worst = 0L
+            return null
+        }
+        worst = maxOf(worst, nanos - last)
+        last = nanos
+        if (switching) return null
+        measuring = false
+        return Slide(displayed, worst / 1_000_000L, (nanos - first) / 1_000_000L)
+    }
+}

@@ -95,7 +95,9 @@ import io.github.sceneview.demo.demos.internal.feel.MatterIdentity
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
 import io.github.sceneview.demo.demos.internal.feel.MatterPreparation
+import io.github.sceneview.demo.demos.internal.feel.MatterPrewarm
 import io.github.sceneview.demo.demos.internal.feel.MatterSwitch
+import io.github.sceneview.demo.demos.internal.feel.MatterSwitchFrames
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
@@ -320,8 +322,9 @@ fun FeelDemo(onBack: () -> Unit) {
     // Selection, the solid on stage and the slide between them, advanced per presented frame.
     val switch = remember { MatterSwitch() }
     var openingPrepared by remember(materials) { mutableStateOf(false) }
-    // Only the opening belongs behind the cover. Never draw another sample to warm it:
+    // Only the opening belongs behind the cover. Never draw another sample to warm it there:
     // Material.compile queues backend work without putting its slab in the visible set.
+    // After the reveal, MatterPrewarm draws each sample once, hidden, while the stage is idle.
     LaunchedEffect(materials, touchView) {
         val preparation = MatterPreparation()
         val cache = withContext(Dispatchers.IO) { MatterDetailCache(touchView.context.cacheDir) }
@@ -396,6 +399,11 @@ fun FeelDemo(onBack: () -> Unit) {
     ShowroomToneMapping(engine, view, neutral = true, requestRender = invalidator::requestRender)
     var readout by remember { mutableStateOf(FeelReadout()) }
     val timing = remember { longArrayOf(0L) }
+    val switchFrames = remember { MatterSwitchFrames() }
+    val prewarm = remember { MatterPrewarm() }
+    // Debug: the material drawn hidden on the previous frame and that frame's start.
+    val warmTrace = remember { arrayOf<FeelMaterial?>(null) }
+    val lastFrameNanos = remember { longArrayOf(0L) }
     // Changing state is read by the FIRST SceneView callbacks through these updated delegates.
     val onTouchNow by rememberUpdatedState<(MotionEvent) -> Boolean>({ event ->
         wakeRender()
@@ -416,6 +424,13 @@ fun FeelDemo(onBack: () -> Unit) {
         val leaving = switch.outgoing
         val switching = switch.switching
         val progress = switch.progress
+        if (BuildConfig.DEBUG) {
+            switchFrames.frame(nanos, switching, shown)?.let {
+                Log.d("Matter", "Switch to ${it.material.name}: worst frame ${it.worstMillis} ms, slide ${it.totalMillis} ms")
+            }
+            warmTrace[0]?.let { Log.d("Matter", "Prewarm ${it.name}: frame ${(nanos - lastFrameNanos[0]) / 1_000_000L} ms") }
+            lastFrameNanos[0] = nanos
+        }
         val cameraMoved = idle.advance(now, motion && focused && simulation.opening.finished && !switching)
         if (cameraMoved) stage.orbit(idle.yawDegrees)
         val reframed = stage.frame()
@@ -440,12 +455,21 @@ fun FeelDemo(onBack: () -> Unit) {
         val needsMappedShadow = simulation.opening.visible || warmingOpening
         if (light.isShadowCaster != needsMappedShadow) light.isShadowCaster = needsMappedShadow
         val direction = switch.direction
+        // Idle: nothing moves under a finger, so a first-draw stall here is never seen.
+        val stageIdle = focused && firstFrame.sceneReady.value && simulation.opening.finished &&
+            !switching && simulation.active == null && !idle.isTouching
+        val warming = prewarm.next(listOfNotNull(shown, leaving), { pads[it.ordinal] != null }, stageIdle)
+        warmTrace[0] = warming
         FeelMaterial.entries.forEach { kind ->
             // The incoming solid is drawn from the first frame of a slide, at its hidden pose
             // under the floor: the stall of its first draw happens before it has to move.
             val visible = kind == shown || (kind == leaving && progress < MatterTransition.HIDDEN)
             pads[kind.ordinal]?.apply {
-                isVisible = visible
+                isVisible = visible || kind == warming
+                if (!visible && kind == warming) {
+                    // Pre-warm: the same hidden pose under the opaque floor as a priming slide.
+                    position = Position(y = MatterTransition.height(kind, 0f, outgoing = false))
+                }
                 if (visible) {
                     val offset = when (kind) {
                         leaving -> -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
@@ -497,7 +521,8 @@ fun FeelDemo(onBack: () -> Unit) {
         val next = when {
             !focused -> MatterCadence.Parked
             !firstFrame.sceneReady.value || switching || settling ||
-                simulation.needsFrames(shown, now, motion) -> MatterCadence.Active
+                simulation.needsFrames(shown, now, motion) ||
+                (stageIdle && prewarm.needsFrames { pads[it.ordinal] != null }) -> MatterCadence.Active
             motion && orbitAt != null && now >= orbitAt -> MatterCadence.Orbit
             else -> MatterCadence.Parked
         }
