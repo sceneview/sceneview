@@ -236,6 +236,17 @@ import io.github.sceneview.node.setEnvironmentLight
  *                              before [FrameRatePolicy.maxFps] permits presentation. Use this
  *                              for animation clocks or simulations, and [onFrame] to observe
  *                              presented frames. Disable [cameraManipulator] when driving the camera.
+ * @param disallowParentIntercept Android View/Compose interop. Default `false`: a scrolling or
+ *                              draggable parent (`verticalScroll`, `LazyColumn`, `HorizontalPager`,
+ *                              a bottom sheet) may still intercept a drag that starts on the
+ *                              scene, so an embedded viewer never traps page scrolling. Pass
+ *                              `true` to keep every drag that starts on the scene with the scene,
+ *                              for either [surfaceType]: it calls
+ *                              `requestDisallowInterceptTouchEvent(true)` on `ACTION_DOWN` and
+ *                              releases it after `ACTION_UP` or `ACTION_CANCEL`. A change applies
+ *                              from the next touch stream. Touches on an `isEditable = true` node
+ *                              still go to the node, not the camera; this option only governs the
+ *                              parent.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
@@ -490,6 +501,13 @@ fun SceneView(
      * pass `null` to stop. Unlike [onFrame], it also runs on ticks that are not presented.
      */
     onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    /**
+     * When `true`, claims touches on either surface type from scrolling or draggable parents on
+     * ACTION_DOWN and releases them after ACTION_UP or ACTION_CANCEL. Default `false`: the parent
+     * keeps scrolling. Changes apply to the next touch stream. Editable nodes still absorb their
+     * gestures instead of moving the camera.
+     */
+    disallowParentIntercept: Boolean = false,
     /**
      * Declare scene nodes using the [SceneScope] DSL.
      */
@@ -1050,6 +1068,7 @@ fun SceneView(
     SideEffect {
         sceneRenderer.viewportCamera = cameraNode
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
+        sceneRenderer.disallowParentIntercept = disallowParentIntercept
         sceneRenderer.onSurfaceResized = { _, _ ->
             // Remember the size so a manipulator swapped in later (without a surface resize)
             // can inherit it — see [lastViewportRef] (#2514).
@@ -2607,6 +2626,94 @@ fun SceneView(
     onFrame = onFrame,
     content = content,
     onAnimationFrame = null,
+)
+
+/**
+ * Binary-compatibility shim for the descriptor published before `disallowParentIntercept` was
+ * added (#3898). The Compose compiler puts every parameter in the JVM signature, so the new
+ * parameter retyped the function: this keeps a library compiled against the previous signature
+ * linking, with parent interception allowed (`false`).
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the SceneView overload that takes `disallowParentIntercept`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun SceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    view: View = rememberView(engine),
+    isOpaque: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
+    renderInvalidator: RenderInvalidator? = null,
+    renderQuality: RenderQuality = RenderQuality.Default,
+    autoCenterContent: Boolean = true,
+    autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: CameraNode = rememberCameraNode(engine),
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
+    ),
+    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    content: (@Composable SceneScope.() -> Unit)? = null
+) = SceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    view = view,
+    isOpaque = isOpaque,
+    frameRatePolicy = frameRatePolicy,
+    renderInvalidator = renderInvalidator,
+    renderQuality = renderQuality,
+    autoCenterContent = autoCenterContent,
+    autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
+    contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    collisionSystem = collisionSystem,
+    cameraManipulator = cameraManipulator,
+    viewNodeWindowManager = viewNodeWindowManager,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    activity = activity,
+    lifecycle = lifecycle,
+    onFrame = onFrame,
+    onAnimationFrame = onAnimationFrame,
+    disallowParentIntercept = false,
+    content = content,
 )
 
 /**
