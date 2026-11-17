@@ -712,8 +712,21 @@ jobs:
         # (`androidx.compose.ui:ui-test-manifest`). Fixed by declaring that
         # manifest entry directly in `samples/android-demo/src/main/AndroidManifest.xml`;
         # this task makes a regression of that fix fail a PR.
+        #
+        # `-PdemoUnitTestForks=2`: the two demo tasks are the critical path of
+        # this job (~15 min each, side by side, one JVM each on a 4-vCPU
+        # runner). Two forks per task use all 4 vCPUs; local runs keep 1 fork.
+        # See `samples/android-demo/build.gradle` (`unitTests.all`).
         run: |
+          # TEMPORARY (removed before review): sample memory every 5 s.
+          ( while sleep 5; do
+              printf '%s %s %s %s\n' "$(date +%T)" \
+                "$(free -m | awk '/Mem:/{print $3}')" \
+                "$(ps -C java -o rss= | awk '{s+=$1} END {print int(s/1024)}')" \
+                "$(pgrep -fc 'Gradle Test Executor')"
+            done ) > /tmp/mem-samples.txt 2>&1 &
           ./gradlew \
+            -PdemoUnitTestForks=2 \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
             :sceneview-core:androidTest \
@@ -722,6 +735,15 @@ jobs:
             :samples:android-demo:testDebugUnitTest \
             :samples:android-demo:testReleaseUnitTest \
             --stacktrace
+
+      - name: TEMPORARY memory peak (removed before review)
+        if: always()
+        run: |
+          echo "samples: $(wc -l < /tmp/mem-samples.txt); total MiB: $(free -m | awk '/Mem:/{print $2}')"
+          echo "peak used MiB: $(awk '{print $2}' /tmp/mem-samples.txt | sort -n | tail -1)"
+          echo "peak java RSS MiB: $(awk '{print $3}' /tmp/mem-samples.txt | sort -n | tail -1)"
+          echo "max concurrent test JVMs: $(awk '{print $4}' /tmp/mem-samples.txt | sort -n | tail -1)"
+          echo "time used_MiB java_rss_MiB test_jvms, top 5 by used:"; sort -k2 -n /tmp/mem-samples.txt | tail -5
 
       - name: Upload unit test reports
         if: failure()
