@@ -478,6 +478,9 @@ class ModelLoader(
      * model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, without what the extension carries; to refuse it with an
      * [UnsupportedGltfExtensionException] instead, see [awaitModelInstance].
+     * @throws UnsupportedModelFormat when the file is none of [supportedFormats] (STEP, FBX, USDZ,
+     * a Gaussian-splat PLY or SPZ, or a file whose bytes and extension are both unrecognised),
+     * before any native parse. Such a file used to return `null`.
      *
      * @see createModel
      */
@@ -486,7 +489,10 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): Model? = loadModel(fileLocation, null, resourceResolver)
 
-    /** Load a supported format with [unit] for STL/OBJ/PLY. */
+    /**
+     * Load a supported format with [unit] for STL/OBJ/PLY.
+     * @throws UnsupportedModelFormat for an unsupported format, as the overload without [unit].
+     */
     suspend fun loadModel(
         fileLocation: String,
         unit: ModelUnit?,
@@ -793,6 +799,10 @@ class ModelLoader(
      * @return the instance, or `null` when the file cannot be read or parsed; the reason is logged.
      * A model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, as in [loadModel].
+     * @throws UnsupportedModelFormat when the file is none of [supportedFormats] (STEP, FBX, USDZ,
+     * a Gaussian-splat PLY or SPZ, or a file whose bytes and extension are both unrecognised),
+     * before any native parse. Such a file used to return `null`. The `rememberModelInstance`
+     * composables log it and return `null`.
      *
      * @see loadModel
      */
@@ -801,7 +811,10 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): ModelInstance? = loadModelInstance(fileLocation, null, resourceResolver)
 
-    /** Load a supported format with [unit] for STL/OBJ/PLY. */
+    /**
+     * Load a supported format with [unit] for STL/OBJ/PLY.
+     * @throws UnsupportedModelFormat for an unsupported format, as the overload without [unit].
+     */
     suspend fun loadModelInstance(
         fileLocation: String,
         unit: ModelUnit?,
@@ -1119,6 +1132,7 @@ class ModelLoader(
      * @return the instances, or an empty list when the file cannot be read or parsed; the reason is
      * logged. A model that requires an extension gltfio cannot load (see
      * [SUPPORTED_GLTF_EXTENSIONS]) is logged and loaded anyway, as in [loadModel].
+     * @throws UnsupportedModelFormat as [loadModel] does; such a file used to return an empty list.
      *
      * @see createInstancedModel
      */

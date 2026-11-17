@@ -1498,30 +1498,8 @@ fun rememberModelInstance(
     if (android.net.Uri.parse(assetFileLocation).scheme != null) {
         return rememberModelInstance(modelLoader, fileLocation = assetFileLocation)
     }
-    val instance = produceState<ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = assetFileLocation
-    ) {
-        // The `suspend` load, like the URL overload: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and
-        // WebP → PNG converted on Default, only the Filament calls on Main (produceState's
-        // context). Converting in this coroutine ran all of it on the main thread.
-        value = modelLoader.loadModelInstanceOrNull(assetFileLocation)
-    }.value
-    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
-    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
-    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
-    // produced value fires `onDispose` for the *previous* instance on a key swap and on
-    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
-    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
-    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
-    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
-    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
-    // the Filament JNI contract.
-    DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
-    }
-    return instance
+    // Every overload shares the `unit` overload's single body, so they load, log and dispose alike.
+    return rememberModelInstance(modelLoader, assetFileLocation, unit = null)
 }
 
 /**
@@ -1566,28 +1544,23 @@ fun rememberModelInstance(
     if (uri.scheme == null) {
         return rememberModelInstance(modelLoader, assetFileLocation = fileLocation)
     }
-    // URL / file URI / content URI → use suspend loadModelInstance which handles http(s)
-    val instance = produceState<ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = fileLocation
-    ) {
-        value = modelLoader.loadModelInstanceOrNull(fileLocation, resourceResolver)
-    }.value
-    // See the asset-path overload: `produceState` skips per-key disposal, so destroy the previous
-    // [Model] on a key swap and on leave-composition (#2459). Disposal is ordered after the
-    // consuming `ModelNode`'s detach, respecting #2424's render-loop coupling.
-    DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
-    }
-    return instance
+    // URL / file URI / content URI → the suspend loadModelInstance, which handles http(s).
+    return rememberModelInstance(modelLoader, fileLocation, unit = null, resourceResolver)
 }
 
 /**
  * Open a supported model at its real size. [unit] overrides unitless STL/OBJ/PLY only; GLB/glTF
- * remain metres and 3MF keeps its declared unit. The result is null while loading or on failure.
- * Use [rememberModelLoadState] to display typed failures such as `UnsupportedModelFormat`.
- * This composable owns and destroys the loaded model when the location or unit changes.
+ * remain metres and 3MF keeps its declared unit.
+ *
+ * This is the body every `rememberModelInstance` overload shares (they pass `unit = null`), so all
+ * of them behave alike: the result is `null` while loading and on failure, the failure logged with
+ * its cause (an `UnsupportedModelFormat` included); a glTF that requires an extension gltfio cannot
+ * load is logged and loaded anyway, and the instance is returned before its textures finish
+ * decoding, as [ModelLoader.loadModelInstance] does. To show typed failures, refuse such a glTF or
+ * wait for its textures, use [rememberModelLoadState] instead.
+ *
+ * This composable owns and destroys the loaded model when the location or unit changes, and when
+ * it leaves the composition. See the asset-path overload for lifecycle details.
  */
 @Composable
 fun rememberModelInstance(
@@ -1595,8 +1568,33 @@ fun rememberModelInstance(
     fileLocation: String,
     unit: ModelUnit?,
     resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) },
-): ModelInstance? = (rememberModelLoadState(modelLoader, fileLocation, unit, resourceResolver)
-    as? ModelLoadState.Ready)?.instance
+): ModelInstance? {
+    val instance = produceState<ModelInstance?>(
+        initialValue = null,
+        key1 = modelLoader,
+        key2 = fileLocation,
+        key3 = unit,
+    ) {
+        // The `suspend` load: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and WebP → PNG converted on
+        // Default, only the Filament calls on Main (produceState's context). Converting in this
+        // coroutine ran all of it on the main thread.
+        value = modelLoader.loadModelInstanceOrNull(fileLocation, unit, resourceResolver)
+    }.value
+    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
+    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
+    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
+    // produced value fires `onDispose` for the *previous* instance on a key swap and on
+    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
+    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
+    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
+    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
+    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
+    // the Filament JNI contract.
+    DisposableEffect(instance) {
+        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
+    }
+    return instance
+}
 
 /**
  * [ModelLoader.loadModelInstance] for the `rememberModelInstance` overloads: a failed load is
@@ -1605,11 +1603,10 @@ fun rememberModelInstance(
  */
 private suspend fun ModelLoader.loadModelInstanceOrNull(
     fileLocation: String,
-    resourceResolver: (resourceFileName: String) -> String = {
-        ModelLoader.getFolderPath(fileLocation, it)
-    }
+    unit: ModelUnit?,
+    resourceResolver: (resourceFileName: String) -> String,
 ): ModelInstance? = try {
-    loadModelInstance(fileLocation, resourceResolver)
+    loadModelInstance(fileLocation, unit, resourceResolver)
 } catch (cancellation: CancellationException) {
     throw cancellation
 } catch (error: Exception) {

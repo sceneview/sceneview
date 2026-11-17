@@ -299,8 +299,9 @@ For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced
 **Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) throw
 `io.github.sceneview.core.model.UnsupportedModelFormat(extension)` before Filament parses them.
 Use `rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` to show
-`ModelLoadState.Failed.error` with that type; `rememberModelInstance` returns `null` on failure,
-and callback loaders log the failure and return `null` (or an empty instance list).
+`ModelLoadState.Failed.error` with that type; `rememberModelInstance` logs the failure and returns `null`,
+callback loaders log the failure and return `null` (or an empty instance list), and the `suspend`
+`loadModel` / `loadModelInstance` throw it (they used to return `null`).
 `ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
 but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
 `supportedFormats` and refused by `ModelConverter` / `ModelLoader` with the same typed error.
@@ -4393,8 +4394,17 @@ fun rememberModelInstance(
     fileLocation: String,
     resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
 ): ModelInstance?
+
+// Same, choosing the unit of a unitless STL/OBJ/PLY mesh (GLB/glTF stay metres, 3MF keeps its own)
+@Composable
+fun rememberModelInstance(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,                    // io.github.sceneview.core.model.ModelUnit
+    resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelInstance?
 ```
-Returns `null` while loading, recomposes when ready. **Always handle the null case.**
+Returns `null` while loading, recomposes when ready. **Always handle the null case.** All three overloads share one body: a failed load (an `UnsupportedModelFormat` included) is `null`, logged under the `rememberModelInstance` tag; the instance is returned before its textures finish decoding.
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
@@ -4412,6 +4422,15 @@ A positional string resolves to the `assetFileLocation` overload; any location w
 fun rememberModelLoadState(
     modelLoader: ModelLoader,
     fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+// Same, choosing the unit of a unitless STL/OBJ/PLY mesh
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,
     resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
 ): ModelLoadState
 
@@ -4436,6 +4455,14 @@ Same ownership as `rememberModelInstance`: the composable destroys the `Model` w
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
+    // GLB, GLTF, THREE_MF, STL, OBJ, PLY_MESH (io.github.sceneview.core.model.ModelFormat)
+    val supportedFormats: Set<ModelFormat>
+
+    // Every create*/load* below also has an overload taking `unit: ModelUnit?` right after the
+    // location/buffer (e.g. `loadModelInstance(fileLocation, unit)`), for unitless STL/OBJ/PLY.
+    // Any other input (STEP, FBX, USDZ, splat PLY/SPZ, bytes and extension unrecognised) throws
+    // UnsupportedModelFormat before any native call; the *Async callbacks get `null` instead.
+
     // Synchronous — MUST be called on main thread
     fun createModelInstance(assetFileLocation: String): ModelInstance
     fun createModelInstance(buffer: Buffer): ModelInstance
@@ -4449,9 +4476,10 @@ class ModelLoader(engine: Engine, context: Context) {
     fun createModel(@RawRes rawResId: Int, releaseSourceData: Boolean = true): Model
     fun createModel(file: File, releaseSourceData: Boolean = true): Model
 
-    // Async — safe from any thread
+    // Async — safe from any thread. `null` when the file cannot be read or parsed (logged);
+    // throws UnsupportedModelFormat for an unsupported format (this used to be `null`).
     suspend fun loadModel(fileLocation: String): Model?
-    fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
+    fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job      // never throws: onResult(null)
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
 

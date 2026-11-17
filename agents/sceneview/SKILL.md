@@ -124,7 +124,7 @@ For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced
 **Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) throw
 `io.github.sceneview.core.model.UnsupportedModelFormat(extension)` before Filament parses them.
 Use `rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` to show
-`ModelLoadState.Failed.error` with that type; `rememberModelInstance` returns `null` on failure,
+`ModelLoadState.Failed.error` with that type; `rememberModelInstance` logs the failure and returns `null`,
 and callback loaders log the failure and return `null` (or an empty instance list).
 `ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
 but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
