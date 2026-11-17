@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Ground contact failures are logged only once per AR scene ([#4961](https://github.com/sceneview/sceneview/issues/4961)).** A throwing contact provider is still retried on later frames and can recover without flooding the log. Documentation now identifies `AutoPlacementModel` as the component that registers contacts automatically and guards against reading a destroyed node.
