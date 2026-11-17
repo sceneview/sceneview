@@ -531,12 +531,19 @@
       <div>
       <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
            the nav (its data-metric anchor) is the one value rewritten weekly by
-           .claude/scripts/update-site-metrics.sh. The logo wall names only companies whose code was
-           checked to use SceneView (all checked November 9, 2026): Google Play binaries containing
-           SceneView classes (Medal, IKEA, Lenskart, Safie), public build files declaring it (Bitkey,
+           .claude/scripts/update-site-metrics.sh. The logo wall names companies whose code was checked to use
+           SceneView (November 9, 2026, unless dated otherwise below): Google Play binaries containing
+           SceneView classes (Medal, IKEA), public build files declaring it (Bitkey,
            Vocable, Niantic Spatial SDK samples; Meshtastic checked November 12, 2026) and Maven Central POMs depending on it (GeneXus,
-           TruVideo). Each file in assets/brand/used-in/ is the company's official logo from its own
-           site or brand kit; the page renders them as one-colour silhouettes, IKEA in its own colours.
+           TruVideo). Lenskart (6.0.2, checked October 14, 2026) ships Sceneform Maintained
+           (com/gorisse/thomas/sceneform classes), SceneView's predecessor from the same organisation, not
+           io.github.sceneview; Safie has no binary proof: its engineers presented SceneView in a public
+           talk, which its logo links to. Lenskart is named in the footnote, not on the wall. Checked November 17, 2026 in the Google Play builds installed on a test phone:
+           Volkswagen (com.volkswagen.weconnect 4.8.1), Audi (myAudi 5.10.1), Porsche (My Porsche
+           21.26.46, its licenses.txt also names io.github.sceneview), CUPRA (My CUPRA 3.0.2) and Philips
+           Hue (6.5.0, ARSceneView) contain io/github/sceneview classes in their dex. MyŠkoda (8.18.0) is left out on purpose: its
+           proof is materials only (R8 renamed every class). Each file in assets/brand/used-in/ is the company's
+           official logo from its own site or brand kit; the page renders them as one-colour silhouettes.
            Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
       <p class="numbers reveal">SceneView has <a href="https://github.com/sceneview/sceneview">more than 1,300 stars on GitHub</a>, and <a href="/companies.html#adoption">over 500 public repositories</a> declare it as a dependency.</p>
       <div class="used-in reveal">
@@ -544,8 +551,12 @@
         <ul class="used-in__logos">
           <li><a href="https://play.google.com/store/apps/details?id=tv.medal.recorder" aria-label="Medal on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/medal-logo-black.svg" alt="Medal" width="117" height="28" loading="lazy"></a></li>
           <li><a href="https://play.google.com/store/apps/details?id=com.ingka.ikea.app" aria-label="IKEA on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/ikea-wordmark-black.svg" alt="IKEA" width="104" height="20" loading="lazy"></a></li>
-          <li><a href="https://play.google.com/store/apps/details?id=com.lenskart.app" aria-label="Lenskart on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/lenskart-logo.svg" alt="Lenskart" width="131" height="40" loading="lazy"></a></li>
-          <li><a href="https://play.google.com/store/apps/details?id=com.safie.safieviewer" aria-label="Safie Viewer on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/safie-logo-white.svg" alt="Safie" width="101" height="34" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.volkswagen.weconnect" aria-label="Volkswagen on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/volkswagen-logo.svg" alt="Volkswagen" width="36" height="36" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant" aria-label="myAudi on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/audi-logo.svg" alt="Audi" width="87" height="30" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=de.porsche.one" aria-label="My Porsche on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/porsche-logo.svg" alt="Porsche" width="180" height="12" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.cupra.mycupra" aria-label="My CUPRA on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/cupra-logo.svg" alt="CUPRA" width="166" height="28" loading="lazy"></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.philips.lighting.hue2" aria-label="Philips Hue on Google Play"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/philips-hue-logo.svg" alt="Philips Hue" width="83" height="40" loading="lazy"></a></li>
+          <li><a href="https://speakerdeck.com/jeromecha/mobile-dev-japan-number-3-safie-viewer-android-and-sceneview" aria-label="Safie's public talk on SceneView, on Speaker Deck" title="Safie presented SceneView in a public talk"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/safie-logo-white.svg" alt="Safie" width="101" height="34" loading="lazy"></a></li>
           <li><a href="https://github.com/proto-at-block/bitkey" aria-label="Bitkey by Block, open source on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/bitkey-logo-black.svg" alt="Bitkey" width="125" height="28" loading="lazy"></a></li>
           <li><a href="https://github.com/willowtreeapps/vocable-android" aria-label="Vocable by WillowTree, open source on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/willowtree-logo-white.svg" alt="WillowTree" width="153" height="34" loading="lazy"></a></li>
           <li><a href="https://github.com/meshtastic/Meshtastic-Android" aria-label="Meshtastic, open source on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/meshtastic-typelogo.svg" alt="Meshtastic" width="172" height="18" loading="lazy"></a></li>
@@ -554,7 +565,7 @@
           <li><a href="https://github.com/nianticspatial/nsdk-samples-kotlin" aria-label="Niantic Spatial SDK samples on GitHub"><img class="used-in__logo used-in__logo--mono" src="assets/brand/used-in/niantic-spatial-logo.svg" alt="Niantic Spatial" width="115" height="44" loading="lazy"></a></li>
         </ul>
       </div>
-      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on November 14, 2026. Star count from the GitHub repository page. Apps checked in their Google Play builds, open-source apps and samples in their public build files and SDKs in their Maven Central POMs, on November 9, 2026 (Meshtastic on November 12, 2026). Logos are trademarks of their owners.</p>
+      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on November 14, 2026. Star count from the GitHub repository page. Apps checked in their Google Play builds, open-source apps and samples in their public build files and SDKs in their Maven Central POMs, on November 9, 2026 (Meshtastic on November 12, 2026; the Volkswagen Group and Philips Hue apps on November 17, 2026). Lenskart ships Sceneform Maintained, SceneView's predecessor; Safie presented SceneView in <a href="https://speakerdeck.com/jeromecha/mobile-dev-japan-number-3-safie-viewer-android-and-sceneview">a public talk</a>. Logos are trademarks of their owners.</p>
       </div>
     </div>
   </section>
