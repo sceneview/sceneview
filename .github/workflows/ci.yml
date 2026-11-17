@@ -718,13 +718,11 @@ jobs:
         # runner). Two forks per task use all 4 vCPUs; local runs keep 1 fork.
         # See `samples/android-demo/build.gradle` (`unitTests.all`).
         run: |
-          # TEMPORARY (removed before review): sample memory every 5 s.
-          ( while sleep 5; do
-              printf '%s %s %s %s\n' "$(date +%T)" \
-                "$(free -m | awk '/Mem:/{print $3}')" \
-                "$(ps -C java -o rss= | awk '{s+=$1} END {print int(s/1024)}')" \
-                "$(pgrep -fc 'Gradle Test Executor')"
-            done ) > /tmp/mem-samples.txt 2>&1 &
+          # TEMPORARY (removed before review): memory sample every 10 s, printed
+          # live into this log so an OOM kill of the runner cannot lose it.
+          ( while sleep 10; do
+              echo "MEM $(date +%T) used=$(free -m | awk '/Mem:/{print $3}') avail=$(free -m | awk '/Mem:/{print $7}') java_rss=$(ps -C java -o rss= | awk '{s+=$1} END {print int(s/1024)}') test_jvms=$(pgrep -fc 'Gradle Test Executor')" | tee -a /tmp/mem-samples.txt
+            done ) &
           ./gradlew \
             -PdemoUnitTestForks=2 \
             :sceneview:testDebugUnitTest \
@@ -739,11 +737,11 @@ jobs:
       - name: TEMPORARY memory peak (removed before review)
         if: always()
         run: |
-          echo "samples: $(wc -l < /tmp/mem-samples.txt); total MiB: $(free -m | awk '/Mem:/{print $2}')"
-          echo "peak used MiB: $(awk '{print $2}' /tmp/mem-samples.txt | sort -n | tail -1)"
-          echo "peak java RSS MiB: $(awk '{print $3}' /tmp/mem-samples.txt | sort -n | tail -1)"
-          echo "max concurrent test JVMs: $(awk '{print $4}' /tmp/mem-samples.txt | sort -n | tail -1)"
-          echo "time used_MiB java_rss_MiB test_jvms, top 5 by used:"; sort -k2 -n /tmp/mem-samples.txt | tail -5
+          free -m
+          echo "peak used: $(sed 's/.*used=\([0-9]*\).*/\1/' /tmp/mem-samples.txt | sort -n | tail -1) MiB"
+          echo "min avail: $(sed 's/.*avail=\([0-9]*\).*/\1/' /tmp/mem-samples.txt | sort -n | head -1) MiB"
+          echo "peak java RSS: $(sed 's/.*java_rss=\([0-9]*\).*/\1/' /tmp/mem-samples.txt | sort -n | tail -1) MiB"
+          echo "max test JVMs: $(sed 's/.*test_jvms=\([0-9]*\).*/\1/' /tmp/mem-samples.txt | sort -n | tail -1)"
 
       - name: Upload unit test reports
         if: failure()

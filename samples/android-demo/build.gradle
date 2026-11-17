@@ -293,16 +293,19 @@ android {
             includeAndroidResources = true
             all {
                 systemProperty 'robolectric.logging.enabled', 'true'
-                // Every class of the module shares one test JVM; the default 512 MB ran out in
-                // ScanObjectTest's synthetic rooms (~600k points each) after the Robolectric suites.
-                maxHeapSize = '2g'
                 // Test JVMs per variant task. Default 1 (local runs unchanged); CI's "Unit tests"
                 // job passes -PdemoUnitTestForks=2, so testDebugUnitTest and testReleaseUnitTest
                 // (which already run side by side under org.gradle.parallel) use the runner's 4
                 // vCPUs with 4 JVMs instead of 2. Gradle splits the classes between forks; no
-                // class shares static state or a fixed file with another one. Each fork keeps
-                // the 2g ceiling: 4 x 2g stays inside the 16 GB ubuntu runner with the daemons.
-                maxParallelForks = (project.findProperty('demoUnitTestForks') ?: '1').toString().toInteger()
+                // class shares static state or a fixed file with another one.
+                def forks = (project.findProperty('demoUnitTestForks') ?: '1').toString().toInteger()
+                maxParallelForks = forks
+                // One JVM holds every class of the module: the default 512 MB ran out in
+                // ScanObjectTest's synthetic rooms (~600k points each) after the Robolectric
+                // suites, hence 2g. A fork holds half the classes: the whole debug suite passes
+                // with 2 forks at 1g each. 4 forks at 2g OOM-killed the 16 GB CI runner
+                // ("The runner has received a shutdown signal", #5143), so a fork gets 1280m.
+                maxHeapSize = forks > 1 ? '1280m' : '2g'
                 // #2692: the CI Unit-tests job intermittently hangs in THIS task and
                 // gets force-cancelled at the job's 30 min timeout with zero output —
                 // no attribution possible. Name every test as it starts so the log's
