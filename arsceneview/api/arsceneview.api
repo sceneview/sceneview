@@ -1,5 +1,6 @@
 public final class io/github/sceneview/ar/ARCameraPermissionOverlayKt {
-	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
@@ -129,7 +130,8 @@ public final class io/github/sceneview/ar/ARCoreAvailability : java/lang/Enum {
 }
 
 public final class io/github/sceneview/ar/ARCoreAvailabilityOverlayKt {
-	public static final fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 	public static final fun isActionable (Lio/github/sceneview/ar/ARCoreAvailability;)Z
 	public static final fun toARCoreAvailability (Lcom/google/ar/core/ArCoreApk$Availability;)Lio/github/sceneview/ar/ARCoreAvailability;
 	public static final fun toARCoreAvailability (Ljava/lang/Throwable;)Lio/github/sceneview/ar/ARCoreAvailability;
@@ -740,6 +742,7 @@ public final class io/github/sceneview/ar/AutoPlacementSceneKt {
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLandroidx/compose/foundation/layout/PaddingValues;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLandroidx/compose/foundation/layout/PaddingValues;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun findAutoPlacementSurface (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;)Lio/github/sceneview/ar/AutoPlacementCandidate;
@@ -943,6 +946,20 @@ public final class io/github/sceneview/ar/Ndc {
 	public fun hashCode ()I
 	public final fun isInsideViewport ()Z
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlacementBoundsFit {
+	public static final field $stable I
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFits ()Z
+	public final fun getMarginMeters ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlacementBoundsFitKt {
+	public static final fun placementBoundsFit (Lcom/google/ar/core/Plane;Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Mat4;)Lio/github/sceneview/ar/PlacementBoundsFit;
+	public static final fun placementBoundsFit (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;[F)Lio/github/sceneview/ar/PlacementBoundsFit;
 }
 
 public final class io/github/sceneview/ar/PlacementController {

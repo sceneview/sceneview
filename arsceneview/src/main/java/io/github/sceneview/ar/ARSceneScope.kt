@@ -132,7 +132,7 @@ class ARSceneScope internal constructor(
     /**
      * Registers a contact disc that keeps surface depth noise from cutting a placed object's
      * contact shadow, placement ring and feet. Use alongside custom placement in [ARSceneView];
-     * [AutoPlacementScene] already registers its own contacts.
+     * [AutoPlacementModel] already registers its own contact.
      *
      * [center] is read on the main thread each rendered frame, after nodes have moved. Return
      * `null` while the object is not placed or no longer valid. The contact is removed when this
@@ -143,7 +143,7 @@ class ARSceneScope internal constructor(
      * Put the centre on the supporting surface, not at the model's bounding-box centre. For a
      * node whose origin is on the floor:
      * ```kotlin
-     * GroundContact(center = { node.worldPosition }, radius = ringRadius)
+     * GroundContact(center = { node.takeUnless { it.isDestroyed }?.worldPosition }, radius = ringRadius)
      * ```
      *
      * Only the valid contact nearest the camera is used. Within its disc the existing occlusion

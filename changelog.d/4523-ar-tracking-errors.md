@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **AR coaching explains camera and internal errors ([#4523](https://github.com/sceneview/sceneview/issues/4523)).** Persistent `BAD_STATE` and `CAMERA_UNAVAILABLE` reasons now show an explanation and a recovery action in the built-in placement overlays and demo, with the same debounce as the existing hints. The state-based overlay accepts an optional `cue` override to preserve host visibility gates and fades. Published `ArTrackingHint` cases, mappings and existing overlay signatures are preserved.

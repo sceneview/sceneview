@@ -536,7 +536,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                ? `implementation("io.github.sceneview:arsceneview:4.69.4")`
                 : `implementation("io.github.sceneview:sceneview:4.69.4")`,
               "```",
               ``,

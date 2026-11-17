@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: Materials captions stay apart through the camera sweep ([#5065](https://github.com/sceneview/sceneview/pull/5065)).** Gallery names are sized for the farthest yaw at which they are still opaque, keep their width during the tap-to-focus flight and hide when zoomed too far out to read. Compare captions fade from the position they are placed at, without a frame of lag.

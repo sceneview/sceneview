@@ -34,14 +34,14 @@ class ScanResultRenderTest {
         val turntable = ScanResultTurntable()
         val area = RerunResultView.area(zone)
         val opening = room.pose(40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, area)
-        assertEquals("not turned yet", opening, turntable.pose(room, opening, 40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, zone))
+        assertEquals("not turned yet", opening, turntable.pose(room, opening, 40f, fov, 0.46f, zone))
         // The first frame only starts the clock; a second later it has turned a few degrees.
         turntable.advanceTo(1_000_000_000L)
         assertEquals(0f, turntable.angle, 0f)
         turntable.advanceTo(1_016_000_000L)
         repeat(61) { turntable.advanceTo(1_016_000_000L + (it + 1) * 16_000_000L) }
         assertEquals(ScanResultTurntable.DEGREES_PER_SECOND, turntable.angle, 0.1f)
-        val turned = turntable.pose(room, opening, 40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, zone)
+        val turned = turntable.pose(room, opening, 40f, fov, 0.46f, zone)
         assertEquals(opening.azimuthDegrees + turntable.angle, turned.azimuthDegrees, 1e-3f)
         assertEquals("gravity kept: the same pitch", opening.elevationDegrees, turned.elevationDegrees, 1e-3f)
         assertTrue("never closer than the opening", turned.distance >= opening.distance - 1e-4f)
@@ -51,9 +51,38 @@ class ScanResultRenderTest {
         assertEquals(before, turntable.angle, 0f)
         turntable.stop()
         assertFalse(turntable.running)
-        assertEquals(opening, turntable.pose(room, opening, 40f, ScanResultFraming.THREE_QUARTER, fov, 0.46f, zone))
+        assertEquals(opening, turntable.pose(room, opening, 40f, fov, 0.46f, zone))
         turntable.advance(1f)
         assertEquals("stopped for good", 0f, turntable.angle, 0f)
+    }
+
+    @Test
+    fun `seen from the side beside its front, a frame is framed as the frame that opens on that side`() {
+        val area = RerunResultView.area(zone)
+        val beside = ScanResultFrame(room.yawDegrees, room.local, 90f, 1f)
+        val expected = beside.pose(40f, 0f, fov, 0.46f, area)
+        val held = room.poseFrom(expected.azimuthDegrees, 40f, fov, 0.46f, area)
+        assertEquals(expected.distance, held.distance, 1e-4f)
+        assertEquals(expected.target.x, held.target.x, 1e-4f)
+        assertEquals(expected.target.y, held.target.y, 1e-4f)
+        assertEquals(expected.target.z, held.target.z, 1e-4f)
+        assertEquals(expected.azimuthDegrees, held.azimuthDegrees, 1e-4f)
+        // A card under the model narrows the zone: the same side, the box still whole, the camera further.
+        val narrow = RerunResultView.area(zone.copy(bottom = 0.5f))
+        val under = room.poseFrom(expected.azimuthDegrees, 40f, fov, 0.46f, narrow)
+        assertEquals(expected.azimuthDegrees, under.azimuthDegrees, 0f)
+        assertTrue("the camera did not step back for a narrower zone", under.distance > held.distance)
+    }
+
+    @Test
+    fun `a result shown on a side that is no longer its frame's front turns framed for the side it is seen from`() {
+        val area = RerunResultView.area(zone)
+        val beside = ScanResultFrame(room.yawDegrees, room.local, 90f, 1f)
+        val opening = beside.pose(40f, 0f, fov, 0.46f, area)
+        val own = ScanResultTurntable().also { it.advance(2f) }
+        val held = ScanResultTurntable().also { it.advance(2f) }
+        // The frame's front has moved to another side since the result was shown: the same turn.
+        assertEquals(own.pose(beside, opening, 40f, fov, 0.46f, zone), held.pose(room, opening, 40f, fov, 0.46f, zone))
     }
 
     @Test
@@ -299,7 +328,7 @@ class ScanResultRenderTest {
         val distances = ArrayList<Float>()
         repeat(24) {
             turntable.advance(1f)
-            val turned = turntable.pose(frame, opening, elevation, offset, fov, 0.46f, zone)
+            val turned = turntable.pose(frame, opening, elevation, fov, 0.46f, zone)
             assertEquals("gravity kept", opening.elevationDegrees, turned.elevationDegrees, 1e-3f)
             assertEquals(opening.azimuthDegrees + turntable.angle, turned.azimuthDegrees, 1e-3f)
             distances += turned.distance

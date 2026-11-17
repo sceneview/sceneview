@@ -48,6 +48,13 @@ internal fun FeaturePlacementScene(
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
     }
+    LaunchedEffect(state, state.hasPlacement) {
+        // Feature sessions own their anchors too: Reset must work while AR frames are paused.
+        if (!state.hasPlacement) {
+            placement?.anchor?.detach()
+            placement = null
+        }
+    }
     val currentPlacement by rememberUpdatedState(placement)
     DisposableEffect(state) {
         onDispose {

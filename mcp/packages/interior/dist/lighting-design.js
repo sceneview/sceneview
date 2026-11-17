@@ -162,20 +162,21 @@ function generateLightNodeCode(light, color, scaledRoom, indent = "             
         natural: [0, 0, 0],
     };
     // Preview illuminance below each fixture, before finite-radius attenuation.
-    // Match the legacy daylight-level presets; these are previews, not bulb ratings.
+    // One tenth of the legacy presets: 3,000–15,000 lux, around SceneView's 10,000-lux
+    // default main light. Preserve fixture ratios; these are previews, not bulb ratings.
     const illuminanceLux = {
-        ambient: 40_000,
-        spot: 120_000,
-        accent: 60_000,
-        pendant: 80_000,
-        recessed: 100_000,
-        track: 90_000,
-        sconce: 50_000,
-        "floor-lamp": 60_000,
-        "table-lamp": 40_000,
-        chandelier: 150_000,
-        "strip-led": 30_000,
-        natural: 80_000,
+        ambient: 4_000,
+        spot: 12_000,
+        accent: 6_000,
+        pendant: 8_000,
+        recessed: 10_000,
+        track: 9_000,
+        sconce: 5_000,
+        "floor-lamp": 6_000,
+        "table-lamp": 4_000,
+        chandelier: 15_000,
+        "strip-led": 3_000,
+        natural: 8_000,
     };
     const dimensions = [4, 2.7, 4];
     const axes = ["x", "y", "z"];
@@ -246,7 +247,7 @@ import kotlin.math.PI
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.69.4")
  */
 @Composable
 fun ${composableName}AR() {

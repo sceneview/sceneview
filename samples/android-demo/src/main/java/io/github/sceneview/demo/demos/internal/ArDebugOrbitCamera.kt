@@ -71,6 +71,8 @@ class ArDebugOrbitCamera(
      * The fling is kept everywhere; 3D Scan bounds it so a flick cannot spin its cloud away.
      */
     val maxCoastDegrees: Float? = null,
+    /** Result viewers keep their subject centred; two fingers only zoom. */
+    val allowPan: Boolean = true,
 ) : CameraGestureDetector.CameraManipulator, CameraShotSink {
 
     /**
@@ -442,6 +444,7 @@ class ArDebugOrbitCamera(
         lastY = y
         if (dx == 0f && dy == 0f) return
         if (panning) {
+            if (!allowPan) return
             pose = bounded(pose.copy(target = pannedTarget(dx, dy)))
             return
         }
@@ -582,11 +585,20 @@ class ArDebugOrbitCamera(
      * view never stops dead nor spins away.
      */
     override fun takeOver(shot: CameraShot, velocity: CameraShotVelocity) {
+        // A move that ends on its own is handed over too, at rest. A camera that is following
+        // (ScanResultCinematics hands the orbit its framing first) keeps following: it stays
+        // where the move landed, on its framing, or heads from there for the framing that one
+        // has become since. A framing is not a gesture, so the gestures' limits are not put on
+        // it: one whose pivot the chrome slid out of the box (a tall card under the model) was
+        // pulled back in, and one that moved while the move played was dropped, the camera left
+        // free either way and the model low against its card (Pixel 4a, 2026-11-15).
+        if (following && velocity.isZero) {
+            val landing = ArDebugFraming.clamp(shot.toOrbitPose())
+            if (!landing.isNear(pose)) pose = landing
+            return
+        }
         // The same limits as a gesture: the coast that follows goes through them on its first frame.
         val landed = bounded(shot.toOrbitPose())
-        // A move that ends on its own is handed over too, at rest: when it lands where the camera
-        // is already following (ScanResultCinematics hands the orbit its framing first), it stays.
-        if (following && velocity.isZero && landed.isNear(pose)) return
         pose = landed
         takeOver()
         val spin = maxSpin
