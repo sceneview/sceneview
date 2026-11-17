@@ -174,4 +174,41 @@ class MatterSwitchTest {
         // Content padding shows up as a negative viewport start: honour it.
         assertEquals(0f, MatterSwitch.chipScroll(0, 200, -48, 952, 48), 0f)
     }
+
+    @Test fun aRequestWhilePinnedAtHiddenForPrimingReplacesTheIncomingSolid() {
+        val switch = MatterSwitch()
+        switch.request(FeelMaterial.Leather)
+        var now = 1_000L
+        switch.advance(now, ready = true, motion = true)
+        while (switch.progress + 16f / MatterSwitch.DURATION_MILLIS < MatterTransition.HIDDEN) {
+            now += 16L; switch.advance(now, ready = true, motion = true)
+        }
+        // Velvet replaces Leather just under HIDDEN; its priming pins the slide at HIDDEN.
+        switch.request(FeelMaterial.Velvet)
+        now += MatterSwitch.MAX_STEP_MILLIS; switch.advance(now, ready = true, motion = true)
+        assertEquals(FeelMaterial.Velvet, switch.displayed)
+        assertEquals(MatterTransition.HIDDEN, switch.progress, 0f)
+        assertTrue(switch.priming)
+        // Still under the floor: the next request replaces it instead of queueing behind it.
+        switch.request(FeelMaterial.Marble)
+        now += 16L; switch.advance(now, ready = true, motion = true)
+        assertEquals(FeelMaterial.Marble, switch.displayed)
+        assertEquals(FeelMaterial.MemoryFoam, switch.outgoing)
+    }
+
+    @Test fun anUnhitchedSlideAt60HzLastsTheMotionTokenPlusItsPrimingFrames() {
+        // Logged on emulator-5554: "slide 466 ms" for every material once warm.
+        val switch = MatterSwitch()
+        switch.request(FeelMaterial.Leather)
+        switch.advance(1_000L, ready = true, motion = true)
+        val landed = switch.untilLanded(1_000L)
+        val slide = landed - 1_000L
+        val frame = 16L
+        assertTrue("$slide ms", slide >= MatterSwitch.DURATION_MILLIS)
+        assertTrue("$slide ms", slide <= MatterSwitch.DURATION_MILLIS + (MatterSwitch.PRIME_FRAMES + 1) * frame)
+        // The landing (rest height) comes before the end, at ARRIVE of the token.
+        val arrival = switch.landedAt!! - 1_000L
+        assertEquals(MatterSwitch.ARRIVE * MatterSwitch.DURATION_MILLIS, arrival.toFloat(),
+            (MatterSwitch.PRIME_FRAMES + 1) * frame.toFloat())
+    }
 }

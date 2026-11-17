@@ -7,11 +7,11 @@ package io.github.sceneview.demo.demos.internal.feel
  *
  *                 albedo / reflectance     roughness  metal  coat  sheen
  * Memory foam     .70 .63 .45              .94        0      0     0
- * Gel             1 1 1                   .14        0      0     0  (light amber absorption, IOR 1.36)
+ * Gel             1 1 1                   .14        0      0     0  (clear aqua absorption, IOR 1.36)
  * Velvet          .009 .065 .028           .90        0      0     pale pile, strength 1, roughness .70
  * Leather         .22 .075 .028            .44        0      .22   0  (coat roughness .30)
  * Carrara marble  .82 .83 .80              .09        0      1     0  (coat roughness .055)
- * Brushed steel   .56 .58 .60              .26        1      0     0  (anisotropy .95)
+ * Brushed steel   .70 .72 .75              .30        1      0     0  (anisotropy -.85, across the grooves)
  */
 internal object MatterSurfaces {
     data class Surface(
@@ -38,15 +38,15 @@ internal object MatterSurfaces {
         Surface(.22f, .075f, .028f, .44f, coat = .22f, coatRoughness = .30f,
             bulge = .12f, visualMm = .075f),
         Surface(.82f, .83f, .80f, .09f, coat = 1f, coatRoughness = .055f),
-        Surface(.56f, .58f, .60f, .26f, metallic = 1f, anisotropy = .95f),
+        Surface(.70f, .72f, .75f, .30f, metallic = 1f, anisotropy = -.85f),
     )
     const val GEL_IOR = 1.36f
     const val GEL_TRANSMISSION = 1f
     // Beer-Lambert coefficients per model-space unit. Through 0.95 units these transmit
-    // 97%, 92%, 84% RGB: a light amber tint, with a clearer well and deeper-coloured sides.
-    const val GEL_ABSORPTION_RED = .035f
-    const val GEL_ABSORPTION_GREEN = .09f
-    const val GEL_ABSORPTION_BLUE = .18f
+    // 80%, 95%, 96% RGB: a clear aqua tint from above, deeper along the long side paths.
+    const val GEL_ABSORPTION_RED = .24f
+    const val GEL_ABSORPTION_GREEN = .055f
+    const val GEL_ABSORPTION_BLUE = .04f
     operator fun get(material: FeelMaterial): Surface = surfaces[material.ordinal]
 
     /** Signed for gel's overshoot; always leaves a supported layer under the deepest dent. */

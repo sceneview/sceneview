@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal.feel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
  * Chip selection → solid on stage. Main thread only, advanced once per PRESENTED frame.
@@ -72,8 +73,10 @@ internal class MatterSwitch(initial: FeelMaterial = FeelMaterial.MemoryFoam) {
             lastFrame = now
             return true
         }
-        if (selected != displayed && selected != leaving && progress < MatterTransition.HIDDEN && ready) {
-            // The previous target is still under the floor: replace it, keep the exit direction.
+        if (selected != displayed && selected != leaving && ready &&
+            (progress < MatterTransition.HIDDEN || priming)) {
+            // The previous target is still under the floor (rising only once primed): replace it,
+            // keep the exit direction.
             // Back to the solid that is leaving queues instead: it cannot leave and rise at once.
             displayed = selected
             primeLeft = PRIME_FRAMES
@@ -96,8 +99,8 @@ internal class MatterSwitch(initial: FeelMaterial = FeelMaterial.MemoryFoam) {
     fun landingAge(now: Long): Float = landedAt?.let { (now - it) / 1000f } ?: -1f
 
     companion object {
-        /** Same as SceneViewTokens.Motion.containerMillis, kept here for the JVM tests. */
-        const val DURATION_MILLIS = 450L
+        /** The `motion-container` token: a const, inlined, so the JVM tests need no theme. */
+        const val DURATION_MILLIS = SceneViewTokens.Motion.containerMillis.toLong()
         const val MAX_STEP_MILLIS = 34L
         const val PRIME_FRAMES = 2
         const val ARRIVE = .82f

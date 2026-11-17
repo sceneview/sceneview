@@ -1,4 +1,6 @@
 // Neutral studio sweep; analytic contact shadow avoids a dense slab shadow-map pass.
+// Key, pool and contact are API world coordinates: getUserWorldPosition(), never the
+// camera-relative getWorldPosition(), or the pool and the shadow follow the camera.
 // matc 1.77.3: --optimize-size -p mobile -a opengl -a vulkan
 material {
     name: "Matter floor",
@@ -18,7 +20,7 @@ fragment {
     #include "matter_studio.fs"
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        vec3 colour = matterStudioFloor(getWorldPosition(), materialParams.background,
+        vec3 colour = matterStudioFloor(getUserWorldPosition(), materialParams.background,
             materialParams.keyPosition, materialParams.keyTarget, materialParams.keyCone,
             materialParams.keyPool, materialParams.contact, materialParams.halfSize);
         material.baseColor = vec4(colour, 1.0);
