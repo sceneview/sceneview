@@ -268,6 +268,7 @@ private fun cardExit(motion: Boolean): ExitTransition =
 
 @Composable
 private fun CoachCard(content: CardContent, surface: PlacementSurface, layout: CardLayout, motion: Boolean) {
+    ReportAROverlayVisibility()
     val dark = isSystemInDarkTheme()
     val scrim = if (dark) CoachColors.ScrimDark else CoachColors.ScrimLight
     val border = if (dark) CoachColors.ScrimBorderDark else CoachColors.ScrimBorderLight
