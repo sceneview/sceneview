@@ -145,7 +145,7 @@ class CameraFrameTest {
 
     @Test
     fun `a reset cover over a stale image lifts after the cap`() {
-        assertEquals(second, STALE_CAMERA_COVER_TIMEOUT_NANOS)
+        assertEquals(2 * second, STALE_CAMERA_COVER_TIMEOUT_NANOS)
         assertFalse(expired(atNanos = second + STALE_CAMERA_COVER_TIMEOUT_NANOS - 1))
         assertTrue(expired(atNanos = second + STALE_CAMERA_COVER_TIMEOUT_NANOS))
     }

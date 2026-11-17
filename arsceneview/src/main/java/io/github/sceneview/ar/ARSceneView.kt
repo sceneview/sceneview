@@ -87,6 +87,7 @@ import io.github.sceneview.SurfaceType
 import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
+import io.github.sceneview.ar.arcore.readUnlessClosed
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.camera.CAMERA_COVER_REVEAL_FRAMES
 import io.github.sceneview.ar.camera.cameraCoverVisible
@@ -1905,12 +1906,14 @@ fun ARSceneView(
                         framesOwed = arFramesOwed.get(),
                         firstPresentNanos = coverResetFirstPresentNanos.get(),
                         frameTimeNanos = frameTimeNanos,
-                        // Read lazily: one JNI call, only once the other conditions hold.
+                        // Read lazily: one JNI call, only once the other conditions hold. Never
+                        // on a closed session (#4026): a host may have closed it itself, and
+                        // the getter would then run on freed native memory.
                         playbackFinished = {
                             val session = arCore.session
-                            session != null && runCatching {
+                            session != null && readUnlessClosed(session.isClosed, false) {
                                 session.playbackStatus == PlaybackStatus.FINISHED
-                            }.getOrDefault(false)
+                            }
                         },
                     )
                 ) {

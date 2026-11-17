@@ -37,12 +37,13 @@ internal fun freshCameraImage(boundTimestamp: Long, staleTimestamp: Long): Boole
 
 /**
  * How long a reset cover waits for a camera image newer than the stale one before it shows the
- * stale one anyway: 1 s from the first frame presented to the new surface. A live camera
- * delivers a new image well within that after a return from the background (≈0.3–0.9 s on a
- * Pixel 4a); a source that never will — a finished `playbackDataset` keeps returning its last
- * frame, a stalled camera — would otherwise keep the viewport covered forever.
+ * stale one anyway: 2 s from the first frame presented to the new surface. A live camera
+ * delivers a new image within that after a return from the background (≈0.3–0.9 s on a
+ * Pixel 4a, so 1 s would leave too thin a margin on a slow device); a source that never will —
+ * a finished `playbackDataset` keeps returning its last frame, a stalled camera — would
+ * otherwise keep the viewport covered forever.
  */
-internal const val STALE_CAMERA_COVER_TIMEOUT_NANOS = 1_000_000_000L
+internal const val STALE_CAMERA_COVER_TIMEOUT_NANOS = 2_000_000_000L
 
 /**
  * Whether a cover reset over a stale camera image may lift without a newer one.
