@@ -67,6 +67,7 @@ import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.PlaybackStatus
 import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
@@ -87,9 +88,11 @@ import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.camera.CAMERA_COVER_REVEAL_FRAMES
 import io.github.sceneview.ar.camera.cameraCoverVisible
 import io.github.sceneview.ar.camera.freshCameraImage
 import io.github.sceneview.ar.camera.presentedCameraFrames
+import io.github.sceneview.ar.camera.staleCameraCoverExpired
 import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
@@ -1647,21 +1650,16 @@ fun ARSceneView(
     // frames beyond it (see [presentedCameraFrames]), including on quick re-entry.
     var presentedCameraFrameCount by remember(sceneRenderer, cameraStream) { mutableIntStateOf(0) }
     // A stopped app loses its SurfaceView surface, which comes back black until ARCore delivers a
-    // new image — a black flash on every return from the background. Put the cover back on stop,
-    // while nothing is visible, and wait for an image newer than the one the texture still holds.
-    // A TextureView keeps its last picture across a stop, so it is left as it was.
+    // new image — a black flash on every return from the background. The cover goes back on when
+    // the surface is destroyed (`onSurfaceDestroyed` below) — nothing of this view is on screen
+    // any more — and waits for an image newer than the one the texture still holds. Not on a
+    // lifecycle stop: inside a NavHost the entry is stopped as its exit transition starts, while
+    // the frozen camera image is still sliding out. A TextureView keeps its surface, and its last
+    // picture, across a stop, so it is reset only when it really loses its surface.
     val coverStaleImageTimestamp = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
-    DisposableEffect(lifecycle, sceneRenderer, cameraStream, surfaceType) {
-        val observer = object : DefaultLifecycleObserver {
-            override fun onStop(owner: LifecycleOwner) {
-                if (surfaceType != SurfaceType.Surface) return
-                coverStaleImageTimestamp.set(cameraStream?.boundFrameTimestamp ?: 0L)
-                presentedCameraFrameCount = 0
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
+    // Frame time of the first frame presented to the new surface after that reset; 0 = none yet.
+    // Starts the [STALE_CAMERA_COVER_TIMEOUT_NANOS] cap on waiting for a newer image.
+    val coverResetFirstPresentNanos = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
 
     // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
     // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
@@ -1717,6 +1715,10 @@ fun ARSceneView(
         }
         sceneRenderer.onSurfaceDestroyed = {
             cameraGestureDetectorRef.set(null)
+            // Main thread (UiHelper callback). See `coverStaleImageTimestamp` above.
+            coverStaleImageTimestamp.set(cameraStreamRef.get()?.boundFrameTimestamp ?: 0L)
+            coverResetFirstPresentNanos.set(0L)
+            presentedCameraFrameCount = 0
         }
     }
 
@@ -1879,10 +1881,11 @@ fun ARSceneView(
                 // Pay the surface's debt down only on a frame that really reached it —
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
+                val boundTimestamp = cameraStreamRef.get()?.boundFrameTimestamp ?: 0L
                 presentedCameraFrameCount = presentedCameraFrames(
                     count = presentedCameraFrameCount,
                     hasCameraImage = freshCameraImage(
-                        boundTimestamp = cameraStreamRef.get()?.boundFrameTimestamp ?: 0L,
+                        boundTimestamp = boundTimestamp,
                         staleTimestamp = coverStaleImageTimestamp.get(),
                     ),
                     submitted = presented,
@@ -1892,6 +1895,26 @@ fun ARSceneView(
                     if (arFramesOwed.get() > 0) {
                         arFramesOwed.decrementAndGet()
                     }
+                    coverResetFirstPresentNanos.compareAndSet(0L, frameTimeNanos)
+                }
+                // A reset cover must not wait forever for an image that is not coming.
+                if (cameraCoverVisible(presentedCameraFrameCount) &&
+                    staleCameraCoverExpired(
+                        boundTimestamp = boundTimestamp,
+                        staleTimestamp = coverStaleImageTimestamp.get(),
+                        framesOwed = arFramesOwed.get(),
+                        firstPresentNanos = coverResetFirstPresentNanos.get(),
+                        frameTimeNanos = frameTimeNanos,
+                        // Read lazily: one JNI call, only once the other conditions hold.
+                        playbackFinished = {
+                            val session = arCore.session
+                            session != null && runCatching {
+                                session.playbackStatus == PlaybackStatus.FINISHED
+                            }.getOrDefault(false)
+                        },
+                    )
+                ) {
+                    presentedCameraFrameCount = CAMERA_COVER_REVEAL_FRAMES
                 }
             }
         }

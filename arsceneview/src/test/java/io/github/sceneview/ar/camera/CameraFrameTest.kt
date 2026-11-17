@@ -124,4 +124,90 @@ class CameraFrameTest {
         count = presentedCameraFrames(count, freshCameraImage(566L, stale), submitted = true)
         assertFalse(cameraCoverVisible(count))
     }
+
+    private val second = 1_000_000_000L
+
+    /** Expiry check after a reset over stale image 500, first present at t = 1 s, nothing owed. */
+    private fun expired(
+        atNanos: Long,
+        boundTimestamp: Long = 500L,
+        framesOwed: Int = 0,
+        firstPresentNanos: Long = second,
+        playbackFinished: Boolean = false,
+    ) = staleCameraCoverExpired(
+        boundTimestamp = boundTimestamp,
+        staleTimestamp = 500L,
+        framesOwed = framesOwed,
+        firstPresentNanos = firstPresentNanos,
+        frameTimeNanos = atNanos,
+        playbackFinished = { playbackFinished },
+    )
+
+    @Test
+    fun `a reset cover over a stale image lifts after the cap`() {
+        assertEquals(second, STALE_CAMERA_COVER_TIMEOUT_NANOS)
+        assertFalse(expired(atNanos = second + STALE_CAMERA_COVER_TIMEOUT_NANOS - 1))
+        assertTrue(expired(atNanos = second + STALE_CAMERA_COVER_TIMEOUT_NANOS))
+    }
+
+    @Test
+    fun `a finished playback lifts a reset cover once the new surface has its frame`() {
+        assertTrue(expired(atNanos = second, playbackFinished = true))
+        assertFalse(expired(atNanos = second, playbackFinished = true, framesOwed = 1))
+        assertFalse(expired(atNanos = second, playbackFinished = true, firstPresentNanos = 0L))
+    }
+
+    @Test
+    fun `the cap waits for the frames owed to the new surface`() {
+        assertFalse(expired(atNanos = 10 * second, framesOwed = 1))
+        assertFalse(expired(atNanos = 10 * second, firstPresentNanos = 0L))
+    }
+
+    @Test
+    fun `the cap never lifts the cover of a view that never had a camera image`() {
+        assertFalse(
+            staleCameraCoverExpired(
+                boundTimestamp = 0L,
+                staleTimestamp = 0L,
+                framesOwed = 0,
+                firstPresentNanos = second,
+                frameTimeNanos = 10 * second,
+                playbackFinished = { true },
+            ),
+        )
+    }
+
+    @Test
+    fun `a newer image takes the normal reveal path, not the cap`() {
+        assertFalse(expired(atNanos = 10 * second, boundTimestamp = 533L))
+    }
+
+    @Test
+    fun `playback status is not read before the cheaper conditions hold`() {
+        var reads = 0
+        staleCameraCoverExpired(
+            boundTimestamp = 500L, staleTimestamp = 500L, framesOwed = 1,
+            firstPresentNanos = second, frameTimeNanos = second, playbackFinished = { reads++; true },
+        )
+        staleCameraCoverExpired(
+            boundTimestamp = 500L, staleTimestamp = 500L, framesOwed = 0,
+            firstPresentNanos = second, frameTimeNanos = 3 * second, playbackFinished = { reads++; true },
+        )
+        assertEquals(0, reads)
+    }
+
+    /**
+     * The reset belongs to the surface, not to the lifecycle: a NavHost stops its entry as the
+     * exit transition starts, while the frozen camera image is still on screen (#5094 review).
+     */
+    @Test
+    fun `the cover is reset only when the surface is destroyed`() {
+        val source = java.io.File("src/main/java/io/github/sceneview/ar/ARSceneView.kt").readText()
+        val destroyed = source.substringAfter("sceneRenderer.onSurfaceDestroyed = {")
+            .substringBefore("\n        }")
+        assertTrue(destroyed.contains("coverStaleImageTimestamp.set("))
+        assertTrue(destroyed.contains("presentedCameraFrameCount = 0"))
+        assertEquals(1, source.split("presentedCameraFrameCount = 0").size - 1)
+        assertEquals(1, source.split("coverStaleImageTimestamp.set(").size - 1)
+    }
 }
