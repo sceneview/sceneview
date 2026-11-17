@@ -577,10 +577,10 @@ sceneview-core (Kotlin Multiplatform)
 In Google Play apps (checked in their published builds: the Volkswagen Group and Philips Hue apps on
 November 17, 2026, Medal and IKEA on November 9, 2026):
 
-- **[Volkswagen](https://www.volkswagen.com/)** — [Volkswagen](https://play.google.com/store/apps/details?id=com.volkswagen.weconnect): 3D rendering.
-- **[Audi](https://www.audi.com/)** — [myAudi](https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant): 3D rendering.
-- **[Porsche](https://www.porsche.com/)** — [My Porsche](https://play.google.com/store/apps/details?id=de.porsche.one): 3D rendering.
-- **[CUPRA](https://www.cupra.com/)** — [My CUPRA](https://play.google.com/store/apps/details?id=com.cupra.mycupra): 3D rendering.
+- **[Volkswagen](https://www.volkswagen.com/)** — [Volkswagen](https://play.google.com/store/apps/details?id=com.volkswagen.weconnect).
+- **[Audi](https://www.audi.com/)** — [myAudi](https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant).
+- **[Porsche](https://www.porsche.com/)** — [My Porsche](https://play.google.com/store/apps/details?id=de.porsche.one).
+- **[CUPRA](https://www.cupra.com/)** — [My CUPRA](https://play.google.com/store/apps/details?id=com.cupra.mycupra).
 - **[Philips Hue](https://www.philips-hue.com/)** — [Philips Hue](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2): ships SceneView's AR module (`ARSceneView`).
 - **[Medal](https://medal.tv/)** — [Medal](https://play.google.com/store/apps/details?id=tv.medal.recorder).
 - **[IKEA](https://www.ikea.com/)** — [IKEA](https://play.google.com/store/apps/details?id=com.ingka.ikea.app).
