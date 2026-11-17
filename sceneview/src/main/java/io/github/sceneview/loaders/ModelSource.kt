@@ -9,25 +9,82 @@ import io.github.sceneview.core.stl.StlParseException
 import java.nio.Buffer
 import java.nio.ByteBuffer
 
-/** Normalise meshes before JNI; native glTF buffers retain their identity and position. */
+/**
+ * Normalise meshes before JNI; native glTF buffers retain their identity and position.
+ *
+ * Only a payload some supported format could be is copied onto the heap, once, to be sniffed and
+ * converted: one whose first 4 KB, binary-STL size or [fileName] extension names one, a ZIP with
+ * no extension, `.zip` or a supported one (a 3MF needs its whole central directory), or text that
+ * is only OBJ comments and keywords so far.
+ * Anything else (FBX, USDZ, STEP, an HTML error page without an extension) is refused from that
+ * prefix. A buffer that is not a [ByteBuffer] goes to gltfio untouched, as it always did.
+ *
+ * @throws UnsupportedModelFormat for an unsupported format or a Gaussian splat.
+ * @throws StlParseException and the other `sceneview-core` parse exceptions for a payload its
+ * extension or content routes to a converter that cannot parse it.
+ */
 internal fun Buffer.toModelGlb(fileName: String? = null, unit: ModelUnit? = null): Buffer {
-    val source = this as? ByteBuffer ?: throw UnsupportedModelFormat(null)
+    val source = this as? ByteBuffer ?: return this
     if (source.isNativeGltf()) return this
-    val prefix = ByteArray(minOf(source.remaining(), 4097)).also { source.duplicate().get(it) }
-    val nativeFormat = runCatching { ModelFormat.sniff(null, prefix) }.getOrNull()
-    if (nativeFormat == ModelFormat.PLY_SPLAT || nativeFormat == ModelFormat.SPZ) {
-        throw UnsupportedModelFormat(if (nativeFormat == ModelFormat.SPZ) "spz" else "ply")
+    val prefix = ByteArray(minOf(source.remaining(), SNIFF_PREFIX_BYTES)).also { source.duplicate().get(it) }
+    val prefixFormat = runCatching { ModelFormat.sniff(null, prefix) }.getOrNull()
+    if (prefixFormat == ModelFormat.PLY_SPLAT || prefixFormat == ModelFormat.SPZ) {
+        throw UnsupportedModelFormat(if (prefixFormat == ModelFormat.SPZ) "spz" else "ply")
     }
-    if (source.remaining() > StlLoader.DEFAULT_MAX_BYTES &&
-        (source.hasBinaryStlSize() || source.hasAsciiStlHeader())) {
+    val byExtension = runCatching { ModelFormat.sniff(fileName, byteArrayOf()) }
+    val extensionFormat = byExtension.getOrNull()
+    // The unsupported extension, null when there is none or it names a supported format.
+    val extension = (byExtension.exceptionOrNull() as? UnsupportedModelFormat)?.extension
+    // A ZIP is worth a copy only when it may be a 3MF: not when its extension says USDZ, say.
+    val mayBeThreeMf = source.startsWithZipMagic() && (extension == null || extension == "zip")
+    val mayBeStl = source.hasBinaryStlSize() || source.hasAsciiStlHeader()
+    // OBJ has no magic: a long comment header can push its first vertex past the prefix.
+    val mayBeObj = prefix.isObjPreamble()
+    if (prefixFormat == null && !mayBeThreeMf && !mayBeStl && !mayBeObj) {
+        // A `.glb`/`.gltf` nothing else claims goes to gltfio as it is, for its own parse error.
+        if (extensionFormat == ModelFormat.GLB || extensionFormat == ModelFormat.GLTF) return this
+        if (extensionFormat == null) throw UnsupportedModelFormat(extension)
+    }
+    if (source.remaining() > StlLoader.DEFAULT_MAX_BYTES && mayBeStl) {
         throw StlParseException("STL input exceeds ${StlLoader.DEFAULT_MAX_BYTES} bytes")
     }
-    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
+    val bytes = source.wholeBytes()
     val format = ModelFormat.sniff(fileName, bytes)
     if (format == ModelFormat.GLB || format == ModelFormat.GLTF) return this
     val glb = ModelConverter.toGlb(bytes, format, unit)
     return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
 }
+
+/** One more byte than the 4 KB sniffers read, so they can tell a cut line from the real end. */
+private const val SNIFF_PREFIX_BYTES = 4097
+
+/** The remaining bytes: the backing array itself when it is exactly that, else one copy. */
+private fun ByteBuffer.wholeBytes(): ByteArray {
+    if (hasArray() && arrayOffset() + position() == 0 && remaining() == array().size) return array()
+    return ByteArray(remaining()).also { duplicate().get(it) }
+}
+
+/**
+ * Whether every line of this prefix is blank, a comment or starts with an OBJ keyword: what an
+ * OBJ whose first vertex lies past the prefix starts with. Binary data and markup fail at once.
+ */
+private fun ByteArray.isObjPreamble(): Boolean {
+    var at = 0
+    while (at < size) {
+        var end = at
+        while (end < size && this[end] != '\n'.code.toByte() && this[end] != '\r'.code.toByte()) end++
+        val keyword = decodeToString(at, end).trimStart('\uFEFF').substringBefore('#').trim()
+            .substringBefore(' ').substringBefore('\t')
+        if (keyword !in OBJ_PREAMBLE_KEYWORDS) return false
+        at = end + 1
+    }
+    return true
+}
+
+private val OBJ_PREAMBLE_KEYWORDS = setOf("", "v", "vn", "vt", "o", "g", "mtllib", "usemtl", "s", "l", "p")
+
+private fun ByteBuffer.startsWithZipMagic(): Boolean =
+    remaining() >= 4 && "PK\u0003\u0004".indices.all { get(position() + it) == "PK\u0003\u0004"[it].code.toByte() }
 
 /** Scan the root asset key without copying embedded data or imposing a JSON-property order. */
 private fun ByteBuffer.isNativeGltf(): Boolean {

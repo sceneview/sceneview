@@ -1553,8 +1553,8 @@ fun rememberModelInstance(
  * remain metres and 3MF keeps its declared unit.
  *
  * This is the body every `rememberModelInstance` overload shares (they pass `unit = null`), so all
- * of them behave alike: the result is `null` while loading and on failure, the failure logged with
- * its cause (an `UnsupportedModelFormat` included); a glTF that requires an extension gltfio cannot
+ * of them behave alike: the result is `null` while loading and on failure, the failure logged (a
+ * file in no supported format by [ModelLoader], with the `UnsupportedModelFormat` message); a glTF that requires an extension gltfio cannot
  * load is logged and loaded anyway, and the instance is returned before its textures finish
  * decoding, as [ModelLoader.loadModelInstance] does. To show typed failures, refuse such a glTF or
  * wait for its textures, use [rememberModelLoadState] instead.

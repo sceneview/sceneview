@@ -24,8 +24,15 @@ import io.github.sceneview.core.model.UnsupportedModelFormat
 import java.nio.ByteBuffer
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import io.github.sceneview.core.stl.StlParseException
 import java.io.File
 import java.util.Collections
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Deferred
+import org.robolectric.shadows.ShadowLog
 
 /**
  * A failed `load*Async` reports `null` and leaves the loader working; `clear()` does not end it.
@@ -134,6 +141,42 @@ class ModelLoaderAsyncFailureTest {
         assertTrue(uncaught.isEmpty())
     }
 
+    // Major version 4 is frozen: the `suspend` loads documented `@return null` before the typed
+    // error existed, so `loadModelInstance(uri) ?: showError()` must not start throwing.
+    @Test
+    fun `the null-returning suspend loads log an unsupported format and return null`() {
+        val uri = fileUri(".fbx", "Kaydara FBX Binary  \u0000\u001a\u0000".encodeToByteArray())
+
+        assertNull(awaitSuspend { loader.loadModel(uri) }.getOrThrow())
+        assertNull(awaitSuspend { loader.loadModelInstance(uri, ModelUnit.Meters) }.getOrThrow())
+        assertEquals(emptyList<Any>(), awaitSuspend { loader.loadInstancedModel(uri, 2) }.getOrThrow())
+        assertTrue(warnings().any { "Unsupported model format: fbx" in it })
+        assertFalse(loader.hasGltfLoaders)
+    }
+
+    @Test
+    fun `an HTML page saved as stl returns null from the null-returning loads`() {
+        val uri = fileUri(".stl", "<!DOCTYPE html><html><body>404 Not Found</body></html>".encodeToByteArray())
+
+        assertNull(awaitSuspend { loader.loadModelInstance(uri) }.getOrThrow())
+        assertNull(awaitSuspend { loader.loadModel(uri, ModelUnit.Inches) }.getOrThrow())
+        assertTrue(warnings().any { it.startsWith("Could not load $uri") })
+        assertFalse(loader.hasGltfLoaders)
+    }
+
+    @Test
+    fun `awaitModelInstance keeps the typed refusal and the converter error`() {
+        val fbx = fileUri(".fbx", "Kaydara FBX Binary  \u0000\u001a\u0000".encodeToByteArray())
+        val unsupported = awaitSuspend { loader.awaitModelInstance(fbx) }.exceptionOrNull()
+        assertTrue("$unsupported", unsupported is UnsupportedModelFormat)
+        assertEquals("fbx", (unsupported as UnsupportedModelFormat).extension)
+
+        val html = fileUri(".stl", "<html>404</html>".encodeToByteArray())
+        val unparsed = awaitSuspend { loader.awaitModelInstance(html) }.exceptionOrNull()
+        assertTrue("$unparsed", unparsed is StlParseException)
+        assertFalse(loader.hasGltfLoaders)
+    }
+
     /** gltfio's `AssetLoader` refuses a zero native handle; give it one. Nothing else differs. */
     @Implements(AssetLoader::class)
     @Suppress("UnusedParameter", "FunctionOnlyReturningConstant") // Robolectric shadows mirror native signatures
@@ -168,6 +211,33 @@ class ModelLoaderAsyncFailureTest {
             Thread.sleep(10)
         }
         return result
+    }
+
+    private fun warnings(): List<String> = ShadowLog.getLogsForTag("ModelLoader").map { it.msg }
+
+    private fun fileUri(suffix: String, bytes: ByteArray): String {
+        val file = File.createTempFile("model", suffix).apply {
+            writeBytes(bytes)
+            deleteOnExit()
+        }
+        return "file://${file.absolutePath}"
+    }
+
+    /**
+     * Runs a `suspend` load off the main thread, pumping the paused main looper it may hop to,
+     * for up to 5 s; its result, or what it threw.
+     */
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun <T> awaitSuspend(load: suspend () -> T): kotlin.Result<T> {
+        val job: Deferred<kotlin.Result<T>> = GlobalScope.async(Dispatchers.IO) { runCatching { load() } }
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!job.isCompleted && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+        assertTrue("The load did not finish within 5 s", job.isCompleted)
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        return job.getCompleted()
     }
 
     /** A file that exists: with no native Filament it parses to `null`, without an exception. */

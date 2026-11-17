@@ -24,6 +24,10 @@ import io.github.sceneview.core.model.ModelConverter
 import io.github.sceneview.core.model.ModelFormat
 import io.github.sceneview.core.model.ModelUnit
 import io.github.sceneview.core.model.UnsupportedModelFormat
+import io.github.sceneview.core.obj.ObjParseException
+import io.github.sceneview.core.ply.PlyParseException
+import io.github.sceneview.core.stl.StlParseException
+import io.github.sceneview.core.threemf.ThreeMfParseException
 import io.github.sceneview.GltfioTextureTables
 import io.github.sceneview.isAsyncLoadPending
 import io.github.sceneview.isBackendBusy
@@ -71,7 +75,9 @@ import java.nio.ByteBuffer
  * identifies the bytes and [ModelConverter] converts mesh formats to GLB before Filament sees them.
  * 3MF retains its declared unit; GLB/glTF use metres; STL/OBJ/PLY default to millimetres.
  * The overloads with [ModelUnit] override unitless mesh units. Splats require `SplatNode` instead.
- * Unknown formats throw [UnsupportedModelFormat] before any native parse.
+ * Any other format is refused before any native parse: the [createModel] family and
+ * [awaitModelInstance] throw [UnsupportedModelFormat], while the `null`-returning [loadModel],
+ * [loadModelInstance] and [loadInstancedModel] log it and return `null` (an empty list).
  *
  * The `suspend` [loadModel] converts off the main thread; the [createModel] overloads convert on
  * the calling (main) thread, like the rest of their work.
@@ -293,6 +299,8 @@ class ModelLoader(
      * A model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, without what the extension carries, as it always was; only
      * [awaitModelInstance] refuses it.
+     * @throws UnsupportedModelFormat when the buffer is none of [supportedFormats], before any
+     * native parse; a mesh its converter cannot parse throws that converter's exception.
      * @throws IllegalStateException once this loader, or its engine, is destroyed; or if
      * [resourceResolver] destroys the model it is resolving, by a `clear()`, `destroy()` or
      * `destroyModel` on this loader: nothing more is asked of gltfio.
@@ -321,10 +329,20 @@ class ModelLoader(
         unit: ModelUnit?,
         releaseSourceData: Boolean = true,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
+    ): Model = createModel(buffer, null, unit, releaseSourceData, resourceResolver)
+
+    /** The body of every `createModel`: [fileName]'s extension helps identify [buffer]. */
+    @MainThread
+    private fun createModel(
+        buffer: Buffer,
+        fileName: String?,
+        unit: ModelUnit?,
+        releaseSourceData: Boolean,
+        resourceResolver: (resourceFileName: String) -> Buffer?,
     ): Model {
         lifecycle.checkCanCreate("create a model")
         checkMainThread("createModel")
-        val source = buffer.toFilamentModelSource(unit = unit)
+        val source = buffer.toFilamentModelSource(fileName, unit)
         val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
         val model = assetLoader.createAsset(source.buffer)
             .also { recordingProvider.ownership.claim(it) }
@@ -349,7 +367,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { resourceFile ->
             context.assets.readBuffer(getFolderPath(assetFileLocation, resourceFile))
         }
-    ): Model = createModel(context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation), releaseSourceData, resourceResolver)
+    ): Model = createModel(context.assets.readBuffer(assetFileLocation), assetFileLocation, null, releaseSourceData, resourceResolver)
 
     /**
      * Creates a [Model] from the contents of a GLB or GLTF raw file.
@@ -375,7 +393,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { resourceFile ->
             File(file.parent, resourceFile).readBuffer()
         }
-    ): Model = createModel(file.readBuffer().toModelGlb(file.name), releaseSourceData, resourceResolver)
+    ): Model = createModel(file.readBuffer(), file.name, null, releaseSourceData, resourceResolver)
 
     /** File formats accepted by this mesh loader; splats use their own renderer. */
     val supportedFormats: Set<ModelFormat> get() = ModelConverter.supportedFormats
@@ -387,7 +405,7 @@ class ModelLoader(
         unit: ModelUnit?,
         releaseSourceData: Boolean = true,
         resourceResolver: (String) -> Buffer? = { context.assets.readBuffer(getFolderPath(assetFileLocation, it)) },
-    ): Model = createModel(context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation, unit), releaseSourceData, resourceResolver)
+    ): Model = createModel(context.assets.readBuffer(assetFileLocation), assetFileLocation, unit, releaseSourceData, resourceResolver)
 
     /** Create a model using [unit] for unitless mesh files. */
     @MainThread
@@ -396,7 +414,7 @@ class ModelLoader(
         unit: ModelUnit?,
         releaseSourceData: Boolean = true,
         resourceResolver: (String) -> Buffer? = { null },
-    ): Model = createModel(context.resources.readBuffer(rawResId).toModelGlb(unit = unit), releaseSourceData, resourceResolver)
+    ): Model = createModel(context.resources.readBuffer(rawResId), null, unit, releaseSourceData, resourceResolver)
 
     /** Create a model using [unit] for unitless mesh files. */
     @MainThread
@@ -405,7 +423,7 @@ class ModelLoader(
         unit: ModelUnit?,
         releaseSourceData: Boolean = true,
         resourceResolver: (String) -> Buffer? = { File(file.parent, it).readBuffer() },
-    ): Model = createModel(file.readBuffer().toModelGlb(file.name, unit), releaseSourceData, resourceResolver)
+    ): Model = createModel(file.readBuffer(), file.name, unit, releaseSourceData, resourceResolver)
 
     /** Create an instance using [unit] for unitless mesh files. */
     @MainThread
@@ -446,7 +464,7 @@ class ModelLoader(
         unit: ModelUnit?,
         count: Int,
         resourceResolver: (String) -> Buffer? = { context.assets.readBuffer(getFolderPath(assetFileLocation, it)) },
-    ): List<ModelInstance> = createInstancedModel(context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation, unit), count, resourceResolver)
+    ): List<ModelInstance> = createInstancedModel(context.assets.readBuffer(assetFileLocation), assetFileLocation, unit, count, resourceResolver)
 
     /** Create instances using [unit] for unitless mesh files. */
     @MainThread
@@ -455,7 +473,7 @@ class ModelLoader(
         unit: ModelUnit?,
         count: Int,
         resourceResolver: (String) -> Buffer? = { null },
-    ): List<ModelInstance> = createInstancedModel(context.resources.readBuffer(rawResId).toModelGlb(unit = unit), count, resourceResolver)
+    ): List<ModelInstance> = createInstancedModel(context.resources.readBuffer(rawResId), null, unit, count, resourceResolver)
 
     /** Create instances using [unit] for unitless mesh files. */
     @MainThread
@@ -464,7 +482,7 @@ class ModelLoader(
         unit: ModelUnit?,
         count: Int,
         resourceResolver: (String) -> Buffer? = { File(file.parent, it).readBuffer() },
-    ): List<ModelInstance> = createInstancedModel(file.readBuffer().toModelGlb(file.name, unit), count, resourceResolver)
+    ): List<ModelInstance> = createInstancedModel(file.readBuffer(), file.name, unit, count, resourceResolver)
 
     /**
      * Loads a [Model] from the contents of a GLB or GLTF file.
@@ -478,9 +496,10 @@ class ModelLoader(
      * model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, without what the extension carries; to refuse it with an
      * [UnsupportedGltfExtensionException] instead, see [awaitModelInstance].
-     * @throws UnsupportedModelFormat when the file is none of [supportedFormats] (STEP, FBX, USDZ,
-     * a Gaussian-splat PLY or SPZ, or a file whose bytes and extension are both unrecognised),
-     * before any native parse. Such a file used to return `null`.
+     * A file that is none of [supportedFormats] (STEP, FBX, USDZ, a Gaussian-splat PLY or SPZ, or
+     * bytes and an extension both unrecognised), or that its mesh converter cannot parse (an HTML
+     * error page saved as `.stl`), is logged and returns `null` too, before any native parse; for
+     * the typed [UnsupportedModelFormat], see [awaitModelInstance].
      *
      * @see createModel
      */
@@ -490,8 +509,8 @@ class ModelLoader(
     ): Model? = loadModel(fileLocation, null, resourceResolver)
 
     /**
-     * Load a supported format with [unit] for STL/OBJ/PLY.
-     * @throws UnsupportedModelFormat for an unsupported format, as the overload without [unit].
+     * Load a supported format with [unit] for STL/OBJ/PLY. Returns `null` and logs, as the
+     * overload without [unit] does, for an unsupported or unparseable file.
      */
     suspend fun loadModel(
         fileLocation: String,
@@ -522,6 +541,10 @@ class ModelLoader(
      * [awaitModelInstance] throws the [GltfLimitException] there instead (a model already created
      * for it is destroyed first).
      *
+     * A file that is none of [supportedFormats] ([UnsupportedModelFormat]), or that a mesh
+     * converter cannot parse (`StlParseException` and its siblings), is logged and handed to
+     * [onUnreadable] the same way: `null` by default, thrown by [awaitModelInstance].
+     *
      * [onProgress] gets the [Stage.Reading] and [Stage.Creating] steps, from whichever thread
      * reached them (see [awaitModelInstance], which hands them to the main thread).
      */
@@ -533,6 +556,7 @@ class ModelLoader(
         onDestroyedMeanwhile: () -> Unit = { Log.w(TAG, "$fileLocation was destroyed while it loaded") },
         onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
         onRefused: (GltfLimitException) -> Unit = {},
+        onUnreadable: (RuntimeException) -> Unit = {},
         unit: ModelUnit? = null,
         onLoadBegun: (Model) -> R,
     ): R? {
@@ -549,8 +573,17 @@ class ModelLoader(
         // The extension check scans the JSON of what can be a 60 MB generated model, transcoding
         // decodes and re-encodes images, and the limits check parses the JSON: all stay off the
         // main thread. The extension check runs first, so its typed refusal comes before any other.
-        val (source, gltf) = withContext(Dispatchers.Default) {
-            buffer.toFilamentModelSource(fileLocation, unit, onUnsupported).let { it to GltfLimits.parse(it.buffer) }
+        val (source, gltf) = try {
+            withContext(Dispatchers.Default) {
+                buffer.toFilamentModelSource(fileLocation, unit, onUnsupported).let { it to GltfLimits.parse(it.buffer) }
+            }
+        } catch (unreadable: RuntimeException) {
+            // An unsupported format, or a file its extension sent to a converter that cannot parse
+            // it (an HTML error page saved as `.stl`): logged, then the result is `null`.
+            if (!unreadable.isUnreadableModel()) throw unreadable
+            Log.w(TAG, "Could not load $fileLocation: ${unreadable.message}")
+            onUnreadable(unreadable)
+            return null
         }
         val violations = withContext(Dispatchers.Default) { gltf.violations(maxTextureSize) }
         if (violations.isNotEmpty()) {
@@ -799,10 +832,8 @@ class ModelLoader(
      * @return the instance, or `null` when the file cannot be read or parsed; the reason is logged.
      * A model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, as in [loadModel].
-     * @throws UnsupportedModelFormat when the file is none of [supportedFormats] (STEP, FBX, USDZ,
-     * a Gaussian-splat PLY or SPZ, or a file whose bytes and extension are both unrecognised),
-     * before any native parse. Such a file used to return `null`. The `rememberModelInstance`
-     * composables log it and return `null`.
+     * A file in no supported format, or one its mesh converter cannot parse, is logged and returns
+     * `null`, as in [loadModel].
      *
      * @see loadModel
      */
@@ -812,8 +843,8 @@ class ModelLoader(
     ): ModelInstance? = loadModelInstance(fileLocation, null, resourceResolver)
 
     /**
-     * Load a supported format with [unit] for STL/OBJ/PLY.
-     * @throws UnsupportedModelFormat for an unsupported format, as the overload without [unit].
+     * Load a supported format with [unit] for STL/OBJ/PLY. Returns `null` and logs, as the
+     * overload without [unit] does, for an unsupported or unparseable file.
      */
     suspend fun loadModelInstance(
         fileLocation: String,
@@ -864,6 +895,10 @@ class ModelLoader(
      * (logged).
      * @throws UnsupportedGltfExtensionException if the model requires an extension gltfio cannot
      * load (see [SUPPORTED_GLTF_EXTENSIONS]), before anything is created.
+     * @throws UnsupportedModelFormat when the file is none of [supportedFormats] (STEP, FBX, USDZ,
+     * a Gaussian-splat PLY or SPZ, or bytes and an extension both unrecognised), before anything
+     * is created; the other loads log it and return `null`. A file its mesh converter cannot
+     * parse throws that converter's exception (`StlParseException` and its siblings).
      * @throws IllegalArgumentException when the file cannot be read or parsed (the reason is
      * logged), or one of its external buffers is missing; or when the glTF is one Filament's
      * release build would crash on (see [createModel]): the message then names each reason.
@@ -920,6 +955,8 @@ class ModelLoader(
                         // Same for a glTF Filament's release build would crash on: the caller gets
                         // its reasons, not a generic "reason logged".
                         onRefused = { throw it },
+                        // And for a file in no supported format, or one its converter cannot parse.
+                        onUnreadable = { throw it },
                         unit = unit,
                         onLoadBegun = { model -> releasedInstance(model).also { loaded = it } },
                     )
@@ -1043,10 +1080,20 @@ class ModelLoader(
         unit: ModelUnit?,
         count: Int,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
+    ): List<ModelInstance> = createInstancedModel(buffer, null, unit, count, resourceResolver)
+
+    /** The body of every `createInstancedModel`: [fileName]'s extension helps identify [buffer]. */
+    @MainThread
+    private fun createInstancedModel(
+        buffer: Buffer,
+        fileName: String?,
+        unit: ModelUnit?,
+        count: Int,
+        resourceResolver: (resourceFileName: String) -> Buffer?,
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
             lifecycle.checkCanCreate("create a model")
-            val source = buffer.toFilamentModelSource(unit = unit)
+            val source = buffer.toFilamentModelSource(fileName, unit)
             val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
             (assetLoader.createInstancedAsset(source.buffer, this)
                 .also { recordingProvider.ownership.claim(it) }
@@ -1075,9 +1122,11 @@ class ModelLoader(
             context.assets.readBuffer(getFolderPath(assetFileLocation, it))
         }
     ) = createInstancedModel(
-        context.assets.readBuffer(assetFileLocation).toModelGlb(assetFileLocation),
+        context.assets.readBuffer(assetFileLocation),
+        assetFileLocation,
+        null,
         count,
-        resourceResolver
+        resourceResolver,
     )
 
     /**
@@ -1115,7 +1164,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { resourceFile ->
             File(file.parent, resourceFile).readBuffer()
         }
-    ) = createInstancedModel(file.readBuffer().toModelGlb(file.name), count, resourceResolver)
+    ) = createInstancedModel(file.readBuffer(), file.name, null, count, resourceResolver)
 
     /**
      * Loads a primary [Model] with one or more [ModelInstance]s from the contents of a GLB or
@@ -1132,7 +1181,8 @@ class ModelLoader(
      * @return the instances, or an empty list when the file cannot be read or parsed; the reason is
      * logged. A model that requires an extension gltfio cannot load (see
      * [SUPPORTED_GLTF_EXTENSIONS]) is logged and loaded anyway, as in [loadModel].
-     * @throws UnsupportedModelFormat as [loadModel] does; such a file used to return an empty list.
+     * A file in no supported format, or one its mesh converter cannot parse, is logged and returns
+     * an empty list, as [loadModel] returns `null`.
      *
      * @see createInstancedModel
      */
@@ -1969,6 +2019,11 @@ private fun Buffer.toFilamentModelSource(
  * gltfio cannot load: log it and load the model anyway, as gltfio always did (it renders without
  * what the extension carries, an `EXT_texture_avif` model untextured).
  */
+/** What [ModelLoader]'s `null`-returning loads log and turn into `null` rather than throw. */
+private fun RuntimeException.isUnreadableModel(): Boolean =
+    this is UnsupportedModelFormat || this is StlParseException || this is ObjParseException ||
+        this is PlyParseException || this is ThreeMfParseException
+
 private fun logUnsupported(unsupported: UnsupportedGltfExtensionException) {
     Log.w("ModelLoader", "${unsupported.message}; loading it without them")
 }

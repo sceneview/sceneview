@@ -7,6 +7,7 @@ import io.github.sceneview.core.threemf.ThreeMfTestFixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ModelFormatTest {
     @Test
@@ -42,6 +43,26 @@ class ModelFormatTest {
         assertEquals(ModelFormat.SPZ, ModelFormat.sniff("wrong.glb", gzipStored("NGSP".encodeToByteArray())))
         val meshHeader = "ply\ncomment opacity scale_0 rot_0 f_dc_0\nelement face 1\nend_header\n"
         assertEquals(ModelFormat.PLY_MESH, ModelFormat.sniff(null, meshHeader.encodeToByteArray()))
+    }
+
+    @Test
+    fun onlyAGzipAroundAnSpzHeaderIsAnSplatEvenWhenTruncated() {
+        val spz = gzipStored("NGSP".encodeToByteArray() + ByteArray(100_000))
+        assertEquals(ModelFormat.SPZ, ModelFormat.sniff(null, spz.copyOf(4097)))
+        val other = gzipStored("{\"asset\":{}}".encodeToByteArray())
+        assertEquals(ModelFormat.GLB, ModelFormat.sniff("scene.glb", other))
+        assertEquals(null, assertFailsWith<UnsupportedModelFormat> { ModelFormat.sniff(null, other) }.extension)
+        assertEquals("gz", assertFailsWith<UnsupportedModelFormat> { ModelFormat.sniff("scene.gz", other) }.extension)
+    }
+
+    @Test
+    fun aSplatRefusalPointsToTheSplatRenderer() {
+        for (extension in listOf("ply", "spz")) {
+            val message = UnsupportedModelFormat(extension).message.orEmpty()
+            assertTrue("SplatNode" in message && "Gaussian-splat $extension" in message, message)
+        }
+        assertEquals("Unsupported model format: fbx", UnsupportedModelFormat("fbx").message)
+        assertEquals("Unsupported model format: unknown", UnsupportedModelFormat(null).message)
     }
 
     @Test

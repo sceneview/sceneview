@@ -1,6 +1,7 @@
 package io.github.sceneview.core.model
 
 import io.github.sceneview.core.ply.PlyLoader
+import io.github.sceneview.core.splat.Inflate
 import io.github.sceneview.core.stl.StlLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 
@@ -34,7 +35,7 @@ enum class ModelFormat {
 
         private fun sniffContent(bytes: ByteArray): ModelFormat? = when {
             bytes.hasPrefix("glTF") -> GLB
-            bytes.hasPrefix("NGSP") || bytes.hasPrefix("\u001f\u008b") -> SPZ
+            bytes.hasPrefix("NGSP") || bytes.isGzipSpz() -> SPZ
             bytes.hasPrefix("PK\u0003\u0004") && ThreeMfLoader.isThreeMf(bytes) -> THREE_MF
             PlyLoader.isPly(bytes) -> if (isSplatPly(bytes)) PLY_SPLAT else PLY_MESH
             StlLoader.isStl(bytes) -> STL
@@ -42,6 +43,10 @@ enum class ModelFormat {
             isObj(bytes) -> OBJ
             else -> null
         }
+
+        /** Legacy SPZ is gzip around an `NGSP` header: any other gzip is not a splat. */
+        private fun ByteArray.isGzipSpz(): Boolean =
+            hasPrefix("\u001f\u008b") && Inflate.gunzipHead(this, 4)?.hasPrefix("NGSP") == true
 
         private fun isSplatPly(bytes: ByteArray): Boolean {
             val properties = mutableSetOf<String>()
@@ -51,7 +56,7 @@ enum class ModelFormat {
                 while (end < bytes.size && bytes[end] != 10.toByte()) end++
                 val line = bytes.decodeToString(at, minOf(end, at + 4096)).trim()
                 if (line == "end_header") break
-                val words = line.split(Regex("\\s+"))
+                val words = line.split(WHITESPACE)
                 if (words.size == 3 && words[0] == "property") properties += words[2]
                 at = end + 1
             }
@@ -65,7 +70,7 @@ enum class ModelFormat {
                 var end = at
                 while (end < bytes.size && bytes[end] != 10.toByte() && bytes[end] != 13.toByte()) end++
                 val words = bytes.decodeToString(at, minOf(end, at + 4096))
-                    .trimStart('\uFEFF').substringBefore('#').trim().split(Regex("\\s+"))
+                    .trimStart('\uFEFF').substringBefore('#').trim().split(WHITESPACE)
                 when (words[0]) {
                     "v" -> return words.size >= 4 && (1..3).all { words[it].toFloatOrNull()?.isFinite() == true }
                     "", "vn", "vt", "o", "g", "mtllib", "usemtl", "s", "l", "p" -> Unit
@@ -112,9 +117,18 @@ enum class ModelFormat {
     }
 }
 
-/** Refused before reaching a native renderer; [extension] is lowercase, without a dot, or null. */
-class UnsupportedModelFormat(val extension: String?) :
-    IllegalArgumentException("Unsupported model format: ${extension ?: "unknown"}")
+/**
+ * Refused before reaching a native renderer; [extension] is lowercase, without a dot, or null.
+ * `ply` and `spz` mean a Gaussian splat, which loads with `SplatNode` rather than as a mesh.
+ */
+class UnsupportedModelFormat(val extension: String?) : IllegalArgumentException(
+    when (extension) {
+        "ply", "spz" -> "Unsupported model format: Gaussian-splat $extension; load it with SplatNode"
+        else -> "Unsupported model format: ${extension ?: "unknown"}"
+    },
+)
+
+private val WHITESPACE = Regex("\\s+")
 
 internal fun modelExtension(fileName: String?): String? = fileName
     ?.substringBefore('?')?.substringBefore('#')?.substringAfterLast('/')

@@ -69,23 +69,21 @@ class RememberModelInstanceUnitOverloadTest {
         val location = fileLocation("part.fbx", "Kaydara FBX Binary")
 
         val plain = load(location) { loader -> rememberModelInstance(loader, location) }
-        val plainLogs = failureLogs()
+        val plainLogs = unsupportedLogs()
         ShadowLog.reset()
         val withUnit = load(location) { loader ->
             rememberModelInstance(loader, location, unit = ModelUnit.Millimeters)
         }
-        val unitLogs = failureLogs()
+        val unitLogs = unsupportedLogs()
 
         assertNull(plain)
         assertNull(withUnit)
+        // `loadModelInstance` returns `null` for it (major version 4 keeps that contract) and
+        // logs the typed refusal's message: nothing reaches the composable's own catch.
         assertEquals("The plain overload logs the failure once", 1, plainLogs.size)
         assertEquals("The unit overload logs the failure exactly as its neighbour does", 1, unitLogs.size)
-        assertTrue(plainLogs.single().throwable is UnsupportedModelFormat)
-        assertTrue(
-            "The unit overload must log the typed cause (got ${unitLogs.single().throwable})",
-            unitLogs.single().throwable is UnsupportedModelFormat,
-        )
         assertEquals(plainLogs.single().msg, unitLogs.single().msg)
+        assertEquals("No failure escapes to the composable's catch", 0, failureLogs().size)
         assertEquals("Neither overload reaches Filament's parse for an unsupported format", 0, parses.size)
     }
 
@@ -139,6 +137,9 @@ class RememberModelInstanceUnitOverloadTest {
     }
 
     private fun failureLogs() = ShadowLog.getLogsForTag("rememberModelInstance")
+
+    private fun unsupportedLogs() = ShadowLog.getLogsForTag("ModelLoader")
+        .filter { UnsupportedModelFormat("fbx").message!! in it.msg.orEmpty() }
 
     private fun extensionWarnings() =
         ShadowLog.getLogsForTag("ModelLoader").count { "EXT_texture_avif" in it.msg.orEmpty() }

@@ -121,11 +121,13 @@ fun RealSizeStlViewer() {
 For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced` callback:
 `AnchorNode(anchor = anchor) { ModelNode(modelInstance = instance, scaleToUnits = null) }`.
 
-**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) throw
-`io.github.sceneview.core.model.UnsupportedModelFormat(extension)` before Filament parses them.
-Use `rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` to show
-`ModelLoadState.Failed.error` with that type; `rememberModelInstance` logs the failure and returns `null`,
-and callback loaders log the failure and return `null` (or an empty instance list).
+**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
+parses them, with `io.github.sceneview.core.model.UnsupportedModelFormat(extension)`: thrown by
+`createModel*` and `awaitModelInstance`, so
+`rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` shows it as
+`ModelLoadState.Failed.error`. `rememberModelInstance`, the `suspend` `loadModel` /
+`loadModelInstance` / `loadInstancedModel` and the `*Async` callbacks log it and return `null`
+(or an empty instance list), as for a file a converter cannot parse.
 `ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
 but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
 `supportedFormats` and refused by `ModelConverter` / `ModelLoader` with the same typed error.
@@ -312,7 +314,7 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
    to "fix" it.
 
 7. **Use the same model entry point for GLB/glTF, 3MF, STL, OBJ and PLY meshes on Android.**
-   The "Open any 3D file" section below lists units and limits. STEP/FBX/USDZ are refused with
+   The "Open any 3D file" section above lists units and limits. STEP/FBX/USDZ are refused with
    `UnsupportedModelFormat`; Gaussian PLY/SPZ need `SplatNode`. Apple and web keep their own
    format support; do not infer their capabilities from Android's `supportedFormats`.
 

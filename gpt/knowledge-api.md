@@ -167,12 +167,14 @@ fun RealSizeStlViewer() {
 For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced` callback:
 `AnchorNode(anchor = anchor) { ModelNode(modelInstance = instance, scaleToUnits = null) }`.
 
-**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) throw
-`io.github.sceneview.core.model.UnsupportedModelFormat(extension)` before Filament parses them.
-Use `rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` to show
-`ModelLoadState.Failed.error` with that type; `rememberModelInstance` logs the failure and returns `null`,
-callback loaders log the failure and return `null` (or an empty instance list), and the `suspend`
-`loadModel` / `loadModelInstance` throw it (they used to return `null`).
+**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
+parses them, with `io.github.sceneview.core.model.UnsupportedModelFormat(extension)`: thrown by
+`createModel*` / `createModelInstance*` and `awaitModelInstance`, so
+`rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` shows it as
+`ModelLoadState.Failed.error`. `rememberModelInstance`, the `suspend` `loadModel` /
+`loadModelInstance` / `loadInstancedModel` and the `*Async` callbacks log it and return `null`
+(an empty list for the instanced loads), as they do for a file a converter cannot parse (an HTML
+error page saved as `.stl`).
 `ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
 but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
 `supportedFormats` and refused by `ModelConverter` / `ModelLoader` with the same typed error.
@@ -4273,7 +4275,7 @@ fun rememberModelInstance(
     resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
 ): ModelInstance?
 ```
-Returns `null` while loading, recomposes when ready. **Always handle the null case.** All three overloads share one body: a failed load (an `UnsupportedModelFormat` included) is `null`, logged under the `rememberModelInstance` tag; the instance is returned before its textures finish decoding.
+Returns `null` while loading, recomposes when ready. **Always handle the null case.** All three overloads share one body: a failed load is `null` and logged (a file in no supported format under the `ModelLoader` tag, with the `UnsupportedModelFormat` message); the instance is returned before its textures finish decoding.
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
@@ -4329,8 +4331,9 @@ class ModelLoader(engine: Engine, context: Context) {
 
     // Every create*/load* below also has an overload taking `unit: ModelUnit?` right after the
     // location/buffer (e.g. `loadModelInstance(fileLocation, unit)`), for unitless STL/OBJ/PLY.
-    // Any other input (STEP, FBX, USDZ, splat PLY/SPZ, bytes and extension unrecognised) throws
-    // UnsupportedModelFormat before any native call; the *Async callbacks get `null` instead.
+    // Any other input (STEP, FBX, USDZ, splat PLY/SPZ, bytes and extension unrecognised) is
+    // refused before any native call: create* and awaitModelInstance throw UnsupportedModelFormat,
+    // the null-returning load* and *Async calls log it and return `null`.
 
     // Synchronous — MUST be called on main thread
     fun createModelInstance(assetFileLocation: String): ModelInstance
@@ -4345,8 +4348,8 @@ class ModelLoader(engine: Engine, context: Context) {
     fun createModel(@RawRes rawResId: Int, releaseSourceData: Boolean = true): Model
     fun createModel(file: File, releaseSourceData: Boolean = true): Model
 
-    // Async — safe from any thread. `null` when the file cannot be read or parsed (logged);
-    // throws UnsupportedModelFormat for an unsupported format (this used to be `null`).
+    // Async — safe from any thread. `null` when the file cannot be read or parsed, or is in no
+    // supported format (logged); awaitModelInstance below throws the typed error instead.
     suspend fun loadModel(fileLocation: String): Model?
     fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job      // never throws: onResult(null)
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?

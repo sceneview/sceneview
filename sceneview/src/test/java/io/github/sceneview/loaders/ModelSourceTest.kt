@@ -85,6 +85,7 @@ class ModelSourceTest {
         val output = process.inputStream.bufferedReader().readText()
         assertEquals(output, 0, process.exitValue())
         assertTrue(output, output.contains("Rejected binary and ASCII STL before copying"))
+        assertTrue(output, output.contains("Rejected FBX and USDZ before copying"))
     }
 
     @Test
@@ -94,7 +95,12 @@ class ModelSourceTest {
         }
         assertEquals("step", error.extension)
         assertThrows(UnsupportedModelFormat::class.java) { ByteBuffer.wrap("NGSP".encodeToByteArray()).toModelGlb("part.spz") }
-        assertThrows(UnsupportedModelFormat::class.java) { ByteBuffer.allocate(16).asFloatBuffer().toModelGlb() }
+        // A `.glb` nothing recognises reaches gltfio, for its own parse error, rather than "unknown".
+        val corrupt = ByteBuffer.wrap(byteArrayOf(1, 2, 3, 0, 5))
+        assertSame(corrupt, corrupt.toModelGlb("broken.glb"))
+        // Not a ByteBuffer: handed to gltfio untouched, as before this entry point existed.
+        val floats = ByteBuffer.allocate(16).asFloatBuffer()
+        assertSame(floats, floats.toModelGlb())
     }
 }
 
@@ -116,6 +122,23 @@ object OversizedStlProbe {
         buffer.put(0, 12)
         assertRefused(buffer)
         println("Rejected binary and ASCII STL before copying")
+        // Neither the prefix nor the extension names a supported format: no heap copy either.
+        repeat(84) { buffer.put(it, 0) }
+        "Kaydara FBX Binary  ".encodeToByteArray().forEachIndexed { index, byte -> buffer.put(index, byte) }
+        assertUnsupported(buffer, "huge.fbx", "fbx")
+        "PK\u0003\u0004".encodeToByteArray().forEachIndexed { index, byte -> buffer.put(index, byte) }
+        assertUnsupported(buffer, "huge.usdz", "usdz")
+        println("Rejected FBX and USDZ before copying")
+    }
+
+    private fun assertUnsupported(buffer: ByteBuffer, name: String, extension: String) {
+        try {
+            buffer.toModelGlb(name)
+            error("$name was accepted")
+        } catch (error: UnsupportedModelFormat) {
+            check(error.extension == extension)
+            check(buffer.position() == 0)
+        }
     }
 
     private fun assertRefused(buffer: ByteBuffer) {

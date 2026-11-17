@@ -64,7 +64,7 @@ class StlModelSourceTest {
         largeGlb.putInt(0, 0x676c5446)
         assertSame(largeGlb, largeGlb.toModelGlb())
         val floats = ByteBuffer.allocate(12).asFloatBuffer()
-        assertThrows(UnsupportedModelFormat::class.java) { floats.toModelGlb() }
+        assertSame(floats, floats.toModelGlb())
     }
 
     @Test
