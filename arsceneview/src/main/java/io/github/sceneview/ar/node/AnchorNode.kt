@@ -28,6 +28,8 @@ open class AnchorNode(
      */
     var updateAnchorPose = true
 
+    private var isAnchorSessionClosed = false
+
     /**
      * The node world positioned anchor
      *
@@ -58,10 +60,12 @@ open class AnchorNode(
         set(value) {
             if (field == value) return
             // Detach the replaced anchor so it stops accruing ARCore tracking cost.
-            field.detach()
+            if (!isAnchorSessionClosed) field.detach()
             field = value
+            isAnchorSessionClosed = false
             trackingState = value.trackingState
             pose = value.pose
+            updateVisibility()
             onAnchorChanged?.invoke(value)
         }
 
@@ -71,7 +75,7 @@ open class AnchorNode(
      * Updated on each frame
      */
     open var trackingState = anchor.trackingState
-        get() = anchor.trackingState
+        get() = if (isAnchorSessionClosed) TrackingState.STOPPED else anchor.trackingState
         protected set(value) {
             if (field != value) {
                 field = value
@@ -96,7 +100,7 @@ open class AnchorNode(
      * re-creates the anchor only when both [isEditable] and this flag are `true`.
      */
     override var isPositionEditable = true
-        get() = isEditable && field
+        get() = isEditable && field && !isAnchorSessionClosed
 
     override var isVisible
         get() = super.isVisible && (trackingState in visibleTrackingStates || isMoving)
@@ -117,6 +121,7 @@ open class AnchorNode(
     }
 
     override fun update(session: Session, frame: Frame) {
+        if (isAnchorSessionClosed) return
         super.update(session, frame)
 
         if (awaitsReleaseAnchor && anchorAtRelease()) {
@@ -138,7 +143,20 @@ open class AnchorNode(
     }
 
     open fun detachAnchor() {
-        anchor.detach()
+        if (!isAnchorSessionClosed) anchor.detach()
+    }
+
+    /** Detaches while the session is open; later disposal must not touch the old handle. */
+    internal open fun releaseSessionAnchor() {
+        if (isAnchorSessionClosed) return
+        isAnchorSessionClosed = true
+        awaitsReleaseAnchor = false
+        isMoving = false
+        try {
+            anchor.detach()
+        } finally {
+            updateVisibility()
+        }
     }
 
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {

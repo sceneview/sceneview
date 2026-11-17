@@ -448,6 +448,9 @@ internal class ReplayLayers(
             it.setParameter("texture", atlas, nearest)
             it.setParameter("maxSide", denseSide)
             it.setParameter("nearFade", DenseSurfels.NEAR_FADE_M)
+            // The capture paints the surfels in the colours the camera saw, never a flat ink
+            // (2026-11-13, Thomas on the blue coat: « c'est horrible »).
+            it.setParameter("captureTint", 0f)
             it.setDepthWrite(true)
             materials += it
         }
@@ -486,6 +489,12 @@ internal class ReplayLayers(
     private val steadyMeasure = if (media.growing) SteadyRoomMeasure() else null
 
     /** The room at the last [sync]: the one the dimensions draw, and the one the HUD names. */
+    /**
+     * What the drawn dimensions are made of, from the room the planes square: 3D Scan's live
+     * model fits them to the points it has ([RoomMeasure.ofPoints]); `null` draws the planes' own.
+     */
+    var measureFit: ((RoomMeasure) -> RoomMeasure?)? = null
+
     var measure: RoomMeasure? = null
         private set
     private var measureLabels: Pair<String, String>? = null
@@ -517,13 +526,13 @@ internal class ReplayLayers(
         eye: Vec3? = null,
     ) {
         syncPlanes(frame, floorY, show.planes)
-        syncMeasure(frame, pointStyle, floorY, show.measure && show.planes, eye)
+        syncMeasure(frame, pointStyle, floorY, show.measure && (show.planes || show.measureAlone), eye)
         setMeasureOnTop(show.measureOnTop)
         // A dense cloud stands in for the sparse one, under the same toggle — a scan still
         // recording shows its feature points until the first dense snapshot.
         syncDense(frame, show.points)
         val denseDrawn = denseNode != null && (media.liveDense == null || liveDenseShown != null)
-        syncPoints(frame, pointStyle, show.points && !denseDrawn)
+        syncPoints(frame, pointStyle, show.points && !denseDrawn && !(media.liveDense != null && media.overCamera()))
         syncShadows(frame, show.anchors)
         syncPhotos(frame, show.cameras)
     }
@@ -558,7 +567,9 @@ internal class ReplayLayers(
             measurePlanes = frame.planes
             foundMeasure = RoomMeasure.of(frame.planes, floorY)
         }
-        val room = if (steadyMeasure != null) steadyMeasure.update(foundMeasure, frame.time) else foundMeasure
+        val planned = if (steadyMeasure != null) steadyMeasure.update(foundMeasure, frame.time) else foundMeasure
+        val fit = measureFit
+        val room = if (fit == null) planned else planned?.let(fit)
         measure = room
         measureNode.isVisible = shown && room != null
         if (!measureNode.isVisible || room == null) return
@@ -858,4 +869,6 @@ internal data class ReplayVisibility(
     val measure: Boolean = false,
     /** The dimensions over everything else: the map, where the room is read as a plan. */
     val measureOnTop: Boolean = false,
+    /** The dimensions without the planes: 3D Scan's live model, which draws no plane. */
+    val measureAlone: Boolean = false,
 )

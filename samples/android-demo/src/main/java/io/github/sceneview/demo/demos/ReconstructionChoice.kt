@@ -4,7 +4,11 @@ import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.ReconstructionMethod
+import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunTsdf
+import io.github.sceneview.demo.demos.internal.ScanBox
+import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.ScanSubject
 import io.github.sceneview.demo.demos.internal.ScreenedPoisson
 import io.github.sceneview.demo.demos.internal.model.TexturedSyntheticRoom
 import kotlinx.coroutines.CompletableDeferred
@@ -23,11 +27,53 @@ import kotlin.math.roundToInt
  * the model fuses as it always has — and when Poisson has nothing to work from (no surfels
  * with normals) or no grid fits its budget; the model then fuses too.
  */
-internal fun reconstructedTsdf(source: RerunModelSource, method: ReconstructionMethod, progress: (Float) -> Unit): RerunTsdf? {
+internal fun reconstructedTsdf(
+    source: RerunModelSource,
+    method: ReconstructionMethod,
+    voxelM: Float = RerunTsdf.VOXEL_M,
+    progress: (Float) -> Unit,
+): RerunTsdf? {
     if (method != ReconstructionMethod.Poisson) return null
     val cloud = reconstructionCloud(source) ?: return null
-    return ScreenedPoisson.reconstruct(cloud, progress = progress)?.tsdf
+    return ScreenedPoisson.reconstruct(cloud, voxelM = voxelM, progress = progress)?.tsdf
 }
+
+/**
+ * How an object's scan ([ScanScope.Object]) is finished: the thing it went round ([ScanSubject])
+ * at least [FILLED_OBJECT_M] across is filled ([ReconstructionMethod.Poisson]) on the room's
+ * grid; a smaller one, or none found, keeps the fused surface. On real scans the fused
+ * office chair is shreds — its thin stem and open back give the depth too little to hold —
+ * where the fill draws the seat, the stem and the back whole; a pair of shoes keeps its two
+ * shoes fused, which a grid that coarse rounds into one lump. [aims] is where the phone looked
+ * ([ScanSubject.aims]); [voxelM] the grid the surfels were kept on, when the scan says it.
+ */
+internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubject.Aim>?, voxelM: Float?): ReconstructionMethod {
+    if (aims.isNullOrEmpty()) return ReconstructionMethod.Fused
+    val cloud = reconstructionCloud(source) ?: return ReconstructionMethod.Fused
+    val subject = runCatching { ScanSubject.of(cloud, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
+    return if (fillsObject(subject)) ReconstructionMethod.Poisson else ReconstructionMethod.Fused
+}
+
+/**
+ * Whether a kept model an earlier finish pipeline built ([RerunScanModel.stalePipeline]) is built
+ * again from its reopened scan, [source]: only where this pipeline finishes it differently — an
+ * object filled now ([objectReconstruction], pipeline 9). Anywhere else a rebuild could only
+ * lose: a model meshed at capture from the raw depth (1.25 cm for an object) would be meshed
+ * again from the surfels the recording keeps, coarser for good, and a room would come out the
+ * same. A pipeline that changes another finish says so here.
+ */
+internal fun rebuildsStale(scope: ScanScope, source: RerunModelSource, aims: List<ScanSubject.Aim>?, voxelM: Float?): Boolean =
+    scope == ScanScope.Object && objectReconstruction(source, aims, voxelM) == ReconstructionMethod.Poisson
+
+/** Whether an object as big as [subject] is filled ([objectReconstruction]): `false` for none. */
+internal fun fillsObject(subject: ScanBox?): Boolean =
+    subject != null && maxOf(subject.length, subject.depth, subject.height) >= FILLED_OBJECT_M
+
+/**
+ * The smallest object filled ([objectReconstruction]), in metres across its largest side: twelve
+ * cells of the room's 5 cm grid. The chair (97 cm) is over it; the shoes (29 cm) are well under.
+ */
+internal const val FILLED_OBJECT_M = 0.6f
 
 /** What "Filled" ([ReconstructionMethod.Poisson]) can make of a scan, told before it is picked. */
 internal sealed interface FillPlan {
