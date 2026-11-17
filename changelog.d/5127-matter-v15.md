@@ -1,3 +1,3 @@
 <!-- category: Fixed -->
 - **Demo app: Matter v15 ([#5127](https://github.com/sceneview/sceneview/pull/5127)).** Smooth fingertip wells instead of a ribbed shell. Centre the slab above the material controls and preserve its framing when the render surface is recreated. A seamless neutral grey floor keeps pale samples distinct, velvet has a softer pale sheen, and Carrara marble has sparse branching veins.
-- Light the slab with a soft studio pool and back rim, give amber gel a continuous floor lens, and prepare material switches before revealing the opening.
+- Light the slab with a soft studio pool and back rim, give amber gel a continuous floor lens, and open on Memory foam as soon as it is ready, then prepare the other surfaces in the background without ever showing them, a selected surface first.

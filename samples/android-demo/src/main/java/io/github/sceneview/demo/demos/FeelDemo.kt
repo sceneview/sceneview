@@ -33,7 +33,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -81,6 +80,7 @@ import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
 import io.github.sceneview.demo.demos.internal.feel.MatterIdentity
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
+import io.github.sceneview.demo.demos.internal.feel.MatterPreparation
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
@@ -113,6 +113,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.util.Locale
@@ -300,48 +301,55 @@ fun FeelDemo(onBack: () -> Unit) {
     val slide = remember { Animatable(1f) }
     var transitionStarted by remember { mutableStateOf<Long?>(null) }
     val switching = selected != displayed || outgoing != null
-    var studioPrepared by remember(materials) { mutableStateOf(false) }
-    var warmingKind by remember(materials) { mutableStateOf<FeelMaterial?>(null) }
-    var warmFrames by remember(materials) { mutableIntStateOf(0) }
-    // Complete creation, backend compilation and uploads beneath the existing loading cover.
-    // A selection subsequently changes visibility and uniforms only.
+    var openingPrepared by remember(materials) { mutableStateOf(false) }
+    // Only the opening belongs behind the cover. Never draw another sample to warm it:
+    // Material.compile queues backend work without putting its slab in the visible set.
     LaunchedEffect(materials, touchView) {
-        snapshotFlow { firstFrame.rendered.value }.first { it }
+        val preparation = MatterPreparation()
         val cache = withContext(Dispatchers.IO) { MatterDetailCache(touchView.context.cacheDir) }
-        materials.prepareStage()
-        for (kind in FeelMaterial.entries) {
-            val payload = if (kind == FeelMaterial.MemoryFoam) initialPayloads[0] else withContext(Dispatchers.IO) {
+        suspend fun uploadDetail(kind: FeelMaterial) {
+            if (materials.hasDetail(kind)) return
+            val cached = withContext(Dispatchers.IO) { cache.read(kind) }
+            val pixels = cached ?: withContext(Dispatchers.Default) {
+                MatterDetailAtlas.bake(kind) { ensureActive() }
+            }
+            val buffer = withContext(Dispatchers.Default) {
+                ByteBuffer.allocateDirect(pixels.size).put(pixels).apply { flip() }
+            }
+            withFrameNanos { }
+            materials.uploadDetail(kind, buffer)
+            invalidator.requestRender()
+            if (cached == null) withContext(Dispatchers.IO) { cache.write(kind, pixels) }
+        }
+        // Foam, floor and mark already exist. Their first real draw compiles only the
+        // variants needed by the opening; FirstFrame waits for that draw's backend fence.
+        uploadDetail(FeelMaterial.MemoryFoam)
+        preparation.prepared(FeelMaterial.MemoryFoam)
+        openingPrepared = true
+        wakeRender()
+        snapshotFlow { firstFrame.sceneReady.value }.first { it }
+        fun prepareSample(kind: FeelMaterial) = preparation.request(this, kind) {
+            val payload = withContext(Dispatchers.IO) {
                 val bytes = touchView.context.assets.open(MatterSurfaceMaterials.asset(kind)).use { it.readBytes() }
                 ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { flip() }
             }
-            withFrameNanos { }
+            // Preserve the switch path: the shader-ready instance uses its existing fallback
+            // detail until the CPU atlas arrives. A cold marble bake must not block selection.
             materials.prepare(kind, payload)
-            if (kind != FeelMaterial.Gel) {
-                val cached = withContext(Dispatchers.IO) { cache.read(kind) }
-                val pixels = cached ?: withContext(Dispatchers.Default) {
-                    MatterDetailAtlas.bake(kind) { ensureActive() }
-                }
-                val buffer = withContext(Dispatchers.Default) {
-                    ByteBuffer.allocateDirect(pixels.size).put(pixels).apply { flip() }
-                }
-                withFrameNanos { }
-                materials.uploadDetail(kind, buffer)
-                if (cached == null) withContext(Dispatchers.IO) { cache.write(kind, pixels) }
-            }
-            // Material.compile does not submit a draw. Exercise each real render path,
-            // including cloth and transmission, before exposing the opening or controls.
-            warmingKind = kind
-            warmFrames = 0
-            wakeRender()
-            snapshotFlow { warmFrames }.first { it >= 2 }
+            uploadDetail(kind)
+            if (BuildConfig.DEBUG) Log.d("Matter", "Background material ready: ${kind.name}")
         }
-        warmingKind = FeelMaterial.MemoryFoam
-        warmFrames = 0
-        snapshotFlow { warmFrames }.first { it >= 2 }
-        warmingKind = null
-        studioPrepared = true
-        frameTimes.reset()
-        wakeRender()
+        launch {
+            snapshotFlow { selected }.collect { kind ->
+                if (kind != FeelMaterial.MemoryFoam) prepareSample(kind)
+            }
+        }
+        while (true) {
+            // Space background submissions out. Explicit selections may overtake a slow bake.
+            repeat(MatterPreparation.FRAMES_BETWEEN_MATERIALS) { withFrameNanos { } }
+            val kind = preparation.next(selected, revealed = firstFrame.sceneReady.value) ?: break
+            prepareSample(kind).await()
+        }
     }
     val targetReady = selected in materials.samples
     LaunchedEffect(selected, targetReady, motion, materials) {
@@ -419,14 +427,13 @@ fun FeelDemo(onBack: () -> Unit) {
             ?.let(haptics::play)
         // Only the opening mark needs a mapped shadow. Re-rendering the dense, deformed
         // slab into a shadow atlas doubled its vertex work during every press and orbit.
-        val warmingOpening = !studioPrepared && warmingKind == FeelMaterial.MemoryFoam
+        val warmingOpening = !firstFrame.sceneReady.value && motion
         val needsMappedShadow = simulation.opening.visible || warmingOpening
         if (light.isShadowCaster != needsMappedShadow) light.isShadowCaster = needsMappedShadow
         val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
         val progress = if (motion) slide.value else 1f
         FeelMaterial.entries.forEach { kind ->
-            val visible = if (!studioPrepared) kind == (warmingKind ?: FeelMaterial.MemoryFoam) else
-                (kind == displayed && (outgoing == null || progress >= .40f)) ||
+            val visible = (kind == displayed && (outgoing == null || progress >= .40f)) ||
                     (kind == outgoing && progress < .40f)
             pads[kind.ordinal]?.apply {
                 isVisible = visible
@@ -466,9 +473,6 @@ fun FeelDemo(onBack: () -> Unit) {
             readout = FeelReadout(displayed, peakMm,
                 MatterSurfaces.showsDisplacement(displayed, indentation, simulation.active == displayed, peakMm))
         }
-        if (!studioPrepared && warmingKind?.let { pads[it.ordinal] != null } == true && warmFrames < 2) {
-            warmFrames++
-        }
         firstFrame.onFrame(nanos)
         val orbitAt = idle.wakeAt
         val settling = motion && transitionStarted?.let { now - it in 0L..1100L } == true
@@ -486,8 +490,8 @@ fun FeelDemo(onBack: () -> Unit) {
             invalidator.requestRender()
         }
     })
-    // FirstFrame's backend drain waits for the last warm draw before lifting the cover.
-    firstFrame.holdUntil(landed = studioPrepared && hdr != null, what = "material studio stage")
+    // Reveal once the opening detail and studio lighting have reached a real frame.
+    firstFrame.holdUntil(landed = openingPrepared && hdr != null, what = "material studio stage")
 
     // Observe before the scene/chips/app bar, without consuming their gestures. Even a
     // press on the already-selected chip skips the opening and freezes the idle camera.
@@ -538,7 +542,7 @@ fun FeelDemo(onBack: () -> Unit) {
                         val shadowOffset = if (outgoing != null && progress < .40f) {
                             -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
                         } else MatterTransition.incomingTravel(progress) * direction * .28f
-                        val shadowKind = warmingKind ?: if (outgoing != null && progress < .40f) outgoing!! else displayed
+                        val shadowKind = if (outgoing != null && progress < .40f) outgoing!! else displayed
                         SideEffect {
                             val contactX = shadowOffset * MatterStage.COS_AZIMUTH
                             val contactZ = -shadowOffset * MatterStage.SIN_AZIMUTH

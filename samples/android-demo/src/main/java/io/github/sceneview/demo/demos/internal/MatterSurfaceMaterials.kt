@@ -112,17 +112,12 @@ internal class MatterSurfaceMaterials(
         }.also { instances[kind] = it }
     }
 
-    /** Sequential main-thread creation/compile, while the existing loading cover is up. */
+    /** Main-thread submission; Filament compiles asynchronously without a visible renderable. */
     suspend fun prepare(kind: FeelMaterial, payload: ByteBuffer) {
         val material = packages.getOrPut(kind) { loader.createMaterial(payload) }
         val instance = instances[kind] ?: create(kind, material)
         compile(material, receivesOpeningShadow = kind == FeelMaterial.MemoryFoam)
         samples[kind] = instance
-    }
-
-    suspend fun prepareStage() {
-        compile(floorMaterial)
-        compile(markMaterial)
     }
 
     private suspend fun compile(material: Material, receivesOpeningShadow: Boolean = false) =
@@ -136,6 +131,8 @@ internal class MatterSurfaceMaterials(
                 Handler(Looper.getMainLooper()), Runnable {
                     if (!destroyed && continuation.isActive) continuation.resume(Unit)
                 })
+            // On-demand rendering may be parked. Submit without a blocking fence or warm draw.
+            engine.flush()
         }
 
     fun hasDetail(kind: FeelMaterial) = kind == FeelMaterial.Gel || kind in textures
