@@ -47,10 +47,14 @@ internal class MatterIdle {
     var yawDegrees = 0f
         private set
     val isTouching: Boolean get() = held
+    /** The orbit is moving the camera; only a touch or a disabled frame stops it. */
+    var orbiting = false
+        private set
     val wakeAt: Long? get() = if (held) null else idleSince?.plus(DELAY_MILLIS + 1L)
     fun touch(now: Long, down: Boolean) {
         idleSince = now
         held = down
+        orbiting = false
         frozenYaw = yawDegrees
         // Freeze the CURRENT pose immediately. Returning to the base pose here would jump
         // the sample under the finger before screenToRay picking.
@@ -61,13 +65,23 @@ internal class MatterIdle {
         if (!enabled) {
             yawDegrees = 0f
             idleSince = now
+            orbiting = false
         } else if (!held && now - start > DELAY_MILLIS) {
+            orbiting = true
             val seconds = (now - start - DELAY_MILLIS) / 1000f
             // Start with zero velocity from the frozen pose, then reach the full ±6° orbit.
             val ramp = (seconds / 2f).coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
             yawDegrees = frozenYaw * (1f - ramp) + AMPLITUDE * sin(seconds * (2f * PI.toFloat() / PERIOD_SECONDS)) * ramp
         }
         return previous != yawDegrees
+    }
+    /**
+     * Holds an orbit that is due but has not started yet at its threshold: it then starts, from
+     * rest, on the first frame without a postpone. An orbit already moving is never stopped here.
+     */
+    fun postpone(now: Long) {
+        val start = idleSince ?: return
+        if (!held && !orbiting && now - start > DELAY_MILLIS) idleSince = now - DELAY_MILLIS
     }
     companion object {
         const val DELAY_MILLIS = 4000L

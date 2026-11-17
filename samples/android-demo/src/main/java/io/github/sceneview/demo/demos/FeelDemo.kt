@@ -60,6 +60,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
@@ -85,6 +87,7 @@ import io.github.sceneview.demo.demos.internal.MatterSurfaceMaterials
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
 import io.github.sceneview.demo.demos.internal.feel.MatterCadence
+import io.github.sceneview.demo.demos.internal.feel.MatterCalm
 import io.github.sceneview.demo.demos.internal.feel.MatterDetailCache
 import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterFrameTimes
@@ -99,6 +102,7 @@ import io.github.sceneview.demo.demos.internal.feel.MatterPrewarm
 import io.github.sceneview.demo.demos.internal.feel.MatterSwitch
 import io.github.sceneview.demo.demos.internal.feel.MatterSwitchFrames
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
+import io.github.sceneview.demo.demos.internal.feel.MatterWarmFrames
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -401,9 +405,11 @@ fun FeelDemo(onBack: () -> Unit) {
     val timing = remember { longArrayOf(0L) }
     val switchFrames = remember { MatterSwitchFrames() }
     val prewarm = remember { MatterPrewarm() }
-    // Debug: the material drawn hidden on the previous frame and that frame's start.
-    val warmTrace = remember { arrayOf<FeelMaterial?>(null) }
-    val lastFrameNanos = remember { longArrayOf(0L) }
+    val calm = remember { MatterCalm() }
+    // Allocated once: the frame callback runs 60 times a second.
+    val padReady = remember { { kind: FeelMaterial -> pads[kind.ordinal] != null } }
+    // Debug: the worst presented-frame interval around each hidden warm draw.
+    val warmFrames = remember { MatterWarmFrames() }
     // Changing state is read by the FIRST SceneView callbacks through these updated delegates.
     val onTouchNow by rememberUpdatedState<(MotionEvent) -> Boolean>({ event ->
         wakeRender()
@@ -430,9 +436,10 @@ fun FeelDemo(onBack: () -> Unit) {
             switchFrames.frame(nanos, switching, shown)?.let {
                 Log.d("Matter", "Switch to ${it.material.name}: worst frame ${it.worstMillis} ms, slide ${it.totalMillis} ms")
             }
-            warmTrace[0]?.let { Log.d("Matter", "Prewarm ${it.name}: frame ${(nanos - lastFrameNanos[0]) / 1_000_000L} ms") }
-            lastFrameNanos[0] = nanos
         }
+        // A warm still owed holds an orbit that has not started: a stall must not land in it.
+        val warmPending = !prewarm.retired && prewarm.needsFrames(padReady)
+        if (warmPending) idle.postpone(now)
         val cameraMoved = idle.advance(now, motion && focused && simulation.opening.finished && !switching)
         if (cameraMoved) stage.orbit(idle.yawDegrees)
         val reframed = stage.frame()
@@ -457,11 +464,19 @@ fun FeelDemo(onBack: () -> Unit) {
         val needsMappedShadow = simulation.opening.visible || warmingOpening
         if (light.isShadowCaster != needsMappedShadow) light.isShadowCaster = needsMappedShadow
         val direction = switch.direction
-        // Idle: nothing moves under a finger, so a first-draw stall here is never seen.
-        val stageIdle = focused && firstFrame.sceneReady.value && simulation.opening.finished &&
-            !switching && simulation.active == null && !idle.isTouching
-        val warming = prewarm.next(listOfNotNull(shown, leaving), { pads[it.ordinal] != null }, stageIdle)
-        warmTrace[0] = warming
+        val settling = motion && switch.landedAt?.let { now - it in 0L..SETTLE_MILLIS } == true
+        // Idle: nothing moves at all, so a first-draw stall here is never seen.
+        val warming = if (prewarm.retired) null else {
+            val stageIdle = calm.idle(now,
+                busy = MatterCalm.busy(focused, revealed = firstFrame.sceneReady.value,
+                    openingFinished = simulation.opening.finished, switching, settling,
+                    pressing = simulation.active != null, touching = idle.isTouching),
+                moving = idle.orbiting || simulation.moving(shown, now, motion))
+            prewarm.next(shown, leaving, padReady, stageIdle)
+        }
+        if (BuildConfig.DEBUG) warmFrames.frame(nanos, warming)?.let {
+            Log.d("Matter", "Prewarm ${it.material.name}: worst frame ${it.worstMillis} ms over ${it.intervals} frames")
+        }
         FeelMaterial.entries.forEach { kind ->
             // The incoming solid is drawn from the first frame of a slide, at its hidden pose
             // under the floor: the stall of its first draw happens before it has to move.
@@ -519,12 +534,11 @@ fun FeelDemo(onBack: () -> Unit) {
         }
         firstFrame.onFrame(nanos)
         val orbitAt = idle.wakeAt
-        val settling = motion && switch.landedAt?.let { now - it in 0L..SETTLE_MILLIS } == true
         val next = when {
             !focused -> MatterCadence.Parked
+            // A pending warm keeps frames coming through the calm wait, the draw and its tail.
             !firstFrame.sceneReady.value || switching || settling ||
-                simulation.needsFrames(shown, now, motion) ||
-                (stageIdle && prewarm.needsFrames { pads[it.ordinal] != null }) -> MatterCadence.Active
+                simulation.needsFrames(shown, now, motion) || warmPending -> MatterCadence.Active
             motion && orbitAt != null && now >= orbitAt -> MatterCadence.Orbit
             else -> MatterCadence.Parked
         }
@@ -675,8 +689,10 @@ private const val MATTER_PREFS = "matter"
 private const val HINT_DONE = "hint_done"
 
 /**
- * One line, once per install. A plain Box, not a Surface: a non-clickable M3 Surface still
- * consumes pointer events, and a fling may start on the floor under this pill.
+ * One line, once per install: ~300 dp at 100 % font scale, inside the 379 dp a 411 dp phone
+ * leaves between the stage margins. Larger font scales wrap it into two balanced lines, never
+ * one orphan word. A plain Row, not a Surface: a non-clickable M3 Surface still consumes
+ * pointer events, and a fling may start on the floor under this pill.
  */
 @Composable
 private fun MatterHintPill() {
@@ -687,8 +703,9 @@ private fun MatterHintPill() {
         verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Filled.TouchApp, contentDescription = null, tint = colors.primary,
             modifier = Modifier.size(18.dp))
-        Text(stringResource(R.string.demo_feel_instruction), style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurface)
+        Text(stringResource(R.string.demo_feel_instruction),
+            style = MaterialTheme.typography.bodyMedium.copy(lineBreak = LineBreak.Heading),
+            color = colors.onSurface, textAlign = TextAlign.Center)
     }
 }
 

@@ -2,7 +2,7 @@
     <string name="demo_feel_title">Matter</string>
     <string name="demo_feel_subtitle">Six surfaces. Touch, press and explore their character</string>
     <string name="demo_feel_loading">Preparing the material studio…</string>
-    <string name="demo_feel_instruction">Press and hold to dent · Swipe to change material</string>
+    <string name="demo_feel_instruction">Press and hold · Swipe to change material</string>
     <string name="demo_feel_foam">Memory foam</string>
     <string name="demo_feel_gel">Gel</string>
     <string name="demo_feel_velvet">Velvet</string>

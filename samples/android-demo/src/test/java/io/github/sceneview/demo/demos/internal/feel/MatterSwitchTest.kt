@@ -196,8 +196,19 @@ class MatterSwitchTest {
         assertEquals(FeelMaterial.MemoryFoam, switch.outgoing)
     }
 
-    @Test fun slideDurationIsTheMotionToken() {
-        assertEquals(io.github.sceneview.demo.theme.SceneViewTokens.Motion.containerMillis.toLong(),
-            MatterSwitch.DURATION_MILLIS)
+    @Test fun anUnhitchedSlideAt60HzLastsTheMotionTokenPlusItsPrimingFrames() {
+        // Logged on emulator-5554: "slide 466 ms" for every material once warm.
+        val switch = MatterSwitch()
+        switch.request(FeelMaterial.Leather)
+        switch.advance(1_000L, ready = true, motion = true)
+        val landed = switch.untilLanded(1_000L)
+        val slide = landed - 1_000L
+        val frame = 16L
+        assertTrue("$slide ms", slide >= MatterSwitch.DURATION_MILLIS)
+        assertTrue("$slide ms", slide <= MatterSwitch.DURATION_MILLIS + (MatterSwitch.PRIME_FRAMES + 1) * frame)
+        // The landing (rest height) comes before the end, at ARRIVE of the token.
+        val arrival = switch.landedAt!! - 1_000L
+        assertEquals(MatterSwitch.ARRIVE * MatterSwitch.DURATION_MILLIS, arrival.toFloat(),
+            (MatterSwitch.PRIME_FRAMES + 1) * frame.toFloat())
     }
 }
