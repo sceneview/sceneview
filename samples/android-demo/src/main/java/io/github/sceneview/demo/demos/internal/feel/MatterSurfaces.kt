@@ -11,7 +11,7 @@ package io.github.sceneview.demo.demos.internal.feel
  * Velvet          .009 .065 .028           .90        0      0     pale pile, strength 1, roughness .70
  * Leather         .22 .075 .028            .44        0      .22   0  (coat roughness .30)
  * Carrara marble  .82 .83 .80              .09        0      1     0  (coat roughness .055)
- * Brushed steel   .56 .58 .60              .26        1      0     0  (anisotropy .95)
+ * Brushed steel   .70 .72 .75              .30        1      0     0  (anisotropy -.85, across the grooves)
  */
 internal object MatterSurfaces {
     data class Surface(
@@ -38,7 +38,7 @@ internal object MatterSurfaces {
         Surface(.22f, .075f, .028f, .44f, coat = .22f, coatRoughness = .30f,
             bulge = .12f, visualMm = .075f),
         Surface(.82f, .83f, .80f, .09f, coat = 1f, coatRoughness = .055f),
-        Surface(.56f, .58f, .60f, .26f, metallic = 1f, anisotropy = .95f),
+        Surface(.70f, .72f, .75f, .30f, metallic = 1f, anisotropy = -.85f),
     )
     const val GEL_IOR = 1.36f
     const val GEL_TRANSMISSION = 1f
