@@ -174,4 +174,30 @@ class MatterSwitchTest {
         // Content padding shows up as a negative viewport start: honour it.
         assertEquals(0f, MatterSwitch.chipScroll(0, 200, -48, 952, 48), 0f)
     }
+
+    @Test fun aRequestWhilePinnedAtHiddenForPrimingReplacesTheIncomingSolid() {
+        val switch = MatterSwitch()
+        switch.request(FeelMaterial.Leather)
+        var now = 1_000L
+        switch.advance(now, ready = true, motion = true)
+        while (switch.progress + 16f / MatterSwitch.DURATION_MILLIS < MatterTransition.HIDDEN) {
+            now += 16L; switch.advance(now, ready = true, motion = true)
+        }
+        // Velvet replaces Leather just under HIDDEN; its priming pins the slide at HIDDEN.
+        switch.request(FeelMaterial.Velvet)
+        now += MatterSwitch.MAX_STEP_MILLIS; switch.advance(now, ready = true, motion = true)
+        assertEquals(FeelMaterial.Velvet, switch.displayed)
+        assertEquals(MatterTransition.HIDDEN, switch.progress, 0f)
+        assertTrue(switch.priming)
+        // Still under the floor: the next request replaces it instead of queueing behind it.
+        switch.request(FeelMaterial.Marble)
+        now += 16L; switch.advance(now, ready = true, motion = true)
+        assertEquals(FeelMaterial.Marble, switch.displayed)
+        assertEquals(FeelMaterial.MemoryFoam, switch.outgoing)
+    }
+
+    @Test fun slideDurationIsTheMotionToken() {
+        assertEquals(io.github.sceneview.demo.theme.SceneViewTokens.Motion.containerMillis.toLong(),
+            MatterSwitch.DURATION_MILLIS)
+    }
 }

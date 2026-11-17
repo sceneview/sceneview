@@ -419,7 +419,9 @@ fun FeelDemo(onBack: () -> Unit) {
         val focused = touchView.hasWindowFocus()
         // The incoming solid's node must exist (its sample is composed), or its hidden first
         // draw would not happen. The slide itself advances only on presented frames.
-        if (switch.advance(now, ready = pads[switch.selected.ordinal] != null, motion)) idle.touch(now, down = false)
+        if (switch.advance(now, ready = pads[switch.selected.ordinal] != null, motion)) {
+            idle.touch(now, down = idle.isTouching)
+        }
         val shown = switch.displayed
         val leaving = switch.outgoing
         val switching = switch.switching
@@ -517,7 +519,7 @@ fun FeelDemo(onBack: () -> Unit) {
         }
         firstFrame.onFrame(nanos)
         val orbitAt = idle.wakeAt
-        val settling = motion && switch.startedAt?.let { now - it in 0L..1100L } == true
+        val settling = motion && switch.landedAt?.let { now - it in 0L..SETTLE_MILLIS } == true
         val next = when {
             !focused -> MatterCadence.Parked
             !firstFrame.sceneReady.value || switching || settling ||
@@ -667,6 +669,8 @@ fun FeelDemo(onBack: () -> Unit) {
     }
 }
 
+/** The landing wobble of gel and foam, after the incoming solid reaches its rest height. */
+private const val SETTLE_MILLIS = 700L
 private const val MATTER_PREFS = "matter"
 private const val HINT_DONE = "hint_done"
 
