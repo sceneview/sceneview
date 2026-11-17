@@ -8,6 +8,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -52,14 +56,18 @@ class ARCoachingOverlayHintTest {
         composeRule.setContent {
             Box(Modifier.fillMaxSize()) { ARCoachingOverlay(guidance) }
         }
-        composeRule.onNodeWithContentDescription("Getting ready. Hold your phone up and look around").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Getting ready. Hold your phone up and look around")
+            .assertIsDisplayed()
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.LiveRegion))
 
         composeRule.runOnIdle {
             guidance.update(PlacementPhase.INITIALIZING, 0L, TrackingFailureReason.BAD_STATE, 1_000L)
             guidance.update(PlacementPhase.INITIALIZING, 0L, TrackingFailureReason.BAD_STATE, 1_700L)
             assertEquals(ArTrackingHint.NONE, guidance.hint)
         }
-        composeRule.onNodeWithContentDescription("AR error. Restart the AR view. AR stopped working").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("AR error. Restart the AR view. AR stopped working")
+            .assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
 
         composeRule.runOnIdle {
             guidance.update(PlacementPhase.INITIALIZING, 0L, TrackingFailureReason.CAMERA_UNAVAILABLE, 1_800L)
@@ -69,6 +77,15 @@ class ARCoachingOverlayHintTest {
         composeRule.onNodeWithContentDescription(
             "Camera busy. Close the other camera app. Another app is using the camera",
         ).assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+
+        composeRule.runOnIdle {
+            guidance.update(PlacementPhase.INITIALIZING, 0L, TrackingFailureReason.NONE, 4_000L)
+            guidance.update(PlacementPhase.INITIALIZING, 0L, TrackingFailureReason.NONE, 5_400L)
+        }
+        composeRule.onNodeWithContentDescription("Getting ready. Hold your phone up and look around")
+            .assertIsDisplayed()
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.LiveRegion))
     }
 
     @Test
@@ -152,6 +169,8 @@ class ARCoachingOverlayHintTest {
             }
         }
         composeRule.mainClock.advanceTimeBy(1_000L)
-        composeRule.onNodeWithContentDescription(spoken).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(spoken)
+            .assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
     }
 }

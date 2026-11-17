@@ -19,6 +19,45 @@ import org.junit.Test
  */
 class RerunSaveUxTest {
 
+    @Test
+    fun `local save and legacy file viewer links cannot be shared`() {
+        for (url in listOf(
+            null,
+            "file:///home/dev/recording.rrd",
+            "https://sceneview.github.io/rerun/?url=file%3A%2F%2F%2Fhome%2Fdev%2Fa.rrd",
+            "https://sceneview.github.io/rerun/?url=file:///home/dev/a.rrd",
+        )) {
+            assertEquals(null, rerunShareableViewerUrl(url))
+        }
+    }
+
+    @Test
+    fun `public HTTPS recording keeps its viewer link`() {
+        for (recording in listOf(
+            "https%3A%2F%2Fexample.com%2Frecording.rrd",
+            "https://example.com/recording.rrd",
+        )) {
+            val url = "https://sceneview.github.io/rerun/?url=$recording"
+            assertEquals(url, rerunShareableViewerUrl(url))
+        }
+    }
+
+    @Test
+    fun `missing malformed and unsupported recording URLs cannot be shared`() {
+        for (url in listOf(
+            "",
+            "not a URL",
+            "https://sceneview.github.io/rerun/",
+            "https://sceneview.github.io/rerun/?url=%zz",
+            "https://sceneview.github.io/rerun/?url=http://example.com/recording.rrd",
+            "https://sceneview.github.io/rerun/?url=https:///recording.rrd",
+            "https://sceneview.github.io/rerun/?url=https://example.com/model.glb",
+            "http://sceneview.github.io/rerun/?url=https://example.com/recording.rrd",
+        )) {
+            assertEquals(null, rerunShareableViewerUrl(url))
+        }
+    }
+
     // ── rerunSaveActionUx: connection gating ────────────────────────────────
 
     @Test

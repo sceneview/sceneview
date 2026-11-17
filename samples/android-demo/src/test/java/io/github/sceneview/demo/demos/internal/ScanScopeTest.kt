@@ -24,13 +24,13 @@ class ScanScopeTest {
     }
 
     @Test
-    fun `the choice offers an object first, then a room, and a home or an area come back as a room`() {
-        assertEquals(listOf(ScanScope.Object, ScanScope.Room), ScanScope.OFFERED)
+    fun `the choice offers every scope, from the smallest to the largest, each as itself`() {
+        assertEquals(
+            listOf(ScanScope.Object, ScanScope.Space, ScanScope.Room, ScanScope.Home, ScanScope.Area),
+            ScanScope.OFFERED,
+        )
         assertEquals(ScanScope.DEFAULT, ScanScope.OFFERED.first())
-        assertEquals(ScanScope.Object, ScanScope.Object.offered)
-        assertEquals(ScanScope.Room, ScanScope.Room.offered)
-        assertEquals(ScanScope.Room, ScanScope.Home.offered)
-        assertEquals(ScanScope.Room, ScanScope.Area.offered)
+        ScanScope.entries.forEach { assertEquals(it, it.offered) }
         ScanScope.entries.forEach { assertTrue(it.offered in ScanScope.OFFERED) }
         // A session kept before scopes were is still a room's.
         assertEquals(ScanScope.Room, RerunStoredSession.scopeOf(null))
@@ -164,6 +164,24 @@ class ScanScopeTest {
         assertEquals(ScanCopy.COACH_PAUSED, ScanScopeCopy.coaching(ScanScope.Home, ScanCopy.COACH_PAUSED))
         assertEquals("1 room", ScanScopeCopy.roomCount(1))
         assertEquals("3 rooms", ScanScopeCopy.roomCount(3))
+    }
+
+    @Test
+    fun `a space is scanned as an object is, at arm's length, and is not a room`() {
+        val space = ScanScope.Space
+        assertEquals(ScanPreset.OBJECT, space.preset)
+        assertTrue(space.closeUp && ScanScope.Object.closeUp)
+        assertFalse(ScanScope.Room.closeUp || ScanScope.Home.closeUp || ScanScope.Area.closeUp)
+        // No floor plan, no map of the ground, no next room.
+        assertFalse(space.hasFloorPlan || space.mapsGround || space.roomByRoom)
+        // Named by what it is, not "a space": the first one scanned under that name was a kitchen.
+        assertEquals("A cupboard or shelf", ScanScopeCopy.title(space))
+        assertEquals("Scan a cupboard or shelf", ScanScopeCopy.start(space))
+        assertEquals("Cupboard or shelf", ScanScopeCopy.label(space, 1))
+        assertEquals("Cupboard or shelf · Nov 14, 5:40 PM", ScanScopeCopy.sessionTitle(space, 1, "Nov 14, 5:40 PM"))
+        // What it is for is said where it is chosen.
+        assertTrue(ScanScopeCopy.how(space), "inside measurements" in ScanScopeCopy.how(space))
+        assertEquals(space, RerunStoredSession.scopeOf("space"))
     }
 
     @Test

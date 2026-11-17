@@ -7,8 +7,10 @@ import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -292,6 +294,292 @@ class ScanObjects private constructor(
         // No further than the wall the ray ended on: what stands behind a wall is not under the finger.
         val beside = along(cast, near, min(far, cast.stop), FINGER_SPREAD, objectsOnly = true)
         return beside as? ScanPick.Found ?: sparse(cast) ?: ScanPick.Empty
+    }
+
+    /**
+     * [found] as the whole of what stands in its place: the same rectangle on the floor, as high
+     * as everything of an object the scan holds over it, not only the region the ray grew. A scan
+     * sees a chair's wheels and its seat and nothing of the thin column between them: the region
+     * stops at that gap, the chair does not. What hangs with nothing of an object under it keeps
+     * its own base, as a region does ([boxOf]).
+     *
+     * For an object the phone went round ([ScanSubject]), never for a tap: under a finger, the
+     * shelf over a sideboard is not the sideboard. The wall a pick cut away behind [found] stays
+     * out of it: the rectangle of what was left stops short of that wall.
+     *
+     * A thing that was gone round does not float: what hangs no higher than a table's top
+     * ([MAX_LEGS_M]) over a floor the scan saw, with no wall within [WALL_GAP_M] to hang from,
+     * stands on legs too thin for the scan to hold, and its box goes down to the floor.
+     */
+    fun whole(found: ScanPick.Found, limit: Int = cloud.count): ScanBox {
+        val box = found.box
+        val ux = cos(box.yaw)
+        val uz = sin(box.yaw)
+        var ys = FloatArray(found.surfels.size)
+        var grounds = FloatArray(found.surfels.size)
+        var n = 0
+        // The wall surfels beside the rectangle, by height: what hangs between them hangs from a wall.
+        var wallYs = FloatArray(0)
+        var walls = 0
+        for (i in 0 until min(limit, cloud.count)) {
+            val dx = cloud.positions[i * 3] - box.centerX
+            val dz = cloud.positions[i * 3 + 2] - box.centerZ
+            val along = abs(dx * ux + dz * uz) - box.length / 2
+            val across = abs(-dx * uz + dz * ux) - box.depth / 2
+            if (kinds[i] == WALL) {
+                if (along <= WALL_GAP_M && across <= WALL_GAP_M) {
+                    if (walls == wallYs.size) wallYs = wallYs.copyOf(walls * 2 + 1)
+                    wallYs[walls++] = cloud.positions[i * 3 + 1]
+                }
+                continue
+            }
+            if (kinds[i] != OBJECT) continue
+            if (along > 0f || across > 0f) continue
+            if (n == ys.size) {
+                ys = ys.copyOf(n * 2 + 1)
+                grounds = grounds.copyOf(n * 2 + 1)
+            }
+            ys[n] = cloud.positions[i * 3 + 1]
+            grounds[n++] = ground.at(cloud.positions[i * 3], cloud.positions[i * 3 + 2])
+        }
+        if (n == 0) return box
+        ys = ys.copyOf(n).also { it.sort() }
+        grounds = grounds.copyOf(n).also { it.sort() }
+        val floorY = grounds[n / 2]
+        val lowest = trimmed(ys, low = true)
+        val top = max(box.baseY + box.height, trimmed(ys, low = false))
+        val standing = lowest - floorY <= floorTolerance + voxelM * REACH_VOXELS
+        // A piece of wall too narrow to be told a wall does not hold what hangs from it: an object
+        // scan goes round what it measures, and a chair beside a table is upright too.
+        val onLegs = !standing && lowest - floorY <= MAX_LEGS_M &&
+            (0 until walls).count { wallYs[it] in lowest..top } < MIN_WALL_BESIDE &&
+            ground.seenShare(box, WALL_GAP_M) >= MIN_FLOOR_SEEN
+        // Never less than the region itself: its own strays are trimmed off it already.
+        val baseY = min(box.baseY, if (standing || onLegs) min(floorY, lowest) else lowest)
+        return ScanBox(box.centerX, box.centerZ, baseY, box.yaw, box.length, box.depth, top - baseY)
+    }
+
+    /**
+     * What stands at [at] on the plan, no further than [reach] from it: everything that rises
+     * above the ground round it, the ground measured there and not over the whole scan. The way
+     * to find what [pick] cannot, under an object the phone went round ([ScanSubject]):
+     *
+     * - a thing lower than the floor's own noise over the whole scan (a pair of shoes: a hand-held
+     *   scan draws the floor as a slab 6 to 20 cm thick, its few square metres round them as a sheet
+     *   1 to 2 cm thick);
+     * - a thing smaller than a piece of furniture ([MIN_SIDE_M], [MIN_SEEN_AREA_M2]);
+     * - a thing on a table, the table being its ground: the ground is the highest level of
+     *   up-facing points in a ring round [at], no higher than [ABOVE_LOOKS_M] over it, nearly as
+     *   busy as the busiest, the nearer points weighing more.
+     *
+     * The thing is grown on the plan from the column nearest [at], over columns that hold points
+     * at least [RISE_M] above that ground (and three spreads of its noise), crossing one empty
+     * column, then out over the lower columns of its own edges ([SKIRT_RISE_M]) when they end
+     * within [SKIRT_M]. `null` with too little ground round it to measure, nothing standing
+     * there, or what stands there running to [reach]: then it is welded to what stands beside it
+     * (a chair pushed against its table), and no box would be its own.
+     */
+    fun around(at: Vec3, reach: Float): ScanPick.Found? {
+        // 1. The ground: a 4 cm level of up-facing points in the ring, no higher than just over [at].
+        val ringOut = max(RING_OUT_M, reach + RING_PAST_M)
+        var heights = FloatArray(INITIAL_QUEUE)
+        var weights = FloatArray(INITIAL_QUEUE)
+        var n = 0
+        for (i in 0 until cloud.count) {
+            val y = cloud.positions[i * 3 + 1]
+            if (y >= at.y + ABOVE_LOOKS_M || normalY(cloud, i) < FLAT_NORMAL_Y) continue
+            val r = hypot(cloud.positions[i * 3] - at.x, cloud.positions[i * 3 + 2] - at.z)
+            if (r < RING_IN_M || r > ringOut) continue
+            if (n == heights.size) {
+                heights = heights.copyOf(n * 2)
+                weights = weights.copyOf(n * 2)
+            }
+            heights[n] = y
+            // The nearer the thing, the more a point says what it stands on: each ring as wide
+            // again as the one inside it weighs the same, so a wider ring does not let the floor
+            // round a table outweigh the table's top.
+            weights[n++] = (RING_IN_M / r).let { it * it }
+        }
+        if (n < MIN_RING_POINTS) return null
+        val order = (0 until n).sortedBy { heights[it] }
+        val levels = FloatArray(n) { heights[order[it]] }
+        val sums = FloatArray(n + 1).also { s -> for (k in 0 until n) s[k + 1] = s[k] + weights[order[k]] }
+        // Per point, the weight of those within the window above it; the busiest window, then the
+        // highest window nearly as busy: the table a bottle stands on, not the floor round the table.
+        val window = FloatArray(n)
+        val ends = IntArray(n)
+        var hi = 0
+        for (lo in 0 until n) {
+            while (hi < n && levels[hi] - levels[lo] <= LEVEL_WINDOW_M) hi++
+            window[lo] = sums[hi] - sums[lo]
+            ends[lo] = hi
+        }
+        val busiest = window.max()
+        val top = (n - 1 downTo 0).first { window[it] >= busiest * DOMINANT }
+        // That level's own busiest window: the first one reached is its upper edge.
+        var best = top
+        var j = top
+        while (j > 0 && levels[top] - levels[j - 1] <= LEVEL_WINDOW_M) {
+            j--
+            if (window[j] > window[best]) best = j
+        }
+        val bestCount = ends[best] - best
+        val groundY = levels[best + bestCount / 2]
+        val spread = FloatArray(bestCount) { abs(levels[best + it] - groundY) }.also { it.sort() }[bestCount / 2]
+        val rise = RISE_M + NOISE_SPREADS * spread
+        val low = SKIRT_RISE_M + spread
+
+        // 2. The columns on the plan that hold something above it, within [reach]: [rise] above
+        // it, and the lower [low] the thing's own edges may keep to (a shoe's toe).
+        val cell = voxelM
+        val side = (2 * reach / cell).toInt() + 1
+        val x0 = at.x - reach
+        val z0 = at.z - reach
+        val counts = IntArray(side * side)
+        val lows = BooleanArray(side * side)
+        val members = ArrayList<Int>()
+        for (i in 0 until cloud.count) {
+            if (kinds[i] == WALL || kinds[i] == CEILING) continue
+            val x = cloud.positions[i * 3]
+            val z = cloud.positions[i * 3 + 2]
+            val h = cloud.positions[i * 3 + 1] - groundY
+            if (h <= low || h > MAX_SIDE_M || hypot(x - at.x, z - at.z) > reach) continue
+            val cx = ((x - x0) / cell).toInt()
+            val cz = ((z - z0) / cell).toInt()
+            if (cx !in 0 until side || cz !in 0 until side) continue
+            lows[cz * side + cx] = true
+            if (h > rise) counts[cz * side + cx]++
+            members += i
+        }
+
+        // 3. Grown from the column nearest [at], one empty column crossed.
+        val seedReach = (SEED_M / cell).toInt()
+        val ax = ((at.x - x0) / cell).toInt()
+        val az = ((at.z - z0) / cell).toInt()
+        var seed = -1
+        var seedD = Int.MAX_VALUE
+        for (dz in -seedReach..seedReach) for (dx in -seedReach..seedReach) {
+            val cx = ax + dx
+            val cz = az + dz
+            if (cx !in 0 until side || cz !in 0 until side || counts[cz * side + cx] == 0) continue
+            val d = dx * dx + dz * dz
+            if (d < seedD) {
+                seedD = d
+                seed = cz * side + cx
+            }
+        }
+        if (seed < 0) return null
+        val inThing = BooleanArray(side * side)
+        val queue = ArrayDeque<Int>()
+        inThing[seed] = true
+        queue += seed
+        var touchesReach = false
+        val edge = (reach / cell - GROW_REACH - 1).let { it * it }
+        while (queue.isNotEmpty()) {
+            val c = queue.removeFirst()
+            val cx = c % side
+            val cz = c / side
+            val ex = cx - ax
+            val ez = cz - az
+            if (ex * ex + ez * ez >= edge) touchesReach = true
+            for (dz in -GROW_REACH..GROW_REACH) for (dx in -GROW_REACH..GROW_REACH) {
+                val nx = cx + dx
+                val nz = cz + dz
+                if (nx !in 0 until side || nz !in 0 until side) continue
+                val k = nz * side + nx
+                if (!inThing[k] && counts[k] > 0) {
+                    inThing[k] = true
+                    queue += k
+                }
+            }
+        }
+        if (touchesReach) return null
+        // Its edges: the lower columns that touch it (a shoe's toe), when they end within
+        // [SKIRT_M] of what rises [rise] over the ground. Lower columns that run on further are a
+        // sheet it stands on (a mat, or the floor drawn twice), not its edges, and are left out.
+        val skirt = ArrayList<Int>()
+        val core = (0 until side * side).filter { inThing[it] }
+        var ring = core
+        repeat((SKIRT_M / cell).roundToInt() + 1) {
+            val next = ArrayList<Int>()
+            for (c in ring) {
+                val cx = c % side
+                val cz = c / side
+                for (dz in -1..1) for (dx in -1..1) {
+                    val nx = cx + dx
+                    val nz = cz + dz
+                    if (nx !in 0 until side || nz !in 0 until side) continue
+                    val k = nz * side + nx
+                    if (!inThing[k] && lows[k]) {
+                        inThing[k] = true
+                        next += k
+                    }
+                }
+            }
+            skirt += next
+            ring = next
+        }
+        // And when they stand out past it on all four sides, they are what it stands on (a plate
+        // under a vase, a small mat under shoes): a shoe's toes stand out on one side.
+        if (ring.isNotEmpty() || surrounds(core, skirt, side)) for (k in skirt) inThing[k] = false
+        val thing = members.filter {
+            val cx = ((cloud.positions[it * 3] - x0) / cell).toInt()
+            val cz = ((cloud.positions[it * 3 + 2] - z0) / cell).toInt()
+            inThing[cz * side + cx]
+        }.toIntArray()
+        if (thing.size < MIN_THING_POINTS) return null
+
+        // 4. Its box: the smallest rectangle on the plan, from the ground to its top.
+        val xs = FloatArray(thing.size) { cloud.positions[thing[it] * 3] }
+        val zs = FloatArray(thing.size) { cloud.positions[thing[it] * 3 + 2] }
+        val angle = footprintAngle(xs, zs, faceVote(thing))
+        val us = FloatArray(thing.size)
+        val vs = FloatArray(thing.size)
+        turn(xs, zs, angle, us, vs)
+        us.sort()
+        vs.sort()
+        val ys = FloatArray(thing.size) { cloud.positions[thing[it] * 3 + 1] }.also { it.sort() }
+        val u0 = loose(us, low = true)
+        val u1 = loose(us, low = false)
+        val v0 = loose(vs, low = true)
+        val v1 = loose(vs, low = false)
+        val cu = (u0 + u1) / 2
+        val cv = (v0 + v1) / 2
+        val box = ScanBox(
+            centerX = cu * cos(angle) - cv * sin(angle),
+            centerZ = cu * sin(angle) + cv * cos(angle),
+            baseY = groundY,
+            yaw = if (u1 - u0 >= v1 - v0) angle else angle + (PI / 2).toFloat(),
+            length = max(u1 - u0, v1 - v0),
+            depth = min(u1 - u0, v1 - v0),
+            height = loose(ys, low = false) - groundY,
+        )
+        return ScanPick.Found(box, thing).takeIf { box.depth >= MIN_THING_SIDE_M && box.height >= MIN_THING_SIDE_M }
+    }
+
+    /**
+     * Whether [skirt]'s cells stand out past [core]'s on all four sides of the grid, by at least
+     * [SURROUND_CELLS] each: what a thing stands on, not its own edges.
+     */
+    private fun surrounds(core: List<Int>, skirt: List<Int>, side: Int): Boolean {
+        if (skirt.isEmpty()) return false
+        val coreX = core.map { it % side }
+        val coreZ = core.map { it / side }
+        val skirtX = skirt.map { it % side }
+        val skirtZ = skirt.map { it / side }
+        val past = listOf(
+            coreX.min() - skirtX.min(),
+            skirtX.max() - coreX.max(),
+            coreZ.min() - skirtZ.min(),
+            skirtZ.max() - coreZ.max(),
+        )
+        return past.all { it >= SURROUND_CELLS }
+    }
+
+    /** [trimmed] with the looser trim a small thing's few points need: its stray points weigh more. */
+    private fun loose(sorted: FloatArray, low: Boolean): Float {
+        val drop = (sorted.size * LOOSE_TRIM).toInt()
+        return if (low) sorted[drop] else sorted[sorted.size - 1 - drop]
     }
 
     /**
@@ -784,6 +1072,66 @@ class ScanObjects private constructor(
         private const val UPRIGHT_NORMAL_Y = 0.35f
         private const val REACH_VOXELS = 3
 
+        /**
+         * A thing gone round that hangs no higher than this over the floor stands on legs the scan
+         * did not hold: a dining table's top is 0.75 m up, a bar table's 1.05 m. A kitchen's wall
+         * cabinets hang from 1.4 m.
+         */
+        const val MAX_LEGS_M = 1.1f
+
+        /**
+         * The ground round a thing is no higher than this over where the looks meet: they meet
+         * inside it, but that point is only as good as the looks are, and a pair of shoes is low.
+         */
+        private const val ABOVE_LOOKS_M = 0.1f
+
+        /** [around]'s ring, on the plan, in which the ground round a thing is measured. */
+        const val RING_IN_M = 0.25f
+        const val RING_OUT_M = 0.6f
+
+        /** And past the reach of what is measured, by this much at least. */
+        private const val RING_PAST_M = 0.3f
+        private const val MIN_RING_POINTS = 50
+
+        /** The ground is the busiest level of this thickness. */
+        private const val LEVEL_WINDOW_M = 0.04f
+
+        /** What stands this far above the ground round it, and three spreads of its noise, is a thing on it. */
+        const val RISE_M = 0.04f
+        private const val NOISE_SPREADS = 3f
+
+        /**
+         * A thing's edges, lower than [RISE_M] (a shoe's toe), are the columns next to it that hold
+         * points this far above the ground, and one spread of its noise, when they end no further
+         * out than [SKIRT_M] from what rises [RISE_M]. Lower columns that run on are a sheet the
+         * thing stands on: on a pair of shoes filmed on 2026-11-15, the floor drawn twice, 5 cm
+         * apart, over 40 by 50 cm round them.
+         */
+        private const val SKIRT_RISE_M = 0.015f
+        private const val SKIRT_M = 0.1f
+        private const val SURROUND_CELLS = 3
+
+
+        /** The thing's first column is this close to where the phone looked, on the plan. */
+        private const val SEED_M = 0.15f
+
+        /** Columns this many cells apart are one thing: one empty column is crossed. */
+        private const val GROW_REACH = 2
+        private const val MIN_THING_POINTS = 60
+
+        /** A thing found by [around] is at least this big in its two smaller directions: 5 cm, two voxels and a half. */
+        const val MIN_THING_SIDE_M = 0.05f
+        private const val LOOSE_TRIM = 0.02f
+
+        /** A wall this close to an object's rectangle is one it may hang from. */
+        const val WALL_GAP_M = 0.15f
+
+        /** Wall surfels beside it, at its height, for an object to hang from that wall. */
+        private const val MIN_WALL_BESIDE = 20
+
+        /** The share of the floor round an object the scan must have seen to stand it there. */
+        private const val MIN_FLOOR_SEEN = 0.25f
+
         private const val FLOOR: Byte = 0
         private const val WALL: Byte = 1
         private const val CEILING: Byte = 2
@@ -1017,6 +1365,26 @@ class ScanObjects private constructor(
 
         /** Whether the scan itself saw the ground under ([x], [z]). */
         fun seen(x: Float, z: Float): Boolean = measured[grid.cell(x, z)]
+
+        /** The share of the cells under [box], grown by [margin] on every side, the scan saw the ground in. */
+        fun seenShare(box: ScanBox, margin: Float): Float {
+            val ux = cos(box.yaw)
+            val uz = sin(box.yaw)
+            val halfA = box.length / 2 + margin
+            val halfB = box.depth / 2 + margin
+            val step = grid.cellM / 2
+            val cells = HashSet<Int>()
+            var a = -halfA
+            while (a <= halfA) {
+                var b = -halfB
+                while (b <= halfB) {
+                    cells += grid.cell(box.centerX + a * ux - b * uz, box.centerZ + a * uz + b * ux)
+                    b += step
+                }
+                a += step
+            }
+            return if (cells.isEmpty()) 0f else cells.count { measured[it] }.toFloat() / cells.size
+        }
 
         /** The floor plan cut in square cells of [cellM], [nx] × [nz] of them from ([minX], [minZ]). */
         class Grid(val minX: Float, val minZ: Float, val cellM: Float, val nx: Int, val nz: Int) {

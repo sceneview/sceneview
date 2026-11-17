@@ -6,6 +6,7 @@ import io.github.sceneview.web.nodes.GeometryType
 import io.github.sceneview.web.nodes.LightConfig
 import io.github.sceneview.web.nodes.LightType
 import io.github.sceneview.web.nodes.ModelConfig
+import io.github.sceneview.web.nodes.defaultMainLightConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -98,6 +99,25 @@ class CameraConfigTest {
 }
 
 class LightConfigTest {
+
+    @Test
+    fun defaultMainLightMatchesAndroidDirection() {
+        val config = defaultMainLightConfig()
+        assertEquals(LightType.DIRECTIONAL, config.type)
+        assertEquals(10_000.0, config.intensity)
+        assertEquals(-0.25f, config.directionX)
+        assertEquals(-1.0f, config.directionY)
+        assertEquals(-0.25f, config.directionZ)
+    }
+
+    @Test
+    fun javascriptMainLightPreservesCustomIntensity() {
+        val config = defaultMainLightConfig(intensityLux = 15_000.0)
+        assertEquals(15_000.0, config.intensity)
+        assertEquals(-0.25f, config.directionX)
+        assertEquals(-1.0f, config.directionY)
+        assertEquals(-0.25f, config.directionZ)
+    }
 
     @Test
     fun defaultIsDirectional() {

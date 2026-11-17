@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.ScatterPlot
 import androidx.compose.material.icons.rounded.SquareFoot
+import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.Button
@@ -157,8 +158,13 @@ internal fun RerunExportSheet(
             }.getOrNull()
         }
     }
-    val formats = RerunExportFormat.available(hasModel = source.model != null, hasCapture = source.capture != null)
-    val more = formats - RerunExportFormat.Model
+    val formats = RerunExportFormat.available(
+        hasModel = source.model != null,
+        hasCapture = source.capture != null,
+        hasMeasurements = source.measurements != null,
+    )
+    // The model and a space's measurements have their own rows; the rest is the scan's raw material.
+    val more = formats - RerunExportFormat.Model - RerunExportFormat.Measurements
     var expanded by remember(source) { mutableStateOf(false) }
 
     suspend fun prepare(format: RerunExportFormat): File? {
@@ -252,6 +258,18 @@ internal fun RerunExportSheet(
                             modifier = Modifier.padding(start = Space.sm),
                         )
                     }
+                }
+            }
+            if (RerunExportFormat.Measurements in formats) {
+                Column {
+                    HorizontalDivider()
+                    val title = stringResource(RerunExportFormat.Measurements.label)
+                    FormatRow(
+                        format = RerunExportFormat.Measurements,
+                        title = title,
+                        state = states[RerunExportFormat.Measurements],
+                        onClick = { share(RerunExportFormat.Measurements, title) },
+                    )
                 }
             }
             if (onFloorPlan != null) {
@@ -504,6 +522,7 @@ private val RerunExportFormat.label: Int
         RerunExportFormat.Points -> R.string.scan_export_points
         RerunExportFormat.Scan -> R.string.scan_export_scan
         RerunExportFormat.Recording -> R.string.scan_export_recording
+        RerunExportFormat.Measurements -> R.string.scan_export_measurements
     }
 
 private val RerunExportFormat.icon: ImageVector
@@ -512,6 +531,7 @@ private val RerunExportFormat.icon: ImageVector
         RerunExportFormat.Points -> Icons.Rounded.ScatterPlot
         RerunExportFormat.Scan -> Icons.Rounded.Inventory2
         RerunExportFormat.Recording -> Icons.Rounded.Timeline
+        RerunExportFormat.Measurements -> Icons.Rounded.Straighten
     }
 
 /**
@@ -540,6 +560,8 @@ private class RerunExportFiles(private val context: Context, private val source:
                 RerunExportFormat.Scan ->
                     RerunScanFile.write(RerunScanFile.stamped(capture(), source.scope, source.title))
                 RerunExportFormat.Recording -> RerunRrdWriter.write(scene(), BitmapRerunImageCodec)
+                RerunExportFormat.Measurements ->
+                    checkNotNull(source.measurements) { "no measurements" }.invoke().toByteArray()
             }
         }
         val file = withContext(Dispatchers.IO) {

@@ -60,6 +60,7 @@ import io.github.sceneview.demo.demos.internal.ScanFloorArea
 import io.github.sceneview.demo.demos.internal.CoverageGrid
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.ScanAllRound
 import io.github.sceneview.demo.demos.internal.ScanCoach
 import io.github.sceneview.demo.demos.internal.ScanFollow
 import io.github.sceneview.demo.demos.internal.ScanMapHatch
@@ -135,6 +136,11 @@ internal class ScanCoverageState {
     var facingWall by mutableStateOf(true)
         private set
 
+    /** The share of a full turn the phone has faced while capturing, `0..1` ([ScanAllRound]). */
+    var turnShare by mutableFloatStateOf(0f)
+        private set
+    private val allRound = ScanAllRound()
+
     private var heading: Float? = null
     private var hatch = ScanMapHatch.Empty
     private var hatchMinor: List<Offset> = emptyList()
@@ -204,6 +210,11 @@ internal class ScanCoverageState {
         }
         coachLine = coach.update(frame.time, frame.camera, grew)
         if (coach.facingWall != facingWall) facingWall = coach.facingWall
+        // The turn counts what a capture faced: a replay scrubbed back and forth turns nothing.
+        if (record != null) {
+            val turned = allRound.update(frame.time, frame.camera)
+            if (turned != turnShare) turnShare = turned
+        }
         // [pose] is the phone now: the trace's while it records, the live one while paused (#4718).
         val moved = pose != camera
         camera = pose
