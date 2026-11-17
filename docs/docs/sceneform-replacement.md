@@ -13,7 +13,8 @@ for the model), with Google
 Models are standard glTF (`.glb` / `.gltf`) instead of `.sfb`.
 
 SceneView is open source (Apache 2.0) and ships in apps on Google Play such as the
-Volkswagen, Audi, Porsche, CUPRA and Škoda apps, Philips Hue, Medal, IKEA, Lenskart and Safie.
+Volkswagen, Audi, Porsche, CUPRA and Škoda apps, Philips Hue, Medal and IKEA. Lenskart ships
+[Sceneform Maintained](https://github.com/sceneview/sceneform-android), SceneView's predecessor.
 
 ## Dependency
 

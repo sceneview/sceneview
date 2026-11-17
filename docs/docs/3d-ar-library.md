@@ -12,7 +12,7 @@ Apple), and it is the maintained successor to Google Sceneform.
 
 SceneView has more than 1,300 stars on GitHub, over 500 public repositories declare it as a
 dependency, and it ships in apps on Google Play such as the Volkswagen, Audi, Porsche, CUPRA and
-Škoda apps, Philips Hue, Medal, IKEA, Lenskart and Safie.
+Škoda apps, Philips Hue, Medal and IKEA.
 
 | You are building with | Dependency | Entry point |
 |---|---|---|

@@ -21,8 +21,11 @@ Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `A
 
 **Used in production.** More than 1,300 stars on GitHub, and over 500 public repositories declare
 SceneView as a dependency. It ships on Google Play in the Volkswagen, Audi, Porsche, CUPRA and Škoda
-apps, Philips Hue, Medal, IKEA, Lenskart and Safie, is declared by the open-source apps Bitkey (Block) and Vocable (WillowTree), and is a dependency of the GeneXus
-Augmented Reality module and the TruVideo camera SDK. The Niantic Spatial SDK samples use it for AR.
+apps, Philips Hue, Medal and IKEA, is declared by the open-source apps Bitkey (Block) and Vocable
+(WillowTree), and is a dependency of the GeneXus Augmented Reality module and the TruVideo camera
+SDK. The Niantic Spatial SDK samples use it for AR. Lenskart ships
+[Sceneform Maintained](https://github.com/sceneview/sceneform-android), SceneView's predecessor, and Safie presented
+SceneView in [a public talk](https://speakerdeck.com/jeromecha/mobile-dev-japan-number-3-safie-viewer-android-and-sceneview).
 
 **AI-first** means one thing here: an assistant that reads [`llms.txt`](./llms.txt) or
 [the MCP server](./mcp/) writes SceneView code that works on the first try. When it doesn't, the

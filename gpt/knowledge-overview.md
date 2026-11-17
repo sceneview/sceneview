@@ -57,8 +57,9 @@ to emit the 2.x API; use the 4.x names instead:
 
 **Used in production:** SceneView has more than 1,300 stars on GitHub and over 500 public
 repositories declare it as a dependency. It ships in apps on Google Play such as the Volkswagen, Audi,
-Porsche, CUPRA and Škoda apps, Philips Hue, Medal, IKEA, Lenskart and Safie; it is declared by the open-source apps Bitkey (Block) and Vocable (WillowTree), and it
-is a dependency of the GeneXus Augmented Reality module and the TruVideo camera SDK.
+Porsche, CUPRA and Škoda apps, Philips Hue, Medal and IKEA; it is declared by the open-source apps
+Bitkey (Block) and Vocable (WillowTree), and it is a dependency of the GeneXus Augmented Reality
+module and the TruVideo camera SDK. Lenskart ships Sceneform Maintained, SceneView's predecessor.
 
 **API reference (Dokka):** browse the full generated API docs at
 `https://sceneview.github.io/api/sceneview/latest/sceneview/` (3D) and
