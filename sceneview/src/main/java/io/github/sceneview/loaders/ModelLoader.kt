@@ -2019,11 +2019,11 @@ private fun Buffer.toFilamentModelSource(
  * gltfio cannot load: log it and load the model anyway, as gltfio always did (it renders without
  * what the extension carries, an `EXT_texture_avif` model untextured).
  */
+private fun logUnsupported(unsupported: UnsupportedGltfExtensionException) {
+    Log.w("ModelLoader", "${unsupported.message}; loading it without them")
+}
+
 /** What [ModelLoader]'s `null`-returning loads log and turn into `null` rather than throw. */
 private fun RuntimeException.isUnreadableModel(): Boolean =
     this is UnsupportedModelFormat || this is StlParseException || this is ObjParseException ||
         this is PlyParseException || this is ThreeMfParseException
-
-private fun logUnsupported(unsupported: UnsupportedGltfExtensionException) {
-    Log.w("ModelLoader", "${unsupported.message}; loading it without them")
-}

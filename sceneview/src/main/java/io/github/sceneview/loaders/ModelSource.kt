@@ -13,9 +13,10 @@ import java.nio.ByteBuffer
  * Normalise meshes before JNI; native glTF buffers retain their identity and position.
  *
  * Only a payload some supported format could be is copied onto the heap, once, to be sniffed and
- * converted: one whose first 4 KB, binary-STL size or [fileName] extension names one, a ZIP with
- * no extension, `.zip` or a supported one (a 3MF needs its whole central directory), or text that
- * is only OBJ comments and keywords so far.
+ * converted: one whose first 4 KB, binary-STL size or [fileName] extension names one, any ZIP but
+ * a `.usdz` or `.kmz` (a 3MF needs its whole central directory, and a shared one often arrives
+ * as `download.php?id=7` or a `content://` URI ending in `0.1`), or text that is only OBJ
+ * comments and keywords so far.
  * Anything else (FBX, USDZ, STEP, an HTML error page without an extension) is refused from that
  * prefix. A buffer that is not a [ByteBuffer] goes to gltfio untouched, as it always did.
  *
@@ -35,11 +36,11 @@ internal fun Buffer.toModelGlb(fileName: String? = null, unit: ModelUnit? = null
     val extensionFormat = byExtension.getOrNull()
     // The unsupported extension, null when there is none or it names a supported format.
     val extension = (byExtension.exceptionOrNull() as? UnsupportedModelFormat)?.extension
-    // A ZIP is worth a copy only when it may be a 3MF: not when its extension says USDZ, say.
-    val mayBeThreeMf = source.startsWithZipMagic() && (extension == null || extension == "zip")
+    // Any ZIP may be a 3MF, whatever its name says, except a known other ZIP-based format.
+    val mayBeThreeMf = source.startsWithZipMagic() && extension !in NON_THREE_MF_ZIP_EXTENSIONS
     val mayBeStl = source.hasBinaryStlSize() || source.hasAsciiStlHeader()
     // OBJ has no magic: a long comment header can push its first vertex past the prefix.
-    val mayBeObj = prefix.isObjPreamble()
+    val mayBeObj = prefix.isObjPreamble(isCut = source.remaining() > prefix.size)
     if (prefixFormat == null && !mayBeThreeMf && !mayBeStl && !mayBeObj) {
         // A `.glb`/`.gltf` nothing else claims goes to gltfio as it is, for its own parse error.
         if (extensionFormat == ModelFormat.GLB || extensionFormat == ModelFormat.GLTF) return this
@@ -58,6 +59,9 @@ internal fun Buffer.toModelGlb(fileName: String? = null, unit: ModelUnit? = null
 /** One more byte than the 4 KB sniffers read, so they can tell a cut line from the real end. */
 private const val SNIFF_PREFIX_BYTES = 4097
 
+/** ZIP-based formats that are never a 3MF: refused from their name, without copying them. */
+private val NON_THREE_MF_ZIP_EXTENSIONS = setOf("usdz", "kmz")
+
 /** The remaining bytes: the backing array itself when it is exactly that, else one copy. */
 private fun ByteBuffer.wholeBytes(): ByteArray {
     if (hasArray() && arrayOffset() + position() == 0 && remaining() == array().size) return array()
@@ -67,15 +71,24 @@ private fun ByteBuffer.wholeBytes(): ByteArray {
 /**
  * Whether every line of this prefix is blank, a comment or starts with an OBJ keyword: what an
  * OBJ whose first vertex lies past the prefix starts with. Binary data and markup fail at once.
+ *
+ * When the prefix [isCut] from a longer file, its last line may end mid-keyword (`mtl` of
+ * `mtllib`): a keyword the cut reaches only has to begin an OBJ keyword.
  */
-private fun ByteArray.isObjPreamble(): Boolean {
+private fun ByteArray.isObjPreamble(isCut: Boolean): Boolean {
     var at = 0
     while (at < size) {
         var end = at
         while (end < size && this[end] != '\n'.code.toByte() && this[end] != '\r'.code.toByte()) end++
-        val keyword = decodeToString(at, end).trimStart('\uFEFF').substringBefore('#').trim()
-            .substringBefore(' ').substringBefore('\t')
-        if (keyword !in OBJ_PREAMBLE_KEYWORDS) return false
+        val line = decodeToString(at, end).trimStart('\uFEFF').trimStart()
+        val keyword = line.substringBefore('#').substringBefore(' ').substringBefore('\t')
+        val cutMidKeyword = isCut && end == size && keyword.length == line.length
+        val isPreamble = if (cutMidKeyword) {
+            OBJ_PREAMBLE_KEYWORDS.any { it.startsWith(keyword) }
+        } else {
+            keyword.trimEnd() in OBJ_PREAMBLE_KEYWORDS
+        }
+        if (!isPreamble) return false
         at = end + 1
     }
     return true
