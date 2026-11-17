@@ -70,10 +70,12 @@ class PlaneRenderer(
 
     // Each visualizer together with the two MaterialInstances it was given: they are created
     // together and destroyed together, so live instances are always 2 × live visualizers.
-    private val visualizers = OwnedVisualizers<Plane, PlaneVisualizer, MaterialInstance>(
+    private fun newVisualizers() = OwnedVisualizers<Plane, PlaneVisualizer, MaterialInstance>(
         destroyVisualizer = { it.destroy() },
         destroyInstance = { engine.safeDestroyMaterialInstance(it) },
     )
+
+    private var visualizers = newVisualizers()
 
     /**
      * The material every plane is drawn with (`plane_renderer.mat`). Each plane gets its own
@@ -205,6 +207,16 @@ class PlaneRenderer(
 
     private var frame: Frame? = null
 
+    /** Drops every object owned by the outgoing ARCore session, retaining Filament materials. */
+    internal fun resetSession() {
+        frame = null
+        val previous = visualizers
+        visualizers = newVisualizers()
+        isCameraTracking = false
+        // The renderer must drop the old planes even if releasing GPU resources throws.
+        previous.clear()
+    }
+
     /**
      * Called by `ARSceneView` on every AR frame, on the render thread: refreshes the planes
      * ARCore updated (at most [maxUpdatesPerSecond] times a second) and advances every plane's
@@ -248,7 +260,7 @@ class PlaneRenderer(
     override fun destroy() {
         // Visualizers first: each one takes its entity out of the scene before its two
         // MaterialInstances are destroyed.
-        visualizers.clear()
+        resetSession()
         materialLoader.destroyMaterial(planeMaterial)
         materialLoader.destroyMaterial(shadowMaterial)
         placeholderTexture.release()
