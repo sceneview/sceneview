@@ -269,12 +269,12 @@ The original three-argument state constructor and `permanentlyDenied` getter rem
 Compose local with type `ProvidableCompositionLocal<((Boolean) -> Unit)?>`, default
 `null`; opt in with `@OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)`.
 Provide a stable listener above `ARSceneView` or standalone SDK overlays to defer
-snackbars while any centred SDK card is shown. Each centred card emits `true` on
+snackbars while an SDK card is shown. These centred cards emit `true` on
 entering composition and `false` on leaving: coaching cards (including their exit
 transition), the camera permission card, the ARCore availability card and the
 "camera in use" card `ARSceneView` shows while another scene holds the camera.
 Count these balanced events when several cards may coexist; the "Surface found" pill
-emits none. Replacing the listener releases every card from the old one before
+and the plane-discovery tips card emit none. Replacing the listener releases every card from the old one before
 registering it with the new one. Removing a `SnackbarHost` while the count is
 positive keeps its queued message from timing out before it can be shown. This
 contract is Android-specific; other platforms use native overlay lifecycles.
