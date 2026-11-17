@@ -29,9 +29,10 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.ar.createARCameraStream
+import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberHostLifecycle
-import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
@@ -66,14 +67,16 @@ import io.github.sceneview.rememberOnGestureListener
  *
  * 1. **Scanning** — marks grow over each surface the phone finds.
  * 2. **Found** — tap the floor to place the sofa.
- * 3. **Placed** — the surfaces fade out (`planeRenderer = false`), the sofa does **not**
+ * 3. **Placed** — the surfaces fade out (`planeRenderer` follows
+ *    [SurfaceShowcaseState.planesVisible]), the sofa does **not**
  *    freeze: drag it along the floor, twist it, pinch it, or tap somewhere else to move it
  *    there. The surfaces come back for the length of a drag. The dock keeps **Surfaces**
  *    (show them again) and **Reset** (pick the sofa up, scan again) on screen throughout.
  *
  * The rules of step 3 live in [SurfaceShowcaseState], which is pure and unit-tested.
- * Automatic depth and camera occlusion hide marks behind nearer real furniture; ARCore falls
- * back to disabled depth on unsupported devices.
+ * The session requests `Config.DepthMode.AUTOMATIC` and the camera stream turns on its depth
+ * pass (`isDepthOcclusionEnabled`), so nearer real furniture hides the marks (#4228). A phone
+ * without the Depth API falls back to `DISABLED` and draws the marks unoccluded.
  */
 @Composable
 fun ARSurfacesDemo(onBack: () -> Unit) {
@@ -81,6 +84,12 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // The camera's depth pass is switched on where the stream is made. The grouped
+    // `sceneUnderstanding` knob would do it too, but it also writes the plane renderer,
+    // a second write racing `planeRenderer` on every recomposition.
+    val cameraStream = rememberARCameraStream(materialLoader) {
+        createARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
+    }
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch.
     val arPlaybackDataset = rememberArPlaybackDataset()
@@ -171,8 +180,13 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                     SurfaceShowcaseBanner.PLACED -> stringResource(R.string.ar_surfaces_status_placed)
                     SurfaceShowcaseBanner.MOVE_PHONE -> stringResource(R.string.ar_surfaces_status_move)
                 },
-                tone = banner?.tone ?: DemoStatusTone.Guidance,
-                // Only the scan spins; found and placed messages keep their action icon.
+                tone = if (banner == SurfaceShowcaseBanner.MOVE_PHONE) {
+                    DemoStatusTone.Guidance
+                } else {
+                    DemoStatusTone.Progress
+                },
+                // A Progress pill spins unless it is handed an icon. Only the scan spins:
+                // once a surface is found the phone is waiting for the user, not working.
                 icon = when (banner) {
                     SurfaceShowcaseBanner.FOUND -> Icons.Filled.TouchApp
                     SurfaceShowcaseBanner.PLACED -> Icons.Filled.OpenWith
@@ -205,13 +219,11 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                 playbackDataset = arPlaybackDataset,
                 // Fading the surfaces only stops drawing them: detection, hit tests and
                 // the gestures on the sofa keep working.
-                // Both the depth-producing session and the camera's depth pass are needed
-                // for real furniture to hide the plane marks (#4228).
+                planeRenderer = showcase.planesVisible,
+                // Real furniture hides the plane marks only with both halves (#4228): a
+                // session that produces depth, and the camera stream's depth pass.
                 depthMode = Config.DepthMode.AUTOMATIC,
-                sceneUnderstanding = SceneUnderstanding(
-                    occlusion = true,
-                    planeVisualization = showcase.planesVisible,
-                ),
+                cameraStream = cameraStream,
                 sessionConfiguration = { _: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 },

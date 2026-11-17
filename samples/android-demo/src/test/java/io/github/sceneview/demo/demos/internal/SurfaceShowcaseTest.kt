@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos.internal
 
-import io.github.sceneview.demo.common.DemoStatusTone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -88,13 +87,6 @@ class SurfaceShowcaseTest {
             listOf(SurfaceShowcaseBanner.SCANNING),
             SurfaceShowcaseBanner.entries.filter { it.spinner },
         )
-    }
-
-    @Test
-    fun `only scanning uses a progress tone`() {
-        assertEquals(DemoStatusTone.Progress, SurfaceShowcaseBanner.SCANNING.tone)
-        listOf(SurfaceShowcaseBanner.FOUND, SurfaceShowcaseBanner.PLACED, SurfaceShowcaseBanner.MOVE_PHONE)
-            .forEach { assertEquals("$it waits for the user", DemoStatusTone.Guidance, it.tone) }
     }
 
     @Test

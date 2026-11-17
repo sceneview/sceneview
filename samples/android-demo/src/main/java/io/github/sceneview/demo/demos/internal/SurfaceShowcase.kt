@@ -1,7 +1,5 @@
 package io.github.sceneview.demo.demos.internal
 
-import io.github.sceneview.demo.common.DemoStatusTone
-
 /**
  * What the Surfaces demo does with its surfaces and its controls once something is placed
  * (#4307) — pure, so the rules have a JVM test pointed at them.
@@ -54,11 +52,7 @@ internal enum class SurfaceShowcaseBanner(val spinner: Boolean) {
     SCANNING(spinner = true),
     FOUND(spinner = false),
     PLACED(spinner = false),
-    MOVE_PHONE(spinner = false);
-
-    /** Only an active scan is work in progress; the other messages wait for the user. */
-    val tone: DemoStatusTone
-        get() = if (spinner) DemoStatusTone.Progress else DemoStatusTone.Guidance
+    MOVE_PHONE(spinner = false),
 }
 
 /**

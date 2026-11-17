@@ -20,12 +20,15 @@ class ARSurfacesSessionContractTest {
         )
         assertTrue(
             "Producing depth alone does not enable the camera's occlusion pass",
-            Regex("sceneUnderstanding\\s*=\\s*SceneUnderstanding\\(\\s*occlusion\\s*=\\s*true,")
-                .containsMatchIn(source),
+            source.contains("isDepthOcclusionEnabled = true") && source.contains("cameraStream = cameraStream"),
         )
         assertTrue(
-            "Grouped scene understanding must preserve the demo's hide and drag controls",
-            source.contains("planeVisualization = showcase.planesVisible"),
+            "The demo's hide and drag controls drive the plane renderer",
+            source.contains("planeRenderer = showcase.planesVisible"),
+        )
+        assertFalse(
+            "sceneUnderstanding also writes the plane renderer and would fight planeRenderer",
+            source.contains("sceneUnderstanding ="),
         )
         assertFalse(source.contains("isDepthOcclusionEnabled = false"))
     }
