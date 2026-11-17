@@ -93,4 +93,35 @@ class CameraFrameTest {
         assertFalse(cameraCoverVisible(oldView))
         assertTrue(cameraCoverVisible(newView))
     }
+
+    @Test
+    fun `no bound image is never fresh`() {
+        assertFalse(freshCameraImage(boundTimestamp = 0L, staleTimestamp = 0L))
+    }
+
+    @Test
+    fun `the first bound image of a new view is fresh`() {
+        assertTrue(freshCameraImage(boundTimestamp = 100L, staleTimestamp = 0L))
+    }
+
+    @Test
+    fun `after a stop the image the texture still holds does not lift the cover`() {
+        assertFalse(freshCameraImage(boundTimestamp = 500L, staleTimestamp = 500L))
+        assertTrue(freshCameraImage(boundTimestamp = 533L, staleTimestamp = 500L))
+    }
+
+    @Test
+    fun `a return from the background holds the cover until a new image and two more frames`() {
+        val stale = 500L
+        // Reset on stop: count back to 0. Frames presented with the stale image count nothing.
+        var count = 0
+        repeat(3) { count = presentedCameraFrames(count, freshCameraImage(stale, stale), submitted = true) }
+        assertEquals(0, count)
+        assertTrue(cameraCoverVisible(count))
+        count = presentedCameraFrames(count, freshCameraImage(533L, stale), submitted = true)
+        count = presentedCameraFrames(count, freshCameraImage(533L, stale), submitted = true)
+        assertTrue(cameraCoverVisible(count))
+        count = presentedCameraFrames(count, freshCameraImage(566L, stale), submitted = true)
+        assertFalse(cameraCoverVisible(count))
+    }
 }

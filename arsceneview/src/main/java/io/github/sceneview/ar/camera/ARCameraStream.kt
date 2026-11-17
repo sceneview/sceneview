@@ -718,6 +718,14 @@ open class ARCameraStream(
     internal var hasCameraFrame: Boolean = false
         private set
 
+    /**
+     * `Frame.timestamp` of the camera image last bound to the quad; `0` before the first one.
+     * `ARSceneView` compares it across a stop/start to tell a fresh image from the stale one the
+     * texture still holds.
+     */
+    internal var boundFrameTimestamp: Long = 0L
+        private set
+
     fun update(session: Session, frame: Frame) {
         // Hot-path audit (#3157): this JNI read is the floor for this surface, not an oversight.
         // `session.setCameraTextureNames(cameraTextureIds)` hands ARCore all 6 ids and ARCore
@@ -730,6 +738,7 @@ open class ARCameraStream(
             textureName = frame.cameraTextureName,
             textures = cameraTextures,
         ) ?: return
+        boundFrameTimestamp = frame.timestamp
 
         // EIS transforms are valid only while EIS is configured. OFF retains main's 2D path.
         coordinateUploads.acquire()?.let { upload ->

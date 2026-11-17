@@ -88,6 +88,7 @@ import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.camera.cameraCoverVisible
+import io.github.sceneview.ar.camera.freshCameraImage
 import io.github.sceneview.ar.camera.presentedCameraFrames
 import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
@@ -1645,6 +1646,22 @@ fun ARSceneView(
     // neutral cover until a camera image has actually been submitted, and a couple of presented
     // frames beyond it (see [presentedCameraFrames]), including on quick re-entry.
     var presentedCameraFrameCount by remember(sceneRenderer, cameraStream) { mutableIntStateOf(0) }
+    // A stopped app loses its SurfaceView surface, which comes back black until ARCore delivers a
+    // new image — a black flash on every return from the background. Put the cover back on stop,
+    // while nothing is visible, and wait for an image newer than the one the texture still holds.
+    // A TextureView keeps its last picture across a stop, so it is left as it was.
+    val coverStaleImageTimestamp = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
+    DisposableEffect(lifecycle, sceneRenderer, cameraStream, surfaceType) {
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                if (surfaceType != SurfaceType.Surface) return
+                coverStaleImageTimestamp.set(cameraStream?.boundFrameTimestamp ?: 0L)
+                presentedCameraFrameCount = 0
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
     // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
@@ -1864,7 +1881,10 @@ fun ARSceneView(
                 // would leave a new swap chain blank.
                 presentedCameraFrameCount = presentedCameraFrames(
                     count = presentedCameraFrameCount,
-                    hasCameraImage = cameraStreamRef.get()?.hasCameraFrame == true,
+                    hasCameraImage = freshCameraImage(
+                        boundTimestamp = cameraStreamRef.get()?.boundFrameTimestamp ?: 0L,
+                        staleTimestamp = coverStaleImageTimestamp.get(),
+                    ),
                     submitted = presented,
                 )
                 if (presented) {

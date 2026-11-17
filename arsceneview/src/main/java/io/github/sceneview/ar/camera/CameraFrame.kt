@@ -27,5 +27,12 @@ internal fun presentedCameraFrames(
     submitted: Boolean,
 ): Int = if (count < CAMERA_COVER_REVEAL_FRAMES && hasCameraImage && submitted) count + 1 else count
 
+/**
+ * Whether the camera image bound at [boundTimestamp] may lift the cover: there is one, and it is
+ * not the [staleTimestamp] image the texture held when the cover was reset (an `ON_STOP`).
+ */
+internal fun freshCameraImage(boundTimestamp: Long, staleTimestamp: Long): Boolean =
+    boundTimestamp != 0L && boundTimestamp != staleTimestamp
+
 /** Whether the startup cover still hides the viewport after [count] presented camera frames. */
 internal fun cameraCoverVisible(count: Int): Boolean = count < CAMERA_COVER_REVEAL_FRAMES
