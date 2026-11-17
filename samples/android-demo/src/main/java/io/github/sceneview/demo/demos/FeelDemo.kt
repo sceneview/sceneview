@@ -442,7 +442,7 @@ fun FeelDemo(onBack: () -> Unit) {
         } else MatterTransition.incomingTravel(progress) * direction * .28f
         val shadowKind = if (shadowLeaving) leaving!! else shown
         val contactStrength = MatterTransition.shadow(progress) *
-            if (shadowKind == FeelMaterial.Gel) MatterStage.GEL_CONTACT_SHADOW else 1f
+            if (shadowKind == FeelMaterial.Gel) MatterStage.GEL_CONTACT else 1f
         val contactX = shadowOffset * MatterStage.COS_AZIMUTH
         val contactZ = -shadowOffset * MatterStage.SIN_AZIMUTH
         materials.floor.setParameter("contact", contactX, contactZ, contactStrength)

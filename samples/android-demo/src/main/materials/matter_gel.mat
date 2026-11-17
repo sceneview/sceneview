@@ -1,6 +1,6 @@
 // matter_gel.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Clear, lightly tinted gel with a smooth refractive finger well.
+// Purpose:    Clear aqua gel with a smooth refractive finger well and caustics.
 // Used by:    samples/android-demo FeelDemo (Matter); no SDK consumers.
 // Parameters:
 //   finger, depth, radius — local XZ contact, signed visual depth and well radius.
@@ -17,7 +17,8 @@
 // The studio floor is the only transmitted object in this demo. Intersect it in world
 // space instead of projecting a box exit into the opaque screen-colour buffer. That
 // projection folds the contact footprint into the well when the exit changes planes.
-// Cost: one analytic floor sample; no scene-colour resolve/mips, texture or ray march.
+// Cost: one analytic floor sample and one caustic footprint from screen derivatives;
+// no scene-colour resolve/mips, texture or ray march.
 // matc profile: --optimize-size -p mobile -a opengl -a vulkan (Filament 1.77.3).
 material {
     "name": "Matter gel",
@@ -110,13 +111,33 @@ fragment {
         // The grazing guard only bounds nearly horizontal rays on the vertical bevel.
         float down = max(-ray.y, 0.25);
         float path = max(p.y + materialParams.dimensions.y, 0.002) / down;
-        highp vec3 world = getWorldPosition();
+        // API world space, like the floor: the key, pool and contact are not camera-relative.
+        highp vec3 world = getUserWorldPosition();
         float floorDistance = max(world.y - materialParams.keyTarget.y, 0.002) / down;
         highp vec2 floorXZ = world.xz + ray.xz * floorDistance;
         highp vec3 floorPoint = vec3(floorXZ.x, materialParams.keyTarget.y, floorXZ.y);
         vec3 transmitted = matterStudioFloor(floorPoint, materialParams.background,
             materialParams.keyPosition, materialParams.keyTarget, materialParams.keyCone,
             materialParams.keyPool, materialParams.contact, materialParams.dimensions.xz);
+        // Caustic: the key refracted by the top lands on the floor; its footprint per
+        // surface area (screen derivatives) focuses the light under a dent or a wave.
+        // A flat top gives exactly 1. Only the top, where the area ratio is defined.
+        highp vec3 keyRay = refract(normalize(world - materialParams.keyPosition), n, 1.0 / materialParams.ior);
+        highp vec2 lit = world.xz + keyRay.xz * (max(world.y - materialParams.keyTarget.y, 0.002) /
+            max(-keyRay.y, 0.25));
+        highp vec2 sx = dFdx(world.xz), sy = dFdy(world.xz), lx = dFdx(lit), ly = dFdy(lit);
+        highp float surfaceArea = abs(sx.x * sy.y - sx.y * sy.x);
+        highp float floorArea = abs(lx.x * ly.y - lx.y * ly.x);
+        float focus = clamp(surfaceArea / max(floorArea, surfaceArea * 0.2 + 1e-12), 0.0, 4.0);
+        // Flat top only (rest normal, as in the vertex stage): on the bevel the quad
+        // derivatives are too coarse and the ratio crawls along the edge as dots.
+        vec3 halfSize = vec3(materialParams.dimensions.x, materialParams.dimensions.y * 0.5,
+            materialParams.dimensions.z);
+        vec3 centred = variable_rest.xyz + vec3(0.0, halfSize.y, 0.0);
+        vec3 rested = normalize(centred - clamp(centred, -halfSize + materialParams.dimensions.w,
+            halfSize - materialParams.dimensions.w) + vec3(0.0, 1e-5, 0.0));
+        float top = smoothstep(0.92, 0.995, rested.y);
+        transmitted *= mix(1.0, 0.6 + 0.4 * focus * sqrt(focus), top);
         transmitted *= exp(-materialParams.absorption * path) * materialParams.albedo;
         float f0 = (materialParams.ior - 1.0) / (materialParams.ior + 1.0);
         f0 *= f0;

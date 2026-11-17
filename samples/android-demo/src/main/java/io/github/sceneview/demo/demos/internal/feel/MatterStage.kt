@@ -153,7 +153,9 @@ internal class MatterStage {
         const val KEY_OUTER_DEGREES = 32f
         const val KEY_RANGE = 20f
         const val POOL_STRENGTH = .40f
-        const val GEL_CONTACT_SHADOW = .12f
+        // Negative: the clear gel focuses the key into a caustic glow on the floor under
+        // and around it, where an opaque solid leaves a contact shadow.
+        const val GEL_CONTACT = -.32f
         const val RIM_LUX = 18_000f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
         val SIN = sin(Math.toRadians(ELEVATION.toDouble())).toFloat()

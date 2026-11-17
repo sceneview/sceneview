@@ -91,7 +91,7 @@ internal class MatterSurfaceMaterials(
             setParameter("roughness", finish.roughness)
             if (kind == FeelMaterial.Gel) {
                 studio(this)
-                setParameter("contact", 0f, 0f, MatterStage.GEL_CONTACT_SHADOW)
+                setParameter("contact", 0f, 0f, MatterStage.GEL_CONTACT)
                 setParameter("ior", MatterSurfaces.GEL_IOR)
                 setParameter("transmission", MatterSurfaces.GEL_TRANSMISSION)
                 setParameter("absorption", MatterSurfaces.GEL_ABSORPTION_RED,

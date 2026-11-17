@@ -16,5 +16,6 @@ vec3 matterStudioFloor(highp vec3 p, vec3 background, highp vec3 keyPosition,
     float outside = max(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.10, 0.0);
     float shadow = (0.38 * exp(-outside * outside / 0.09) +
         0.30 * exp(-outside * outside / 0.70)) * contact.z;
+    // contact.z < 0 is the gel's caustic: the same footprint brightens instead.
     return (background + vec3(keyPool.x * pool)) * (1.0 - shadow);
 }
