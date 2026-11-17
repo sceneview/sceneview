@@ -12,8 +12,8 @@ for the model), with Google
 [Filament](https://github.com/google/filament) as the renderer and Jetpack Compose as the API.
 Models are standard glTF (`.glb` / `.gltf`) instead of `.sfb`.
 
-SceneView is open source (Apache 2.0) and ships in apps on Google Play such as Medal, IKEA, Lenskart
-and Safie.
+SceneView is open source (Apache 2.0) and ships in apps on Google Play such as the
+Volkswagen, Audi, Porsche, CUPRA and Škoda apps, Philips Hue, Medal, IKEA, Lenskart and Safie.
 
 ## Dependency
 

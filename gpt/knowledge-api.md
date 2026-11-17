@@ -134,6 +134,23 @@ The built-in camera card and the Android demo share `resolveCameraPermissionReco
 
 The original three-argument state constructor and `permanentlyDenied` getter remain available. That legacy boolean conservatively recommends settings for both `RequestWithSettings` and `Settings` (`recovery != Request`), as does `ARCore.onCameraPermissionDenied`; it does not prove a permanent denial. Use `ARSceneView.onCameraPermissionStateChanged` for the complete state, including `null` after a grant read on return from settings. Direct `ARCore` hosts retain their existing denial and grant callbacks; the scene's internal recovery property and callback are not added to the public API.
 
+## Android overlay and transient-message coordination
+
+`io.github.sceneview.ar.LocalAROverlayVisibility` is an `@ExperimentalSceneViewApi`
+Compose local with type `ProvidableCompositionLocal<((Boolean) -> Unit)?>`, default
+`null`; opt in with `@OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)`.
+Provide a stable listener above `ARSceneView` or standalone SDK overlays to defer
+snackbars while an SDK card is shown. These centred cards emit `true` on
+entering composition and `false` on leaving: coaching cards (including their exit
+transition), the camera permission card, the ARCore availability card and the
+"camera in use" card `ARSceneView` shows while another scene holds the camera.
+Count these balanced events when several cards may coexist; the "Surface found" pill
+and the plane-discovery tips card emit none. Replacing the listener releases every card from the old one before
+registering it with the new one. Removing a `SnackbarHost` while the count is
+positive keeps its queued message from timing out before it can be shown. This
+contract is Android-specific; other platforms use native overlay lifecycles.
+Existing overlay signatures are unchanged.
+
 ## Core Composables
 
 ### SceneView — 3D viewport
@@ -176,6 +193,7 @@ fun SceneView(
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null, // observes presented frames; does not keep the loop awake
     onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null, // drives animation; keeps OnDemand awake until null
+    disallowParentIntercept: Boolean = false, // true keeps drags from a scrolling/draggable Compose parent (Android)
     content: (@Composable SceneScope.() -> Unit)? = null
 )
 ```
@@ -4604,6 +4622,18 @@ SceneView(
 ```
 
 ### Camera gestures
+
+**Inside an Android Compose scrollable, pager or bottom sheet:** opt in with
+`SceneView(disallowParentIntercept = true)` so drags starting on either surface type stay with
+the scene. It requests touch priority on `ACTION_DOWN` and releases it after `ACTION_UP` or
+`ACTION_CANCEL`. The default is `false`, so an embedded viewer still lets its parent scroll.
+Changes to the option apply to the next touch stream. This Android View/Compose interop option
+is specific to `SceneView` (the deprecated `Scene` alias does not take it); other platforms do not
+use this interception protocol.
+
+Touches on an `isEditable = true` node go to the node instead of the camera, including camera
+double-tap zoom. Set `isEditable = false` on a display-only subject if dragging it should orbit
+the camera. `disallowParentIntercept` changes parent interception, not this node/camera isolation.
 
 One finger orbits, two fingers pan, a pinch dollies — and since 4.36.0 a **double-tap zooms in**
 and a **two-finger tap zooms out**, animated over 300 ms, the same convention as Google Maps and
