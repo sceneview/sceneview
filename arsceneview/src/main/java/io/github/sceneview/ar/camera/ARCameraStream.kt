@@ -15,6 +15,7 @@ import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Config
 import com.google.ar.core.Coordinates2d
+import com.google.ar.core.Coordinates3d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
@@ -27,6 +28,7 @@ import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.managers.safeDestroy
+import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.material.setExternalTexture
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
@@ -66,6 +68,10 @@ const val kFogEndParameter = "fogEnd"
 // contact in view space. `groundNormal.w` is the 0/1 gate; 0, the default, turns it off.
 internal const val kGroundContactParameter = "groundContact"
 internal const val kGroundNormalParameter = "groundNormal"
+
+// Electronic image stabilization (#2728): `true` makes the camera materials sample the
+// homogeneous EIS coordinates in CUSTOM0 instead of UV0. Absent from custom legacy materials.
+internal const val kImageStabilizationParameter = "imageStabilizationEnabled"
 
 /**
  * Renders the live AR camera feed as the scene background using Filament.
@@ -390,6 +396,15 @@ open class ARCameraStream(
     }
 
     /**
+     * Every binding path ([setMaterialInstances], the [materialInstance] and [materialInstances]
+     * setters) ends here, so this is where the EIS flag learns which instance to drive (#5091).
+     */
+    override fun setMaterialInstanceAt(primitiveIndex: Int, materialInstance: MaterialInstance) {
+        super.setMaterialInstanceAt(primitiveIndex, materialInstance)
+        if (primitiveIndex == 0) stabilizationFlag.bind(materialInstance)
+    }
+
+    /**
      * ### Enable the depth occlusion material
      *
      * This will process the incoming DepthImage to occlude virtual objects behind real world
@@ -591,8 +606,31 @@ open class ARCameraStream(
 
     private val coordinates = CameraStreamCoordinates(CAMERA_VERTICES)
     private val coordinateUploads = CameraStreamUploadRing(VERTEX_COUNT)
-    private var imageStabilizationEnabled = false
     private var pendingDisplayGeometryChange = false
+
+    // Whether the bound material declares the EIS flag is resolved when it is bound, never per
+    // frame: since Filament 1.77 the `materialInstance` read back from the renderable has a null
+    // `material`, and the per-frame `hasParameter` on it threw on every frame (#5091).
+    private val stabilizationFlag = CameraStreamStabilizationFlag<MaterialInstance>(
+        accepts = ::acceptsImageStabilizationFlag,
+        write = { instance, enabled -> instance.setParameter(kImageStabilizationParameter, enabled) },
+    )
+
+    // Allocated once: [update] points them at the current frame instead of capturing it in two
+    // new lambdas every frame.
+    private var transformFrame: Frame? = null
+    private val transform3d: (FloatBuffer, Coordinates3d, FloatBuffer) -> Unit =
+        { input, outputType, output ->
+            checkNotNull(transformFrame).transformCoordinates3d(
+                Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input, outputType, output
+            )
+        }
+    private val transform2d: (Coordinates2d, FloatBuffer, FloatBuffer) -> Unit =
+        { inputType, input, output ->
+            checkNotNull(transformFrame).transformCoordinates2d(
+                inputType, input, Coordinates2d.TEXTURE_NORMALIZED, output
+            )
+        }
 
     private val vertexBuffer: VertexBuffer =
         VertexBuffer.Builder().vertexCount(VERTEX_COUNT).bufferCount(3).attribute(
@@ -657,6 +695,7 @@ open class ARCameraStream(
                 indexBuffer)
             .material(0, standardMaterial.defaultInstance)
             .build(engine, entity)
+        stabilizationFlag.bind(standardMaterial.defaultInstance)
 
         // Hidden until the first ARCore frame (#3373). The external OES textures created above
         // have no image attached until ARCore writes into them, so sampling them is
@@ -692,34 +731,28 @@ open class ARCameraStream(
         pendingDisplayGeometryChange = frame.hasDisplayGeometryChanged() || pendingDisplayGeometryChange
         coordinateUploads.acquire()?.let { upload ->
             val mode = session.config.imageStabilizationMode
-            val changed = coordinates.update(
-                mode = mode,
-                displayGeometryChanged = pendingDisplayGeometryChange,
-                transform3d = { input, outputType, output ->
-                    frame.transformCoordinates3d(
-                        Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
-                        input, outputType, output
-                    )
-                },
-                transform2d = { inputType, input, output ->
-                    frame.transformCoordinates2d(
-                        inputType, input, Coordinates2d.TEXTURE_NORMALIZED, output
-                    )
-                },
-            )
+            transformFrame = frame
+            val changed = try {
+                coordinates.update(
+                    mode = mode,
+                    displayGeometryChanged = pendingDisplayGeometryChange,
+                    transform3d = transform3d,
+                    transform2d = transform2d,
+                )
+            } catch (e: RuntimeException) {
+                upload.cancel()
+                throw e
+            } finally {
+                transformFrame = null
+            }
             pendingDisplayGeometryChange = false
             if (changed) {
                 upload.copyFrom(coordinates)
                 uploadCoordinates(engine, vertexBuffer, upload)
-                imageStabilizationEnabled = mode == Config.ImageStabilizationMode.EIS
+                // Written only when it flips, to the instance resolved at bind time (#5091).
+                stabilizationFlag.enabled = mode == Config.ImageStabilizationMode.EIS
             } else {
                 upload.cancel()
-            }
-        }
-        // Custom materials may retain the legacy UV0-only contract.
-        materialInstance.let { instance ->
-            if (instance.material.hasParameter("imageStabilizationEnabled")) {
-                instance.setParameter("imageStabilizationEnabled", imageStabilizationEnabled)
             }
         }
 
@@ -1037,6 +1070,15 @@ open class ARCameraStream(
  * ([ARCameraStream.CAMERA_PRIORITY_BACKGROUND]) so early-Z skips the texels already covered.
  * Kept outside the class so the decision is unit-testable without Filament or ARCore.
  */
+/**
+ * Whether [instance]'s material declares the EIS flag. Read through [materialOrNull], so a wrapper
+ * Filament built from a native pointer (null `material` since Filament 1.77) reads as "no flag"
+ * instead of throwing (#5091). Called at bind time only, never per frame. Top-level, like
+ * [cameraStreamPriority], so a JVM test can call it without the companion's native samplers.
+ */
+internal fun acceptsImageStabilizationFlag(instance: MaterialInstance): Boolean =
+    instance.materialOrNull?.hasParameter(kImageStabilizationParameter) == true
+
 internal fun cameraStreamPriority(
     depthOcclusion: Boolean,
     personOcclusion: Boolean,

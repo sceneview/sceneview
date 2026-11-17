@@ -125,6 +125,34 @@ internal class CameraStreamUploadRing(vertexCount: Int, size: Int = 3) {
     }
 }
 
+/**
+ * The EIS flag of the camera material bound to primitive 0 (#5091).
+ *
+ * Whether the bound material declares the flag is decided once, in [bind]; the flag is written
+ * only when the binding or the value changes. The per-frame path only assigns [enabled], which
+ * never touches the material: Filament 1.77 wrappers read back from a renderable have a null
+ * `material`, and reading it every frame threw on every frame, so the camera never showed.
+ * Filament-free so a JVM test can pin it.
+ */
+internal class CameraStreamStabilizationFlag<I : Any>(
+    private val accepts: (I) -> Boolean,
+    private val write: (I, Boolean) -> Unit,
+) {
+    private var target: I? = null
+
+    var enabled: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            target?.let { write(it, value) }
+        }
+
+    /** Makes [instance] the target if its material declares the flag, and brings it up to date. */
+    fun bind(instance: I) {
+        target = instance.takeIf(accepts)?.also { write(it, enabled) }
+    }
+}
+
 private fun buffer(size: Int): FloatBuffer =
     ByteBuffer.allocateDirect(size * Float.SIZE_BYTES)
         .order(ByteOrder.nativeOrder()).asFloatBuffer()
