@@ -121,6 +121,73 @@ card after a denial), and checks that ARCore is installed. The manifest choices 
 
 ---
 
+## Open any 3D file — Android
+
+Use **one entry point** for every supported mesh format. Put the file under `src/main/assets/`,
+or pass a `content://`, `file://` or HTTPS location to the same helper:
+`rememberModelInstance(modelLoader, "models/part.stl", unit = ModelUnit.Millimeters)`.
+Import `io.github.sceneview.core.model.ModelUnit`. `ModelLoader.supportedFormats` contains
+`GLB`, `GLTF`, `THREE_MF`, `STL`, `OBJ`, `PLY_MESH` (`ModelFormat` in the same package).
+
+| Format | Unit used in the scene | Colours / textures | One-liner (inside a composable) |
+|---|---|---|---|
+| `.glb` | Metres, fixed by glTF | glTF materials and textures | `rememberModelInstance(modelLoader, "model.glb")` |
+| `.gltf` | Metres, fixed by glTF | glTF materials and sibling textures/buffers | `rememberModelInstance(modelLoader, "model.gltf")` |
+| `.3mf` | Declared unit → metres; Z-up → Y-up | Object/triangle colours; no textures | `rememberModelInstance(modelLoader, "print.3mf")` |
+| `.stl` (ASCII / binary) | Millimetres by default; override with `unit` | Grey mesh; no textures | `rememberModelInstance(modelLoader, "part.stl", unit = ModelUnit.Millimeters)` |
+| `.obj` | Millimetres by default; override with `unit` | Grey automatically; `ObjLoader` with an MTL resolver reads colours; no textures | `rememberModelInstance(modelLoader, "part.obj", unit = ModelUnit.Inches)` |
+| `.ply` mesh (ASCII / binary) | Millimetres by default; override with `unit` | Vertex RGBA; no textures | `rememberModelInstance(modelLoader, "scan.ply", unit = ModelUnit.Meters)` |
+
+`ModelUnit` offers `Meters`, `Centimeters`, `Millimeters`, `Inches`. It only changes unitless
+STL/OBJ/PLY meshes. GLB/glTF stay in metres and 3MF retains its declared unit even when `unit` is
+passed. **Real size:** omit `scaleToUnits` (or pass `null`), keep the default node scale of 1;
+`scaleToUnits = 1f` fits the model into a one-metre box and discards its authored size.
+
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.SceneView
+import io.github.sceneview.core.model.ModelUnit
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun RealSizeStlViewer() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/part.stl", unit = ModelUnit.Millimeters)
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+        instance?.let { ModelNode(modelInstance = it, scaleToUnits = null) }
+    }
+}
+```
+
+For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced` callback:
+`AnchorNode(anchor = anchor) { ModelNode(modelInstance = instance, scaleToUnits = null) }`.
+
+**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
+parses them, with `io.github.sceneview.core.model.UnsupportedModelFormat(extension)`: thrown by
+`createModel*` / `createModelInstance*` and `awaitModelInstance`, so
+`rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` shows it as
+`ModelLoadState.Failed.error`. `rememberModelInstance`, the `suspend` `loadModel` /
+`loadModelInstance` / `loadInstancedModel` and the `*Async` callbacks log it and return `null`
+(an empty list for the instanced loads), as they do for a file a converter cannot parse (an HTML
+error page saved as `.stl`).
+`ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
+but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
+`supportedFormats` and refused by `ModelConverter` / `ModelLoader` with the same typed error.
+
+For raw bytes in shared Kotlin code, use `ModelConverter.toGlb(bytes, format, unit)` from
+`io.github.sceneview.core.model`, after `ModelFormat.sniff(fileName, bytes)`. Recognisable bytes
+win over a wrong extension; the extension is the fallback. Supply the complete file for 3MF's
+ZIP-directory check and binary STL's length/count check. A bare `.ply` extension defaults to
+mesh; its header distinguishes Gaussian splats. GLB is returned without copying. JSON glTF is
+wrapped in a GLB JSON chunk; its resource URIs are retained and must still be resolved.
+The shared API runs on Kotlin platforms; Apple Swift and the web JavaScript APIs retain their
+own entry points and format support (see their sections below).
+
 ## Android camera permission recovery
 
 `resolveCameraPermissionRecovery`, `ARCameraPermissionRecovery` and
@@ -176,6 +243,7 @@ fun SceneView(
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null, // observes presented frames; does not keep the loop awake
     onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null, // drives animation; keeps OnDemand awake until null
+    disallowParentIntercept: Boolean = false, // true keeps drags from a scrolling/draggable Compose parent (Android)
     content: (@Composable SceneScope.() -> Unit)? = null
 )
 ```
@@ -4198,8 +4266,17 @@ fun rememberModelInstance(
     fileLocation: String,
     resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
 ): ModelInstance?
+
+// Same, choosing the unit of a unitless STL/OBJ/PLY mesh (GLB/glTF stay metres, 3MF keeps its own)
+@Composable
+fun rememberModelInstance(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,                    // io.github.sceneview.core.model.ModelUnit
+    resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelInstance?
 ```
-Returns `null` while loading, recomposes when ready. **Always handle the null case.**
+Returns `null` while loading, recomposes when ready. **Always handle the null case.** All three overloads share one body: a failed load is `null` and logged (a file in no supported format under the `ModelLoader` tag, with the `UnsupportedModelFormat` message); the instance is returned before its textures finish decoding.
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
@@ -4217,6 +4294,15 @@ A positional string resolves to the `assetFileLocation` overload; any location w
 fun rememberModelLoadState(
     modelLoader: ModelLoader,
     fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+// Same, choosing the unit of a unitless STL/OBJ/PLY mesh
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,
     resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
 ): ModelLoadState
 
@@ -4241,6 +4327,15 @@ Same ownership as `rememberModelInstance`: the composable destroys the `Model` w
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
+    // GLB, GLTF, THREE_MF, STL, OBJ, PLY_MESH (io.github.sceneview.core.model.ModelFormat)
+    val supportedFormats: Set<ModelFormat>
+
+    // Every create*/load* below also has an overload taking `unit: ModelUnit?` right after the
+    // location/buffer (e.g. `loadModelInstance(fileLocation, unit)`), for unitless STL/OBJ/PLY.
+    // Any other input (STEP, FBX, USDZ, splat PLY/SPZ, bytes and extension unrecognised) is
+    // refused before any native call: create* and awaitModelInstance throw UnsupportedModelFormat,
+    // the null-returning load* and *Async calls log it and return `null`.
+
     // Synchronous — MUST be called on main thread
     fun createModelInstance(assetFileLocation: String): ModelInstance
     fun createModelInstance(buffer: Buffer): ModelInstance
@@ -4254,9 +4349,10 @@ class ModelLoader(engine: Engine, context: Context) {
     fun createModel(@RawRes rawResId: Int, releaseSourceData: Boolean = true): Model
     fun createModel(file: File, releaseSourceData: Boolean = true): Model
 
-    // Async — safe from any thread
+    // Async — safe from any thread. `null` when the file cannot be read or parsed, or is in no
+    // supported format (logged); awaitModelInstance below throws the typed error instead.
     suspend fun loadModel(fileLocation: String): Model?
-    fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
+    fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job      // never throws: onResult(null)
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
 
@@ -4604,6 +4700,18 @@ SceneView(
 ```
 
 ### Camera gestures
+
+**Inside an Android Compose scrollable, pager or bottom sheet:** opt in with
+`SceneView(disallowParentIntercept = true)` so drags starting on either surface type stay with
+the scene. It requests touch priority on `ACTION_DOWN` and releases it after `ACTION_UP` or
+`ACTION_CANCEL`. The default is `false`, so an embedded viewer still lets its parent scroll.
+Changes to the option apply to the next touch stream. This Android View/Compose interop option
+is specific to `SceneView` (the deprecated `Scene` alias does not take it); other platforms do not
+use this interception protocol.
+
+Touches on an `isEditable = true` node go to the node instead of the camera, including camera
+double-tap zoom. Set `isEditable = false` on a display-only subject if dragging it should orbit
+the camera. `disallowParentIntercept` changes parent interception, not this node/camera isolation.
 
 One finger orbits, two fingers pan, a pinch dollies — and since 4.36.0 a **double-tap zooms in**
 and a **two-finger tap zooms out**, animated over 300 ms, the same convention as Google Maps and
