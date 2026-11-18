@@ -105,8 +105,23 @@ internal object ScanFloorSlab {
         var kept = grid.erode(grid.dilate(seen, CLOSE_CELLS), CLOSE_CELLS)
         kept = grid.fillHoles(kept)
         kept = grid.dilate(grid.erode(kept, 1), 1)
-        kept = grid.largestPieces(kept, MIN_PIECE_SHARE)
-        kept = grid.oneFootprint(kept, BRIDGE_CELLS)
+        // What stands over each cell, off the floor: low furniture says the floor runs on under it
+        // (a sofa between two looks), anything wall-high says it does not (a partition, a door's
+        // jamb). Only the first bridges plates; nothing is bridged on no evidence.
+        val under = BooleanArray(grid.size)
+        val walled = BooleanArray(grid.size)
+        for (v in 0 until mesh.vertexCount) {
+            val h = p[v * 3 + 1] - y0
+            if (h <= FLOOR_BAND_M) continue
+            val c = grid.cellOrNull(p[v * 3], p[v * 3 + 2]) ?: continue
+            if (h >= WALL_MIN_M) walled[c] = true else if (h <= FURNITURE_MAX_M) under[c] = true
+        }
+        // A cell's worth round each: a vertex every cell or so is no gap in what stands there.
+        val furniture = grid.dilate(under, 1)
+        val wall = grid.dilate(walled, 1)
+        kept = grid.bridged(kept, BRIDGE_CELLS) { c -> furniture[c] && !wall[c] }
+        // Strays go; a plate of real floor stays, a second piece rather than erased.
+        kept = grid.largestPieces(kept, MIN_PIECE_SHARE, minCells = (KEPT_PLATE_M2 / (CELL_M * CELL_M)).roundToInt())
         val cells = kept.count { it }
         val area = cells * CELL_M * CELL_M
         if (area < MIN_AREA_M2) return null
@@ -320,26 +335,22 @@ internal object ScanFloorSlab {
         }
 
         /**
-         * [on] as one footprint (the floor in one piece): pieces closer than twice [bridgeCells]
-         * are joined across the gap — a sofa or a bed between two looks at the floor — and of what
-         * is then still apart, the largest piece alone is kept.
+         * [on] with the gaps between its pieces up to twice [bridgeCells] across closed where
+         * [evidence] says the floor runs on (cells under low furniture, no wall): two looks at one
+         * floor become one piece; a gap seen as nothing, or as a wall, stays a gap.
          */
-        fun oneFootprint(on: BooleanArray, bridgeCells: Int): BooleanArray {
-            val (_, sizes) = pieces(on)
-            if (sizes.size <= 1) return on
+        fun bridged(on: BooleanArray, bridgeCells: Int, evidence: (Int) -> Boolean): BooleanArray {
+            if (pieces(on).second.size <= 1) return on
             // Closed, then the original added back: near the grid's edge the erosion eats more.
             val closed = erode(dilate(on, bridgeCells), bridgeCells)
-            val joined = BooleanArray(size) { on[it] || closed[it] }
-            val (label, joinedSizes) = pieces(joined)
-            val largest = joinedSizes.indices.maxByOrNull { joinedSizes[it] } ?: return on
-            return BooleanArray(size) { label[it] == largest }
+            return BooleanArray(size) { on[it] || (closed[it] && evidence(it)) }
         }
 
-        /** The 8-connected pieces of [on] of at least [share] of the largest. */
-        fun largestPieces(on: BooleanArray, share: Float): BooleanArray {
+        /** The 8-connected pieces of [on] of at least [share] of the largest, or of [minCells] cells. */
+        fun largestPieces(on: BooleanArray, share: Float, minCells: Int = Int.MAX_VALUE): BooleanArray {
             val (label, sizes) = pieces(on)
             val most = sizes.maxOrNull() ?: return BooleanArray(size)
-            return BooleanArray(size) { label[it] >= 0 && sizes[label[it]] >= most * share }
+            return BooleanArray(size) { label[it] >= 0 && (sizes[label[it]] >= most * share || sizes[label[it]] >= minCells) }
         }
 
         /** Each cell's 8-connected piece of [on] (`-1` off it), and each piece's cell count. */
@@ -605,10 +616,19 @@ internal object ScanFloorSlab {
     const val MIN_AREA_M2 = 0.5f
 
     /**
-     * Floor pieces up to 1 m apart are one floor, the gap bridged (what stands between two looks);
-     * further apart, only the largest is the floor's slab.
+     * Floor pieces up to 1 m apart are one floor where low furniture stands over the gap (what
+     * stood between two looks); with no such evidence, or a wall in it, they stay apart.
      */
     const val BRIDGE_M = 1f
+
+    /** Up to this over the floor, what stands over a gap is furniture: the floor runs on under it. */
+    const val FURNITURE_MAX_M = 1.2f
+
+    /** From this over the floor, it is a wall, a partition or a door's frame: no floor is drawn under it. */
+    const val WALL_MIN_M = 1.6f
+
+    /** A plate of floor this big is real floor seen: kept, as a second piece if it must be, never erased. */
+    const val KEPT_PLATE_M2 = 0.5f
     private val BRIDGE_CELLS = (BRIDGE_M / 2f / CELL_M).roundToInt()
 
     /** Floor pieces under a fifth of the largest are strays. */

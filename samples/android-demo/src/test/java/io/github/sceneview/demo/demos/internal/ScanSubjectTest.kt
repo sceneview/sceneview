@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import io.github.sceneview.demo.demos.FILLED_OBJECT_M
 import io.github.sceneview.demo.demos.RerunModelSource
 import io.github.sceneview.demo.demos.fillsObject
+import io.github.sceneview.demo.demos.objectFilled
 import io.github.sceneview.demo.demos.objectReconstruction
 import io.github.sceneview.demo.demos.rebuildsStale
 import org.junit.Assert.assertEquals
@@ -226,6 +227,21 @@ class ScanSubjectTest {
         assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), round(-1f, -1f, 0f, radius = 0.5f), VOXEL))
         assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), null, VOXEL))
         assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), emptyList(), VOXEL))
+    }
+
+    @Test
+    fun `a reopened object with no source is judged filled from its saved surfels`() {
+        val crate = round(CRATE_X, CRATE_Z, HEIGHT / 2)
+        // A kept model is read back with no source: the saved cloud and the trace's aims decide.
+        assertTrue(objectFilled(ScanScope.Object, null, cloud, crate, VOXEL))
+        assertTrue(objectFilled(ScanScope.Object, RerunModelSource.Surfels(cloud), null, crate, VOXEL))
+        val shoes = Drawn().apply {
+            floor()
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT)
+        }.cloud()
+        assertFalse(objectFilled(ScanScope.Object, null, shoes, round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f), VOXEL))
+        assertFalse("nothing to judge from", objectFilled(ScanScope.Object, null, null, crate, VOXEL))
+        assertFalse("not an object", objectFilled(ScanScope.Room, null, cloud, crate, VOXEL))
     }
 
     @Test

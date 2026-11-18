@@ -20,6 +20,7 @@ import io.github.sceneview.demo.demos.internal.SyntheticScene
 import io.github.sceneview.demo.demos.internal.SyntheticShape
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.room.RoomBox
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -193,6 +194,22 @@ class ScanDepthModelTest {
         // A surface kept before for it is not what it opens on either.
         checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null))
         assertNull(depthModelOf(store, ID, ScanScope.Object, null, null, objectFilled = true))
+    }
+
+    @Test
+    fun `a surface or a shell kept by an earlier version is built again, not read back`() {
+        val store = store(recording = true)
+        val older = checkNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null)).glb
+        // What the version before this one kept: never opened on, fused again and kept anew.
+        store.saveDepthModel(ID, older, DEPTH_MODEL_VERSION - 1)
+        assertFalse(store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        var fusedAgain = 0
+        checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null, onRecording = { fusedAgain++ }))
+        assertEquals("fused again", 1, fusedAgain)
+        assertTrue(store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        // A shell kept by an earlier version is not what a room opens on either.
+        store.saveRoomShell(ID, older, DenseCloud(FloatArray(0), IntArray(0)), ROOM_SHELL_VERSION - 1)
+        assertNull(runBlocking { roomShellOf(store, ID, input = null) {} })
     }
 
     /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
