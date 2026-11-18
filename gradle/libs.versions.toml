@@ -94,7 +94,7 @@ filamentWeb = "1.52.3"
 filamentWebsite = "1.72.1"
 # Desktop Filament via filament-kmp on Maven. Independent of the three Filament
 # runtime pins above — this artifact vendors its own native Filament and its own
-# built-in materials (0.9.0 ships Filament 1.79.0, MATERIAL_VERSION 79; 0.8.0 was 1.78.0 / 78).
+# built-in materials (0.10.0 ships Filament 1.80.1, MATERIAL_VERSION 80; 0.9.0 was 1.79.0 / 79).
 # Used only by sceneview-compose desktopMain, which loads no SceneView .filamat: a bump
 # that changes MATERIAL_VERSION needs no blob here, only a desktop-demo run.
 filamentKmp = "0.10.0"
