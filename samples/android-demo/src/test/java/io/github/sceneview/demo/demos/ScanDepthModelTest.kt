@@ -233,6 +233,56 @@ class ScanDepthModelTest {
         assertEquals("floor triangles kept", 0, onFloor)
     }
 
+    @Test
+    fun `an object's crop drops the plane it stands on, never its own low parts`() {
+        val positions = ArrayList<Float>()
+        val normals = ArrayList<Float>()
+        val indices = ArrayList<Int>()
+        fun sheet(o: FloatArray, u: FloatArray, v: FloatArray, nu: Int, nv: Int, n: FloatArray) {
+            val base = positions.size / 3
+            for (j in 0..nv) for (i in 0..nu) {
+                for (k in 0 until 3) positions += o[k] + u[k] * i + v[k] * j
+                normals += n.toList()
+            }
+            for (j in 0 until nv) for (i in 0 until nu) {
+                val a = base + j * (nu + 1) + i
+                indices += listOf(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2)
+            }
+        }
+        val step = 0.01f
+        val up = floatArrayOf(0f, 1f, 0f)
+        // The floor it stands on, and a noisy patch of it 2 cm up, beside the shoe.
+        sheet(floatArrayOf(-0.5f, 0f, -0.5f), floatArrayOf(0.05f, 0f, 0f), floatArrayOf(0f, 0f, 0.05f), 20, 20, up)
+        sheet(floatArrayOf(-0.19f, 0.02f, 0.06f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 6, 2, up)
+        // A shoe, 30 × 10 × 12 cm: its sides down to the floor, its sole facing down 5 mm over it.
+        sheet(floatArrayOf(-0.15f, 0f, -0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 30, 12, floatArrayOf(0f, 0f, -1f))
+        sheet(floatArrayOf(-0.15f, 0f, 0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 30, 12, floatArrayOf(0f, 0f, 1f))
+        sheet(floatArrayOf(-0.15f, 0.12f, -0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 30, 10, up)
+        sheet(floatArrayOf(-0.15f, 0.005f, -0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 30, 10, floatArrayOf(0f, -1f, 0f))
+        val count = positions.size / 3
+        val mesh = RerunMesh(positions.toFloatArray(), normals.toFloatArray(), IntArray(count) { GREY }, indices.toIntArray())
+        val box = ScanBox(centerX = 0f, centerZ = 0f, baseY = 0f, yaw = 0f, length = 0.3f, depth = 0.1f, height = 0.12f)
+        val cropped = checkNotNull(cropToSubject(mesh, box))
+        val p = cropped.positions
+        val n = cropped.normals
+        var lowSide = 0
+        var sole = 0
+        var support = 0
+        for (t in 0 until cropped.triangleCount) {
+            val v = IntArray(3) { cropped.indices[t * 3 + it] }
+            val y = v.sumOf { p[it * 3 + 1].toDouble() } / 3
+            val ny = v.sumOf { n[it * 3 + 1].toDouble() } / 3
+            when {
+                ny > 0.9 && y < 0.05 -> support++
+                ny < -0.9 -> sole++
+                kotlin.math.abs(ny) < 0.1 && y < 0.02 -> lowSide++
+            }
+        }
+        assertEquals("support faces kept", 0, support)
+        assertTrue("the sole is gone: $sole", sole > 0)
+        assertTrue("the sides' foot is gone: $lowSide", lowSide > 0)
+    }
+
     /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
     private fun store(recording: Boolean, header: ScanDepthHeader = HEADER, recordedFrames: List<DepthFrame> = frames): RerunSessionStore {
         val store = RerunSessionStore(folder.newFolder())

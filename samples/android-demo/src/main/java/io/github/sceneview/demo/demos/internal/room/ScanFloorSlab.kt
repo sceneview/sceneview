@@ -105,20 +105,27 @@ internal object ScanFloorSlab {
         var kept = grid.erode(grid.dilate(seen, CLOSE_CELLS), CLOSE_CELLS)
         kept = grid.fillHoles(kept)
         kept = grid.dilate(grid.erode(kept, 1), 1)
-        // What stands over each cell, off the floor: low furniture says the floor runs on under it
-        // (a sofa between two looks), anything wall-high says it does not (a partition, a door's
-        // jamb). Only the first bridges plates; nothing is bridged on no evidence.
+        // What stands over each cell, off the floor: a flat top of furniture (facing up, under
+        // 1.2 m) says the floor runs on under it (a sofa between two looks); an upright surface
+        // reaching wall height (a partition, a door's jamb) says it does not, and so does no
+        // evidence at all. The low part of a wall half seen, upright, is no top: it bridges nothing.
         val under = BooleanArray(grid.size)
         val walled = BooleanArray(grid.size)
+        val nn = mesh.normals
         for (v in 0 until mesh.vertexCount) {
             val h = p[v * 3 + 1] - y0
             if (h <= FLOOR_BAND_M) continue
             val c = grid.cellOrNull(p[v * 3], p[v * 3 + 2]) ?: continue
-            if (h >= WALL_MIN_M) walled[c] = true else if (h <= FURNITURE_MAX_M) under[c] = true
+            val ny = nn[v * 3 + 1]
+            when {
+                h >= WALL_MIN_M && abs(ny) < UPRIGHT_MAX_NY -> walled[c] = true
+                h <= FURNITURE_MAX_M && ny >= TOP_MIN_NY -> under[c] = true
+            }
         }
-        // A cell's worth round each: a vertex every cell or so is no gap in what stands there.
+        // A cell's worth round a top (a vertex every cell or so is no gap in it); a wall's reach
+        // round it, so its foot, not seen to its top, is kept out too.
         val furniture = grid.dilate(under, 1)
-        val wall = grid.dilate(walled, 1)
+        val wall = grid.dilate(walled, WALL_REACH_CELLS)
         kept = grid.bridged(kept, BRIDGE_CELLS) { c -> furniture[c] && !wall[c] }
         // Strays go; a plate of real floor stays, a second piece rather than erased.
         kept = grid.largestPieces(kept, MIN_PIECE_SHARE, minCells = (KEPT_PLATE_M2 / (CELL_M * CELL_M)).roundToInt())
@@ -626,6 +633,13 @@ internal object ScanFloorSlab {
 
     /** From this over the floor, it is a wall, a partition or a door's frame: no floor is drawn under it. */
     const val WALL_MIN_M = 1.6f
+
+    /** A furniture top faces up at least this much; an upright surface less than [UPRIGHT_MAX_NY]. */
+    private const val TOP_MIN_NY = 0.8f
+    private const val UPRIGHT_MAX_NY = 0.3f
+
+    /** How far round a wall the floor is not bridged: 20 cm. */
+    private val WALL_REACH_CELLS = (0.2f / CELL_M).roundToInt()
 
     /** A plate of floor this big is real floor seen: kept, as a second piece if it must be, never erased. */
     const val KEPT_PLATE_M2 = 0.5f

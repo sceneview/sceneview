@@ -128,49 +128,65 @@ internal fun depthModelOf(
     // floor it stood on left out. Its box comes from the saved cloud and the trace's aims, so a
     // reopen crops it the same, and it is kept cropped.
     val cropped = subject?.takeIf { scope == ScanScope.Object }?.let { cropToSubject(fused.mesh, it) }
+    // A box that crops nothing out is no subject: the surface is shown whole, never kept so —
+    // the next open, its subject read again, tries once more.
+    val keeps = subject == null || scope != ScanScope.Object || cropped != null
     val surface = slab?.mesh ?: cropped ?: fused.mesh
     val mesh = capped(surface, consume = true) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
     if (mesh.triangleCount == 0) return null
     progress(WRITE_START)
     val glb = RerunMeshGlb.write(mesh, generator = "SceneView depth model")
-    runCatching { store.saveDepthModel(id, glb, DEPTH_MODEL_VERSION) }
+    if (keeps) runCatching { store.saveDepthModel(id, glb, DEPTH_MODEL_VERSION) }
     progress(1f)
     return depthModel(glb, mesh, budgetReached = fused.droppedBlocks > 0)
 }
 
 /**
- * [mesh] cropped to [box], an object's box ([ScanSubject]): the triangles whose middle lies
- * within it, [SUBJECT_MARGIN_M] round its sides and over its top, and above its base by more
- * than [SUPPORT_BAND_M] — the table or the floor it stands on is left out. `null` when nothing
- * is left: the surface is then kept whole.
+ * [mesh] cropped to [box], an object's box ([ScanSubject]): the triangles whose middle lies within
+ * it, [SUBJECT_MARGIN_M] round its sides and over its top — less what it stands on. The support
+ * is found, not assumed: the height most of the upward-facing triangles round the box's base lie
+ * at ([supportOf]); only triangles facing up within [SUPPORT_BAND_M] of it go, and what lies
+ * below it. An object's own low parts — a shoe's sides, its sole facing down — stay. `null` when
+ * nothing is left.
  */
 internal fun cropToSubject(mesh: RerunMesh, box: ScanBox): RerunMesh? {
     val p = mesh.positions
+    val n = mesh.normals
     val ix = mesh.indices
     val c = cos(box.yaw)
     val s = sin(box.yaw)
     val halfA = box.length / 2 + SUBJECT_MARGIN_M
     val halfB = box.depth / 2 + SUBJECT_MARGIN_M
-    val bottom = box.baseY + SUPPORT_BAND_M
     val top = box.baseY + box.height + SUBJECT_MARGIN_M
-    val remap = IntArray(mesh.vertexCount) { -1 }
-    val kept = ArrayList<Int>()
-    var next = 0
-    for (t in 0 until mesh.triangleCount) {
+    val tris = mesh.triangleCount
+    val my = FloatArray(tris)
+    val ny = FloatArray(tris)
+    val inside = BooleanArray(tris) { t ->
         var mx = 0f
-        var my = 0f
         var mz = 0f
         for (k in 0 until 3) {
             val v = ix[t * 3 + k]
             mx += p[v * 3] / 3f
-            my += p[v * 3 + 1] / 3f
+            my[t] += p[v * 3 + 1] / 3f
             mz += p[v * 3 + 2] / 3f
+            ny[t] += n[v * 3 + 1] / 3f
         }
         val dx = mx - box.centerX
         val dz = mz - box.centerZ
         val a = dx * c + dz * s
         val b = -dx * s + dz * c
-        if (abs(a) > halfA || abs(b) > halfB || my < bottom || my > top) continue
+        abs(a) <= halfA && abs(b) <= halfB && my[t] <= top
+    }
+    val support = supportOf(my, ny, inside, box.baseY)
+    val remap = IntArray(mesh.vertexCount) { -1 }
+    val kept = ArrayList<Int>()
+    var next = 0
+    for (t in 0 until tris) {
+        if (!inside[t]) continue
+        if (support != null) {
+            if (my[t] < support - SUPPORT_BAND_M) continue
+            if (ny[t] >= SUPPORT_MIN_NY && abs(my[t] - support) <= SUPPORT_BAND_M) continue
+        }
         for (k in 0 until 3) {
             val v = ix[t * 3 + k]
             if (remap[v] < 0) remap[v] = next++
@@ -186,18 +202,40 @@ internal fun cropToSubject(mesh: RerunMesh, box: ScanBox): RerunMesh? {
         if (to < 0) continue
         for (k in 0 until 3) {
             positions[to * 3 + k] = p[v * 3 + k]
-            normals[to * 3 + k] = mesh.normals[v * 3 + k]
+            normals[to * 3 + k] = n[v * 3 + k]
         }
         colors[to] = mesh.colors[v]
     }
     return RerunMesh(positions, normals, colors, kept.toIntArray())
 }
 
+/**
+ * The height an object stands at: the [SUPPORT_BIN_M] bin holding the most upward-facing
+ * triangles ([ny], their mean normal's y) of those [inside] its box, within [SUPPORT_SEARCH_M] of
+ * [baseY]; `null` with none there (an object hung, or seen from above only).
+ */
+private fun supportOf(my: FloatArray, ny: FloatArray, inside: BooleanArray, baseY: Float): Float? {
+    val bins = (2 * SUPPORT_SEARCH_M / SUPPORT_BIN_M).toInt() + 1
+    val counts = IntArray(bins)
+    for (t in my.indices) {
+        if (!inside[t] || ny[t] < SUPPORT_MIN_NY) continue
+        val k = ((my[t] - baseY + SUPPORT_SEARCH_M) / SUPPORT_BIN_M).toInt()
+        if (k in 0 until bins) counts[k]++
+    }
+    val best = counts.indices.maxBy { counts[it] }
+    if (counts[best] < MIN_SUPPORT_TRIANGLES) return null
+    return baseY - SUPPORT_SEARCH_M + (best + 0.5f) * SUPPORT_BIN_M
+}
+
 /** What an object's crop keeps round its box: the fused surface stands a voxel or two out of it. */
 internal const val SUBJECT_MARGIN_M = 0.05f
 
-/** Over its base by less than this is what the object stands on, not the object: 2 cm. */
-internal const val SUPPORT_BAND_M = 0.02f
+/** Facing up within this of the support's height is the support, not the object: 2.5 cm. */
+internal const val SUPPORT_BAND_M = 0.025f
+private const val SUPPORT_MIN_NY = 0.9f
+private const val SUPPORT_SEARCH_M = 0.1f
+private const val SUPPORT_BIN_M = 0.01f
+private const val MIN_SUPPORT_TRIANGLES = 20
 
 /**
  * [mesh] within [DEPTH_MODEL_MAX_TRIANGLES], simplified when past it. With [consume], its colour

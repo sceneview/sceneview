@@ -868,6 +868,8 @@ internal fun RerunModelScreen(
     surfelsVoxelM: Float? = null,
     /** A room's shell input ([RoomShellInput]): the result opens on its shell when it builds one. */
     shellInput: RoomShellInput? = null,
+    /** `false` while a reopened scan's saved data ([surfels], [captureAims]) are still being read. */
+    captureLoaded: Boolean = true,
 ) {
     // The demo owns this source across Model -> Replay / Plan / AR navigation. Meshing releases
     // it in mesh's finally (also on cancellation); leaving this screen must not release it early.
@@ -883,12 +885,40 @@ internal fun RerunModelScreen(
     // The scan whose fused surface is on screen (ScanDepthModel.kt): it stays, as a shell does.
     val depthModelShown = remember { AtomicReference<Any?>(null) }
     var buildProgress by remember(source, id, shellInput) { mutableStateOf(ScanModelProgress()) }
-    val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput) {
+    // An object's box and fill, read once per scan and its data (ObjectResultInputs); `null` while
+    // a reopened object's surfels and aims are still being read.
+    val objectInputs by produceState(
+        if (scope == ScanScope.Object) null else ObjectResultInputs.NONE,
+        scope, source, surfels, captureAims, surfelsVoxelM, captureLoaded,
+    ) {
+        if (scope != ScanScope.Object) {
+            value = ObjectResultInputs.NONE
+            return@produceState
+        }
+        value = null
+        value = withContext(Dispatchers.Default) {
+            ObjectResultInputs.of(scope, source, surfels, captureAims, surfelsVoxelM, captureLoaded)
+        }
+    }
+    val state by produceState<ModelState>(ModelState.Loading, source, id, shellInput, objectInputs) {
         // A room opens on its shell (RoomShellLayer.kt): read back, or built here, the old finish
         // never run beside it. One already on screen stays: the recording read behind it, or the
         // source, change nothing in it.
         if ((value as? ModelState.Ready)?.objects != null && id != null && shellOf.get() == id) return@produceState
         if (value is ModelState.Ready && id != null && depthModelShown.get() == id) return@produceState
+        // A reopened object waits for its saved data before anything is fused or kept for it: on a
+        // guess, its filled model could give way to the raw fusion, or its crop be skipped and kept.
+        if (scope == ScanScope.Object && objectInputs == null) {
+            if (value !is ModelState.Ready) {
+                val kept = opened ?: if (store != null && id != null) {
+                    withContext(Dispatchers.IO) { runCatching { store.model(id) }.getOrNull() }
+                } else {
+                    null
+                }
+                kept?.let { value = ModelState.Ready(it, final = false) }
+            }
+            return@produceState
+        }
         if (preview != null) withTimeoutOrNull(PREVIEW_HEAD_START_MS) { previewSeen.await() }
         // The live TSDF goes once a depth recording is known to read: the recording is the better
         // source, and the two would otherwise sit on the heap together while it fuses.
@@ -927,14 +957,13 @@ internal fun RerunModelScreen(
             val fused = withContext(Dispatchers.Default) {
                 val job = coroutineContext.job
                 // An object filled by the bounded Poisson reconstruction (#5114) keeps that model:
-                // the fused surface would open on the holes the fill closes.
-                // Reopened, a kept model has no source: its saved surfels and aims decide (#5114).
-                val objectFilled = objectFilled(scope, source, surfels, captureAims, surfelsVoxelM)
+                // the fused surface would open on the holes the fill closes. Reopened, a kept model
+                // has no source: its saved surfels and aims decide, once read (objectInputs).
                 runCatching {
                     depthModelOf(
                         store, id, scope, shellInput?.cloud ?: surfels, shellInput?.floorY, releaseLive,
-                        objectFilled = objectFilled,
-                        subject = objectSubject(scope, surfels, captureAims, surfelsVoxelM),
+                        objectFilled = objectInputs?.filled == true,
+                        subject = objectInputs?.subject,
                     ) {
                         // The model on screen, if any, is shown as being finished meanwhile.
                         if (shown != null && value === shown) {
