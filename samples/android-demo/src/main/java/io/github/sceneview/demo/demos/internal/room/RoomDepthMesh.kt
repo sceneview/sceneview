@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos.internal.room
 
+import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.PoseContinuity
+import io.github.sceneview.demo.demos.internal.RecordedDepthFrame
 import io.github.sceneview.demo.demos.internal.MeshExtraction
 import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
 import io.github.sceneview.demo.demos.internal.RerunMesh
@@ -12,6 +14,7 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
+import kotlin.math.floor
 import kotlin.math.sqrt
 
 /**
@@ -99,65 +102,87 @@ internal object RoomDepthMesh {
         progress: (Float) -> Unit,
     ): Result? {
         val started = System.nanoTime()
-        val total = depth.length().coerceAtLeast(1L)
+        // The walk in segments: a slip the guard sees no end of ([PoseContinuity.isStuck]) starts a
+        // new one, never fused over the world it slipped from (a ghost room). The segment that saw
+        // the most of the place ([coverage]: distinct 10 cm cells its depth reached, not how many
+        // frames it holds) is the surface. One TSDF at a time, in the one byte budget: the first
+        // segment is fused as it is read; another that covers more is fused again on its own.
+        val plan = ArrayList<Int>()
+        var segment = 0
+        val reached = arrayListOf(HashSet<Long>())
         var count = 0
         var guardHeld = 0
-        var segments = 1
-        // The walk in segments: a slip the guard sees no end of ([PoseContinuity.isStuck]) starts a
-        // new one, in a TSDF of its own, never fused over the world it slipped from (a ghost room).
-        // The segment with the most fused frames is the surface; the other two never stand together
-        // past the one byte budget.
-        var best: Segment? = null
-        var current = Segment(RerunTsdf(settings.voxelM, settings.truncationM, settings.maxBytes))
-        val file = CountingInput(BufferedInputStream(depth.inputStream(), STREAM_BUFFER))
-        file.use { input ->
-            ScanDepthFormat.readHeader(input) ?: return null
-            while (true) {
-                val recorded = ScanDepthFormat.readFrame(input) ?: break
-                count++
-                // Every pose goes through the guard, held ones included: it follows the walk.
-                var guarded = guard?.step(recorded.nanos, recorded.display)?.integrates ?: true
-                if (guard != null && guard.isStuck) {
-                    guard.reset()
-                    guarded = guard.step(recorded.nanos, recorded.display).integrates
-                    if (current.fused > 0) {
-                        val kept = listOfNotNull(best, current).maxBy { it.fused }
-                        best = kept
-                        val budget = (settings.maxBytes - kept.tsdf.bytes).coerceAtLeast(settings.maxBytes / MIN_BUDGET_SHARE)
-                        current = Segment(RerunTsdf(settings.voxelM, settings.truncationM, budget))
-                        segments++
-                    }
+        var fusedFirst = 0
+        val firstFloors = ArrayList<Float>()
+        var tsdf: RerunTsdf? = RerunTsdf(settings.voxelM, settings.truncationM, settings.maxBytes)
+        read(depth) { recorded, share ->
+            count++
+            // Every pose goes through the guard, held ones included: it follows the walk.
+            var guarded = guard?.step(recorded.nanos, recorded.display)?.integrates ?: true
+            if (guard != null && guard.isStuck) {
+                guard.reset()
+                guarded = guard.step(recorded.nanos, recorded.display).integrates
+                if (reached[segment].isNotEmpty()) {
+                    segment++
+                    reached += HashSet<Long>()
                 }
-                val phone = integrates?.get(recorded.nanos) ?: !recorded.rejected
-                if (phone && !guarded) guardHeld++
-                if (!phone || !guarded) {
-                    progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
-                    continue
-                }
-                current.tsdf.integrate(
-                    recorded.frame,
-                    minConfidence = settings.minConfidence,
-                    farM = settings.farM,
-                    truncationShare = settings.truncationShare,
-                    distanceWeighted = true,
-                )
-                current.fused++
-                recorded.floorPlaneY?.let { current.floors += it }
-                // The segment that overtakes the kept one takes its place: the kept one is let go.
-                if (best?.let { current.fused > it.fused } == true) best = null
-                progress(FUSE_SHARE * (file.read.toFloat() / total).coerceAtMost(1f))
             }
+            val phone = integrates?.get(recorded.nanos) ?: !recorded.rejected
+            if (phone && !guarded) guardHeld++
+            if (phone && guarded) {
+                plan += segment
+                coverage(recorded.frame, settings, reached[segment])
+                if (segment == 0) {
+                    tsdf?.integrate(
+                        recorded.frame,
+                        minConfidence = settings.minConfidence,
+                        farM = settings.farM,
+                        truncationShare = settings.truncationShare,
+                        distanceWeighted = true,
+                    )
+                    fusedFirst++
+                    recorded.floorPlaneY?.let { firstFloors += it }
+                }
+            } else {
+                plan += NOT_FUSED
+            }
+            progress(FIRST_PASS_SHARE * share)
+        } ?: return null
+        val chosen = reached.indices.maxBy { reached[it].size }
+        var fused = fusedFirst
+        var floors: List<Float> = firstFloors
+        if (chosen != 0) {
+            // The first segment's TSDF goes before the chosen one is fused: never two at once.
+            tsdf = null
+            val again = RerunTsdf(settings.voxelM, settings.truncationM, settings.maxBytes)
+            val againFloors = ArrayList<Float>()
+            var index = 0
+            fused = 0
+            read(depth) { recorded, share ->
+                if (plan[index++] == chosen) {
+                    again.integrate(
+                        recorded.frame,
+                        minConfidence = settings.minConfidence,
+                        farM = settings.farM,
+                        truncationShare = settings.truncationShare,
+                        distanceWeighted = true,
+                    )
+                    fused++
+                    recorded.floorPlaneY?.let { againFloors += it }
+                }
+                progress(FIRST_PASS_SHARE + (FUSE_SHARE - FIRST_PASS_SHARE) * share)
+            }
+            tsdf = again
+            floors = againFloors
         }
-        val chosen = listOfNotNull(best, current).maxBy { it.fused }
-        val tsdf = chosen.tsdf
-        val fused = chosen.fused
-        val floors = chosen.floors
+        val segments = reached.size
+        val surface = tsdf ?: return null
         if (fused == 0) return null
         val fuseMs = since(started)
         progress(FUSE_SHARE)
         val meshStarted = System.nanoTime()
         val extraction: MeshExtraction = RerunMarchingCubes.extractWhole(
-            tsdf,
+            surface,
             minWeight = settings.minWeight,
             maxTriangles = settings.maxTriangles,
             minComponentTriangles = settings.minComponentTriangles,
@@ -172,9 +197,9 @@ internal object RoomDepthMesh {
             segments = segments,
             frames = count,
             fused = fused,
-            blocks = tsdf.blockCount,
-            bytes = tsdf.bytes,
-            droppedBlocks = tsdf.droppedBlocks,
+            blocks = surface.blockCount,
+            bytes = surface.bytes,
+            droppedBlocks = surface.droppedBlocks,
             rawTriangles = extraction.rawTriangles,
             droppedComponents = extraction.droppedComponents,
             capped = extraction.capped,
@@ -183,10 +208,42 @@ internal object RoomDepthMesh {
         )
     }
 
-    /** One stretch of the walk fused in a world of its own. */
-    private class Segment(val tsdf: RerunTsdf) {
-        var fused = 0
-        val floors = ArrayList<Float>()
+    /**
+     * Every frame of [depth] in turn, with the share of the file read so far; `null` when it is
+     * not a depth recording.
+     */
+    private inline fun read(depth: File, frame: (RecordedDepthFrame, Float) -> Unit): Unit? {
+        val total = depth.length().coerceAtLeast(1L)
+        CountingInput(BufferedInputStream(depth.inputStream(), STREAM_BUFFER)).use { input ->
+            ScanDepthFormat.readHeader(input) ?: return null
+            while (true) {
+                val recorded = ScanDepthFormat.readFrame(input) ?: break
+                frame(recorded, (input.read.toFloat() / total).coerceAtMost(1f))
+            }
+        }
+        return Unit
+    }
+
+    /**
+     * The [COVERAGE_CELL_M] cells [frame]'s sure depth reaches (one pixel in [COVERAGE_STRIDE] each
+     * way), added to [cells]: how much of the place a segment saw, whatever its frame count.
+     */
+    internal fun coverage(frame: DepthFrame, settings: Settings, cells: MutableSet<Long>) {
+        val pose = frame.pose
+        for (py in 0 until frame.height step COVERAGE_STRIDE) {
+            for (px in 0 until frame.width step COVERAGE_STRIDE) {
+                val i = py * frame.width + px
+                val z = (frame.depthMm[i].toInt() and 0xFFFF) / MM_PER_M
+                if (z <= 0f || z > settings.farM) continue
+                val c = frame.confidence?.let { it[i].toInt() and 0xFF } ?: FULL_CONFIDENCE
+                if (c < settings.minConfidence) continue
+                val w = pose.rotate((px - frame.cx) / frame.fx * z, -(py - frame.cy) / frame.fy * z, -z)
+                val x = floor((pose.x + w.x) / COVERAGE_CELL_M).toLong()
+                val y = floor((pose.y + w.y) / COVERAGE_CELL_M).toLong()
+                val zc = floor((pose.z + w.z) / COVERAGE_CELL_M).toLong()
+                cells += ((x and CELL_MASK) shl 42) or ((y and CELL_MASK) shl 21) or (zc and CELL_MASK)
+            }
+        }
     }
 
     /** The surface of the session in [dir], when it keeps a depth recording; `null` otherwise. */
@@ -271,8 +328,18 @@ internal object RoomDepthMesh {
 
     private const val REPLAY_RECOVER_M = 0.3f
 
-    /** A new segment's TSDF is given at least a quarter of the byte budget. */
-    private const val MIN_BUDGET_SHARE = 4L
+    /** A frame left out of every segment ([extract]'s plan). */
+    private const val NOT_FUSED = -1
+
+    /** The part of the fusion's share the first read takes; a second, for another segment, the rest. */
+    private const val FIRST_PASS_SHARE = 0.6f
+
+    /** The coverage grid a segment is judged on: 10 cm cells, one depth pixel in four each way. */
+    private const val COVERAGE_CELL_M = 0.1f
+    private const val COVERAGE_STRIDE = 4
+    private const val CELL_MASK = (1L shl 21) - 1
+    private const val MM_PER_M = 1000f
+    private const val FULL_CONFIDENCE = 255
     private const val REPLAY_RECOVER_DEG = 25f
 
     /** A cell is meshed when one corner was seen by about half a near, sure view or more… */

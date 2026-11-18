@@ -58,7 +58,7 @@ internal fun resultKindOf(
  * Bumped whenever [depthModelOf] makes a different surface of the same recording: a surface kept
  * by an earlier one is built again.
  */
-internal const val DEPTH_MODEL_VERSION = 3
+internal const val DEPTH_MODEL_VERSION = 4
 
 /**
  * The most triangles the fused surface is shown with: past it, it is simplified down to it. 250k

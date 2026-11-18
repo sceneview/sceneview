@@ -53,7 +53,7 @@ internal class RoomShellShown(val model: RerunScanModel, val objects: SplatCloud
  * Bumped whenever the shell's builder makes a different shell of the same scan: a shell kept by
  * an earlier one is built again.
  */
-internal const val ROOM_SHELL_VERSION = 5
+internal const val ROOM_SHELL_VERSION = 6
 
 /**
  * Session [id]'s room shell: read back from [store] when kept, else built from [input] and kept.

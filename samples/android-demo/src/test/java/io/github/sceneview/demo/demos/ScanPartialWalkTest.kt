@@ -123,16 +123,37 @@ class ScanPartialWalkTest {
     fun `a slip that never comes back is a segment of its own, never a ghost over the room`() {
         val fused = checkNotNull(
             RoomDepthMesh.fuse(
-                recording(slip = SLIP.first until FRAMES),
+                recording(slip = LATE_SLIP until FRAMES),
                 RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M),
                 guard = RoomDepthMesh.replayGuard(),
             ),
         )
         assertEquals("segments", 2, fused.segments)
-        assertEquals("the walk before the slip is the surface", SLIP.first, fused.fused)
+        assertEquals("the walk before the slip is the surface", LATE_SLIP, fused.fused)
         val p = fused.mesh.positions
         val ghost = (0 until fused.mesh.vertexCount).count { offTheRoom(p[it * 3], p[it * 3 + 1], p[it * 3 + 2]) > OFF_M }
         assertEquals("vertices out of place", 0, ghost)
+    }
+
+    /**
+     * The segment kept is the one that saw the most of the place, not the one with the most
+     * frames: 14 s held still on one view, then a slip that never comes back and 8 s of walk
+     * after it — the walk, fewer frames, is the surface.
+     */
+    @Test
+    fun `the segment that covers more wins over the one with more frames`() {
+        val still = List(STILL) { Step(walk[0].at, walk[0].yaw, walk[0].pitch) }
+        val steps = still + walk.drop(STILL)
+        val fused = checkNotNull(
+            RoomDepthMesh.fuse(
+                recording(slip = STILL until FRAMES, steps = steps),
+                RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M),
+                guard = RoomDepthMesh.replayGuard(),
+            ),
+        )
+        assertEquals("segments", 2, fused.segments)
+        val stuck = (PoseContinuity.STUCK_AFTER_NANOS / FRAME_NANOS).toInt()
+        assertEquals("the walk after the slip, fewer frames, is the surface", FRAMES - STILL - stuck, fused.fused)
     }
 
     /**
@@ -154,22 +175,25 @@ class ScanPartialWalkTest {
         }
     }
 
-    /** The walk's result as the app builds it: a room scan with no room box. */
+    /** The walk's result as the app builds it: a room scan its saved cloud finds no room box in. */
     private fun result(): RerunMesh {
         val store = RerunSessionStore(folder.newFolder())
         val dir = store.directoryOf(ID).apply { mkdirs() }
         File(dir, RerunSessionStore.INFO).writeText("{}")
-        recording().copyTo(File(dir, ScanDepthFormat.FILE))
-        val noBox = DenseCloud(FloatArray(0), IntArray(0))
-        val model = checkNotNull(depthModelOf(store, ID, ScanScope.Room, noBox, null))
+        val depth = recording()
+        depth.copyTo(File(dir, ScanDepthFormat.FILE))
+        // The cloud the phone saved with it (its verdicts, the slip it missed included): what
+        // the app hands [depthModelOf] to decide the walk stands as no room.
+        val saved = checkNotNull(ScanDepthReplay.replay(depth, guard = null)).cloud
+        val model = checkNotNull(depthModelOf(store, ID, ScanScope.Room, saved, null))
         return checkNotNull(RerunGlbMesh.read(model.glb))
     }
 
-    private fun recording(slip: IntRange = SLIP): File {
+    private fun recording(slip: IntRange = SLIP, steps: List<Step> = walk): File {
         val file = File(folder.root, "walk-${System.nanoTime()}.bin")
         file.outputStream().buffered().use { out ->
             out.write(ScanDepthFormat.header(HEADER))
-            for ((i, step) in walk.withIndex()) {
+            for ((i, step) in steps.withIndex()) {
                 val truth = RerunSyntheticRoom.lookPose(step.at, step.yaw, step.pitch)
                 val frame = withBlindPatches(scene.render(truth))
                 // ARCore's slip: the image is the room as it is, the pose it reports is not.
@@ -309,6 +333,8 @@ class ScanPartialWalkTest {
         const val FRAME_NANOS = 100_000_000L
         const val FRAMES = 260
         val SLIP = 120 until 130
+        const val LATE_SLIP = 200
+        const val STILL = 140
         const val SLIP_M = 2.5f
         const val SLIP_DEG = 80.0
         const val BLIND_HEIGHT_M = 0.02f

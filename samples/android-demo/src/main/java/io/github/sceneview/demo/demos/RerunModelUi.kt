@@ -928,9 +928,8 @@ internal fun RerunModelScreen(
                 val job = coroutineContext.job
                 // An object filled by the bounded Poisson reconstruction (#5114) keeps that model:
                 // the fused surface would open on the holes the fill closes.
-                val objectFilled = scope == ScanScope.Object && source?.usable()?.let {
-                    runCatching { objectReconstruction(it, captureAims, surfelsVoxelM) }.getOrNull()
-                } == ReconstructionMethod.Poisson
+                // Reopened, a kept model has no source: its saved surfels and aims decide (#5114).
+                val objectFilled = objectFilled(scope, source, surfels, captureAims, surfelsVoxelM)
                 runCatching {
                     depthModelOf(
                         store, id, scope, shellInput?.cloud ?: surfels, shellInput?.floorY, releaseLive,

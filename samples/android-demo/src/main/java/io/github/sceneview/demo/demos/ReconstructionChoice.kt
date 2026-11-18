@@ -55,6 +55,24 @@ internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubje
 }
 
 /**
+ * Whether an [ScanScope.Object] scan's result is filled ([objectReconstruction]), judged from
+ * what survives a reopen: its [source] while the scan still has one, else its saved [surfels] —
+ * a kept model is read back with no source at all, and must not lose its fill to the fused
+ * surface then. [aims] and [voxelM] as [objectReconstruction] takes them.
+ */
+internal fun objectFilled(
+    scope: ScanScope,
+    source: RerunModelSource?,
+    surfels: DenseCloud?,
+    aims: List<ScanSubject.Aim>?,
+    voxelM: Float?,
+): Boolean {
+    if (scope != ScanScope.Object) return false
+    val from = source?.usable() ?: surfels?.takeIf { it.count > 0 }?.let { RerunModelSource.Surfels(it) } ?: return false
+    return runCatching { objectReconstruction(from, aims, voxelM) }.getOrNull() == ReconstructionMethod.Poisson
+}
+
+/**
  * Whether a kept model an earlier finish pipeline built ([RerunScanModel.stalePipeline]) is built
  * again from its reopened scan, [source]: only where this pipeline finishes it differently — an
  * object filled now ([objectReconstruction], pipeline 9). Anywhere else a rebuild could only
