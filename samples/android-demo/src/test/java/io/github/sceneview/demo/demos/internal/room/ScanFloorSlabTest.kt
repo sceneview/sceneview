@@ -35,13 +35,20 @@ class ScanFloorSlabTest {
     }
 
     @Test
+    fun `the foot of a wall half seen, upright and no top, is no evidence`() {
+        val result = checkNotNull(ScanFloorSlab.of(plates(GAP_M, between = Between.WallFoot), floorY = 0f))
+        assertEquals("both plates, nothing bridged", BIG * BIG + SMALL * SMALL, result.areaM2, AREA_SLACK_M2)
+        assertEquals("two pieces", 2, slabPieces(result.mesh))
+    }
+
+    @Test
     fun `two plates far apart are both kept, real floor never erased`() {
         val result = checkNotNull(ScanFloorSlab.of(plates(gapM = 3f, between = Between.Nothing), floorY = 0f))
         assertEquals("both plates", BIG * BIG + SMALL * SMALL, result.areaM2, AREA_SLACK_M2)
         assertEquals("two pieces", 2, slabPieces(result.mesh))
     }
 
-    private enum class Between { Nothing, Sofa, Wall }
+    private enum class Between { Nothing, Sofa, Wall, WallFoot }
 
     /**
      * A [BIG] square of floor at the origin and a [SMALL] one [gapM] beyond it along x, and in
@@ -84,8 +91,8 @@ class ScanFloorSlabTest {
                 val rise = (SOFA_M / FINE_M).toInt()
                 sheet(floatArrayOf(BIG, 0f, SMALL), floatArrayOf(FINE_M, 0f, 0f), floatArrayOf(0f, FINE_M, 0f), across, rise, floatArrayOf(0f, 0f, 1f))
             }
-            Between.Wall -> {
-                val rise = (WALL_M / FINE_M).toInt()
+            Between.Wall, Between.WallFoot -> {
+                val rise = ((if (between == Between.Wall) WALL_M else FOOT_M) / FINE_M).toInt()
                 sheet(
                     floatArrayOf(BIG + gapM / 2, 0f, 0f), floatArrayOf(0f, 0f, FINE_M), floatArrayOf(0f, FINE_M, 0f),
                     (BIG / FINE_M).toInt(), rise, floatArrayOf(1f, 0f, 0f),
@@ -124,6 +131,7 @@ class ScanFloorSlabTest {
         const val GAP_M = 0.6f
         const val SOFA_M = 0.45f
         const val WALL_M = 2.4f
+        const val FOOT_M = 1f
         const val STEP_M = 0.05f
         const val FINE_M = 0.02f
         const val FLAT_M = 0.005f

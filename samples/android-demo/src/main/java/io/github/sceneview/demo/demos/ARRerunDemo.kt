@@ -364,6 +364,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     // The model on screen, once built or read back: what the export sheet writes first.
     var resultModel by remember { mutableStateOf<RerunScanModel?>(null) }
+    // False while a stored scan's files are read (openStored): an object's result waits for them.
+    var scanDataLoaded by remember { mutableStateOf(true) }
     // A space's measure, heard from its result screen: what the export sheet writes as JSON.
     var resultSpace by remember { mutableStateOf<SpaceFit?>(null) }
     // How the scan shown was filmed, off its path: a space opens towards the phone, round what it aimed at.
@@ -537,6 +539,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         scanMeasure = null
         scanStill = null
         scanMedia = null
+        // Its saved cloud and path are read below: the result decides nothing on them until then.
+        scanDataLoaded = false
         scanTitle = title
         scanPack = null
         scanId = id
@@ -593,6 +597,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     screen = RerunScreen.Landing
                 }
             }
+            // Read, or known not to read: the result decides on what there is.
+            scanDataLoaded = true
         }
     }
     // A file opened here ("Open file") or handed over by another app: kept as a session, then
@@ -901,6 +907,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onSpace = { resultSpace = it },
             captureView = scanView ?: qaSpaceView,
             captureAims = scanAims,
+            captureLoaded = scanDataLoaded || !showingScan,
             surfelsVoxelM = scanMedia?.takeIf { showingScan }?.dense?.voxelM,
             // A room opens on its shell, built from the recording once it is read.
             shellInput = remember(scanMedia, showingScan, scanKind) {

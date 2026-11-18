@@ -55,31 +55,36 @@ internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubje
 }
 
 /**
- * Whether an [ScanScope.Object] scan's result is filled ([objectReconstruction]), judged from
- * what survives a reopen: its [source] while the scan still has one, else its saved [surfels] —
- * a kept model is read back with no source at all, and must not lose its fill to the fused
- * surface then. [aims] and [voxelM] as [objectReconstruction] takes them.
+ * What an [ScanScope.Object] scan's result is decided on, read once per scan and its data: the box
+ * it went round ([subject], [ScanSubject]) and whether it is filled ([filled], as
+ * [objectReconstruction] would say, #5114) — off its [source] while the scan still has one, else
+ * its saved surfels and the trace's aims, which is all a reopen has.
  */
-internal fun objectFilled(
-    scope: ScanScope,
-    source: RerunModelSource?,
-    surfels: DenseCloud?,
-    aims: List<ScanSubject.Aim>?,
-    voxelM: Float?,
-): Boolean {
-    if (scope != ScanScope.Object) return false
-    val from = source?.usable() ?: surfels?.takeIf { it.count > 0 }?.let { RerunModelSource.Surfels(it) } ?: return false
-    return runCatching { objectReconstruction(from, aims, voxelM) }.getOrNull() == ReconstructionMethod.Poisson
-}
+internal class ObjectResultInputs(val filled: Boolean, val subject: ScanBox?) {
+    companion object {
+        /** Not an object, or one with nothing to judge it from: never filled, no box. */
+        val NONE = ObjectResultInputs(filled = false, subject = null)
 
-/**
- * An [ScanScope.Object] scan's box ([ScanSubject]) from what survives a reopen — its saved
- * [surfels] and the trace's [aims] — so the crop it makes is the same at every open; `null` for
- * another scope, or none found.
- */
-internal fun objectSubject(scope: ScanScope, surfels: DenseCloud?, aims: List<ScanSubject.Aim>?, voxelM: Float?): ScanBox? {
-    if (scope != ScanScope.Object || surfels == null || aims.isNullOrEmpty()) return null
-    return runCatching { ScanSubject.of(surfels, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
+        /**
+         * [scope]'s inputs; `null` while an object's saved data are still being read ([loaded]
+         * false): nothing is to be fused or kept for it on a guess meanwhile.
+         */
+        fun of(
+            scope: ScanScope,
+            source: RerunModelSource?,
+            surfels: DenseCloud?,
+            aims: List<ScanSubject.Aim>?,
+            voxelM: Float?,
+            loaded: Boolean,
+        ): ObjectResultInputs? {
+            if (scope != ScanScope.Object) return NONE
+            if (!loaded) return null
+            if (aims.isNullOrEmpty()) return NONE
+            val cloud = source?.usable()?.let(::reconstructionCloud) ?: surfels?.takeIf { it.count > 0 } ?: return NONE
+            val subject = runCatching { ScanSubject.of(cloud, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
+            return ObjectResultInputs(fillsObject(subject), subject)
+        }
+    }
 }
 
 /**
