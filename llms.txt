@@ -2057,6 +2057,14 @@ instant-placement hits. Plane hits always win; the instant fallback is only cons
 plane answered, and it comes from `Frame.hitTestInstantPlacement` at a 1 m approximate distance
 (`Frame.hitTest` never returns an `InstantPlacementPoint` — the trap #3571 fixed). A successful
 placement fires a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
+An `AnchorNode` declared in `onPlaced` holds its physical drop location through an independent
+world anchor while an instant-placement point has only approximate depth. Its numerical pose
+can still change as ARCore corrects world coordinates. Once ARCore reports `FULL_TRACKING`, it
+blends between the held and refined anchors' current poses over 300 ms, then follows normal
+tracking corrections. The temporary world anchor is detached after refinement or when the
+placement is moved, replaced, cleared, or disposed. This applies to the anchors
+created by `PlacementScene`; an `Anchor` passed directly to `ARSceneView`'s `AnchorNode` does not
+carry its source trackable and retains the usual anchor-following behavior.
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
 
