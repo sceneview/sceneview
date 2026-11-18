@@ -236,6 +236,7 @@ fun FeelDemo(onBack: () -> Unit) {
             direction(-MatterStage.KEY_X, MatterStage.FLOOR_Y - MatterStage.KEY_Y,
                 MatterStage.KEY_TARGET_Z - MatterStage.KEY_Z)
             intensityCandela(MatterStage.KEY_CANDELA)
+            color(MatterStage.KEY_COLOUR[0], MatterStage.KEY_COLOUR[1], MatterStage.KEY_COLOUR[2])
             spotLightCone(Math.toRadians(MatterStage.KEY_INNER_DEGREES.toDouble()).toFloat(),
                 Math.toRadians(MatterStage.KEY_OUTER_DEGREES.toDouble()).toFloat())
             falloff(MatterStage.KEY_RANGE)
@@ -601,6 +602,17 @@ fun FeelDemo(onBack: () -> Unit) {
                         onTouchEvent = { event, _ -> onTouchNow(event) },
                         onFrame = { onFrameNow(it) },
                     ) {
+                        // The front card: no shadow, no froxel cost beyond one cone over the slab.
+                        LightNode(type = LightManager.Type.FOCUSED_SPOT,
+                            position = Position(MatterStage.CARD_X, MatterStage.CARD_Y, MatterStage.CARD_Z),
+                            direction = Direction(-MatterStage.CARD_X, -MatterStage.CARD_Y, -MatterStage.CARD_Z),
+                            apply = {
+                                intensityCandela(MatterStage.CARD_CANDELA)
+                                color(MatterStage.CARD_COLOUR[0], MatterStage.CARD_COLOUR[1], MatterStage.CARD_COLOUR[2])
+                                spotLightCone(Math.toRadians(14.0).toFloat(), Math.toRadians(30.0).toFloat())
+                                falloff(MatterStage.KEY_RANGE)
+                                castShadows(false)
+                            })
                         PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = MatterStage.FLOOR_Y),
                             materialInstance = materials.floor, apply = {
                                 isShadowCaster = false
@@ -663,10 +675,17 @@ fun FeelDemo(onBack: () -> Unit) {
                         exit = if (motion) fadeOut(SceneViewTokens.Motion.fade()) else ExitTransition.None) {
                         MatterHintPill()
                     }
-                    // Apply after SceneView's defaults. No mirror, SSAO, bloom or vignette passes.
+                    // Apply after SceneView's defaults. No mirror, SSAO or bloom passes.
                     LaunchedEffect(view) {
                         view.fogOptions = view.fogOptions.apply { enabled = false }
-                        view.vignetteOptions = view.vignetteOptions.apply { enabled = false }
+                        // A soft studio falloff toward the corners; part of the final blit, no extra pass.
+                        view.vignetteOptions = view.vignetteOptions.apply {
+                            enabled = true
+                            midPoint = .62f
+                            roundness = .6f
+                            feather = .75f
+                            color = floatArrayOf(0f, 0f, 0f, 1f)
+                        }
                         view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply { enabled = false }
                         view.bloomOptions = view.bloomOptions.apply { enabled = false }
                         view.shadowType = View.ShadowType.PCF
@@ -675,7 +694,8 @@ fun FeelDemo(onBack: () -> Unit) {
                             enabled = true
                             homogeneousScaling = true
                             minScale = .67f
-                            maxScale = .85f
+                            // A GPU that keeps up renders at native size; the 4a still drops to .67.
+                            maxScale = 1f
                             quality = View.QualityLevel.MEDIUM
                         }
                         invalidator.requestRender()

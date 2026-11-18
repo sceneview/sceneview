@@ -22,7 +22,7 @@ class MatterStageTest {
     private fun hit(stage: MatterStage, x: Float, y: Float, z: Float) = stage.pointOnSlab(
         stage.eyeX, stage.eyeY, stage.eyeZ, x - stage.eyeX, y - stage.eyeY, z - stage.eyeZ)
 
-    @Test fun heroFillsAbout85PercentOfPortraitWidthAndFitsShortWindows() {
+    @Test fun heroFillsAbout89PercentOfPortraitWidthAndFitsShortWindows() {
         val mesh = MatterMeshes.slab()
         for ((width, height) in listOf(1080 to 1600, 360 to 400, 900 to 300)) {
             val stage = stage(width, height)
@@ -35,12 +35,12 @@ class MatterStageTest {
             }
             if (height > width) {
                 val occupied = (points.maxOf { it.first } - points.minOf { it.first }) / width
-                assertTrue("hero width is $occupied", occupied in .84f.. .86f)
+                assertTrue("hero width is $occupied", occupied in .875f.. .90f)
             }
             val centreY = (points.maxOf { it.second } + points.minOf { it.second }) / 2f
             assertEquals("silhouette centres in the visible scene", height * .5f, centreY, height * .012f)
             if (width == 1080) {
-                assertEquals(26f, MatterStage.ELEVATION, 0f)
+                assertEquals(23f, MatterStage.ELEVATION, 0f)
                 assertTrue("lower camera still sees the well", stage.eyeY / stage.distance > .30f)
             }
             assertFalse(stage.frame())
@@ -61,9 +61,9 @@ class MatterStageTest {
         assertEquals(1563, visibleHeight)
         val stage = stage(surfaceWidth, visibleHeight)
         val mesh = MatterMeshes.slab()
-        // Independent pinhole projection with an explicitly HORIZONTAL 48 degree FOV.
-        // Feeding 2340 as height, or treating 48 as vertical, must not satisfy this test.
-        val tanHorizontal = kotlin.math.tan(Math.toRadians(48.0 / 2.0))
+        // Independent pinhole projection with an explicitly HORIZONTAL 36 degree FOV.
+        // Feeding 2340 as height, or treating 36 as vertical, must not satisfy this test.
+        val tanHorizontal = kotlin.math.tan(Math.toRadians(36.0 / 2.0))
         val tanVertical = tanHorizontal * stage.heightPx / stage.widthPx
         val points = mesh.positions.indices.step(3).map {
             val x = mesh.positions[it] - stage.targetX
@@ -77,7 +77,7 @@ class MatterStageTest {
         }
         val left = points.minOf { it.first }; val right = points.maxOf { it.first }
         val top = points.minOf { it.second }; val bottom = points.maxOf { it.second }
-        assertEquals("85% of 1080, not of the full-window height", 918.0, right - left, 12.0)
+        assertEquals("89% of 1080, not of the full-window height", 959.0, right - left, 12.0)
         assertEquals("rounded silhouette stays centred within 1.4 dp", 540.0, (left + right) / 2, 4.0)
         assertEquals("centre of [356,1919] above controls", 1137.5, (top + bottom) / 2, 6.0)
         assertTrue(bottom < surfaceHeight - panelHeight - bottomInset)

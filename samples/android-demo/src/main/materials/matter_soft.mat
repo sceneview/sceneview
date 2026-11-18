@@ -150,7 +150,9 @@ fragment {
         float wall = detail.r * resolved;
         colour *= (0.982 + 0.018 * wall) * (1.0 - 0.035 * compressed);
         occlusion = 0.98 + 0.02 * wall;
-        height = 0.0030 * wall * (1.0 - 0.65 * compressed);
+        // Open cells read as a fine velvet grain at arm's length. A deeper bump turned every
+        // grazing-lit face into sandpaper on a phone.
+        height = 0.0014 * wall * (1.0 - 0.65 * compressed);
         if (materialParams.imprint.z > 0.001) {
             // A 16 x 20 mm pad at WORLD_PER_MM=.025, with an off-centre whorl.
             // Derivatives suppress ridge detail before it becomes subpixel at dynamic resolution.
@@ -176,6 +178,10 @@ fragment {
         material.metallic = materialParams.metallic;
         material.reflectance = 0.5;
         material.ambientOcclusion = occlusion * (1.0 - 0.72 * cavity);
+        // A faint, broad sheen of the foam's own colour: the soft halo along the silhouette
+        // and the rim of the well is what tells the eye "soft" before the press does.
+        material.sheenColor = materialParams.albedo * materialParams.sheen * (1.0 - 0.5 * crushed);
+        material.sheenRoughness = materialParams.sheenRoughness;
         material.postLightingColor = matterRipple(p);
     }
 }
