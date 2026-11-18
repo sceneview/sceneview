@@ -118,7 +118,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.69.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.69.7"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -181,9 +181,15 @@ android {
         // --download, docs/docs/try.md) — that one must stay the plain demo.
         debug {
             if (!demoPlainDebug) {
-                applicationIdSuffix ".qa"
+                // Isolate device verification from another worktree's QA installation.
+                applicationIdSuffix providers.gradleProperty("demoApplicationIdSuffix").getOrElse(".qa")
                 versionNameSuffix "-qa"
             }
+            // Long-press "SV QA" -> "AR Recording" (src/qaLauncher/res/xml/qa_launcher_shortcuts.xml),
+            // the one visible way into the ARCore session recorder. The plain debug APK gets an
+            // empty shortcut list (src/debug/res/xml/no_launcher_shortcuts.xml).
+            manifestPlaceholders["qaLauncherShortcuts"] =
+                demoPlainDebug ? "@xml/no_launcher_shortcuts" : "@xml/qa_launcher_shortcuts"
             if (System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE") != null) {
                 signingConfig signingConfigs.githubApk
             }

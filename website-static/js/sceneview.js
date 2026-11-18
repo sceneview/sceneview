@@ -24,7 +24,7 @@
  * Powered by Filament.js v1.72.1 (Google's PBR renderer, WASM).
  * https://sceneview.github.io
  *
- * @version 4.69.0
+ * @version 4.69.7
  * @license MIT
  */
 (function(global) {
@@ -526,15 +526,16 @@
     light: {
       top: '#CDD3DB', horizon: '#E7EAEF', floor: '#F2F4F7', pool: '#FDFDFE',
       shadow: 0.85, reflection: 0.14, bloom: 0, vignette: 0.8,
+      iblIntensity: 28000, // Reduce light-studio highlights to preserve material saturation.
       environment: '/environments/studio_showroom_light_ibl.ktx'
     },
     dark: {
       top: '#0B0E13', horizon: '#222833', floor: '#2B323E', pool: '#3A4250',
       shadow: 0.9, reflection: 0.26, bloom: 0.12, vignette: 0.6,
+      iblIntensity: 40000,
       environment: '/environments/studio_showroom_dark_ibl.ktx'
     }
   };
-  var _STUDIO_IBL_INTENSITY = 40000;
   var _STUDIO_FOV = 30;            // a moderate telephoto: less perspective distortion
   var _STUDIO_REVEAL_MS = 1600;
   // The longest the move-in and the quality tiers wait for the model's textures: one
@@ -613,6 +614,7 @@
       pool: _studioColor(o.pool, _hexToRgb(base.pool)),
       shadow: unit(o.shadow, base.shadow, 1),
       reflection: unit(o.reflection, base.reflection, 0.6),
+      iblIntensity: base.iblIntensity,
       bloom: base.bloom,
       vignette: base.vignette,
       environment: (typeof o.environment === 'string' && o.environment) ? o.environment : base.environment
@@ -3386,10 +3388,11 @@
         return this.requestRender();
       }
       var entering = !this._studio;
-      var envChanged = entering || this._studio.environment !== conf.environment;
+      var envChanged = entering || this._studio.environment !== conf.environment ||
+        this._studio.iblIntensity !== conf.iblIntensity;
       if (entering) this._studioEnter();
       this._studio = conf;
-      if (envChanged) this._loadDefaultEnvironment(conf.environment, _STUDIO_IBL_INTENSITY, true);
+      if (envChanged) this._loadDefaultEnvironment(conf.environment, conf.iblIntensity, true);
       try {
         this._studioRebuild(entering);
       } catch (e) {
@@ -6365,18 +6368,33 @@
    * Give a disposed viewer's WebGL context back to the browser.
    *
    * Filament.js registers every context in Emscripten's GL table and never removes it,
-   * so a context outlives its engine. Browsers cap the live contexts of a page (16 in
-   * Chromium) and force-lose the least recently used one past the cap: after some 16
+   * so a registry reference outlives its engine. Drop that record's GLctx reference
+   * to remove one retention path for detached canvases. The runtime's GLctx and
+   * Module.ctx still retain the last WebGL2RenderingContext (GL.currentContext keeps only
+   * its emptied record) until another viewer is created or executes; indefinitely if none
+   * does.
+   * Browsers cap a page's live contexts (16 in Chromium) and force-lose the least
+   * recently used one past the cap: after some 16
    * create/dispose cycles, an idle viewer still on the page went black. Losing the
-   * context here frees its GPU memory and, in Chromium, takes it out of that count
-   * (WebKit goes on counting a lost context: Safari still evicts past 16). The canvas
-   * fires `webglcontextlost` when it happens.
+   * context here frees its GPU memory and, in Chromium, takes it out of that count.
+   * The canvas fires `webglcontextlost` when it happens. No eviction reproduced in
+   * Safari on an iOS 27 simulator, with or without this change, so an effect on
+   * WebKit's context limit is unproven. Collection timing remains browser-controlled; callers must detach
+   * canvases they no longer need.
    *
    * A canvas keeps its context for life, lost or not: create() restores it before it
    * builds a new engine on the same canvas (see _restoreContext).
    */
   function _releaseContext(canvas) {
     var gl = canvas.getContext('webgl2');
+    // Engine.destroy() has finished. GL is private to the vendored runtime, but
+    // registerContext() puts the very same record on the canvas. Clear only this
+    // viewer's reference, even if its context was already lost or cannot be lost.
+    var registered = canvas.GLctxObject;
+    if (registered && registered.GLctx === gl) {
+      registered.GLctx = null;
+      canvas.GLctxObject = undefined;
+    }
     if (!gl || gl.isContextLost()) return;
     // Taken now: getExtension() returns null once the context is lost.
     var ext = gl.getExtension('WEBGL_lose_context');
@@ -6660,7 +6678,7 @@
   }
 
   global.SceneView = {
-    version: '4.69.0',
+    version: '4.69.7',
     create: create,
     modelViewer: modelViewer,
     /**

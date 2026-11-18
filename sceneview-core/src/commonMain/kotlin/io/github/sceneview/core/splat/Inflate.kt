@@ -34,6 +34,36 @@ internal object Inflate {
         if (input.size < GZIP_MIN_SIZE) {
             splatError("gzip stream too short (${input.size} bytes)")
         }
+        val pos = dataStart(input)
+
+        // The last 8 bytes are CRC-32 then ISIZE (uncompressed size mod 2^32), both little-endian.
+        val isize = readLe32(input, input.size - 4)
+        val output = Inflater(input, pos).inflate(sizeHint = isize)
+
+        val expectedCrc = readLe32(input, input.size - 8)
+        if (crc32(output) != expectedCrc) splatError("gzip CRC32 mismatch")
+        if ((output.size.toLong() and 0xFFFFFFFFL) != (isize.toLong() and 0xFFFFFFFFL)) {
+            splatError("gzip ISIZE mismatch")
+        }
+        return output
+    }
+
+    /**
+     * The first [count] decompressed bytes of a gzip stream, which may be truncated: decoding stops
+     * once [count] bytes exist, or where the input ends. `null` when [input] is not a gzip stream.
+     * Lets a format sniffer look inside a gzip container without inflating the whole file.
+     */
+    fun gunzipHead(input: ByteArray, count: Int): ByteArray? {
+        val start = runCatching { dataStart(input) }.getOrNull() ?: return null
+        val inflater = Inflater(input, start, stopAfter = count)
+        // A truncated prefix ends in an error; what was decoded before it is still the head.
+        runCatching { inflater.inflate(sizeHint = 0) }
+        return inflater.head(count)
+    }
+
+    /** Validate a gzip header and return where its DEFLATE data starts. */
+    private fun dataStart(input: ByteArray): Int {
+        if (input.size < GZIP_HEADER_SIZE) splatError("gzip header truncated")
         if ((input[0].toInt() and 0xFF) != 0x1F || (input[1].toInt() and 0xFF) != 0x8B) {
             splatError("not a gzip stream (bad magic)")
         }
@@ -51,17 +81,7 @@ internal object Inflate {
         if (flags and FCOMMENT != 0) pos = skipZeroTerminated(input, pos)
         if (flags and FHCRC != 0) pos += 2
         if (pos >= input.size) splatError("gzip header truncated")
-
-        // The last 8 bytes are CRC-32 then ISIZE (uncompressed size mod 2^32), both little-endian.
-        val isize = readLe32(input, input.size - 4)
-        val output = Inflater(input, pos).inflate(sizeHint = isize)
-
-        val expectedCrc = readLe32(input, input.size - 8)
-        if (crc32(output) != expectedCrc) splatError("gzip CRC32 mismatch")
-        if ((output.size.toLong() and 0xFFFFFFFFL) != (isize.toLong() and 0xFFFFFFFFL)) {
-            splatError("gzip ISIZE mismatch")
-        }
-        return output
+        return pos
     }
 
     /**
@@ -111,7 +131,12 @@ private class Huffman(lengths: IntArray, count: Int) {
 }
 
 /** Decodes a single DEFLATE stream from [input] starting at [start] (LSB-first bit order). */
-private class Inflater(private val input: ByteArray, start: Int) {
+private class Inflater(
+    private val input: ByteArray,
+    start: Int,
+    /** Decoding stops once this many bytes exist (see [Inflate.gunzipHead]). */
+    private val stopAfter: Int = Int.MAX_VALUE,
+) {
 
     private var bytePos = start
     private var bitBuffer = 0
@@ -131,7 +156,7 @@ private class Inflater(private val input: ByteArray, start: Int) {
             out = ByteArray(maxOf(clamped.toInt(), INITIAL_CAPACITY))
         }
         var lastBlock = false
-        while (!lastBlock) {
+        while (!lastBlock && outLen < stopAfter) {
             lastBlock = readBit() == 1
             when (val type = readBits(2)) {
                 BLOCK_STORED -> inflateStored()
@@ -142,6 +167,9 @@ private class Inflater(private val input: ByteArray, start: Int) {
         }
         return out.copyOf(outLen)
     }
+
+    /** At most the first [count] bytes decoded so far, even after a failed [inflate]. */
+    fun head(count: Int): ByteArray = out.copyOf(minOf(count, outLen))
 
     private fun readBit(): Int {
         if (bitCount == 0) {
@@ -193,7 +221,14 @@ private class Inflater(private val input: ByteArray, start: Int) {
         val nlen = readLe16(input, bytePos + 2)
         bytePos += 4
         if (len != (nlen.inv() and 0xFFFF)) splatError("DEFLATE stored: LEN/NLEN mismatch")
-        if (bytePos + len > input.size) splatError("DEFLATE stored: truncated data")
+        if (bytePos + len > input.size) {
+            // Keep what is there for [head]; a complete decode still fails.
+            val available = maxOf(0, input.size - bytePos)
+            ensureCapacity(available)
+            input.copyInto(out, outLen, bytePos, bytePos + available)
+            outLen += available
+            splatError("DEFLATE stored: truncated data")
+        }
         ensureCapacity(len)
         input.copyInto(out, outLen, bytePos, bytePos + len)
         outLen += len
@@ -238,7 +273,7 @@ private class Inflater(private val input: ByteArray, start: Int) {
     }
 
     private fun inflateBlock(litLen: Huffman, dist: Huffman) {
-        while (true) {
+        while (outLen < stopAfter) {
             val sym = decode(litLen)
             when {
                 sym == END_OF_BLOCK -> return

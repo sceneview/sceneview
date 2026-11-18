@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.Arrangement
@@ -7,8 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,8 +20,10 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -36,10 +42,13 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.common.Axes3DNode
 import io.github.sceneview.demo.common.placement.PlacementAvailabilityOverlay
+import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberScene
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
@@ -56,6 +65,16 @@ fun ARPoseDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val cameraNode = rememberARCameraNode(engine)
+    val scene = rememberScene(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    var probeEnabled by remember { mutableStateOf(false) }
+    var probeRequested by remember { mutableStateOf(false) }
+    // Prefilter only on first use, then retain the IBL across on/off comparisons.
+    val probeEnvironment = if (probeRequested) {
+        rememberHDREnvironment(environmentLoader, "environments/sunset_2k.hdr", createSkybox = false)
+    } else {
+        null
+    }
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
     // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
@@ -91,6 +110,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
     var basePose by remember { mutableStateOf<Pose?>(null) }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_pose_title),
         onBack = onBack,
         controls = {
@@ -116,6 +136,42 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     value = z,
                     onValueChange = { z = it },
                     valueRange = -0.5f..0.5f,
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = probeEnabled,
+                        role = Role.Switch,
+                        onValueChange = {
+                            probeEnabled = it
+                            if (it) probeRequested = true
+                        },
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = SceneViewTokens.Space.md)) {
+                    Text(
+                        text = stringResource(R.string.ar_pose_reflection_probe),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = stringResource(
+                            if (probeEnabled && probeEnvironment == null) {
+                                R.string.ar_pose_reflection_probe_loading
+                            } else {
+                                R.string.ar_pose_reflection_probe_hint
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = probeEnabled,
+                    onCheckedChange = null,
                 )
             }
         },
@@ -158,6 +214,8 @@ fun ARPoseDemo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 cameraNode = cameraNode,
+                scene = scene,
+                environmentLoader = environmentLoader,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 sessionConfiguration = { _: Session, config: Config ->
@@ -182,6 +240,10 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     }
                 }
             ) {
+                // Keep AR estimation running: removing the probe restores its latest IBL.
+                if (probeEnabled && probeEnvironment != null) {
+                    ReflectionProbeNode(filamentScene = scene, environment = probeEnvironment)
+                }
                 val base = basePose
                 if (isTracking && base != null) {
                     // Cache the placed Pose across recompositions — without remember,

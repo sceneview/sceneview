@@ -14,7 +14,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.69.0` and `io.github.sceneview:arsceneview:4.69.0`.
+Artifact versions: `io.github.sceneview:sceneview:4.69.7` and `io.github.sceneview:arsceneview:4.69.7`.
 
 ---
 
@@ -896,7 +896,9 @@ The same on `BillboardNode`, `TextNode` and [ViewNode](#viewnode), which all tak
 
 Overrides the scene's indirect light (IBL) with a baked `Environment` inside a spherical zone. With `radius = 0f` (the default) the probe is global and always active; otherwise it applies only while `cameraPosition` is within `radius` metres of `position`.
 
-When several zones hold the camera, the highest `priority` wins (on a tie, the probe added most recently). When none does, the scene goes back to its `SceneView` environment — the current one, so a dark/light toggle made while a probe was active is honoured, and a new `SceneView` environment never overrides an active probe. In `ARSceneView` the environment's light is still written directly, so that last guarantee does not hold in AR yet (see #4928).
+When several zones hold the camera, the highest `priority` wins (on a tie, the probe added most recently). When none does, the scene goes back to its current environment, so a dark/light toggle made while a probe was active is honoured. Environment changes never override an active probe.
+
+In `ARSceneView`, a probe overrides the entire estimated IBL without blending. Estimates keep updating the fallback: leaving the zone restores the latest estimate, or the base environment before the first estimate (reset on environment change). Directional-light estimation continues independently ([#4939](https://github.com/sceneview/sceneview/issues/4939)). A light the app writes directly to `scene.indirectLight` is restored after a probe cycle, until a new environment or AR estimate supersedes it.
 
 ```kotlin
 val scene = rememberScene(engine)

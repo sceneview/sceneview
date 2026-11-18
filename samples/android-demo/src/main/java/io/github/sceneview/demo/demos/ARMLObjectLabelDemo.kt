@@ -4,13 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,12 +24,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Coordinates2d
@@ -65,6 +64,9 @@ import io.github.sceneview.demo.demos.internal.ObjectLabelObservation
 import io.github.sceneview.demo.demos.internal.ObjectLabelTrack
 import io.github.sceneview.demo.demos.internal.ObjectLabelTracker
 import io.github.sceneview.demo.demos.internal.WorldRay
+import io.github.sceneview.demo.theme.LocalStageChrome
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -236,6 +238,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         arSessionFailed = arSessionFailed,
         arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_ml_title),
@@ -246,31 +249,35 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
         // instead of being hidden behind a Settings FAB — and the status text already tells
         // a first-time user what to do (#1620 thread 1).
         topOverlay = {
-            Surface(
-                color = Color.Black.copy(alpha = 0.4f),
-                modifier = Modifier.padding(horizontal = 16.dp),
+            // On the chrome's own card, not a 40 % black strip: the scaffold no longer lays a
+            // dark band under the top slot (#3733), and white on 40 % black over a bright
+            // camera frame falls to ~2.85:1. `chrome.card` carries its text in both stages.
+            val chrome = LocalStageChrome.current
+            val shape = RoundedCornerShape(SceneViewTokens.Radius.md)
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = SceneViewTokens.Space.md)
+                    .background(chrome.card, shape)
+                    .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
+                    .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
+                Text(
+                    text = statusText,
+                    color = chrome.onCard,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                // The bundled ML Kit detector classifies five broad categories (Home
+                // good, Fashion good, Food, Place, Plant) rather than specific object
+                // names — indoor scenes land on "Home good" for almost everything, which
+                // reads as "the demo only ever detects one thing" if unexplained (#3268).
+                // Shown only once something is anchored so the warm-up / aim prompts stay
+                // uncluttered.
+                if (detections.isNotEmpty()) {
                     Text(
-                        text = statusText,
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = stringResource(R.string.demo_ar_ml_explainer),
+                        color = chrome.onCardMuted,
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                    // The bundled ML Kit detector classifies five broad categories (Home
-                    // good, Fashion good, Food, Place, Plant) rather than specific object
-                    // names — indoor scenes land on "Home good" for almost everything, which
-                    // reads as "the demo only ever detects one thing" if unexplained (#3268).
-                    // Shown only once something is anchored so the warm-up / aim prompts stay
-                    // uncluttered.
-                    if (detections.isNotEmpty()) {
-                        Text(
-                            text = stringResource(R.string.demo_ar_ml_explainer),
-                            color = Color.White.copy(alpha = 0.75f),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                 }
             }
         },

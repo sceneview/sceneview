@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node text="Photo" content-desc="" bounds="[0,1600][333,1700]" />
+  <node text="" content-desc="Model" bounds="[333,1600][666,1700]" />
+  <node text="Plan" content-desc="" bounds="[666,1600][999,1700]" />
+  <node text="Photo &amp; model" content-desc="" bounds="[0,0][0,0]" />
+</hierarchy>

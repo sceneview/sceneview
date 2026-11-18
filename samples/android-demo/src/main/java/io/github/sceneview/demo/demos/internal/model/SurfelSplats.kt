@@ -68,8 +68,67 @@ internal object SurfelSplats {
     private const val LEVEL_LIMIT = DenseFusion.LEVEL_LIMIT
 
     /**
+     * [cloud] as the place it is, for the scan result's Photo layer: its splats without its
+     * [stragglers], so the place ends on its own edge and not in a haze of specks.
+     */
+    fun ofPlace(cloud: DenseCloud): SplatCloud = of(cloud, skip = stragglers(cloud))
+
+    /**
+     * The surfels that stand alone: those with less surface round them — in their
+     * [STRAGGLER_CELL_M] cell and the 26 about it — than [MIN_SURFACE] level-0 surfels' worth, a
+     * coarse surfel counting for the finer ones it stands for. A scan leaves them at its rim and
+     * in the air (a far wall glimpsed once, depth noise, a leaf); drawn as splats, widened to
+     * cover for the splats the cap leaves out, each is a blurred speck floating off the place.
+     * `null` when none stands alone, or when the cloud is too small to tell one from a thin scan.
+     */
+    fun stragglers(cloud: DenseCloud): BooleanArray? {
+        if (cloud.count < MIN_JUDGED) return null
+        val own = HashMap<Long, Int>(cloud.count / 2)
+        val cells = LongArray(cloud.count)
+        for (i in 0 until cloud.count) {
+            val key = cellKey(cellOf(cloud.positions[i * 3]), cellOf(cloud.positions[i * 3 + 1]), cellOf(cloud.positions[i * 3 + 2]))
+            cells[i] = key
+            val level = cloud.levelOf(i).coerceAtMost(LEVEL_LIMIT)
+            own[key] = (own[key] ?: 0) + (1 shl (2 * level)).coerceAtMost(MIN_SURFACE)
+        }
+        // Each cell judged once, with its neighbours: every surfel in it gets the same answer.
+        val alone = HashSet<Long>()
+        for (key in own.keys) {
+            var around = 0
+            for (dx in -1..1) for (dy in -1..1) for (dz in -1..1) {
+                around += own[key + dx * CELL_STEP_X + dy * CELL_STEP_Y + dz] ?: 0
+            }
+            if (around < MIN_SURFACE) alone += key
+        }
+        if (alone.isEmpty()) return null
+        return BooleanArray(cloud.count) { cells[it] in alone }
+    }
+
+    private fun cellOf(v: Float): Long = kotlin.math.floor(v / STRAGGLER_CELL_M).toLong() + CELL_BIAS
+
+    private fun cellKey(x: Long, y: Long, z: Long): Long = x * CELL_STEP_X + y * CELL_STEP_Y + z
+
+    /** The side of the cells [stragglers] counts in, metres: six level-0 voxels. */
+    const val STRAGGLER_CELL_M = 0.12f
+
+    /**
+     * The least surface a surfel has round it, in level-0 surfels: a patch a few centimetres
+     * wide. A real surface has hundreds within the 36 cm cube [stragglers] looks in.
+     */
+    const val MIN_SURFACE = 20
+
+    /** Under this many surfels a cloud is kept whole: a small object's is thin everywhere. */
+    const val MIN_JUDGED = 10_000
+
+    // Three 21-bit cell coordinates in one key: ±125 km round the origin at 12 cm a cell.
+    private const val CELL_BIAS = 1L shl 20
+    private const val CELL_STEP_Y = 1L shl 21
+    private const val CELL_STEP_X = 1L shl 42
+
+    /**
      * [cloud]'s surfels as splats, [voxelM] the size of its level-0 voxels, at most [maxSplats];
      * [linearView] when the view they are drawn in tone-maps linearly (the scan result's).
+     * The surfels [skip] marks are left out, as the uncoloured ones are.
      * Empty when the cloud has no coloured surfel.
      */
     fun of(
@@ -77,9 +136,10 @@ internal object SurfelSplats {
         voxelM: Float = DenseFusion.VOXEL_M,
         maxSplats: Int = MAX_SPLATS,
         linearView: Boolean = true,
+        skip: BooleanArray? = null,
     ): SplatCloud {
         require(maxSplats >= 0) { "maxSplats must be >= 0, was $maxSplats" }
-        val coloured = (0 until cloud.count).count { cloud.colors[it] != 0 }
+        val coloured = (0 until cloud.count).count { cloud.colors[it] != 0 && skip?.get(it) != true }
         val n = minOf(coloured, maxSplats)
         val positions = FloatArray(n * 3)
         val scales = FloatArray(n * 3)
@@ -97,7 +157,7 @@ internal object SurfelSplats {
         var o = 0
         for (i in 0 until cloud.count) {
             val argb = cloud.colors[i]
-            if (argb == 0) continue
+            if (argb == 0 || skip?.get(i) == true) continue
             val keep = (seen + 1).toLong() * n / coloured > seen.toLong() * n / coloured
             seen++
             if (!keep || o >= n) continue

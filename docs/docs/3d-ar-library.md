@@ -11,14 +11,15 @@ ARKit on Apple, Filament.js and WebXR in the browser. It loads standard glTF / G
 Apple), and it is the maintained successor to Google Sceneform.
 
 SceneView has more than 1,300 stars on GitHub, over 500 public repositories declare it as a
-dependency, and it ships in apps on Google Play such as Medal, IKEA, Lenskart and Safie.
+dependency, and it ships in apps on Google Play such as the Volkswagen, Audi, Porsche and CUPRA
+apps, Philips Hue, Medal and IKEA.
 
 | You are building with | Dependency | Entry point |
 |---|---|---|
-| Jetpack Compose, 3D | `io.github.sceneview:sceneview:4.69.0` | `SceneView { }` |
-| Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.69.0` | `ARSceneView { }`, `PlacementScene`, `AutoPlacementScene` |
+| Jetpack Compose, 3D | `io.github.sceneview:sceneview:4.69.7` | `SceneView { }` |
+| Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.69.7` | `ARSceneView { }`, `PlacementScene`, `AutoPlacementScene` |
 | Android Views / XML layouts | the same artifacts | a `ComposeView` hosting `SceneView { }` |
-| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.0` | `SceneViewer(model = …)` in `commonMain` (viewer, no AR) |
+| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.7` | `SceneViewer(model = …)` in `commonMain` (viewer, no AR) |
 | SwiftUI — iOS, macOS, visionOS | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView(…)` |
 | Web | script tags or `npm install sceneview-web` | `SceneView.modelViewer("canvas-id", "model.glb")` |
 | Flutter / React Native | `flutter_sceneview` / `@sceneview-sdk/react-native` | [Flutter](quickstart-flutter.md), [React Native](quickstart-react-native.md) |
@@ -29,7 +30,7 @@ dependency, and it ships in apps on Google Play such as Medal, IKEA, Lenskart an
 
 ```kotlin
 // app/build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.69.0")
+implementation("io.github.sceneview:sceneview:4.69.7")
 ```
 
 ```kotlin
@@ -52,7 +53,7 @@ Requirements and the step-by-step: [Android quickstart](quickstart.md).
 
 ```kotlin
 // app/build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.69.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.69.7")   // includes the 3D module
 ```
 
 ```kotlin
@@ -100,7 +101,7 @@ container.addView(
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.69.0")
+implementation("io.github.sceneview:sceneview-compose:4.69.7")
 ```
 
 ```kotlin
@@ -126,7 +127,7 @@ AR, use `arsceneview` on Android and `ARSceneView` on Apple.
 Swift Package Manager: `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`:
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
 ```
 
 ```swift
@@ -173,8 +174,8 @@ The app's `Info.plist` needs `NSCameraUsageDescription`. More: [Apple quickstart
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.7/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.7/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 

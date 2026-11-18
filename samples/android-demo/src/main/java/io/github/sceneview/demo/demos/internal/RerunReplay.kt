@@ -30,6 +30,17 @@ object RerunReplayAssets {
     const val MEDIA = "$DIR/showcase-media.bin"
 }
 
+/**
+ * The dense garden scan retained for stage B, written by `tools/make-scan-example.py`.
+ * "See an example" currently plays the bundled room ([RerunReplayAssets]).
+ */
+object RerunExampleAssets {
+    const val DIR = "rerun/example"
+    const val LOG = "$DIR/example-session.jsonl"
+    const val MANIFEST = "$DIR/example-manifest.json"
+    const val MEDIA = "$DIR/example-media.bin"
+}
+
 /** Where one photo sits in the media archive: [length] bytes from [offset]. */
 data class MediaSpan(val offset: Int, val length: Int)
 

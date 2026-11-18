@@ -22,7 +22,7 @@ import androidx.core.view.WindowCompat
  * Who wants light status-bar icons right now (#3984).
  *
  * The icons are one window-wide flag, but several screens have an opinion about it — the
- * Showcase hero over its night sky, every demo's scrim over the dark stage — and during a
+ * Showcase hero over its night sky, every demo's status-bar ground over the dark stage — and during a
  * navigation both the screen leaving and the screen arriving are composed. Each used to
  * capture the flag, force it, and put the captured value back on dispose. Those
  * save-and-restore pairs raced: the Showcase, disposed last on its way out, restored the
@@ -36,7 +36,7 @@ import androidx.core.view.WindowCompat
  * The count is not the only thing that moves the flag, though. The activity handles rotation
  * and the day/night switch itself, so nothing recreates the window — and on each of those
  * configuration changes the platform puts the theme's own icons back: dark ones in the light
- * theme, over a stage or a camera scrim that is dark. Nothing [ProvideStatusBarIcons] read had
+ * theme, over a stage or a status-bar ground that is dark. Nothing [ProvideStatusBarIcons] read had
  * changed, so it did not run again and the dark icons stayed until the screen was left (#4345;
  * seen on a phone on 3D Scan's live screen). It now runs again on every configuration change
  * and writes what it wants without asking the window first.

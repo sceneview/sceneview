@@ -5,6 +5,7 @@ SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, Sw
 START HERE
 
 - The home — a featured model in a live 3D scene. Open it to turn it around on screen, or place it in your room at its real size.
+- Matter — press a slab of memory foam, gel, velvet, leather, marble or brushed steel. Foam sinks under your finger and comes back slowly, steel does not move, and your phone's vibration changes with each material.
 - Cosmos — a galaxy, a particle collision, a flow field and a ringed star system, joined by a camera tour that flies you through them. Touch the screen to take the camera back.
 - 3D Scan — walk around a room and watch its walls appear in 3D as you go, with the area covered counting up. On phones with ARCore depth, it then draws an indicative floor plan of the room's real shape, with its doors, windows, dimensions and area, which you can share as a PDF or a DXF drawing. Missed a corner? Scan that part again and it joins the room. No room at hand? Tap "See an example" to replay a recorded scan in 3D, as a map, or through the camera.
 

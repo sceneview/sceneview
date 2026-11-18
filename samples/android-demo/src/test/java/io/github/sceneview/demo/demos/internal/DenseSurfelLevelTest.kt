@@ -7,9 +7,8 @@ import kotlin.math.sqrt
 
 /**
  * A coarsened surfel is drawn as wide as the region it stands for, so a wall the map coarsened
- * keeps no holes. Over the camera its size on screen is capped instead
- * ([DenseSurfels.maxScreenSide]): close by it is drawn no larger than a fine one, farther it is
- * drawn whole.
+ * keeps no holes in the result. Over the camera every surfel is capped to a fine point instead
+ * ([DenseSurfels.maxScreenSide]), near or far, so the capture shows the camera with points on it.
  */
 class DenseSurfelLevelTest {
 
@@ -51,20 +50,25 @@ class DenseSurfelLevelTest {
     }
 
     @Test
-    fun `over the camera a coarse surfel close by is drawn no wider than a tenth of the view`() {
+    fun `over the camera a coarse surfel close by is drawn no wider than a fine point`() {
         val coarse = FINE_SIDE * (1 shl LEVEL)
         val drawn = onScreen(coarse, NEAR_M) * scale(LEVEL, NEAR_M, live = true)
         assertTrue("drawn $drawn of the view's height", drawn <= DenseSurfels.LIVE_MAX_SCREEN_SIDE + EPS)
     }
 
     @Test
-    fun `over the camera a coarse surfel a step away is drawn whole`() {
-        assertEquals(1f, scale(LEVEL, depth = FAR_M, live = true), 0f)
+    fun `over the camera a coarse surfel a step away is a fine point too`() {
+        val coarse = FINE_SIDE * (1 shl LEVEL)
+        val drawn = onScreen(coarse, FAR_M) * scale(LEVEL, depth = FAR_M, live = true)
+        assertTrue("drawn $drawn of the view's height", drawn <= DenseSurfels.LIVE_MAX_SCREEN_SIDE + EPS)
     }
 
     @Test
-    fun `over the camera a fine surfel is drawn as built until it fades`() {
-        assertEquals(1f, scale(0, depth = DenseSurfels.NEAR_FADE_M + 0.05f, live = true), 0f)
+    fun `over the camera a fine surfel is a fine point, a few pixels at most`() {
+        val depth = DenseSurfels.NEAR_FADE_M + 0.05f
+        val drawn = onScreen(FINE_SIDE, depth) * scale(0, depth = depth, live = true)
+        assertTrue("drawn $drawn of the view's height", drawn <= DenseSurfels.LIVE_MAX_SCREEN_SIDE + EPS)
+        assertTrue(drawn > 0f)
     }
 
     @Test

@@ -54,6 +54,10 @@ internal class MatterOpening(enabled: Boolean) {
 
     companion object {
         fun isAllowed(systemAnimations: Boolean, qaMode: Boolean): Boolean = systemAnimations && !qaMode
+
+        /** The mark casts a shadow only within the last tenth of its travel above the foam. */
+        fun castsShadow(heightAbovePad: Float, travel: Float): Boolean = heightAbovePad <= travel * SHADOW_HEIGHT_FRACTION
+        const val SHADOW_HEIGHT_FRACTION = .1f
         const val FALL_MILLIS = 400L
         const val LIFT_MILLIS = 920L // 120 ms compression + 400 ms rest.
         const val LIFT_DURATION = 900L
