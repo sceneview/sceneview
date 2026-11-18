@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
@@ -66,6 +67,7 @@ import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.PlaybackStatus
 import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
@@ -85,7 +87,13 @@ import io.github.sceneview.SurfaceType
 import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
+import io.github.sceneview.ar.arcore.readUnlessClosed
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.camera.CAMERA_COVER_REVEAL_FRAMES
+import io.github.sceneview.ar.camera.cameraCoverVisible
+import io.github.sceneview.ar.camera.freshCameraImage
+import io.github.sceneview.ar.camera.presentedCameraFrames
+import io.github.sceneview.ar.camera.staleCameraCoverExpired
 import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
@@ -275,7 +283,8 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionCreated         Called once when the ARCore [Session] is ready.
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
- * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
+ * @param onSessionFailed          Called if ARCore initialization fails or a fatal frame update closes
+ *                                 the session. Discard app-held objects belonging to that session.
  *                                 Receives a raw [Exception]. **Soft-deprecated (#1844)** in favour
  *                                 of [onSessionFailure] for typed, exhaustive `when` matching
  *                                 (#1759). The legacy callback stays available indefinitely for
@@ -724,7 +733,10 @@ fun ARSceneView(
     onSessionPaused: ((session: Session) -> Unit)? = null,
     /**
      * Invoked when an ARCore error occurred during session creation / resume / configuration
-     * (missing ARCore install, permission denied, device-unsupported, etc.).
+     * (missing ARCore install, permission denied, device-unsupported, etc.), or when a fatal
+     * frame-update error closes the session. Fatal update failures are reported once per session.
+     * SDK-owned anchors and frame/plane caches are released before close. Discard app-held
+     * session objects and placement state; a retry creates a new session and needs fresh anchors.
      *
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
@@ -1634,6 +1646,21 @@ fun ARSceneView(
     // split-screen resize. Separate from the timestamp test, because a brand-new swap chain needs
     // a frame even on a vsync where ARCore returns a duplicate.
     val arFramesOwed = remember { AtomicInteger(1) }
+    // A host callback runs before Renderer.beginFrame, which can refuse the frame. Keep a
+    // neutral cover until a camera image has actually been submitted, and a couple of presented
+    // frames beyond it (see [presentedCameraFrames]), including on quick re-entry.
+    var presentedCameraFrameCount by remember(sceneRenderer, cameraStream) { mutableIntStateOf(0) }
+    // A stopped app loses its SurfaceView surface, which comes back black until ARCore delivers a
+    // new image — a black flash on every return from the background. The cover goes back on when
+    // the surface is destroyed (`onSurfaceDestroyed` below) — nothing of this view is on screen
+    // any more — and waits for an image newer than the one the texture still holds. Not on a
+    // lifecycle stop: inside a NavHost the entry is stopped as its exit transition starts, while
+    // the frozen camera image is still sliding out. A TextureView keeps its surface, and its last
+    // picture, across a stop, so it is reset only when it really loses its surface.
+    val coverStaleImageTimestamp = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
+    // Frame time of the first frame presented to the new surface after that reset; 0 = none yet.
+    // Starts the [STALE_CAMERA_COVER_TIMEOUT_NANOS] cap on waiting for a newer image.
+    val coverResetFirstPresentNanos = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
 
     // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
     // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
@@ -1689,6 +1716,10 @@ fun ARSceneView(
         }
         sceneRenderer.onSurfaceDestroyed = {
             cameraGestureDetectorRef.set(null)
+            // Main thread (UiHelper callback). See `coverStaleImageTimestamp` above.
+            coverStaleImageTimestamp.set(cameraStreamRef.get()?.boundFrameTimestamp ?: 0L)
+            coverResetFirstPresentNanos.set(0L)
+            presentedCameraFrameCount = 0
         }
     }
 
@@ -1713,7 +1744,18 @@ fun ARSceneView(
 
     // ── Render loop ───────────────────────────────────────────────────────────────────────────────
 
-    LaunchedEffect(engine, renderer, view, scene) {
+    arCore.onSessionClosing = {
+        try {
+            releaseSessionNodes(scopeChildNodes.toList())
+        } finally {
+            cameraNode.resetSession()
+            lastArFrameTimestamp.set(0L)
+            prevTrackingFailureRef.set(null)
+            arPlaneRenderer.resetSession()
+        }
+    }
+
+    LaunchedEffect(engine, renderer, view, scene, cameraStream) {
         // Previous frame time for the node-edit coast's time step; 0 = none yet (or paused).
         var lastFrameTimeNanos = 0L
         while (true) {
@@ -1731,7 +1773,8 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        hasNewArFrame || sceneChanged || arFramesOwed.get() > 0
+                        arCore.arCoreAvailability != ARCoreAvailability.SessionFailed &&
+                            (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
                     }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
@@ -1743,7 +1786,7 @@ fun ARSceneView(
                     // AR frame update — feed ARCore data into camera, lights, planes.
                     arCore.session?.let { session ->
                         try {
-                            session.updateOrNull()?.let { frame ->
+                            arCore.updateSessionOrNull()?.let { frame ->
                                 hasNewArFrame =
                                     lastArFrameTimestamp.getAndSet(frame.timestamp) != frame.timestamp
                                 val trackingFailureReason = readTrackingFailureReason(
@@ -1795,6 +1838,9 @@ fun ARSceneView(
                         }
                     }
 
+                    // A fatal update closed the session; nodes may still hold its native handles.
+                    if (arCore.arCoreAvailability == ARCoreAvailability.SessionFailed) return@renderFrame
+
                     // Before any node's onFrame, as in SceneView: animator commits then reindex
                     // nothing under the nodes' cached transform handles.
                     engine.sortTransformsIfUnsorted()
@@ -1836,11 +1882,42 @@ fun ARSceneView(
                 // Pay the surface's debt down only on a frame that really reached it —
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
+                val boundTimestamp = cameraStreamRef.get()?.boundFrameTimestamp ?: 0L
+                presentedCameraFrameCount = presentedCameraFrames(
+                    count = presentedCameraFrameCount,
+                    hasCameraImage = freshCameraImage(
+                        boundTimestamp = boundTimestamp,
+                        staleTimestamp = coverStaleImageTimestamp.get(),
+                    ),
+                    submitted = presented,
+                )
                 if (presented) {
                     frameRateGate.didRender(frameTimeNanos)
                     if (arFramesOwed.get() > 0) {
                         arFramesOwed.decrementAndGet()
                     }
+                    coverResetFirstPresentNanos.compareAndSet(0L, frameTimeNanos)
+                }
+                // A reset cover must not wait forever for an image that is not coming.
+                if (cameraCoverVisible(presentedCameraFrameCount) &&
+                    staleCameraCoverExpired(
+                        boundTimestamp = boundTimestamp,
+                        staleTimestamp = coverStaleImageTimestamp.get(),
+                        framesOwed = arFramesOwed.get(),
+                        firstPresentNanos = coverResetFirstPresentNanos.get(),
+                        frameTimeNanos = frameTimeNanos,
+                        // Read lazily: one JNI call, only once the other conditions hold. Never
+                        // on a closed session (#4026): a host may have closed it itself, and
+                        // the getter would then run on freed native memory.
+                        playbackFinished = {
+                            val session = arCore.session
+                            session != null && readUnlessClosed(session.isClosed, false) {
+                                session.playbackStatus == PlaybackStatus.FINISHED
+                            }
+                        },
+                    )
+                ) {
+                    presentedCameraFrameCount = CAMERA_COVER_REVEAL_FRAMES
                 }
             }
         }
@@ -1876,6 +1953,12 @@ fun ARSceneView(
                 },
                 update = {}
             )
+        }
+
+        // Compose draws above either surface type. Leave translucent/custom-background views
+        // alone; permission and availability overlays below must remain above this cover.
+        if (isOpaque && cameraStream != null && cameraCoverVisible(presentedCameraFrameCount)) {
+            Box(Modifier.fillMaxSize().background(CameraStartupCoverColor))
         }
 
         val denial = cameraPermissionState
@@ -1921,6 +2004,12 @@ fun ARSceneView(
 
 /** Time step of the first node-edit coast frame after a start or a resume (one 60 Hz frame). */
 private const val NOMINAL_INERTIA_FRAME_SECONDS = 1f / 60f
+
+/**
+ * `surface-container`, dark-scheme value (`DESIGN.md`), in both themes: the cover stands in for
+ * the camera image, and the coaching scrim and its dark-scheme accents ([CoachColors]) sit on it.
+ */
+private val CameraStartupCoverColor = Color(0xFF1D2026)
 
 /** Largest step one frame advances a node-edit coast by — a stall resumes, it never jumps. */
 private const val MAX_INERTIA_FRAME_SECONDS = 0.05f

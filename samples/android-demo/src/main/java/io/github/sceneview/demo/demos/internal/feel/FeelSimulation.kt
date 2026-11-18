@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal.feel
 
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.hypot
 
@@ -105,6 +106,24 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         opening.cancel()
         release(now, hapticRelease = false)
         selected = material
+    }
+
+    /**
+     * Something on [material] still visibly moves: a press, the opening, a rise or an imprint
+     * fading, a trail, the gel's wave, a rigid ripple. Unlike [needsFrames], the last tail of a
+     * rise counts as still: a rest within [STILL_MM] at under [STILL_MM_PER_SECOND] shows nothing
+     * even through a stalled frame. A foam rise from the opening's 12 mm reaches it in ~3.2 s.
+     */
+    fun moving(material: FeelMaterial, now: Long, motion: Boolean): Boolean {
+        if (active != null || !opening.finished) return true
+        if (material == FeelMaterial.MemoryFoam && imprintStrength > 0f) return true
+        val i = material.ordinal
+        if (abs(pads[i].depthMm) > STILL_MM || abs(pads[i].velocity) > STILL_MM_PER_SECOND) return true
+        if ((0 until TRAIL_POINTS).any { trails[i][it * 4 + 2] > STILL_TRAIL }) return true
+        if (motion && material == FeelMaterial.Gel && gelReleasedAt != Long.MIN_VALUE &&
+            now - gelReleasedAt in 0L..(GEL_WAVE_SECONDS * 1000).toLong()) return true
+        return motion && material.rigid && contactMillis[i] != Long.MIN_VALUE &&
+            now - contactMillis[i] in 0L until MatterMeshes.RIPPLE_MILLIS
     }
 
     /** Only visible dynamics need GPU frames; hidden pads catch up when the scene next ticks. */
@@ -290,6 +309,11 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         const val TRAIL_POINTS = 8
         const val TRAIL_SPACING = .28f
         const val GEL_WAVE_SECONDS = 2.6f
+        /** A residual dent under this reads as flat ([moving]). */
+        const val STILL_MM = 0.1f
+        const val STILL_MM_PER_SECOND = 1f
+        /** A fading trail under this strength reads as gone ([moving]). */
+        const val STILL_TRAIL = 0.02f
         const val PAD_HALF_WIDTH = 2.4f
         const val PAD_HALF_LENGTH = 1.45f
         const val PAD_THICKNESS = 0.95f

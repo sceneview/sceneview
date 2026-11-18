@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.google.ar.core.ArCoreApk.Availability
 import com.google.ar.core.Config
+import com.google.ar.core.Frame
 import com.google.ar.core.RecordingStatus
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
@@ -41,7 +42,8 @@ const val kDefaultHitTestInstantDistance = 2.0f
  * @param onSessionPaused      Called each time the session pauses.
  * @param onArSessionFailed    Called when session creation or resume fails, once per failed
  *                             attempt: every host resume, permission grant or [retrySession]
- *                             that cannot resume the session reports again.
+ *                             that cannot resume the session reports again. A fatal frame-update
+ *                             error closes the session and reports once, without per-frame retries.
  * @param onSessionConfigChanged Called when the session configuration changes.
  */
 class ARCore(
@@ -192,6 +194,23 @@ class ARCore(
 
     internal var session: ARSession? = null
         private set
+
+    /** Releases SDK-owned session objects on the main thread, before native close begins. */
+    internal var onSessionClosing: ((ARSession) -> Unit)? = null
+
+    /** Updates only the native session, outside the host's per-frame callbacks. */
+    @MainThread
+    internal fun updateSessionOrNull(): Frame? = try {
+        session?.updateOrNull()
+    } catch (exception: FatalException) {
+        // A fatal native session cannot recover on the next frame (#4501). Close it before
+        // notifying the host, so even a throwing callback cannot leave the retry loop running.
+        destroy()
+        publishAvailability(ARCoreAvailability.SessionFailed)
+        Log.e("ARCore", "ARCore session update failed; the session was closed", exception)
+        onException(exception)
+        null
+    }
 
     /**
      * Initializes the ARCore session lifecycle.
@@ -694,6 +713,14 @@ class ARCore(
         cameraArbiter.destroy(cameraClient) { onClosed ->
             val closing = session
             session = null
+            if (closing != null) {
+                try {
+                    onSessionClosing?.invoke(closing)
+                } catch (exception: Exception) {
+                    Log.w("ARCore", "Could not release a closing session's scene", exception)
+                }
+                closing.releaseOwnedObjects()
+            }
             // A session still recording finalizes its file when it pauses, and a recorder
             // stopped by the same disposal returns that file at once: that one closes inline.
             val recording = closing != null && runCatching {

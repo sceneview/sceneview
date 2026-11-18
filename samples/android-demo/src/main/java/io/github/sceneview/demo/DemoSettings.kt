@@ -27,6 +27,9 @@ object DemoSettings {
     /** Optional bundled asset/slug handed from Model Viewer to AR Placement. */
     var requestedModel: String? by mutableStateOf(null)
 
+    /** Optional encoded answer from the current spatial-answer navigation entry. */
+    var requestedAnswer: String? by mutableStateOf(null)
+
     /** One-shot in-app route request used by demos that cannot own a NavController. */
     var requestedRoute: String? by mutableStateOf(null)
 

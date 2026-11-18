@@ -789,6 +789,48 @@ public final class io/github/sceneview/collision/Vector3$Companion {
 	public final fun zero ()Lio/github/sceneview/collision/Vector3;
 }
 
+public final class io/github/sceneview/core/model/ModelConverter {
+	public static final field INSTANCE Lio/github/sceneview/core/model/ModelConverter;
+	public final fun getSupportedFormats ()Ljava/util/Set;
+	public final fun toGlb ([BLio/github/sceneview/core/model/ModelFormat;Lio/github/sceneview/core/model/ModelUnit;)[B
+	public static synthetic fun toGlb$default (Lio/github/sceneview/core/model/ModelConverter;[BLio/github/sceneview/core/model/ModelFormat;Lio/github/sceneview/core/model/ModelUnit;ILjava/lang/Object;)[B
+}
+
+public final class io/github/sceneview/core/model/ModelFormat : java/lang/Enum {
+	public static final field Companion Lio/github/sceneview/core/model/ModelFormat$Companion;
+	public static final field GLB Lio/github/sceneview/core/model/ModelFormat;
+	public static final field GLTF Lio/github/sceneview/core/model/ModelFormat;
+	public static final field OBJ Lio/github/sceneview/core/model/ModelFormat;
+	public static final field PLY_MESH Lio/github/sceneview/core/model/ModelFormat;
+	public static final field PLY_SPLAT Lio/github/sceneview/core/model/ModelFormat;
+	public static final field SPZ Lio/github/sceneview/core/model/ModelFormat;
+	public static final field STL Lio/github/sceneview/core/model/ModelFormat;
+	public static final field THREE_MF Lio/github/sceneview/core/model/ModelFormat;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/core/model/ModelFormat;
+	public static fun values ()[Lio/github/sceneview/core/model/ModelFormat;
+}
+
+public final class io/github/sceneview/core/model/ModelFormat$Companion {
+	public final fun sniff (Ljava/lang/String;[B)Lio/github/sceneview/core/model/ModelFormat;
+}
+
+public final class io/github/sceneview/core/model/ModelUnit : java/lang/Enum {
+	public static final field Centimeters Lio/github/sceneview/core/model/ModelUnit;
+	public static final field Inches Lio/github/sceneview/core/model/ModelUnit;
+	public static final field Meters Lio/github/sceneview/core/model/ModelUnit;
+	public static final field Millimeters Lio/github/sceneview/core/model/ModelUnit;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getMeters ()F
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/core/model/ModelUnit;
+	public static fun values ()[Lio/github/sceneview/core/model/ModelUnit;
+}
+
+public final class io/github/sceneview/core/model/UnsupportedModelFormat : java/lang/IllegalArgumentException {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun getExtension ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/core/obj/ObjGroup {
 	public fun <init> (Ljava/lang/String;[F[F[FLjava/util/List;)V
 	public final fun getName ()Ljava/lang/String;

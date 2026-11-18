@@ -16,6 +16,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -111,6 +113,45 @@ class DeepLinkBackNavigationTest {
         pendingId = "lighting"
         composeRule.onNodeWithText("Demo lighting #2").assertIsDisplayed()
 
+        composeRule.onNodeWithText("Navigate back").performClick()
+        composeRule.onNodeWithText("Home").assertIsDisplayed()
+    }
+
+    @Test
+    fun spatialAnswersSurviveColdAndWarmNavigation() {
+        var pendingId by mutableStateOf<String?>("spatial-answer")
+        var answer by mutableStateOf("first_answer")
+        composeRule.setContent {
+            val navController = rememberNavController()
+            PendingDemoNavigation(navController, pendingId, answer) { pendingId = null }
+            NavHost(navController, startDestination = "list") {
+                composable("list") { Text("Home") }
+                composable(
+                    "demo/{id}?model={model}&answer={answer}",
+                    arguments = listOf(
+                        navArgument("id") { type = NavType.StringType },
+                        navArgument("model") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("answer") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) { entry ->
+                    Column {
+                        Text(entry.arguments?.getString("answer") ?: "No answer")
+                        Button(onClick = { navController.popBackStack() }) { Text("Navigate back") }
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText("first_answer").assertIsDisplayed()
+        composeRule.runOnIdle {
+            answer = "second_answer"
+            pendingId = "spatial-answer"
+        }
+        composeRule.onNodeWithText("second_answer").assertIsDisplayed()
+        composeRule.onNodeWithText("first_answer").assertDoesNotExist()
         composeRule.onNodeWithText("Navigate back").performClick()
         composeRule.onNodeWithText("Home").assertIsDisplayed()
     }

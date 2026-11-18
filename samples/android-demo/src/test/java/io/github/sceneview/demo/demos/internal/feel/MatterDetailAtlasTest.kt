@@ -114,17 +114,20 @@ class MatterDetailAtlasTest {
         }
     }
 
-    @Test fun bakedCarraraRetainsBroadHazeWithoutBlackVeins() {
+    @Test fun bakedCarraraHasQuietWhiteGroundAndSparseGreyVeins() {
         val pixels = MatterDetailAtlas.bake(FeelMaterial.Marble)
         assertEquals(MatterDetailAtlas.WIDTH * MatterDetailAtlas.HEIGHT * 2, pixels.size)
         val chart = MatterDetailAtlas.charts[0]
-        var low = 255; var high = 0
+        var low = 255; var high = 0; var quiet = 0; var total = 0
         for (y in 4 until chart.height - 4) for (x in 4 until chart.width - 4) {
             val mineral = pixels[(y * MatterDetailAtlas.WIDTH + x) * 2].toInt() and 255
             low = minOf(low, mineral); high = maxOf(high, mineral)
+            if (mineral < 51) quiet++
+            total++
         }
-        assertTrue("Whole slab haze", low >= 25)
-        assertTrue("Broad and secondary seams survive the bake", high > 140)
-        assertTrue("v9 mineral cap", high <= 184)
+        assertTrue("Soft white-grey ground", low in 12..35)
+        assertTrue("Quiet stone between sparse veins", quiet > total * .70f)
+        assertTrue("Thin grey mineral paths survive the bake", high > 110)
+        assertTrue("No black mineral outlines", high <= 184)
     }
 }

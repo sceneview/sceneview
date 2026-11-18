@@ -301,7 +301,7 @@ failures = 0
 ios_skill = pathlib.Path("agents/sceneview-ios")
 ios_demos = pathlib.Path("samples/ios-demo/SceneViewDemo/Views/Demos")
 if ios_skill.is_dir() and ios_demos.is_dir():
-    available = {p.name for p in ios_demos.glob("*.swift")}
+    available = {p.name for p in ios_demos.rglob("*.swift")}
     referenced = set()
     swift_re = re.compile(r"\b([A-Z][A-Za-z0-9]*Demo\.swift)\b")
     for md in ios_skill.rglob("*.md"):

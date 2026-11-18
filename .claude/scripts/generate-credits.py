@@ -404,7 +404,9 @@ NON_CATALOG_BUNDLED = {
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
-        "note": "Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`; "
+                "its line hash is hash11 from \"Hash without Sine\", Copyright (c) 2014 David Hoskins, "
+                "MIT License (https://www.shadertoy.com/view/4djSRW)",
     },
     "matter_gel.filamat": {
         "name": "matter_gel.filamat",

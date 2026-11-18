@@ -18,26 +18,8 @@ highp vec4 dentField(highp vec2 p) {
     float positiveDepth = max(materialParams.depth, 0.0);
     float field = -materialParams.depth * bowl + positiveDepth * materialParams.profile.y * rim * gate;
     vec2 gradient = (-materialParams.depth * db + positiveDepth * materialParams.profile.y * dr) * radial;
-    #ifdef MATTER_FOLDS
-    if (materialParams.profile.z > 0.0 && positiveDepth > 0.0001) {
-        float angle = r > 0.0001 ? atan(q.y, q.x) : 0.0;
-        float phase = angle * materialParams.profile.w + r * 0.35;
-        float fold = cos(phase), slope = -sin(phase);
-        // Seven narrow leather creases; eighteen rounded velvet folds.
-        if (materialParams.profile.w < 10.0) {
-            slope *= 3.0 * fold * fold;
-            fold = fold * fold * fold;
-        }
-        float envelopeQ = (r - 0.9) / 0.55;
-        float envelope = exp(-envelopeQ * envelopeQ);
-        float de = envelope * (dg - gate * 2.0 * envelopeQ / 0.55);
-        float amplitude = positiveDepth * materialParams.profile.z;
-        vec2 angular = vec2(-q.y, q.x) / (r * r * materialParams.radius);
-        field += amplitude * envelope * gate * fold;
-        gradient += amplitude * (de * fold * radial + envelope * gate * slope *
-            (materialParams.profile.w * angular + 0.35 * radial));
-    }
-    #endif
+    // One rounded well and a broad displaced-volume rim. Angular cosine folds used to
+    // make a scallop shell even with perfect normals; fine grain belongs in the fragment.
     float pile = 0.0;
     #ifdef MATTER_PILE_TRAIL
     // Velvet only changes nap, so it needs neither the groove gradient nor the foam branch.
@@ -95,6 +77,22 @@ highp vec4 dentField(highp vec2 p) {
             gate * 10.0 * cos(offset * 10.0)) * delta / distance;
     }
     #endif
+    #ifdef MATTER_EDGE_TAPER
+    // Finish the well, displaced rim and recovery trail BEFORE the bevel. A separable
+    // quintic has zero slope and curvature at both ends, including at the corners.
+    // Carry the product-rule gradient into the normal: fading height alone leaves a
+    // sharp lighting crest even when the silhouette is smooth. Opening squash is
+    // applied later so the whole supported slab can still compress uniformly.
+    float edgeWidth = max(materialParams.radius * 0.65, materialParams.dimensions.w * 4.0);
+    vec2 edgeT = clamp((materialParams.dimensions.xz - abs(p) - materialParams.dimensions.w) /
+        edgeWidth, 0.0, 1.0);
+    vec2 edge = edgeT * edgeT * edgeT * (edgeT * (edgeT * 6.0 - 15.0) + 10.0);
+    vec2 edgeDerivative = -sign(p) * 30.0 * edgeT * edgeT *
+        (edgeT - 1.0) * (edgeT - 1.0) / edgeWidth;
+    float taper = edge.x * edge.y;
+    gradient = gradient * taper + field * edgeDerivative * edge.yx;
+    field *= taper;
+    #endif
     return vec4(field, gradient, pile);
 }
 #endif
@@ -127,8 +125,12 @@ void materialVertex(inout MaterialVertexInputs material) {
     material.worldPosition.xyz += mat3(getWorldFromModelMatrix()) *
         vec3(0.0, weight * deformation.x + materialParams.bounce, 0.0);
     material.rest = vec4(p, clamp(-deformation.x * weight / materialParams.dimensions.y, 0.0, 1.0));
+    #ifdef MATTER_GEL
+    // Signed displacement lets refraction locate the actual entry point, including the rim.
+    material.rest.w = weight * deformation.x;
+    #endif
     material.bentNormal = vec4(normalize(getWorldFromModelNormalMatrix() * n), deformation.w * weight);
-    // Pack cavity with the existing tangent: depth plus crease slope, no extra varying or texture.
+    // Pack cavity with the existing tangent: depth plus well slope, no extra varying or texture.
     float cavity = clamp(-deformation.x * weight / materialParams.dimensions.y *
         (0.65 + 0.55 * length(deformation.yz)), 0.0, 0.85);
     material.bentTangent = vec4(normalize(mat3(getWorldFromModelMatrix()) * t), cavity);

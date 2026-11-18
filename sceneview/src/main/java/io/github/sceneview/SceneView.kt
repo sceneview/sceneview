@@ -6,6 +6,8 @@
 
 package io.github.sceneview
 
+import io.github.sceneview.core.model.ModelUnit
+
 import android.content.Context
 import android.content.Context.WINDOW_SERVICE
 import android.opengl.EGLContext
@@ -236,6 +238,17 @@ import io.github.sceneview.node.setEnvironmentLight
  *                              before [FrameRatePolicy.maxFps] permits presentation. Use this
  *                              for animation clocks or simulations, and [onFrame] to observe
  *                              presented frames. Disable [cameraManipulator] when driving the camera.
+ * @param disallowParentIntercept Android View/Compose interop. Default `false`: a scrolling or
+ *                              draggable parent (`verticalScroll`, `LazyColumn`, `HorizontalPager`,
+ *                              a bottom sheet) may still intercept a drag that starts on the
+ *                              scene, so an embedded viewer never traps page scrolling. Pass
+ *                              `true` to keep every drag that starts on the scene with the scene,
+ *                              for either [surfaceType]: it calls
+ *                              `requestDisallowInterceptTouchEvent(true)` on `ACTION_DOWN` and
+ *                              releases it after `ACTION_UP` or `ACTION_CANCEL`. A change applies
+ *                              from the next touch stream. Touches on an `isEditable = true` node
+ *                              still go to the node, not the camera; this option only governs the
+ *                              parent.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
@@ -490,6 +503,13 @@ fun SceneView(
      * pass `null` to stop. Unlike [onFrame], it also runs on ticks that are not presented.
      */
     onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    /**
+     * When `true`, claims touches on either surface type from scrolling or draggable parents on
+     * ACTION_DOWN and releases them after ACTION_UP or ACTION_CANCEL. Default `false`: the parent
+     * keeps scrolling. Changes apply to the next touch stream. Editable nodes still absorb their
+     * gestures instead of moving the camera.
+     */
+    disallowParentIntercept: Boolean = false,
     /**
      * Declare scene nodes using the [SceneScope] DSL.
      */
@@ -1050,6 +1070,7 @@ fun SceneView(
     SideEffect {
         sceneRenderer.viewportCamera = cameraNode
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
+        sceneRenderer.disallowParentIntercept = disallowParentIntercept
         sceneRenderer.onSurfaceResized = { _, _ ->
             // Remember the size so a manipulator swapped in later (without a surface resize)
             // can inherit it — see [lastViewportRef] (#2514).
@@ -1496,30 +1517,8 @@ fun rememberModelInstance(
     if (android.net.Uri.parse(assetFileLocation).scheme != null) {
         return rememberModelInstance(modelLoader, fileLocation = assetFileLocation)
     }
-    val instance = produceState<ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = assetFileLocation
-    ) {
-        // The `suspend` load, like the URL overload: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and
-        // WebP → PNG converted on Default, only the Filament calls on Main (produceState's
-        // context). Converting in this coroutine ran all of it on the main thread.
-        value = modelLoader.loadModelInstanceOrNull(assetFileLocation)
-    }.value
-    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
-    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
-    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
-    // produced value fires `onDispose` for the *previous* instance on a key swap and on
-    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
-    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
-    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
-    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
-    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
-    // the Filament JNI contract.
-    DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
-    }
-    return instance
+    // Every overload shares the `unit` overload's single body, so they load, log and dispose alike.
+    return rememberModelInstance(modelLoader, assetFileLocation, unit = null)
 }
 
 /**
@@ -1564,17 +1563,52 @@ fun rememberModelInstance(
     if (uri.scheme == null) {
         return rememberModelInstance(modelLoader, assetFileLocation = fileLocation)
     }
-    // URL / file URI / content URI → use suspend loadModelInstance which handles http(s)
+    // URL / file URI / content URI → the suspend loadModelInstance, which handles http(s).
+    return rememberModelInstance(modelLoader, fileLocation, unit = null, resourceResolver)
+}
+
+/**
+ * Open a supported model at its real size. [unit] overrides unitless STL/OBJ/PLY only; GLB/glTF
+ * remain metres and 3MF keeps its declared unit.
+ *
+ * This is the body every `rememberModelInstance` overload shares (they pass `unit = null`), so all
+ * of them behave alike: the result is `null` while loading and on failure, the failure logged (a
+ * file in no supported format by [ModelLoader], with the `UnsupportedModelFormat` message); a glTF that requires an extension gltfio cannot
+ * load is logged and loaded anyway, and the instance is returned before its textures finish
+ * decoding, as [ModelLoader.loadModelInstance] does. To show typed failures, refuse such a glTF or
+ * wait for its textures, use [rememberModelLoadState] instead.
+ *
+ * This composable owns and destroys the loaded model when the location or unit changes, and when
+ * it leaves the composition. See the asset-path overload for lifecycle details.
+ */
+@Composable
+fun rememberModelInstance(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,
+    resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) },
+): ModelInstance? {
     val instance = produceState<ModelInstance?>(
         initialValue = null,
         key1 = modelLoader,
-        key2 = fileLocation
+        key2 = fileLocation,
+        key3 = unit,
     ) {
-        value = modelLoader.loadModelInstanceOrNull(fileLocation, resourceResolver)
+        // The `suspend` load: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and WebP → PNG converted on
+        // Default, only the Filament calls on Main (produceState's context). Converting in this
+        // coroutine ran all of it on the main thread.
+        value = modelLoader.loadModelInstanceOrNull(fileLocation, unit, resourceResolver)
     }.value
-    // See the asset-path overload: `produceState` skips per-key disposal, so destroy the previous
-    // [Model] on a key swap and on leave-composition (#2459). Disposal is ordered after the
-    // consuming `ModelNode`'s detach, respecting #2424's render-loop coupling.
+    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
+    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
+    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
+    // produced value fires `onDispose` for the *previous* instance on a key swap and on
+    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
+    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
+    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
+    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
+    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
+    // the Filament JNI contract.
     DisposableEffect(instance) {
         onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
@@ -1588,11 +1622,10 @@ fun rememberModelInstance(
  */
 private suspend fun ModelLoader.loadModelInstanceOrNull(
     fileLocation: String,
-    resourceResolver: (resourceFileName: String) -> String = {
-        ModelLoader.getFolderPath(fileLocation, it)
-    }
+    unit: ModelUnit?,
+    resourceResolver: (resourceFileName: String) -> String,
 ): ModelInstance? = try {
-    loadModelInstance(fileLocation, resourceResolver)
+    loadModelInstance(fileLocation, unit, resourceResolver)
 } catch (cancellation: CancellationException) {
     throw cancellation
 } catch (error: Exception) {
@@ -2607,6 +2640,94 @@ fun SceneView(
     onFrame = onFrame,
     content = content,
     onAnimationFrame = null,
+)
+
+/**
+ * Binary-compatibility shim for the descriptor published before `disallowParentIntercept` was
+ * added (#3898). The Compose compiler puts every parameter in the JVM signature, so the new
+ * parameter retyped the function: this keeps a library compiled against the previous signature
+ * linking, with parent interception allowed (`false`).
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the SceneView overload that takes `disallowParentIntercept`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun SceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    view: View = rememberView(engine),
+    isOpaque: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
+    renderInvalidator: RenderInvalidator? = null,
+    renderQuality: RenderQuality = RenderQuality.Default,
+    autoCenterContent: Boolean = true,
+    autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: CameraNode = rememberCameraNode(engine),
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
+    ),
+    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    content: (@Composable SceneScope.() -> Unit)? = null
+) = SceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    view = view,
+    isOpaque = isOpaque,
+    frameRatePolicy = frameRatePolicy,
+    renderInvalidator = renderInvalidator,
+    renderQuality = renderQuality,
+    autoCenterContent = autoCenterContent,
+    autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
+    contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    collisionSystem = collisionSystem,
+    cameraManipulator = cameraManipulator,
+    viewNodeWindowManager = viewNodeWindowManager,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    activity = activity,
+    lifecycle = lifecycle,
+    onFrame = onFrame,
+    onAnimationFrame = onAnimationFrame,
+    disallowParentIntercept = false,
+    content = content,
 )
 
 /**

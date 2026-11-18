@@ -33,4 +33,5 @@
         subdirectory only.
     -->
     <cache-path name="rerun-share" path="rerun-share/" />
+    <cache-path name="measure-share" path="measure-share/" />
 </paths>

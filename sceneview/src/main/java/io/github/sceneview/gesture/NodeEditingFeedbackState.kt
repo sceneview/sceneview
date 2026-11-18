@@ -21,7 +21,7 @@ import io.github.sceneview.node.Node
  * [io.github.sceneview.gesture.NodeEditingOverlay] for the ready-made on-model visuals,
  * or read the properties directly to build custom feedback.
  *
- * All values are updated on the main thread by the gesture pipeline.
+ * All values are updated on the main thread by the gesture pipeline and overlay.
  *
  * @property node The observed node.
  * @property scaleBaseline The local scale (per-axis uniform, X component) that reads as
@@ -54,16 +54,18 @@ class NodeEditingFeedbackState(
     val isArmed: Boolean get() = isPressed && activeKinds.isEmpty()
 
     /**
-     * Heading of the node around the world-up axis in degrees, `(-180°, 180°]`.
+     * Heading of the node's local quaternion about Y in degrees, `(-180°, 180°]`.
      *
      * Derived from the quaternion with an `atan2`-based extraction that covers the full
      * turn — deliberately **not** `node.rotation.y`, whose Euler decomposition saturates
-     * at ±90°.
+     * at ±90°. This absolute reading wraps at the half-turn; use [rotationDeltaDegrees]
+     * for continuous feedback during a rotation gesture. [NodeEditingOverlay] refreshes
+     * this reading each displayed frame, including after application-authored rotations.
      */
     var yawDegrees by mutableFloatStateOf(quaternionYawDegrees(node.quaternion))
         private set
 
-    /** Signed yaw accumulated since the current rotate gesture began, in degrees. */
+    /** Signed rotation accumulated since the current rotate gesture began, in degrees. */
     var rotationDeltaDegrees by mutableFloatStateOf(0f)
         private set
 
@@ -103,6 +105,13 @@ class NodeEditingFeedbackState(
     /** World position of the last applied drag update, `null` outside a move gesture. */
     var moveWorldPosition by mutableStateOf<Position?>(null)
         private set
+
+    /** Refresh the absolute heading on the overlay's main-thread projection loop. */
+    internal fun refreshRotationFromNode() {
+        if (!node.isDestroyed) {
+            yawDegrees = quaternionYawDegrees(node.quaternion)
+        }
+    }
 
     override fun onEditingPressed(node: Node) {
         isPressed = true

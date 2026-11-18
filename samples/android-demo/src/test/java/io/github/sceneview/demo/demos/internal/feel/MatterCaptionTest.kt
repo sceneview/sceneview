@@ -51,9 +51,9 @@ class MatterCaptionTest {
             assertEquals(!material.rigid && expected >= .5f,
                 MatterSurfaces.showsDisplacement(material, Indentation(depth), true))
         }
-        assertEquals(14f, MatterSurfaces.captionDepthMm(2.4f, FeelMaterial.MemoryFoam), .1f)
+        assertEquals(15.58f, MatterSurfaces.captionDepthMm(2.4f, FeelMaterial.MemoryFoam), .1f)
         assertEquals(3f, MatterSurfaces.captionDepthMm(1f, FeelMaterial.Leather), .00001f)
-        assertEquals(29.64f, MatterSurfaces.captionDepthMm(100f, FeelMaterial.MemoryFoam), 1f)
+        assertEquals(30.43f, MatterSurfaces.captionDepthMm(100f, FeelMaterial.MemoryFoam), 1f)
     }
 
     @Test fun shallowFoamContactReportsADeeperOldTroughInsteadOfTheNewSmallWell() {
