@@ -1760,6 +1760,9 @@ private fun RerunLiveScreen(
                             depth = qaState != QA_STATE_RECORD_NO_DEPTH,
                             depthStalled = qaState == QA_STATE_RECORD_WALLS_STALLED,
                         )
+                    // finish(onStep, onPlaneBaking) can narrate the save (ScanSaveProgress,
+                    // ScanSaveCopy); left unwired on purpose: the live capture screen that would
+                    // show it is not changed by the room result.
                     capture != null -> capture.finish()
                     else -> null
                 }

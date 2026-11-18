@@ -116,4 +116,3 @@ private object LegacyRerunGlbMesh {
     private const val GLB_MAGIC = 0x46546C67
     private const val UNSIGNED_SHORT = 5123
 }
-

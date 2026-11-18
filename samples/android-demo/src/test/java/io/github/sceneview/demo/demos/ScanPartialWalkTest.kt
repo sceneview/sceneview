@@ -4,6 +4,7 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DepthFrame
+import io.github.sceneview.demo.demos.internal.PoseContinuity
 import io.github.sceneview.demo.demos.internal.PoseStep
 import io.github.sceneview.demo.demos.internal.RecordedDepthFrame
 import io.github.sceneview.demo.demos.internal.RerunGlbMesh
@@ -102,18 +103,36 @@ class ScanPartialWalkTest {
 
     /**
      * The walk's own points decide what it opens on (the tests above hand [depthModelOf] an empty
-     * cloud): a third of a room, one wall seen across it, stands as no room box, so the result is
-     * the fused surface on its clean floor, never a shell stretched to walls it did not see.
+     * cloud): the surfel cloud the phone saves ([ScanDepthReplay], the phone's verdicts, the slip
+     * it missed included) of a third of a room stands as no room box, so the result is the fused
+     * surface on its clean floor, never a shell stretched to walls it did not see.
      */
     @Test
-    fun `the walk's own points stand as no room, so no shell is stretched over what it missed`() {
+    fun `the walk's saved cloud stands as no room, so no shell is stretched over what it missed`() {
+        val saved = checkNotNull(ScanDepthReplay.replay(recording(), guard = null)).cloud
+        assertTrue("${saved.count} points", saved.count > RoomBox.MIN_POINTS)
+        assertNull("a third of a room read as a room box", RoomBox.of(saved, 0f))
+    }
+
+    /**
+     * A slip that never comes back: past [PoseContinuity.STUCK_AFTER_NANOS] the guard takes the
+     * walk as it is, in a segment of its own — never fused over the room it slipped from. The
+     * longer segment, before the slip, is the surface, and nothing in it is out of place.
+     */
+    @Test
+    fun `a slip that never comes back is a segment of its own, never a ghost over the room`() {
         val fused = checkNotNull(
-            RoomDepthMesh.fuse(recording(), RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M), guard = RoomDepthMesh.replayGuard()),
-        ).mesh
-        val n = fused.vertexCount
-        val cloud = DenseCloud(fused.positions.copyOf(n * 3), fused.colors.copyOf(n), fused.normals.copyOf(n * 3))
-        assertTrue("${cloud.count} points", cloud.count > RoomBox.MIN_POINTS)
-        assertNull("a third of a room read as a room box", RoomBox.of(cloud, 0f))
+            RoomDepthMesh.fuse(
+                recording(slip = SLIP.first until FRAMES),
+                RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M),
+                guard = RoomDepthMesh.replayGuard(),
+            ),
+        )
+        assertEquals("segments", 2, fused.segments)
+        assertEquals("the walk before the slip is the surface", SLIP.first, fused.fused)
+        val p = fused.mesh.positions
+        val ghost = (0 until fused.mesh.vertexCount).count { offTheRoom(p[it * 3], p[it * 3 + 1], p[it * 3 + 2]) > OFF_M }
+        assertEquals("vertices out of place", 0, ghost)
     }
 
     /**
@@ -146,7 +165,7 @@ class ScanPartialWalkTest {
         return checkNotNull(RerunGlbMesh.read(model.glb))
     }
 
-    private fun recording(): File {
+    private fun recording(slip: IntRange = SLIP): File {
         val file = File(folder.root, "walk-${System.nanoTime()}.bin")
         file.outputStream().buffered().use { out ->
             out.write(ScanDepthFormat.header(HEADER))
@@ -154,7 +173,7 @@ class ScanPartialWalkTest {
                 val truth = RerunSyntheticRoom.lookPose(step.at, step.yaw, step.pitch)
                 val frame = withBlindPatches(scene.render(truth))
                 // ARCore's slip: the image is the room as it is, the pose it reports is not.
-                val reported = if (i in SLIP) {
+                val reported = if (i in slip) {
                     RerunSyntheticRoom.lookPose(
                         Vec3(step.at.x + SLIP_M, step.at.y, step.at.z),
                         step.yaw + Math.toRadians(SLIP_DEG).toFloat(),

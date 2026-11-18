@@ -106,6 +106,7 @@ internal object ScanFloorSlab {
         kept = grid.fillHoles(kept)
         kept = grid.dilate(grid.erode(kept, 1), 1)
         kept = grid.largestPieces(kept, MIN_PIECE_SHARE)
+        kept = grid.oneFootprint(kept, BRIDGE_CELLS)
         val cells = kept.count { it }
         val area = cells * CELL_M * CELL_M
         if (area < MIN_AREA_M2) return null
@@ -318,8 +319,31 @@ internal object ScanFloorSlab {
             return BooleanArray(size) { !outside[it] }
         }
 
+        /**
+         * [on] as one footprint (the floor in one piece): pieces closer than twice [bridgeCells]
+         * are joined across the gap — a sofa or a bed between two looks at the floor — and of what
+         * is then still apart, the largest piece alone is kept.
+         */
+        fun oneFootprint(on: BooleanArray, bridgeCells: Int): BooleanArray {
+            val (_, sizes) = pieces(on)
+            if (sizes.size <= 1) return on
+            // Closed, then the original added back: near the grid's edge the erosion eats more.
+            val closed = erode(dilate(on, bridgeCells), bridgeCells)
+            val joined = BooleanArray(size) { on[it] || closed[it] }
+            val (label, joinedSizes) = pieces(joined)
+            val largest = joinedSizes.indices.maxByOrNull { joinedSizes[it] } ?: return on
+            return BooleanArray(size) { label[it] == largest }
+        }
+
         /** The 8-connected pieces of [on] of at least [share] of the largest. */
         fun largestPieces(on: BooleanArray, share: Float): BooleanArray {
+            val (label, sizes) = pieces(on)
+            val most = sizes.maxOrNull() ?: return BooleanArray(size)
+            return BooleanArray(size) { label[it] >= 0 && sizes[label[it]] >= most * share }
+        }
+
+        /** Each cell's 8-connected piece of [on] (`-1` off it), and each piece's cell count. */
+        private fun pieces(on: BooleanArray): Pair<IntArray, List<Int>> {
             val label = IntArray(size) { -1 }
             val sizes = ArrayList<Int>()
             val queue = ArrayDeque<Int>()
@@ -349,8 +373,7 @@ internal object ScanFloorSlab {
                 }
                 sizes += count
             }
-            val most = sizes.maxOrNull() ?: return BooleanArray(size)
-            return BooleanArray(size) { label[it] >= 0 && sizes[label[it]] >= most * share }
+            return label to sizes
         }
 
         /**
@@ -580,6 +603,13 @@ internal object ScanFloorSlab {
 
     /** Below this, the floor seen is not one to lay a slab over: half a square metre. */
     const val MIN_AREA_M2 = 0.5f
+
+    /**
+     * Floor pieces up to 1 m apart are one floor, the gap bridged (what stands between two looks);
+     * further apart, only the largest is the floor's slab.
+     */
+    const val BRIDGE_M = 1f
+    private val BRIDGE_CELLS = (BRIDGE_M / 2f / CELL_M).roundToInt()
 
     /** Floor pieces under a fifth of the largest are strays. */
     private const val MIN_PIECE_SHARE = 0.2f

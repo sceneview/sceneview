@@ -21,6 +21,7 @@ import io.github.sceneview.demo.demos.internal.SyntheticShape
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.room.RoomBox
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -155,7 +156,7 @@ class ScanDepthModelTest {
     }
 
     @Test
-    fun `object replay respects the recorded range while rooms keep their five metre range`() {
+    fun `close replays respect the recorded range while rooms keep their sure range`() {
         val pose = DebugPose(0f, 0f, 0f, 0f, 0f, 0f, 1f)
         val planes = listOf(1_000, 2_000).flatMap { depth ->
             List(3) {
@@ -169,15 +170,29 @@ class ScanDepthModelTest {
         val empty = DenseCloud(FloatArray(0), IntArray(0))
         for (farM in listOf(ScanPreset.OBJECT.farM, 2.5f)) {
             val header = HEADER.copy(farM = farM)
-            for (scope in listOf(ScanScope.Object, ScanScope.Room)) {
+            for (scope in listOf(ScanScope.Object, ScanScope.Space, ScanScope.Room)) {
                 val store = store(recording = true, header = header, recordedFrames = planes)
                 val model = checkNotNull(depthModelOf(store, ID, scope, empty, null))
                 val mesh = checkNotNull(RerunGlbMesh.read(model.glb))
                 assertTrue("near surface missing", mesh.positions.indices.any { it % 3 == 2 && mesh.positions[it] in -1.05f..-0.95f })
                 val hasFar = mesh.positions.indices.any { it % 3 == 2 && mesh.positions[it] < -1.9f }
-                assertEquals("$scope with recorded farM=$farM", scope != ScanScope.Object || farM > 2f, hasFar)
+                assertEquals("$scope with recorded farM=$farM", scope.preset != ScanPreset.OBJECT || farM > 2f, hasFar)
             }
         }
+    }
+
+    @Test
+    fun `an object big enough to be filled keeps its model, not the fused surface`() {
+        assertEquals(ResultKind.Model, resultKindOf(ScanScope.Object, hasRecording = true, standsAsRoom = false, objectFilled = true))
+        assertEquals(ResultKind.DepthModel, resultKindOf(ScanScope.Object, hasRecording = true, standsAsRoom = false, objectFilled = false))
+        // Only an object: a filled verdict says nothing of another scope.
+        assertEquals(ResultKind.DepthModel, resultKindOf(ScanScope.Space, hasRecording = true, standsAsRoom = false, objectFilled = true))
+        val store = store(recording = true)
+        assertNull(depthModelOf(store, ID, ScanScope.Object, null, null, objectFilled = true))
+        assertFalse("nothing fused for it", store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        // A surface kept before for it is not what it opens on either.
+        checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null))
+        assertNull(depthModelOf(store, ID, ScanScope.Object, null, null, objectFilled = true))
     }
 
     /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
