@@ -103,7 +103,7 @@ arCore = "1.57.0"
 # Networking
 fuel = "2.3.1"
 okhttp = "5.5.0"
-kotlinxSerialization = "1.12.0"
+kotlinxSerialization = "1.13.0"
 
 # UI
 googleMaterial = "1.14.0"
