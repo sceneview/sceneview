@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,6 +13,45 @@ import java.nio.ByteOrder
  * confidence image pair.
  */
 class RawDepthCloudTest {
+
+    @Test
+    fun `canvasPoints scales each axis and preserves packed order and data`() {
+        val packed = intArrayOf(
+            0, 0, 300, 0xFFFF0000.toInt(),
+            3, 1, 5_000, 0xFF0000FF.toInt(),
+            1, 0, 1_000, 0xFF00FF00.toInt(),
+        )
+        val original = packed.copyOf()
+
+        val points = RawDepthCloud.canvasPoints(packed, 4, 2, 200f, 600f)
+
+        assertArrayEquals(floatArrayOf(0f, 0f, 150f, 300f, 50f, 0f), points, 0f)
+        assertArrayEquals(original, packed)
+    }
+
+    @Test
+    fun `canvasPoints uses post-rotation dimensions for a portrait cloud`() {
+        val (depth, confidence) = buildPair(IntArray(6) { 1_000 }, IntArray(6) { 255 }, 3, 2)
+        val packed = RawDepthCloud.buildCloud(
+            depth, 6, confidence, 3, 3, 2, stride = 1, rotationDegrees = 90,
+        )
+
+        val points = RawDepthCloud.canvasPoints(packed, 2, 3, 200f, 600f)
+
+        assertArrayEquals(
+            floatArrayOf(
+                100f, 0f, 100f, 200f, 100f, 400f,
+                0f, 0f, 0f, 200f, 0f, 400f,
+            ),
+            points,
+            0f,
+        )
+    }
+
+    @Test
+    fun `canvasPoints returns no centers for an empty cloud`() {
+        assertTrue(RawDepthCloud.canvasPoints(intArrayOf(), 4, 2, 200f, 600f).isEmpty())
+    }
 
     /**
      * Build a 4×2 raw-depth + confidence buffer pair, with every pixel having a
@@ -65,6 +105,51 @@ class RawDepthCloudTest {
         // Last point: x=3, y=0, depth=5000, color=falseColor(1) (blue).
         assertEquals(3, RawDepthCloud.x(packed, 3))
         assertEquals(DepthVisualization.falseColorArgb(1f), RawDepthCloud.argb(packed, 3))
+    }
+
+    @Test
+    fun `buildCloud separates nearby surfaces into warm green and cool colors`() {
+        val (depth, conf) = buildPair(
+            depthMm = intArrayOf(500, 1_000, 2_000),
+            confidence = intArrayOf(200, 200, 200),
+            width = 3,
+            height = 1,
+        )
+        val packed = RawDepthCloud.buildCloud(depth, 6, conf, 3, 3, 1, stride = 1)
+        val near = RawDepthCloud.argb(packed, 0)
+        val middle = RawDepthCloud.argb(packed, 1)
+        val far = RawDepthCloud.argb(packed, 2)
+
+        fun red(argb: Int) = (argb ushr 16) and 0xFF
+        fun green(argb: Int) = (argb ushr 8) and 0xFF
+        fun blue(argb: Int) = argb and 0xFF
+
+        assertTrue("0.5 m should be warm", red(near) > green(near))
+        assertTrue("1 m should be green rather than another red", green(middle) > red(middle))
+        assertTrue(green(middle) > blue(middle))
+        assertTrue("2 m should be cool", blue(far) > red(far))
+        for (i in 0 until 3) {
+            assertEquals("Points stay opaque regardless of distance", 255, RawDepthCloud.argb(packed, i) ushr 24)
+        }
+    }
+
+    @Test
+    fun `buildCloud clamps color range and keeps colors independent of other samples`() {
+        val (depth, conf) = buildPair(
+            depthMm = intArrayOf(100, 300, 1_000, 5_000, 65_535),
+            confidence = IntArray(5) { 200 },
+            width = 5,
+            height = 1,
+        )
+        val packed = RawDepthCloud.buildCloud(depth, 10, conf, 5, 5, 1, stride = 1)
+        assertEquals(0xFFFF0000.toInt(), RawDepthCloud.argb(packed, 0))
+        assertEquals(0xFFFF0000.toInt(), RawDepthCloud.argb(packed, 1))
+        assertEquals(0xFF0000FF.toInt(), RawDepthCloud.argb(packed, 3))
+        assertEquals(0xFF0000FF.toInt(), RawDepthCloud.argb(packed, 4))
+
+        val (singleDepth, singleConf) = buildPair(intArrayOf(1_000), intArrayOf(64), 1, 1)
+        val single = RawDepthCloud.buildCloud(singleDepth, 2, singleConf, 1, 1, 1, stride = 1)
+        assertEquals(RawDepthCloud.argb(packed, 2), RawDepthCloud.argb(single, 0))
     }
 
     @Test
@@ -283,7 +368,7 @@ class RawDepthCloudTest {
     @Test
     fun `buildCloud packs four ints per point in declared order`() {
         val (depth, conf) = buildPair(
-            depthMm = intArrayOf(1_500),
+            depthMm = intArrayOf(300),
             confidence = intArrayOf(180),
             width = 1,
             height = 1,
@@ -293,11 +378,8 @@ class RawDepthCloudTest {
         // Layout: [x, y, depthMm, argb]
         assertEquals(0, packed[0])
         assertEquals(0, packed[1])
-        assertEquals(1_500, packed[2])
-        val expectedColor = DepthVisualization.falseColorArgb(
-            DepthVisualization.normalize(1_500)!!
-        )
-        assertEquals(expectedColor, packed[3])
+        assertEquals(300, packed[2])
+        assertEquals(DepthVisualization.falseColorArgb(0f), packed[3])
     }
 
     @Test
@@ -427,5 +509,25 @@ class RawDepthCloudTest {
         assertTrue(RawDepthCloud.DEFAULT_STRIDE >= 1)
         assertTrue(RawDepthCloud.DEFAULT_MAX_POINTS > 0)
         assertTrue(RawDepthCloud.DEFAULT_CONFIDENCE_THRESHOLD in 0..255)
+    }
+
+    @Test
+    fun `bucketedCenters groups every center by its depth band, in order`() {
+        val near = DepthVisualization.NEAR_MM_DEFAULT
+        val far = DepthVisualization.FAR_MM_DEFAULT
+        val packed = intArrayOf(0, 0, near, 0, 1, 0, far, 0, 2, 0, near, 0)
+        val centers = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
+        val bands = RawDepthCloud.bucketedCenters(packed, centers, buckets = 4)
+        assertEquals(4, bands.size)
+        assertTrue(bands[0].contentEquals(floatArrayOf(1f, 2f, 5f, 6f)))
+        assertTrue(bands[3].contentEquals(floatArrayOf(3f, 4f)))
+        assertTrue(bands[1].isEmpty() && bands[2].isEmpty())
+        assertEquals(6, bands.sumOf { it.size })
+    }
+
+    @Test
+    fun `colorBucket stays in range beyond the ramp ends`() {
+        assertEquals(0, RawDepthCloud.colorBucket(1, buckets = 8))
+        assertEquals(7, RawDepthCloud.colorBucket(1_000_000, buckets = 8))
     }
 }

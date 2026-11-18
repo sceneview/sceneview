@@ -67,7 +67,7 @@ python rerun-bridge.py --save           # writes to ~/.sceneview/recordings/<ts>
 python rerun-bridge.py --save out.rrd   # custom path
 ```
 
-In the Android demo, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line over the same TCP socket; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","viewerUrl":"…"}`. The app surfaces the path and URL in a dialog, ready to copy or share via the system share sheet.
+In the Android demo, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line over the same TCP socket; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…"}`. The app shows the local path with a **Copy path** button and instructions. No viewer link is returned for a local save (`ShareResult.viewerUrl` stays nullable). Drop the `.rrd` onto https://sceneview.github.io/rerun/ to view it locally.
 
 Host the `.rrd` at a public https address that ends in `.rrd` and open:
 

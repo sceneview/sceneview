@@ -4,9 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1280">
 <title>SceneView — Social Preview</title>
+<link rel="stylesheet" href="../website-static/assets/fonts/fonts.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
@@ -19,19 +18,6 @@
     align-items: center;
     justify-content: center;
     position: relative;
-  }
-
-  /* Subtle radial glow behind content */
-  body::before {
-    content: '';
-    position: absolute;
-    width: 800px;
-    height: 500px;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: radial-gradient(ellipse at center, rgba(138,180,248,0.08) 0%, transparent 70%);
-    pointer-events: none;
   }
 
   .container {
@@ -106,7 +92,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, transparent 5%, #8AB4F8 30%, #A8CBFA 50%, #8AB4F8 70%, transparent 95%);
+    background: #ADC6FF;
   }
 </style>
 </head>
@@ -114,35 +100,11 @@
 
 <div class="container">
   <div class="logo-row">
-    <!-- Inlined logo-dark.svg -->
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="120" height="120">
-      <defs>
-        <linearGradient id="topGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#A8CBFA"/>
-          <stop offset="100%" stop-color="#8AB4F8"/>
-        </linearGradient>
-        <linearGradient id="rightGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#8AB4F8"/>
-          <stop offset="100%" stop-color="#4A90D9"/>
-        </linearGradient>
-        <linearGradient id="leftGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#4A90D9"/>
-          <stop offset="100%" stop-color="#005BC1"/>
-        </linearGradient>
-      </defs>
-      <ellipse cx="256" cy="300" rx="160" ry="80" fill="rgba(138,180,248,0.06)"/>
-      <polygon points="256,272 122,194 122,340 256,418" fill="url(#leftGrad)"/>
-      <polygon points="256,272 390,194 390,340 256,418" fill="url(#rightGrad)"/>
-      <polygon points="256,126 390,204 256,282 122,204" fill="url(#topGrad)"/>
-      <polygon points="256,145 370,210 256,275 142,210" fill="rgba(255,255,255,0.08)"/>
-      <polygon points="256,126 390,204 256,282 122,204" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-      <line x1="122" y1="204" x2="122" y2="340" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
-      <line x1="390" y1="204" x2="390" y2="340" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
-      <line x1="256" y1="282" x2="256" y2="418" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <polyline points="96,120 96,82 134,82" fill="none" stroke="#8AB4F8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-      <polyline points="416,120 416,82 378,82" fill="none" stroke="#8AB4F8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-      <polyline points="96,392 96,430 134,430" fill="none" stroke="#8AB4F8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-      <polyline points="416,392 416,430 378,430" fill="none" stroke="#8AB4F8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Flat cube paths from branding/logo-dark.svg. -->
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="120" height="120">
+      <path fill="#C9D9FF" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+      <path fill="#005BC1" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+      <path fill="#ADC6FF" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
     </svg>
     <span class="title">SceneView</span>
   </div>

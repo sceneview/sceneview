@@ -9,14 +9,11 @@
         fill="#1C1B1F" fill-opacity="0.85"
         stroke="rgba(255,255,255,0.15)" stroke-width="1"
         filter="url(#shadow)"/>
-  <!-- SceneView logo icon — stylized diamond/compose shape -->
-  <g transform="translate(14, 18)">
-    <!-- Diamond shape with layered depth -->
-    <path d="M0,-8 L6,0 L0,8 L-6,0 Z" fill="#7B61FF" opacity="0.5"/>
-    <path d="M0,-6 L5,0 L0,6 L-5,0 Z" fill="#7B61FF" opacity="0.75"/>
-    <path d="M0,-4 L3.5,0 L0,4 L-3.5,0 Z" fill="#7B61FF"/>
-    <!-- Small inner highlight -->
-    <path d="M0,-2 L1.5,0 L0,2 L-1.5,0 Z" fill="#A78BFA" opacity="0.6"/>
+  <!-- Flat SceneView cube from branding/logo-dark.svg. -->
+  <g transform="translate(14 18) scale(0.25) translate(-54 -53.6)">
+    <path fill="#C9D9FF" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+    <path fill="#005BC1" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+    <path fill="#ADC6FF" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
   </g>
   <!-- Text -->
   <text x="28" y="22.5" fill="#FFFFFF" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"

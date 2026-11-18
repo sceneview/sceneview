@@ -6,8 +6,8 @@ on:
   # `pull_request` — runs the `android-library-render` job when the PR
   # touches something `:sceneview:connectedDebugAndroidTest` can see, and the
   # `web-render` job when it touches a web path (the `paths:` list below,
-  # split per job by the `changes` job). The library job is the one blocking
-  # leg of this workflow; before #3216 it had no pre-merge run at all, so a
+  # split per job by the `changes` job). Both PR jobs report test failures.
+  # Before #3216 the library job had no pre-merge run at all, so a
   # PR that added or broke an androidTest merged on a green that never
   # executed it, and the red surfaced on `main` attributed to whichever push
   # came next. The iOS job stays off PRs: it is advisory by design
@@ -44,11 +44,13 @@ on:
       # other PR-time workflow, and `check-test-suites-reachable.sh` (#3201)
       # reads a `pull_request` trigger whose `paths:` exclude the package as
       # "runs its tests but never triggers on it". So web changes trigger
-      # this workflow too, and the `web-render` job runs on PRs (advisory,
-      # `|| true`, ubuntu-only). The `changes` job below then runs each leg
+      # this workflow too, and the `web-render` job runs on PRs (ubuntu-only).
+      # The `changes` job below then runs each leg
       # only for its own half of this list: a library PR no longer waits on
       # the 24-min web suite, and a web-only PR no longer boots the emulator.
       - 'samples/web-demo/**'
+      - '.github/scripts/test_render_tests.py'
+      - '.github/workflows/requirements/ci.txt'
       # The demo runs the website viewer since #4316: a viewer-only edit
       # ships to /web-demo/ and must run the suite too.
       - 'website-static/js/sceneview.js'
@@ -169,6 +171,8 @@ jobs:
             web:
               - *shared
               - 'samples/web-demo/**'
+              - '.github/scripts/test_render_tests.py'
+              - '.github/workflows/requirements/ci.txt'
               - 'website-static/js/sceneview.js'
               - 'sceneview-web/**'
       - name: Assert every path filter produced a real verdict
@@ -404,7 +408,7 @@ jobs:
   # ── Web render tests ──────────────────────────────────────────────────────
   web-render:
     name: Web Playwright screenshot tests
-    # Advisory leg (`|| true`). Runs on PRs that touch a web path, so the
+    # Test failures fail this job (#4548). Runs on PRs that touch a web path, so the
     # suite stays reachable from a PR-time workflow (see the
     # `pull_request.paths` note), and on a manual dispatch.
     #
@@ -412,7 +416,7 @@ jobs:
     # exact duplicate. `device-qa.yml`'s web leg runs the same
     # `samples/web-demo` suite (same `playwright.config.ts`, full spec set,
     # lockfile-pinned) on every push that touches `samples/web-demo/**` and
-    # every night, and it is BLOCKING, whereas this job can never go red. Any
+    # every night. Any
     # other push only re-tested the unchanged committed `site/` bundle.
     # Measured 2026-09-18..25: 52 push + 8 nightly runs of this job, ~24 min
     # each (~1,430 runner-minutes), none of which could report a failure.
@@ -432,6 +436,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Test Playwright workflow verdict
+        run: |
+          python3 -c 'import yaml' || python3 -m pip install -r .github/workflows/requirements/ci.txt
+          python3 -m unittest discover -s .github/scripts -p 'test_render_tests.py' -v
 
       # The web demo's catalog models are not in git (assets/manifest.json).
       - name: Fetch binary assets (web-demo)
@@ -454,7 +463,7 @@ jobs:
 
       - name: Run Playwright tests
         working-directory: samples/web-demo
-        run: npx playwright test --reporter=html || true
+        run: npx playwright test --reporter=html
 
       - name: Upload Playwright report
         if: always()

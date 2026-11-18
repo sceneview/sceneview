@@ -44,10 +44,11 @@ Docs use `docs/docs/assets/images/logo-sceneview.svg`, `favicon.svg` (PWA) and
 `favicon.png` (browser, selected by `docs/mkdocs.yml`). The web demo already points
 to the root favicon; its inline header symbol remains for the demo-code batch.
 
-Composed artwork still containing the former mark is outside this identity export:
-`feature-graphic.svg`, `exports/store/`, `exports/social/`, `social-preview.html`,
-`website-static/og-image.{svg,png}`, the docs hero/badge illustrations, and the Android
-TV banner. Store screenshots, thumbnails and demo code are unchanged.
+Every composed artwork now carries the flat cube: `feature-graphic.svg` and its export
+in `exports/store/`, `exports/social/`, `social-preview.html`, `website-static/og-image.{svg,png}`,
+the docs "Made with SceneView" badge and the Android TV banner. The docs hero illustrations
+show scene objects, not the logo. The shipped Play feature graphic under
+`samples/android-demo/distribution/play-store/` is a separate, current asset.
 
 Export specifications: [Android adaptive icons](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive),
 [Google Play icon specification](https://developer.android.com/distribute/google-play/resources/icon-design-specifications),
@@ -62,7 +63,7 @@ Not repeated here, so they cannot drift: use the M3 role table in `DESIGN.md` §
 ## Store Assets Status
 
 ### Google Play Store
-- [x] Feature graphic (1024x500) — `branding/feature-graphic.svg` (gradient, to flatten)
+- [x] Feature graphic (1024x500) — `branding/feature-graphic.svg` (flat)
 - [x] Icon — adaptive icon with the cube (`samples/android-demo/.../ic_launcher_foreground.xml`)
 - [ ] Screenshots (phone, tablet, TV) — demo app running on emulator
 - [x] Short description: "3D & AR SDK for Android — Jetpack Compose, Filament, ARCore"
@@ -79,5 +80,5 @@ Not repeated here, so they cannot drift: use the M3 role table in `DESIGN.md` §
 
 ### Website
 - [x] Favicon — `website-static/favicon.svg` (compact monochrome, light/dark)
-- [x] OG image (1200x630) — `website-static/og-image.svg` (gradient, to flatten)
+- [x] OG image (1200x630) — `website-static/og-image.svg` (flat; the PNG is rendered with the site fonts, copied to `exports/social/`)
 - [x] Apple touch icon (180x180) — `website-static/apple-touch-icon.svg` (flat, full square)

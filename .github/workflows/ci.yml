@@ -250,6 +250,8 @@ jobs:
               # public API would merge green.
               - 'sceneview-compose/**'
               - 'samples/android-demo/**'
+              # Recovery coaching call-site regression test in `unit-test`.
+              - 'tools/test_ar_coaching_wiring.py'
               - 'samples/android-tv-demo/**'
               - 'samples/common/**'
               # The demos' binary assets (tools/fetch-assets.sh).
@@ -269,9 +271,9 @@ jobs:
               - 'website-static/credits.html'
               - 'website-static/models/platforms/thumbnails/**'
             # `web` gates the Gradle Kotlin/JS build of the sceneview-web
-            # library plus the desktop-demo compile (#2540) that lives in the
-            # same job. samples/web-demo is a plain static site (no Gradle
-            # module since #1946) — it is guarded by the Playwright suite in
+            # library, website viewer colour regressions and the desktop-demo
+            # compile (#2540) that live in the same job. samples/web-demo is a
+            # plain static site (no Gradle module since #1946), guarded by Playwright in
             # device-qa.yml / render-tests.yml, not this job.
             web:
               - *shared
@@ -279,6 +281,9 @@ jobs:
               - 'sceneview-web/**'
               - 'sceneview-compose/**'
               - 'samples/desktop-demo/**'
+              - 'website-static/js/sceneview.js'
+              - 'tools/test-web-tone-mapping.cjs'
+              - 'tools/measure-web-studio.cjs'
             flutter:
               - *shared
               - 'flutter/**'
@@ -581,13 +586,15 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: inputs.force-all || needs.changes.outputs.android == 'true'
+    # Web-only changes must also reach the detekt gate (#4424).
+    if: inputs.force-all || needs.changes.outputs.android == 'true' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
       - name: Fetch binary assets (android)
+        if: inputs.force-all || needs.changes.outputs.android == 'true'
         uses: ./.github/actions/fetch-assets
         with:
           scopes: android
@@ -597,11 +604,12 @@ jobs:
       # The demo checks its library dependencies, so this single task covers
       # the Android source graph without separate library analyses.
       - name: Lint
+        if: inputs.force-all || needs.changes.outputs.android == 'true'
         run: ./gradlew :samples:android-demo:lintDebug --stacktrace
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml).
-      # Runs on the four library modules plus the Play Store demo (#3450): the
+      # Runs on the five library modules plus the Play Store demo (#3450): the
       # demo's task used to be scheduled nowhere, so its missing dependency on
       # `generateDemoRegistry` and its 93 grandfathered findings went unseen.
       #
@@ -618,7 +626,7 @@ jobs:
       # What still blocks is the bug-finding rules (potential-bugs,
       # coroutines, exceptions, empty-blocks, dead code).
       - name: Detekt
-        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt :samples:android-demo:detekt --stacktrace
+        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt :sceneview-web:detekt :samples:android-demo:detekt --stacktrace
 
       - name: Upload detekt reports
         if: always()
@@ -630,6 +638,7 @@ jobs:
             arsceneview/build/reports/detekt/
             sceneview-core/build/reports/detekt/
             sceneview-compose/build/reports/detekt/
+            sceneview-web/build/reports/detekt/
             samples/android-demo/build/reports/detekt/
           if-no-files-found: ignore
 
@@ -661,6 +670,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Check AR coaching wiring
+        run: python3 tools/test_ar_coaching_wiring.py
+
       - name: Fetch binary assets (android tv)
         uses: ./.github/actions/fetch-assets
         with:
@@ -783,6 +795,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 20
+
+      - name: Website studio lighting and colour regressions
+        run: node --test tools/test-web-tone-mapping.cjs
 
       - name: Build web targets
         run: |

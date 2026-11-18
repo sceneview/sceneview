@@ -4,15 +4,14 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.utils.worldToScreen
@@ -50,6 +49,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -65,24 +66,42 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
+import io.github.sceneview.demo.DEFAULT_LABEL_FADE_START_DEGREES
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoScaffoldTestTags
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.LocalDemoSceneSheetCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialStudio
 import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.demos.internal.MaterialTrait
 import io.github.sceneview.demo.demos.internal.StudioMaterial
+import io.github.sceneview.demo.demos.internal.MaterialCaptionPlacement
+import io.github.sceneview.demo.demos.internal.compareCaptionPlacements
+import io.github.sceneview.demo.demos.internal.compareCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionDepth
+import io.github.sceneview.demo.demos.internal.galleryCaptionSpacingAtRadiusPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionSpacingPx
+import io.github.sceneview.demo.demos.internal.galleryCaptionVisible
+import io.github.sceneview.demo.demos.internal.galleryCaptionWidthPx
+import io.github.sceneview.demo.demos.internal.materialCaptionCoverAlpha
+import io.github.sceneview.demo.demos.internal.publishedGalleryCaptionSpacingPx
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
@@ -93,7 +112,9 @@ import io.github.sceneview.demo.OrbitSpin
 import io.github.sceneview.demo.orbitLabelFadeAlpha
 import io.github.sceneview.demo.orbitYawDeviationDegrees
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setMetallic
@@ -117,8 +138,11 @@ import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -170,9 +194,11 @@ fun MaterialsDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(MaterialsMode.entries, MaterialsMode.Gallery))
     }
+    var galleryHintDismissed by remember { mutableStateOf(false) }
     val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     val onModeChange: (MaterialsMode) -> Unit = { next ->
         if (next != mode) {
+            galleryHintDismissed = true
             io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
             mode = next
         }
@@ -183,7 +209,13 @@ fun MaterialsDemo(onBack: () -> Unit) {
         // instances survive the toggle. Switching modes is then a camera change, not a
         // teardown — no reload, no black frame, and a slider tweak is still there when the
         // user comes back to the wall.
-        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(onBack, mode, onModeChange)
+        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(
+            onBack = onBack,
+            mode = mode,
+            onModeChange = onModeChange,
+            galleryHintVisible = !galleryHintDismissed,
+            onDismissGalleryHint = { galleryHintDismissed = true },
+        )
         // Occlusion gets its own engine on purpose: it is a different scene with a different
         // camera and a loaded GLB, and giving it a separate `rememberEngine()` means leaving
         // the tab tears its resources down completely.
@@ -228,6 +260,8 @@ private fun StudioSection(
     onBack: () -> Unit,
     mode: MaterialsMode,
     onModeChange: (MaterialsMode) -> Unit,
+    galleryHintVisible: Boolean,
+    onDismissGalleryHint: () -> Unit,
 ) {
     val inspecting = mode == MaterialsMode.Inspect
     val library = MaterialStudio.library
@@ -299,6 +333,7 @@ private fun StudioSection(
     val view = rememberView(engine)
     val comparisonCamera = rememberCameraNode(engine)
     var labelFrame by remember { mutableIntStateOf(0) }
+    var opaqueSpacingPx by remember { mutableFloatStateOf(Float.NaN) }
 
     // ── Tap-to-focus (#3609) ─────────────────────────────────────────────────────────────
     //
@@ -619,6 +654,7 @@ private fun StudioSection(
      * the screenshot harness never captures a half-travelled camera.
      */
     fun focusOn(index: Int) {
+        onDismissGalleryHint()
         focusIndex = index
         haptic.selection()
         // Pin the sweep where the tap found it: the dolly must not also turn, or the sphere
@@ -683,6 +719,25 @@ private fun StudioSection(
     // "Scene ready" waits until both have landed (#4174).
     firstFrame.holdUntil(landed = environment != null)
 
+    // The hint yields to the scene: first interaction, or a few seconds after the first frame.
+    // The timeout follows the system's accessibility recommendation so TalkBack reads it before
+    // it goes, and QA mode keeps it on screen so captures stay deterministic.
+    val accessibilityManager = LocalAccessibilityManager.current
+    val galleryHintMillis = remember(accessibilityManager) {
+        accessibilityManager?.calculateRecommendedTimeoutMillis(
+            GALLERY_HINT_MILLIS,
+            containsIcons = false,
+            containsText = true,
+            containsControls = false,
+        ) ?: GALLERY_HINT_MILLIS
+    }
+    LaunchedEffect(firstFrame.rendered.value, inspecting, galleryHintVisible, DemoSettings.qaMode) {
+        if (firstFrame.rendered.value && !inspecting && galleryHintVisible && !DemoSettings.qaMode) {
+            delay(galleryHintMillis)
+            onDismissGalleryHint()
+        }
+    }
+
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
     // `Node.name` carries the material id — the picker hands back the picked Node, not an
     // index, and matching on the name is what keeps that mapping readable when the wall order
@@ -690,11 +745,14 @@ private fun StudioSection(
     // one; the camera is already travelling and a re-aim mid-flight reads as a glitch.
     val gestureListener = rememberOnGestureListener(
         onSingleTapUp = { _, node ->
+            if (!inspecting) onDismissGalleryHint()
             if (!inspecting && !focusing) {
                 val tapped = library.indexOfFirst { it.id == node?.name }
                 if (tapped >= 0) focusOn(tapped)
             }
         },
+        onScroll = { _, _, _, _ -> if (!inspecting) onDismissGalleryHint() },
+        onScaleBegin = { _, _, _ -> if (!inspecting) onDismissGalleryHint() },
     )
 
     DemoScaffold(
@@ -715,8 +773,29 @@ private fun StudioSection(
         peekHeader = if (inspecting) {
             stringResource(selected.nameRes)
         } else {
-            stringResource(R.string.demo_materials_gallery_hint)
+            null
         },
+        bottomOverlay = if (!inspecting) {{
+            val hintAlpha by animateFloatAsState(
+                targetValue = if (galleryHintVisible) 1f else 0f,
+                animationSpec = SceneViewTokens.Motion.fade(),
+                label = "gallery-hint",
+            )
+            // Keep the measured band: removing the hint would reframe the wall as it fades.
+            GlassPill(
+                modifier = Modifier
+                    .graphicsLayer { alpha = hintAlpha }
+                    .then(if (galleryHintVisible) Modifier else Modifier.clearAndSetSemantics { })
+                    .testTag(DemoScaffoldTestTags.STATUS_PILL),
+            ) {
+                Text(
+                    text = stringResource(R.string.demo_materials_gallery_hint),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LocalStageChrome.current.onGlass,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }} else null,
         onResetSettings = {
             selectedIndex = MaterialStudio.DEFAULT_INDEX
             environmentIndex = MaterialStudio.DEFAULT_ENVIRONMENT_INDEX
@@ -907,7 +986,42 @@ private fun StudioSection(
                 modifier = Modifier.fillMaxSize(),
                 view = view,
                 cameraNode = comparisonCamera,
-                onFrame = { nanos -> firstFrame.onFrame(nanos); labelFrame++ },
+                onFrame = { nanos ->
+                    firstFrame.onFrame(nanos)
+                    if (!inspecting) {
+                        val cameraRight = -comparisonCamera.leftDirection
+                        val centre = view.worldToScreen(Position(0f, 0f, 0f))
+                        val neighbour = view.worldToScreen(cameraRight * MaterialStudio.BALL_SPACING)
+                        if (centre != null && neighbour != null) {
+                            val eye = comparisonCamera.worldPosition
+                            val headOnSpacingPx = abs(neighbour.x - centre.x)
+                            val cameraDepth = galleryCaptionDepth(eye, comparisonCamera.forwardDirection)
+                            val spacing = publishedGalleryCaptionSpacingPx(
+                                liveSpacingPx = galleryCaptionSpacingPx(
+                                    headOnSpacingPx = headOnSpacingPx,
+                                    cameraDepth = cameraDepth,
+                                    ballSpacing = MaterialStudio.BALL_SPACING,
+                                    columns = MaterialStudio.COLUMNS,
+                                    yawDegrees = DEFAULT_LABEL_FADE_START_DEGREES,
+                                ),
+                                gallerySpacingPx = galleryCaptionSpacingAtRadiusPx(
+                                    headOnSpacingPx = headOnSpacingPx,
+                                    cameraDepth = cameraDepth,
+                                    galleryRadius = galleryRadius,
+                                    ballSpacing = MaterialStudio.BALL_SPACING,
+                                    columns = MaterialStudio.COLUMNS,
+                                    yawDegrees = DEFAULT_LABEL_FADE_START_DEGREES,
+                                ),
+                                focusIndex = focusIndex,
+                                focusZoom = focusZoom.value,
+                            )
+                            if (opaqueSpacingPx.isNaN() || abs(spacing - opaqueSpacingPx) > 1f) {
+                                opaqueSpacingPx = spacing
+                            }
+                        }
+                    }
+                    labelFrame++
+                },
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -968,88 +1082,187 @@ private fun StudioSection(
             // Project ordinary Compose labels from the actual view, so names follow the sweep.
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val density = LocalDensity.current
+                val sceneHeightPx = with(density) { maxHeight.toPx() }
+                val sheetCoverPx = with(density) {
+                    LocalDemoSceneSheetCover.current.toPx()
+                }
+                val comparing = inspecting && compare
                 val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
-                val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
                 val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
+                val maximumWidthPx = with(density) { captionWidth.roundToPx() }
+                val hideBelowPx = with(density) { SceneViewTokens.Space.x3l.roundToPx() }
+                val showAbovePx = with(density) { (SceneViewTokens.Space.x3l + SceneViewTokens.Space.sm).roundToPx() }
+                var wasVisible by remember { mutableStateOf(true) }
+                val galleryVisible by remember(maximumWidthPx, gapPx, hideBelowPx, showAbovePx) {
+                    derivedStateOf {
+                        galleryCaptionVisible(
+                            widthPx = galleryCaptionWidthPx(
+                                spacingPx = opaqueSpacingPx.takeUnless { it.isNaN() },
+                                gapPx = gapPx.roundToInt(),
+                                maximumWidthPx = maximumWidthPx,
+                            ),
+                            wasVisible = wasVisible,
+                            hideBelowPx = hideBelowPx,
+                            showAbovePx = showAbovePx,
+                        )
+                    }
+                }
+                val readable = inspecting || galleryVisible
+                // Commit hysteresis after composition; the derived calculation stays read-only.
+                SideEffect { if (!inspecting) wasVisible = readable }
+                val readableAlpha = animateFloatAsState(
+                    targetValue = if (readable) 1f else 0f,
+                    animationSpec = SceneViewTokens.Motion.fade(),
+                    label = "galleryCaptionVisibility",
+                )
                 val positions = if (!inspecting) MaterialStudio.wallPositions().map {
                     Position(it.x, it.y - MaterialStudio.BALL_RADIUS, it.z)
                 } else if (compare) listOf(
                     Position(-MaterialStudio.COMPARE_OFFSET, -MaterialStudio.COMPARE_RADIUS, 0f),
                     Position(MaterialStudio.COMPARE_OFFSET, -MaterialStudio.COMPARE_RADIUS, 0f),
                 ) else listOf(Position(0f, -MaterialStudio.HERO_RADIUS, 0f))
-                positions.forEachIndexed { index, anchor ->
-                    val caption = if (!inspecting) stringResource(library[index].nameRes)
-                    else if (compare && index == 0) stringResource(
-                        if (selected.trait == MaterialTrait.None) R.string.demo_materials_base_matte
-                        else R.string.demo_materials_base_layer
-                    ) else stringResource(selected.nameRes)
-                    // #3609: the labels carry NO pointer-input modifier, on purpose. They
-                    // used to be `clickable`, and a Compose node that takes pointer input
-                    // wins the hit test outright — the `SceneView` sibling underneath was
-                    // never even offered the event, so a drag that happened to start on a
-                    // name did nothing at all while the same drag two pixels lower orbited
-                    // the camera. Non-consumption is not enough to fix that: hit testing
-                    // stops at the topmost node that accepts pointers, whatever it then does
-                    // with them. So the labels are pure decoration and the spheres behind
-                    // them stay both draggable and tappable.
-                    val focused = !inspecting && focusIndex == index
-                    Text(
-                        caption,
-                        modifier = Modifier
-                            // #3802: the wall is flat and captioned for a roughly head-on
-                            // view; the orbit itself stays completely free (this demo exists
-                            // to turn a reflection around), so instead of bounding the drag,
-                            // neighbouring captions fade out as the camera turns away from
-                            // front-on — they would otherwise converge on screen under
-                            // perspective and overlap. Inspect mode has one subject (or a
-                            // fixed Compare pair) with no neighbour to collide with, so its
-                            // captions stay at full opacity.
-                            .graphicsLayer {
-                                @Suppress("UNUSED_EXPRESSION")
-                                labelFrame
-                                alpha = if (inspecting) {
-                                    1f
-                                } else {
-                                    orbitLabelFadeAlpha(
-                                        orbitYawDeviationDegrees(
-                                            eye = galleryManipulator.getTransform().position,
-                                            // Matches `galleryManipulator`'s own `target`
-                                            // below — the wall pivots around the origin.
-                                            target = Position(0f, 0f, 0f),
-                                            referenceYawDegrees = 0f,
-                                        ),
+                val captions: @Composable () -> Unit = {
+                    positions.forEachIndexed { index, anchor ->
+                        val caption = if (!inspecting) stringResource(library[index].nameRes)
+                        else if (compare && index == 0) stringResource(
+                            if (selected.trait == MaterialTrait.None) R.string.demo_materials_base_matte
+                            else R.string.demo_materials_base_layer
+                        ) else stringResource(selected.nameRes)
+                        // #3609: the labels carry NO pointer-input modifier, on purpose. They
+                        // used to be `clickable`, and a Compose node that takes pointer input
+                        // wins the hit test outright — the `SceneView` sibling underneath was
+                        // never even offered the event, so a drag that happened to start on a
+                        // name did nothing at all while the same drag two pixels lower orbited
+                        // the camera. Non-consumption is not enough to fix that: hit testing
+                        // stops at the topmost node that accepts pointers, whatever it then does
+                        // with them. So the labels are pure decoration and the spheres behind
+                        // them stay both draggable and tappable.
+                        val focused = !inspecting && focusIndex == index
+                        Text(
+                            caption,
+                            modifier = Modifier
+                                .then(if (readable) Modifier else Modifier.clearAndSetSemantics {})
+                                .then(
+                                    if (comparing) Modifier else Modifier
+                                        .layout { measurable, constraints ->
+                                            val gap = gapPx.roundToInt()
+                                            val width = galleryCaptionWidthPx(
+                                                spacingPx = if (inspecting) null else opaqueSpacingPx.takeUnless { it.isNaN() },
+                                                gapPx = gap,
+                                                maximumWidthPx = maximumWidthPx,
+                                            )
+                                            val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                            layout(placeable.width, placeable.height) {
+                                                // Frame changes invalidate placement without remeasuring text.
+                                                @Suppress("UNUSED_EXPRESSION")
+                                                labelFrame
+                                                val point = view.worldToScreen(anchor)
+                                                val x = point?.x ?: -view.viewport.width.toFloat()
+                                                val y = point?.y ?: -view.viewport.height.toFloat()
+                                                placeable.place((x - width / 2f).roundToInt(), (y + gap).roundToInt())
+                                            }
+                                        }
+                                )
+                                // #3802: the wall is flat and captioned for a roughly head-on
+                                // view; the orbit itself stays completely free (this demo exists
+                                // to turn a reflection around), so instead of bounding the drag,
+                                // neighbouring captions fade out as the camera turns away from
+                                // front-on — they would otherwise converge on screen under
+                                // perspective and overlap. Inspect mode has one subject (or a
+                                // fixed Compare pair) with no neighbour to collide with, so its
+                                // captions stay at full opacity.
+                                // Layer follows offset: partial alpha fades the caption, avoiding offscreen clipping at the Box origin.
+                                .then(if (comparing) Modifier else Modifier.graphicsLayer {
+                                    @Suppress("UNUSED_EXPRESSION")
+                                    labelFrame
+                                    val orbitAlpha = if (inspecting) {
+                                        1f
+                                    } else {
+                                        orbitLabelFadeAlpha(
+                                            orbitYawDeviationDegrees(
+                                                eye = galleryManipulator.getTransform().position,
+                                                // Matches `galleryManipulator`'s own `target`
+                                                // below — the wall pivots around the origin.
+                                                target = Position(0f, 0f, 0f),
+                                                referenceYawDegrees = 0f,
+                                            ),
+                                        )
+                                    }
+                                    // Follow the glass during a drag; fade before the caption bottom reaches it.
+                                    alpha = readableAlpha.value * orbitAlpha * materialCaptionCoverAlpha(
+                                        captionBottomY = (view.worldToScreen(anchor)?.y ?: sceneHeightPx) + gapPx + size.height,
+                                        sceneHeightPx = sceneHeightPx,
+                                        sheetCoverPx = sheetCoverPx,
+                                        fadeBandPx = size.height,
+                                    )
+                                })
+                                .padding(horizontal = SceneViewTokens.Space.xs)
+                                .background(
+                                    if (focused) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                    MaterialTheme.shapes.small,
+                                )
+                                .padding(SceneViewTokens.Space.xs),
+                            style = if (inspecting) {
+                                MaterialTheme.typography.titleSmall
+                            } else {
+                                MaterialTheme.typography.labelSmall
+                            },
+                            color = if (focused) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            textAlign = TextAlign.Center,
+                            maxLines = if (!inspecting || comparing) 2 else Int.MAX_VALUE,
+                            overflow = if (!inspecting || comparing) TextOverflow.Ellipsis else TextOverflow.Clip,
+                        )
+                    }
+                }
+                if (comparing) {
+                    Layout(content = captions, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
+                        @Suppress("UNUSED_EXPRESSION")
+                        labelFrame
+                        val points = positions.map { view.worldToScreen(it) }
+                        val gap = gapPx.roundToInt()
+                        // Compare caption collision: screen halves overlap when the projected anchors converge.
+                        val width = compareCaptionWidthPx(
+                            firstAnchorX = points[0]?.x ?: 0f,
+                            secondAnchorX = points[1]?.x ?: 0f,
+                            gapPx = gap,
+                            minimumWidthPx = with(density) { SceneViewTokens.Space.x4l.roundToPx() },
+                        ).coerceAtMost(constraints.maxWidth)
+                        val placeables = measurables.map {
+                            it.measure(constraints.copy(minWidth = width, maxWidth = width, minHeight = 0))
+                        }
+                        val offsets = points.mapIndexed { index, point ->
+                            MaterialCaptionPlacement(
+                                x = ((point?.x ?: -view.viewport.width.toFloat()) - width / 2f).roundToInt(),
+                                y = ((point?.y ?: -view.viewport.height.toFloat()) + gap).roundToInt(),
+                                height = placeables[index].height,
+                            )
+                        }
+                        val placements = compareCaptionPlacements(offsets[0], offsets[1], width, gap)
+                        layout(constraints.maxWidth, constraints.maxHeight) {
+                            placeables.forEachIndexed { index, placeable ->
+                                val placement = placements[index]
+                                // Use this placement's bottom, including the stacked row.
+                                placeable.placeWithLayer(placement.x, placement.y) {
+                                    alpha = materialCaptionCoverAlpha(
+                                        captionBottomY = placement.captionBottomY,
+                                        sceneHeightPx = sceneHeightPx,
+                                        sheetCoverPx = sheetCoverPx,
+                                        fadeBandPx = placeable.height.toFloat(),
                                     )
                                 }
                             }
-                            .offset {
-                                @Suppress("UNUSED_EXPRESSION")
-                                labelFrame
-                                val point = view.worldToScreen(anchor)
-                                IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
-                                    ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
-                            }.width(captionWidth)
-                            .padding(horizontal = SceneViewTokens.Space.xs)
-                            .background(
-                                if (focused) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surface
-                                },
-                                MaterialTheme.shapes.small,
-                            )
-                            .padding(SceneViewTokens.Space.xs),
-                        style = if (inspecting) {
-                            MaterialTheme.typography.titleSmall
-                        } else {
-                            MaterialTheme.typography.labelSmall
-                        },
-                        color = if (focused) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        textAlign = TextAlign.Center,
-                    )
+                        }
+                    }
+                } else {
+                    captions()
                 }
             }
             // The scene is procedural, so there is nothing to decode — but the environment's
@@ -1086,6 +1299,9 @@ private fun EnvironmentSwapIndicator() {
  * — and short enough that it never feels like a wait before Inspect opens.
  */
 private const val FOCUS_FLIGHT_MILLIS: Int = 520
+
+/** Long enough to discover tap-to-focus without covering the bottom captions indefinitely. */
+private const val GALLERY_HINT_MILLIS: Long = 4_000L
 
 /**
  * Height of Inspect's orbiting eye above its subject, world units.

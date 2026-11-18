@@ -9,10 +9,10 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 
 | Building with | Add | Then write |
 |---|---|---|
-| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.69.0` | `SceneView { }` |
-| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.69.0` | `ARSceneView { }` or `PlacementScene` |
+| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.69.7` | `SceneView { }` |
+| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.69.7` | `ARSceneView { }` or `PlacementScene` |
 | Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
-| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.0` | `SceneViewer(model = …)` in `commonMain` |
+| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.7` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
 Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `ARScene`)?
@@ -20,9 +20,12 @@ Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `A
 [3D and AR library, per platform](https://sceneview.github.io/docs/3d-ar-library/).
 
 **Used in production.** More than 1,300 stars on GitHub, and over 500 public repositories declare
-SceneView as a dependency. It ships in Medal, IKEA, Lenskart and Safie on Google Play, is declared by the
-open-source apps Bitkey (Block) and Vocable (WillowTree), and is a dependency of the GeneXus
-Augmented Reality module and the TruVideo camera SDK. The Niantic Spatial SDK samples use it for AR.
+SceneView as a dependency. It ships on Google Play in the Volkswagen, Audi, Porsche and CUPRA
+apps, Philips Hue, Medal and IKEA, is declared by the open-source apps Bitkey (Block) and Vocable
+(WillowTree), and is a dependency of the GeneXus Augmented Reality module and the TruVideo camera
+SDK. The Niantic Spatial SDK samples use it for AR. Lenskart ships
+[Sceneform Maintained](https://github.com/sceneview/sceneform-android), SceneView's predecessor, and Safie presented
+SceneView in [a public talk](https://speakerdeck.com/jeromecha/mobile-dev-japan-number-3-safie-viewer-android-and-sceneview).
 
 **AI-first** means one thing here: an assistant that reads [`llms.txt`](./llms.txt) or
 [the MCP server](./mcp/) writes SceneView code that works on the first try. When it doesn't, the
@@ -82,7 +85,7 @@ One minimal, working example per platform. The full reference for each is in
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.69.0")
+implementation("io.github.sceneview:sceneview:4.69.7")
 ```
 
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.3 or newer and JVM
@@ -117,7 +120,7 @@ coroutine: Filament calls must run on the main thread, and `rememberModelInstanc
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.69.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.69.7")   // includes the 3D module
 ```
 
 ```kotlin
@@ -170,8 +173,8 @@ with `tools:replace="android:value"`. Both snippets are in the
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.7/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.7/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
@@ -179,7 +182,7 @@ with `tools:replace="android:value"`. Both snippets are in the
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.69.0")
+implementation("io.github.sceneview:sceneview-compose:4.69.7")
 ```
 
 ```kotlin
@@ -241,10 +244,10 @@ The other platforms in the table below join this section once a capture backs th
 
 | Platform | Coordinate |
 |---|---|
-| Android 3D | `io.github.sceneview:sceneview:4.69.0` |
-| Android AR | `io.github.sceneview:arsceneview:4.69.0` |
-| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.0` |
-| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.69.0` |
+| Android 3D | `io.github.sceneview:sceneview:4.69.7` |
+| Android AR | `io.github.sceneview:arsceneview:4.69.7` |
+| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.7` |
+| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.69.7` |
 | Apple (SPM) — deprecated | `https://github.com/sceneview/sceneview.git`, exact `4.68.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
@@ -504,7 +507,7 @@ npm install sceneview-web
 The package expects a `Filament` global and does not include the `SceneView.modelViewer` script
 helpers. A Kotlin Multiplatform project that only needs the shared core (collision, math,
 geometry, animation, physics — no renderer) uses
-`implementation("io.github.sceneview:sceneview-core-js:4.69.0")`.
+`implementation("io.github.sceneview:sceneview-core-js:4.69.7")`.
 
 [Landing page](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [npm](https://www.npmjs.com/package/sceneview-web)
 
@@ -568,6 +571,28 @@ sceneview-core (Kotlin Multiplatform)
 | `samples/desktop-demo` | Desktop (JDK 21+) | `./gradlew :samples:desktop-demo:run` |
 | `samples/flutter-demo` | Flutter | `cd samples/flutter-demo && flutter run` |
 | `samples/react-native-demo` | React Native | See its README |
+
+## Used in
+
+In Google Play apps (checked in their published builds: the Volkswagen Group and Philips Hue apps on
+November 17, 2026, Medal and IKEA on November 9, 2026):
+
+- **[Volkswagen](https://www.volkswagen.com/)** — [Volkswagen](https://play.google.com/store/apps/details?id=com.volkswagen.weconnect).
+- **[Audi](https://www.audi.com/)** — [myAudi](https://play.google.com/store/apps/details?id=de.myaudi.mobile.assistant).
+- **[Porsche](https://www.porsche.com/)** — [My Porsche](https://play.google.com/store/apps/details?id=de.porsche.one).
+- **[CUPRA](https://www.cupra.com/)** — [My CUPRA](https://play.google.com/store/apps/details?id=com.cupra.mycupra).
+- **[Philips Hue](https://www.philips-hue.com/)** — [Philips Hue](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2): ships SceneView's AR module (`ARSceneView`).
+- **[Medal](https://medal.tv/)** — [Medal](https://play.google.com/store/apps/details?id=tv.medal.recorder).
+- **[IKEA](https://www.ikea.com/)** — [IKEA](https://play.google.com/store/apps/details?id=com.ingka.ikea.app).
+
+Declared in their public source code or published build files (checked November 17, 2026):
+
+- **[Meshtastic](https://github.com/meshtastic/Meshtastic-Android/blob/main/feature/node/build.gradle.kts)**: the Android app's 3D and AR device viewer (SceneView 4.69.5).
+- **[Bitkey by Block](https://github.com/proto-at-block/bitkey/blob/main/app/gradle/libs.versions.toml)**: 3D rendering of the hardware wallet in the Android app (SceneView 2.3.0).
+- **[Vocable AAC by WillowTree](https://github.com/willowtreeapps/vocable-android/blob/main/gradle/libs.versions.toml)**: head tracking for hands-free communication (ARSceneView 2.3.3).
+- **[Niantic Spatial](https://github.com/nianticspatial/nsdk-samples-kotlin/blob/main/NsdkSamples/NsdkSamples/build.gradle.kts)**: the Kotlin samples of its spatial SDK (ARSceneView 2.3.1).
+- **[GeneXus](https://central.sonatype.com/artifact/com.genexus.android/AugmentedReality)**: its Android augmented reality module, in the Maven Central POM (SceneView 2.3.0).
+- **[TruVideo](https://central.sonatype.com/artifact/com.truvideo.com/sdk-camera)**: its camera SDK, in the Maven Central POM (ARSceneView 2.3.0).
 
 ## Built with SceneView
 

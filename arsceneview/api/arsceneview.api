@@ -1,5 +1,6 @@
 public final class io/github/sceneview/ar/ARCameraPermissionOverlayKt {
-	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
@@ -7,20 +8,37 @@ public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
 	public static final field ACTION Ljava/lang/String;
 	public static final field CARD Ljava/lang/String;
 	public static final field INSTANCE Lio/github/sceneview/ar/ARCameraPermissionOverlayTags;
+	public static final field REQUEST_ACTION Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionRecovery : java/lang/Enum {
+	public static final field Request Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static final field RequestWithSettings Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static final field Settings Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static fun values ()[Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionRecoveryKt {
+	public static final fun resolveCameraPermissionRecovery (ZZJI)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionState {
 	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/ARCameraPermissionRecovery;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
 	public fun <init> (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
 	public final fun getOpenSettings ()Lkotlin/jvm/functions/Function0;
 	public final fun getPermanentlyDenied ()Z
+	public final fun getRecovery ()Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public final fun getRequest ()Lkotlin/jvm/functions/Function0;
 }
 
 public final class io/github/sceneview/ar/ARCoachingOverlayKt {
 	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/ArTrackingHint;ZLandroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
-	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Lio/github/sceneview/ar/ArGuidanceCue;Landroidx/compose/runtime/Composer;II)V
 	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
@@ -112,7 +130,8 @@ public final class io/github/sceneview/ar/ARCoreAvailability : java/lang/Enum {
 }
 
 public final class io/github/sceneview/ar/ARCoreAvailabilityOverlayKt {
-	public static final fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoreAvailabilityOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCoreAvailabilityState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 	public static final fun isActionable (Lio/github/sceneview/ar/ARCoreAvailability;)Z
 	public static final fun toARCoreAvailability (Lcom/google/ar/core/ArCoreApk$Availability;)Lio/github/sceneview/ar/ARCoreAvailability;
 	public static final fun toARCoreAvailability (Ljava/lang/Throwable;)Lio/github/sceneview/ar/ARCoreAvailability;
@@ -186,6 +205,10 @@ public final class io/github/sceneview/ar/ARMotionSensorsKt {
 	public static synthetic fun probeARMotionSensors$default (Landroid/content/Context;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
+public final class io/github/sceneview/ar/AROverlayVisibilityKt {
+	public static final fun getLocalAROverlayVisibility ()Landroidx/compose/runtime/ProvidableCompositionLocal;
+}
+
 public abstract interface class io/github/sceneview/ar/ARPermissionHandler {
 	public abstract fun checkARCoreAvailability ()Lcom/google/ar/core/ArCoreApk$Availability;
 	public abstract fun hasCameraPermission ()Z
@@ -215,6 +238,7 @@ public final class io/github/sceneview/ar/ARSceneScope : io/github/sceneview/Sce
 	public final fun DepthHitResultNode (FFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun DepthHitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun DepthMeshNode (Lio/github/sceneview/ar/node/DepthMeshNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun GroundContact (Lkotlin/jvm/functions/Function0;FLdev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
 	public final fun HitResultNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun HitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun PlacementReticle (FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
@@ -718,6 +742,7 @@ public final class io/github/sceneview/ar/AutoPlacementSceneKt {
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLandroidx/compose/foundation/layout/PaddingValues;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLandroidx/compose/foundation/layout/PaddingValues;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun findAutoPlacementSurface (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;)Lio/github/sceneview/ar/AutoPlacementCandidate;
@@ -921,6 +946,20 @@ public final class io/github/sceneview/ar/Ndc {
 	public fun hashCode ()I
 	public final fun isInsideViewport ()Z
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlacementBoundsFit {
+	public static final field $stable I
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFits ()Z
+	public final fun getMarginMeters ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlacementBoundsFitKt {
+	public static final fun placementBoundsFit (Lcom/google/ar/core/Plane;Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Mat4;)Lio/github/sceneview/ar/PlacementBoundsFit;
+	public static final fun placementBoundsFit (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;[F)Lio/github/sceneview/ar/PlacementBoundsFit;
 }
 
 public final class io/github/sceneview/ar/PlacementController {

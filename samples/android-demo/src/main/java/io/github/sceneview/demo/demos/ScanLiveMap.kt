@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.CoverageGrid
 import io.github.sceneview.demo.demos.internal.DebugGroup
@@ -99,6 +100,12 @@ internal fun ScanLiveMap(
     compact: Boolean,
     legendOnTop: Boolean,
     modifier: Modifier = Modifier,
+    /** Live Room (#4903 follow-up): the map is the only view of the scan, so it drives the session's stats. */
+    drivesSession: Boolean = false,
+    /** Hears each frame the map draws: Live Room observes the floor's coverage here, there being no live view. */
+    observe: ((ArDebugFrame) -> Unit)? = null,
+    /** The floor's covered and still-to-scan tiles; Live Room draws the coloured cloud alone. */
+    showGround: Boolean = true,
 ) {
     var following by remember { mutableStateOf(true) }
     val orbit = remember {
@@ -132,7 +139,8 @@ internal fun ScanLiveMap(
     // when it grows; with it the missed zones the follow turns toward.
     var ground by remember { mutableStateOf<ScanGroundMeshes?>(null) }
     val zones = remember { ZonesHolder() }
-    LaunchedEffect(coverage, session, gate) {
+    LaunchedEffect(coverage, session, gate, showGround) {
+        if (!showGround) return@LaunchedEffect
         var version = -1
         var extent: List<Pair<Float, Float>>? = null
         var layer: ReplayDenseLayer? = null
@@ -201,8 +209,9 @@ internal fun ScanLiveMap(
                 }
             },
             maxFps = MAP_FPS,
-            drivesSession = false,
-            content = { ScanLiveGroundLayer(ground, engine, materialLoader, groundColors) },
+            drivesSession = drivesSession,
+            observe = observe,
+            content = { if (showGround) ScanLiveGroundLayer(ground, engine, materialLoader, groundColors) },
         )
         if (following && !overview && !compact && size.height > 0) {
             // You: where the map keeps the phone, pointing the way it faces (heading-up).

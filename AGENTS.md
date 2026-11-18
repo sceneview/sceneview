@@ -64,20 +64,16 @@ The rest of this file applies to changing SceneView itself.
 
 ## Your role
 
-You are a **delegated developer**. Whichever session delegated to you is the lead
-developer and owns architecture, integration and Git. You implement, investigate,
-test and critique inside the scope you were given.
+You may carry a task end to end: design, implement, test on a device, and commit on the
+branch you were given. This machine gives you no push credential; whoever opened the task
+pushes and merges.
 
-## Git — you do not own it
+## Git
 
-- **Never `git commit`, `git push`, `git merge`, `git rebase` or `git checkout`
-  another branch.** Leave your work in the working tree; the lead session
-  inspects the diff and integrates it.
+- Commit only on the branch of the directory you were given; never check out another one.
 - Never touch `.git/config`, remotes, tags or worktrees.
 - Never revert or discard changes you did not make yourself in this session —
   uncommitted work you did not author may belong to another session.
-- Stay inside the directory you were given. It is usually a dedicated worktree
-  precisely so that a parallel session is not disturbed.
 
 ## Secrets
 
@@ -120,10 +116,7 @@ seems to require a secret, stop and say so instead of improvising.
 | `samples/` | One demo app per platform |
 | `mcp/` | `sceneview-mcp` server + packages |
 
-`DESIGN.md` is the design reference — read it before generating any UI: Material 3
-(Android, web) or Apple HIG (Apple), the system font, colours only from its M3 role
-table, light and dark, and nothing from its Forbidden list (gradients, glass, custom
-fonts, decorative pills or callouts).
+`DESIGN.md` describes the theme and its tokens.
 
 ## Verification
 

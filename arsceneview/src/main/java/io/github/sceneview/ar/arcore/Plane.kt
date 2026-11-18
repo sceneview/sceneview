@@ -191,7 +191,8 @@ internal fun pointInPolygon2D(x: Float, z: Float, polygon: FloatArray): Boolean 
  * cadence and pauses with the composition — no separate timer to manage. Only planes in
  * [TrackingState.TRACKING] are reported, so a subsumed plane naturally surfaces through
  * [onRemoved]. Returns an empty list while [session] is `null` (AR lifecycle paused) or before
- * the first plane is detected.
+ * the first plane is detected. When a SceneView [ARSession] closes, the producer clears the result
+ * and stops without querying native objects; passing a new session starts discovery again.
  *
  * **Performance (#2270):** when the passed [session] is SceneView's [ARSession], the live set is
  * maintained **incrementally** from the per-frame delta `frame.getUpdatedPlanes()` (ARCore returns
@@ -214,8 +215,9 @@ fun rememberDetectedPlanes(
     onRemoved: ((List<Plane>) -> Unit)? = null
 ): State<List<Plane>> {
     return produceState<List<Plane>>(initialValue = emptyList(), key1 = session) {
-        if (session == null) {
-            value = emptyList()
+        value = emptyList()
+        val arSession = session as? ARSession
+        if (session == null || arSession?.isClosed == true) {
             return@produceState
         }
         var previous: Set<Plane> = emptySet()
@@ -225,10 +227,15 @@ fun rememberDetectedPlanes(
         var trackedSeeded = false
         var lastFrameTimestamp = 0L
         while (true) {
-            withFrameNanos {
+            val sessionIsOpen = withFrameNanos {
                 // All ARCore reads here run on the Compose frame callback (main thread),
                 // satisfying the ARCore main-thread contract.
-                val arSession = session as? ARSession
+                if (arSession?.isClosed == true) {
+                    tracked.clear()
+                    previous = emptySet()
+                    value = emptyList()
+                    return@withFrameNanos false
+                }
                 val frame = arSession?.frame
                 val current: Set<Plane> = if (frame != null) {
                     // First time we get a frame, seed the cache from the full trackable list so a
@@ -264,7 +271,9 @@ fun rememberDetectedPlanes(
                     previous = current.toSet()
                     value = current.toList()
                 }
+                true
             }
+            if (!sessionIsOpen) return@produceState
         }
     }
 }
