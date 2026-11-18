@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.69.6)
+  Source of truth: /llms.txt  (SceneView 4.69.7)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.69.6). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.69.7). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -55,7 +55,7 @@
 
 ## Start here — two complete Android screens
 
-Both files compile as they are against `io.github.sceneview:arsceneview:4.69.6` (CI builds every
+Both files compile as they are against `io.github.sceneview:arsceneview:4.69.7` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -4236,9 +4236,11 @@ Box {
 }
 ```
 
-`NodeEditingOverlay` draws the ready-made visuals: a selection ring at the node's base,
-a rotation ring with a live sweep arc and yaw badge, a scale percentage badge that
-bounces at the `editableScaleRange` bounds, and a contact shadow while dragging.
+`NodeEditingOverlay` draws the ready-made visuals: a selection ring at the node's base
+(ring only, no badge at rest), a rotation ring with a live sweep arc and a signed
+rotation-delta badge shown and announced only during the two-finger twist, a scale
+percentage badge that bounces at the `editableScaleRange` bounds, and a contact shadow
+while dragging.
 
 To build custom feedback instead, read `rememberNodeEditingFeedback(node)` directly —
 it is snapshot state, so a composable reading it recomposes live during the gesture:
@@ -5721,7 +5723,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.69.6` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.69.7` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -5926,7 +5928,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.69.6 — npm `sceneview-web`
+Package: `sceneview-web` v4.69.7 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -6561,7 +6563,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.6")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
 ```
 
 Import: `import SceneViewSwift`
