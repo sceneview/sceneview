@@ -73,6 +73,16 @@ internal fun objectFilled(
 }
 
 /**
+ * An [ScanScope.Object] scan's box ([ScanSubject]) from what survives a reopen — its saved
+ * [surfels] and the trace's [aims] — so the crop it makes is the same at every open; `null` for
+ * another scope, or none found.
+ */
+internal fun objectSubject(scope: ScanScope, surfels: DenseCloud?, aims: List<ScanSubject.Aim>?, voxelM: Float?): ScanBox? {
+    if (scope != ScanScope.Object || surfels == null || aims.isNullOrEmpty()) return null
+    return runCatching { ScanSubject.of(surfels, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
+}
+
+/**
  * Whether a kept model an earlier finish pipeline built ([RerunScanModel.stalePipeline]) is built
  * again from its reopened scan, [source]: only where this pipeline finishes it differently — an
  * object filled now ([objectReconstruction], pipeline 9). Anywhere else a rebuild could only

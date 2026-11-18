@@ -860,6 +860,7 @@ internal fun RerunModelScreen(
                     depthModelOf(
                         store, id, scope, shellInput?.cloud ?: surfels, shellInput?.floorY, releaseLive,
                         objectFilled = objectFilled,
+                        subject = objectSubject(scope, surfels, captureAims, surfelsVoxelM),
                     ) {
                         // The model on screen, if any, is shown as being finished meanwhile.
                         if (shown != null && value === shown) {

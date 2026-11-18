@@ -9,6 +9,7 @@ import io.github.sceneview.demo.demos.internal.PoseStep
 import io.github.sceneview.demo.demos.internal.RecordedDepthFrame
 import io.github.sceneview.demo.demos.internal.RerunGlbMesh
 import io.github.sceneview.demo.demos.internal.RerunMesh
+import io.github.sceneview.demo.demos.internal.ScanBox
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
@@ -210,6 +211,26 @@ class ScanDepthModelTest {
         // A shell kept by an earlier version is not what a room opens on either.
         store.saveRoomShell(ID, older, DenseCloud(FloatArray(0), IntArray(0)), ROOM_SHELL_VERSION - 1)
         assertNull(runBlocking { roomShellOf(store, ID, input = null) {} })
+    }
+
+    @Test
+    fun `an object's surface is cropped to its box, what it stands on left out`() {
+        // The fixture's box, as ScanSubject finds it: 60 cm a side on the floor.
+        val box = ScanBox(centerX = 0.5f, centerZ = 0f, baseY = 0f, yaw = 0f, length = 0.6f, depth = 0.6f, height = 0.6f)
+        val whole = checkNotNull(RerunGlbMesh.read(checkNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null)).glb))
+        val model = checkNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null, subject = box))
+        val mesh = checkNotNull(RerunGlbMesh.read(model.glb))
+        assertTrue("${mesh.triangleCount} of ${whole.triangleCount} triangles", mesh.triangleCount in 1 until whole.triangleCount)
+        val p = mesh.positions
+        for (v in 0 until mesh.vertexCount) {
+            val x = p[v * 3]
+            val y = p[v * 3 + 1]
+            val z = p[v * 3 + 2]
+            assertTrue("($x, $y, $z) is not the box's", x in 0.1f..0.9f && z in -0.4f..0.4f && y in -0.05f..0.7f)
+        }
+        // The floor it stands on is gone: no triangle lies flat on it.
+        val onFloor = (0 until mesh.triangleCount).count { t -> (0 until 3).all { p[mesh.indices[t * 3 + it] * 3 + 1] < 0.01f } }
+        assertEquals("floor triangles kept", 0, onFloor)
     }
 
     /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
