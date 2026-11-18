@@ -107,6 +107,7 @@ import io.github.sceneview.ar.replay.LocalARSessionProbe
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.ar.scene.SceneUnderstanding
+import io.github.sceneview.ar.scene.resolvePlaneVisibility
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
@@ -245,7 +246,10 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 [PlaneRenderer]: round dots on floors, upright dashes on
  *                                 walls, hollow rings on ceilings. Turning it off fades the
  *                                 surfaces out; plane detection, hit tests and gestures on
- *                                 placed nodes keep working.
+ *                                 placed nodes keep working. Planes are drawn only when this
+ *                                 AND `sceneUnderstanding?.planeVisualization` (when given)
+ *                                 are `true`: `sceneUnderstanding` never turns planes back on
+ *                                 over `planeRenderer = false` (#5134).
  * @param planeRendererVersion     **Deprecated, ignored since 4.57.0.** There is one plane
  *                                 renderer, [PlaneRenderer]; `V1` and `V2` both draw with it.
  *                                 Kept so that existing calls compile and existing binaries
@@ -597,6 +601,10 @@ fun ARSceneView(
     /**
      * Draw the surfaces ARCore detects, with [PlaneRenderer]. Turning it off fades them out;
      * plane detection, hit tests and gestures on placed nodes keep working.
+     *
+     * Planes are drawn only when this AND `sceneUnderstanding?.planeVisualization` (when
+     * [sceneUnderstanding] is non-null) are `true` (#5134). `false` here always hides them,
+     * even with `sceneUnderstanding = SceneUnderstanding(occlusion = true)`.
      */
     planeRenderer: Boolean = true,
     /**
@@ -607,11 +615,15 @@ fun ARSceneView(
     planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V2,
     /**
      * Grouped scene-understanding flags (#1767) — mirrors RealityKit's
-     * `ARView.environment.sceneUnderstanding.options`. When non-null, the four
-     * inner flags (`occlusion`, `lighting`, `physics`, `planeVisualization`)
-     * are applied in tandem, overriding the individual scattered flags
-     * (`planeRenderer`, [ARCameraStream.isDepthOcclusionEnabled],
-     * [io.github.sceneview.ar.light.LightEstimator.isEnabled]).
+     * `ARView.environment.sceneUnderstanding.options`. When non-null, `occlusion` and
+     * `lighting` are applied on every recomposition, overriding
+     * [ARCameraStream.isDepthOcclusionEnabled] and
+     * [io.github.sceneview.ar.light.LightEstimator.isEnabled]; `physics` is reserved.
+     *
+     * `planeVisualization` does NOT override [planeRenderer]: the two are combined by AND
+     * (#5134). Planes are drawn only when both are `true`, so
+     * `SceneUnderstanding(occlusion = true)` with `planeRenderer = false` keeps planes
+     * hidden, and [SceneUnderstanding.Minimal] hides them on its own.
      *
      * Default `null` keeps every individual flag at its pre-#1767 default —
      * the grouped knob is purely additive and opt-in. Use it when you want a
@@ -1524,23 +1536,25 @@ fun ARSceneView(
 
     // ── Plane renderer state ──────────────────────────────────────────────────────────────────────
 
+    // One write, one rule (#5134): planes show only when `planeRenderer` AND the grouped
+    // `sceneUnderstanding.planeVisualization` agree. Two separate writes used to let the
+    // grouped one silently turn planes back on over `planeRenderer = false`, and refreshed
+    // every plane renderable twice per recomposition when they disagreed.
     SideEffect {
-        arPlaneRenderer.isEnabled = planeRenderer
+        arPlaneRenderer.isEnabled = resolvePlaneVisibility(planeRenderer, sceneUnderstanding)
     }
 
     // ── Grouped scene-understanding flags (#1767) ────────────────────────────────────────────────
     //
-    // When `sceneUnderstanding` is provided, fan out its four flags to the four
-    // scattered owners in tandem. Applied AFTER the individual `planeRenderer`
-    // SideEffect above so the grouped knob wins on every recomposition — that
-    // matches the data class contract documented in [SceneUnderstanding].
+    // When `sceneUnderstanding` is provided, fan out its occlusion and lighting flags to
+    // their scattered owners. Its `planeVisualization` is folded into the plane SideEffect
+    // above, which is the only writer of `arPlaneRenderer.isEnabled`.
     //
     // `physics` is reserved (no current backing implementation, see KDoc on
     // [SceneUnderstanding.physics]). When the underlying ARCore Scene Semantics
     // / Mesh path lands (#1760, #1761), this is the canonical place to wire it.
     SideEffect {
         sceneUnderstanding?.let { su ->
-            arPlaneRenderer.isEnabled = su.planeVisualization
             lightEstimator.isEnabled = su.lighting
             cameraStream?.isDepthOcclusionEnabled = su.occlusion
             // su.physics: no-op today; wired when #1760/#1761 land.

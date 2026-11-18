@@ -32,6 +32,16 @@ import io.github.sceneview.ar.light.LightEstimator
  * `null`, meaning the grouped knob is opt-in — when null, the four individual
  * flags retain their pre-#1767 defaults verbatim.
  *
+ * ## Plane visibility: both knobs must say yes
+ *
+ * [ARSceneView] has two plane knobs, `planeRenderer` and [planeVisualization]. Planes
+ * are drawn only when **both** are `true` (#5134): either one set to `false` hides them,
+ * and neither can turn planes back on over the other. So
+ * `ARSceneView(planeRenderer = false, sceneUnderstanding = SceneUnderstanding(occlusion = true))`
+ * keeps planes hidden, and [Minimal] / [None] hide them without touching `planeRenderer`.
+ * Both default to `true`, so an app that sets neither still sees planes. To toggle planes
+ * at runtime, drive `planeRenderer` and leave [planeVisualization] at its default.
+ *
  * ## Defaults
  *
  * The data class defaults represent the most-useful "full understanding"
@@ -58,11 +68,11 @@ import io.github.sceneview.ar.light.LightEstimator
  *   is part of the surface today so apps that opt into [SceneUnderstanding]
  *   now don't break later when the implementation lands.
  *
- * @property planeVisualization Render the AR plane grid overlay. Maps to
- *   [PlaneRenderer.isEnabled]. The renderer itself is always available — plane
- *   `Trackable`s are still detected and surfaced via `frame.getUpdatedPlanes()`
- *   for hit-tests even when this is `false`. Only the visual grid drawn over
- *   detected planes is toggled.
+ * @property planeVisualization Allow the AR plane overlay. Combined with [ARSceneView]'s
+ *   `planeRenderer` by AND (see "Plane visibility" above): `false` hides planes whatever
+ *   `planeRenderer` says; `true` (the default) leaves the decision to `planeRenderer`.
+ *   Plane `Trackable`s are still detected and surfaced via `frame.getUpdatedPlanes()`
+ *   for hit-tests even when planes are hidden. Only the visual overlay is toggled.
  */
 data class SceneUnderstanding(
     val occlusion: Boolean = true,
@@ -104,3 +114,17 @@ data class SceneUnderstanding(
         )
     }
 }
+
+/**
+ * The one rule that decides whether [ARSceneView] draws its plane overlay (#5134):
+ * planes are visible only when `planeRenderer` is `true` **and** the grouped
+ * [SceneUnderstanding.planeVisualization] (when a [SceneUnderstanding] is given) is `true`.
+ *
+ * Either knob can hide planes; neither can force them back on over the other. A
+ * `null` [sceneUnderstanding] leaves the decision to [planeRenderer] alone.
+ * `ARSceneView` writes [PlaneRenderer.isEnabled] once per recomposition with this value.
+ */
+internal fun resolvePlaneVisibility(
+    planeRenderer: Boolean,
+    sceneUnderstanding: SceneUnderstanding?,
+): Boolean = planeRenderer && (sceneUnderstanding?.planeVisualization ?: true)

@@ -518,8 +518,8 @@ fun ARSceneView(
     updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
     focusMode: Config.FocusMode = Config.FocusMode.AUTO,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
-    planeRenderer: Boolean = true,  // The one plane renderer (#4307): dots on floors, dashes on walls, rings on ceilings. false FADES the surfaces out; detection, hit tests and gestures keep working.
-    sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
+    planeRenderer: Boolean = true,  // The one plane renderer (#4307): dots on floors, dashes on walls, rings on ceilings. false FADES the surfaces out; detection, hit tests and gestures keep working. Planes draw only if this AND sceneUnderstanding.planeVisualization are true when sceneUnderstanding is non-null; null = planeRenderer decides alone (#5134).
+    sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags. Never turns planes back on over planeRenderer = false.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
     renderQuality: RenderQuality? = null,   // v4.19.0+ (#2524) — one-line preset; NULLABLE: null keeps createARView's camera-feed-tuned defaults (no SSAO/bloom). Pass Performance/Cinematic to opt in. Filmic AR tone mapper preserved.
@@ -732,7 +732,7 @@ data class SceneUnderstanding(
     val occlusion: Boolean = true,        // ARCameraStream.isDepthOcclusionEnabled
     val lighting: Boolean = true,         // LightEstimator.isEnabled
     val physics: Boolean = false,         // Reserved — Scene Semantics / Mesh, #1760/#1761
-    val planeVisualization: Boolean = true // PlaneRenderer.isEnabled
+    val planeVisualization: Boolean = true // ANDed with ARSceneView's planeRenderer (see rule below)
 )
 ```
 
@@ -760,7 +760,20 @@ ARSceneView(
 // Imperative: cameraStream.isDepthOcclusionEnabled = true
 ```
 
-When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+When `sceneUnderstanding` is non-null, `occlusion` and `lighting` override `cameraStream.isDepthOcclusionEnabled` and `lightEstimator.isEnabled` on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+
+**Plane visibility rule (#5134):** planes are drawn only when `planeRenderer` AND `sceneUnderstanding.planeVisualization` are both `true` (when `sceneUnderstanding` is non-null; null = `planeRenderer` decides alone). Either one set to `false` hides them; neither turns them back on over the other. Turning occlusion on never brings planes back:
+
+```kotlin
+var showPlanes by remember { mutableStateOf(false) }
+ARSceneView(
+    depthMode = Config.DepthMode.AUTOMATIC,
+    sceneUnderstanding = SceneUnderstanding(occlusion = true), // planeVisualization stays true
+    planeRenderer = showPlanes, // the runtime toggle: false keeps planes hidden
+) { /* ... */ }
+```
+
+`SceneUnderstanding.Minimal` / `.None` hide planes on their own (`planeVisualization = false`). To toggle planes at runtime, drive `planeRenderer` and leave `planeVisualization` at its default.
 
 ### GroundContact — depth occlusion with custom placement (Android)
 
@@ -786,6 +799,7 @@ fun CustomPlacementOcclusion(contactCenter: () -> Position?, ringRadius: Float) 
     ARSceneView(
         depthMode = Config.DepthMode.AUTOMATIC,
         sceneUnderstanding = SceneUnderstanding(occlusion = true),
+        planeRenderer = false, // occlusion does not force planes on: this keeps them hidden (#5134)
     ) {
         // Declare your custom placement nodes here too.
         GroundContact(center = contactCenter, radius = ringRadius)

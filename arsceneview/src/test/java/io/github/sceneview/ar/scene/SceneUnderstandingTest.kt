@@ -16,12 +16,13 @@ import org.junit.Test
  *    have the expected flag matrix.
  *  3. `copy()` and `equals` behave as a data class is expected to.
  *
- * The on-device wiring (the new `sceneUnderstanding` parameter on `ARSceneView`
- * fanning the four flags out to [io.github.sceneview.ar.camera.ARCameraStream],
- * [io.github.sceneview.ar.light.LightEstimator], and
- * [io.github.sceneview.ar.scene.PlaneRenderer]) requires a Filament engine and
- * an ARCore session — not unit-testable in pure JVM. Coverage there comes from
- * the AR demo + manual QA per #1767 acceptance.
+ * The on-device wiring (the `sceneUnderstanding` parameter on `ARSceneView` applying
+ * `occlusion` to [io.github.sceneview.ar.camera.ARCameraStream] and `lighting` to
+ * [io.github.sceneview.ar.light.LightEstimator]) requires a Filament engine and an
+ * ARCore session — not unit-testable in pure JVM. Coverage there comes from the AR
+ * demo + manual QA per #1767 acceptance. `planeVisualization` does not override
+ * `planeRenderer`: the two are ANDed by [resolvePlaneVisibility] (#5134), pinned in
+ * [PlaneVisibilityRuleTest].
  */
 class SceneUnderstandingTest {
 
