@@ -5,7 +5,7 @@
 // Optionally select an installed Chromium with --executable /path/to/chrome.
 //
 // Both columns run the CURRENT website viewer, real Filament WASM and the same GLB,
-// camera and materials. Only the before column restores the old studio IBL (40000).
+// camera and materials. Before uses IBL 40000; after uses light 28000 / dark 40000.
 // The plain viewer is also rendered as a control. This is a controlled lighting
 // comparison, not a checkout of the rejected tone-mapping PR.
 //
@@ -63,16 +63,18 @@ function measureRegion(pixels, width, height, mask) {
   return { saturation: saturation / count, lightness: lightness / count, pixels: count };
 }
 
-function studioIntensity(source) {
-  const match = source.match(/var _STUDIO_IBL_INTENSITY = (\d+);/);
-  assert.ok(match, 'viewer must declare the studio IBL intensity');
+function studioIntensity(source, theme) {
+  assert.ok(['light', 'dark'].includes(theme), 'expected a studio theme');
+  const themes = source.match(/var _STUDIO_THEMES = ([\s\S]*?);/);
+  assert.ok(themes, 'viewer must declare studio themes');
+  const match = themes[1].match(new RegExp(`${theme}: [{][^}]*iblIntensity: (\\d+)`));
+  assert.ok(match, `viewer must declare the ${theme} studio IBL intensity`);
   return Number(match[1]);
 }
 
 function beforeSource(source) {
-  studioIntensity(source);
-  return source.replace(/var _STUDIO_IBL_INTENSITY = \d+;/,
-    `var _STUDIO_IBL_INTENSITY = ${BEFORE_INTENSITY};`);
+  for (const theme of ['light', 'dark']) studioIntensity(source, theme);
+  return source.replace(/iblIntensity: \d+/g, `iblIntensity: ${BEFORE_INTENSITY}`);
 }
 
 function boardGlb() {
@@ -233,7 +235,7 @@ async function main() {
     const hashes = {};
     for (const [path, [, bytes]] of files) hashes[path] = createHash('sha256').update(bytes).digest('hex');
     writeFileSync(join(output, 'measurements.json'), JSON.stringify({
-      beforeIntensity: BEFORE_INTENSITY, afterIntensity: studioIntensity(source), browser: browser.version(),
+      beforeIntensity: BEFORE_INTENSITY, afterIntensity: Object.fromEntries(['light', 'dark'].map(theme => [theme, studioIntensity(source, theme)])), browser: browser.version(),
       colors: COLORS, camera: { distance: DISTANCE, fov: FOV }, radius: RADIUS,
       metallic: 0, roughness: 0.45, hashes, results,
     }, null, 2) + '\n');
@@ -250,14 +252,18 @@ async function main() {
     for (const theme of ['light', 'dark', 'plain']) {
       const before = results.find(r => r.theme === theme && r.column === 'before');
       const after = results.find(r => r.theme === theme && r.column === 'after');
+      if (theme !== 'plain') {
+        assert.equal(before.source.intensity, BEFORE_INTENSITY, `${theme}: baseline intensity`);
+        assert.equal(after.source.intensity, studioIntensity(source, theme), `${theme}: theme intensity`);
+      }
       for (let i = 0; i < COLORS.length; i++) {
         const b = before.samples[i], a = after.samples[i];
         assert.ok(a.sphere.lightness > 25, `${theme}/${a.name}: sphere must remain visible`);
         assert.ok(Math.abs(a.swatch.saturation - b.swatch.saturation) < 0.005 &&
           Math.abs(a.swatch.lightness - b.swatch.lightness) < 0.5, `${theme}/${a.name}: swatch control changed`);
-        if (theme === 'plain') {
+        if (theme !== 'light') {
           assert.ok(Math.abs(a.sphere.saturation - b.sphere.saturation) < 0.01 &&
-            Math.abs(a.sphere.lightness - b.sphere.lightness) < 1, `${a.name}: plain viewer changed`);
+            Math.abs(a.sphere.lightness - b.sphere.lightness) < 1, `${theme}/${a.name}: unchanged lighting must stay stable`);
         } else {
           assert.ok(a.sphere.saturation > b.sphere.saturation + 0.015, `${theme}/${a.name}: saturation must improve`);
           assert.ok(a.sphere.lightness < b.sphere.lightness && a.sphere.lightness > b.sphere.lightness - 25,
@@ -265,7 +271,7 @@ async function main() {
         }
       }
     }
-    console.log('PASS: studio saturation improves; swatches and plain viewer stay stable.');
+    console.log('PASS: light studio saturation improves; dark studio, swatches and plain viewer stay stable.');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

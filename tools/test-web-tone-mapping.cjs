@@ -33,7 +33,7 @@ function viewerFixture(env = { url: '/custom.ktx', intensity: 17000 }) {
   return { viewer, lights, loads, clears };
 }
 
-test('both studio themes reduce IBL by 30% and remove the plain-viewer lights', () => {
+test('only the light studio reduces IBL by 30%; both themes remove plain-viewer lights', () => {
   const { viewer, lights, loads } = viewerFixture();
   const original = viewer._envSource;
   viewer.setStudio('light');
@@ -44,8 +44,22 @@ test('both studio themes reduce IBL by 30% and remove the plain-viewer lights', 
   assert.equal(loads.length, 1, 'reapplying a theme does not reload it');
   viewer.setStudio('dark');
   assert.equal(viewer._envSource.url, '/environments/studio_showroom_dark_ibl.ktx');
-  assert.equal(viewer._envSource.intensity / BEFORE_INTENSITY, 0.7);
+  assert.equal(viewer._envSource.intensity / BEFORE_INTENSITY, 1.0);
   assert.equal(viewer._studioSaved.env, original, 'theme switch preserves the original environment');
+});
+
+test('a shared custom environment reloads with each theme intensity', () => {
+  const { viewer, loads } = viewerFixture();
+  for (const [theme, intensity] of [['light', 28000], ['dark', 40000], ['light', 28000]]) {
+    const count = loads.length;
+    viewer.setStudio({ theme, environment: '/shared.ktx' });
+    assert.equal(loads.length, count + 1);
+    assert.equal(viewer._envSource.url, '/shared.ktx');
+    assert.equal(viewer._envSource.intensity, intensity);
+    assert.equal(viewer._envSource.studio, true);
+    viewer.setStudio({ theme, environment: '/shared.ktx' });
+    assert.equal(loads.length, count + 1, 'reapplying the same environment and intensity does not reload');
+  }
 });
 
 test('leaving the studio restores custom IBL, lights, framing and background', () => {
@@ -113,8 +127,10 @@ test('studio shadow texels preserve the coloured floor shade', () => {
 
 test('the render comparison restores only the old studio intensity', () => {
   const before = beforeSource(source);
-  assert.equal(studioIntensity(before), BEFORE_INTENSITY);
-  assert.equal(before.replace('var _STUDIO_IBL_INTENSITY = 40000;', 'var _STUDIO_IBL_INTENSITY = 28000;'), source);
+  for (const theme of ['light', 'dark']) assert.equal(studioIntensity(before, theme), BEFORE_INTENSITY);
+  assert.equal(studioIntensity(source, 'light') / BEFORE_INTENSITY, 0.7);
+  assert.equal(studioIntensity(source, 'dark') / BEFORE_INTENSITY, 1.0);
+  assert.equal(before.replace('iblIntensity: 40000', 'iblIntensity: 28000'), source);
 });
 
 test('colour metrics use per-pixel HSV S and D65 CIELAB L*, including black', () => {
