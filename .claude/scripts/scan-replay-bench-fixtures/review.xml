@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node text="In review" content-desc="" bounds="[0,200][1000,250]" />
+  <node text="Build the 3D model and save it on this phone, or keep scanning to add more." content-desc="" bounds="[0,300][1000,400]" />
+  <node text="Keep scanning" content-desc="" bounds="[0,1500][480,1600]" />
+  <node text="Build 3D model" content-desc="" bounds="[500,1500][1000,1600]" />
+</hierarchy>
