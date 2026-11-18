@@ -1,11 +1,14 @@
 package io.github.sceneview.loaders
 
+import io.github.sceneview.core.model.UnsupportedModelFormat
+import io.github.sceneview.core.stl.StlLoader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class StlModelSourceTest {
@@ -21,8 +24,7 @@ class StlModelSourceTest {
         buffer.position(7)
         buffer.mark()
         val readonly = buffer.asReadOnlyBuffer()
-        assertTrue(readonly.looksLikeStlPayload())
-        val result = readonly.convertStlToGlb() as ByteBuffer
+        val result = readonly.toModelGlb() as ByteBuffer
         assertTrue(result.isDirect)
         assertEquals('g'.code.toByte(), result.get(0))
         assertEquals(7, readonly.position())
@@ -45,35 +47,32 @@ class StlModelSourceTest {
             endsolid part
         """.trimIndent()
         val buffer = ByteBuffer.wrap(ascii.encodeToByteArray())
-        assertTrue(buffer.looksLikeStlPayload())
-        assertEquals('g'.code.toByte(), (buffer.convertStlToGlb() as ByteBuffer).get(0))
+        assertEquals('g'.code.toByte(), (buffer.toModelGlb() as ByteBuffer).get(0))
         assertEquals(0, buffer.position())
     }
 
     @Test
-    fun otherFormatsAreReturnedByIdentity() {
-        val otherFormats = listOf(
-            "glTF", "{\"asset\":{}}", "PK\u0003\u0004", "solid", "solidarity facet",
-            "solid x\n multifacet"
-        )
-        for (text in otherFormats) {
+    fun nativeFormatsAreReturnedByIdentityAndUnknownInputsHaveTypedErrors() {
+        for (text in listOf("glTF", "{\"asset\":{}}")) {
             val buffer = ByteBuffer.wrap(text.encodeToByteArray())
-            assertFalse(buffer.looksLikeStlPayload())
-            assertSame(buffer, buffer.convertStlToGlb())
+            assertSame(buffer, buffer.toModelGlb())
+        }
+        for (text in listOf("PK\u0003\u0004", "solid", "solidarity facet", "solid x\n multifacet")) {
+            assertThrows(UnsupportedModelFormat::class.java) { ByteBuffer.wrap(text.encodeToByteArray()).toModelGlb() }
         }
         val largeGlb = ByteBuffer.allocate(100_084)
         largeGlb.putInt(0, 0x676c5446)
-        assertSame(largeGlb, largeGlb.convertStlToGlb())
+        assertSame(largeGlb, largeGlb.toModelGlb())
         val floats = ByteBuffer.allocate(12).asFloatBuffer()
-        assertSame(floats, floats.convertStlToGlb())
+        assertSame(floats, floats.toModelGlb())
     }
 
     @Test
     fun mismatchedOrUnsignedBinaryCountsDoNotPassTheCheapGate() {
         val bytes = ByteArray(134)
         bytes[80] = 2
-        assertFalse(ByteBuffer.wrap(bytes).looksLikeStlPayload())
+        assertFalse(StlLoader.isStl(bytes))
         repeat(4) { bytes[80 + it] = -1 }
-        assertFalse(ByteBuffer.wrap(bytes).looksLikeStlPayload())
+        assertFalse(StlLoader.isStl(bytes))
     }
 }

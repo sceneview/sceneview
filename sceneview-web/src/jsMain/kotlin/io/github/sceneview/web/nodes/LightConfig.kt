@@ -47,6 +47,13 @@ class LightConfig {
     }
 }
 
+/** Shared key-light defaults for the Kotlin DSL and JavaScript viewer factories. */
+internal fun defaultMainLightConfig(intensityLux: Double = 10_000.0) = LightConfig().apply {
+    directional()
+    intensity(intensityLux)
+    direction(-0.25f, -1.0f, -0.25f)
+}
+
 enum class LightType {
     DIRECTIONAL,
     POINT,

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.69.5)
+  Source of truth: /llms.txt  (SceneView 4.69.6)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.69.5). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.69.6). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -101,7 +101,11 @@ The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and 
 
 `onSessionFailed: (Exception) -> Unit` lumps all 25 ARCore exception subclasses into a single `Exception`. Apps that want to retry vs fallback vs "install ARCore" vs "open Settings" need exhaustive `when` matching — string-matching on exception messages is fragile. Wire `onSessionFailure: (ARSessionFailure) -> Unit` instead (it fires alongside `onSessionFailed`, so legacy callers keep working).
 
-An exception thrown inside the frame loop of a **running** session does not reach these callbacks: it is only logged (`SceneView` tag, "ARCore session update failed") and the loop keeps running, so a session that recovers draws again. A throw from your own `onSessionUpdated` / `onTrackingFailureChanged` is logged under that callback's name ("onSessionUpdated threw"), not as an ARCore failure, and does not skip the other callback. The same tag carries one `AR tracking: state=… reason=…` line per tracking transition — a camera that sits in `PAUSED` with reason `NONE` included, the stall `onTrackingFailureChanged` never reports — and repeats it every ten seconds for as long as the camera is not tracking, with the time that state has lasted (`AR tracking: state=PAUSED reason=NONE for=20s`), so a bug report's logcat shows where tracking stood and whether it was ever reached.
+Nonfatal exceptions inside the frame loop of a **running** session are only logged (`SceneView` tag, "ARCore session update failed"); the loop keeps running so a session that recovers draws again. **A `FatalException` from the native session update is different (#4501):** SceneView stops updating that session, releases SDK-owned anchors and cached frames/planes before closing it, publishes `ARCoreAvailability.SessionFailed`, and invokes `onSessionFailed` / `onSessionFailure` once for that failed session. The built-in retry action creates a new session.
+
+**Session objects do not survive that retry.** SDK-owned anchored nodes stop tracking until given a fresh anchor; their later disposal does not call the closed session. Retained `AugmentedFaceNode`s stop updating when invalidated; create new face nodes with faces detected by the replacement session. Drop app-held `Frame`, `Anchor`, `Trackable`, and hit-result references in the failure callback (or check `ARSession.isClosed` before every call on a held one). Keep a `Session` captured in `onSessionCreated`: a non-fatal failure (camera busy on resume) retries on that same session and `onSessionCreated` does not fire again, so check `ARSession.isClosed` before using it instead of nulling it, clear placement state, and create new anchors from the new session. `rememberDetectedPlanes`, `rememberEarthState` and `rememberCameraGeospatialPose` stop reading a closed session on their own and publish their empty value (`emptyList()` / `null`). Never query, detach or reuse an old native object during or after its session's close. World-space placement is not transferred to the replacement session. Plane discovery and other nodes that acquire their trackables from each new frame resume from the new session.
+
+A throw from your own `onSessionUpdated` / `onTrackingFailureChanged` is logged under that callback's name ("onSessionUpdated threw"), not as an ARCore failure, and does not skip the other callback. The same tag carries one `AR tracking: state=… reason=…` line per tracking transition — a camera that sits in `PAUSED` with reason `NONE` included, the stall `onTrackingFailureChanged` never reports — and repeats it every ten seconds for as long as the camera is not tracking, with the time that state has lasted (`AR tracking: state=PAUSED reason=NONE for=20s`), so a bug report's logcat shows where tracking stood and whether it was ever reached.
 
 Use an **exhaustive `when` with NO `else` branch** — that is the whole point of the sealed hierarchy. The compiler then forces you to revisit this site the day SceneView adds a new subtype (#1759). An `else ->` fallback silently defeats that contract.
 
@@ -193,6 +197,8 @@ fun rememberRestartPhoneAdvice(neverTracked: Boolean): Boolean {
     return restartPhone
 }
 ```
+
+Apps with many AR screens can observe their frames with `io.github.sceneview.ar.replay.LocalARSessionProbe`: provide an `ARSessionProbe` whose `onSessionFrame(session, frame, nodes)` reads `frame.camera.trackingState` and `frame.camera.trackingFailureReason`. This also observes frames from `AutoPlacementScene`. Leave `playbackDataset` null for live diagnostics; when wrapping an enclosing observer, forward its dataset and frames so replay QA still works. Keep the startup watch scoped to the screen's lifecycle, cancel it on tracking or navigation, and skip recorded sessions and front-camera face tracking. This is Android-specific: [ARKit documents `ARError.sensorFailed` and `sensorUnavailable`](https://developer.apple.com/documentation/arkit/arerror) for missing sensor input; no equivalent iOS probe has been added without a reproduction.
 
 For apps that route many subtypes to the same action, extract a tiny helper that returns a coarse category and `when` on that — still exhaustive, no `else ->`:
 
@@ -292,7 +298,7 @@ Same wire format on Android and iOS. A single sidecar handles both platforms.
 ### Save & share flow
 
 1. Run sidecar in save mode: `python rerun-bridge.py --save`
-2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","viewerUrl":"…","events":N}`.
+2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","events":N}`.
 3. Open https://sceneview.github.io/rerun/ — when no session is loaded the page shows a drop-zone (drag the `.rrd` onto it to render in-place) and a QR code that opens the 3D Scan demo (`ar-rerun`) on a phone for users who don't have one to start from.
 4. To share with a remote teammate, host the `.rrd` at a public https address and send them `https://sceneview.github.io/rerun/?url=<encoded-public-url>`. The page downloads the file from the visitor's browser, so the link has to end in `.rrd` and its host has to allow cross-origin requests (CORS). A file in a public GitHub repository does, through its `raw.githubusercontent.com` link, and so does GitHub Pages; a GitHub release asset does not: GitHub sends no CORS header for it (checked 2026-10-13). A Cloudflare R2 or S3 bucket does once it has a CORS rule that allows `https://sceneview.github.io`. When the page cannot read the file, it says so on screen, with the likely causes.
 
@@ -302,7 +308,7 @@ The Kotlin API surface for step 2:
 bridge.requestSaveAndShare { result: RerunBridge.ShareResult ->
     if (result.success) {
         // result.path = "/home/dev/.sceneview/recordings/2026-05-06_23-30-12.rrd"
-        // result.viewerUrl = "https://sceneview.github.io/rerun/?url=file%3A%2F%2F…"
+        // result.viewerUrl = null // local save; no public recording address is known
         // result.events = 1234
     } else {
         // result.reason explains why (e.g. "sidecar started in live mode; relaunch with --save")

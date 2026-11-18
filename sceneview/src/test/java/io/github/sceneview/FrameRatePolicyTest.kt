@@ -42,7 +42,9 @@ class FrameRatePolicyTest {
     private fun shouldRenderState(
         policy: androidx.compose.runtime.State<FrameRatePolicy>,
         gate: FrameRateGate
-    ) = derivedStateOf { policy.value !is FrameRatePolicy.OnDemand || gate.isDirty }
+    ) = derivedStateOf {
+        isSceneRenderingEnabled(policy.value, gate.isDirty, hasAnimationFrame = false)
+    }
 
     /**
      * Burns the gate's settle window down the way a rendering loop does, with nothing active.

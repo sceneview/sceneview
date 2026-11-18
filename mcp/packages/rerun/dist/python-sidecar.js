@@ -64,7 +64,6 @@ import socket
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote as _urlquote
 
 import numpy as np
 import rerun as rr
@@ -150,8 +149,14 @@ def _timestamp_filename() -> str:
     return _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".rrd"
 
 
-def _viewer_url_for_local_file(path: Path) -> str:
-    return SHARE_BASE_URL + "?url=" + _urlquote(path.as_uri(), safe="")
+def _print_save_instructions() -> None:
+    """Explain local viewing and sharing without inventing a hosted address."""
+    print(f"[rerun-bridge] view locally -> drop the .rrd file on {SHARE_BASE_URL}", flush=True)
+    print(
+        f"[rerun-bridge] to share -> host the file at a public HTTPS address ending in .rrd "
+        f"with CORS enabled, then share {SHARE_BASE_URL}?url=<encoded-public-url>",
+        flush=True,
+    )
 
 
 def _send_control_ack(conn: socket.socket, payload: dict[str, Any]) -> None:
@@ -229,12 +234,11 @@ def main(argv: list[str] | None = None) -> int:
                             if cmd == "save_now" and save_mode and save_path is not None:
                                 _flush_and_save(save_path)
                                 saved_for_this_client = True
-                                url = _viewer_url_for_local_file(save_path)
                                 print(f"[rerun-bridge] saved {events} events -> {save_path}", flush=True)
-                                print(f"[rerun-bridge] open in browser -> {url}", flush=True)
+                                _print_save_instructions()
                                 _send_control_ack(conn, {
                                     "type": "control", "ack": "saved",
-                                    "path": str(save_path), "events": events, "viewerUrl": url,
+                                    "path": str(save_path), "events": events,
                                 })
                             elif cmd == "save_now":
                                 _send_control_ack(conn, {
@@ -254,9 +258,8 @@ def main(argv: list[str] | None = None) -> int:
                 conn.close()
                 if save_mode and not saved_for_this_client and events > 0 and save_path is not None:
                     _flush_and_save(save_path)
-                    url = _viewer_url_for_local_file(save_path)
                     print(f"[rerun-bridge] saved {events} events on disconnect -> {save_path}", flush=True)
-                    print(f"[rerun-bridge] open in browser -> {url}", flush=True)
+                    _print_save_instructions()
                 else:
                     print(f"[rerun-bridge] client disconnected (logged {events} events)", flush=True)
     except KeyboardInterrupt:

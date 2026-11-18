@@ -7,7 +7,7 @@ import { LIGHT_TYPES } from "./lighting-design.js";
 import { dispatchTool } from "./tools.js";
 const modes = [
     { mode: "3D", ar: false, artifact: "sceneview", version: "4.69.4" },
-    { mode: "AR", ar: true, artifact: "arsceneview", version: "4.53.0" },
+    { mode: "AR", ar: true, artifact: "arsceneview", version: "4.69.4" },
 ];
 function expectLightingResponse(result, { mode, ar, artifact, version }) {
     const response = CallToolResultSchema.parse(result);

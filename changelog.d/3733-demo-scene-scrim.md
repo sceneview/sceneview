@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: keep scene overlays clear ([#3733](https://github.com/sceneview/sceneview/issues/3733)).** Remove the top and bottom gradients that darkened scene-anchored text. Keep control labels and system icons readable with backgrounds confined to the controls and status bar: glass chips now paint the same ground as the other glass controls, the AR object-label banner sits on the chrome's card, and the status-bar ground fades with full screen.

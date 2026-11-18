@@ -1,3 +1,5 @@
+@file:JvmName("ReflectionProbeNodeRegistryKt")
+
 package io.github.sceneview.node
 
 import androidx.annotation.RestrictTo
@@ -169,9 +171,11 @@ internal class ReflectionProbeRegistry<L : Any>(private val target: Target<L>) {
         .filter { it.isActive && it.light?.let(target::isAlive) != false }
         .maxWithOrNull(compareBy<Probe<L>>({ it.priority }, { it.order }))
 
-    private fun fallback(): L? =
-        (if (callerDeclared) callerLight else if (environmentDeclared) environmentLight else null)
-            ?.takeIf(target::isAlive)
+    private fun fallback(): L? {
+        // An explicit null disables IBL; a destroyed caller light yields to the environment.
+        if (callerDeclared && callerLight?.let(target::isAlive) != false) return callerLight
+        return if (environmentDeclared) environmentLight?.takeIf(target::isAlive) else null
+    }
 
     private fun captureCallerLight() {
         val current = target.light

@@ -18,6 +18,7 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.Transform
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.camerasEntities
@@ -31,6 +32,7 @@ import io.github.sceneview.model.model
 import io.github.sceneview.model.renderableEntities
 import io.github.sceneview.model.restPoseBoundingBox
 import io.github.sceneview.utils.intervalSeconds
+import java.util.WeakHashMap
 import kotlin.math.abs
 
 /**
@@ -468,6 +470,9 @@ open class ModelNode(
         set(value) = renderableNodes.forEach { it.isShadowReceiver = value }
 
     init {
+        // A replacement wrapper starts from the loaded root, not the last placement's
+        // scale/origin correction. Weak keys leave the instance's lifetime with its owner.
+        transform = initialModelTransforms.getOrPut(modelInstance) { Transform(transform) }
         attachToParents(this, nodes)
         // Sanitize renderable entities with empty AABBs to prevent Filament crash.
         // Filament 1.70+ enforces: "AABB can't be empty, unless culling is disabled
@@ -957,6 +962,8 @@ internal fun attachToParents(
     }
     childrenOf.forEach { (parent, children) -> parent.childNodes = parent.childNodes + children }
 }
+
+private val initialModelTransforms = WeakHashMap<ModelInstance, Transform>()
 
 /**
  * The root entity of [this], checked before the [ModelNode] super constructor reads it: past

@@ -182,7 +182,7 @@ class DepthOcclusionShapingTest {
             // 160x90 texel grid as steps.
             assertTrue(
                 "smooth occlusion depth in $name",
-                "float occlusion_m = occlusionDepthMeters(getUV0());" in source,
+                "float occlusion_m = occlusionDepthMeters(cameraUv);" in source,
             )
             expected.forEach { (constant, value) ->
                 val match = Regex("const float $constant = ([0-9.]+);").find(source)

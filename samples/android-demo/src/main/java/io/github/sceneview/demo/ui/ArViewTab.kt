@@ -1,6 +1,7 @@
 @file:OptIn(
     ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
+    io.github.sceneview.ExperimentalSceneViewApi::class,
 )
 
 package io.github.sceneview.demo.ui
