@@ -4,10 +4,12 @@ import android.view.MotionEvent
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
+import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.InstantPlacement
 import io.github.sceneview.ar.PlacementTrackableKind
 import io.github.sceneview.gesture.MoveGestureDetector
 
@@ -27,6 +29,19 @@ open class AnchorNode(
      * Should the anchor automatically update the anchor new pose
      */
     var updateAnchorPose = true
+
+    private var isAnchorSessionClosed = false
+
+    /** The tap's trackable and independent world anchor, retained while depth converges. */
+    internal var instantPlacement: InstantPlacement? = null
+        set(value) {
+            if (field === value) return
+            field?.refinement?.close()
+            field = value
+            value?.let {
+                pose = if (it.refinement.isComplete) it.anchor.pose else it.refinement.heldPose
+            }
+        }
 
     /**
      * The node world positioned anchor
@@ -58,10 +73,13 @@ open class AnchorNode(
         set(value) {
             if (field == value) return
             // Detach the replaced anchor so it stops accruing ARCore tracking cost.
-            field.detach()
+            if (!isAnchorSessionClosed) field.detach()
             field = value
+            instantPlacement = null
+            isAnchorSessionClosed = false
             trackingState = value.trackingState
             pose = value.pose
+            updateVisibility()
             onAnchorChanged?.invoke(value)
         }
 
@@ -71,7 +89,7 @@ open class AnchorNode(
      * Updated on each frame
      */
     open var trackingState = anchor.trackingState
-        get() = anchor.trackingState
+        get() = if (isAnchorSessionClosed) TrackingState.STOPPED else anchor.trackingState
         protected set(value) {
             if (field != value) {
                 field = value
@@ -96,7 +114,7 @@ open class AnchorNode(
      * re-creates the anchor only when both [isEditable] and this flag are `true`.
      */
     override var isPositionEditable = true
-        get() = isEditable && field
+        get() = isEditable && field && !isAnchorSessionClosed
 
     override var isVisible
         get() = super.isVisible && (trackingState in visibleTrackingStates || isMoving)
@@ -117,6 +135,7 @@ open class AnchorNode(
     }
 
     override fun update(session: Session, frame: Frame) {
+        if (isAnchorSessionClosed) return
         super.update(session, frame)
 
         if (awaitsReleaseAnchor && anchorAtRelease()) {
@@ -128,17 +147,55 @@ open class AnchorNode(
         // #2270: prefer the per-frame batched updated-anchors set computed once by the AR frame
         // driver (O(1) HashSet lookup, no per-node JNI allocation). Fall back to the per-node
         // JNI query when this node's update runs outside that driver so behaviour is identical.
-        if (anchor in (frameUpdatedAnchors ?: frame.updatedAnchors)) {
+        val anchorUpdated = anchor in (frameUpdatedAnchors ?: frame.updatedAnchors)
+        if (anchorUpdated) {
             trackingState = anchor.trackingState
-            if (trackingState == TrackingState.TRACKING && updateAnchorPose) {
+        }
+        if (updateAnchorPose && (anchorUpdated || instantPlacement != null) &&
+            trackingState == TrackingState.TRACKING
+        ) {
+            val placement = instantPlacement
+            if (placement != null) {
+                // Run every frame, even when ARCore reports no anchor update, so the
+                // refinement animation completes after a stationary FULL_TRACKING pose.
+                if (placement.point.trackingState == TrackingState.TRACKING) {
+                    val refinement = placement.refinement
+                    pose = refinement.update(
+                        fullTracking = placement.point.trackingMethod ==
+                            InstantPlacementPoint.TrackingMethod.FULL_TRACKING,
+                        anchorPose = anchor.pose,
+                        timestampNs = frame.timestamp,
+                    )
+                    if (refinement.isComplete) instantPlacement = null
+                }
+            } else if (anchorUpdated) {
                 pose = anchor.pose
             }
+        }
+        if (anchorUpdated) {
             onUpdated?.invoke(anchor)
         }
     }
 
     open fun detachAnchor() {
+        if (isAnchorSessionClosed) return
+        instantPlacement = null
         anchor.detach()
+    }
+
+    /** Detaches while the session is open; later disposal must not touch the old handle. */
+    internal open fun releaseSessionAnchor() {
+        if (isAnchorSessionClosed) return
+        isAnchorSessionClosed = true
+        awaitsReleaseAnchor = false
+        isMoving = false
+        try {
+            // Close the held instant-placement anchor while the session can still detach it.
+            instantPlacement = null
+            anchor.detach()
+        } finally {
+            updateVisibility()
+        }
     }
 
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {

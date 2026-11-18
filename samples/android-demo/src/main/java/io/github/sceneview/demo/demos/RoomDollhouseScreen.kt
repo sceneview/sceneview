@@ -61,6 +61,7 @@ import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.AutoPlacementState
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.rememberArGuidanceState
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
@@ -281,6 +282,7 @@ internal fun RoomDollhouseScreen(
     }
 
     DemoScaffold(
+        monitorArMotionSensors = stage == DollhouseStage.InRoom,
         title = stringResource(R.string.demo_ar_splat_room_title),
         onBack = onBack,
         firstFrameRendered = ready,
@@ -458,6 +460,7 @@ internal fun RoomDollhouseScreen(
                 val scale = if (realSize) 1f else room.fit.scale
                 val orientation = remember(room) { RoomDollhouse.orientation(room) }
                 AutoPlacementScene(
+                    coaching = !LocalMotionSensorSilent.current,
                     assetReady = armed,
                     modifier = Modifier.fillMaxSize(),
                     state = state,

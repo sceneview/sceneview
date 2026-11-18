@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -7,23 +8,32 @@ import android.view.ViewTreeObserver
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewConfiguration
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,7 +43,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -42,21 +51,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.android.filament.LightManager
 import com.google.android.filament.Skybox
 import com.google.android.filament.Camera
+import com.google.android.filament.LightManager
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.View
 import io.github.sceneview.ExperimentalSceneViewApi
@@ -68,22 +81,28 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.updateShadowOptions
 import io.github.sceneview.demo.demos.internal.FeelHapticPlayer
 import io.github.sceneview.demo.demos.internal.MatterMesh
 import io.github.sceneview.demo.demos.internal.MatterSurfaceMaterials
 import io.github.sceneview.demo.demos.internal.feel.FeelMaterial
 import io.github.sceneview.demo.demos.internal.feel.FeelSimulation
 import io.github.sceneview.demo.demos.internal.feel.MatterCadence
+import io.github.sceneview.demo.demos.internal.feel.MatterCalm
 import io.github.sceneview.demo.demos.internal.feel.MatterDetailCache
 import io.github.sceneview.demo.demos.internal.feel.MatterDetailAtlas
 import io.github.sceneview.demo.demos.internal.feel.MatterFrameTimes
 import io.github.sceneview.demo.demos.internal.feel.MatterIdle
 import io.github.sceneview.demo.demos.internal.feel.MatterMeshes
+import io.github.sceneview.demo.demos.internal.feel.MatterHint
 import io.github.sceneview.demo.demos.internal.feel.MatterIdentity
 import io.github.sceneview.demo.demos.internal.feel.MatterOpening
 import io.github.sceneview.demo.demos.internal.feel.MatterStage
+import io.github.sceneview.demo.demos.internal.feel.MatterPreparation
+import io.github.sceneview.demo.demos.internal.feel.MatterPrewarm
+import io.github.sceneview.demo.demos.internal.feel.MatterSwitch
+import io.github.sceneview.demo.demos.internal.feel.MatterSwitchFrames
 import io.github.sceneview.demo.demos.internal.feel.MatterTransition
+import io.github.sceneview.demo.demos.internal.feel.MatterWarmFrames
 import io.github.sceneview.demo.demos.internal.feel.MatterSurfaces
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -93,14 +112,15 @@ import io.github.sceneview.demo.ui.viewer.ShowroomMath
 import io.github.sceneview.demo.ui.viewer.ShowroomToneMapping
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.environment.Environment
-import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.Node
-import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.node.CameraNode
+import io.github.sceneview.node.LightNode
+import io.github.sceneview.rememberNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMainLightNode
@@ -109,10 +129,12 @@ import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
 import io.github.sceneview.utils.screenToRay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.util.Locale
@@ -129,8 +151,7 @@ fun FeelDemo(onBack: () -> Unit) {
         return
     }
     val context = LocalContext.current
-    // These packages are required for the stage/opening. Read bytes off-main, then
-    // construct Filament objects on-main; no other family belongs on this startup path.
+    // Read and pack CPU data off-main. Only Filament construction/upload remains on-main.
     val openingPayloads by produceState<List<ByteBuffer>?>(null, context) {
         value = withContext(Dispatchers.IO) {
             listOf(MatterSurfaceMaterials.asset(FeelMaterial.MemoryFoam), "materials/opaque_unlit_colored.filamat", "materials/matter_floor.filamat").map { path ->
@@ -139,7 +160,13 @@ fun FeelDemo(onBack: () -> Unit) {
             }
         }
     }
+    val meshUploads by produceState<Pair<MatterMesh.Upload, MatterMesh.Upload>?>(null) {
+        value = withContext(Dispatchers.Default) {
+            MatterMesh.Upload(MatterMeshes.slab()) to MatterMesh.Upload(MatterMeshes.slab(rigid = true))
+        }
+    }
     val initialPayloads = openingPayloads ?: return
+    val initialMeshes = meshUploads ?: return
     val engine = rememberEngine()
     val loader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -162,17 +189,65 @@ fun FeelDemo(onBack: () -> Unit) {
             interval = 1
         }
     }
-    val camera = rememberCameraNode(engine)
+    val stage = remember { MatterStage() }
+    val camera = rememberNode {
+        object : CameraNode(engine) {
+            // SceneView calls this on attachment AND native surface recreation, even when
+            // Compose reports the same size. Keep the horizontal FOV instead of its 28 mm lens.
+            override fun updateProjection(focalLength: Double, near: Float, far: Float, aspect: Double) {
+                val viewport = viewport ?: return
+                if (viewport.width <= 0 || viewport.height <= 0) return
+                stage.widthPx = viewport.width
+                stage.heightPx = viewport.height
+                setProjection(MatterStage.HORIZONTAL_FOV,
+                    viewport.width.toDouble() / viewport.height,
+                    MatterStage.NEAR, MatterStage.FAR, Camera.Fov.HORIZONTAL)
+            }
+        }
+    }
     // A single studio for all samples and both app themes. The IBL only fills reflections.
-    val skybox = remember(engine) { Skybox.Builder().color(.12f, .12f, .12f, 1f).build(engine) }
+    val skybox = remember(engine) {
+        val grey = MatterStage.STUDIO_GREY
+        Skybox.Builder().color(grey, grey, grey, 1f).build(engine)
+    }
     DisposableEffect(skybox) { onDispose { engine.destroySkybox(skybox) } }
-    val hdr = rememberHDREnvironment(environmentLoader, ShowroomMath.DARK_HDR, createSkybox = false)
+    val hdr by key(environmentLoader) {
+        produceState<Environment?>(null) {
+            // Null means still loading. An empty environment means the bundled HDR failed,
+            // so the stage can finish preparation with its direct studio lights.
+            val loaded = try {
+                environmentLoader.loadHDREnvironment(ShowroomMath.DARK_HDR, createSkybox = false)
+                    ?: Environment().also { Log.w("Matter", "Studio HDR unavailable; using direct lights") }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Log.w("Matter", "Studio HDR failed; using direct lights", error)
+                Environment()
+            }
+            // The loader releases an orphan if cancellation happens during its main-thread
+            // build. From here, disposal runs on Main and owns the completed environment.
+            value = loaded
+            awaitDispose { environmentLoader.destroyEnvironment(loaded) }
+        }
+    }
     val environment = remember(hdr, skybox) { (hdr ?: Environment()).copy(skybox = skybox) }
-    val light = rememberMainLightNode(engine) {
-        lightDirection = Direction(.16f, -1f, -.10f)
-        color = colorOf(1f, .88f, .72f)
-        intensity = 55_000f
-        isShadowCaster = true
+    val light = rememberNode {
+        LightNode(engine, LightManager.Type.SPOT) {
+            direction(-MatterStage.KEY_X, MatterStage.FLOOR_Y - MatterStage.KEY_Y,
+                MatterStage.KEY_TARGET_Z - MatterStage.KEY_Z)
+            intensityCandela(MatterStage.KEY_CANDELA)
+            spotLightCone(Math.toRadians(MatterStage.KEY_INNER_DEGREES.toDouble()).toFloat(),
+                Math.toRadians(MatterStage.KEY_OUTER_DEGREES.toDouble()).toFloat())
+            falloff(MatterStage.KEY_RANGE)
+            castShadows(true)
+        }.apply { position = Position(MatterStage.KEY_X, MatterStage.KEY_Y, MatterStage.KEY_Z) }
+    }
+    val rim = rememberMainLightNode(engine) {
+        // Grazing backlight catches the top bevel and the cloth's pale Charlie sheen.
+        lightDirection = Direction(-.35f, -.25f, .8f)
+        color = colorOf(1f, 1f, 1f)
+        intensity = MatterStage.RIM_LUX
+        isShadowCaster = false
     }
     LaunchedEffect(engine, light) {
         light.updateShadowOptions {
@@ -209,7 +284,13 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     // Wait for the actual lit scene before starting; reduced motion/QA dismiss it permanently.
     val simulation = remember { FeelSimulation(openingEnabled = true) }
-    val stage = remember { MatterStage() }
+    val hint = remember(context) {
+        val prefs = context.getSharedPreferences(MATTER_PREFS, Context.MODE_PRIVATE)
+        MatterHint(object : MatterHint.Store {
+            override val done get() = prefs.getBoolean(HINT_DONE, false)
+            override fun markDone() = prefs.edit { putBoolean(HINT_DONE, true) }
+        })
+    }
     val idle = remember { MatterIdle() }
     val haptics = remember(touchView) { FeelHapticPlayer(touchView) }
     val touch = remember(simulation, view, haptics, stage, touchView) {
@@ -232,8 +313,8 @@ fun FeelDemo(onBack: () -> Unit) {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); touch.cancel() }
     }
-    val mesh = remember(engine) { MatterMesh(engine, MatterMeshes.slab()) }
-    val rigidMesh = remember(engine) { MatterMesh(engine, MatterMeshes.slab(rigid = true)) }
+    val mesh = remember(engine, initialMeshes) { MatterMesh(engine, initialMeshes.first) }
+    val rigidMesh = remember(engine, initialMeshes) { MatterMesh(engine, initialMeshes.second) }
     val materials = remember(engine, loader, initialPayloads) {
         MatterSurfaceMaterials(engine, loader, initialPayloads[0], initialPayloads[1], initialPayloads[2])
     }
@@ -242,82 +323,78 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val pads = remember { arrayOfNulls<Node>(FeelMaterial.entries.size) }
     val mark = remember { arrayOfNulls<Node>(1) }
-    var selected by remember { mutableStateOf(FeelMaterial.MemoryFoam) }
-    var displayed by remember { mutableStateOf(selected) }
-    var outgoing by remember { mutableStateOf<FeelMaterial?>(null) }
-    val slide = remember { Animatable(1f) }
-    var transitionStarted by remember { mutableStateOf<Long?>(null) }
-    val switching = selected != displayed || outgoing != null
-    val selectedNow by rememberUpdatedState(selected)
-    // One worker owns every atlas: rapid selections never duplicate a bake or cancel a cache write.
+    val markFaces = remember { arrayOfNulls<io.github.sceneview.node.RenderableNode>(3) }
+    // Selection, the solid on stage and the slide between them, advanced per presented frame.
+    val switch = remember { MatterSwitch() }
+    var openingPrepared by remember(materials) { mutableStateOf(false) }
+    // Only the opening belongs behind the cover. Never draw another sample to warm it there:
+    // Material.compile queues backend work without putting its slab in the visible set.
+    // After the reveal, MatterPrewarm draws each sample once, hidden, while the stage is idle.
     LaunchedEffect(materials, touchView) {
-        snapshotFlow { firstFrame.rendered.value }.first { it }
+        val preparation = MatterPreparation()
         val cache = withContext(Dispatchers.IO) { MatterDetailCache(touchView.context.cacheDir) }
-        val remaining = FeelMaterial.entries.filter { it != FeelMaterial.Gel }.toMutableList()
-        while (remaining.isNotEmpty()) {
-            val kind = selectedNow.takeIf { it in remaining } ?: remaining.first()
+        suspend fun uploadDetail(kind: FeelMaterial) {
+            if (materials.hasDetail(kind)) return
             val cached = withContext(Dispatchers.IO) { cache.read(kind) }
             val pixels = cached ?: withContext(Dispatchers.Default) {
                 MatterDetailAtlas.bake(kind) { ensureActive() }
             }
-            // Leave a frame between uploads even when every disk read is a hit.
+            val buffer = withContext(Dispatchers.Default) {
+                ByteBuffer.allocateDirect(pixels.size).put(pixels).apply { flip() }
+            }
             withFrameNanos { }
-            materials.uploadDetail(kind, pixels)
-            wakeRender()
+            materials.uploadDetail(kind, buffer)
+            invalidator.requestRender()
             if (cached == null) withContext(Dispatchers.IO) { cache.write(kind, pixels) }
-            remaining.remove(kind)
         }
-    }
-    val warmPayloads = remember(materials) { mutableStateMapOf<FeelMaterial, ByteBuffer>() }
-    LaunchedEffect(materials) {
+        // Foam, floor and mark already exist. Their first real draw compiles only the
+        // variants needed by the opening; FirstFrame waits for that draw's backend fence.
+        uploadDetail(FeelMaterial.MemoryFoam)
+        preparation.prepared(FeelMaterial.MemoryFoam)
+        openingPrepared = true
+        wakeRender()
         snapshotFlow { firstFrame.sceneReady.value }.first { it }
-        for (kind in FeelMaterial.entries.filter { it != FeelMaterial.MemoryFoam }) {
+        fun prepareSample(kind: FeelMaterial) = preparation.request(this, kind) {
             val payload = withContext(Dispatchers.IO) {
                 val bytes = touchView.context.assets.open(MatterSurfaceMaterials.asset(kind)).use { it.readBytes() }
                 ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { flip() }
             }
-            warmPayloads[kind] = payload
-            wakeRender()
+            // Preserve the switch path: the shader-ready instance uses its existing fallback
+            // detail until the CPU atlas arrives. A cold marble bake must not block selection.
+            materials.prepare(kind, payload)
+            uploadDetail(kind)
+            if (BuildConfig.DEBUG) Log.d("Matter", "Background material ready: ${kind.name}")
+        }
+        launch {
+            snapshotFlow { switch.selected }.collect { kind ->
+                if (kind != FeelMaterial.MemoryFoam) prepareSample(kind)
+            }
+        }
+        while (true) {
+            // Space background submissions out. Explicit selections may overtake a slow bake.
+            repeat(MatterPreparation.FRAMES_BETWEEN_MATERIALS) { withFrameNanos { } }
+            val kind = preparation.next(switch.selected, revealed = firstFrame.sceneReady.value) ?: break
+            prepareSample(kind).await()
         }
     }
-    val targetReady = selected in materials.samples
-    LaunchedEffect(selected, targetReady, motion, materials) {
-        if (!targetReady) return@LaunchedEffect
-        val target = selected
-        wakeRender()
-        val previous = displayed
-        if (!motion || previous == target) {
-            displayed = target; outgoing = null; slide.snapTo(1f)
-            transitionStarted = null
-        } else {
-            transitionStarted = SystemClock.uptimeMillis()
-            idle.touch(transitionStarted!!, down = false)
-            slide.snapTo(0f)
-            outgoing = previous
-            displayed = target
-            slide.animateTo(1f, tween(SceneViewTokens.Motion.containerMillis, easing = LinearEasing))
-            outgoing = null
-        }
-    }
+    // Never refused while a slide runs: the chips stay enabled and the latest request queues.
     val choose: (FeelMaterial) -> Unit = { next ->
-        if (next != selected && outgoing == null) {
+        if (firstFrame.sceneReady.value && switch.request(next)) {
             touch.cancel()
             simulation.select(next, SystemClock.uptimeMillis())
-            selected = next
             wakeRender()
         }
     }
     val colors = MaterialTheme.colorScheme
     val ringColour = ViewerBackdrop.linearBeforeNeutral(colors.primary)
     val hairlinePx = with(LocalDensity.current) { SceneViewTokens.Layout.hairlineWidth.toPx() }
-    val floorY = -FeelSimulation.PAD_THICKNESS
     SideEffect {
         MatterIdentity.colours(dark = colors.surface.luminance() < .5f).forEachIndexed { face, rgb ->
             val linear = MatterIdentity.linearBeforeToneMap(rgb)
             materials.mark[face].setParameter("color", linear[0], linear[1], linear[2], 1f)
         }
         hdr?.indirectLight?.apply {
-            intensity = 4_000f
+            intensity = 8_000f
             setRotation(MatterStage.STUDIO_ROTATION)
         }
         materials.samples.forEach { (kind, instance) ->
@@ -327,105 +404,146 @@ fun FeelDemo(onBack: () -> Unit) {
     ShowroomToneMapping(engine, view, neutral = true, requestRender = invalidator::requestRender)
     var readout by remember { mutableStateOf(FeelReadout()) }
     val timing = remember { longArrayOf(0L) }
+    val switchFrames = remember { MatterSwitchFrames() }
+    val prewarm = remember { MatterPrewarm() }
+    val calm = remember { MatterCalm() }
+    // Allocated once: the frame callback runs 60 times a second.
+    val padReady = remember { { kind: FeelMaterial -> pads[kind.ordinal] != null } }
+    // Debug: the worst presented-frame interval around each hidden warm draw.
+    val warmFrames = remember { MatterWarmFrames() }
     // Changing state is read by the FIRST SceneView callbacks through these updated delegates.
     val onTouchNow by rememberUpdatedState<(MotionEvent) -> Boolean>({ event ->
         wakeRender()
-        touch.onEvent(event, displayed, switching, choose)
+        firstFrame.sceneReady.value && touch.onEvent(event, switch, choose)
     })
     val onFrameNow by rememberUpdatedState<(Long) -> Unit>({ nanos ->
         val now = SystemClock.uptimeMillis()
-        val detailFading = materials.advanceDetail(now)
-        if (BuildConfig.DEBUG) frameTimes.frame(nanos)?.let { window ->
+        if (BuildConfig.DEBUG && firstFrame.sceneReady.value) frameTimes.frame(nanos)?.let { window ->
             Log.d("MatterPerf", String.format(Locale.US,
                 "material=%s mode=%s avg=%.2fms fps=%.1f intervals=%d",
-                displayed.name, cadence.name, window.averageMillis, window.fps, window.intervals))
+                switch.displayed.name, cadence.name, window.averageMillis, window.fps, window.intervals))
         }
         val focused = touchView.hasWindowFocus()
+        // The incoming solid's node must exist (its sample is composed), or its hidden first
+        // draw would not happen. The slide itself advances only on presented frames.
+        if (switch.advance(now, ready = pads[switch.selected.ordinal] != null, motion)) {
+            idle.touch(now, down = idle.isTouching)
+        }
+        val shown = switch.displayed
+        val leaving = switch.outgoing
+        val switching = switch.switching
+        val progress = switch.progress
+        if (BuildConfig.DEBUG) {
+            switchFrames.frame(nanos, switching, shown)?.let {
+                Log.d("Matter", "Switch to ${it.material.name}: worst frame ${it.worstMillis} ms, slide ${it.totalMillis} ms")
+            }
+        }
+        // A warm still owed holds an orbit that has not started: a stall must not land in it.
+        val warmPending = !prewarm.retired && prewarm.needsFrames(padReady)
+        if (warmPending) idle.postpone(now)
         val cameraMoved = idle.advance(now, motion && focused && simulation.opening.finished && !switching)
         if (cameraMoved) stage.orbit(idle.yawDegrees)
         val reframed = stage.frame()
-        if (reframed) camera.setProjection(MatterStage.HORIZONTAL_FOV,
-            stage.widthPx.toDouble() / stage.heightPx.coerceAtLeast(1),
-            MatterStage.NEAR, MatterStage.FAR, Camera.Fov.HORIZONTAL)
         if (cameraMoved || reframed) {
             camera.position = Position(stage.eyeX, stage.eyeY, stage.eyeZ)
-            camera.lookAt(Position(y = stage.targetY))
+            camera.lookAt(Position(stage.targetX, stage.targetY, stage.targetZ))
         }
         simulation.opening.travel = stage.openingTravel
         if (!motion && !simulation.opening.finished) simulation.opening.cancel()
         // Initial composition can precede window focus. Do not dismiss an opening not yet shown.
         if (!focused && (simulation.active != null || simulation.opening.visible)) touch.cancel()
         haptics.onFrame()
+        touch.resumeAfterSwitch(switch)
         touch.followIndentation()
         simulation.advance(now, startOpening = firstFrame.sceneReady.value && focused && motion)
             ?.let(haptics::play)
+        hint.update(stageReady = firstFrame.sceneReady.value && simulation.opening.finished,
+            pressed = simulation.active != null)
         // Only the opening mark needs a mapped shadow. Re-rendering the dense, deformed
         // slab into a shadow atlas doubled its vertex work during every press and orbit.
-        val needsMappedShadow = simulation.opening.visible
+        val warmingOpening = !firstFrame.sceneReady.value && motion
+        val needsMappedShadow = simulation.opening.visible || warmingOpening
         if (light.isShadowCaster != needsMappedShadow) light.isShadowCaster = needsMappedShadow
-        val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
-        val progress = if (motion) slide.value else 1f
+        val direction = switch.direction
+        val settling = motion && switch.landedAt?.let { now - it in 0L..SETTLE_MILLIS } == true
+        // Idle: nothing moves at all, so a first-draw stall here is never seen.
+        val warming = if (prewarm.retired) null else {
+            val stageIdle = calm.idle(now,
+                busy = MatterCalm.busy(focused, revealed = firstFrame.sceneReady.value,
+                    openingFinished = simulation.opening.finished, switching, settling,
+                    pressing = simulation.active != null, touching = idle.isTouching),
+                moving = idle.orbiting || simulation.moving(shown, now, motion))
+            prewarm.next(shown, leaving, padReady, stageIdle)
+        }
+        if (BuildConfig.DEBUG) warmFrames.frame(nanos, warming)?.let {
+            Log.d("Matter", "Prewarm ${it.material.name}: worst frame ${it.worstMillis} ms over ${it.intervals} frames")
+        }
         FeelMaterial.entries.forEach { kind ->
-            val visible = (kind == displayed && (outgoing == null || progress >= .40f)) ||
-                (kind == outgoing && progress < .40f)
+            // The incoming solid is drawn from the first frame of a slide, at its hidden pose
+            // under the floor: the stall of its first draw happens before it has to move.
+            val visible = kind == shown || (kind == leaving && progress < MatterTransition.HIDDEN)
             pads[kind.ordinal]?.apply {
-                isVisible = visible
+                isVisible = visible || kind == warming
+                if (!visible && kind == warming) {
+                    // Pre-warm: the same hidden pose under the opaque floor as a priming slide.
+                    position = Position(y = MatterTransition.height(kind, 0f, outgoing = false))
+                }
                 if (visible) {
                     val offset = when (kind) {
-                        outgoing -> -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
+                        leaving -> -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
                         else -> MatterTransition.incomingTravel(progress) * direction * .28f
                     }
-                    val height = MatterTransition.height(kind, progress, kind == outgoing)
+                    val height = MatterTransition.height(kind, progress, kind == leaving)
                     position = Position(offset * MatterStage.COS_AZIMUTH, height, -offset * MatterStage.SIN_AZIMUTH)
                     materials.update(kind, simulation, now, motion,
                         hairlinePx * stage.halfWidth * 2f / stage.widthPx.coerceAtLeast(1),
-                        landingAge = if (kind == displayed) transitionStarted?.let {
-                            (now - it) / 1000f - SceneViewTokens.Motion.containerMillis * .82f / 1000f
-                        } ?: -1f else -1f)
+                        landingAge = if (kind == shown) switch.landingAge(now) else -1f)
                 }
             }
         }
-        if (motion && displayed.rigid && transitionStarted != null &&
-            now - transitionStarted!! >= SceneViewTokens.Motion.containerMillis * .82f &&
-            simulation.contactMillis[displayed.ordinal] < transitionStarted!!
-        ) {
-            simulation.contactX[displayed.ordinal] = 0f
-            simulation.contactZ[displayed.ordinal] = 0f
-            simulation.contactMillis[displayed.ordinal] = now
+        // The floor's soft contact shadow follows whichever solid stands on it.
+        val shadowLeaving = leaving != null && progress < MatterTransition.HIDDEN
+        val shadowOffset = if (shadowLeaving) {
+            -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
+        } else MatterTransition.incomingTravel(progress) * direction * .28f
+        val shadowKind = if (shadowLeaving) leaving!! else shown
+        val contactStrength = MatterTransition.shadow(progress) *
+            if (shadowKind == FeelMaterial.Gel) MatterStage.GEL_CONTACT else 1f
+        val contactX = shadowOffset * MatterStage.COS_AZIMUTH
+        val contactZ = -shadowOffset * MatterStage.SIN_AZIMUTH
+        materials.floor.setParameter("contact", contactX, contactZ, contactStrength)
+        materials.samples[FeelMaterial.Gel]?.setParameter("contact", contactX, contactZ, contactStrength)
+        val landedAt = switch.landedAt
+        if (motion && shown.rigid && landedAt != null && simulation.contactMillis[shown.ordinal] < landedAt) {
+            // One landing tap per arrival, when the rigid solid reaches its rest height.
+            simulation.contactX[shown.ordinal] = 0f
+            simulation.contactZ[shown.ordinal] = 0f
+            simulation.contactMillis[shown.ordinal] = now
         }
         mark[0]?.apply {
-            isVisible = simulation.opening.visible && displayed == FeelMaterial.MemoryFoam
-            if (isVisible) position = Position(y = simulation.opening.heightAbovePad -
-                MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) - simulation.opening.squash)
+            isVisible = warmingOpening || (simulation.opening.visible && shown == FeelMaterial.MemoryFoam)
+            if (isVisible) position = if (warmingOpening) Position(y = 1f) else
+                Position(y = simulation.opening.heightAbovePad -
+                    MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) - simulation.opening.squash)
+            // The mark is three open plates: away from the foam, the key light throws their
+            // hard outline into the well as a dark angular patch. Shadow only near contact.
+            val casts = MatterOpening.castsShadow(simulation.opening.heightAbovePad, simulation.opening.travel)
+            markFaces.forEach { face -> if (face != null && face.isShadowCaster != casts) face.isShadowCaster = casts }
         }
         if (now - timing[0] >= 50L) {
             timing[0] = now
-            val indentation = simulation.pads[displayed.ordinal]
-            val peakMm = simulation.captionDepthMm(displayed)
-            readout = FeelReadout(displayed, peakMm,
-                MatterSurfaces.showsDisplacement(displayed, indentation, simulation.active == displayed, peakMm))
-        }
-        // All Filament work stays in this main-thread callback. Never warm during contact,
-        // the opening, recovery or a slide. Selected families get priority, without hiding the stage.
-        if (focused && firstFrame.sceneReady.value && simulation.opening.finished &&
-            simulation.active == null && !idle.isTouching && outgoing == null &&
-            !simulation.needsFrames(displayed, now, motion)) {
-            val candidate = selected.takeIf { !materials.hasPrepared(it) && it in warmPayloads }
-                ?: FeelMaterial.entries.firstOrNull { !materials.hasPrepared(it) && it in warmPayloads }
-            candidate?.let { kind ->
-                if (materials.warmOne(kind, warmPayloads.getValue(kind)) { wakeRender() }) {
-                    warmPayloads.remove(kind)
-                }
-            }
+            val indentation = simulation.pads[shown.ordinal]
+            val peakMm = simulation.captionDepthMm(shown)
+            readout = FeelReadout(shown, peakMm,
+                MatterSurfaces.showsDisplacement(shown, indentation, simulation.active == shown, peakMm))
         }
         firstFrame.onFrame(nanos)
         val orbitAt = idle.wakeAt
-        val settling = motion && transitionStarted?.let { now - it in 0L..1100L } == true
         val next = when {
             !focused -> MatterCadence.Parked
-            !firstFrame.sceneReady.value || switching || settling || detailFading ||
-                (materials.needsWarmup && warmPayloads.isNotEmpty()) ||
-                simulation.needsFrames(displayed, now, motion) -> MatterCadence.Active
+            // A pending warm keeps frames coming through the calm wait, the draw and its tail.
+            !firstFrame.sceneReady.value || switching || settling ||
+                simulation.needsFrames(shown, now, motion) || warmPending -> MatterCadence.Active
             motion && orbitAt != null && now >= orbitAt -> MatterCadence.Orbit
             else -> MatterCadence.Parked
         }
@@ -436,9 +554,8 @@ fun FeelDemo(onBack: () -> Unit) {
             invalidator.requestRender()
         }
     })
-    // Geometry, the neutral foam and the direct studio light exist at composition time.
-    // HDR enrichment and atlases arrive in-stage; neither holds the first presented picture.
-    firstFrame.holdUntil(landed = FeelMaterial.MemoryFoam in materials.samples, what = "material studio stage")
+    // Reveal once the opening detail and studio lighting have reached a real frame.
+    firstFrame.holdUntil(landed = openingPrepared && hdr != null, what = "material studio stage")
 
     // Observe before the scene/chips/app bar, without consuming their gestures. Even a
     // press on the already-selected chip skips the opening and freezes the idle camera.
@@ -446,7 +563,7 @@ fun FeelDemo(onBack: () -> Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             wakeRender()
-            if (!simulation.opening.finished) touch.cancel()
+            if (firstFrame.sceneReady.value && !simulation.opening.finished) touch.cancel()
             idle.touch(down.uptimeMillis, down = true)
             try {
                 do {
@@ -466,14 +583,14 @@ fun FeelDemo(onBack: () -> Unit) {
             themedStage = true, actionsMenu = true, recorder = recorder, dockHidden = true,
         ) {
             Column(Modifier.fillMaxSize().background(colors.surface).padding(LocalDemoSceneCover.current)) {
-                Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged {
-                    stage.widthPx = it.width; stage.heightPx = it.height
-                }) {
+                // This is the actual SceneView surface, ABOVE FeelControls. Native viewport
+                // dimensions (not the full window or dynamic-resolution buffer) frame the slab.
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     SceneView(
                         modifier = Modifier.fillMaxSize(), engine = engine, materialLoader = loader,
                         environmentLoader = environmentLoader, view = view, cameraNode = camera,
                         renderer = renderer, renderInvalidator = invalidator,
-                        mainLightNode = light, fillLightNode = null, cameraManipulator = null,
+                        mainLightNode = light, fillLightNode = rim, cameraManipulator = null,
                         autoCenterContent = false, environment = environment,
                         surfaceMirrorer = recorder.surfaceMirrorer,
                         frameRatePolicy = when (cadence) {
@@ -484,26 +601,7 @@ fun FeelDemo(onBack: () -> Unit) {
                         onTouchEvent = { event, _ -> onTouchNow(event) },
                         onFrame = { onFrameNow(it) },
                     ) {
-                        val progress = if (motion) slide.value else 1f
-                        val direction = if (displayed.ordinal >= (outgoing?.ordinal ?: displayed.ordinal)) 1f else -1f
-                        val shadowOffset = if (outgoing != null && progress < .40f) {
-                            -MatterTransition.outgoingTravel(progress) * direction * stage.slideDistance
-                        } else MatterTransition.incomingTravel(progress) * direction * .28f
-                        val shadowKind = if (outgoing != null && progress < .40f) outgoing!! else displayed
-                        // Local fill/rim lights: Filament supports one directional key per scene.
-                        LightNode(type = LightManager.Type.POINT, position = Position(5f, 3f, 4f),
-                            color = colorOf(.64f, .78f, 1f), intensity = 750_000f,
-                            apply = { falloff(12f); castShadows(false) })
-                        LightNode(type = LightManager.Type.SPOT, position = Position(1f, 4f, -4f),
-                            direction = Direction(-1f, -3f, 4f), color = colorOf(.82f, .90f, 1f),
-                            intensity = 500_000f,
-                            apply = { falloff(12f); spotLightCone(.45f, .95f); castShadows(false) })
-                        SideEffect {
-                            materials.floor.setParameter("contact", shadowOffset * MatterStage.COS_AZIMUTH,
-                                -shadowOffset * MatterStage.SIN_AZIMUTH,
-                                MatterTransition.shadow(progress) * if (shadowKind == FeelMaterial.Gel) .25f else 1f)
-                        }
-                        PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = floorY - .003f),
+                        PlaneNode(size = Size(200f, 0f, 200f), position = Position(y = MatterStage.FLOOR_Y),
                             materialInstance = materials.floor, apply = {
                                 isShadowCaster = false
                                 isShadowReceiver = false
@@ -539,17 +637,17 @@ fun FeelDemo(onBack: () -> Unit) {
                                                 CubeNode(size = Size(face, thickness, face),
                                                     position = Position(y = side - thickness / 2f),
                                                     materialInstance = materials.mark[0], apply = {
-                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                        markFaces[0] = this; isShadowCaster = true; isShadowReceiver = false; isTouchable = false
                                                     })
                                                 CubeNode(size = Size(face, face, thickness),
                                                     position = Position(y = side / 2f, z = (side - thickness) / 2f),
                                                     materialInstance = materials.mark[1], apply = {
-                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                        markFaces[1] = this; isShadowCaster = true; isShadowReceiver = false; isTouchable = false
                                                     })
                                                 CubeNode(size = Size(thickness, face, face),
                                                     position = Position(x = (side - thickness) / 2f, y = side / 2f),
                                                     materialInstance = materials.mark[2], apply = {
-                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                        markFaces[2] = this; isShadowCaster = true; isShadowReceiver = false; isTouchable = false
                                                     })
                                             }
                                         }
@@ -557,6 +655,13 @@ fun FeelDemo(onBack: () -> Unit) {
                                 }
                             }
                         }
+                    }
+                    // Not the enclosing Column's scoped overload: this Box overlays the stage.
+                    androidx.compose.animation.AnimatedVisibility(hint.visible,
+                        Modifier.align(Alignment.BottomCenter).padding(SceneViewTokens.Space.md),
+                        enter = if (motion) fadeIn(SceneViewTokens.Motion.fade()) else EnterTransition.None,
+                        exit = if (motion) fadeOut(SceneViewTokens.Motion.fade()) else ExitTransition.None) {
+                        MatterHintPill()
                     }
                     // Apply after SceneView's defaults. No mirror, SSAO, bloom or vignette passes.
                     LaunchedEffect(view) {
@@ -576,10 +681,36 @@ fun FeelDemo(onBack: () -> Unit) {
                         invalidator.requestRender()
                     }
                 }
-                FeelControls(selected, if (readout.material == selected) readout.depth else 0f,
-                    readout.material == selected && readout.showDisplacement, outgoing != null, motion, choose)
+                FeelControls(switch.selected, if (readout.material == switch.selected) readout.depth else 0f,
+                    readout.material == switch.selected && readout.showDisplacement, motion, choose)
             }
         }
+    }
+}
+
+/** The landing wobble of gel and foam, after the incoming solid reaches its rest height. */
+private const val SETTLE_MILLIS = 700L
+private const val MATTER_PREFS = "matter"
+private const val HINT_DONE = "hint_done"
+
+/**
+ * One line, once per install: ~300 dp at 100 % font scale, inside the 379 dp a 411 dp phone
+ * leaves between the stage margins. Larger font scales wrap it into two balanced lines, never
+ * one orphan word. A plain Row, not a Surface: a non-clickable M3 Surface still consumes
+ * pointer events, and a fling may start on the floor under this pill.
+ */
+@Composable
+private fun MatterHintPill() {
+    val colors = MaterialTheme.colorScheme
+    Row(Modifier.background(colors.surfaceContainerHigh, CircleShape)
+        .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Filled.TouchApp, contentDescription = null, tint = colors.primary,
+            modifier = Modifier.size(18.dp))
+        Text(stringResource(R.string.demo_feel_instruction),
+            style = MaterialTheme.typography.bodyMedium.copy(lineBreak = LineBreak.Heading),
+            color = colors.onSurface, textAlign = TextAlign.Center)
     }
 }
 
@@ -601,11 +732,21 @@ private fun materialName(kind: FeelMaterial): String = stringResource(when (kind
 
 @Composable
 private fun FeelControls(selected: FeelMaterial, depth: Float, showDisplacement: Boolean,
-                         switching: Boolean, motion: Boolean,
-                         choose: (FeelMaterial) -> Unit) {
+                         motion: Boolean, choose: (FeelMaterial) -> Unit) {
     val chips = rememberLazyListState()
+    val marginPx = with(LocalDensity.current) { SceneViewTokens.Space.md.roundToPx() }
     LaunchedEffect(selected, motion) {
-        if (motion) chips.animateScrollToItem(selected.ordinal) else chips.scrollToItem(selected.ordinal)
+        // Bring the chip into view, no further: a visible chip never slides under the finger,
+        // and the first chips stay reachable instead of scrolling off the left edge.
+        val info = chips.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == selected.ordinal }
+        if (item == null) {
+            if (motion) chips.animateScrollToItem(selected.ordinal) else chips.scrollToItem(selected.ordinal)
+            return@LaunchedEffect
+        }
+        val delta = MatterSwitch.chipScroll(item.offset, item.offset + item.size,
+            info.viewportStartOffset, info.viewportEndOffset, marginPx)
+        if (delta != 0f) if (motion) chips.animateScrollBy(delta) else chips.scrollBy(delta)
     }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(vertical = SceneViewTokens.Space.sm)) {
@@ -632,7 +773,7 @@ private fun FeelControls(selected: FeelMaterial, depth: Float, showDisplacement:
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 itemsIndexed(FeelMaterial.entries, key = { _, kind -> kind.name }) { _, kind ->
                     FilterChip(selected = kind == selected, onClick = { choose(kind) },
-                        enabled = !switching, label = { Text(materialName(kind)) })
+                        label = { Text(materialName(kind)) })
                 }
             }
         }
@@ -655,19 +796,24 @@ private class FeelTouch(
     private var downY = 0f
     private var emptyGesture = false
     private var velocity: VelocityTracker? = null
+    // A finger that landed during a switch: it becomes a press once the new solid has landed.
+    private var waitingForSwitch = false
+    private var pressure = 0f
+    private var size = 0f
 
-    fun onEvent(event: MotionEvent, selected: FeelMaterial, switching: Boolean, choose: (FeelMaterial) -> Unit): Boolean {
+    fun onEvent(event: MotionEvent, switch: MatterSwitch, choose: (FeelMaterial) -> Unit): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 cancel()
                 idle.touch(event.eventTime, down = true)
-                if (switching) return true
                 pointerId = event.getPointerId(0)
                 screenX = event.x; screenY = event.y; downX = event.x; downY = event.y
-                val point = pointOnPad(selected, deformed = false)
+                pressure = event.pressure; size = event.size
+                val point = if (switch.switching) null else pointOnPad(switch.displayed, deformed = false)
+                waitingForSwitch = switch.switching
                 emptyGesture = point == null
                 if (point != null) {
-                    simulation.begin(selected, point.first, point.second, event.pressure, event.size, event.eventTime)
+                    simulation.begin(switch.displayed, point.first, point.second, event.pressure, event.size, event.eventTime)
                     simulation.advance(event.eventTime, startOpening = false)?.let(haptics::play)
                 } else {
                     velocity = VelocityTracker.obtain().also { it.addMovement(event) }
@@ -677,6 +823,7 @@ private class FeelTouch(
                 val index = event.findPointerIndex(pointerId)
                 if (index < 0) { cancel(); return true }
                 velocity?.addMovement(event)
+                pressure = event.getPressure(index); size = event.getSize(index)
                 val active = simulation.active
                 if (active != null) {
                     for (history in 0 until event.historySize) {
@@ -701,14 +848,28 @@ private class FeelTouch(
                 val dx = event.x - downX; val dy = event.y - downY
                 val fling = emptyGesture && abs(dx) > configuration.scaledTouchSlop && abs(dx) > abs(dy) * 1.5f &&
                     abs(vx) >= configuration.scaledMinimumFlingVelocity && dx * vx > 0f
-                val next = (selected.ordinal + if (vx < 0f) 1 else -1).coerceIn(0, FeelMaterial.entries.lastIndex)
                 cancel(released = true)
-                if (fling && !switching) choose(FeelMaterial.entries[next])
+                // Relative to the latest request, so two quick flings step two materials.
+                if (fling) choose(MatterSwitch.flingTarget(switch.selected, vx))
             }
             MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == pointerId) cancel(released = true)
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> cancel()
         }
         return true
+    }
+
+    /** Per frame: a finger held since the switch presses the new solid as soon as it has landed. */
+    fun resumeAfterSwitch(switch: MatterSwitch) {
+        if (!waitingForSwitch || pointerId < 0 || switch.switching) return
+        waitingForSwitch = false
+        // A finger already travelling is a fling on its way, not a press.
+        if (abs(screenX - downX) > configuration.scaledTouchSlop || abs(screenY - downY) > configuration.scaledTouchSlop) return
+        val point = pointOnPad(switch.displayed, deformed = false) ?: return
+        val now = SystemClock.uptimeMillis()
+        emptyGesture = false
+        velocity?.recycle(); velocity = null
+        simulation.begin(switch.displayed, point.first, point.second, pressure, size, now)
+        simulation.advance(now, startOpening = false)?.let(haptics::play)
     }
 
     fun followIndentation() {
@@ -724,6 +885,7 @@ private class FeelTouch(
         idle.touch(SystemClock.uptimeMillis(), down = false)
         pointerId = -1
         emptyGesture = false
+        waitingForSwitch = false
         velocity?.recycle(); velocity = null
         simulation.release(SystemClock.uptimeMillis(), hapticRelease = released)
     }

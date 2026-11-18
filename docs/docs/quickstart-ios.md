@@ -51,7 +51,7 @@ https://github.com/sceneview/sceneview.git
 !!! tip
     You can also add the dependency manually in your `Package.swift`:
     ```swift
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
     ```
 
 ---
@@ -95,6 +95,9 @@ struct ContentView: View {
     }
 }
 ```
+
+The default key light travels along `(-0.25, -1, -0.25)` in world space, matching
+Android's steep studio angle. This default also applies to `ARSceneView`.
 
 That is the entire app. Here is what each piece does:
 

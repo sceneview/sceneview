@@ -63,8 +63,6 @@ class HomeSectionChipsTest {
         rule.onNodeWithTag(placeAr).assertDoesNotExist()
 
         rule.onNodeWithTag(HomeTestTags.GRID)
-            .performScrollToNode(hasTestTag(HomeTestTags.CATEGORY_CHIPS))
-        rule.onNodeWithTag(HomeTestTags.CATEGORY_CHIPS)
             .performScrollToNode(hasTestTag(HomeTestTags.sectionChip(DemoCategory.PLACE_AR)))
         rule.onNodeWithTag(HomeTestTags.sectionChip(DemoCategory.PLACE_AR)).performClick()
         rule.waitForIdle()
@@ -79,8 +77,6 @@ class HomeSectionChipsTest {
     fun `a chip leaves every sample listed`() {
         setUpHome()
         rule.onNodeWithTag(HomeTestTags.GRID)
-            .performScrollToNode(hasTestTag(HomeTestTags.CATEGORY_CHIPS))
-        rule.onNodeWithTag(HomeTestTags.CATEGORY_CHIPS)
             .performScrollToNode(hasTestTag(HomeTestTags.sectionChip(DemoCategory.DEV_TOOLS)))
         rule.onNodeWithTag(HomeTestTags.sectionChip(DemoCategory.DEV_TOOLS)).performClick()
         rule.waitForIdle()
@@ -96,7 +92,7 @@ class HomeSectionChipsTest {
 
         /**
          * A fixed catalogue, so a demo added or moved in the registry cannot change what
-         * these tests see: the compact scene, then a Materials & scenes section long enough to push the
+         * these tests see: the hero's page, then a Create section long enough to push the
          * next sections off the first screen, and a Place in AR section long enough to
          * be scrolled to the top — the last section of a list cannot be, the list ends
          * first. The labels are any two strings of the app — no test reads them.

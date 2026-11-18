@@ -24,26 +24,31 @@ import io.github.sceneview.math.Position
  *   newly added);
  * - when no probe is active — the camera left every local zone, or the last probe left the
  *   composition — the scene goes back to its own environment's light, the `environment` passed
- *   to `SceneView`, even if that environment changed while a probe was active;
- * - a new `SceneView` environment (a dark/light toggle, `environment.copy(skybox = …)`) never
+ *   to `SceneView` or `ARSceneView`, even if it changed while a probe was active;
+ * - a new scene environment (a dark/light toggle, `environment.copy(skybox = …)`) never
  *   overrides an active probe: it only replaces the light shown when no probe is active.
  *
- * The fallback and the guarantee above hold for `SceneView`. `ARSceneView` still writes its
- * environment's light (and AR light estimation's) straight into the scene, so in AR a new
- * environment or an estimate can replace an active probe until the next probe change (see #4928).
+ * In `ARSceneView`, an active probe overrides the entire estimated IBL without blending it.
+ * Estimates keep updating the fallback: leaving the zone restores the latest estimate, or the
+ * base environment before the first estimate (reset on environment change). Directional-light
+ * estimation continues independently (#4939).
  *
- * Outside `SceneView` (a [Scene] you render yourself), the fallback is the light the scene held
- * before a probe took over, or the one you wrote into it since.
+ * A light you write directly to [Scene.indirectLight] becomes the fallback when a probe next
+ * takes over. Declaring a new environment or receiving a new AR estimate supersedes it.
  *
  * ### Usage
  * ```kotlin
+ * val scene = rememberScene(engine)
+ * val cameraNode = rememberCameraNode(engine)
  * val officeEnvironment = rememberEnvironment(environmentLoader) {
  *     environmentLoader.createHDREnvironment("environments/office.hdr") ?: createEnvironment(environmentLoader)
  * }
  * var cameraPosition by remember { mutableStateOf(Position()) }
  *
  * SceneView(
+ *     engine = engine,
  *     scene = scene,
+ *     cameraNode = cameraNode,
  *     environment = defaultEnvironment, // shown wherever no probe is active
  *     onFrame = { cameraPosition = cameraNode.worldPosition }
  * ) {

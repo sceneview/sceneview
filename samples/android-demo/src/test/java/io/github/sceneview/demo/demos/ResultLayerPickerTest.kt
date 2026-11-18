@@ -14,6 +14,8 @@ import androidx.compose.ui.test.performClick
 import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.demos.internal.model.SplatFaces
+import io.github.sceneview.demo.demos.internal.model.SurfelSplats
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
@@ -123,6 +125,25 @@ class ResultLayerPickerTest {
     }
 
     @Test
+    fun `a growing Photo layer is first shown without the swap's veil`() {
+        val layers = ResultLayers(offered = true, photoFirst = true)
+        assertEquals(0f, layers.grown, 0f)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { LaunchedEffect(layers) { layers.swapUnderVeil() } }
+        rule.mainClock.advanceTimeByFrame()
+        val splats = SplatCloud(0, FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0))
+        rule.runOnUiThread { Snapshot.withMutableSnapshot { layers.splats = splats } }
+        rule.mainClock.advanceTimeBy(MID_RISE_MS)
+        assertTrue(layers.photoShown)
+        assertEquals(0f, layers.veil.value, 0f)
+
+        // From then on it swaps as any layer: Model and back, under the veil.
+        pick(layers, false)
+        rule.mainClock.advanceTimeBy(MID_RISE_MS)
+        assertTrue(layers.veil.value > 0f)
+    }
+
+    @Test
     fun `a scan whose model is read back from its cache still offers Photo, built from its own surfels`() {
         // #4896: reopened from the cache, the scan has its model and its recording but no model
         // source; the splats need only the surfels, so Photo is offered and built from them.
@@ -146,6 +167,26 @@ class ResultLayerPickerTest {
         } finally {
             DemoSettings.qaMode = qa
         }
+    }
+
+    @Test
+    fun `a captured scan arrives whole instead of regrowing from an empty result`() {
+        val cloud = DenseCloud(
+            positions = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f),
+            colors = IntArray(3) { 0xFF808080.toInt() },
+            normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f),
+        )
+        val prepared = SplatFaces.of(SurfelSplats.ofPlace(cloud))
+        lateinit var layers: ResultLayers
+        rule.setContent {
+            layers = rememberResultLayers(null, cloud, "just captured", settled = false,
+                photoFirst = true, prebuilt = prepared)
+        }
+        rule.waitForIdle()
+        assertTrue(layers.photoShown)
+        assertTrue(layers.faces === prepared)
+        assertEquals(1f, layers.grown, 0f)
+        assertEquals(0f, layers.veil.value, 0f)
     }
 
     @Test

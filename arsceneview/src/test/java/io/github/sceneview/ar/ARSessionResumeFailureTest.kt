@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.view.Display
 import android.view.WindowManager
+import com.google.ar.core.Frame
 import com.google.ar.core.RecordingStatus
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.CameraNotAvailableException
@@ -38,10 +39,10 @@ import org.robolectric.shadows.ShadowLooper
  * `onResume`, from a permission answer and from [ARCore.retrySession]: before the fix the
  * exception escaped all three and crashed the app.
  *
- * Robolectric instruments `com.google.ar.core` and [ResumeFailingSession] replaces the two
- * `Session` methods the path reaches: the native constructor and `resume()` (throw
- * [creationFailure] and [resumeFailure], when set). [ARSession] itself, and every line of
- * [ARCore], run for real.
+ * Robolectric instruments `com.google.ar.core` and [ResumeFailingSession] replaces the native
+ * `Session` methods the path reaches: the native constructor, `resume()` and `update()` (throw
+ * [creationFailure], [resumeFailure] and [updateFailure], when set). [ARSession] itself, and
+ * every line of [ARCore], run for real.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(
@@ -73,6 +74,8 @@ class ARSessionResumeFailureTest {
         resumeFailure = null
         geometryFailure = null
         resumeCalls = 0
+        updateCalls = 0
+        updateFailure = null
         published.clear()
         ShadowLog.clear()
         arCore = newARCore(onSessionResumed = { resumedCallbacks++ })
@@ -103,6 +106,39 @@ class ARSessionResumeFailureTest {
         // The shadow makes close synchronous and native-free; remove the arbiter's client too.
         arCore.session?.close()
         arCore.destroy()
+    }
+
+    @Test
+    fun `a displaced scene explains its wait until the camera holder pauses or closes`() {
+        val second = newARCore(onSessionResumed = {})
+        try {
+            arCore.resume(context, handler = null)
+            assertFalse(arCore.isCameraInUseByAnotherSession)
+
+            second.resume(context, handler = null)
+            assertTrue(arCore.isCameraInUseByAnotherSession)
+            assertFalse(second.isCameraInUseByAnotherSession)
+            assertFalse(arCore.session!!.isResumed)
+
+            second.pause()
+            // Hand-back is posted so an activity pausing both sessions cannot reopen the camera.
+            assertTrue(arCore.isCameraInUseByAnotherSession)
+            ShadowLooper.idleMainLooper()
+            assertFalse(arCore.isCameraInUseByAnotherSession)
+            assertTrue(arCore.session!!.isResumed)
+
+            second.resume(context, handler = null)
+            assertTrue(arCore.isCameraInUseByAnotherSession)
+            // Native-free synchronous close, as in tearDown; destroy still performs the hand-back.
+            second.session!!.close()
+            second.destroy()
+            assertFalse(arCore.isCameraInUseByAnotherSession)
+            assertTrue(arCore.session!!.isResumed)
+            assertTrue(failures.isEmpty())
+        } finally {
+            second.session?.close()
+            second.destroy()
+        }
     }
 
     @Test
@@ -393,6 +429,76 @@ class ARSessionResumeFailureTest {
         assertTrue(published.isEmpty())
     }
 
+    @Test
+    fun `a fatal update reports once and never retries the failed session`() {
+        val failure = FatalException("EGL context creation failed")
+        arCore.resume(context, handler = null)
+        val failed = arCore.session!!
+        updateFailure = failure
+
+        repeat(786) { assertNull(arCore.updateSessionOrNull()) }
+
+        assertEquals(1, updateCalls)
+        assertEquals(listOf(failure), failures)
+        assertNull(arCore.session)
+        assertTrue(failed.isClosed)
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
+        assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
+    }
+
+    @Test
+    fun `retry after a fatal update creates a new session`() {
+        arCore.resume(context, handler = null)
+        val failed = arCore.session!!
+        updateFailure = FatalException("EGL context creation failed")
+        assertNull(arCore.updateSessionOrNull())
+
+        arCore.retrySession()
+
+        assertNotSame(failed, arCore.session)
+        assertTrue(arCore.session!!.isResumed)
+        assertNull(arCore.arCoreAvailability)
+        assertEquals(2, creationCalls)
+        assertEquals(2, resumedCallbacks)
+        assertEquals(1, failures.size)
+    }
+
+    @Test
+    fun `nonfatal update errors propagate to the existing frame error handler`() {
+        arCore.resume(context, handler = null)
+        val running = arCore.session!!
+        val failure = IllegalStateException("temporary update error")
+        updateFailure = failure
+
+        assertSame(failure, assertThrows(IllegalStateException::class.java) {
+            arCore.updateSessionOrNull()
+        })
+
+        assertSame(running, arCore.session)
+        assertTrue(running.isResumed)
+        assertTrue(failures.isEmpty())
+        assertTrue(published.isEmpty())
+    }
+
+    @Test
+    fun `a throwing failure callback cannot leave the fatal session running`() {
+        val callbackFailure = IllegalArgumentException("host callback bug")
+        arCore = newARCore(
+            onSessionResumed = {},
+            onArSessionFailed = { throw callbackFailure },
+        )
+        arCore.resume(context, handler = null)
+        updateFailure = FatalException("EGL context creation failed")
+
+        assertSame(callbackFailure, assertThrows(IllegalArgumentException::class.java) {
+            arCore.updateSessionOrNull()
+        })
+        assertNull(arCore.session)
+        assertNull(arCore.updateSessionOrNull())
+        assertEquals(1, updateCalls)
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
+    }
+
     @Implements(Session::class)
     class ResumeFailingSession {
         @Suppress("FunctionName", "UNUSED_PARAMETER")
@@ -406,6 +512,12 @@ class ARSessionResumeFailureTest {
         protected fun resume() {
             resumeCalls++
             resumeFailure?.let { throw it }
+        }
+
+        @Implementation
+        protected fun update(): Frame {
+            updateCalls++
+            throw checkNotNull(updateFailure)
         }
 
         @Suppress("UNUSED_PARAMETER")
@@ -430,5 +542,7 @@ class ARSessionResumeFailureTest {
         var resumeFailure: Exception? = null
         var geometryFailure: Exception? = null
         var resumeCalls = 0
+        var updateCalls = 0
+        var updateFailure: Exception? = null
     }
 }

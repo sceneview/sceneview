@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Static launcher shortcuts of the QA app ("SV QA", long-press its icon). Wired to
+    MainActivity by src/debug/AndroidManifest.xml through the `qaLauncherShortcuts` manifest
+    placeholder of the `debug` build type; neither the store build nor the
+    `-PdemoPlainDebug=true` debug APK carries them.
+
+    "AR Recording" opens the ARCore session recorder (the Session MP4 mode of `ar-rerun`),
+    which has no visible entry in the demo list. The intent names the QA package and class
+    explicitly: `sceneview://demo` is also handled by the store app, and an implicit VIEW
+    would offer a chooser when both are installed. QaLauncherShortcutsTest checks that the
+    link still routes to that mode.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="ar_recording"
+        android:enabled="true"
+        android:icon="@mipmap/ic_shortcut_ar_recording"
+        android:shortcutShortLabel="@string/qa_shortcut_ar_recording_short"
+        android:shortcutLongLabel="@string/qa_shortcut_ar_recording_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="sceneview://demo/ar-rerun?tab=session-mp4"
+            android:targetPackage="io.github.sceneview.demo.qa"
+            android:targetClass="io.github.sceneview.demo.MainActivity" />
+    </shortcut>
+</shortcuts>

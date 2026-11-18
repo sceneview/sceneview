@@ -163,6 +163,10 @@ class TapToPlaceState internal constructor() {
     /** Remove the anchor, keep the asset, scan again (§2.2 *Restarting placement*). */
     fun resetPlacement(nowMillis: Long = android.os.SystemClock.uptimeMillis()) {
         detachPlacement()
+        // Removing the old ModelNode destroys its instance's Filament components. Keep
+        // the selected spec, but reload before the frame loop can commit another anchor.
+        modelInstance = null
+        assetRetry++
         controller.resetPlacement(nowMillis)
         phase = controller.phase
     }

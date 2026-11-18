@@ -1,79 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#6446CD"/>
-    </linearGradient>
-    <linearGradient id="cube-top" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#A4C1FF"/>
-      <stop offset="100%" stop-color="#5A8EE8"/>
-    </linearGradient>
-    <linearGradient id="cube-right" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#3D7FD9"/>
-      <stop offset="100%" stop-color="#005BC1"/>
-    </linearGradient>
-    <linearGradient id="cube-left" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#005BC1"/>
-      <stop offset="100%" stop-color="#003A7D"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.08)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-    </radialGradient>
-  </defs>
-
-  <!-- Background gradient -->
-  <rect width="1200" height="630" fill="url(#bg)"/>
-
-  <!-- Subtle glow -->
-  <ellipse cx="400" cy="315" rx="500" ry="400" fill="url(#glow)"/>
-
-  <!-- Isometric cube — centered right side -->
-  <g transform="translate(880, 280) scale(2.8)">
-    <!-- Left face -->
-    <polygon points="0,10 -40,-15 -40,25 0,50" fill="url(#cube-left)"/>
-    <!-- Right face -->
-    <polygon points="0,10 40,-15 40,25 0,50" fill="url(#cube-right)"/>
-    <!-- Top face -->
-    <polygon points="0,-30 40,-5 0,20 -40,-5" fill="url(#cube-top)"/>
-
-    <!-- Viewport brackets -->
-    <polyline points="-52,-38 -52,-48 -42,-48"
-              fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="52,-38 52,-48 42,-48"
-              fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="-52,58 -52,68 -42,68"
-              fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="52,58 52,68 42,68"
-              fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Social card. Flat identity (DESIGN.md): surface #F9F9FF, the cube in its three
+       identity colours, no gradient. og-image.png is rendered from this file. -->
+  <style>
+    @import url("assets/fonts/fonts.css");
+    .h { font-family: 'Plus Jakarta Sans', Inter, sans-serif; font-weight: 700; font-size: 96px; letter-spacing: -2px; fill: #1A1B20; }
+    .p { font-family: Inter, sans-serif; font-size: 38px; fill: #44474F; }
+    .c { font-family: Inter, sans-serif; font-size: 24px; fill: #1A1B20; }
+    .u { font-family: Inter, sans-serif; font-size: 24px; fill: #005BC1; }
+  </style>
+  <rect width="1200" height="630" fill="#F9F9FF"/>
+  <text class="h" x="96" y="250">SceneView</text>
+  <text class="p" x="96" y="331">Open-source 3D and AR for</text>
+  <text class="p" x="96" y="380">Compose, SwiftUI and the web</text>
+  <g fill="none" stroke="#C4C6D0" stroke-width="2">
+    <rect x="97" y="433" width="134" height="48" rx="24"/>
+    <rect x="246" y="433" width="86" height="48" rx="24"/>
+    <rect x="346" y="433" width="96" height="48" rx="24"/>
   </g>
-
-  <!-- Text -->
-  <text x="100" y="240" fill="white" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="72" font-weight="800" letter-spacing="-2">SceneView</text>
-  <text x="100" y="320" fill="rgba(255,255,255,0.85)" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="32" font-weight="400">3D and AR for every platform</text>
-
-  <!-- Platform chips -->
-  <g transform="translate(100, 370)">
-    <rect x="0" y="0" width="90" height="32" rx="16" fill="rgba(255,255,255,0.15)"/>
-    <text x="45" y="21" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle">Android</text>
-
-    <rect x="100" y="0" width="55" height="32" rx="16" fill="rgba(255,255,255,0.15)"/>
-    <text x="127" y="21" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle">iOS</text>
-
-    <rect x="165" y="0" width="65" height="32" rx="16" fill="rgba(255,255,255,0.15)"/>
-    <text x="197" y="21" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle">Web</text>
-
-    <rect x="240" y="0" width="90" height="32" rx="16" fill="rgba(255,255,255,0.15)"/>
-    <text x="285" y="21" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle">visionOS</text>
-
-    <rect x="340" y="0" width="80" height="32" rx="16" fill="rgba(255,255,255,0.15)"/>
-    <text x="380" y="21" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle">macOS</text>
-  </g>
-
-  <!-- Version badge -->
-  <rect x="100" y="160" width="56" height="24" rx="12" fill="rgba(255,255,255,0.15)"/>
-  <text x="128" y="177" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="11" font-weight="600" text-anchor="middle">v3.6.0</text>
-
-  <!-- Bottom URL -->
-  <text x="100" y="560" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="16" font-weight="400">sceneview.github.io</text>
+  <text class="c" x="164" y="466" text-anchor="middle">Android</text>
+  <text class="c" x="289" y="466" text-anchor="middle">iOS</text>
+  <text class="c" x="394" y="466" text-anchor="middle">Web</text>
+  <text class="u" x="96" y="560">sceneview.github.io</text>
+  <svg x="650" y="75" width="480" height="480" viewBox="0 0 108 108">
+    <path fill="#C9D9FF" d="M54 23.6L78.942 38L54 52.4L29.058 38Z"/>
+    <path fill="#005BC1" d="M27.673 40.4L52.614 54.8L52.614 83.6L27.673 69.2Z"/>
+    <path fill="#004494" d="M55.386 54.8L80.327 40.4L80.327 69.2L55.386 83.6Z"/>
+  </svg>
 </svg>
