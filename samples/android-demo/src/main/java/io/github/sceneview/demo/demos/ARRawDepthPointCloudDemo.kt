@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import android.content.Context
+import android.graphics.Paint
 import android.os.Build
 import android.view.Surface
 import android.view.WindowManager
@@ -34,6 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -76,8 +80,8 @@ import kotlinx.coroutines.delay
  * a non-trivial chunk of work for a demo that's about *visualising what depth
  * looks like*. The screen-space cloud uses the depth-image native coordinates
  * (which map 1:1 to the camera feed) and a Compose `Canvas` overlay. The cost
- * is one `IntArray` allocation per frame plus a sub-sampled per-pixel loop —
- * cheap, JVM-testable, and visually equivalent for a viz demo.
+ * is a packed `IntArray` and a packed `FloatArray` of screen-space centers per frame, plus a
+ * sub-sampled per-pixel loop — JVM-testable and visually equivalent for a viz demo.
  *
  * The unsupported / warming-up states surface explicit banners so the user is
  * never staring at a black screen (repo non-negotiable, see #1617).
@@ -437,29 +441,31 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
             val packed = cloudPacked
             if (packed != null && depthWidth > 0 && depthHeight > 0) {
                 val pointCount = RawDepthCloud.pointCount(packed)
-                val widthF = depthWidth.toFloat()
-                val heightF = depthHeight.toFloat()
+                val outlinePaint = remember {
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.Black.copy(alpha = 0.8f).toArgb()
+                        strokeCap = Paint.Cap.ROUND
+                    }
+                }
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val canvasW = size.width
-                    val canvasH = size.height
-                    val pointRadius = 3.dp.toPx()
+                    val points = RawDepthCloud.canvasPoints(
+                        packed, depthWidth, depthHeight, size.width, size.height,
+                    )
+                    val pointRadius = 2.dp.toPx()
                     val outlineRadius = pointRadius + 1.dp.toPx()
-                    val outlineColor = Color.Black.copy(alpha = 0.8f)
+                    outlinePaint.strokeWidth = outlineRadius * 2f
+                    // Compose drawPoints loops over individual points on Android. Submit the
+                    // packed centers to the native canvas to draw every dark edge in one batch.
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawPoints(points, outlinePaint)
+                    }
                     for (i in 0 until pointCount) {
-                        val px = RawDepthCloud.x(packed, i) / widthF * canvasW
-                        val py = RawDepthCloud.y(packed, i) / heightF * canvasH
                         val argb = RawDepthCloud.argb(packed, i)
-                        val center = Offset(px, py)
                         // Density-scaled dots with a dark edge stay legible on the camera feed.
-                        drawCircle(
-                            color = outlineColor,
-                            radius = outlineRadius,
-                            center = center,
-                        )
                         drawCircle(
                             color = Color(argb),
                             radius = pointRadius,
-                            center = center,
+                            center = Offset(points[i * 2], points[i * 2 + 1]),
                         )
                     }
                 }
