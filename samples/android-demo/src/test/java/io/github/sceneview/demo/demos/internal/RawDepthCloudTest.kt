@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,6 +13,45 @@ import java.nio.ByteOrder
  * confidence image pair.
  */
 class RawDepthCloudTest {
+
+    @Test
+    fun `canvasPoints scales each axis and preserves packed order and data`() {
+        val packed = intArrayOf(
+            0, 0, 300, 0xFFFF0000.toInt(),
+            3, 1, 5_000, 0xFF0000FF.toInt(),
+            1, 0, 1_000, 0xFF00FF00.toInt(),
+        )
+        val original = packed.copyOf()
+
+        val points = RawDepthCloud.canvasPoints(packed, 4, 2, 200f, 600f)
+
+        assertArrayEquals(floatArrayOf(0f, 0f, 150f, 300f, 50f, 0f), points, 0f)
+        assertArrayEquals(original, packed)
+    }
+
+    @Test
+    fun `canvasPoints uses post-rotation dimensions for a portrait cloud`() {
+        val (depth, confidence) = buildPair(IntArray(6) { 1_000 }, IntArray(6) { 255 }, 3, 2)
+        val packed = RawDepthCloud.buildCloud(
+            depth, 6, confidence, 3, 3, 2, stride = 1, rotationDegrees = 90,
+        )
+
+        val points = RawDepthCloud.canvasPoints(packed, 2, 3, 200f, 600f)
+
+        assertArrayEquals(
+            floatArrayOf(
+                100f, 0f, 100f, 200f, 100f, 400f,
+                0f, 0f, 0f, 200f, 0f, 400f,
+            ),
+            points,
+            0f,
+        )
+    }
+
+    @Test
+    fun `canvasPoints returns no centers for an empty cloud`() {
+        assertTrue(RawDepthCloud.canvasPoints(intArrayOf(), 4, 2, 200f, 600f).isEmpty())
+    }
 
     /**
      * Build a 4×2 raw-depth + confidence buffer pair, with every pixel having a
@@ -469,5 +509,25 @@ class RawDepthCloudTest {
         assertTrue(RawDepthCloud.DEFAULT_STRIDE >= 1)
         assertTrue(RawDepthCloud.DEFAULT_MAX_POINTS > 0)
         assertTrue(RawDepthCloud.DEFAULT_CONFIDENCE_THRESHOLD in 0..255)
+    }
+
+    @Test
+    fun `bucketedCenters groups every center by its depth band, in order`() {
+        val near = DepthVisualization.NEAR_MM_DEFAULT
+        val far = DepthVisualization.FAR_MM_DEFAULT
+        val packed = intArrayOf(0, 0, near, 0, 1, 0, far, 0, 2, 0, near, 0)
+        val centers = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
+        val bands = RawDepthCloud.bucketedCenters(packed, centers, buckets = 4)
+        assertEquals(4, bands.size)
+        assertTrue(bands[0].contentEquals(floatArrayOf(1f, 2f, 5f, 6f)))
+        assertTrue(bands[3].contentEquals(floatArrayOf(3f, 4f)))
+        assertTrue(bands[1].isEmpty() && bands[2].isEmpty())
+        assertEquals(6, bands.sumOf { it.size })
+    }
+
+    @Test
+    fun `colorBucket stays in range beyond the ramp ends`() {
+        assertEquals(0, RawDepthCloud.colorBucket(1, buckets = 8))
+        assertEquals(7, RawDepthCloud.colorBucket(1_000_000, buckets = 8))
     }
 }

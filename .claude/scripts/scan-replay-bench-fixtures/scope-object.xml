@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<map>
+  <string name="ar_rerun_scan_scope">object</string>
+  <boolean name="synthetic_other_setting" value="true" />
+  <string name="synthetic_title">One &amp; two</string>
+</map>

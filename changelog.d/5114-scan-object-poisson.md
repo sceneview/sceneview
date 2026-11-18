@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Android demo: a big object's scan is filled ([#5114](https://github.com/sceneview/sceneview/pull/5114)).** An object scan whose object is at least 60 cm across, such as an office chair, is finished with the bounded 5 cm Poisson surface the room scans use, so its seat, column and back come out whole instead of in shreds. A smaller object, such as a pair of shoes, keeps the fused surface's detail. Such an object kept by an earlier version is built again behind its old model when reopened; other kept scans keep the model they were finished with.

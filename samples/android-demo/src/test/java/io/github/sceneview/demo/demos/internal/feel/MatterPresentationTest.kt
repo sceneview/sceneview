@@ -59,6 +59,31 @@ class MatterPresentationTest {
         assertEquals(0f, idle.yawDegrees, 0f)
     }
 
+    @Test fun aPostponedOrbitStartsFromRestOnceReleasedAndAMovingOneIsNeverStopped() {
+        val idle = MatterIdle()
+        idle.advance(0L, true)
+        // A warm still owed at the four-second mark: the orbit waits, the camera does not move.
+        for (now in 16L..7000L step 16) {
+            idle.postpone(now)
+            assertTrue(!idle.advance(now, true))
+            assertTrue(!idle.orbiting)
+        }
+        // Released: it starts on the next frame, from rest.
+        idle.advance(7016L, true)
+        assertTrue(idle.orbiting)
+        assertTrue(kotlin.math.abs(idle.yawDegrees) < .001f)
+        idle.advance(9000L, true)
+        val yaw = idle.yawDegrees
+        assertTrue(yaw != 0f)
+        // Once moving, a postpone is a no-op: the orbit never freezes mid-sway.
+        idle.postpone(9016L)
+        idle.advance(9016L, true)
+        assertTrue(idle.yawDegrees != yaw)
+        assertTrue(idle.orbiting)
+        idle.touch(9100L, down = true)
+        assertTrue(!idle.orbiting)
+    }
+
     @Test fun orbitChangesEyeWithoutChangingTheSlabOrTouchCoordinateSystem() {
         val stage = MatterStage().apply { widthPx = 1080; heightPx = 1600; frame() }
         for (yaw in listOf(-6f, 0f, 6f)) {

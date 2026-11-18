@@ -18,7 +18,7 @@ object ArMeasureFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_measure_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Straighten,
-        order = 25,
+        order = 26,
         addedIn = "4.29.0",
         updatedIn = "4.57.0",
         tags = setOf("measure", "ar", "measure", "distance", "wall", "room", "area", "hit-test", "ruler"),

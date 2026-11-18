@@ -108,8 +108,16 @@ DoublePendulum.kt is adapted from twolinks
 (https://github.com/radcli14/twolinks), Copyright (c) 2022 radcli14, MIT
 License.
 
+--------------------------------------------------------------------------------
+Hash without Sine  —  shader hash (android-demo, Matter)
+--------------------------------------------------------------------------------
+
+The steelHash function of samples/android-demo/src/main/materials/matter_steel.mat
+is hash11 from "Hash without Sine" (https://www.shadertoy.com/view/4djSRW),
+Copyright (c) 2014 David Hoskins, MIT License.
+
 The full MIT and ISC license texts are reproduced in the header of each file
-listed in the two sections above.
+listed in the three sections above.
 
 --------------------------------------------------------------------------------
 Depth Anything V2 Small  —  depth model (arsceneview-depth-ml)

@@ -152,6 +152,11 @@ dependencies {
     // SDK_INT branches of SystemHapticEngine on a mocked Vibrator (pins the
     // API 24-25 VibrationEffect-absence crash). Mirrors :arsceneview's setup.
     testImplementation libs.robolectric
+    // Compose semantics assertions on the JVM, via Robolectric — no emulator. For
+    // NodeEditingRotationBadgeTest: the rotation badge and its live region exist only
+    // during a twist. Test classpath only: the published AAR gains no dependency.
+    testImplementation platform(libs.androidx.compose.bom)
+    testImplementation libs.androidx.compose.ui.test.junit4
     // Coroutines test — FrameRatePolicyTest drives `awaitRenderingEnabled` on virtual time to
     // assert the settled (FrameRatePolicy.OnDemand) path PARKS rather than polls (#3108). A poll
     // loop cannot

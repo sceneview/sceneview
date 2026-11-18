@@ -13,14 +13,14 @@ import kotlin.math.max
  * Confidence is a single-channel image where each byte (0..255) encodes the confidence
  * for the corresponding raw-depth pixel — 0 = "unreliable", 255 = "high confidence".
  *
- * This object turns the (raw-depth, confidence) pair into a flat list of
- * [DepthPoint]s sub-sampled and filtered, ready to be drawn by a Compose `Canvas`
- * overlay. The two image buffers are read by a pure-Kotlin loop and the resulting
- * `IntArray` packs `[x, y, depthMm, argbColor]` quadruplets so the per-frame
- * allocation is a single primitive array.
+ * [buildCloud] sub-samples and filters the (raw-depth, confidence) image pair into an
+ * [IntArray] of `[x, y, depthMm, argbColor]` quadruplets. [canvasPoints] projects those
+ * depth pixels into a [FloatArray] of screen-space `[x, y]` pairs, preserving the order
+ * so the batched outlines and per-point colors use the same centers on the Compose
+ * `Canvas` overlay.
  *
- * Extracted as `internal` top-level functions so they can be unit-tested without
- * ARCore on the classpath. See `RawDepthCloudTest`.
+ * Buffer processing and projection use pure Kotlin so they can be unit-tested without
+ * ARCore images. See `RawDepthCloudTest`.
  *
  * Closes part of [#1715](https://github.com/sceneview/sceneview/issues/1715).
  */
@@ -169,6 +169,67 @@ internal object RawDepthCloud {
         } finally {
             depthBytes.order(prevDepthOrder)
         }
+    }
+
+    /**
+     * Map already-rotated depth pixels to canvas coordinates, preserving packed order so
+     * the batched outlines and per-point colors share the same centers.
+     * Returns packed `[x, y]` pairs for the native Canvas without per-point allocations.
+     * [depthWidth] and [depthHeight] must be the positive, post-rotation image dimensions.
+     */
+    fun canvasPoints(
+        packed: IntArray,
+        depthWidth: Int,
+        depthHeight: Int,
+        canvasWidth: Float,
+        canvasHeight: Float,
+    ): FloatArray {
+        val widthF = depthWidth.toFloat()
+        val heightF = depthHeight.toFloat()
+        val points = FloatArray(pointCount(packed) * 2)
+        for (i in 0 until pointCount(packed)) {
+            points[i * 2] = x(packed, i) / widthF * canvasWidth
+            points[i * 2 + 1] = y(packed, i) / heightF * canvasHeight
+        }
+        return points
+    }
+
+    /** Colour steps of the batched dots: the turbo ramp in [COLOR_BUCKETS] bands. */
+    const val COLOR_BUCKETS: Int = 24
+
+    /** The ramp position (0..1) of a depth, on the same log scale as the packed colour. */
+    fun rampPosition(depthMm: Int): Float {
+        return (ln(depthMm.toFloat() / DepthVisualization.NEAR_MM_DEFAULT) / logDepthRange).coerceIn(0f, 1f)
+    }
+
+    /** The colour band of a depth, in `0 until buckets`. */
+    fun colorBucket(depthMm: Int, buckets: Int = COLOR_BUCKETS): Int =
+        (rampPosition(depthMm) * buckets).toInt().coerceIn(0, buckets - 1)
+
+    /** The ARGB of a band: the ramp at the band's centre. */
+    fun bucketArgb(bucket: Int, buckets: Int = COLOR_BUCKETS): Int =
+        DepthVisualization.falseColorArgb((bucket + .5f) / buckets)
+
+    /**
+     * Canvas centers grouped by colour band, so each band is one native `drawPoints` call
+     * instead of one `drawCircle` per point. Index `b` holds band `b`'s packed `[x, y]` pairs.
+     */
+    fun bucketedCenters(packed: IntArray, centers: FloatArray, buckets: Int = COLOR_BUCKETS): Array<FloatArray> {
+        val count = pointCount(packed)
+        val sizes = IntArray(buckets)
+        val band = IntArray(count)
+        for (i in 0 until count) {
+            band[i] = colorBucket(depthMm(packed, i), buckets)
+            sizes[band[i]]++
+        }
+        val out = Array(buckets) { FloatArray(sizes[it] * 2) }
+        val fill = IntArray(buckets)
+        for (i in 0 until count) {
+            val b = band[i]
+            out[b][fill[b]++] = centers[i * 2]
+            out[b][fill[b]++] = centers[i * 2 + 1]
+        }
+        return out
     }
 
     /** Number of points encoded in a packed cloud array. */

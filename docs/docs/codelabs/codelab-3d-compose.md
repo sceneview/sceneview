@@ -29,7 +29,7 @@ In your module's `build.gradle`:
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.69.5")
+    implementation("io.github.sceneview:sceneview:4.69.7")
 }
 ```
 

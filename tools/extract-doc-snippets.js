@@ -171,6 +171,8 @@ const PREAMBLE_IMPORTS = [
   "io.github.sceneview.ar.scene.*",
   "io.github.sceneview.audio.*",
   "io.github.sceneview.core.splat.*",
+  // ModelFormat, ModelUnit, ModelConverter, UnsupportedModelFormat (#3489).
+  "io.github.sceneview.core.model.*",
   // NOTE: io.github.sceneview.collision.* is deliberately NOT wildcarded —
   // collision.Sphere/Box/Plane/HitResult collide with geometries.* and
   // com.google.ar.core.*. Collision-system snippets carry their own explicit

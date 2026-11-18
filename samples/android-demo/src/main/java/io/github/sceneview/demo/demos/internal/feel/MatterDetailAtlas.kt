@@ -1,13 +1,11 @@
 package io.github.sceneview.demo.demos.internal.feel
 
-import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.floor
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * v9's rest-space fields, evaluated once on the CPU. No Android/Filament calls here.
+ * Procedural rest-space fields, evaluated once on the CPU. No Android/Filament calls here.
  * An RG8 atlas gives the top 512² texels and each side a separate padded chart. This is
  * deliberately NOT a repeating projection: the 3D cells and Carrara seams meet across
  * the rounded edges at the same rest-space points. UVs are shared with [MatterMeshes].
@@ -19,7 +17,7 @@ import kotlin.math.sqrt
 internal object MatterDetailAtlas {
     // Bump when fields, quantization, chart layout, dimensions or bevel/rest-space mapping change.
     // Disk cache keys are <family>-<CACHE_VERSION>.bin; shader-only edits do not invalidate RG8.
-    const val CACHE_VERSION = 1
+    const val CACHE_VERSION = 2
     const val WIDTH = 1024
     const val HEIGHT = 512
     private const val GUTTER = 4
@@ -76,7 +74,7 @@ internal object MatterDetailAtlas {
         return pixels
     }
 
-    /** Allocation-free port of the old GLSL hash, Worley and marble domain warp. */
+    /** Allocation-free procedural cells, fibre noise and branching mineral paths. */
     internal class Field {
         var red = 0f; private set
         var green = 0f; private set
@@ -147,30 +145,38 @@ internal object MatterDetailAtlas {
                     green = noise(x * 1.4f, (z + y) * 775f)
                 }
                 FeelMaterial.Marble -> {
-                    val u = x + z * .58f + y * .43f; val along = z - x * .58f + y * .71f
-                    val across = u + (noise(along * .8f, 7.2f) - .5f) * .85f +
-                        (noise(along * 2.1f, 18.4f) - .5f) * .18f
-                    val cloud = fbm(u * .95f + 3.4f, along * .95f + 3.4f)
-                    val width = .22f + .24f * cloud
-                    val soft = gaussian((across + .85f) / width)
-                    val second = gaussian((across - 1f + .18f * sin(along * 1.6f)) / (width * 1.35f))
-                    val flowX = sin(along * 1.2f); val flowY = cos(along * 1.2f)
-                    val fadeX = sin(along * .85f); val fadeY = cos(along * .85f)
-                    var fine = 0f
-                    val stream = floor((across + 2.9f) / .34f)
-                    for (i in -1..1) {
-                        val seed = stream + i
-                        if (seed < 0f || seed > 17f) continue
-                        hash(seed, 3.1f, 9.7f)
-                        val centre = -2.9f + seed * .34f + (hx - .5f) * .14f
-                        val dx = hy * 2f - 1f; val dy = hz * 2f - 1f
-                        val offset = across - centre + .10f * (flowX * dx + flowY * dy)
-                        val life = .65f + .25f * (fadeX * dy + fadeY * dx)
-                        // Atlas mipmaps replace the old per-fragment derivative width.
-                        fine += gaussian(offset / (.018f + .027f * hy)) * life
+                    // Sparse mineral paths, each in its own direction, with tributaries
+                    // joining the parent before tapering out. No repeated stripes or closed
+                    // cellular outlines. One rest-space field continues over every bevel.
+                    val u = x + y * .43f
+                    val v = z + y * .71f
+                    val cloud = fbm(u * .8f + 3.4f, v * .8f + 3.4f)
+                    var mineral = 0f
+                    for (i in 0..2) {
+                        val c = when (i) { 0 -> .819f; 1 -> .423f; else -> .966f }
+                        val s = when (i) { 0 -> -.574f; 1 -> .906f; else -> .259f }
+                        val across = u * c - v * s
+                        val along = u * s + v * c
+                        val seed = i * 13.7f
+                        val centre = when (i) { 0 -> -.75f; 1 -> .95f; else -> 1.85f }
+                        val warp = (fbm(along * .85f + seed, 7.2f + seed) - .5f) * .65f +
+                            (noise(along * 4.3f, 18.4f + seed) - .5f) * .065f
+                        val offset = across - centre - warp
+                        val width = .018f + .016f * noise(along * 2.1f, seed + 3.1f)
+                        val strength = .25f + .15f * noise(along * 1.7f + seed, 4.6f)
+                        val parent = gaussian(offset / width) * strength +
+                            gaussian(offset / .14f) * .08f
+                        // Non-periodic forks: zero separation at the junction, then each
+                        // curves away at a different angle and fades into the white ground.
+                        val t = along + .9f - i * .7f
+                        val sign = if (i == 1) -1f else 1f
+                        val branchOffset = sign * t * (.32f + .14f * t) +
+                            .06f * t * (noise(along * 3.2f, seed + 5.4f) - .5f)
+                        val life = smooth(0f, .12f, t) * (1f - smooth(.65f, 1.8f, t))
+                        val branch = gaussian((offset - branchOffset) / (width * .85f)) * .22f * life
+                        mineral = maxOf(mineral, parent, branch)
                     }
-                    red = (.10f + .22f * cloud + .34f * soft + .22f * second +
-                        .25f * minOf(fine, 1f)).coerceIn(0f, .72f)
+                    red = (.06f + .12f * cloud + mineral).coerceIn(0f, .72f)
                     green = cloud
                 }
                 FeelMaterial.Gel -> error("Gel keeps its view-dependent refracted bubbles")

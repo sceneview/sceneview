@@ -1563,6 +1563,8 @@ private fun RerunLiveScreen(
     // Both scopes paint the same dense cloud through the phone's exact lens.
     val scanLens = remember(scanMedia) { ScanLens() }
     val scanCoverage = remember(scanMedia) { ScanCoverageState() }
+    // Debug builds log the scan's cadence for the replay bench (.claude/scripts/scan_replay_bench.py).
+    val scanBench = remember { if (BuildConfig.DEBUG) ScanBench() else null }
     val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false) }
 
     // #4716 on the emulator, which has no AR: the `record` take's own photos stand in for the
@@ -2172,6 +2174,7 @@ private fun RerunLiveScreen(
                         if (frame.timestamp > 0L) cameraReady = true
                         latestFrame = frame
                         isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                        scanBench?.frame(frame.camera.trackingState.name, scanCoverage.coveredSquareMetres)
                         // Bridge gates on its own enabled + connection state, so this
                         // is safe whether or not the recorder is reachable.
                         bridge.logFrame(session, frame)

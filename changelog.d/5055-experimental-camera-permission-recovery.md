@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Experimental Android camera recovery API ([#5055](https://github.com/sceneview/sceneview/pull/5055), [#4469](https://github.com/sceneview/sceneview/issues/4469)).** Mark `resolveCameraPermissionRecovery`, `ARCameraPermissionRecovery` and `ARCameraPermissionState.recovery` with `@ExperimentalSceneViewApi` while the recovery policy evolves. Kotlin callers can opt in with `@OptIn(ExperimentalSceneViewApi::class)`; JVM signatures and runtime behavior are unchanged.
