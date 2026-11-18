@@ -510,4 +510,24 @@ class RawDepthCloudTest {
         assertTrue(RawDepthCloud.DEFAULT_MAX_POINTS > 0)
         assertTrue(RawDepthCloud.DEFAULT_CONFIDENCE_THRESHOLD in 0..255)
     }
+
+    @Test
+    fun `bucketedCenters groups every center by its depth band, in order`() {
+        val near = DepthVisualization.NEAR_MM_DEFAULT
+        val far = DepthVisualization.FAR_MM_DEFAULT
+        val packed = intArrayOf(0, 0, near, 0, 1, 0, far, 0, 2, 0, near, 0)
+        val centers = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
+        val bands = RawDepthCloud.bucketedCenters(packed, centers, buckets = 4)
+        assertEquals(4, bands.size)
+        assertTrue(bands[0].contentEquals(floatArrayOf(1f, 2f, 5f, 6f)))
+        assertTrue(bands[3].contentEquals(floatArrayOf(3f, 4f)))
+        assertTrue(bands[1].isEmpty() && bands[2].isEmpty())
+        assertEquals(6, bands.sumOf { it.size })
+    }
+
+    @Test
+    fun `colorBucket stays in range beyond the ramp ends`() {
+        assertEquals(0, RawDepthCloud.colorBucket(1, buckets = 8))
+        assertEquals(7, RawDepthCloud.colorBucket(1_000_000, buckets = 8))
+    }
 }

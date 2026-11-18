@@ -440,12 +440,14 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
             // pixel coordinates to fractional view coordinates.
             val packed = cloudPacked
             if (packed != null && depthWidth > 0 && depthHeight > 0) {
-                val pointCount = RawDepthCloud.pointCount(packed)
                 val outlinePaint = remember {
                     Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         color = Color.Black.copy(alpha = 0.8f).toArgb()
                         strokeCap = Paint.Cap.ROUND
                     }
+                }
+                val dotPaint = remember {
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
                 }
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val points = RawDepthCloud.canvasPoints(
@@ -459,14 +461,16 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                     drawIntoCanvas { canvas ->
                         canvas.nativeCanvas.drawPoints(points, outlinePaint)
                     }
-                    for (i in 0 until pointCount) {
-                        val argb = RawDepthCloud.argb(packed, i)
-                        // Density-scaled dots with a dark edge stay legible on the camera feed.
-                        drawCircle(
-                            color = Color(argb),
-                            radius = pointRadius,
-                            center = Offset(points[i * 2], points[i * 2 + 1]),
-                        )
+                    // One native batch per colour band: the dots follow the depth ramp in
+                    // RawDepthCloud.COLOR_BUCKETS steps instead of one drawCircle per point.
+                    val bands = RawDepthCloud.bucketedCenters(packed, points)
+                    dotPaint.strokeWidth = pointRadius * 2f
+                    drawIntoCanvas { canvas ->
+                        for (band in bands.indices) {
+                            if (bands[band].isEmpty()) continue
+                            dotPaint.color = RawDepthCloud.bucketArgb(band)
+                            canvas.nativeCanvas.drawPoints(bands[band], dotPaint)
+                        }
                     }
                 }
             }
