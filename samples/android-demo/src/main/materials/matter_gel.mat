@@ -121,9 +121,21 @@ fragment {
         float floorDistance = max(world.y - materialParams.keyTarget.y, 0.002) / down;
         highp vec2 floorXZ = world.xz + ray.xz * floorDistance;
         highp vec3 floorPoint = vec3(floorXZ.x, materialParams.keyTarget.y, floorXZ.y);
+        // Flat top only (rest normal, as in the vertex stage): on the bevel the quad
+        // derivatives are too coarse and the ratio crawls along the edge as dots.
+        vec3 halfSize = vec3(materialParams.dimensions.x, materialParams.dimensions.y * 0.5,
+            materialParams.dimensions.z);
+        vec3 centred = variable_rest.xyz + vec3(0.0, halfSize.y, 0.0);
+        vec3 rested = normalize(centred - clamp(centred, -halfSize + materialParams.dimensions.w,
+            halfSize - materialParams.dimensions.w) + vec3(0.0, 1e-5, 0.0));
+        float top = smoothstep(0.92, 0.995, rested.y);
         vec3 transmitted = matterStudioFloor(floorPoint, materialParams.background,
             materialParams.keyPosition, materialParams.keyTarget, materialParams.keyCone,
-            materialParams.keyPool, materialParams.contact, materialParams.dimensions.xz);
+            materialParams.keyPool,
+            // Through a wall the ray lands beside the slab, on the caustic's edge: keep the
+            // caustic to rays that entered through the top, or that edge draws a seam.
+            vec3(materialParams.contact.xy, materialParams.contact.z * top),
+            materialParams.dimensions.xz);
         // Caustic: the key refracted by the top lands on the floor; its footprint per
         // surface area (screen derivatives) focuses the light under a dent or a wave.
         // A flat top gives exactly 1. Only the top, where the area ratio is defined.
@@ -139,28 +151,28 @@ fragment {
         // where the normal changes by more than ~0.02 per pixel; the dent's floor keeps it.
         float turn = length(fwidth(n));
         focus = mix(focus, 1.0, smoothstep(0.02, 0.08, turn));
-        // Flat top only (rest normal, as in the vertex stage): on the bevel the quad
-        // derivatives are too coarse and the ratio crawls along the edge as dots.
-        vec3 halfSize = vec3(materialParams.dimensions.x, materialParams.dimensions.y * 0.5,
-            materialParams.dimensions.z);
-        vec3 centred = variable_rest.xyz + vec3(0.0, halfSize.y, 0.0);
-        vec3 rested = normalize(centred - clamp(centred, -halfSize + materialParams.dimensions.w,
-            halfSize - materialParams.dimensions.w) + vec3(0.0, 1e-5, 0.0));
-        float top = smoothstep(0.92, 0.995, rested.y);
         // An off-camera neutral bounce card fills the vertical faces. The midnight
         // floor alone made a clear interface read as an opaque black-green block.
         // Keep the continuous floor projection in the well: never switch exit planes
         // for that sample, which would fold a box-shaped seam through the refraction.
-        transmitted = mix(vec3(0.20), transmitted, mix(0.25, 1.0, top));
+        // Light entering through the lit top scatters down the column, so the walls glow
+        // brighter toward the top edge, faintly aqua: a block of jelly, not a grey wall.
+        float rise = smoothstep(-materialParams.dimensions.y, 0.0, p.y);
+        vec3 card = mix(vec3(0.15, 0.20, 0.22), vec3(0.46, 0.55, 0.56), rise * rise);
+        transmitted = mix(card, transmitted, mix(0.30, 1.0, top));
         // A bottom-reflected strip supplies internal glints. Fade it when the ray
         // exits a side first; no additional geometry, scene-colour pass or ray march.
         vec3 internalRay = vec3(ray.x, -ray.y, ray.z);
-        float bottomReflection = smoothstep(0.0, 0.15, min(sideDistance.x, sideDistance.y) - bottomDistance);
+        // Wide on purpose: a narrow switch drew the side/bottom exit boundary as a hard
+        // diagonal across the top and down the front face.
+        // Rays entering through a wall skip both exit-dependent terms: there the side/bottom
+        // switch drew a hard vertical seam down the front face.
+        float bottomReflection = smoothstep(-0.35, 0.9, min(sideDistance.x, sideDistance.y) - bottomDistance) * top;
         transmitted += 0.28 * bottomReflection *
             matterStudioStrip(world + ray * bottomDistance, internalRay, 0.75);
         // Unit gain at rest; stronger bright/dark pairs make release ripples legible.
         transmitted *= mix(1.0, 0.3 + 0.7 * focus * sqrt(focus), top);
-        transmitted *= exp(-materialParams.absorption * path) * materialParams.albedo;
+        transmitted *= exp(-materialParams.absorption * mix(1.2, path, top)) * materialParams.albedo;
         float f0 = (materialParams.ior - 1.0) / (materialParams.ior + 1.0);
         f0 *= f0;
         float fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(n, v), 0.0), 5.0);
@@ -170,7 +182,9 @@ fragment {
         // is the actual analytic floor radiance, not overlapping transparent layers.
         material.baseColor = vec4(0.0, 0.0, 0.0, 1.0);
         material.metallic = 0.0;
-        material.roughness = materialParams.roughness;
+        // The walls are flat mirrors of the studio HDR: at the top's roughness they
+        // showed a softbox's hard rounded edge as a seam down the front face.
+        material.roughness = mix(0.34, materialParams.roughness, top);
         material.ior = materialParams.ior;
         // w=0 keeps the pre-exposed floor sample identical to the unlit floor outside.
         vec3 interfaceLight = matterStudioStrip(world, reflect(-v, n), 0.65);

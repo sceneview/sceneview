@@ -7,8 +7,12 @@
 vec3 matterStudioStrip(highp vec3 p, vec3 ray, float spread) {
     highp vec2 hit = p.xz + ray.xz * (max(4.0 - p.y, 0.0) / max(ray.y, 0.08));
     vec2 distanceToStrip = abs(hit - vec2(-3.3, -7.0));
-    float strip = (1.0 - smoothstep(0.45, 0.45 + spread, distanceToStrip.x)) *
-        (1.0 - smoothstep(4.0, 6.0, distanceToStrip.y)) * smoothstep(0.08, 0.25, ray.y);
+    // A softbox, not a hard-edged card. At a grazing angle a mirror packs metres of
+    // studio into a few pixels, so any step in the source reads as a crease or a bump
+    // in the surface: Gaussian across the width, a long fade along it.
+    float width = 0.6 + spread;
+    float strip = exp(-distanceToStrip.x * distanceToStrip.x / (width * width)) *
+        (1.0 - smoothstep(2.5, 8.0, distanceToStrip.y)) * smoothstep(0.02, 0.30, ray.y);
     float room = mix(0.18, 0.38, smoothstep(-0.25, 0.85, ray.y));
     return vec3(room + 1.2 * strip);
 }

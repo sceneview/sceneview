@@ -6,7 +6,7 @@ package io.github.sceneview.demo.demos.internal.feel
  * coloured by volume absorption. The other RGB values are diffuse albedos.
  *
  *                 albedo / reflectance     roughness  metal  coat  sheen
- * Memory foam     .82 .77 .68              .88        0      0     0
+ * Memory foam     .82 .77 .68              .88        0      0     .22 of its own colour, roughness .55
  * Gel             1 1 1                   .11        0      0     0  (clear aqua absorption, IOR 1.36)
  * Velvet          .009 .065 .028           .90        0      0     pale pile, strength 1, roughness .70
  * Leather         .22 .075 .028            .44        0      .22   0  (coat roughness .30)
@@ -31,7 +31,7 @@ internal object MatterSurfaces {
     )
 
     private val surfaces = arrayOf(
-        Surface(.82f, .77f, .68f, .88f, bulge = .035f, rimWidth = .65f, visualMm = .032f),
+        Surface(.82f, .77f, .68f, .88f, sheen = .22f, sheenRoughness = .55f, bulge = .035f, rimWidth = .65f, visualMm = .032f),
         Surface(1f, 1f, 1f, .11f, bulge = .20f, visualMm = .036f),
         Surface(.009f, .065f, .028f, .90f, sheen = 1f, sheenRoughness = .70f,
             bulge = .10f, visualMm = .055f),

@@ -55,14 +55,14 @@ internal class MatterStage {
                         if (depth <= NEAR) return false
                         val right = x * COS_AZIMUTH - z * SIN_AZIMUTH - targetRight
                         val up = x * UP_X + cy * COS + z * UP_Z
-                        if (abs(right) > depth * TAN_HALF_FOV * .87f ||
-                            abs(up) > depth * TAN_HALF_FOV / aspect * .78f) return false
+                        if (abs(right) > depth * TAN_HALF_FOV * FILL_WIDTH ||
+                            abs(up) > depth * TAN_HALF_FOV / aspect * .86f) return false
                     }
             return true
         }
         // Centre BOTH projected axes, not the world origin. Perspective made the old
         // silhouette 15 px left on a 4a; the old .48 vertical target put it 37 px high.
-        // The .87 box allowance leaves ~.85 for the rounded silhouette and room for the ±6° orbit.
+        // The FILL_WIDTH box allowance leaves ~.89 for the rounded silhouette and room for the ±6° orbit.
         repeat(8) {
             var low = 3f; var high = 100f
             repeat(30) {
@@ -134,10 +134,15 @@ internal class MatterStage {
     }
 
     companion object {
-        const val HORIZONTAL_FOV = 48.0
+        // A longer lens than a phone's 28 mm: less keystone, the slab reads as an object on a
+        // table rather than a box seen from a doorway.
+        const val HORIZONTAL_FOV = 36.0
+        // Width of the screen the slab's box spans at rest. The rounded silhouette ends a little
+        // inside it, and the ±6° orbit still clears both edges.
+        const val FILL_WIDTH = .90f
         const val NEAR = 0.1
         const val FAR = 150.0
-        const val ELEVATION = 26f
+        const val ELEVATION = 23f
         const val AZIMUTH = 24f
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
         // Pre-exposed scene-linear midnight blue, shared by floor and sky in both themes.
@@ -151,6 +156,15 @@ internal class MatterStage {
         const val KEY_Z = 1f
         const val KEY_TARGET_Z = -.5f
         const val KEY_CANDELA = 3_200_000f
+        // Tungsten-warm key and front card against a cool rim: the warm/cool split is what
+        // separates a lit product from a grey render.
+        val KEY_COLOUR = floatArrayOf(1f, .90f, .78f)
+        // A large soft card beside the camera, low: it opens the faces the key only grazes.
+        const val CARD_X = 5.6f
+        const val CARD_Y = 1.6f
+        const val CARD_Z = 6.2f
+        const val CARD_CANDELA = 1_300_000f
+        val CARD_COLOUR = floatArrayOf(1f, .95f, .88f)
         const val KEY_INNER_DEGREES = 24f
         const val KEY_OUTER_DEGREES = 48f
         const val KEY_RANGE = 20f
