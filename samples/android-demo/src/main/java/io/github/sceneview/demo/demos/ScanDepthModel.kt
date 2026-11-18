@@ -9,6 +9,7 @@ import io.github.sceneview.demo.demos.internal.RerunResultView
 import io.github.sceneview.demo.demos.internal.RerunScanModel
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.ScanDepthFormat
+import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.room.RoomBox
 import io.github.sceneview.demo.demos.internal.room.RoomDepthMesh
@@ -37,10 +38,18 @@ internal enum class ResultKind {
 
 /**
  * What a scan of [scope] opens on: a room that [standsAsRoom] its shell; else, with a depth
- * recording ([hasRecording]), its fused surface; else the model as before.
+ * recording ([hasRecording]), its fused surface; else the model as before. An object big enough
+ * to be filled ([objectFilled], [objectReconstruction] picks Poisson, #5114) keeps the model: the
+ * fused surface would open on its unfilled holes.
  */
-internal fun resultKindOf(scope: ScanScope, hasRecording: Boolean, standsAsRoom: Boolean): ResultKind = when {
+internal fun resultKindOf(
+    scope: ScanScope,
+    hasRecording: Boolean,
+    standsAsRoom: Boolean,
+    objectFilled: Boolean = false,
+): ResultKind = when {
     scope == ScanScope.Room && standsAsRoom -> ResultKind.Shell
+    scope == ScanScope.Object && objectFilled -> ResultKind.Model
     hasRecording -> ResultKind.DepthModel
     else -> ResultKind.Model
 }
@@ -66,7 +75,8 @@ internal const val DEPTH_MODEL_MAX_TRIANGLES = 250_000
  * fused from its depth recording and kept. `null` when there is no store or session, no readable
  * recording, or the scan is not one to open on it ([resultKindOf]): a [ScanScope.Room] scan stands
  * as a room when [cloud] (its dense cloud, floor at [floorY]) finds a room box — unknown without
- * the cloud, so then it is left to the shell. [onRecording] runs once the recording is known to
+ * the cloud, so then it is left to the shell; an [objectFilled] object is left to the model,
+ * a surface kept for it before included. [onRecording] runs once the recording is known to
  * read, before the fusion: the live TSDF can go then. Blocking CPU and disk work, off the main
  * thread; [progress] may throw to stop it.
  */
@@ -78,9 +88,11 @@ internal fun depthModelOf(
     cloud: DenseCloud?,
     floorY: Float?,
     onRecording: () -> Unit = {},
+    objectFilled: Boolean = false,
     progress: (Float) -> Unit = {},
 ): RerunScanModel? {
     if (store == null || id == null) return null
+    if (scope == ScanScope.Object && objectFilled) return null
     store.depthModel(id, DEPTH_MODEL_VERSION)?.let {
         val model = depthModel(it)
         if (model != null) progress(1f)
@@ -92,8 +104,10 @@ internal fun depthModelOf(
     val header = runCatching { depth.inputStream().buffered().use(ScanDepthFormat::readHeader) }.getOrNull() ?: return null
     onRecording()
     progress(0f)
-    // A room or a garden reaches as far as the depth is sure; an object as far as it was scanned.
-    val settings = RoomDepthMesh.Settings(farM = if (scope == ScanScope.Object) header.farM else RoomDepthMesh.RELIABLE_FAR_M)
+    // A room or a garden reaches as far as the depth is sure; a close scan (an object, a space,
+    // ScanPreset.OBJECT) as far as it was scanned.
+    val close = scope.preset == ScanPreset.OBJECT
+    val settings = RoomDepthMesh.Settings(farM = if (close) minOf(header.farM, RoomDepthMesh.RELIABLE_FAR_M) else RoomDepthMesh.RELIABLE_FAR_M)
     // The pose guard runs again over the recording: a slip the phone let through is kept out too.
     val fused = RoomDepthMesh.fuse(depth, settings, guard = RoomDepthMesh.replayGuard()) { progress(it * FUSE_SHARE) } ?: return null
     // A room that stands as no room — a short walk, part of a room — stands on a clean slab of
