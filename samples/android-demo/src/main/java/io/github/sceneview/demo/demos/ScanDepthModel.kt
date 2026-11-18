@@ -14,6 +14,10 @@ import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.room.RoomBox
 import io.github.sceneview.demo.demos.internal.room.RoomDepthMesh
 import io.github.sceneview.demo.demos.internal.room.ScanFloorSlab
+import io.github.sceneview.demo.demos.internal.ScanBox
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 import java.io.File
 
 /*
@@ -76,7 +80,8 @@ internal const val DEPTH_MODEL_MAX_TRIANGLES = 250_000
  * recording, or the scan is not one to open on it ([resultKindOf]): a [ScanScope.Room] scan stands
  * as a room when [cloud] (its dense cloud, floor at [floorY]) finds a room box — unknown without
  * the cloud, so then it is left to the shell; an [objectFilled] object is left to the model,
- * a surface kept for it before included. [onRecording] runs once the recording is known to
+ * a surface kept for it before included. An object's surface is cropped to its [subject]
+ * ([cropToSubject]) when one is found. [onRecording] runs once the recording is known to
  * read, before the fusion: the live TSDF can go then. Blocking CPU and disk work, off the main
  * thread; [progress] may throw to stop it.
  */
@@ -89,6 +94,7 @@ internal fun depthModelOf(
     floorY: Float?,
     onRecording: () -> Unit = {},
     objectFilled: Boolean = false,
+    subject: ScanBox? = null,
     progress: (Float) -> Unit = {},
 ): RerunScanModel? {
     if (store == null || id == null) return null
@@ -118,7 +124,11 @@ internal fun depthModelOf(
     } else {
         null
     }
-    val surface = slab?.mesh ?: fused.mesh
+    // An object is its own: cropped to the box its scan went round ([subject]), the table or the
+    // floor it stood on left out. Its box comes from the saved cloud and the trace's aims, so a
+    // reopen crops it the same, and it is kept cropped.
+    val cropped = subject?.takeIf { scope == ScanScope.Object }?.let { cropToSubject(fused.mesh, it) }
+    val surface = slab?.mesh ?: cropped ?: fused.mesh
     val mesh = capped(surface, consume = true) { progress(FUSE_SHARE + (WRITE_START - FUSE_SHARE) * it) }
     if (mesh.triangleCount == 0) return null
     progress(WRITE_START)
@@ -127,6 +137,67 @@ internal fun depthModelOf(
     progress(1f)
     return depthModel(glb, mesh, budgetReached = fused.droppedBlocks > 0)
 }
+
+/**
+ * [mesh] cropped to [box], an object's box ([ScanSubject]): the triangles whose middle lies
+ * within it, [SUBJECT_MARGIN_M] round its sides and over its top, and above its base by more
+ * than [SUPPORT_BAND_M] — the table or the floor it stands on is left out. `null` when nothing
+ * is left: the surface is then kept whole.
+ */
+internal fun cropToSubject(mesh: RerunMesh, box: ScanBox): RerunMesh? {
+    val p = mesh.positions
+    val ix = mesh.indices
+    val c = cos(box.yaw)
+    val s = sin(box.yaw)
+    val halfA = box.length / 2 + SUBJECT_MARGIN_M
+    val halfB = box.depth / 2 + SUBJECT_MARGIN_M
+    val bottom = box.baseY + SUPPORT_BAND_M
+    val top = box.baseY + box.height + SUBJECT_MARGIN_M
+    val remap = IntArray(mesh.vertexCount) { -1 }
+    val kept = ArrayList<Int>()
+    var next = 0
+    for (t in 0 until mesh.triangleCount) {
+        var mx = 0f
+        var my = 0f
+        var mz = 0f
+        for (k in 0 until 3) {
+            val v = ix[t * 3 + k]
+            mx += p[v * 3] / 3f
+            my += p[v * 3 + 1] / 3f
+            mz += p[v * 3 + 2] / 3f
+        }
+        val dx = mx - box.centerX
+        val dz = mz - box.centerZ
+        val a = dx * c + dz * s
+        val b = -dx * s + dz * c
+        if (abs(a) > halfA || abs(b) > halfB || my < bottom || my > top) continue
+        for (k in 0 until 3) {
+            val v = ix[t * 3 + k]
+            if (remap[v] < 0) remap[v] = next++
+            kept += remap[v]
+        }
+    }
+    if (kept.isEmpty()) return null
+    val positions = FloatArray(next * 3)
+    val normals = FloatArray(next * 3)
+    val colors = IntArray(next)
+    for (v in 0 until mesh.vertexCount) {
+        val to = remap[v]
+        if (to < 0) continue
+        for (k in 0 until 3) {
+            positions[to * 3 + k] = p[v * 3 + k]
+            normals[to * 3 + k] = mesh.normals[v * 3 + k]
+        }
+        colors[to] = mesh.colors[v]
+    }
+    return RerunMesh(positions, normals, colors, kept.toIntArray())
+}
+
+/** What an object's crop keeps round its box: the fused surface stands a voxel or two out of it. */
+internal const val SUBJECT_MARGIN_M = 0.05f
+
+/** Over its base by less than this is what the object stands on, not the object: 2 cm. */
+internal const val SUPPORT_BAND_M = 0.02f
 
 /**
  * [mesh] within [DEPTH_MODEL_MAX_TRIANGLES], simplified when past it. With [consume], its colour
