@@ -51,7 +51,7 @@ internal class MatterSurfaceMaterials(
     }
 
     private fun studio(instance: MaterialInstance) = instance.apply {
-        setParameter("background", MatterStage.STUDIO_GREY, MatterStage.STUDIO_GREY, MatterStage.STUDIO_GREY)
+        setParameter("background", MatterStage.STUDIO_RED, MatterStage.STUDIO_GREEN, MatterStage.STUDIO_BLUE)
         setParameter("keyPosition", MatterStage.KEY_X, MatterStage.KEY_Y, MatterStage.KEY_Z)
         setParameter("keyTarget", 0f, MatterStage.FLOOR_Y, MatterStage.KEY_TARGET_Z)
         setParameter("keyCone", cos(Math.toRadians(MatterStage.KEY_INNER_DEGREES.toDouble())).toFloat(),

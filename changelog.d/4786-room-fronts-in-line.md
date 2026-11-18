@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **3D Scan (demo): furniture fronts in line before a wall never seen are not read as that wall ([#4786](https://github.com/sceneview/sceneview/issues/4786)).** Two cupboards standing against an unseen wall, their fronts at the same depth and far apart, no longer draw a wall across the room and shrink its area: the floor seen running on behind their line shows they are furniture.

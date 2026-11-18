@@ -24,7 +24,7 @@ object ArMlObjectLabelFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_ml_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Label,
-        order = 43,
+        order = 44,
         addedIn = "4.12.0",
         tags = setOf("ml kit object labels", "ar", "ml", "mlkit", "object-detection", "label", "hit-test"),
         // Coarse ML Kit categories only, and the scene is dated (samples audit, 2026-10-02):

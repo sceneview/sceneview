@@ -1,6 +1,18 @@
 // The floor and the gel see the same studio radiance in world space. The spot's
 // oblique cone makes an ellipse on the floor; its penumbra has no hard boundary.
 // These are pre-exposed scene colours, like the solid skybox, before PBR Neutral.
+// A finite overhead strip, shared by steel reflections and gel internal reflections.
+// Intersect in world space: a distant direction-only environment stays uniform across
+// a flat top. This strip moves across the surface as the camera orbits, without a clock.
+vec3 matterStudioStrip(highp vec3 p, vec3 ray, float spread) {
+    highp vec2 hit = p.xz + ray.xz * (max(4.0 - p.y, 0.0) / max(ray.y, 0.08));
+    vec2 distanceToStrip = abs(hit - vec2(-3.3, -7.0));
+    float strip = (1.0 - smoothstep(0.45, 0.45 + spread, distanceToStrip.x)) *
+        (1.0 - smoothstep(4.0, 6.0, distanceToStrip.y)) * smoothstep(0.08, 0.25, ray.y);
+    float room = mix(0.18, 0.38, smoothstep(-0.25, 0.85, ray.y));
+    return vec3(room + 1.2 * strip);
+}
+
 vec3 matterStudioFloor(highp vec3 p, vec3 background, highp vec3 keyPosition,
         highp vec3 keyTarget, vec2 keyCone, vec2 keyPool, vec3 contact, vec2 halfSize) {
     highp vec3 fromKey = p - keyPosition;

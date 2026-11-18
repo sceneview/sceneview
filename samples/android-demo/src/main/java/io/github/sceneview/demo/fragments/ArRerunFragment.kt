@@ -34,7 +34,7 @@ object ArRerunFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_rerun_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Polyline,
-        order = 23,
+        order = 24,
         addedIn = "4.0.1",
         updatedIn = "4.57.0",
         tags = setOf(

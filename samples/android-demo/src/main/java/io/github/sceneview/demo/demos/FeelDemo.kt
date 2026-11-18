@@ -207,8 +207,8 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     // A single studio for all samples and both app themes. The IBL only fills reflections.
     val skybox = remember(engine) {
-        val grey = MatterStage.STUDIO_GREY
-        Skybox.Builder().color(grey, grey, grey, 1f).build(engine)
+        Skybox.Builder().color(MatterStage.STUDIO_RED, MatterStage.STUDIO_GREEN,
+            MatterStage.STUDIO_BLUE, 1f).build(engine)
     }
     DisposableEffect(skybox) { onDispose { engine.destroySkybox(skybox) } }
     val hdr by key(environmentLoader) {
@@ -245,7 +245,7 @@ fun FeelDemo(onBack: () -> Unit) {
     val rim = rememberMainLightNode(engine) {
         // Grazing backlight catches the top bevel and the cloth's pale Charlie sheen.
         lightDirection = Direction(-.35f, -.25f, .8f)
-        color = colorOf(1f, 1f, 1f)
+        color = colorOf(.78f, .88f, 1f)
         intensity = MatterStage.RIM_LUX
         isShadowCaster = false
     }
@@ -394,7 +394,7 @@ fun FeelDemo(onBack: () -> Unit) {
             materials.mark[face].setParameter("color", linear[0], linear[1], linear[2], 1f)
         }
         hdr?.indirectLight?.apply {
-            intensity = 8_000f
+            intensity = MatterStage.FILL_LUX
             setRotation(MatterStage.STUDIO_ROTATION)
         }
         materials.samples.forEach { (kind, instance) ->

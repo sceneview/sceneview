@@ -128,6 +128,7 @@ material {
 }
 vertex {
     #define MATTER_TRAIL
+    #define MATTER_EDGE_TAPER
     #include "matter_deformation.vs"
 }
 fragment {

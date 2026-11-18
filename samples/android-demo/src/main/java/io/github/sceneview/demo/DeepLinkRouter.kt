@@ -402,6 +402,12 @@ internal object DeepLinkRouter {
         return validate(candidate, registry)
     }
 
+    /** Keep invalid payloads for the answer screen to explain, within the existing URI scope. */
+    fun parseAnswer(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {
+        if (parse(data, registry) != "spatial-answer") return null
+        return runCatching { data?.getQueryParameter("answer") }.getOrNull()
+    }
+
     /**
      * Validates a raw demo id against [registry]. Used by the QA-channel
      * ingress (`--es demo <id>` from `adb shell am`) so the same allow-list

@@ -120,7 +120,7 @@ playServicesLocation = "21.4.0"
 # Firebase — samples/android-demo ONLY (analytics, crash reports, push). The SDK modules
 # ship no telemetry (docs/docs/recipes/measure-ar-funnel.md); never add these to a library.
 firebaseBom = "34.19.0"
-googleServices = "4.5.0"
+googleServices = "4.6.0"
 firebaseCrashlyticsPlugin = "3.0.8"
 playServicesNearby = "19.5.1"
 

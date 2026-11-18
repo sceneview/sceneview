@@ -17,7 +17,7 @@ object ArPlaneNodeFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_plane_node_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.AutoMirrored.Filled.ViewQuilt,
-        order = 35,
+        order = 36,
         addedIn = "4.13.0",
         updatedIn = "4.52.0",
         tags = setOf("plane lifecycle", "ar", "plane", "planenode", "lifecycle", "callback"),

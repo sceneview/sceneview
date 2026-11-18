@@ -104,13 +104,13 @@ Assets bundled: **71**.
   Compiled from `samples/android-demo/src/main/materials/cosmos_sprite.mat` (Cosmos demo, #4152)
 - `materials/matter_floor.filamat` — **[matter_floor.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (69 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_floor.mat`
-- `materials/matter_gel.filamat` — **[matter_gel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (387 KB)  
+- `materials/matter_gel.filamat` — **[matter_gel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (395 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_gel.mat`
 - `materials/matter_leather.filamat` — **[matter_leather.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (406 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_leather.mat`
 - `materials/matter_marble.filamat` — **[matter_marble.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (380 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_marble.mat`
-- `materials/matter_soft.filamat` — **[matter_soft.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (393 KB)  
+- `materials/matter_soft.filamat` — **[matter_soft.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (399 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_soft.mat`
 - `materials/matter_steel.filamat` — **[matter_steel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (392 KB)  
   Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`; its line hash is hash11 from "Hash without Sine", Copyright (c) 2014 David Hoskins, MIT License (https://www.shadertoy.com/view/4djSRW)

@@ -37,6 +37,19 @@ internal object RoomReader {
     private const val HINT_SEEN_SHARE = 0.5f
     private const val HINT_CELL_M = 0.1f
     private const val HINT_NEAR_M = 0.1f
+
+    /**
+     * A column of a wall plane is a doorway, left out of the fill, when the floor was seen on past
+     * the plane's line there: on every [DOORWAY_CELL_M] cell from [DOORWAY_FROM_M] to
+     * [DOORWAY_TO_M] behind it. The floor seen at a wall's foot stops at the line, give or take
+     * where ARCore put the plane; through a doorway it runs on over the threshold. No deeper than
+     * a wall is thick: further behind, the next room's floor is seen aslant through the doorway
+     * to either side of it, behind wall.
+     */
+    private const val DOORWAY_FROM_M = 0.02f
+    private const val DOORWAY_TO_M = 0.14f
+    private const val DOORWAY_CELL_M = 0.04f
+    private const val FLOOR_BAND_M = 0.1f
     private const val DOWN = -0.8f
     private const val CELL_KEY_SHIFT = 16_384
     private const val CELL_KEY_SPAN = 32_768
@@ -81,7 +94,9 @@ internal object RoomReader {
      * The cloud with ARCore's wall planes it saw less than [HINT_SEEN_SHARE] of added as surfels,
      * on a [CELL_M] grid where it saw nothing of them: a wall the depth missed, or saw only in
      * scraps, still stands where ARCore found it. A wall the depth saw is read from the depth
-     * alone, its doorways and windows with it.
+     * alone, its doorways and windows with it. Where the floor was seen on past the plane's line
+     * the plane runs across a doorway: those columns are left unfilled. Where the floor stops at
+     * the line — glass, a mirror, wall the depth missed — the plane is filled.
      */
     @Suppress("NestedBlockDepth", "CyclomaticComplexMethod")
     private fun withWallPlanes(
@@ -96,10 +111,11 @@ internal object RoomReader {
         val vertical = IntArray(count)
         var verticals = 0
         for (i in 0 until count) if (abs(normals[i * 3 + 1]) <= RoomLevels.VERTICAL) vertical[verticals++] = i
-        val centre = centreOf(trail)
         var out: Pair<Floats, Floats>? = null
+        var floorRead = false
+        var floor: RoomLevels.Floor? = null
         for (plane in walls) {
-            val wall = wallOf(plane.polygon, centre) ?: continue
+            val wall = wallOf(plane.polygon, trail) ?: continue
             val t0 = wall.t.min()
             val y0 = wall.y.min()
             val cols = ceil((wall.t.max() - t0) / HINT_CELL_M).toInt() + 1
@@ -128,12 +144,49 @@ internal object RoomReader {
                 it.second.thinned(normals, 1, count)
                 out = it
             }
+            if (!floorRead) {
+                floorRead = true
+                floor = RoomLevels.floorOf(positions, normals, trail)
+            }
+            val doorway = doorwaysOf(wall, positions, normals, floor, t0, cols)
             fill(wall.t, wall.y, CELL_M) { t, y ->
-                if (!seenAt(t, y)) wall.emit(t, y, p, n)
+                if (!seenAt(t, y) && !doorway[floor((t - t0) / HINT_CELL_M).toInt()]) wall.emit(t, y, p, n)
             }
         }
         val added = out ?: return positions to normals
         return added.first.toArray() to added.second.toArray()
+    }
+
+    /**
+     * The [cols] columns of [wall], [HINT_CELL_M] wide from [t0], the [floor] was seen on past:
+     * a doorway the plane runs across. None without a floor.
+     */
+    @Suppress("LongParameterList")
+    private fun doorwaysOf(
+        wall: WallPlane,
+        positions: FloatArray,
+        normals: FloatArray,
+        floor: RoomLevels.Floor?,
+        t0: Float,
+        cols: Int,
+    ): BooleanArray {
+        val doorway = BooleanArray(cols)
+        if (floor == null) return doorway
+        val depths = ((DOORWAY_TO_M - DOORWAY_FROM_M) / DOORWAY_CELL_M + HALF).toInt()
+        val past = IntArray(cols)
+        val band = max(FLOOR_BAND_M, floor.thickness)
+        for (i in 0 until positions.size / 3) {
+            if (normals[i * 3 + 1] < RoomLevels.UP || abs(positions[i * 3 + 1] - floor.y) > band) continue
+            val x = positions[i * 3]
+            val z = positions[i * 3 + 2]
+            val behind = wall.o - (x * wall.ux + z * wall.uz)
+            if (behind < DOORWAY_FROM_M || behind >= DOORWAY_TO_M) continue
+            val c = floor((x * -wall.uz + z * wall.ux - t0) / HINT_CELL_M).toInt()
+            val d = ((behind - DOORWAY_FROM_M) / DOORWAY_CELL_M).toInt()
+            if (c in 0 until cols && d in 0 until depths) past[c] = past[c] or (1 shl d)
+        }
+        for (c in 0 until cols) doorway[c] = past[c] == (1 shl depths) - 1
+        return doorway
     }
 
     /**
@@ -214,14 +267,13 @@ internal object RoomReader {
     /** ARCore's wall and floor planes as surfels on a [PLANE_STEP_M] grid, walls facing the camera's path. */
     @Suppress("NestedBlockDepth", "CyclomaticComplexMethod")
     private fun planeSamples(planes: List<RoomPlane>, trail: FloatArray, positions: Floats, normals: Floats) {
-        val centre = centreOf(trail)
         for (plane in planes) {
             val poly = plane.polygon
             if (!usable(poly)) continue
             val m = poly.size / 3
             when (plane.kind) {
                 RoomPlaneKind.Wall -> {
-                    val wall = wallOf(poly, centre) ?: continue
+                    val wall = wallOf(poly, trail) ?: continue
                     fill(wall.t, wall.y, PLANE_STEP_M) { t, y -> wall.emit(t, y, positions, normals) }
                 }
                 RoomPlaneKind.Floor -> {
@@ -248,24 +300,16 @@ internal object RoomReader {
         return m >= 3 && within(poly, 0, m * 3) && narrow(poly, 0) && narrow(poly, 1) && narrow(poly, 2)
     }
 
-    /** Where the camera went on average, `x, z`; `null` without a trail. */
-    private fun centreOf(trail: FloatArray): DoubleArray? {
-        val steps = trail.size / 3
-        if (steps == 0) return null
-        var cx = 0.0
-        var cz = 0.0
-        for (k in 0 until steps) {
-            cx += trail[k * 3]
-            cz += trail[k * 3 + 2]
-        }
-        return doubleArrayOf(cx / steps, cz / steps)
-    }
-
     /**
-     * A wall plane in its own frame: Newell's normal levelled, turned towards the camera's
-     * [centre]; its corners along it (−uz, ux) and up. `null` for a plane lying flat.
+     * A wall plane in its own frame: Newell's normal levelled, turned towards the camera; its
+     * corners along it (−uz, ux) and up. `null` for a plane lying flat.
+     *
+     * The camera that saw the plane stood in front of it: the normal faces the step of the
+     * [trail] nearest to the plane among those standing before its own span, and with none there,
+     * the step nearest to its middle. Not the walk's mean: in an L or a T that can stand in the
+     * other wing, behind the plane.
      */
-    private fun wallOf(poly: FloatArray, centre: DoubleArray?): WallPlane? {
+    private fun wallOf(poly: FloatArray, trail: FloatArray): WallPlane? {
         val m = poly.size / 3
         var nx = 0.0
         var nz = 0.0
@@ -282,13 +326,42 @@ internal object RoomReader {
         if (len < 1e-6) return null
         var ux = (nx / len).toFloat()
         var uz = (nz / len).toFloat()
-        if (centre != null && (centre[0] - mx / m) * ux + (centre[1] - mz / m) * uz < 0) {
+        val cx = (mx / m).toFloat()
+        val cz = (mz / m).toFloat()
+        var tMin = Float.POSITIVE_INFINITY
+        var tMax = Float.NEGATIVE_INFINITY
+        for (i in 0 until m) {
+            val t = poly[i * 3] * -uz + poly[i * 3 + 2] * ux
+            tMin = min(tMin, t)
+            tMax = max(tMax, t)
+        }
+        // The side the camera saw the plane from: > 0 along (ux, uz), < 0 against it, 0 without a trail.
+        var before = 0f
+        var beforeAt = Float.POSITIVE_INFINITY
+        var near = 0f
+        var nearAt = Float.POSITIVE_INFINITY
+        for (k in 0 until trail.size / 3) {
+            val x = trail[k * 3]
+            val z = trail[k * 3 + 2]
+            val out = (x - cx) * ux + (z - cz) * uz
+            val t = x * -uz + z * ux
+            if (t in tMin..tMax && abs(out) < beforeAt) {
+                beforeAt = abs(out)
+                before = out
+            }
+            val away = hypot(x - cx, z - cz)
+            if (away < nearAt) {
+                nearAt = away
+                near = out
+            }
+        }
+        if ((if (beforeAt.isFinite()) before else near) < 0f) {
             ux = -ux
             uz = -uz
         }
         val t = FloatArray(m) { poly[it * 3] * -uz + poly[it * 3 + 2] * ux }
         val y = FloatArray(m) { poly[it * 3 + 1] }
-        return WallPlane(ux, uz, (mx / m * ux + mz / m * uz).toFloat(), t, y)
+        return WallPlane(ux, uz, cx * ux + cz * uz, t, y)
     }
 
     /** The polygon's extent along axis [axis] is under [MAX_PLANE_M]. */

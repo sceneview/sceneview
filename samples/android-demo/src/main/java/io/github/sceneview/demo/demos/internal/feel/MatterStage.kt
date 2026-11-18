@@ -55,14 +55,14 @@ internal class MatterStage {
                         if (depth <= NEAR) return false
                         val right = x * COS_AZIMUTH - z * SIN_AZIMUTH - targetRight
                         val up = x * UP_X + cy * COS + z * UP_Z
-                        if (abs(right) > depth * TAN_HALF_FOV * .77f ||
+                        if (abs(right) > depth * TAN_HALF_FOV * .87f ||
                             abs(up) > depth * TAN_HALF_FOV / aspect * .78f) return false
                     }
             return true
         }
         // Centre BOTH projected axes, not the world origin. Perspective made the old
         // silhouette 15 px left on a 4a; the old .48 vertical target put it 37 px high.
-        // The .77 box allowance leaves ~.75 for the actual rounded silhouette.
+        // The .87 box allowance leaves ~.85 for the rounded silhouette and room for the ±6° orbit.
         repeat(8) {
             var low = 3f; var high = 100f
             repeat(30) {
@@ -137,26 +137,29 @@ internal class MatterStage {
         const val HORIZONTAL_FOV = 48.0
         const val NEAR = 0.1
         const val FAR = 150.0
-        const val ELEVATION = 30f
+        const val ELEVATION = 26f
         const val AZIMUTH = 24f
         const val TARGET_Y = -FeelSimulation.PAD_THICKNESS * 0.35f
-        // Unlit scene-linear grey before PBR Neutral: ~22% sRGB, shared by floor and sky.
-        const val STUDIO_GREY = .08f
+        // Pre-exposed scene-linear midnight blue, shared by floor and sky in both themes.
+        const val STUDIO_RED = .018f
+        const val STUDIO_GREEN = .028f
+        const val STUDIO_BLUE = .047f
         // Shared by the physical spot and the analytic floor transmitted by the gel.
         const val FLOOR_Y = -FeelSimulation.PAD_THICKNESS - .003f
-        const val KEY_X = -3f
-        const val KEY_Y = 6f
-        const val KEY_Z = 4f
+        const val KEY_X = -4.5f
+        const val KEY_Y = 2.4f
+        const val KEY_Z = 1f
         const val KEY_TARGET_Z = -.5f
-        const val KEY_CANDELA = 4_500_000f
-        const val KEY_INNER_DEGREES = 8f
-        const val KEY_OUTER_DEGREES = 32f
+        const val KEY_CANDELA = 3_200_000f
+        const val KEY_INNER_DEGREES = 24f
+        const val KEY_OUTER_DEGREES = 48f
         const val KEY_RANGE = 20f
-        const val POOL_STRENGTH = .40f
+        const val POOL_STRENGTH = .055f
         // Negative: the clear gel focuses the key into a caustic glow on the floor under
         // and around it, where an opaque solid leaves a contact shadow.
         const val GEL_CONTACT = -.32f
-        const val RIM_LUX = 18_000f
+        const val RIM_LUX = 12_000f
+        const val FILL_LUX = 12_000f
         val TAN_HALF_FOV = tan(Math.toRadians(HORIZONTAL_FOV / 2.0)).toFloat()
         val SIN = sin(Math.toRadians(ELEVATION.toDouble())).toFloat()
         val COS = cos(Math.toRadians(ELEVATION.toDouble())).toFloat()
