@@ -763,6 +763,7 @@ internal fun GeospatialScreen(
     scene: @Composable BoxScope.() -> Unit,
 ) {
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_geospatial_anchors_title),
         onBack = onBack,
         controls = controls,

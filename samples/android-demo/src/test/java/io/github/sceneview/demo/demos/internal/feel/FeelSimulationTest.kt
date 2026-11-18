@@ -211,6 +211,24 @@ class FeelSimulationTest {
         assertTrue(simulation.pads[0].depthMm < 0.001f)
     }
 
+    @Test fun theOpeningFoamRiseReadsAsMovingUntilVisiblyFlatLongBeforeItsLastFrame() {
+        val simulation = FeelSimulation(openingEnabled = true)
+        var time = 0L
+        while (!simulation.opening.finished) { time += 10; simulation.advance(time) }
+        val finished = time
+        assertTrue(simulation.moving(FeelMaterial.MemoryFoam, time, true))
+        while (simulation.moving(FeelMaterial.MemoryFoam, time, true)) { time += 10; simulation.advance(time) }
+        // The pre-warm waits for this, not for needsFrames: the spring's last 0.1 mm takes seconds.
+        assertTrue(simulation.pads[0].depthMm <= FeelSimulation.STILL_MM)
+        assertTrue(simulation.needsFrames(FeelMaterial.MemoryFoam, time, true))
+        assertTrue("${time - finished} ms", time - finished in 1_000L..4_000L)
+        // Pads nobody touched are still, a rigid tap ripples for RIPPLE_MILLIS.
+        assertTrue(!simulation.moving(FeelMaterial.Velvet, time, true))
+        simulation.contactMillis[FeelMaterial.Marble.ordinal] = time
+        assertTrue(simulation.moving(FeelMaterial.Marble, time + 100L, true))
+        assertTrue(!simulation.moving(FeelMaterial.Marble, time + MatterMeshes.RIPPLE_MILLIS, true))
+    }
+
     @Test fun touchCancelsTheOpeningAndCannotLeaveAHiddenLoad() {
         val simulation = FeelSimulation(openingEnabled = true)
         for (time in 0L..600L step 10) simulation.advance(time)

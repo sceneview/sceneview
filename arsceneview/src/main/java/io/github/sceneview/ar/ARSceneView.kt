@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 // ARScene lives in the separate `arsceneview` module intentionally: apps that only need 3D
 // can depend on `sceneview` alone without pulling in ARCore.
 //
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
@@ -64,6 +67,7 @@ import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.PlaybackStatus
 import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
@@ -83,7 +87,14 @@ import io.github.sceneview.SurfaceType
 import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
+import io.github.sceneview.ar.arcore.readUnlessClosed
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.camera.CAMERA_COVER_REVEAL_FRAMES
+import io.github.sceneview.ar.camera.cameraCoverVisible
+import io.github.sceneview.ar.camera.freshCameraImage
+import io.github.sceneview.ar.camera.presentedCameraFrames
+import io.github.sceneview.ar.camera.staleCameraCoverExpired
+import io.github.sceneview.ar.depth.GroundContactUpdate
 import io.github.sceneview.ar.depth.GroundContacts
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
@@ -109,6 +120,8 @@ import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.node.ViewNode.WindowManager
+import io.github.sceneview.node.releaseEnvironmentLight
+import io.github.sceneview.node.setEnvironmentLight
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -142,6 +155,10 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * Drive AR state with ordinary Compose `mutableStateOf`: when state changes, the composition
  * updates and the 3D scene reflects it on the next frame.
+ *
+ * When several scenes are resumed, the last one to resume holds the device camera. The others
+ * show a built-in "Camera in use" card until the holder pauses or leaves composition, then
+ * resume automatically. This temporary wait is not a session failure.
  *
  * ### Minimal usage
  * ```kotlin
@@ -266,7 +283,8 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionCreated         Called once when the ARCore [Session] is ready.
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
- * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
+ * @param onSessionFailed          Called if ARCore initialization fails or a fatal frame update closes
+ *                                 the session. Discard app-held objects belonging to that session.
  *                                 Receives a raw [Exception]. **Soft-deprecated (#1844)** in favour
  *                                 of [onSessionFailure] for typed, exhaustive `when` matching
  *                                 (#1759). The legacy callback stays available indefinitely for
@@ -715,7 +733,10 @@ fun ARSceneView(
     onSessionPaused: ((session: Session) -> Unit)? = null,
     /**
      * Invoked when an ARCore error occurred during session creation / resume / configuration
-     * (missing ARCore install, permission denied, device-unsupported, etc.).
+     * (missing ARCore install, permission denied, device-unsupported, etc.), or when a fatal
+     * frame-update error closes the session. Fatal update failures are reported once per session.
+     * SDK-owned anchors and frame/plane caches are released before close. Discard app-held
+     * session objects and placement state; a retry creates a new session and needs fresh anchors.
      *
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
@@ -803,7 +824,8 @@ fun ARSceneView(
      * What to draw over the scene while the camera permission is denied (#3308). Receives an
      * [ARCameraPermissionState] whose [ARCameraPermissionState.request] re-shows the system
      * dialog and whose [ARCameraPermissionState.openSettings] sends the user to App Info —
-     * the latter is the only way forward once [ARCameraPermissionState.permanentlyDenied].
+     * settings is recommended once [ARCameraPermissionState.permanentlyDenied]. Read
+     * [ARCameraPermissionState.recovery] to retain the request after an ambiguous answer.
      * Defaults to the built-in [ARCameraPermissionOverlay]; pass `null` to draw nothing and
      * handle the state yourself through [onCameraPermissionStateChanged].
      *
@@ -982,20 +1004,14 @@ fun ARSceneView(
     // samples the baseline's cubemap, and the baseline now releases that cubemap when it is
     // destroyed. This effect is remembered after the caller's `rememberAREnvironment`, so it is
     // disposed first — on a baseline swap as on leaving the screen, the built light is gone
-    // before the texture it reads, and `LaunchedEffect(environment, scene)` below then installs
+    // before the texture it reads, and `DisposableEffect(environment, scene)` below then installs
     // the new baseline.
     DisposableEffect(engine, builtIndirectLightRef, scene, environment) {
         onDispose {
-            // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
-            // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
-            // could otherwise have an in-flight `onARFrame` (still queued on the GL thread) walk
-            // [scene.indirectLight] and dereference a freed native handle. Setting `null` first
-            // unblocks the destroy: Filament's renderer simply skips IBL sampling when the slot
-            // is null. If a third party overwrote `scene.indirectLight` with their own resource
-            // after we last set it, this null-out replaces *their* reference too — and that is
-            // fine: we're tearing the scene down, the slot owner is leaving anyway.
-            scene.indirectLight = null
+            // Withdraw the fallback BEFORE freeing it (#1814, #4939). A probe or a light the
+            // caller wrote remains attached; only the built light belongs to this effect.
             builtIndirectLightRef.getAndSet(null)?.let {
+                scene.releaseEnvironmentLight(it)
                 engine.safeDestroyIndirectLight(it)
             }
         }
@@ -1033,7 +1049,7 @@ fun ARSceneView(
         "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
             "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
-    // QA replay hook (null for every normal launch): see [ARSessionProbe].
+    // Frame observation and optional QA replay injection: see [ARSessionProbe].
     val sessionProbe = LocalARSessionProbe.current
     val sessionProbeRef = remember { AtomicReference(sessionProbe) }
     sessionProbeRef.set(sessionProbe)
@@ -1215,22 +1231,19 @@ fun ARSceneView(
     // One state per verdict, shared by the overlay and the host. Its actions read the handler
     // of the latest composition, so a state the host keeps never asks through a stale one.
     val currentPermissionHandler by rememberUpdatedState(permissionHandler)
-    arCore.onCameraPermissionDenied = { permanently ->
-        val state = ARCameraPermissionState(
-            permanentlyDenied = permanently,
-            request = { arCore.retryCameraPermission(currentPermissionHandler) },
-            openSettings = { arCore.openAppSettings(currentPermissionHandler) },
-        )
+    arCore.onCameraPermissionRecoveryChanged = { recovery ->
+        val state = recovery?.let {
+            ARCameraPermissionState(
+                recovery = it,
+                request = { arCore.retryCameraPermission(currentPermissionHandler) },
+                openSettings = { arCore.openAppSettings(currentPermissionHandler) },
+            )
+        }
+        // A grant clears the card before session creation or any later ARCore failure.
         cameraPermissionState = state
         onCameraPermissionStateChanged?.invoke(state)
     }
-    // The grant takes the explanation down on its own: waiting for a session to be created
-    // left "camera access needed" up when the grant was followed by another failure (#4452).
-    arCore.onCameraPermissionGranted = {
-        cameraPermissionState = null
-        onCameraPermissionStateChanged?.invoke(null)
-    }
-    // Reassigned on each composition like the denial callback above, so the host lambda is
+    // Reassigned on each composition like the recovery callback above, so the host lambda is
     // never stale. Both are set during composition, before the `DisposableEffect` below runs
     // `arCore.create()` — the first verdict is therefore never missed (#3374).
     arCore.onARCoreAvailability = { availability ->
@@ -1382,7 +1395,7 @@ fun ARSceneView(
 
     // Baseline IBL + skybox setup. Applied ONCE per `environment` instance change,
     // not on every recomposition (#1611). The per-frame `onARFrame` rebuild path
-    // overwrites `scene.indirectLight` with a fresh IBL each time ARCore surfaces
+    // updates the registry's fallback with a fresh IBL each time ARCore surfaces
     // a new light estimate; running this initialiser inside `SideEffect` instead
     // would reset the rebuilt IBL on the *next* recomposition (which fires every
     // frame in demos that surface `latestFrame` / `isTracking` to UI state) and
@@ -1399,11 +1412,11 @@ fun ARSceneView(
     // caller's, so its `onDispose` runs first. A light-estimation IBL built since is not this
     // effect's to clear — `builtIndirectLightRef` owns that one.
     DisposableEffect(environment, scene) {
-        scene.indirectLight = environment.indirectLight
+        scene.setEnvironmentLight(environment.indirectLight)
         scene.skybox = environment.skybox
         onDispose {
             if (scene.skybox === environment.skybox) scene.skybox = null
-            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+            scene.releaseEnvironmentLight(environment.indirectLight)
         }
     }
 
@@ -1482,6 +1495,11 @@ fun ARSceneView(
     // Placed objects' contacts, registered through the scope and grounding the occlusion around
     // them; handed to whichever camera stream is current.
     val groundContacts = remember { GroundContacts() }
+    val groundContactUpdate = remember {
+        GroundContactUpdate { exception ->
+            android.util.Log.e("SceneView", "Ground contact update failed", exception)
+        }
+    }
     SideEffect {
         cameraStreamRef.set(cameraStream)
         cameraStream?.groundContacts = groundContacts
@@ -1628,6 +1646,21 @@ fun ARSceneView(
     // split-screen resize. Separate from the timestamp test, because a brand-new swap chain needs
     // a frame even on a vsync where ARCore returns a duplicate.
     val arFramesOwed = remember { AtomicInteger(1) }
+    // A host callback runs before Renderer.beginFrame, which can refuse the frame. Keep a
+    // neutral cover until a camera image has actually been submitted, and a couple of presented
+    // frames beyond it (see [presentedCameraFrames]), including on quick re-entry.
+    var presentedCameraFrameCount by remember(sceneRenderer, cameraStream) { mutableIntStateOf(0) }
+    // A stopped app loses its SurfaceView surface, which comes back black until ARCore delivers a
+    // new image — a black flash on every return from the background. The cover goes back on when
+    // the surface is destroyed (`onSurfaceDestroyed` below) — nothing of this view is on screen
+    // any more — and waits for an image newer than the one the texture still holds. Not on a
+    // lifecycle stop: inside a NavHost the entry is stopped as its exit transition starts, while
+    // the frozen camera image is still sliding out. A TextureView keeps its surface, and its last
+    // picture, across a stop, so it is reset only when it really loses its surface.
+    val coverStaleImageTimestamp = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
+    // Frame time of the first frame presented to the new surface after that reset; 0 = none yet.
+    // Starts the [STALE_CAMERA_COVER_TIMEOUT_NANOS] cap on waiting for a newer image.
+    val coverResetFirstPresentNanos = remember(sceneRenderer, cameraStream) { AtomicLong(0L) }
 
     // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
     // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
@@ -1683,6 +1716,10 @@ fun ARSceneView(
         }
         sceneRenderer.onSurfaceDestroyed = {
             cameraGestureDetectorRef.set(null)
+            // Main thread (UiHelper callback). See `coverStaleImageTimestamp` above.
+            coverStaleImageTimestamp.set(cameraStreamRef.get()?.boundFrameTimestamp ?: 0L)
+            coverResetFirstPresentNanos.set(0L)
+            presentedCameraFrameCount = 0
         }
     }
 
@@ -1707,7 +1744,18 @@ fun ARSceneView(
 
     // ── Render loop ───────────────────────────────────────────────────────────────────────────────
 
-    LaunchedEffect(engine, renderer, view, scene) {
+    arCore.onSessionClosing = {
+        try {
+            releaseSessionNodes(scopeChildNodes.toList())
+        } finally {
+            cameraNode.resetSession()
+            lastArFrameTimestamp.set(0L)
+            prevTrackingFailureRef.set(null)
+            arPlaneRenderer.resetSession()
+        }
+    }
+
+    LaunchedEffect(engine, renderer, view, scene, cameraStream) {
         // Previous frame time for the node-edit coast's time step; 0 = none yet (or paused).
         var lastFrameTimeNanos = 0L
         while (true) {
@@ -1725,17 +1773,20 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        hasNewArFrame || sceneChanged || arFramesOwed.get() > 0
+                        arCore.arCoreAvailability != ARCoreAvailability.SessionFailed &&
+                            (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
                     }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
 
                     val childNodes = childNodesRef.get()
+                    // Use only this tick's frame; never retain it across Session.update() calls.
+                    var arFrame: Frame? = null
 
                     // AR frame update — feed ARCore data into camera, lights, planes.
                     arCore.session?.let { session ->
                         try {
-                            session.updateOrNull()?.let { frame ->
+                            arCore.updateSessionOrNull()?.let { frame ->
                                 hasNewArFrame =
                                     lastArFrameTimestamp.getAndSet(frame.timestamp) != frame.timestamp
                                 val trackingFailureReason = readTrackingFailureReason(
@@ -1761,6 +1812,7 @@ fun ARSceneView(
                                     session = session,
                                     frame = frame
                                 )
+                                arFrame = frame
                                 notifyHostOfFrame(
                                     prevTrackingFailureRef = prevTrackingFailureRef,
                                     onTrackingFailureChangedRef = onTrackingFailureChangedRef,
@@ -1786,6 +1838,9 @@ fun ARSceneView(
                         }
                     }
 
+                    // A fatal update closed the session; nodes may still hold its native handles.
+                    if (arCore.arCoreAvailability == ARCoreAvailability.SessionFailed) return@renderFrame
+
                     // Before any node's onFrame, as in SceneView: animator commits then reindex
                     // nothing under the nodes' cached transform handles.
                     engine.sortTransformsIfUnsorted()
@@ -1803,6 +1858,14 @@ fun ARSceneView(
                     lastFrameTimeNanos = frameTimeNanos
                     gestureDetector.advanceInertia(inertiaDelta)
 
+                    // Custom placement can move in the host callback, node ticks (including smooth
+                    // transforms), or gesture inertia. Sample contacts only after all of them.
+                    arFrame?.let { frame ->
+                        groundContactUpdate.update {
+                            cameraStreamRef.get()?.updateGroundContact(frame)
+                        }
+                    }
+
                     // Last, so the node ticks above are already accounted for: a glTF animation
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
                     sceneChanged = frameRateGate.shouldRender(
@@ -1819,11 +1882,42 @@ fun ARSceneView(
                 // Pay the surface's debt down only on a frame that really reached it —
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
+                val boundTimestamp = cameraStreamRef.get()?.boundFrameTimestamp ?: 0L
+                presentedCameraFrameCount = presentedCameraFrames(
+                    count = presentedCameraFrameCount,
+                    hasCameraImage = freshCameraImage(
+                        boundTimestamp = boundTimestamp,
+                        staleTimestamp = coverStaleImageTimestamp.get(),
+                    ),
+                    submitted = presented,
+                )
                 if (presented) {
                     frameRateGate.didRender(frameTimeNanos)
                     if (arFramesOwed.get() > 0) {
                         arFramesOwed.decrementAndGet()
                     }
+                    coverResetFirstPresentNanos.compareAndSet(0L, frameTimeNanos)
+                }
+                // A reset cover must not wait forever for an image that is not coming.
+                if (cameraCoverVisible(presentedCameraFrameCount) &&
+                    staleCameraCoverExpired(
+                        boundTimestamp = boundTimestamp,
+                        staleTimestamp = coverStaleImageTimestamp.get(),
+                        framesOwed = arFramesOwed.get(),
+                        firstPresentNanos = coverResetFirstPresentNanos.get(),
+                        frameTimeNanos = frameTimeNanos,
+                        // Read lazily: one JNI call, only once the other conditions hold. Never
+                        // on a closed session (#4026): a host may have closed it itself, and
+                        // the getter would then run on freed native memory.
+                        playbackFinished = {
+                            val session = arCore.session
+                            session != null && readUnlessClosed(session.isClosed, false) {
+                                session.playbackStatus == PlaybackStatus.FINISHED
+                            }
+                        },
+                    )
+                ) {
+                    presentedCameraFrameCount = CAMERA_COVER_REVEAL_FRAMES
                 }
             }
         }
@@ -1861,6 +1955,12 @@ fun ARSceneView(
             )
         }
 
+        // Compose draws above either surface type. Leave translucent/custom-background views
+        // alone; permission and availability overlays below must remain above this cover.
+        if (isOpaque && cameraStream != null && cameraCoverVisible(presentedCameraFrameCount)) {
+            Box(Modifier.fillMaxSize().background(CameraStartupCoverColor))
+        }
+
         val denial = cameraPermissionState
         if (denial != null && cameraPermissionOverlay != null) cameraPermissionOverlay(denial)
 
@@ -1875,6 +1975,9 @@ fun ARSceneView(
                 )
             }
             arCoreAvailabilityOverlay(state)
+        }
+        if (denial == null && availability == null) {
+            ARCameraInUseOverlay(arCore.isCameraInUseByAnotherSession)
         }
     }
 
@@ -1901,6 +2004,12 @@ fun ARSceneView(
 
 /** Time step of the first node-edit coast frame after a start or a resume (one 60 Hz frame). */
 private const val NOMINAL_INERTIA_FRAME_SECONDS = 1f / 60f
+
+/**
+ * `surface-container`, dark-scheme value (`DESIGN.md`), in both themes: the cover stands in for
+ * the camera image, and the coaching scrim and its dark-scheme accents ([CoachColors]) sit on it.
+ */
+private val CameraStartupCoverColor = Color(0xFF1D2026)
 
 /** Largest step one frame advances a node-edit coast by — a stall resumes, it never jumps. */
 private const val MAX_INERTIA_FRAME_SECONDS = 0.05f
@@ -1999,7 +2108,9 @@ private fun onARFrame(
                 indirectLight?.intensity?.let { intensity(it) }
                 indirectLight?.getRotation(null)?.let { rotation(it) }
             }.build(engine)
-            scene.indirectLight = newIbl
+            // A probe overrides the entire estimated IBL. Keep estimates current behind it,
+            // so leaving its zone immediately restores the latest one (#4939).
+            scene.setEnvironmentLight(newIbl)
             // #1756: destroy the IBL we built on the previous estimation update
             // (tracked via [builtIndirectLightRef]) — independent of what
             // `scene.indirectLight` happens to be now. The old path captured
@@ -2040,9 +2151,6 @@ private fun onARFrame(
         is DepthMeshNode -> n.update(session, frame)
         is PointCloudNode -> n.update(session, frame)
     }
-
-    // Last: the placed objects' contacts are read from the anchors moved just above.
-    cameraStream?.updateGroundContact(frame)
 }
 
 /**

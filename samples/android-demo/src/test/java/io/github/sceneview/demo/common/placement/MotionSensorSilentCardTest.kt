@@ -104,14 +104,14 @@ class MotionSensorSilentCardTest {
     @Config(qualifiers = "w800dp-h360dp-land-xhdpi")
     fun phoneHeldSideways_light() {
         assertRestartCard()
-        assertWholeMessageAboveTheDockScrim()
+        assertWholeMessageAboveTheDock()
     }
 
     @Test
     @Config(qualifiers = "w800dp-h360dp-land-xhdpi")
     fun phoneHeldSideways_dark() {
         assertRestartCard(darkTheme = true)
-        assertWholeMessageAboveTheDockScrim()
+        assertWholeMessageAboveTheDock()
     }
 
     @Test
@@ -130,9 +130,9 @@ class MotionSensorSilentCardTest {
 
     /**
      * Sideways at the default text size the card has the corner beside the chrome: the whole
-     * message is on screen, and none of it under the scrim the scaffold draws over the dock.
+     * message is on screen, and none of it behind the dock's glass.
      */
-    private fun assertWholeMessageAboveTheDockScrim() {
+    private fun assertWholeMessageAboveTheDock() {
         val card = bounds(PlacementTestTags.PLACEMENT_CARD)
         val dock = bounds(DemoScaffoldTestTags.DOCK)
         val detail = detailNode().getUnclippedBoundsInRoot()
@@ -142,7 +142,7 @@ class MotionSensorSilentCardTest {
             detail.top >= card.top && detail.bottom <= card.bottom,
         )
         assertTrue(
-            "the card reaches into the dock band, where the scaffold's scrim dims it — card $card, dock $dock",
+            "the card reaches into the dock band, behind the dock's glass — card $card, dock $dock",
             card.bottom <= dock.top,
         )
     }

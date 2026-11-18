@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No launcher shortcut: what MainActivity points `android.app.shortcuts` at in the
+     `-PdemoPlainDebug=true` debug APK (the public GitHub Release one), which must stay the
+     plain demo. The QA app uses qaLauncher/res/xml/qa_launcher_shortcuts.xml instead. -->
+<shortcuts />

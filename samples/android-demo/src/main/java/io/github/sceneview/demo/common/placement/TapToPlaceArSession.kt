@@ -372,8 +372,8 @@ fun TapToPlaceArSession(
                 }
             )
         ) {
-            // The one placement. `key(id)` gives a reset-then-replaced object its own
-            // remember slot, so the model instance inside loads fresh per anchor.
+            // The one placement. `key(id)` gives each anchor its own node hierarchy;
+            // Reset also asks the experience to reload the disposed model instance.
             state.placed?.let { placed ->
                 key(placed.id) {
                     PlacedModelNode(
@@ -493,10 +493,8 @@ fun BoxScope.TapToPlaceStatusOverlays(
         ArGuidanceCue.NONE
     }
     ARCoachingOverlay(
+        guidance = guidance,
         cue = coachingCue,
-        surface = guidance.surface,
-        hint = guidance.hint,
-        scanLingering = guidance.scanLingering,
         // The overlay keeps its own 16 dp gutter off the safe area; the dock is ours to declare.
         contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
     )
@@ -559,7 +557,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
                 .padding(horizontal = SceneViewTokens.Space.md)
                 .padding(bottom = slot.bottom)
                 .then(if (slot.besideChrome) Modifier.width(slot.width) else Modifier)
-                .reportsDemoSceneBottomCard(),
+                .reportsDemoSceneBottomCard(deferSnackbar = slot.besideChrome),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             CoachStackContent(

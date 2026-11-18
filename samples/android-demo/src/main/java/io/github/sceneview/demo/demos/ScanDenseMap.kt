@@ -136,8 +136,8 @@ internal class ScanDenseMap(
         else -> ScanDetail.Fine
     }
 
-    /** The cloud the scan saves: every voxel at least [DenseFusion.MIN_VIEWS] depth frames saw. */
-    fun savedCloud(): DenseCloud = fusion.cloud(minViews = DenseFusion.MIN_VIEWS)
+    /** The cloud the scan saves ([DenseFusion.savedCloud]): what the live view showed, less the dust. */
+    fun savedCloud(): DenseCloud = fusion.savedCloud()
 
     /**
      * [events] with each [ArDebugEvent.DepthStats] total turned into the prefix of [savedCloud]
@@ -145,7 +145,7 @@ internal class ScanDenseMap(
      * a replay reveals, exact through a compaction, and its last value the saved count.
      */
     fun revealed(events: List<ArDebugEvent>, atFrames: IntArray): List<ArDebugEvent> {
-        val totals = fusion.revealCounts(atFrames)
+        val totals = fusion.savedRevealCounts(atFrames)
         var k = 0
         return events.map { e ->
             if (e !is ArDebugEvent.DepthStats || k >= totals.size) e else {
@@ -171,9 +171,11 @@ internal class ScanDenseMap(
         if (whole.isEmpty()) return
         val at = eye
         val drawn = if (at == null) {
-            fusion.cloud(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS)
+            fusion.cloud(minViews = 1, maxPoints = LIVE_MAX_SURFELS)
         } else {
-            fusion.liveCloud(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS)
+            // Over the camera a surfel one depth frame saw already shows: on a slow phone the
+            // second view lags, and the coat must follow the camera, not the saved cloud.
+            fusion.liveCloud(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS, minViews = 1)
         }
         val covered = CoverageGrid.coveredKeys(whole)
         // The floor to scan again, judged on the whole map read in place: the drawn surfels are
@@ -187,7 +189,7 @@ internal class ScanDenseMap(
         live = ReplayDenseLayer(
             cloud = drawn,
             voxelM = fusion.voxelM,
-            mesh = DenseSurfels.mesh(drawn, fusion.voxelM),
+            mesh = DenseSurfels.mesh(drawn, fusion.voxelM, halfSideVoxels = DenseSurfels.LIVE_HALF_SIDE_VOXELS),
             atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
             // The floor cells are found here too, on the worker, from the map as before: the
             // live map and the area read them, however far the drawn surfels are merged.

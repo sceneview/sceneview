@@ -231,12 +231,109 @@ class ArGuidanceStateTest {
     }
 
     @Test
-    fun `ARCore reasons map to the three chips`() {
+    fun `published movement hints keep the cases exhaustive clients already handle`() {
+        assertEquals(
+            listOf("NONE", "TOO_DARK", "TOO_FAST", "LOW_DETAIL"),
+            ArTrackingHint.entries.map { it.name },
+        )
+        assertEquals(ArTrackingHint.NONE, ArTrackingHint.from(TrackingFailureReason.BAD_STATE))
+        assertEquals(ArTrackingHint.NONE, ArTrackingHint.from(TrackingFailureReason.CAMERA_UNAVAILABLE))
+    }
+
+    @Test
+    fun `ARCore reasons map to actionable hints`() {
         assertEquals(ArTrackingHint.TOO_DARK, ArTrackingHint.from(TrackingFailureReason.INSUFFICIENT_LIGHT))
         assertEquals(ArTrackingHint.TOO_FAST, ArTrackingHint.from(TrackingFailureReason.EXCESSIVE_MOTION))
         assertEquals(ArTrackingHint.LOW_DETAIL, ArTrackingHint.from(TrackingFailureReason.INSUFFICIENT_FEATURES))
         assertEquals(ArTrackingHint.NONE, ArTrackingHint.from(TrackingFailureReason.NONE))
         assertEquals(ArTrackingHint.NONE, ArTrackingHint.from(null))
+    }
+
+    @Test
+    fun `camera and internal errors use the same debounce and minimum hold as movement hints`() {
+        listOf(TrackingFailureReason.BAD_STATE, TrackingFailureReason.CAMERA_UNAVAILABLE).forEach { reason ->
+            listOf(PlacementPhase.INITIALIZING, PlacementPhase.TRACKING_LOST).forEach { phase ->
+                val g = ArGuidanceState()
+                g.at(phase, 0L, failure = reason)
+                g.at(phase, HINT_STABLE_MS - 1, failure = reason)
+                assertEquals(ArTrackingHint.NONE, g.hint)
+                assertNull(g.trackingReason)
+                assertEquals(ArGuidanceState.MIN_DELAY_MS, g.nextTransitionDelayMillis(HINT_STABLE_MS - 1))
+                g.at(phase, HINT_STABLE_MS, failure = reason)
+                assertEquals(reason, g.trackingReason)
+                assertEquals(ArTrackingHint.NONE, g.hint)
+
+                g.at(phase, HINT_STABLE_MS + 1)
+                g.at(phase, HINT_STABLE_MS + HINT_MIN_SHOWN_MS - 1)
+                assertEquals(reason, g.trackingReason)
+                g.at(phase, HINT_STABLE_MS + HINT_MIN_SHOWN_MS)
+                assertEquals(ArTrackingHint.NONE, g.hint)
+                assertNull(g.trackingReason)
+            }
+        }
+    }
+
+    @Test
+    fun `camera and internal error flickers never appear on either guidance path`() {
+        listOf(TrackingFailureReason.BAD_STATE, TrackingFailureReason.CAMERA_UNAVAILABLE).forEach { reason ->
+            val placement = ArGuidanceState()
+            placement.at(PlacementPhase.INITIALIZING, 0L, failure = reason)
+            placement.at(PlacementPhase.INITIALIZING, HINT_STABLE_MS - 1)
+            placement.at(PlacementPhase.INITIALIZING, HINT_STABLE_MS * 2)
+            assertEquals(ArTrackingHint.NONE, placement.hint)
+            assertNull(placement.trackingReason)
+
+            val discovery = ArGuidanceState()
+            discovery.at(PlaneDiscoveryPhase.LOST, 0L, reason)
+            discovery.at(PlaneDiscoveryPhase.LOST, HINT_STABLE_MS - 1)
+            discovery.at(PlaneDiscoveryPhase.LOST, HINT_STABLE_MS * 2)
+            assertEquals(ArTrackingHint.NONE, discovery.hint)
+            assertNull(discovery.trackingReason)
+        }
+    }
+
+    @Test
+    fun `tracking path names camera and internal errors before and after first tracking`() {
+        listOf(TrackingFailureReason.BAD_STATE, TrackingFailureReason.CAMERA_UNAVAILABLE).forEach { reason ->
+            listOf(false, true).forEach { hasTracked ->
+                val g = ArGuidanceState()
+                if (hasTracked) g.at(PlaneDiscoveryPhase.SILENT, 0L)
+                g.at(PlaneDiscoveryPhase.LOST, 100L, reason)
+                assertEquals(ArTrackingHint.NONE, g.hint)
+                assertNull(g.trackingReason)
+                g.at(PlaneDiscoveryPhase.LOST, 100L + HINT_STABLE_MS, reason)
+                assertEquals(reason, g.trackingReason)
+                assertEquals(ArTrackingHint.NONE, g.hint)
+                assertEquals(
+                    if (hasTracked) ArGuidanceCue.TRACKING_LIMITED else ArGuidanceCue.INITIALIZING,
+                    g.cue,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `recovery and movement advice share the same debounce and never overlap`() {
+        val g = ArGuidanceState()
+        val error = TrackingFailureReason.BAD_STATE
+        val movement = TrackingFailureReason.EXCESSIVE_MOTION
+        g.at(PlacementPhase.TRACKING_LOST, 0L, failure = error)
+        g.at(PlacementPhase.TRACKING_LOST, HINT_STABLE_MS, failure = error)
+        assertEquals(error, g.trackingReason)
+        assertEquals(ArTrackingHint.NONE, g.hint)
+
+        g.at(PlacementPhase.TRACKING_LOST, HINT_STABLE_MS + 1, failure = movement)
+        g.at(PlacementPhase.TRACKING_LOST, HINT_STABLE_MS + HINT_MIN_SHOWN_MS - 1, failure = movement)
+        assertEquals(error, g.trackingReason)
+        assertEquals(ArTrackingHint.NONE, g.hint)
+        g.at(PlacementPhase.TRACKING_LOST, HINT_STABLE_MS + HINT_MIN_SHOWN_MS, failure = movement)
+        assertEquals(movement, g.trackingReason)
+        assertEquals(ArTrackingHint.TOO_FAST, g.hint)
+
+        // A host card silences both kinds of advice immediately, even during their minimum hold.
+        g.at(PlacementPhase.CAMERA_ERROR, HINT_STABLE_MS + HINT_MIN_SHOWN_MS + 1, failure = movement)
+        assertNull(g.trackingReason)
+        assertEquals(ArTrackingHint.NONE, g.hint)
     }
 
     @Test

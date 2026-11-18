@@ -4,4 +4,8 @@
          badge. Same value in light and dark — the badge reads as one fixed sticker on either
          launcher background, outlined and lettered in `ic_launcher_background`. -->
     <color name="qa_badge">#F59E0B</color>
+    <!-- QA "AR Recording" launcher shortcut icon: DESIGN.md `primary-container` (#005BC1, the
+         same in light and dark) under DESIGN.md `on-primary` light (#FFFFFF), 6.4:1. -->
+    <color name="qa_shortcut_background">#005BC1</color>
+    <color name="qa_shortcut_glyph">#FFFFFF</color>
 </resources>

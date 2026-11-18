@@ -167,6 +167,7 @@ fun ARStreetscapeDemo(onBack: () -> Unit) = GeospatialPermissionGate(
     SceneGeometryStatusLogEffect(TAG, state, cloudStatus, locationEnabled)
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_geospatial_anchors_title),
         onBack = onBack,
         controls = {

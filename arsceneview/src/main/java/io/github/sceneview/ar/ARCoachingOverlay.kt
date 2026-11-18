@@ -69,14 +69,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.ar.core.TrackingFailureReason
 
 /**
  * Animated AR coaching overlay — SceneView's counterpart of Apple's `ARCoachingOverlayView`:
  * a card with a phone sweeping over a surface drawn in perspective, its view cone lighting the
  * points it has seen, a short instruction under it, and a reason chip when ARCore says why
- * tracking is struggling ("Too dark", "Too fast", "Low detail"). When a surface is found the
- * card steps aside for a small "Surface found" pill under the centre, so the object landing
- * there is never hidden.
+ * tracking is struggling ("Too dark", "Too fast", "Low detail", "AR error", "Camera busy").
+ * When a surface is found the card steps aside for a small "Surface found" pill under the
+ * centre, so the object landing there is never hidden.
  *
  * [AutoPlacementScene] and [PlacementScene] show it by default. Use this overload next to your
  * own `ARSceneView` (see the tracking overload of [rememberArGuidanceState]) or with
@@ -88,20 +89,25 @@ import androidx.compose.ui.unit.sp
  * follow the theme (the camera feed is the background) — only the scrim opacity does. With
  * animations turned off in system settings, watched live, the illustration holds a still pose
  * with a "move" chevron and the card only fades.
+ *
+ * @param cue defaults to [ArGuidanceState.cue]. Override with [ArGuidanceCue.NONE] while
+ *   another card explains a camera or availability error; the normal exit fade is retained.
  */
 @Composable
 fun BoxScope.ARCoachingOverlay(
     guidance: ArGuidanceState,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    cue: ArGuidanceCue = guidance.cue,
 ) {
-    ARCoachingOverlay(
-        cue = guidance.cue,
+    ARCoachingOverlayContent(
+        cue = cue,
         surface = guidance.surface,
         modifier = modifier,
         hint = guidance.hint,
         scanLingering = guidance.scanLingering,
         contentPadding = contentPadding,
+        trackingReason = guidance.trackingReason,
     )
 }
 
@@ -123,13 +129,29 @@ fun BoxScope.ARCoachingOverlay(
     hint: ArTrackingHint = ArTrackingHint.NONE,
     scanLingering: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+) = ARCoachingOverlayContent(cue, surface, modifier, hint, scanLingering, contentPadding, trackingReason = null)
+
+@Composable
+private fun BoxScope.ARCoachingOverlayContent(
+    cue: ArGuidanceCue,
+    surface: PlacementSurface,
+    modifier: Modifier,
+    hint: ArTrackingHint,
+    scanLingering: Boolean,
+    contentPadding: PaddingValues,
+    trackingReason: TrackingFailureReason?,
 ) {
     val motion = rememberCoachMotionEnabled()
     val cardCue = cue.takeUnless { it == ArGuidanceCue.NONE || it == ArGuidanceCue.SURFACE_FOUND }
     // Latch the last card so its exit fade keeps drawing it instead of blanking.
     var shown by remember { mutableStateOf(CardContent(ArGuidanceCue.INITIALIZING, ArTrackingHint.NONE, false)) }
     if (cardCue != null) {
-        shown = CardContent(cardCue, hint.takeIf { cardCue.takesHint() } ?: ArTrackingHint.NONE, scanLingering)
+        shown = CardContent(
+            cardCue,
+            hint.takeIf { cardCue.takesHint() } ?: ArTrackingHint.NONE,
+            scanLingering,
+            trackingReason.takeIf { cardCue.takesHint() },
+        )
     }
     val rise = with(LocalDensity.current) { CoachSpec.RISE.roundToPx() }
     BoxWithConstraints(
@@ -180,6 +202,18 @@ fun BoxScope.ARCoachingOverlay(
     }
 }
 
+/** Binary-compatibility shim for the pre-`cue` descriptor. */
+@Deprecated(
+    "Binary-compatibility overload. Use the overload that takes `cue`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun BoxScope.ARCoachingOverlay(
+    guidance: ArGuidanceState,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+) = ARCoachingOverlay(guidance, modifier, contentPadding, cue = guidance.cue)
+
 /** Binary-compatibility shim for the pre-`contentPadding` descriptor. */
 @Deprecated(
     "Binary-compatibility overload. Use the overload that takes `contentPadding`.",
@@ -207,7 +241,12 @@ private fun ArGuidanceCue.takesHint() =
     this == ArGuidanceCue.INITIALIZING || this == ArGuidanceCue.TRACKING_LIMITED
 
 @Immutable
-private data class CardContent(val cue: ArGuidanceCue, val hint: ArTrackingHint, val lingering: Boolean)
+private data class CardContent(
+    val cue: ArGuidanceCue,
+    val hint: ArTrackingHint,
+    val lingering: Boolean,
+    val trackingReason: TrackingFailureReason? = null,
+)
 
 private enum class CardLayout { REGULAR, COMPACT, ROW }
 
@@ -229,14 +268,17 @@ private fun cardExit(motion: Boolean): ExitTransition =
 
 @Composable
 private fun CoachCard(content: CardContent, surface: PlacementSurface, layout: CardLayout, motion: Boolean) {
+    ReportAROverlayVisibility()
     val dark = isSystemInDarkTheme()
     val scrim = if (dark) CoachColors.ScrimDark else CoachColors.ScrimLight
     val border = if (dark) CoachColors.ScrimBorderDark else CoachColors.ScrimBorderLight
     val shape = RoundedCornerShape(CoachSpec.CARD_RADIUS)
     val text = cardText(content, surface)
-    val chip = hintLabel(content.hint)
+    val chip = hintLabel(content.hint, content.trackingReason)
     val spoken = listOfNotNull(chip, text.headline, text.detail).joinToString(". ")
-    val polite = content.cue != ArGuidanceCue.INITIALIZING
+    val polite = content.cue != ArGuidanceCue.INITIALIZING ||
+        content.trackingReason == TrackingFailureReason.BAD_STATE ||
+        content.trackingReason == TrackingFailureReason.CAMERA_UNAVAILABLE
     val illustrationSize = if (layout == CardLayout.REGULAR) {
         CoachSpec.ILLUSTRATION_W to CoachSpec.ILLUSTRATION_H
     } else {
@@ -343,6 +385,18 @@ private data class CoachText(val headline: String, val detail: String)
 
 @Composable
 private fun cardText(content: CardContent, surface: PlacementSurface): CoachText {
+    // A camera or internal error needs recovery, rather than more movement.
+    when (content.trackingReason) {
+        TrackingFailureReason.BAD_STATE -> return CoachText(
+            stringResource(R.string.sceneview_coaching_hint_bad_state_action),
+            stringResource(R.string.sceneview_coaching_hint_bad_state_detail),
+        )
+        TrackingFailureReason.CAMERA_UNAVAILABLE -> return CoachText(
+            stringResource(R.string.sceneview_coaching_hint_camera_unavailable_action),
+            stringResource(R.string.sceneview_coaching_hint_camera_unavailable_detail),
+        )
+        else -> Unit
+    }
     val wall = surface == PlacementSurface.WALL
     val headline = when (content.cue) {
         ArGuidanceCue.SCAN -> stringResource(
@@ -375,11 +429,15 @@ private fun cardText(content: CardContent, surface: PlacementSurface): CoachText
 }
 
 @Composable
-private fun hintLabel(hint: ArTrackingHint): String? = when (hint) {
-    ArTrackingHint.TOO_DARK -> stringResource(R.string.sceneview_coaching_hint_too_dark)
-    ArTrackingHint.TOO_FAST -> stringResource(R.string.sceneview_coaching_hint_too_fast)
-    ArTrackingHint.LOW_DETAIL -> stringResource(R.string.sceneview_coaching_hint_low_detail)
-    ArTrackingHint.NONE -> null
+private fun hintLabel(hint: ArTrackingHint, trackingReason: TrackingFailureReason?): String? = when (trackingReason) {
+    TrackingFailureReason.BAD_STATE -> stringResource(R.string.sceneview_coaching_hint_bad_state)
+    TrackingFailureReason.CAMERA_UNAVAILABLE -> stringResource(R.string.sceneview_coaching_hint_camera_unavailable)
+    else -> when (hint) {
+        ArTrackingHint.TOO_DARK -> stringResource(R.string.sceneview_coaching_hint_too_dark)
+        ArTrackingHint.TOO_FAST -> stringResource(R.string.sceneview_coaching_hint_too_fast)
+        ArTrackingHint.LOW_DETAIL -> stringResource(R.string.sceneview_coaching_hint_low_detail)
+        ArTrackingHint.NONE -> null
+    }
 }
 
 /**

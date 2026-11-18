@@ -7,4 +7,8 @@
          was cut to "SceneView…" in the Pixel launcher grid, hiding the one word that matters.
          Not applied with `-PdemoPlainDebug=true` (the public GitHub Release APK). -->
     <string name="launcher_label">SV QA</string>
+    <!-- Launcher shortcut of the QA app (long-press "SV QA"): opens the ARCore session
+         recorder. See xml/qa_launcher_shortcuts.xml. -->
+    <string name="qa_shortcut_ar_recording_short">AR Recording</string>
+    <string name="qa_shortcut_ar_recording_long">Record an AR session</string>
 </resources>

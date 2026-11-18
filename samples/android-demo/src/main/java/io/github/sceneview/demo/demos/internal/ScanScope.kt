@@ -13,6 +13,13 @@ enum class ScanScope(val key: String) {
     /** A single item on a table or the floor: a close orbit, a tight volume. */
     Object("object"),
 
+    /**
+     * A place to put something in: a shelf, a niche, the cupboard under a sink, a car boot.
+     * Filmed from its opening at arm's length, then measured inside ([SpaceFitter]): its width,
+     * height and depth, what is in the way, and the biggest box that still slides in.
+     */
+    Space("space"),
+
     /** One room: walls, floor and ceiling — the flow 3D Scan had before #4647. */
     Room("room"),
 
@@ -29,7 +36,7 @@ enum class ScanScope(val key: String) {
     /** How this scope's capture is taken and rebuilt. */
     val preset: ScanPreset
         get() = when (this) {
-            Object -> ScanPreset.OBJECT
+            Object, Space -> ScanPreset.OBJECT
             Room, Home, Area -> ScanPreset.ROOM
         }
 
@@ -46,25 +53,27 @@ enum class ScanScope(val key: String) {
      * Whether the capture maps the ground it covered, seen from above (the Map view and its
      * coverage): rooms and an outdoor area do; an object stands on a few square centimetres.
      */
-    val mapsGround: Boolean get() = this != Object
+    val mapsGround: Boolean get() = !closeUp
 
     /**
-     * The card that stands for this scope in the choice (Scan redesign, PR 1): only [Object] and
-     * [Room] are offered; [Home] and [Area] stay for the sessions taken with them, and a choice
-     * remembered as one of them comes back as a room.
+     * Whether the capture is taken at arm's length, of one thing and not of a place walked
+     * through: an object, or a space filmed from its opening.
      */
-    val offered: ScanScope
-        get() = when (this) {
-            Object -> Object
-            Room, Home, Area -> Room
-        }
+    val closeUp: Boolean get() = this == Object || this == Space
+
+    /**
+     * The card that stands for this scope in the choice: its own. #4899 had cut the choice down to
+     * [Object] and [Room]; the whole home and the outdoor area are offered again (Thomas,
+     * 2026-11-13: « c'était bien de pouvoir scanner un ground, un extérieur… il y en avait quatre »).
+     */
+    val offered: ScanScope get() = this
 
     companion object {
         /** The scope asked first when nothing was chosen before: one object, the quickest to a model. */
         val DEFAULT = Object
 
-        /** The scopes the choice offers, in its order: [Object] first. */
-        val OFFERED: List<ScanScope> = listOf(Object, Room)
+        /** The scopes the choice offers, from the smallest to the largest: [Object] first, as #4677 offered them. */
+        val OFFERED: List<ScanScope> = listOf(Object, Space, Room, Home, Area)
 
         /** The scope remembered under [key]; [DEFAULT] for none, or for a key this build does not know. */
         fun fromKey(key: String?): ScanScope = entries.firstOrNull { it.key == key } ?: DEFAULT
@@ -172,21 +181,25 @@ object ScanScopeCopy {
 
     fun title(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "An object"
+        ScanScope.Space -> "A cupboard or shelf"
         ScanScope.Room -> "A room"
         ScanScope.Home -> "A whole home"
         ScanScope.Area -> "An outdoor area"
     }
 
     fun detail(scope: ScanScope): String = when (scope) {
-        ScanScope.Object -> "One item on a table or the floor, like a chair or a vase."
-        ScanScope.Room -> "One room, with its walls, floor and ceiling."
-        ScanScope.Home -> "Several rooms, one after the other, without stopping."
-        ScanScope.Area -> "A garden, a yard or a terrace: the ground and what stands on it."
+        ScanScope.Object -> "One item, from 30 cm to 1.5 m away."
+        ScanScope.Space -> "Its inside, to see what fits in it."
+        ScanScope.Room -> "Floor, walls and the details inside."
+        ScanScope.Home -> "Add rooms one at a time."
+        ScanScope.Area -> "A garden, a yard or a terrace."
     }
 
     /** How the scan goes, and what it gives: what a tradesperson needs to know before starting. */
     fun how(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Walk around it at arm's length. Anything further than 1.5 m is left out."
+        ScanScope.Space -> "Stand in front of its opening and film the inside. You get its inside measurements and the biggest box " +
+            "that fits. A niche, a gap or a car boot works too."
         ScanScope.Room -> "Walk along the walls. You get a 3D model and a floor plan with measurements."
         ScanScope.Home -> "Finish a room, then start the next. You get a plan of each room and the total."
         ScanScope.Area -> "Walk slowly across it. You get a 3D model and a map of the ground."
@@ -195,14 +208,19 @@ object ScanScopeCopy {
     /** The chooser's primary action. */
     fun start(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Scan an object"
+        ScanScope.Space -> "Scan a cupboard or shelf"
         ScanScope.Room -> "Scan a room"
         ScanScope.Home -> "Scan your home"
         ScanScope.Area -> "Scan an area"
     }
 
-    /** What the capture's status line calls the scan: `Object`, `Room`, `Room 2`. */
+    /**
+     * What the capture's status line calls the scan: `Object`, `Room`, `Room 2`. A space is
+     * called what it was chosen as: "Space" names nothing a first scan knows.
+     */
     fun label(scope: ScanScope, roomNumber: Int): String = when (scope) {
         ScanScope.Object -> "Object"
+        ScanScope.Space -> "Cupboard or shelf"
         ScanScope.Room -> "Room"
         ScanScope.Home -> "Room $roomNumber"
         ScanScope.Area -> "Area"
@@ -214,6 +232,7 @@ object ScanScopeCopy {
     /** The coaching line while nothing else needs saying. */
     fun scanning(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Circle the object slowly, at arm's length"
+        ScanScope.Space -> "Film the inside slowly: the back, the sides, the bottom and the top"
         ScanScope.Room, ScanScope.Home -> "Walk slowly along the walls, with some floor in view"
         ScanScope.Area -> "Walk slowly, with the ground in view"
     }
@@ -221,6 +240,7 @@ object ScanScopeCopy {
     /** The coaching line when the last seconds added nothing. */
     fun nothingNew(scope: ScanScope): String = when (scope) {
         ScanScope.Object -> "Point at the object, 30 cm to 1.5 m away"
+        ScanScope.Space -> "Point inside it, 30 cm to 1.5 m away"
         ScanScope.Room, ScanScope.Home -> ScanCopy.COACH_NOTHING_NEW
         ScanScope.Area -> "Point at the ground or what stands on it, 1 to 3 m away"
     }

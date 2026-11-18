@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Record mark of the QA "AR Recording" shortcut: a ring around a filled dot, centred on the
+    108 x 108 adaptive-icon canvas. The ring (radius 20 plus half its stroke) stays inside the
+    66-unit safe zone every mask keeps. Glyph @color/qa_shortcut_glyph on
+    @color/qa_shortcut_background.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/qa_shortcut_glyph"
+        android:strokeWidth="4"
+        android:pathData="M34,54 A20,20 0 1,0 74,54 A20,20 0 1,0 34,54 Z" />
+
+    <path
+        android:fillColor="@color/qa_shortcut_glyph"
+        android:pathData="M43,54 A11,11 0 1,0 65,54 A11,11 0 1,0 43,54 Z" />
+</vector>

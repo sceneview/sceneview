@@ -12,16 +12,17 @@ for the model), with Google
 [Filament](https://github.com/google/filament) as the renderer and Jetpack Compose as the API.
 Models are standard glTF (`.glb` / `.gltf`) instead of `.sfb`.
 
-SceneView is open source (Apache 2.0) and ships in apps on Google Play such as Medal, IKEA, Lenskart
-and Safie.
+SceneView is open source (Apache 2.0) and ships in apps on Google Play such as the
+Volkswagen, Audi, Porsche and CUPRA apps, Philips Hue, Medal and IKEA. Lenskart ships
+[Sceneform Maintained](https://github.com/sceneview/sceneform-android), SceneView's predecessor.
 
 ## Dependency
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.sceneview:arsceneview:4.69.0")   // AR (includes the 3D module)
-    // implementation("io.github.sceneview:sceneview:4.69.0")  // 3D only, no camera
+    implementation("io.github.sceneview:arsceneview:4.69.7")   // AR (includes the 3D module)
+    // implementation("io.github.sceneview:sceneview:4.69.7")  // 3D only, no camera
 }
 ```
 

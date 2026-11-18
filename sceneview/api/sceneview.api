@@ -52,17 +52,17 @@ public final class io/github/sceneview/CameraFramingKt {
 	public static final field DEFAULT_FRAMING_ELEVATION_DEGREES D
 	public static final field DEFAULT_FRAMING_FILL F
 	public static final field DEFAULT_FRAMING_PADDING F
-	public static final fun fitCameraToBounds (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFF)Lio/github/sceneview/CameraFit;
-	public static synthetic fun fitCameraToBounds$default (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFFILjava/lang/Object;)Lio/github/sceneview/CameraFit;
+	public static final fun fitCameraToBounds (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;)Lio/github/sceneview/CameraFit;
+	public static synthetic fun fitCameraToBounds$default (Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;DDFFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;ILjava/lang/Object;)Lio/github/sceneview/CameraFit;
 	public static final fun fitDistanceForBounds (Lio/github/sceneview/Aabb;DDFDZ)F
 	public static synthetic fun fitDistanceForBounds$default (Lio/github/sceneview/Aabb;DDFDZILjava/lang/Object;)F
 	public static final fun fitDistanceForContent (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;F)F
 	public static synthetic fun fitDistanceForContent$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;FILjava/lang/Object;)F
-	public static final fun fitToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FF)Lio/github/sceneview/CameraFit;
-	public static synthetic fun fitToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FFILjava/lang/Object;)Lio/github/sceneview/CameraFit;
+	public static final fun fitToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;)Lio/github/sceneview/CameraFit;
+	public static synthetic fun fitToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;ILjava/lang/Object;)Lio/github/sceneview/CameraFit;
 	public static final fun frame (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/CameraFit;)V
-	public static final fun frameToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;F)Z
-	public static synthetic fun frameToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Z
+	public static final fun frameToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;)Z
+	public static synthetic fun frameToBounds$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;FLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;ILjava/lang/Object;)Z
 	public static final fun frameToContent (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;F)Z
 	public static synthetic fun frameToContent$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Z
 	public static final fun toAabb (Lcom/google/android/filament/Box;)Lio/github/sceneview/Aabb;
@@ -237,6 +237,14 @@ public final class io/github/sceneview/EngineWarmUpInitializer : androidx/startu
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
 }
 
+public final class io/github/sceneview/FitMode : java/lang/Enum {
+	public static final field Corners Lio/github/sceneview/FitMode;
+	public static final field Silhouette Lio/github/sceneview/FitMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/FitMode;
+	public static fun values ()[Lio/github/sceneview/FitMode;
+}
+
 public final class io/github/sceneview/FrameRateGate {
 	public static final field $stable I
 	public fun <init> ()V
@@ -378,6 +386,7 @@ public final class io/github/sceneview/ModelLoadState$Ready : io/github/scenevie
 }
 
 public final class io/github/sceneview/ModelLoadStateKt {
+	public static final fun rememberModelLoadState (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ModelLoadState;
 	public static final fun rememberModelLoadState (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ModelLoadState;
 }
 
@@ -429,10 +438,10 @@ public final class io/github/sceneview/SceneAutoFitState {
 	public final fun getDidFit ()Z
 	public final fun getFitDistance ()F
 	public final fun isFramingPending ()Z
-	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;F)Z
-	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Ljava/util/List;F)Z
-	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FILjava/lang/Object;)Z
-	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Ljava/util/List;FILjava/lang/Object;)Z
+	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;)Z
+	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Ljava/util/List;FLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;)Z
+	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;ILjava/lang/Object;)Z
+	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Ljava/util/List;FLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;ILjava/lang/Object;)Z
 	public final fun reset ()V
 }
 
@@ -492,8 +501,10 @@ public final class io/github/sceneview/SceneFrameDispatch {
 }
 
 public final class io/github/sceneview/SceneKt {
-	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLandroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
-	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLandroidx/compose/foundation/layout/PaddingValues;Lcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIII)V
+	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;Landroidx/compose/foundation/layout/PaddingValues;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+	public static final synthetic fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;Landroidx/compose/foundation/layout/PaddingValues;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;Landroidx/compose/foundation/layout/PaddingValues;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ZLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+	public static final synthetic fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderInvalidator;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;Landroidx/compose/foundation/layout/PaddingValues;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
 	public static final fun rememberARView (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/View;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Ljava/lang/Object;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/gesture/Inertia;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
@@ -508,6 +519,7 @@ public final class io/github/sceneview/SceneKt {
 	public static final fun rememberMainLightNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/LightNode;
 	public static final fun rememberMaterialLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/loaders/MaterialLoader;
 	public static final fun rememberModelInstance (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public static final fun rememberModelInstance (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static final fun rememberModelInstance (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static final fun rememberModelLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/loaders/ModelLoader;
 	public static final fun rememberNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/Node;
@@ -1513,6 +1525,7 @@ public abstract interface class io/github/sceneview/components/LightComponent : 
 	public fun setSunAngularRadius (F)V
 	public fun setSunHaloFalloff (F)V
 	public fun setSunHaloSize (F)V
+	public fun updateShadowOptions (Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class io/github/sceneview/components/LightComponent$DefaultImpls {
@@ -1547,6 +1560,7 @@ public final class io/github/sceneview/components/LightComponent$DefaultImpls {
 	public static fun setSunAngularRadius (Lio/github/sceneview/components/LightComponent;F)V
 	public static fun setSunHaloFalloff (Lio/github/sceneview/components/LightComponent;F)V
 	public static fun setSunHaloSize (Lio/github/sceneview/components/LightComponent;F)V
+	public static fun updateShadowOptions (Lio/github/sceneview/components/LightComponent;Lkotlin/jvm/functions/Function1;)V
 }
 
 public abstract interface class io/github/sceneview/components/RenderableComponent : io/github/sceneview/components/Component {
@@ -2791,33 +2805,59 @@ public final class io/github/sceneview/loaders/ModelLoader {
 	public static final field Companion Lio/github/sceneview/loaders/ModelLoader$Companion;
 	public fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlinx/coroutines/CoroutineScope;)V
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlinx/coroutines/CoroutineScope;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun awaitModelInstance (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun awaitModelInstance (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun awaitModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun awaitModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun clear ()V
 	public final fun createInstance (Lcom/google/android/filament/gltfio/FilamentAsset;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun createInstancedModel (IILkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public final fun createInstancedModel (ILio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
 	public final fun createInstancedModel (Ljava/io/File;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public final fun createInstancedModel (Ljava/io/File;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
 	public final fun createInstancedModel (Ljava/lang/String;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public final fun createInstancedModel (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
 	public final fun createInstancedModel (Ljava/nio/Buffer;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public final fun createInstancedModel (Ljava/nio/Buffer;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;)Ljava/util/List;
 	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;IILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
+	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;ILio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
 	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/io/File;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
+	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/io/File;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
 	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
+	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
 	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/nio/Buffer;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
+	public static synthetic fun createInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/nio/Buffer;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
+	public final fun createModel (ILio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public final fun createModel (IZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public final fun createModel (Ljava/io/File;Lio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public final fun createModel (Ljava/io/File;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public final fun createModel (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public final fun createModel (Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public final fun createModel (Ljava/nio/Buffer;Lio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public final fun createModel (Ljava/nio/Buffer;ZLkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;ILio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;IZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/io/File;Lio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/io/File;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/nio/Buffer;Lio/github/sceneview/core/model/ModelUnit;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
 	public static synthetic fun createModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/nio/Buffer;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentAsset;
+	public final fun createModelInstance (ILio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun createModelInstance (ILkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public final fun createModelInstance (Ljava/io/File;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun createModelInstance (Ljava/io/File;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public final fun createModelInstance (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun createModelInstance (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public final fun createModelInstance (Ljava/nio/Buffer;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun createModelInstance (Ljava/nio/Buffer;Lkotlin/jvm/functions/Function1;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;ILio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/io/File;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/io/File;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
+	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/nio/Buffer;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static synthetic fun createModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/nio/Buffer;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun destroy ()V
 	public final fun destroyModel (Lcom/google/android/filament/gltfio/FilamentAsset;)V
@@ -2826,18 +2866,31 @@ public final class io/github/sceneview/loaders/ModelLoader {
 	public final fun getMaterialProvider ()Lcom/google/android/filament/gltfio/UbershaderProvider;
 	public final fun getProgress ()F
 	public final fun getResourceLoader ()Lcom/google/android/filament/gltfio/ResourceLoader;
+	public final fun getSupportedFormats ()Ljava/util/Set;
 	public final fun isLoading ()Z
 	public final fun loadInstancedModel (Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun loadInstancedModel (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun loadInstancedModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun loadInstancedModelAsync (Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;
+	public final fun loadInstancedModelAsync (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;
 	public static synthetic fun loadInstancedModelAsync$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;ILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/Job;
+	public static synthetic fun loadInstancedModelAsync$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;ILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/Job;
+	public final fun loadModel (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun loadModel (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun loadModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun loadModel$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun loadModelAsync (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;
 	public final fun loadModelAsync (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;
+	public static synthetic fun loadModelAsync$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/Job;
 	public static synthetic fun loadModelAsync$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/Job;
+	public final fun loadModelInstance (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun loadModelInstance (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun loadModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun loadModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun loadModelInstanceAsync (Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;
 	public final fun loadModelInstanceAsync (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/Job;
+	public static synthetic fun loadModelInstanceAsync$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lio/github/sceneview/core/model/ModelUnit;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/Job;
 	public static synthetic fun loadModelInstanceAsync$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/Job;
 	public final fun setResourceLoader (Lcom/google/android/filament/gltfio/ResourceLoader;)V
 	public final fun updateLoad ()V
@@ -3002,6 +3055,21 @@ public final class io/github/sceneview/math/SceneviewMathKt {
 	public static final fun setCenterPosition (Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Float3;)V
 	public static final fun setHalfExtentSize (Lcom/google/android/filament/Box;Ldev/romainguy/kotlin/math/Float3;)V
 	public static final fun toVector3Box (Lcom/google/android/filament/Box;)Lio/github/sceneview/collision/Box;
+}
+
+public final class io/github/sceneview/model/AnimationEnvelope {
+	public static final field $stable I
+	public fun <init> (Ljava/util/List;)V
+	public final fun getBounds ()Lcom/google/android/filament/Box;
+	public final fun getPoses ()Ljava/util/List;
+	public final fun transformed (Ldev/romainguy/kotlin/math/Mat4;)Lio/github/sceneview/model/AnimationEnvelope;
+}
+
+public final class io/github/sceneview/model/AnimationEnvelopeKt {
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;II)Lio/github/sceneview/model/AnimationEnvelope;
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;I)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;IIILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 }
 
 public final class io/github/sceneview/model/ModelInstanceKt {
@@ -3302,6 +3370,7 @@ public class io/github/sceneview/node/LightNode : io/github/sceneview/node/Node,
 	public fun setSunHaloFalloff (F)V
 	public fun setSunHaloSize (F)V
 	public fun setTouchable (Z)V
+	public fun updateShadowOptions (Lkotlin/jvm/functions/Function1;)V
 }
 
 public class io/github/sceneview/node/LineNode : io/github/sceneview/node/GeometryNode {
@@ -3863,6 +3932,11 @@ public class io/github/sceneview/node/PlaneNode : io/github/sceneview/node/Geome
 
 public final class io/github/sceneview/node/ReflectionProbeNodeKt {
 	public static final fun ReflectionProbeNode (Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Ldev/romainguy/kotlin/math/Float3;FILdev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
+}
+
+public final class io/github/sceneview/node/ReflectionProbeNodeRegistryKt {
+	public static final fun releaseEnvironmentLight (Lcom/google/android/filament/Scene;Lcom/google/android/filament/IndirectLight;)V
+	public static final fun setEnvironmentLight (Lcom/google/android/filament/Scene;Lcom/google/android/filament/IndirectLight;)V
 }
 
 public class io/github/sceneview/node/RenderableNode : io/github/sceneview/node/Node, io/github/sceneview/components/RenderableComponent {

@@ -111,6 +111,8 @@ object DemoSettings {
      *    [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] (`ready`, `streaming`, `failed`, …);
      *  - Home: [io.github.sceneview.demo.ui.home.HERO_STILL_QA_STATE] (`hero_still`), the
      *    still its stage shows on a renderer Filament cannot run on (#4411);
+     *  - AR Placement, One call: [io.github.sceneview.demo.demos.AR_START_FAILED_QA_STATE]
+     *    (`ar_start_failed`), the SDK's session-failure card with its recovery insets;
      *  - Pool in the garden: [io.github.sceneview.demo.demos.POOL_MINIATURE_QA_STATE]
      *    (`pool_miniature`), the pool at a sixth of its size so it fits an indoor recording,
      *    and [io.github.sceneview.demo.demos.POOL_PREVIEW_QA_STATE] (`pool_preview`), the
