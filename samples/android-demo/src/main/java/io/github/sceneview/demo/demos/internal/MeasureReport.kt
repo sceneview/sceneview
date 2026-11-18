@@ -122,6 +122,7 @@ fun measureShareText(
         if (f.segments.isEmpty()) continue
         lines += ""
         when (f.mode) {
+            MeasureMode.Object -> Unit // Shared separately as sceneview.measure/1 JSON.
             MeasureMode.Distance -> {
                 distance++
                 lines += "Distance $distance"

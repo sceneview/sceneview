@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Demo app: Measure objects.** Prepare at 50–60 cm, capture two depth endpoints for each length, width and height, then review approximate dimensions in millimeters. Undo or repeat each dimension, correct values manually, and share a `sceneview.measure/1` JSON file with measured/manual provenance and explicitly uncalibrated uncertainty. Available in the Android demo; device accuracy is not calibrated.
