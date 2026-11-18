@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: Matter's material switch plays fully ([#5138](https://github.com/sceneview/sceneview/pull/5138)).** Selecting another material now always shows the full slide. Before, the first draw of each material could freeze the old solid under the new title and then pop the new one in. The chips stay enabled during a switch, and taps or flings made during it queue instead of being dropped. A finger held through a switch presses the new solid as soon as it lands, and choosing a chip no longer scrolls the first chips off screen.
