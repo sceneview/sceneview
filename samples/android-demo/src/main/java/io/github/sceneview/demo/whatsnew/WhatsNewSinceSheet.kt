@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -94,7 +95,11 @@ fun WhatsNewSinceSheet(
     val entryCount = remember(sections) { sections.sumOf { it.entries.size } }
     val demoTitles = rememberDemoTitles()
 
-    DemoModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    DemoModalBottomSheet(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.statusBarsPadding(),
+        sheetState = sheetState,
+    ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),

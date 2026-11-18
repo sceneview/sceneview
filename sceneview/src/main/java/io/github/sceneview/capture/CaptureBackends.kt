@@ -130,20 +130,41 @@ internal fun interface OverlayCompositorFactory {
     fun create(size: VideoSize, output: Surface, overlay: CaptureOverlay): OverlayCompositor
 }
 
-/** The real compositor where the platform has one (API 29+), `null` below. */
+/**
+ * The real compositor where the platform has one (API 29+), `null` below: [GlOverlayCompositor],
+ * or [ImageReaderOverlayCompositor] on a device where EGL cannot be set up on the encoder surface.
+ */
 internal fun defaultOverlayCompositorFactory(): OverlayCompositorFactory? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         OverlayCompositorFactory { size, output, overlay ->
-            ImageReaderOverlayCompositor(size, output, overlay)
+            createFirstWorking(
+                primary = { GlOverlayCompositor(size, output, overlay) },
+                fallback = { ImageReaderOverlayCompositor(size, output, overlay) },
+            )
         }
     } else {
         null
     }
 
+/** [primary]'s compositor, or [fallback]'s when [primary] throws. */
+internal fun createFirstWorking(
+    primary: () -> OverlayCompositor,
+    fallback: () -> OverlayCompositor,
+): OverlayCompositor = try {
+    primary()
+} catch (e: RuntimeException) {
+    Log.w(TAG, "GL overlay compositor unavailable, using the ImageReader one", e)
+    fallback()
+}
+
 /**
- * The scene is mirrored into a GPU-only [ImageReader]; each frame is wrapped as a hardware
- * [Bitmap] (no copy to the CPU), drawn on the encoder surface's hardware canvas, and the overlay is
- * drawn over it. Runs on its own thread so the render thread never waits on it.
+ * The fallback compositor. The scene is mirrored into a GPU-only [ImageReader]; each frame is
+ * wrapped as a hardware [Bitmap] (no copy to the CPU), drawn on the encoder surface's hardware
+ * canvas, and the overlay is drawn over it.
+ *
+ * Slow: `acquireLatestImage` waits on the CPU for each image's GPU fence while holding the reader's
+ * lock, which the producer's `queueBuffer` takes too, so the scene's render thread stalls behind
+ * every recorded frame (about 7 fps in 1080p on a Pixel 4a). [GlOverlayCompositor] is the default.
  *
  * Each image stays open until the next one has been drawn: a hardware canvas posts its frame
  * asynchronously, and the GPU may still be reading the previous buffer when the next one arrives.

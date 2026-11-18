@@ -2,6 +2,159 @@ package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.roundToInt
 
+/** Resource-backed messages for the capture's single instruction line. */
+enum class ScanInstruction {
+    Starting, GoBack, Slower, MoreLight, Sweep, Walls, KeepGoing, Complete, Saving,
+
+    /**
+     * A scan with no full turn to wait for (outdoors, or an object that cannot be walked round)
+     * has run long enough to hold something: the line asks whether it has all it can.
+     */
+    WhenReady,
+
+    /**
+     * The scan has been held off a jumped pose too long to come back by itself: finish with what
+     * it has, or leave and start again.
+     */
+    Stuck,
+
+    /**
+     * A cupboard or a shelf is filmed from before its opening, and the phone has walked off
+     * ([SpaceStay]): stay there, or pick a room.
+     */
+    StayPut,
+
+    /** The face of a cupboard or a shelf to film now ([SpaceFaceGuide]). */
+    FaceBack, FaceBottom, FaceLeft, FaceRight, FaceTop,
+
+    /** Nothing scanned yet at the floor's nearest empty area, on that side of the phone. */
+    HoleAhead, HoleLeft, HoleRight, HoleBehind,
+    ;
+
+    /** Whether this line names an empty area of the floor. */
+    val namesHole: Boolean get() = this == HoleAhead || this == HoleLeft || this == HoleRight || this == HoleBehind
+
+    companion object {
+        /** The line naming an empty area on [turn]'s side of the phone. */
+        fun holeOn(turn: ScanTurn): ScanInstruction = when (turn) {
+            ScanTurn.Ahead -> HoleAhead
+            ScanTurn.Left -> HoleLeft
+            ScanTurn.Right -> HoleRight
+            ScanTurn.Behind -> HoleBehind
+        }
+
+        /** The line asking for [face] of a cupboard or a shelf; its opening is never asked for. */
+        fun faceOf(face: SpaceFace): ScanInstruction? = when (face) {
+            SpaceFace.Back -> FaceBack
+            SpaceFace.Bottom -> FaceBottom
+            SpaceFace.Left -> FaceLeft
+            SpaceFace.Right -> FaceRight
+            SpaceFace.Top -> FaceTop
+            SpaceFace.Front -> null
+        }
+    }
+}
+
+/**
+ * The capture's one line, never empty while it records, held for at least two seconds, in the
+ * words of someone who has never scanned: what to film to start with, for six seconds by a
+ * monotonic clock (the trace clock stops during tracking loss); then where to move — "keep
+ * turning until the circle is full", "raise your phone to the walls" once a room's scan has
+ * looked away from them ([floorOnly]) for [OFF_WALLS_MS] on end, or the side an empty area is on
+ * ([hole]) — until the scan is [complete], then "tap the red button to finish". A cupboard or a
+ * shelf is asked for one face at a time instead ([face]). A scan with no
+ * full turn to wait for asks instead whether it has everything ([whenReady]). A problem — lost,
+ * too fast, too dark — takes the line while it lasts. Saving is a terminal status and takes
+ * precedence over coaching, with the same minimum time between changes.
+ *
+ * A line that names an empty area never outlives it: that area filled, or another one named, the
+ * line follows at once, so it and the hatching ([namedHole]) always say the same thing.
+ */
+class ScanLiveInstruction {
+    private var startedAt: Long? = null
+    private var changedAt: Long? = null
+    private var shown: ScanInstruction? = null
+
+    /** Since when the phone has looked away from the walls, `null` while it faces them. */
+    private var offWallsSince: Long? = null
+
+    /** The area the line shown names (`holeId` as it was when the line took it), `null` when it names none. */
+    var namedHole: Int? = null
+        private set
+
+    fun update(
+        nowMs: Long,
+        started: Boolean = true,
+        trackingLost: Boolean = false,
+        poseSlipped: Boolean = false,
+        /** The pose has stayed slipped too long to come back by itself ([PoseContinuity.isStuck]). */
+        poseStuck: Boolean = false,
+        tooFast: Boolean = false,
+        tooDark: Boolean = false,
+        /** The phone has walked away from the space it films ([SpaceStay.strayed]). */
+        strayed: Boolean = false,
+        saving: Boolean = false,
+        complete: Boolean = false,
+        /** No full turn to wait for, and long enough to hold something ([ScanCompletion.whenReady]). */
+        whenReady: Boolean = false,
+        floorOnly: Boolean = false,
+        /** The side of the phone the floor's nearest empty area is on, `null` with none. */
+        hole: ScanTurn? = null,
+        /** Which area [hole] is the side of ([ScanHoleGuide.gapId]). */
+        holeId: Int = 0,
+        /** The face of a cupboard or a shelf to film now ([SpaceFaceGuide.face]), `null` with none. */
+        face: SpaceFace? = null,
+    ): ScanInstruction? {
+        if (!started) startedAt = null else if (startedAt == null) startedAt = nowMs
+        val elapsed = startedAt?.let { nowMs - it } ?: 0L
+        // A sweep goes down to the floor and up again every few seconds: the walls are asked
+        // for only when the phone stays off them (2026-11-14, a hand-held room scan: the line
+        // swapped with "keep going" at every sweep, eight times in a minute).
+        if (!floorOnly) offWallsSince = null else if (offWallsSince == null) offWallsSince = nowMs
+        val offWalls = offWallsSince?.let { nowMs - it >= OFF_WALLS_MS } == true
+        val faceLine = face?.let(ScanInstruction::faceOf)
+        val wanted = when {
+            saving -> ScanInstruction.Saving
+            !started -> ScanInstruction.Starting
+            // Going back cannot undo a pose that stayed slipped: say the ways out instead.
+            poseSlipped && poseStuck -> ScanInstruction.Stuck
+            trackingLost || poseSlipped -> ScanInstruction.GoBack
+            tooFast -> ScanInstruction.Slower
+            tooDark -> ScanInstruction.MoreLight
+            // Said at once, the opening line included: what follows would be filmed for nothing.
+            strayed -> ScanInstruction.StayPut
+            // Do not introduce Sweep too late to give it its full hold before second six.
+            elapsed < INTRO_MS && (shown == ScanInstruction.Sweep || elapsed <= INTRO_MS - HOLD_MS) ->
+                ScanInstruction.Sweep
+            complete -> ScanInstruction.Complete
+            faceLine != null -> faceLine
+            // An empty area named where it is beats a general line (2026-11-13, Thomas's
+            // workshop: « Raise your phone to the walls » all the way through, no wall named).
+            hole != null -> ScanInstruction.holeOn(hole)
+            offWalls -> ScanInstruction.Walls
+            whenReady -> ScanInstruction.WhenReady
+            else -> ScanInstruction.KeepGoing
+        }
+        val previousChange = changedAt
+        val named = namedHole
+        val areaGone = named != null && (hole == null || holeId != named)
+        if (previousChange == null || areaGone || (wanted != shown && nowMs - previousChange >= HOLD_MS)) {
+            shown = wanted
+            changedAt = nowMs
+            namedHole = holeId.takeIf { wanted.namesHole }
+        }
+        return shown
+    }
+
+    companion object {
+        const val HOLD_MS = 2_000L
+        const val INTRO_MS = 6_000L
+
+        /** How long the phone looks away from the walls before the line asks for them. */
+        const val OFF_WALLS_MS = 5_000L
+    }
+}
+
 /** Where the capture is, of its three steps: the step row under the shutter says it. */
 enum class ScanStep(val label: String) {
     Scan("Scan"),
@@ -214,6 +367,17 @@ object CaptureChrome {
         return label?.let { "$it · $state" } ?: state
     }
 
+    /**
+     * Live Room's second line, what was really captured and nothing it cannot know: the time,
+     * the floor scanned and the points — `0:42 · 6.2 m² floor · 12,345 points`. No share of a
+     * room whose extent the scan does not know.
+     */
+    fun honestDetail(clock: String, floorSquareMetres: Float, points: Int, floorLabel: String, pointsLabel: String): String {
+        val n = points.coerceAtLeast(0)
+        return "$clock · ${ScanAreaCopy.area(floorSquareMetres.coerceAtLeast(0f))} $floorLabel · " +
+            "${ArDebugFormat.count(n)} $pointsLabel"
+    }
+
     /** The second line: `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured` elsewhere. */
     fun detail(clock: String, walls: Int?, points: Int): String = when {
         walls == null -> "$clock · ${ScanCopy.pointsCaptured(points)}"
@@ -246,4 +410,68 @@ object CaptureChrome {
     fun hapticWaitMs(nowMs: Long, playedAtMs: Long): Long = (HAPTIC_GAP_MS - (nowMs - playedAtMs)).coerceAtLeast(0L)
 
     private const val PERCENT = 100
+}
+
+/**
+ * When a scan is finished, said the way someone who has never scanned can act on: the circle
+ * round the red button is the turn the phone has made ([ScanAllRound]), and the scan looks
+ * complete once it is full. A room or a home also completes once most of its floor is covered; an
+ * outdoor area has no turn to close, so it never "looks complete" by itself.
+ */
+object ScanCompletion {
+    const val ROOM_FLOOR_SHARE = 0.85f
+    const val ROOM_MIN_SECONDS = 20f
+    const val OBJECT_MIN_SECONDS = 10f
+    const val OPEN_MIN_SECONDS = 30f
+
+    /**
+     * How long a capture runs before the red button finishes it: a tap meant for the screen
+     * before, or a reflex to "start recording", ends nothing (2026-11-14, two scans of a terrace
+     * saved after 0.8 s and 6.5 s, one photo in the first).
+     */
+    const val FINISH_AFTER_SECONDS = 3f
+
+    /**
+     * The circle's share, `0..1`: [turnShare] ([ScanAllRound.share]), full once the scan is
+     * [complete]; `null` where there is no way round to measure: an outdoor area. A cupboard or
+     * a shelf is filmed from its opening: its circle is the faces the scan holds
+     * ([SpaceFaceGuide.share]), handed in as [turnShare].
+     */
+    fun progress(scope: ScanScope, turnShare: Float, complete: Boolean = false): Float? = when {
+        scope == ScanScope.Area -> null
+        complete -> 1f
+        else -> turnShare.coerceIn(0f, 1f)
+    }
+
+    /**
+     * Whether the scan looks complete. A cupboard or a shelf does once every face has had its
+     * turn and the scan holds its back and its bottom ([facesDone], [SpaceFaceGuide.complete]).
+     */
+    fun complete(
+        scope: ScanScope,
+        seconds: Float,
+        floorShare: Float,
+        turnShare: Float = 0f,
+        facesDone: Boolean = false,
+    ): Boolean = when {
+        scope.hasFloorPlan -> seconds >= ROOM_MIN_SECONDS && (turnShare >= 1f || floorShare >= ROOM_FLOOR_SHARE)
+        scope == ScanScope.Object -> seconds >= OBJECT_MIN_SECONDS && turnShare >= 1f
+        scope == ScanScope.Space -> facesDone
+        else -> false
+    }
+
+    /**
+     * Whether the line asks if the scan has all it can: outdoors, and round an object that
+     * stands against a wall, the circle never fills, and half a minute holds something to keep;
+     * a cupboard or a shelf, once every face has been asked for ([facesAsked],
+     * [SpaceFaceGuide.asked]) without the scan looking complete.
+     */
+    fun whenReady(scope: ScanScope, seconds: Float, facesAsked: Boolean = false): Boolean = when {
+        scope.hasFloorPlan -> false
+        scope == ScanScope.Space -> facesAsked
+        else -> seconds >= OPEN_MIN_SECONDS
+    }
+
+    /** Whether the red button finishes a capture [seconds] long (`null`: no clock, as in a QA state). */
+    fun canFinish(seconds: Float?): Boolean = seconds == null || seconds >= FINISH_AFTER_SECONDS
 }

@@ -238,7 +238,7 @@ npx sceneview-mcp --http
 
 Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `RUNWARE_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
 
-**Everything is free, but not everything is remote.** Three generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 32.
+**Everything is free, but not everything is remote.** Three generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 33.
 
 **Inline 3D viewer.** `view_3d_model` returns `structuredContent` plus `_meta.ui.resourceUri = ui://widget/3d-viewer.html`; the widget (SceneView.js + Filament.js, served by `resources/read` with the `text/html;profile=mcp-app` mime type and its `_meta.ui.csp`) renders the model inline in ChatGPT and any MCP Apps host.
 
@@ -327,6 +327,7 @@ Six tools carry most of what assistants actually do with SceneView. If you read 
 
 | Tool | What it does |
 |---|---|
+| `show_in_space` | Builds one link to show a box at real scale in the SceneView Android app, or its size on the web page with an app offer. Supply width, height and depth in cm, a label, optional floor/table placement and user/estimated dimension source. No fit detection or accuracy claim. Available locally and remotely. |
 | `view_3d_model` | Renders a public GLB / glTF URL in an interactive SceneView.js + Filament.js viewer inline in ChatGPT and any MCP Apps host (orbit, auto-rotate). For an https model it adds an "Open in AR on your phone" action (an `ar.sceneview.dev/open` link to the 3D AR Model Viewer app, with a QR code on desktop). Returns `structuredContent` + `_meta.ui.resourceUri` |
 
 ### 5 resources

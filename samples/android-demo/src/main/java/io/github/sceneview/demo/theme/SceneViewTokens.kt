@@ -174,60 +174,46 @@ object SceneViewTokens {
         val pillPaddingHorizontal = 14.dp
 
         /**
-         * `chrome-scrim` — the wash the chrome bands sit on.
+         * `chrome-scrim` — the ground under the status bar, and only the status bar.
          *
          * White on media only reads when the media is dark, and a Filament scene is
          * whatever the demo authored: the contact-shadow studio is a near-white room,
-         * where an 8 % white fill and white glyphs disappear entirely. The chrome
-         * therefore carries its own ground, the same transparent-to-black media scrim
-         * the Spatial Gallery puts under white copy. 60 % black takes a white
-         * background down to ~5.6:1 against white text, so the band reads on the
-         * brightest scene the demos ship and stays unobtrusive on the darkest.
+         * where white system icons disappear entirely. The scaffold therefore lays this
+         * wash inside the status-bar inset alone, never past it into the scene, where it
+         * would darken the scene's own text too (#3733). 60 % black takes a white
+         * background down to ~5.6:1 against white glyphs, so the icons read on the
+         * brightest scene the demos ship and the strip stays unobtrusive on the darkest.
          */
         val scrim = Color(0x99000000)
 
         /**
-         * `chrome-scrim-dock` — the same wash, two points darker, under the **bottom**
-         * band only.
+         * `chrome-scrim-dock` — the `glass-ground` the scaffold provides to every glass
+         * control: painted under its translucent fill, inside its own outline, so the
+         * scene around the control stays clear (#3733).
          *
-         * The bottom band carries something the top band does not: the dock's captions
-         * sit on the dock's own [surface] fill — white at 14 % — and *that* sits on the
-         * scrim. [scrim]'s own "~5.6:1" is measured for text directly on the wash, and
-         * it is right for the identity row. It does not describe the dock, because the
-         * glass fill lifts the ground back up before the caption ever lands on it.
+         * It is two points darker than [scrim] because a glass control's text does not
+         * land on the ground directly: the dock's captions sit on the glass [surface]
+         * fill — white at 14 % — and *that* sits on the ground. [scrim]'s own "~5.6:1"
+         * is measured for glyphs directly on the wash; the glass fill lifts the ground
+         * back up before the caption ever lands on it.
          *
          * Over a white scene, composing the real stack (white caption / white 14 % /
          * black α / white):
          *
          * ```
-         * 60 %  scene 255 -> scrim 102.0 -> glass 123.6  ->  white text  4.20:1   FAIL
-         * 68 %  scene 255 -> scrim  82.0 -> glass 106.4  ->  white text  5.37:1   pass
+         * 60 %  scene 255 -> ground 102.0 -> glass 123.6  ->  white text  4.20:1   FAIL
+         * 68 %  scene 255 -> ground  82.0 -> glass 106.4  ->  white text  5.37:1   pass
          * ```
          *
          * Computed from the tokens, not sampled: it takes a white *camera frame* to
          * photograph, and 1.4.3's threshold is about the worst case anyway. On a black
-         * scene both values are the same 15.5:1 — the scrim is doing nothing there.
+         * scene both values are the same 15.5:1 — the ground is doing nothing there.
          *
-         * It is deliberately *not* applied to [scrim] wholesale. The top band's text
-         * lands on the wash directly, already clears 4.5:1 at 60 %, and darkening the
-         * status-bar end of the screen would buy contrast nobody asked for at the cost
-         * of hiding more of the scene. One number moves, where the defect is.
+         * It is deliberately *not* applied to [scrim]: the status-bar icons land on the
+         * wash directly and already clear 4.5:1 at 60 %. One number moves, where the
+         * glass needs it.
          */
         val scrimDock = Color(0xAD000000)
-        /** Height of the top scrim: the identity row, its gutter and the status bar. */
-        val scrimTopHeight = 160.dp
-        /**
-         * Floor for the bottom scrim: enough for the dock band alone. The scaffold
-         * grows it to the measured `dockClearance + bottomOverlayBand` whenever a
-         * demo stacks a status pill or a legend above the dock, so the ground always
-         * reaches the topmost thing standing on it.
-         */
-        val scrimBottomHeight = 220.dp
-        /**
-         * Where the scrim stops being flat and starts fading out, as a fraction of its
-         * height measured from the screen edge. The chrome sits inside the flat part.
-         */
-        const val scrimPlateau = 0.55f
 
         /**
          * `glass-sheet`, light — `surface-container` at 88 %, with no scrim behind it (#3827).

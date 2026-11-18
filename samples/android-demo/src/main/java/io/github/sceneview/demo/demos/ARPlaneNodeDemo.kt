@@ -31,6 +31,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberHostLifecycle
+import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.DemoSettings
@@ -81,13 +82,23 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    // ARCore session, captured on first `onSessionCreated` — `rememberDetectedPlanes` reads
-    // `session.getAllTrackables(Plane::class.java)` off it each Compose frame.
+    // ARCore session, captured on each `onSessionCreated` — `rememberDetectedPlanes` reads
+    // `session.getAllTrackables(Plane::class.java)` off it each Compose frame. Dropped on a
+    // session failure: the failed session is closed, and reading it is a native crash.
     var arSession by remember { mutableStateOf<Session?>(null) }
 
     // "Total ever detected" — incremented by the onAdded lifecycle callback so the count keeps
     // climbing even when ARCore subsumes a smaller plane into a larger coplanar one.
     var totalDetected by remember { mutableIntStateOf(0) }
+
+    // ARPlaneManager parity: observe the live set of detected planes and react to the
+    // lifecycle. `onAdded` bumps the running total; the returned `State` drives both the
+    // tracked-plane readout and the per-plane PlaneNode list. It stops reading a closed
+    // session on its own and turns empty, so the readout never queries a dead session.
+    val planes by rememberDetectedPlanes(
+        session = arSession,
+        onAdded = { added -> totalDetected += added.size },
+    )
 
     // #3341: non-null once ARCore has ruled this device out. The flag the scanning
     // banner waits on never flips then, so that banner has to read the verdict or
@@ -118,6 +129,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     val markerMaterial = rememberArMeshTintInstance(materialLoader, SceneViewTokens.ArOverlay.meshGround)
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         // The SDK's "Couldn't start AR" card keeps its in-place "Try again" (#4622); the
         // scaffold's card, which has none, is only for a failure the SDK does not explain.
         arSessionFailed = arSessionFailedUnexplained(arSessionFailed, arCoreAvailability),
@@ -144,9 +156,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 contentColor = SceneViewTokens.Glass.onGlass,
                 shape = readoutShape,
             ) {
-                val tracked = arSession?.getAllTrackables(Plane::class.java)?.count {
-                    it.trackingState == com.google.ar.core.TrackingState.TRACKING
-                } ?: 0
+                val tracked = planes.size
                 Column(
                     modifier = Modifier.padding(
                         horizontal = SceneViewTokens.Space.md,
@@ -207,7 +217,14 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { arSessionFailed = true },
+                onSessionFailure = {
+                    arSessionFailed = true
+                    // Keep arSession: a non-fatal resume failure retries on the same session
+                    // and onSessionCreated does not fire again. rememberDetectedPlanes already
+                    // stops reading a session once it is closed.
+                    cameraReady = false
+                    isTracking = false
+                },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -228,14 +245,6 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 },
             ) {
-                // ARPlaneManager parity: observe the live set of detected planes and react to
-                // the lifecycle. `onAdded` bumps the running total; the returned `State` drives
-                // the per-plane PlaneNode list below.
-                val planes by rememberDetectedPlanes(
-                    session = arSession,
-                    onAdded = { added -> totalDetected += added.size },
-                )
-
                 planes.forEach { plane ->
                     // One PlaneNode per detected plane. The node follows the plane's centre
                     // pose every frame; its `content` block declares a small marker cube that
@@ -250,10 +259,8 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
             }
             // #3341: silent while the SDK's "AR unavailable" card carries the reason.
             ARCoachingOverlay(
-                cue = if (arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE,
-                surface = guidance.surface,
-                hint = guidance.hint,
-                scanLingering = guidance.scanLingering,
+                guidance = guidance,
+                cue = if (!LocalMotionSensorSilent.current && arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE,
                 contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             )
         }

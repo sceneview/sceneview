@@ -320,7 +320,6 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         // The placement adapter owns its local anchor; the resolved anchor is ours.
         placementState.resetPlacement(SystemClock.uptimeMillis())
         localPlacement = null
-        invalidMove = false
         resolvedAnchor?.detach()
         resolvedAnchor = null
         resolveTask = CloudAnchorTask.Idle
@@ -424,6 +423,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ar_cloud_anchor_title),
         chromeToggleOnTap = false,
         onBack = onBack,

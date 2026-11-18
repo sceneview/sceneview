@@ -31,6 +31,10 @@ import io.github.sceneview.node.MeshNode
  * anchors nor raycast hit testing. [Trackable.createAnchor] will result in an
  * `IllegalStateException`.
  *
+ * When the owning session closes, SceneView clears [trackable] and this node stops updating.
+ * After a session retry, create a new node with a face from the replacement session.
+ * The original [augmentedFace] belongs to the closed session and must not be queried again.
+ *
  * To use Augmented Faces, enable the feature in the session. This can be done at session creation
  * time, or at any time during session runtime:
  *
@@ -192,6 +196,9 @@ open class AugmentedFaceNode(
      * gated behind [constructed] (#2624).
      */
     private fun applyTrackableState() {
+        // Session invalidation clears trackable before native close. The constructor's
+        // augmentedFace reference is retained for API compatibility, but is no longer usable.
+        val augmentedFace = trackable ?: return
         if (augmentedFace.trackingState != TrackingState.TRACKING) return
 
         // Guard: buffers are not yet populated in the very first TRACKING frame.
@@ -329,6 +336,10 @@ open class AugmentedFaceNode(
      * meaningful then.
      */
     override fun update(session: Session, frame: Frame) {
+        // A retained node can receive the replacement session's first frame before the host
+        // replaces its face list. Skip it before reading any native frame or face state.
+        val augmentedFace = trackable ?: return
+
         // PoseNode state — set manually since we skip super
         this.session = session
         this.frame = frame
@@ -339,7 +350,7 @@ open class AugmentedFaceNode(
         // work internally.
         update(augmentedFace)
 
-        if (augmentedFace.trackingState == TrackingState.TRACKING) {
+        if (trackable?.trackingState == TrackingState.TRACKING) {
             onUpdated?.invoke(augmentedFace)
         }
     }

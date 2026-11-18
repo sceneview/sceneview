@@ -1,5 +1,12 @@
 package io.github.sceneview
 
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -17,6 +24,81 @@ import kotlin.random.Random
  * the engine, however many renderers share it (sceneview/sceneview#4359).
  */
 class DeferredDestroyQueueTest {
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun enqueueWakesAParkedLoopAndTheLoopParksAgainAfterDraining() = runTest {
+        val queue = DeferredDestroyQueue(graceFrames = 3)
+        val pending = derivedStateOf { queue.hasPending }
+        val source = Any()
+        var destroyed = 0
+        var ticks = 0
+        val loop = launch {
+            while (true) {
+                awaitRenderingEnabled(pending)
+                ticks++
+                queue.drainFrame(source)
+            }
+        }
+        runCurrent()
+        assertEquals(0, ticks)
+
+        repeat(2) { batch ->
+            queue.enqueue { destroyed++ }
+            Snapshot.sendApplyNotifications()
+            runCurrent()
+
+            assertEquals("a parked loop stranded a destroy", batch + 1, destroyed)
+            assertEquals("the grace period must still be counted", (batch + 1) * 3, ticks)
+            assertEquals(0, queue.size)
+            advanceTimeBy(5_000)
+            runCurrent()
+            assertEquals("an empty queue must let the loop park", (batch + 1) * 3, ticks)
+        }
+        loop.cancel()
+    }
+
+    @Test
+    fun snapshotWritesOnlyOnEmptyNonEmptyTransitions() {
+        val queue = DeferredDestroyQueue(graceFrames = 2)
+        var writes = 0
+        Snapshot.observe(writeObserver = { writes++ }) {
+            assertFalse(queue.hasPending)
+            queue.enqueue {}
+            assertTrue(queue.hasPending)
+            assertEquals(1, writes)
+            queue.enqueue {}
+            queue.drain() // frame 1: neither action is due
+            queue.enqueue {} // due at frame 3
+            assertEquals(3, queue.size)
+            assertEquals("enqueues onto a non-empty queue must not write state", 1, writes)
+
+            queue.drain() // frame 2: the first two actions run, one remains
+            assertEquals(1, queue.size)
+            assertTrue(queue.hasPending)
+            assertEquals("partial drains must not write state", 1, writes)
+            queue.drain() // frame 3: empty
+            assertFalse(queue.hasPending)
+            assertEquals(2, writes)
+            queue.drain()
+            assertEquals("empty ticks must not write state", 2, writes)
+
+            queue.enqueue {}
+            queue.enqueue {}
+            assertTrue(queue.hasPending)
+            assertEquals(3, writes)
+            queue.drainAll()
+            assertFalse(queue.hasPending)
+            assertEquals(0, queue.size)
+            assertEquals("teardown must publish only the transition to empty", 4, writes)
+            queue.drainAll()
+            var ran = false
+            queue.enqueue { ran = true }
+            assertTrue(ran)
+            assertFalse(queue.hasPending)
+            assertEquals("late destroys run immediately without waking the loop", 4, writes)
+        }
+    }
 
     @Test
     fun actionRunsExactlyOnTheGraceFrame() {

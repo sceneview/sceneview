@@ -96,6 +96,17 @@ class ScanResultFramingTest {
     }
 
     @Test
+    fun `a stray far patch does not shrink the room in the fixed preview frame`() {
+        val cloud = room(yaw = 0f)
+        cloud.add(-30f, 0.5f, 0f, 1f, 0f, 0f)
+        val positions = cloud.positions.toFloatArray()
+        val frame = req(ScanResultFraming.of(DenseCloud(
+            positions, IntArray(positions.size / 3), cloud.normals.toFloatArray(),
+        )))
+        assertTrue("framed from ${frame.local[0]}", frame.local[0] > -10f)
+    }
+
+    @Test
     fun `the view opens on the room's fullest wall, from outside the missing one`() {
         // The near wall (+b) half scanned: the eye stands on its side, the full wall at the back.
         val frame = req(room(yaw = 0f, nearShare = 0.4f).frame())

@@ -326,6 +326,29 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Lens, plane textures and media index of `ARRerunDemo`'s replay",
     },
+    # 3D Scan's "See an example": a garden path scanned with the demo itself by the project's
+    # own Pixel, lightened for shipping by `tools/make-scan-example.py`.
+    "example-session.jsonl": {
+        "name": "example-session.jsonl",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Timeline of a garden path scanned with the demo (camera path, planes, depth totals) — 3D Scan's example",
+    },
+    "example-media.bin": {
+        "name": "example-media.bin",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Dense cloud and camera photos of the same scan, packed for 3D Scan's example",
+    },
+    "example-manifest.json": {
+        "name": "example-manifest.json",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Lens, dense cloud and media index of 3D Scan's example",
+    },
     # Compiled in-repo from `samples/android-demo/src/main/materials/*.mat` by matc (#3538).
     "studio_glass.filamat": {
         "name": "studio_glass.filamat",
@@ -381,7 +404,9 @@ NON_CATALOG_BUNDLED = {
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
-        "note": "Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`",
+        "note": "Compiled from `samples/android-demo/src/main/materials/matter_steel.mat`; "
+                "its line hash is hash11 from \"Hash without Sine\", Copyright (c) 2014 David Hoskins, "
+                "MIT License (https://www.shadertoy.com/view/4djSRW)",
     },
     "matter_gel.filamat": {
         "name": "matter_gel.filamat",

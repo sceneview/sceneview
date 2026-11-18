@@ -51,17 +51,19 @@ describe("generateRoomPlanner", () => {
         expect(code).toContain("showCeiling");
         expect(code).toContain("Switch");
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generateRoomPlanner({ roomType: "living-room" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("generates AR code when ar=true", () => {
         const code = generateRoomPlanner({ roomType: "living-room", ar: true });
         expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
         expect(code).toContain("ARSceneView(");
-        expect(code).toContain("arsceneview:4.16.9");
+        expect(code).toContain("arsceneview:4.53.0");
         expect(code).toContain("android.permission.CAMERA");
     });
     it("AR version uses 1:10 scale", () => {

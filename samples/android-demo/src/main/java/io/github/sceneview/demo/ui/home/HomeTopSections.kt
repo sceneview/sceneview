@@ -1,44 +1,51 @@
 package io.github.sceneview.demo.ui.home
 
-import androidx.annotation.StringRes
-import io.github.sceneview.demo.R
-
-/** A one-tap discovery action, resolved against the same registry as the catalogue. */
-internal data class HomeOutcome(
-    val demoId: String,
-    @StringRes val labelRes: Int,
-    @StringRes val supportingRes: Int,
-)
-
-internal val HOME_OUTCOMES = listOf(
-    HomeOutcome(HERO_DEMO_ID, R.string.home_view_model, R.string.home_view_model_supporting),
-    HomeOutcome("ar-placement", R.string.home_place_in_room, R.string.home_place_in_room_supporting),
-    HomeOutcome("ar-rerun", R.string.home_explore_scan, R.string.home_explore_scan_supporting),
-)
-
-/** Try next shortcuts. Feel joins here when its demo is registered. */
-internal val FEATURED_IDS = listOf("materials", "cosmos", "rolling-balls")
-
-/** Discovery shortcuts and release highlights; none owns a demo's catalogue membership. */
+/**
+ * The demo ids each group above the catalogue draws, every demo at most once.
+ *
+ * The top of the Home has three places that push a demo: the header's featured pager, the
+ * "Featured" banners and the "What's new" row's picture. Each was fed from its own list,
+ * and the lists overlap by design — the flagship samples are featured *and* recently
+ * updated — so the same demo led all three (the header page, a banner, the What's new
+ * picture) before the catalogue had shown anything else.
+ *
+ * [pager] ids first, then [featured], then [whatsNew]: a group only keeps what no group
+ * before it shows. A group left empty is not drawn at all — see `HomeScreen`.
+ */
 data class HomeTopSections(
-    val outcomes: List<String>,
+    /** The header pager's pages, in page order. */
+    val pager: List<String>,
+    /** The "Featured" banners left once the pager's demos are taken out. */
     val featured: List<String>,
+    /** The fresh demos neither the pager nor the banners show — the What's new row leads with one. */
     val whatsNew: List<String>,
 ) {
-    /** Every match keeps its permanent category home, including featured demos. */
-    fun catalogue(ids: List<String>): List<String> = ids
+    /**
+     * The rows under the chips, out of the [ids] the current chip and query keep.
+     *
+     * Every demo keeps its permanent category, featured or not (#5005): a banner above is a
+     * shortcut, not a move, so a category never looks like it lacks its flagship.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun catalogue(ids: List<String>, filtered: Boolean): List<String> = ids
 }
 
-/** Keep each discovery shortcut once, preserving priority and input order. */
+/**
+ * Cuts the three lists into [HomeTopSections], in priority order. Pure, so the rule is
+ * tested on the JVM with plain ids — it is a rule about the order, not about one demo.
+ *
+ * Each input keeps its own order; an id repeated inside one list is kept once.
+ */
 fun homeTopSections(
-    outcomes: List<String>,
+    pager: List<String>,
     featured: List<String>,
     fresh: List<String>,
 ): HomeTopSections {
     val shown = mutableSetOf<String>()
+    // `add` is false for an id an earlier group — or an earlier row of this one — took.
     fun List<String>.notShownYet(): List<String> = filter { shown.add(it) }
     return HomeTopSections(
-        outcomes = outcomes.notShownYet(),
+        pager = pager.notShownYet(),
         featured = featured.notShownYet(),
         whatsNew = fresh.notShownYet(),
     )

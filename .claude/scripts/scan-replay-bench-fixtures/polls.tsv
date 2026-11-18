@@ -1,0 +1,9 @@
+phase	elapsed_s	epoch_s	warning	tabs_ready	floor_m2	points	text	error
+live	0	100	False	False			Starting	
+live	6	106	True	False	12	1000	Moving too fast	
+live	8	108	True	False	13	2000	Moving too fast	
+live	10	110						Dump failed
+live	14	114	True	False	14	18714	Moving too fast	
+result	17	117	False	False			Saving	
+result	19	119	False	True			Photo | Model | Plan	
+result	21	121	False	True	999	999999	Photo | Model | Plan	

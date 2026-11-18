@@ -371,7 +371,7 @@ open class RenderableNode(
         // (entity ID invalid), leaving Filament's internal MI/texture bindings dangling and
         // causing "Invalid texture still bound to MaterialInstance" on the subsequent texture
         // destroy.
-        engine.safeDestroyRenderable(entity)
+        if (!preserveModelComponents) engine.safeDestroyRenderable(entity)
         boundGeometry?.let {
             it.detach(geometryConsumer)
             engine.safeDestroyGeometry(it)

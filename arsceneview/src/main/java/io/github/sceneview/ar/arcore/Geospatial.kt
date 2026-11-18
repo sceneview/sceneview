@@ -74,7 +74,9 @@ fun GeospatialPose.snapshot(): GeospatialPoseSnapshot = GeospatialPoseSnapshot(
  *  - `session` is `null` (e.g. the `ARCore` lifecycle is paused),
  *  - the [Session]'s [Session.getEarth] is `null` (no Geospatial config / Cloud key missing),
  *  - the [Earth]'s tracking state is not [TrackingState.TRACKING] (initial GPS lock pending,
- *    indoor scene, etc.).
+ *    indoor scene, etc.),
+ *  - the [ARSession] is closed (a fatal frame failure, the view leaving the composition): the
+ *    session is never read again.
  *
  * Drives off `withFrameNanos` so it inherits Compose's natural cadence and pauses when the
  * composition pauses — no separate timer / coroutine to manage.
@@ -93,19 +95,28 @@ fun GeospatialPose.snapshot(): GeospatialPoseSnapshot = GeospatialPoseSnapshot(
 @Composable
 fun rememberCameraGeospatialPose(session: Session?): State<GeospatialPose?> {
     return produceState<GeospatialPose?>(initialValue = null, key1 = session) {
-        if (session == null) {
-            value = null
+        value = null
+        val arSession = session as? ARSession
+        if (session == null || arSession?.isClosed == true) {
             return@produceState
         }
         while (true) {
-            withFrameNanos {
+            val sessionIsOpen = withFrameNanos {
+                // A closed session (and its Earth) is freed native memory: reading it is a
+                // process-killing use-after-free, not an exception (#4026, #4501).
+                if (arSession?.isClosed == true) {
+                    value = null
+                    return@withFrameNanos false
+                }
                 val earth = session.earth
                 value = if (earth?.trackingState == TrackingState.TRACKING) {
                     earth.cameraGeospatialPose
                 } else {
                     null
                 }
+                true
             }
+            if (!sessionIsOpen) return@produceState
         }
     }
 }
@@ -120,7 +131,8 @@ fun rememberCameraGeospatialPose(session: Session?): State<GeospatialPose?> {
  * old" without polling Earth manually.
  *
  * Returns `null` when [session] is `null` or [Session.getEarth] returns `null` (e.g. Geospatial
- * mode disabled at startup).
+ * mode disabled at startup). Once an [ARSession] is closed (a fatal frame failure, the view
+ * leaving the composition) the state turns `null` and the session is never read again.
  *
  * ```kotlin
  * val earthState by rememberEarthState(arSession)
@@ -135,14 +147,22 @@ fun rememberCameraGeospatialPose(session: Session?): State<GeospatialPose?> {
 @Composable
 fun rememberEarthState(session: Session?): State<Earth.EarthState?> {
     return produceState<Earth.EarthState?>(initialValue = null, key1 = session) {
-        if (session == null) {
-            value = null
+        value = null
+        val arSession = session as? ARSession
+        if (session == null || arSession?.isClosed == true) {
             return@produceState
         }
         while (true) {
-            withFrameNanos {
+            val sessionIsOpen = withFrameNanos {
+                // Same lifetime guard as [rememberCameraGeospatialPose]: never read a closed session.
+                if (arSession?.isClosed == true) {
+                    value = null
+                    return@withFrameNanos false
+                }
                 value = session.earth?.earthState
+                true
             }
+            if (!sessionIsOpen) return@produceState
         }
     }
 }

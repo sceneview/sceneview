@@ -79,7 +79,7 @@ and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/mai
 — `ARSceneView(planeDetection:onTapOnPlane:)` + `AnchorNode.world(position:)`.
 
 ## 18. AR instant placement
-[`ARInstantPlacementDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARInstantPlacementDemo.swift)
+[`ARPlacementController.swift`](https://github.com/sceneview/sceneview/blob/main/SceneViewSwift/Sources/SceneViewSwift/ARPlacementController.swift)
 — estimated-plane raycasts for immediate placement.
 
 ## 19. AR lighting
@@ -109,7 +109,7 @@ it to `.rrd` ([`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview
 — `ShapeNode` — extrude a 2D path into a 3D solid.
 
 ## 25. Reflection probes
-[`ReflectionProbesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ReflectionProbesDemo.swift)
+[`ReflectionProbeNode.swift`](https://github.com/sceneview/sceneview/blob/main/SceneViewSwift/Sources/SceneViewSwift/Nodes/ReflectionProbeNode.swift)
 — `ReflectionProbeNode.box / .sphere` — local cubemap reflections.
 
 ## 26. Occlusion material

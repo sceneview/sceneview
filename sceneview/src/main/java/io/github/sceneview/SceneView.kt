@@ -6,6 +6,8 @@
 
 package io.github.sceneview
 
+import io.github.sceneview.core.model.ModelUnit
+
 import android.content.Context
 import android.content.Context.WINDOW_SERVICE
 import android.opengl.EGLContext
@@ -71,6 +73,7 @@ import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
+import io.github.sceneview.model.AnimationEnvelope
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
@@ -87,7 +90,8 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.node.findActivity
-import io.github.sceneview.node.reflectionProbes
+import io.github.sceneview.node.releaseEnvironmentLight
+import io.github.sceneview.node.setEnvironmentLight
 
 /**
  * A Filament 3D scene declared as Compose UI.
@@ -164,6 +168,12 @@ import io.github.sceneview.node.reflectionProbes
  *                              so subsequent user zoom / pan is never fought. Default `false` so
  *                              callers that position [cameraNode] explicitly keep full control;
  *                              opt in for model-viewer style scenes.
+ * @param animationEnvelope   Optional world-space pose boxes for [autoFitContent]. Compute with
+ *                            `Model.animationEnvelope`, then transform by the model node's world
+ *                            transform after centering/scaling. No poses are sampled by default.
+ * @param fitMode              Points fitted by [autoFitContent]. Defaults to [FitMode.Corners],
+ *                              preserving historical framing. Opt in to [FitMode.Silhouette] for
+ *                              organic subjects; it can crop box-shaped products at their corners.
  * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
  *                              *fraction* of the fit distance — `0.15` (the default,
  *                              [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames the
@@ -175,6 +185,8 @@ import io.github.sceneview.node.reflectionProbes
  *                              camera projects into what is left — optical centre and field of
  *                              view — without resizing the surface or moving the camera, and
  *                              hit-testing follows. Animable. See the parameter's own KDoc.
+ * @param clipToContentPadding  Opt in to rendering only the visible rectangle. Requires an opaque
+ *                              cover over the padding; pixels outside it are undefined. Ignored by AR.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -200,17 +212,12 @@ import io.github.sceneview.node.reflectionProbes
  *                              which is most of them while the GPU warms a heavy material up — is
  *                              not a rendered frame and does not call this back (#3444), so "I was
  *                              called" is a sound signal that there are pixels on screen. Use it to
- *                              drop a loading cover or drive per-frame logic; it does not fire
+ *                              drop a loading cover or observe per-frame state; it does not fire
  *                              while the render loop is parked on a settled scene.
- *                              **It therefore cannot be what keeps the loop awake.** A callback
- *                              that advances a clock or steps a simulation, and relies on nothing
- *                              but its own next invocation to run again, stops the first time the
- *                              scene parks — and never restarts. If your screen wants every vsync,
- *                              say so with [FrameRatePolicy.Continuous]; if it wants one more frame
- *                              after a change the library cannot see, push it through
- *                              [renderInvalidator], *before* `onFrame` rather than from inside it:
- *                              this fires after the frame it is named for was already presented, so
- *                              what you write here lands in the next one.
+ *                              Subscribing does not keep the loop awake. Use [onAnimationFrame]
+ *                              to drive motion while keeping [FrameRatePolicy.OnDemand], or
+ *                              [renderInvalidator] after a change the library cannot observe.
+ *                              A write here lands in the next frame, since this one is presented.
  *
  *                              **Driving the camera from `onFrame`:** On the next frame, an
  *                              installed [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator]
@@ -223,6 +230,25 @@ import io.github.sceneview.node.reflectionProbes
  *                              `getTransform()` returns the pose you want — for example, a wrapper
  *                              around the default manipulator that returns `cameraNode.transform`
  *                              while the script owns the camera.
+ * @param onAnimationFrame      Animation driver, called on each render-loop tick with a ready
+ *                              surface before scene updates, even if the GPU declines to present.
+ *                              A non-null callback wakes a parked scene and keeps
+ *                              [FrameRatePolicy.OnDemand] rendering; pass `null` to let it settle
+ *                              again. Subscribing queues a frame even if the callback is cleared
+ *                              before [FrameRatePolicy.maxFps] permits presentation. Use this
+ *                              for animation clocks or simulations, and [onFrame] to observe
+ *                              presented frames. Disable [cameraManipulator] when driving the camera.
+ * @param disallowParentIntercept Android View/Compose interop. Default `false`: a scrolling or
+ *                              draggable parent (`verticalScroll`, `LazyColumn`, `HorizontalPager`,
+ *                              a bottom sheet) may still intercept a drag that starts on the
+ *                              scene, so an embedded viewer never traps page scrolling. Pass
+ *                              `true` to keep every drag that starts on the scene with the scene,
+ *                              for either [surfaceType]: it calls
+ *                              `requestDisallowInterceptTouchEvent(true)` on `ACTION_DOWN` and
+ *                              releases it after `ACTION_UP` or `ACTION_CANCEL`. A change applies
+ *                              from the next touch stream. Touches on an `isEditable = true` node
+ *                              still go to the node, not the camera; this option only governs the
+ *                              parent.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
@@ -356,11 +382,17 @@ fun SceneView(
      * [autoFitContent] is `true`.
      */
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
     /**
      * The part of this view that something else covers — a bottom sheet, a side panel, a toolbar —
      * measured inwards from its edges. **What is left is the camera's viewport**: the subject is
      * projected into the visible area, centred on it, while the scene keeps drawing on the whole
-     * surface, under the panel too.
+     * surface, under the panel too unless [clipToContentPadding] is enabled.
+     *
+     * To change the visible area, keep `SceneView(Modifier.fillMaxSize())` full size and animate
+     * this padding; never resize the composable for a full-screen toggle or an animated bar.
+     * Resizing rebuilds the surface/swap chain and can expose a black band for a frame.
      *
      * The surface is not resized and the camera is not moved: only the projection is offset, so
      * an orbit the user dragged to is kept and no bounds have to be known. Because the mapping is
@@ -380,12 +412,24 @@ fun SceneView(
      * Written to [cameraNode] as [CameraNode.contentPadding], which says which projections it
      * rebuilds, and reset to nothing when the camera leaves this view. Left at its default, the
      * parameter writes nothing at all — a [CameraNode.contentPadding] set by hand is kept. The
-     * visible area never goes below a tenth of the view on either axis.
+     * unclipped visible area never goes below a tenth of the view on either axis. Clipping rounds
+     * padding to whole pixels and clamps the remaining rectangle to at least 1 × 1.
      *
      * `ARSceneView` has no such parameter: an AR camera's projection is the device camera's and
      * is never re-framed.
      */
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * Render only the rectangle left by [contentPadding], saving hidden fragment and
+     * post-processing work. Dynamic resolution applies to that rectangle automatically.
+     *
+     * Keep this view full size, animate [contentPadding], and enable this only when the caller
+     * covers every padded pixel with opaque UI. Outside pixels are undefined: do not use it
+     * behind transparent sheets. No extra per-frame clear is added. `false` (the default) renders
+     * the whole surface with camera scaling/shift; `true` uses a viewport with an unshifted lens.
+     * Zero padding restores the whole viewport. AR cameras ignore both padding and clipping.
+     */
+    clipToContentPadding: Boolean = false,
     /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
@@ -451,9 +495,21 @@ fun SceneView(
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     /**
-     * Invoked once per frame immediately before the scene is updated and rendered.
+     * Observes each presented frame after rendering; does not keep the loop awake.
      */
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    /**
+     * Drives animation before scene updates. A non-null callback keeps on-demand rendering awake;
+     * pass `null` to stop. Unlike [onFrame], it also runs on ticks that are not presented.
+     */
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    /**
+     * When `true`, claims touches on either surface type from scrolling or draggable parents on
+     * ACTION_DOWN and releases them after ACTION_UP or ACTION_CANCEL. Default `false`: the parent
+     * keeps scrolling. Changes apply to the next touch stream. Editable nodes still absorb their
+     * gestures instead of moving the camera.
+     */
+    disallowParentIntercept: Boolean = false,
     /**
      * Declare scene nodes using the [SceneScope] DSL.
      */
@@ -551,7 +607,7 @@ fun SceneView(
     DisposableEffect(scene, environment) {
         // Through the scene's probe registry: an active `ReflectionProbeNode` keeps the scene's
         // light, and this one comes back when the last probe lets go (#4928).
-        scene.reflectionProbes.setEnvironmentLight(environment.indirectLight)
+        scene.setEnvironmentLight(environment.indirectLight)
         scene.skybox = environment.skybox
         // The first frozen image anyone would have hit: a dark/light toggle that swaps the
         // environment while the scene is parked. The IBL and skybox are replaced in Filament and
@@ -562,20 +618,21 @@ fun SceneView(
             // Only what this effect put there: a `ReflectionProbeNode`, or the caller, may have
             // given the scene another light since.
             if (scene.skybox === environment.skybox) scene.skybox = null
-            scene.reflectionProbes.releaseEnvironmentLight(environment.indirectLight)
+            scene.releaseEnvironmentLight(environment.indirectLight)
         }
     }
     LaunchedEffect(view, scene) {
         view.scene = scene
         frameRateGate.requestRender()
     }
-    LaunchedEffect(view, cameraNode, collisionSystem) {
+    DisposableEffect(view, cameraNode, collisionSystem) {
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
         cameraNode.setView(view)
         // A different camera is a different picture — and the swap happens without anyone moving
         // the new camera, so `onTransformChanged` never fires for it.
         frameRateGate.requestRender()
+        onDispose { cameraNode.clipToContentPadding = false }
     }
     // The visible area, in the pixels of the surface. Keyed on the pixel values so an animated
     // padding writes the camera once per changed frame and an unrelated recomposition writes
@@ -587,8 +644,10 @@ fun SceneView(
     val contentPaddingBinding = remember(cameraNode) {
         ContentPaddingBinding { cameraNode.contentPadding = it }
     }
-    DisposableEffect(contentPaddingBinding, contentPaddingPx) {
+    DisposableEffect(view, collisionSystem, contentPaddingBinding, contentPaddingPx, clipToContentPadding) {
         contentPaddingBinding.apply(contentPaddingPx)
+        cameraNode.clipToContentPadding = clipToContentPadding
+        frameRateGate.requestRender()
         onDispose { }
     }
     // A camera that leaves this view — swapped for another, or the view itself going away — gets
@@ -730,7 +789,7 @@ fun SceneView(
 
     // Enabling auto-fit at runtime has to wake the loop too: the fit pass only runs from inside a
     // presented frame, so a parked scene would keep the old framing until something else woke it.
-    LaunchedEffect(autoFitContent, framingPadding) {
+    LaunchedEffect(autoFitContent, framingPadding, fitMode, animationEnvelope) {
         autoFitState.reset()
         frameRateGate.requestRender()
     }
@@ -880,6 +939,13 @@ fun SceneView(
             }
         }
         cameraGestureDetectorRef.get()?.cameraManipulator = cameraManipulator
+        cameraGestureDetectorRef.get()?.viewportCoordinates = { ClippedViewports.get(view) }
+        val vp = view.viewport
+        val viewportSeed = CameraViewportSeed.packViewport(vp.width, vp.height)
+        if (lastViewportRef.get() != viewportSeed) {
+            lastViewportRef.set(viewportSeed)
+            seededManipulatorRef.set(null)
+        }
         // Re-seed the (newly-swapped) manipulator with the current viewport so its pan/raycast
         // math is correct from the first gesture, without waiting for a surface resize. Only when
         // the instance changed — the surface-resize path keeps the same instance in sync.
@@ -888,6 +954,19 @@ fun SceneView(
                 seededManipulatorRef.set(cameraManipulator)
             }
         }
+    }
+
+    SideEffect {
+        cameraNode.onViewportChanged = {
+            val vp = view.viewport
+            val seed = CameraViewportSeed.packViewport(vp.width, vp.height)
+            if (lastViewportRef.getAndSet(seed) != seed) {
+                cameraManipulator?.setViewport(vp.width, vp.height)
+            }
+        }
+    }
+    DisposableEffect(cameraNode) {
+        onDispose { cameraNode.onViewportChanged = null }
     }
 
     // A manipulator swapped at runtime (the Explore viewer rebuilds one after the model loads)
@@ -989,12 +1068,15 @@ fun SceneView(
 
     // Wire resize and surface callbacks.
     SideEffect {
+        sceneRenderer.viewportCamera = cameraNode
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
-        sceneRenderer.onSurfaceResized = { width, height ->
+        sceneRenderer.disallowParentIntercept = disallowParentIntercept
+        sceneRenderer.onSurfaceResized = { _, _ ->
             // Remember the size so a manipulator swapped in later (without a surface resize)
             // can inherit it — see [lastViewportRef] (#2514).
-            lastViewportRef.set(CameraViewportSeed.packViewport(width, height))
-            cameraManipulator?.setViewport(width, height)
+            val vp = view.viewport
+            lastViewportRef.set(CameraViewportSeed.packViewport(vp.width, vp.height))
+            cameraManipulator?.setViewport(vp.width, vp.height)
             cameraNode.updateProjection()
             // The viewport just changed: whatever was on screen is the wrong size, and a parked
             // loop would keep it. Both callbacks run on the main thread (UiHelper), so writing
@@ -1009,6 +1091,7 @@ fun SceneView(
                         viewHeight = viewHeight,
                         cameraManipulator = cameraManipulator
                     ).apply {
+                        viewportCoordinates = { ClippedViewports.get(view) }
                         // The same slop `gestureDetector` uses to tell a tap from a scroll, so a
                         // tap never starts an orbit that cancels its own double-tap zoom (#3641).
                         orbitTouchSlop =
@@ -1035,6 +1118,8 @@ fun SceneView(
     // else 0`) would see only the initial null state, forever. rememberUpdatedState solves this by
     // reading the ref inside the loop.
     val currentOnFrame = rememberUpdatedState(onFrame)
+    val currentOnAnimationFrame = rememberUpdatedState(onAnimationFrame)
+    AnimationFrameInvalidationEffect(frameRateGate, onAnimationFrame != null)
     // The frame loop captures `cameraManipulator` in its lambda. Without
     // [rememberUpdatedState] the closure freezes on the manipulator that was active
     // at LaunchedEffect launch time, so callers that swap manipulators at runtime
@@ -1057,21 +1142,31 @@ fun SceneView(
     // And `framingPadding` — a per-scene change re-arms the pass so the new air is applied
     // instead of staying latched on the previous framing.
     val currentFramingPadding = rememberUpdatedState(framingPadding)
-    // The `reset()` and the wake-up for both of these live in one keyed effect next to the
+    val currentFitMode = rememberUpdatedState(fitMode)
+    val currentAnimationEnvelope = rememberUpdatedState(animationEnvelope)
+    // The `reset()` and wake-up for these framing inputs live in one keyed effect next to the
     // auto-fit state above.
 
-    // The loop's wake condition: the policy draws unconditionally, *or* something invalidated the
-    // gate. Derived state so the park below observes both through a single snapshot read.
+    // Wake on a continuous policy, an invalidation, or an animation driver being installed.
+    // The observer is deliberately absent: watching frames must not prevent parking.
     //
     // Only the gate's *dirty* flag is snapshot state; its settle debt is a plain counter, read
     // directly at the park site below. That split is deliberate. The debt is written once per
     // frame from inside the loop, so making it observable would apply a snapshot 60 times a second
     // on every rendering scene — the exact per-frame cost this whole change exists to remove —
     // and it would buy nothing, because the loop is by definition awake while it owes frames.
-    // Only the wake-up needs to be observable, and that is the dirty flag.
-    val shouldRender = remember(currentFrameRatePolicy, frameRateGate) {
+    // Wake-ups also observe pending destroys: even a quiet scene must finish the queue's grace
+    // frames before parking (#4436).
+    val destroyQueue = remember(engine) { EngineDestroyQueue.of(engine) }
+    val shouldRender = remember(
+        currentFrameRatePolicy, frameRateGate, currentOnAnimationFrame, destroyQueue
+    ) {
         derivedStateOf {
-            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty
+            isSceneRenderingEnabled(
+                policy = currentFrameRatePolicy.value,
+                isDirty = frameRateGate.isDirty,
+                hasAnimationFrame = currentOnAnimationFrame.value != null
+            ) || destroyQueue.hasPending
         }
     }
 
@@ -1133,6 +1228,7 @@ fun SceneView(
                                 // lifetime of every procedural scene. See [isAsyncLoadPending].
                                 isLoading = modelLoader.isLoading,
                                 isMirroring = surfaceMirrorer?.mirroredSurfaces?.isNotEmpty() == true,
+                                hasAnimationFrame = currentOnAnimationFrame.value != null,
                                 // Exactly the condition of the work this guard waits for — the
                                 // same `if`s the update block above runs the passes under. See
                                 // [isFramingPending] for the two ways a looser guard held every
@@ -1166,6 +1262,7 @@ fun SceneView(
                             ) { frameRateGate.shouldRender(active, frameTimeNanos) }
                         }
                     ) {
+                        currentOnAnimationFrame.value?.invoke(frameTimeNanos)
                         // Before any node's onFrame: the animator commits this frame then find the
                         // TransformManager already sorted and reindex nothing (Engine.kt).
                         engine.sortTransformsIfUnsorted()
@@ -1216,12 +1313,16 @@ fun SceneView(
                         ) {
                             if (currentAutoCenterContent.value) {
                                 autoFitState.maybeFit(
-                                    cameraNode, contentRoot, padding = currentFramingPadding.value
+                                    cameraNode, contentRoot, padding = currentFramingPadding.value,
+                                    fitMode = currentFitMode.value,
+                                    animationEnvelope = currentAnimationEnvelope.value
                                 )
                             } else {
                                 autoFitState.maybeFit(
                                     cameraNode, childNodesRef.get(),
-                                    padding = currentFramingPadding.value
+                                    padding = currentFramingPadding.value,
+                                    fitMode = currentFitMode.value,
+                                    animationEnvelope = currentAnimationEnvelope.value
                                 )
                             }
                         }
@@ -1416,30 +1517,8 @@ fun rememberModelInstance(
     if (android.net.Uri.parse(assetFileLocation).scheme != null) {
         return rememberModelInstance(modelLoader, fileLocation = assetFileLocation)
     }
-    val instance = produceState<ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = assetFileLocation
-    ) {
-        // The `suspend` load, like the URL overload: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and
-        // WebP → PNG converted on Default, only the Filament calls on Main (produceState's
-        // context). Converting in this coroutine ran all of it on the main thread.
-        value = modelLoader.loadModelInstanceOrNull(assetFileLocation)
-    }.value
-    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
-    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
-    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
-    // produced value fires `onDispose` for the *previous* instance on a key swap and on
-    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
-    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
-    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
-    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
-    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
-    // the Filament JNI contract.
-    DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
-    }
-    return instance
+    // Every overload shares the `unit` overload's single body, so they load, log and dispose alike.
+    return rememberModelInstance(modelLoader, assetFileLocation, unit = null)
 }
 
 /**
@@ -1484,17 +1563,52 @@ fun rememberModelInstance(
     if (uri.scheme == null) {
         return rememberModelInstance(modelLoader, assetFileLocation = fileLocation)
     }
-    // URL / file URI / content URI → use suspend loadModelInstance which handles http(s)
+    // URL / file URI / content URI → the suspend loadModelInstance, which handles http(s).
+    return rememberModelInstance(modelLoader, fileLocation, unit = null, resourceResolver)
+}
+
+/**
+ * Open a supported model at its real size. [unit] overrides unitless STL/OBJ/PLY only; GLB/glTF
+ * remain metres and 3MF keeps its declared unit.
+ *
+ * This is the body every `rememberModelInstance` overload shares (they pass `unit = null`), so all
+ * of them behave alike: the result is `null` while loading and on failure, the failure logged (a
+ * file in no supported format by [ModelLoader], with the `UnsupportedModelFormat` message); a glTF that requires an extension gltfio cannot
+ * load is logged and loaded anyway, and the instance is returned before its textures finish
+ * decoding, as [ModelLoader.loadModelInstance] does. To show typed failures, refuse such a glTF or
+ * wait for its textures, use [rememberModelLoadState] instead.
+ *
+ * This composable owns and destroys the loaded model when the location or unit changes, and when
+ * it leaves the composition. See the asset-path overload for lifecycle details.
+ */
+@Composable
+fun rememberModelInstance(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    unit: ModelUnit?,
+    resourceResolver: (String) -> String = { ModelLoader.getFolderPath(fileLocation, it) },
+): ModelInstance? {
     val instance = produceState<ModelInstance?>(
         initialValue = null,
         key1 = modelLoader,
-        key2 = fileLocation
+        key2 = fileLocation,
+        key3 = unit,
     ) {
-        value = modelLoader.loadModelInstanceOrNull(fileLocation, resourceResolver)
+        // The `suspend` load: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and WebP → PNG converted on
+        // Default, only the Filament calls on Main (produceState's context). Converting in this
+        // coroutine ran all of it on the main thread.
+        value = modelLoader.loadModelInstanceOrNull(fileLocation, unit, resourceResolver)
     }.value
-    // See the asset-path overload: `produceState` skips per-key disposal, so destroy the previous
-    // [Model] on a key swap and on leave-composition (#2459). Disposal is ordered after the
-    // consuming `ModelNode`'s detach, respecting #2424's render-loop coupling.
+    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
+    // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
+    // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
+    // produced value fires `onDispose` for the *previous* instance on a key swap and on
+    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
+    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
+    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
+    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
+    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
+    // the Filament JNI contract.
     DisposableEffect(instance) {
         onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
@@ -1508,11 +1622,10 @@ fun rememberModelInstance(
  */
 private suspend fun ModelLoader.loadModelInstanceOrNull(
     fileLocation: String,
-    resourceResolver: (resourceFileName: String) -> String = {
-        ModelLoader.getFolderPath(fileLocation, it)
-    }
+    unit: ModelUnit?,
+    resourceResolver: (resourceFileName: String) -> String,
 ): ModelInstance? = try {
-    loadModelInstance(fileLocation, resourceResolver)
+    loadModelInstance(fileLocation, unit, resourceResolver)
 } catch (cancellation: CancellationException) {
     throw cancellation
 } catch (error: Exception) {
@@ -2445,6 +2558,179 @@ private fun ScenePreview(modifier: Modifier) {
 }
 
 /**
+ * Binary-compatibility overload preserving the JVM descriptor published before `onAnimationFrame`
+ * was added. Calls without an animation driver keep their existing cadence.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the SceneView overload that takes `onAnimationFrame`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Suppress("DEPRECATION")
+@Composable
+fun SceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    view: View = rememberView(engine),
+    isOpaque: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
+    renderInvalidator: RenderInvalidator? = null,
+    renderQuality: RenderQuality = RenderQuality.Default,
+    autoCenterContent: Boolean = true,
+    autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: CameraNode = rememberCameraNode(engine),
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
+    ),
+    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    content: (@Composable SceneScope.() -> Unit)? = null
+) = SceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    view = view,
+    isOpaque = isOpaque,
+    frameRatePolicy = frameRatePolicy,
+    renderInvalidator = renderInvalidator,
+    renderQuality = renderQuality,
+    autoCenterContent = autoCenterContent,
+    autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
+    contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    collisionSystem = collisionSystem,
+    cameraManipulator = cameraManipulator,
+    viewNodeWindowManager = viewNodeWindowManager,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    activity = activity,
+    lifecycle = lifecycle,
+    onFrame = onFrame,
+    content = content,
+    onAnimationFrame = null,
+)
+
+/**
+ * Binary-compatibility shim for the descriptor published before `disallowParentIntercept` was
+ * added (#3898). The Compose compiler puts every parameter in the JVM signature, so the new
+ * parameter retyped the function: this keeps a library compiled against the previous signature
+ * linking, with parent interception allowed (`false`).
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the SceneView overload that takes `disallowParentIntercept`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun SceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    view: View = rememberView(engine),
+    isOpaque: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
+    renderInvalidator: RenderInvalidator? = null,
+    renderQuality: RenderQuality = RenderQuality.Default,
+    autoCenterContent: Boolean = true,
+    autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: CameraNode = rememberCameraNode(engine),
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberDefaultCameraManipulator(
+        initialEyePosition = cameraNode.worldPosition
+    ),
+    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onAnimationFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    content: (@Composable SceneScope.() -> Unit)? = null
+) = SceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    view = view,
+    isOpaque = isOpaque,
+    frameRatePolicy = frameRatePolicy,
+    renderInvalidator = renderInvalidator,
+    renderQuality = renderQuality,
+    autoCenterContent = autoCenterContent,
+    autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
+    contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    collisionSystem = collisionSystem,
+    cameraManipulator = cameraManipulator,
+    viewNodeWindowManager = viewNodeWindowManager,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    activity = activity,
+    lifecycle = lifecycle,
+    onFrame = onFrame,
+    onAnimationFrame = onAnimationFrame,
+    disallowParentIntercept = false,
+    content = content,
+)
+
+/**
  * @deprecated Use [SceneView] instead. This function is a direct alias provided for backward
  * compatibility with code written against earlier SceneView versions.
  */
@@ -2464,7 +2750,10 @@ fun Scene(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    fitMode: FitMode = FitMode.Corners,
+    animationEnvelope: AnimationEnvelope? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    clipToContentPadding: Boolean = false,
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -2496,7 +2785,10 @@ fun Scene(
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
     framingPadding = framingPadding,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
     contentPadding = contentPadding,
+    clipToContentPadding = clipToContentPadding,
     renderer = renderer,
     scene = scene,
     environment = environment,

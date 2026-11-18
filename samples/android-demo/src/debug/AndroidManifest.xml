@@ -3,6 +3,18 @@
 
     <application>
         <!--
+          Launcher shortcuts of the QA app (long-press "SV QA" -> "AR Recording", the ARCore
+          session recorder). `qaLauncherShortcuts` is set by the `debug` build type:
+          @xml/qa_launcher_shortcuts (src/qaLauncher/res) for the QA app, the empty
+          @xml/no_launcher_shortcuts with `-PdemoPlainDebug=true`. Merged into the
+          MainActivity of src/main; release builds never see it.
+        -->
+        <activity android:name=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="${qaLauncherShortcuts}" />
+        </activity>
+        <!--
           Debug-only harness for instrumentation tests. Launches a single demo composable
           directly via an intent extra, bypassing the home list / navigation stack. Not
           declared in src/main so release builds never ship it. See DemoHostActivity.kt.

@@ -61,6 +61,31 @@ class ScanResultFrame(
         ),
     )
 
+    /**
+     * The pose that shows the box from [azimuthDegrees] of the world — the heading a camera
+     * already has — at [elevationDegrees], whole in the [insets] of a view of [aspect] through
+     * [verticalFovDegrees]. What a result learns once it is shown (an object's box, a card that
+     * narrows the zone) moves its framing, never the side it is seen from: [pose] on a frame whose
+     * widest side had changed framed the box for a view the camera, which keeps its heading, did
+     * not have, and the room stood off to one side of the screen (Pixel 4a, 2026-11-15).
+     */
+    fun poseFrom(
+        azimuthDegrees: Float,
+        elevationDegrees: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        insets: FramingInsets,
+    ): OrbitPose = toWorld(
+        ArDebugFraming.fit(
+            bounds = local,
+            azimuthDegrees = azimuthDegrees + yawDegrees,
+            elevationDegrees = elevationDegrees,
+            verticalFovDegrees = verticalFovDegrees,
+            aspect = aspect,
+            insets = insets,
+        ),
+    ).copy(azimuthDegrees = azimuthDegrees)
+
     /** [pose], read in the turned frame, in the world: the same picture. */
     fun toWorld(pose: OrbitPose): OrbitPose {
         val (x, z) = world(pose.target.x, pose.target.z)
@@ -103,6 +128,22 @@ class ScanResultFrame(
         if (local[4] - local[1] <= heightM) return this
         return ScanResultFrame(yawDegrees, local.copyOf().also { it[4] = local[1] + heightM }, frontDegrees, turn)
     }
+
+    /**
+     * This frame with [marginM] metres more floor on every side: room for the dimensions written
+     * outside its walls, so none is cut by the screen's edge (2026-11-13).
+     */
+    fun padded(marginM: Float): ScanResultFrame = ScanResultFrame(
+        yawDegrees,
+        local.copyOf().also {
+            it[0] -= marginM
+            it[2] -= marginM
+            it[3] += marginM
+            it[5] += marginM
+        },
+        frontDegrees,
+        turn,
+    )
 
     /**
      * This frame opened on the side a room shows largest from, square on, at [elevationDegrees]
@@ -178,13 +219,13 @@ object ScanResultFraming {
     const val WALL_NORMAL_Y = 0.5f
 
     /** The elevation the result opens at for [scope]. */
-    fun elevation(scope: ScanScope?): Float = if (scope == ScanScope.Object) OBJECT_ELEVATION else ROOM_ELEVATION
+    fun elevation(scope: ScanScope?): Float = if (scope?.closeUp == true) OBJECT_ELEVATION else ROOM_ELEVATION
 
     /**
      * How far off the front the result opens for [scope]: an object at a three-quarter, as a
      * product is shot; a room square on its walls, standing straight on the screen.
      */
-    fun offset(scope: ScanScope?): Float = if (scope == ScanScope.Object) THREE_QUARTER else 0f
+    fun offset(scope: ScanScope?): Float = if (scope?.closeUp == true) THREE_QUARTER else 0f
 
     /**
      * The weakest agreement of the walls' normals on one way — the folded mean's length over
@@ -196,6 +237,31 @@ object ScanResultFraming {
     /** The frame of the `.glb` the result shows; `null` for one this does not read, or an empty one. */
     fun read(glb: ByteArray, maxSamples: Int = MAX_SAMPLES): ScanResultFrame? =
         sample(glb, maxSamples)?.let { (positions, normals) -> of(positions, normals) }
+
+    /**
+     * The frame of [cloud], a scan's surfels, read as a model's is: what the result opens on while
+     * its model is still built, so the model then takes its place in the same frame. From at most
+     * [maxSamples] of them, evenly spread; `null` without normals or without a surfel.
+     */
+    fun of(cloud: DenseCloud, maxSamples: Int = MAX_SAMPLES): ScanResultFrame? {
+        val from = cloud.normals ?: return null
+        val n = cloud.count
+        if (n == 0) return null
+        val step = (n + maxSamples - 1) / maxSamples.coerceAtLeast(1)
+        val count = (n + step - 1) / step
+        val positions = FloatArray(count * 3)
+        val normals = FloatArray(count * 3)
+        for (i in 0 until count) {
+            val v = i * step
+            for (k in 0 until 3) {
+                positions[i * 3 + k] = cloud.positions[v * 3 + k]
+                normals[i * 3 + k] = from[v * 3 + k]
+            }
+        }
+        // Trimmed like every other framing: a stray far patch must not shrink the room to a
+        // speck in the middle of the screen (2026-11-13, Pixel 4a).
+        return of(positions, normals)
+    }
 
     /**
      * The frame of the vertices [positions] (flat xyz) with their [normals]: turned square to the

@@ -49,8 +49,9 @@ internal class RecordingMaterialProvider : MaterialProvider {
         extras: String?
     ): MaterialInstance? {
         val instance = delegate.createMaterialInstance(config, uvmap, label, extras) ?: return null
-        // The key and the UV map now hold the constrained values the ubershader picked for this
-        // instance, so the same lookup returns its material. A copy keeps gltfio's map as is.
+        // The Java-visible key fields and UV map hold the constrained values for this instance.
+        // GltfMaterialCompatibility removes extensions whose flags the JNI bridge omits.
+        // The same lookup returns its material; a copy keeps gltfio's map as is.
         delegate.getMaterial(config, uvmap.copyOf(), label)?.let { material ->
             materialRegistry.register(instance, material)?.let(ownership::record)
         }

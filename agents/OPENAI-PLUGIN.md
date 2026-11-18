@@ -63,8 +63,7 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 4. Render a GLB in the browser with `sceneview-web` and add a WebXR "View in AR" button.
 5. Migrate this SceneView 2.x snippet to the 4.x composable API.
 6. Show me this 3D model URL inline and tell me how to load it in Compose.
-7. Open the `.3mf` file a print flow gave me in a Compose viewer, then place it in AR at its
-   real size.
+7. Open this `.3mf` I got from ChatGPT in Compose and show it in AR at real size.
 8. Preview the `.3mf` you just generated for 3D printing, in 3D.
 
 ## Test cases (7 positive, 3 negative — OpenAI's format)
