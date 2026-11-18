@@ -1,18 +1,19 @@
 package io.github.sceneview.demo.demos.internal
 
 /**
- * The three ways of measuring in the `ar-measure` demo.
+ * The four ways of measuring in the `ar-measure` demo.
  *
  * - [Distance]: tap point after point, every segment gets its length. Tap the first point
  *   again to close an outline and read its area, or tap Done to end an open chain.
  * - [Wall]: tap the two ends of a wall where it meets the floor; the wall then rises with
  *   the aim, a tap locks its height and reads its area. Doors and windows marked on it then
  *   come off its net area.
+ * - [Object]: independent depth endpoint pairs, managed by [ObjectMeasure].
  * - [Room]: trace the floor corner by corner, tap the first corner to close it; all the
  *   walls rise together, a tap locks the ceiling height. Doors and windows marked on any of
  *   its walls then come off the walls' net area, as on a wall.
  */
-enum class MeasureMode { Distance, Wall, Room }
+enum class MeasureMode { Distance, Wall, Room, Object }
 
 /** What the next tap does — drives the hint, the accent button and the reticle. */
 enum class MeasurePhase {
@@ -49,7 +50,7 @@ data class MeasureFigure<P>(
     /** Done: no tap can change it any more, the next tap starts a new figure. */
     val finished: Boolean
         get() = when (mode) {
-            MeasureMode.Distance -> closed || ended
+            MeasureMode.Distance, MeasureMode.Object -> closed || ended
             MeasureMode.Wall, MeasureMode.Room -> height != null
         }
 
@@ -103,6 +104,8 @@ data class MeasureBoard<P>(
      *                      decided it, the board only acts on it.
      */
     fun tap(point: P?, closesOutline: Boolean): MeasureBoard<P> {
+        // Object dimensions live in ObjectMeasure, never in the outline board.
+        if (mode == MeasureMode.Object) return this
         val figure = active
         if (figure == null) {
             if (point == null) return this
@@ -153,7 +156,7 @@ data class MeasureBoard<P>(
             it.mode == mode && it.height != null && when (mode) {
                 MeasureMode.Wall -> it.points.size == 2
                 MeasureMode.Room -> it.closed
-                MeasureMode.Distance -> false
+                MeasureMode.Distance, MeasureMode.Object -> false
             }
         }
 

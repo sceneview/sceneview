@@ -22,7 +22,7 @@ CALLS = {
     DEMO + "demos/ARSurfacesDemo.kt":
         "if (!LocalMotionSensorSilent.current && arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE",
     DEMO + "demos/ARMeasureDemo.kt":
-        "if (!LocalMotionSensorSilent.current && arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE",
+        "if (!objectMode && !LocalMotionSensorSilent.current && arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE",
     DEMO + "demos/ARPoolDemo.kt":
         "if (!LocalMotionSensorSilent.current && availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE",
 }

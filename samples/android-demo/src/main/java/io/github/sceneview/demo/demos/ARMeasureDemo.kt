@@ -1,6 +1,9 @@
 package io.github.sceneview.demo.demos
 
+import android.content.ClipData
+import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
@@ -50,6 +53,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
@@ -73,6 +77,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
+import androidx.core.content.FileProvider
 import com.google.android.filament.Box as FilamentBox
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
@@ -105,7 +110,14 @@ import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
+import io.github.sceneview.demo.common.shareFile
 import io.github.sceneview.demo.common.shareText
+import io.github.sceneview.demo.demos.internal.MeasureObjectButton
+import io.github.sceneview.demo.demos.internal.MeasureObjectCard
+import io.github.sceneview.demo.demos.internal.ObjectDimension
+import io.github.sceneview.demo.demos.internal.ObjectMeasure
+import io.github.sceneview.demo.demos.internal.ObjectMeasureCandidate
+import io.github.sceneview.demo.demos.internal.ObjectMeasureStage
 import io.github.sceneview.demo.demos.internal.formatMeasureArea
 import io.github.sceneview.demo.demos.internal.formatMeasureLength
 import io.github.sceneview.demo.demos.internal.formatMeasureVolume
@@ -187,6 +199,10 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.objectMeasureDepthHit
+import io.github.sceneview.demo.demos.internal.objectMeasureShareText
+import io.github.sceneview.demo.demos.internal.objectMeasureJson
+import io.github.sceneview.demo.demos.internal.objectMeasureNumber
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -201,12 +217,16 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.safeDestroyGeometry
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Measured points: small white beads, like the system Measure apps. */
 private const val POINT_RADIUS = 0.007f
@@ -271,7 +291,7 @@ internal data class MeasureAimView(
 
 /**
  * AR measuring tape, rebuilt from scratch (#3509) against the system Measure apps and
- * magicplan: three modes behind one mode pill.
+ * magicplan: four modes behind one mode pill.
  *
  * - **Distance** — a reticle that snaps to points, plane corners and edges and to vertical
  *   and level guides; tap to drop points, every segment gets a camera-facing length label.
@@ -284,6 +304,9 @@ internal data class MeasureAimView(
  *   first corner to close it; every wall rises together to the ceiling. Floor area,
  *   perimeter, ceiling height, wall area and volume; Plan opens the room as 3D Scan's
  *   dimensioned plan, with its PDF and text shares.
+ *
+ * - **Object** — prepare at 50–60 cm, capture independent depth endpoint pairs, correct
+ *   dimensions in millimeters, then review and share explicitly uncalibrated JSON.
  *
  * In wall and room modes every point after the first is the camera ray's hit on the
  * **floor plane** of the first point, not the raw hit test: aiming at the foot of a wall,
@@ -307,6 +330,26 @@ fun MeasureScreen(onBack: () -> Unit) {
     val locale: Locale = LocalLocale.current.platformLocale
 
     var board by remember { mutableStateOf(MeasureBoard<Anchor>()) }
+    var objectMeasure by remember { mutableStateOf(ObjectMeasure<Anchor>()) }
+    val objectMode = board.mode == MeasureMode.Object
+    val objectCandidate = remember { ObjectMeasureCandidate<MeasureHit>() }
+    var objectMessage by remember { mutableStateOf<String?>(null) }
+    var objectPositions by remember { mutableStateOf<Map<Anchor, Position>>(emptyMap()) }
+    val shareScope = rememberCoroutineScope()
+    var objectSharing by remember { mutableStateOf(false) }
+    val latestObject = remember { arrayOf(objectMeasure) }
+    SideEffect { latestObject[0] = objectMeasure }
+    DisposableEffect(Unit) {
+        onDispose { latestObject[0].endpoints.distinct().forEach { it.detach() } }
+    }
+    fun changeObject(next: ObjectMeasure<Anchor>) {
+        val kept = next.endpoints.toSet()
+        objectMeasure.endpoints.filterNot { it in kept }.forEach { it.detach() }
+        objectMeasure = next
+        objectPositions = objectPositions.filterKeys { it in kept }
+        objectCandidate.update(null, SystemClock.elapsedRealtime())
+        objectMessage = null
+    }
     // World positions of every anchor on the board, refreshed only when one actually moves
     // (anchors drift as ARCore refines its map; pushing every frame would recompose at 60 Hz).
     var positions by remember { mutableStateOf<Map<Anchor, Position>>(emptyMap()) }
@@ -513,6 +556,7 @@ fun MeasureScreen(onBack: () -> Unit) {
                 chromeToggleOnTap = false,
                 onBack = onBack,
                 peekHeader = when {
+                    objectMode -> null
                     marking -> stringResource(
                         if (board.openingCorner == null) {
                             R.string.demo_ar_measure_hint_opening_first
@@ -524,12 +568,51 @@ fun MeasureScreen(onBack: () -> Unit) {
                     else -> measureHint(board, aim, action, liveWallCount)
                 },
                 onReset = {
-                    stopMarking()
-                    commit(board.clear(), "reset")
-                    liveWalls.reset()
+                    if (objectMode) changeObject(ObjectMeasure()) else {
+                        stopMarking()
+                        commit(board.clear(), "reset")
+                        liveWalls.reset()
+                    }
                 },
-                controls = { MeasureSettings(units = units, onUnits = { units = it }) },
-                dock = listOfNotNull(
+                controls = { if (!objectMode) MeasureSettings(units = units, onUnits = { units = it }) },
+                dock = if (objectMode) listOf(
+                    DockItem(
+                        icon = Icons.Rounded.IosShare,
+                        label = if (objectSharing) "Preparing JSON…" else "Share JSON",
+                        enabled = objectMeasure.stage == ObjectMeasureStage.Review && objectMeasure.complete && !objectSharing,
+                        onClick = {
+                            val values = ObjectDimension.entries.mapNotNull { axis ->
+                                objectMeasure.dimension(axis).value?.let { axis to it }
+                            }.toMap()
+                            val json = objectMeasureJson(values, Build.MODEL)
+                            val text = objectMeasureShareText(values)
+                            objectSharing = true
+                            shareScope.launch {
+                                val uri = withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        val directory = File(context.cacheDir, "measure-share").apply { mkdirs() }
+                                        val file = File.createTempFile("object-", ".json", directory)
+                                        file.writeText(json)
+                                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                    }.getOrNull()
+                                }
+                                if (uri == null || !runCatching {
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TEXT, text)
+                                        clipData = ClipData.newRawUri(null, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(send, "Share object dimensions"))
+                                }.isSuccess) {
+                                    objectMessage = "Could not share the JSON file. Try again."
+                                }
+                                objectSharing = false
+                            }
+                        },
+                    ),
+                ) else listOfNotNull(
                     // Done ends the open chain; walls and rooms end themselves, so only Distance has it.
                     DockItem(
                         icon = Icons.Rounded.Done,
@@ -607,23 +690,27 @@ fun MeasureScreen(onBack: () -> Unit) {
                     ),
                 ),
                 topOverlay = {
-                    val readout = measureReadout(
-                        board = board,
-                        numbers = figureNumbers,
-                        liveSegment = liveSegment,
-                        len = ::len,
-                        area = ::area,
-                        volume = ::volume,
-                    )
-                    AnimatedVisibility(
-                        visible = readout != null,
-                        enter = fadeIn(SceneViewTokens.Motion.fade()),
-                        exit = fadeOut(SceneViewTokens.Motion.fade()),
-                    ) {
-                        // Keep the last readout while fading out.
-                        val shown = remember { arrayOf<MeasureReadout?>(null) }
-                        if (readout != null) shown[0] = readout
-                        shown[0]?.let { MeasureReadoutCard(it) }
+                    if (objectMode) {
+                        MeasureObjectCard(objectMeasure, depthSupported, objectMessage, ::changeObject)
+                    } else {
+                        val readout = measureReadout(
+                            board = board,
+                            numbers = figureNumbers,
+                            liveSegment = liveSegment,
+                            len = ::len,
+                            area = ::area,
+                            volume = ::volume,
+                        )
+                        AnimatedVisibility(
+                            visible = readout != null,
+                            enter = fadeIn(SceneViewTokens.Motion.fade()),
+                            exit = fadeOut(SceneViewTokens.Motion.fade()),
+                        ) {
+                            // Keep the last readout while fading out.
+                            val shown = remember { arrayOf<MeasureReadout?>(null) }
+                            if (readout != null) shown[0] = readout
+                            shown[0]?.let { MeasureReadoutCard(it) }
+                        }
                     }
                 },
                 bottomOverlay = {
@@ -634,11 +721,34 @@ fun MeasureScreen(onBack: () -> Unit) {
                             onSelect = { mode ->
                                 if (mode != board.mode) {
                                     commit(board.withMode(mode), "mode")
+                                    aim = null
+                                    objectCandidate.update(null, SystemClock.elapsedRealtime())
+                                    objectMessage = null
                                     haptic.play(MeasureHapticEvent.ModeChanged)
                                 }
                             },
                         )
-                        MeasureAddButton(
+                        if (objectMode) MeasureObjectButton(objectMeasure, ::changeObject) {
+                            val hit = objectCandidate.consume(SystemClock.elapsedRealtime()).takeIf { isTracking }
+                            val anchor = hit?.let {
+                                runCatching {
+                                    if (it.createHitAnchor != null) it.createHitAnchor.invoke()
+                                    else session?.createAnchor(Pose.makeTranslation(it.position.x, it.position.y, it.position.z))
+                                }.getOrNull()
+                            }
+                            val next = objectMeasure.capture(anchor) {
+                                it.takeIf { it.trackingState == TrackingState.TRACKING }?.pose?.toPosition()
+                            }
+                            if (next == objectMeasure) {
+                                anchor?.detach()
+                                objectMessage = if (!depthSupported) "Depth unavailable. Enter the dimension with Edit mm."
+                                    else "Couldn't find the surface here. Move the phone slowly sideways, then aim at the object's edge again."
+                            } else {
+                                changeObject(next)
+                                aim = null
+                                haptic.play(MeasureHapticEvent.PointAdded)
+                            }
+                        } else MeasureAddButton(
                             action = action,
                             refused = refusal != null,
                             onClick = onPrimary,
@@ -656,6 +766,7 @@ fun MeasureScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxSize().onSizeChanged {
                             viewport = it
                             aimControl.update(null)
+                            objectCandidate.update(null, SystemClock.elapsedRealtime())
                             aim = null
                         },
                         engine = engine,
@@ -666,7 +777,7 @@ fun MeasureScreen(onBack: () -> Unit) {
                         cameraNode = cameraNode,
                         playbackDataset = arPlaybackDataset,
                         // The same surface marks as every other AR demo, while the first point is sought.
-                        planeRenderer = board.isEmpty,
+                        planeRenderer = !objectMode && board.isEmpty,
                         sessionConfiguration = { configuredSession: Session, config: Config ->
                             config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                             val supported = configuredSession.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
@@ -682,6 +793,20 @@ fun MeasureScreen(onBack: () -> Unit) {
                             if (qaRecorder != null) qaTracking[0] = frame.camera.trackingState.name
                             // The plan covers the camera: nothing under it is read, aimed at or ticked.
                             if (plan != null) return@sessionUpdated
+                            if (objectMode) {
+                                wallLayer.sync(liveWalls.motion, LiveWallSnapshot.Empty, 0f, shown = false)
+                                val capturing = objectMeasure.stage == ObjectMeasureStage.Capture && objectMeasure.dimension().value == null
+                                val next = if (capturing && isTracking && depthSupported && viewport.width > 0 && viewport.height > 0) {
+                                    hitTestObject(frame, viewport.width / 2f, viewport.height / 2f)
+                                } else null
+                                objectCandidate.update(next, SystemClock.elapsedRealtime())
+                                val view = next?.let { MeasureAimView(MeasureSnap(it.position, MeasureSnapKind.None), false, MeasureHitSource.Depth) }
+                                if (aimChanged(view, aim)) aim = view
+                                val moved = objectMeasure.endpoints.filter { it.trackingState == TrackingState.TRACKING }
+                                    .associateWith { it.pose.toPosition() }
+                                if (moved != objectPositions) objectPositions = moved
+                                return@sessionUpdated
+                            }
                             val cameraPose = frame.camera.pose
                             val origin = cameraPose.toPosition()
                             val z = cameraPose.zAxis
@@ -757,44 +882,65 @@ fun MeasureScreen(onBack: () -> Unit) {
                         },
                     ) {
                         val cameraPosition = cameraNode.worldPosition
-                        board.figures.forEachIndexed { index, figure ->
-                            key(index, figure.mode) {
-                                MeasureFigureNodes(
-                                    figure = figure,
-                                    outline = figureOutlines[index],
-                                    numbers = figureNumbers[index],
-                                    liveHeight = shownHeight,
+                        if (objectMode) {
+                            val pointMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewTokens.ArOverlay.accentProgress)
+                            ObjectDimension.entries.forEach { axis ->
+                                val dimension = objectMeasure.dimension(axis)
+                                val points = dimension.endpoints.mapNotNull { objectPositions[it] }
+                                key(axis, dimension.endpoints) {
+                                    points.forEach { point -> SphereNode(radius = 0.003f, materialInstance = pointMaterial, position = point) }
+                                    if (points.size == 2) MeasureSegmentNode(
+                                        start = points[0], end = points[1],
+                                        label = "${axis.symbol}: ${objectMeasureNumber(dimension.value)} mm",
+                                        material = pointMaterial, cameraPosition = cameraPosition, eye = cameraNode,
+                                    )
+                                }
+                            }
+                            aim?.let { view ->
+                                val first = objectMeasure.dimension().endpoints.singleOrNull()?.let { objectPositions[it] }
+                                MeasureAimNodes(view, first, null, cameraPosition, cameraNode)
+                            }
+                        } else {
+                            board.figures.forEachIndexed { index, figure ->
+                                key(index, figure.mode) {
+                                    MeasureFigureNodes(
+                                        figure = figure,
+                                        outline = figureOutlines[index],
+                                        numbers = figureNumbers[index],
+                                        liveHeight = shownHeight,
+                                        cameraPosition = cameraPosition,
+                                        eye = cameraNode,
+                                        len = ::len,
+                                        area = ::area,
+                                    )
+                                }
+                            }
+                            val pending = board.openingCorner?.let { first -> wallAim?.let { measureOpening(first, it) } }
+                            val wallOutline = figureOutlines.lastOrNull()
+                            if (marking && pending != null && wallOutline != null && wallOutline.size >= 2) {
+                                MeasureOpeningNode(pending, wallOutline, closed = openingWall?.closed == true, accent = true)
+                            }
+                            aim?.let { view ->
+                                MeasureAimNodes(
+                                    view = view,
+                                    from = activeOutline.lastOrNull()?.takeIf { phase == MeasurePhase.Next },
+                                    liveLabel = liveSegment?.let(::len),
                                     cameraPosition = cameraPosition,
                                     eye = cameraNode,
-                                    len = ::len,
-                                    area = ::area,
                                 )
                             }
-                        }
-                        val pending = board.openingCorner?.let { first -> wallAim?.let { measureOpening(first, it) } }
-                        val wallOutline = figureOutlines.lastOrNull()
-                        if (marking && pending != null && wallOutline != null && wallOutline.size >= 2) {
-                            MeasureOpeningNode(pending, wallOutline, closed = openingWall?.closed == true, accent = true)
-                        }
-                        aim?.let { view ->
-                            MeasureAimNodes(
-                                view = view,
-                                from = activeOutline.lastOrNull()?.takeIf { phase == MeasurePhase.Next },
-                                liveLabel = liveSegment?.let(::len),
-                                cameraPosition = cameraPosition,
-                                eye = cameraNode,
-                            )
                         }
                         key(wallLayer) { Node(apply = { wallLayer.nodes.forEach { addChildNode(it) } }) }
                     }
 
-                    if (cameraReady && arCoreAvailability == null && !arSessionFailed) {
+                    if (cameraReady && arCoreAvailability == null && !arSessionFailed && (!objectMode || objectMeasure.stage == ObjectMeasureStage.Capture)) {
                         MeasureReticle(
                             aim = aim,
-                            raising = phase == MeasurePhase.Raising || marking,
-                            wallFoot = board.mode != MeasureMode.Distance && phase != MeasurePhase.Raising && !marking,
+                            validObjectHit = objectMode && aim != null,
+                            raising = !objectMode && (phase == MeasurePhase.Raising || marking),
+                            wallFoot = !objectMode && board.mode != MeasureMode.Distance && phase != MeasurePhase.Raising && !marking,
                             // A refused tap says why for a moment; aiming off a wall it reads says it all along.
-                            refusal = measureRefusalChip(
+                            refusal = if (objectMode) null else measureRefusalChip(
                                 tapped = tapRefusal,
                                 live = refusal,
                                 coaching = coaching,
@@ -807,7 +953,7 @@ fun MeasureScreen(onBack: () -> Unit) {
 
                     ARCoachingOverlay(
                         guidance = guidance,
-                        cue = if (!LocalMotionSensorSilent.current && arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE,
+                        cue = if (!objectMode && !LocalMotionSensorSilent.current && arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE,
                         contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
                     )
 
@@ -938,6 +1084,7 @@ private fun measureHint(
         } else if (action == MeasureAction.StartNew) {
             R.string.demo_ar_measure_hint_new
         } else when (board.mode) {
+            MeasureMode.Object -> R.string.demo_ar_measure_mode_object
             MeasureMode.Distance -> when {
                 board.phase == MeasurePhase.First -> R.string.demo_ar_measure_hint_first
                 aim?.closes == true -> R.string.demo_ar_measure_hint_close
@@ -984,6 +1131,7 @@ private fun measureReadout(
     val sameKind = board.figures.count { it.mode == figure.mode && it.points.isNotEmpty() }
     val prefix = if (sameKind > 1) stringResource(R.string.demo_ar_measure_number, sameKind) + sep else ""
     val readout = when (figure.mode) {
+        MeasureMode.Object -> return null
         MeasureMode.Distance -> {
             val value = liveSegment ?: n.segments.lastOrNull() ?: return null
             val details = buildList {
@@ -1130,7 +1278,7 @@ internal fun MeasureReadoutCard(
     }
 }
 
-/** Distance · Wall · Room — the over-media mode pill of Cosmos and AR Depth. */
+/** Distance · Wall · Room · Object — the over-media mode pill of Cosmos and AR Depth. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MeasureModePill(mode: MeasureMode, onSelect: (MeasureMode) -> Unit) {
@@ -1139,6 +1287,7 @@ internal fun MeasureModePill(mode: MeasureMode, onSelect: (MeasureMode) -> Unit)
         MeasureMode.Distance to stringResource(R.string.demo_ar_measure_mode_distance),
         MeasureMode.Wall to stringResource(R.string.demo_ar_measure_mode_wall),
         MeasureMode.Room to stringResource(R.string.demo_ar_measure_mode_room),
+        MeasureMode.Object to stringResource(R.string.demo_ar_measure_mode_object),
     )
     Surface(
         shape = CircleShape,
@@ -1286,10 +1435,11 @@ internal fun MeasureReticle(
     modifier: Modifier = Modifier,
     wallFoot: Boolean = false,
     refusal: MeasureRefusal? = null,
+    validObjectHit: Boolean = false,
 ) {
     val kind = aim?.snap?.kind ?: MeasureSnapKind.None
     val onFoot = aim?.wallFoot != null
-    val locked = aim != null && (kind != MeasureSnapKind.None || aim.closes)
+    val locked = validObjectHit || (aim != null && (kind != MeasureSnapKind.None || aim.closes))
     val guide = kind == MeasureSnapKind.Vertical || kind == MeasureSnapKind.Level || kind == MeasureSnapKind.Square
     val ringScale by animateFloatAsState(
         targetValue = when {
@@ -1322,6 +1472,7 @@ internal fun MeasureReticle(
             val radius = size.minDimension / 2f - SceneViewTokens.Glass.edgeWidth.toPx() * 3
             val stroke = SceneViewTokens.Glass.edgeWidth.toPx()
             drawCircle(SceneViewTokens.Glass.edgeHalo, radius = radius, style = Stroke(stroke * 4))
+            if (validObjectHit) drawCircle(accent.copy(alpha = 0.3f), radius = radius)
             drawCircle(accent, radius = radius, style = Stroke(stroke * 2))
             if (raising) {
                 // Raising: a crosshair, the aim is a line on the wall, not a point.
@@ -1907,6 +2058,21 @@ private class MeasureHit(
     /** The hit plane, for the QA log only (its type is read on a commit); `null` off a plane. */
     val plane: Plane? = null,
 )
+
+/** Object endpoints never snap to a support plane or its inferred boundaries. */
+private fun hitTestObject(frame: Frame, x: Float, y: Float): MeasureHit? {
+    val depthPoint = runCatching { frame.hitTest(x, y) }.getOrNull().orEmpty()
+        .firstOrNull { it.trackable is DepthPoint && it.trackable.trackingState == TrackingState.TRACKING }
+        ?.let { hit ->
+            MeasureHit(hit.hitPose.toPosition(), MeasureHitSource.Depth,
+                { hit.takeIf { it.trackable.trackingState == TrackingState.TRACKING }?.createAnchor() }, null)
+        }
+    return objectMeasureDepthHit(depthPoint) {
+        runCatching { frame.hitTestDepth(x, y) }.getOrNull()?.let {
+            MeasureHit(it.position, MeasureHitSource.Depth, null, null)
+        }
+    }?.takeIf { it.position.x.isFinite() && it.position.y.isFinite() && it.position.z.isFinite() }
+}
 
 /** Accuracy-ordered hit at the screen centre, without creating an anchor. */
 private fun hitTestCenter(frame: Frame, session: Session?, x: Float, y: Float, allowDepth: Boolean): MeasureHit? {
