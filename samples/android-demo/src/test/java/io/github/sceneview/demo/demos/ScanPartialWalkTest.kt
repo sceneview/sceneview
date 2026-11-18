@@ -16,11 +16,13 @@ import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.demos.internal.SyntheticScene
 import io.github.sceneview.demo.demos.internal.SyntheticShape
 import io.github.sceneview.demo.demos.internal.Vec3
+import io.github.sceneview.demo.demos.internal.room.RoomBox
 import io.github.sceneview.demo.demos.internal.room.RoomDepthMesh
 import io.github.sceneview.demo.demos.internal.room.ScanFloorSlab
 import io.github.sceneview.demo.demos.internal.room.ShellRender
 import io.github.sceneview.demo.demos.internal.model.JvmImages
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -96,6 +98,22 @@ class ScanPartialWalkTest {
         val p = unguarded.mesh.positions
         val ghost = (0 until unguarded.mesh.vertexCount).count { offTheRoom(p[it * 3], p[it * 3 + 1], p[it * 3 + 2]) > OFF_M }
         assertTrue("the slip, fused, puts surfaces out of place: $ghost vertices", ghost > MIN_GHOST)
+    }
+
+    /**
+     * The walk's own points decide what it opens on (the tests above hand [depthModelOf] an empty
+     * cloud): a third of a room, one wall seen across it, stands as no room box, so the result is
+     * the fused surface on its clean floor, never a shell stretched to walls it did not see.
+     */
+    @Test
+    fun `the walk's own points stand as no room, so no shell is stretched over what it missed`() {
+        val fused = checkNotNull(
+            RoomDepthMesh.fuse(recording(), RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M), guard = RoomDepthMesh.replayGuard()),
+        ).mesh
+        val n = fused.vertexCount
+        val cloud = DenseCloud(fused.positions.copyOf(n * 3), fused.colors.copyOf(n), fused.normals.copyOf(n * 3))
+        assertTrue("${cloud.count} points", cloud.count > RoomBox.MIN_POINTS)
+        assertNull("a third of a room read as a room box", RoomBox.of(cloud, 0f))
     }
 
     /**
