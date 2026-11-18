@@ -526,15 +526,16 @@
     light: {
       top: '#CDD3DB', horizon: '#E7EAEF', floor: '#F2F4F7', pool: '#FDFDFE',
       shadow: 0.85, reflection: 0.14, bloom: 0, vignette: 0.8,
+      iblIntensity: 28000, // Reduce light-studio highlights to preserve material saturation.
       environment: '/environments/studio_showroom_light_ibl.ktx'
     },
     dark: {
       top: '#0B0E13', horizon: '#222833', floor: '#2B323E', pool: '#3A4250',
       shadow: 0.9, reflection: 0.26, bloom: 0.12, vignette: 0.6,
+      iblIntensity: 40000,
       environment: '/environments/studio_showroom_dark_ibl.ktx'
     }
   };
-  var _STUDIO_IBL_INTENSITY = 40000;
   var _STUDIO_FOV = 30;            // a moderate telephoto: less perspective distortion
   var _STUDIO_REVEAL_MS = 1600;
   // The longest the move-in and the quality tiers wait for the model's textures: one
@@ -613,6 +614,7 @@
       pool: _studioColor(o.pool, _hexToRgb(base.pool)),
       shadow: unit(o.shadow, base.shadow, 1),
       reflection: unit(o.reflection, base.reflection, 0.6),
+      iblIntensity: base.iblIntensity,
       bloom: base.bloom,
       vignette: base.vignette,
       environment: (typeof o.environment === 'string' && o.environment) ? o.environment : base.environment
@@ -3386,10 +3388,11 @@
         return this.requestRender();
       }
       var entering = !this._studio;
-      var envChanged = entering || this._studio.environment !== conf.environment;
+      var envChanged = entering || this._studio.environment !== conf.environment ||
+        this._studio.iblIntensity !== conf.iblIntensity;
       if (entering) this._studioEnter();
       this._studio = conf;
-      if (envChanged) this._loadDefaultEnvironment(conf.environment, _STUDIO_IBL_INTENSITY, true);
+      if (envChanged) this._loadDefaultEnvironment(conf.environment, conf.iblIntensity, true);
       try {
         this._studioRebuild(entering);
       } catch (e) {

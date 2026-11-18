@@ -271,9 +271,9 @@ jobs:
               - 'website-static/credits.html'
               - 'website-static/models/platforms/thumbnails/**'
             # `web` gates the Gradle Kotlin/JS build of the sceneview-web
-            # library plus the desktop-demo compile (#2540) that lives in the
-            # same job. samples/web-demo is a plain static site (no Gradle
-            # module since #1946) — it is guarded by the Playwright suite in
+            # library, website viewer colour regressions and the desktop-demo
+            # compile (#2540) that live in the same job. samples/web-demo is a
+            # plain static site (no Gradle module since #1946), guarded by Playwright in
             # device-qa.yml / render-tests.yml, not this job.
             web:
               - *shared
@@ -281,6 +281,9 @@ jobs:
               - 'sceneview-web/**'
               - 'sceneview-compose/**'
               - 'samples/desktop-demo/**'
+              - 'website-static/js/sceneview.js'
+              - 'tools/test-web-tone-mapping.cjs'
+              - 'tools/measure-web-studio.cjs'
             flutter:
               - *shared
               - 'flutter/**'
@@ -792,6 +795,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 20
+
+      - name: Website studio lighting and colour regressions
+        run: node --test tools/test-web-tone-mapping.cjs
 
       - name: Build web targets
         run: |
