@@ -187,24 +187,38 @@ class NodeEditingOverlayBoundsTest {
     }
 
     @Test
-    fun `a model node with an empty rest-pose box keeps the placeholder without walking its sub-nodes`() {
+    fun `a model node with an empty rest-pose box keeps the placeholder without walking its glTF nodes`() {
         val model = modelNode(minMax = FloatArray(6))
-        val subNode = countingContent(Float3(0f, 3f, 0f), Float3(2f))
-        model.addChildNode(subNode)
+        val gltfContent = countingContent(Float3(0f, 3f, 0f), Float3(2f))
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
 
         val (center, halfExtent) = bounds(model)
 
         assertVector(Float3(0f), center)
         assertVector(Float3(0.25f), halfExtent)
-        assertEquals("glTF sub-node boxes read", 0, subNode.boxReads)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
     }
 
     @Test
-    fun `an empty model node under a pivot is not walked and does not widen the bounds`() {
+    fun `an empty model used as a container keeps the bounds of what the app attached to it`() {
+        val model = modelNode(minMax = FloatArray(6))
+        val gltfContent = countingContent(Float3(0f, -5f, 0f), Float3(5f))
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
+        model.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
+
+        val (center, halfExtent) = bounds(model)
+
+        assertVector(Float3(0f, 0.5f, 0f), center)
+        assertVector(Float3(0.2f, 0.5f, 0.2f), halfExtent)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
+    }
+
+    @Test
+    fun `an empty model node under a pivot is not walked into and does not widen the bounds`() {
         val pivot = Node(engine)
         val model = modelNode(minMax = FloatArray(6))
-        val subNode = countingContent(Float3(0f, -5f, 0f), Float3(5f))
-        model.addChildNode(subNode)
+        val gltfContent = countingContent(Float3(0f, -5f, 0f), Float3(5f))
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
         pivot.addChildNode(model)
         pivot.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
 
@@ -212,8 +226,12 @@ class NodeEditingOverlayBoundsTest {
 
         assertVector(Float3(0f, 0.5f, 0f), center)
         assertVector(Float3(0.2f, 0.5f, 0.2f), halfExtent)
-        assertEquals("glTF sub-node boxes read", 0, subNode.boxReads)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
     }
+
+    /** One of [model]'s own glTF nodes, as `ModelNode` builds them from the asset's entities. */
+    private fun gltfNode(model: ModelNode): Node =
+        model.EmptyNode(model.modelInstance, GLTF_ENTITY).apply { transform = Transform() }
 
     /** A renderable that counts how often the overlay reads its box. */
     private inner class CountingContent(center: Float3, halfExtent: Float3) :
@@ -234,4 +252,8 @@ class NodeEditingOverlayBoundsTest {
             RestPoseBounds.record(model, minMax)
             transform = Transform()
         }
+
+    private companion object {
+        const val GLTF_ENTITY = 42
+    }
 }

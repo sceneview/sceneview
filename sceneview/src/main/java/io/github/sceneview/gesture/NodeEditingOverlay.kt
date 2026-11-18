@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -41,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -340,11 +343,15 @@ fun NodeEditingOverlay(
 
         if (showScale && badgeTop != null && overlaySize != Size.Zero) {
             val atLimit = state.scaleLimit != null
+            // Composed only while the pinch lasts, so each pinch starts from no announced step.
+            val announced = remember { AnnouncedStep() }
             FeedbackBadge(
                 text = "${state.scalePercent.roundToInt()} %",
                 description = stringResource(
                     R.string.sceneview_editing_scale_description,
-                    scaleAnnouncementPercent(state.scalePercent, atLimit),
+                    announced.update(
+                        scaleAnnouncementPercent(state.scalePercent, atLimit, announced.value),
+                    ),
                 ),
                 textColor = if (atLimit) colors.limit else colors.badgeText,
                 background = colors.badgeBackground,
@@ -362,6 +369,8 @@ fun NodeEditingOverlay(
                     },
             )
         }
+
+        EditingEndAnnouncement(state = state)
     }
 }
 
@@ -380,11 +389,17 @@ internal fun RotationBadge(
     modifier: Modifier = Modifier,
 ) {
     if (NodeEditingKind.Rotate !in state.activeKinds) return
+    // Left behind with the badge when the twist ends: each twist starts from no announced step.
+    val announced = remember { AnnouncedStep() }
     FeedbackBadge(
         text = rotationBadgeText(state.rotationDeltaDegrees),
         description = stringResource(
             R.string.sceneview_editing_rotation_description,
-            signedDegrees(rotationAnnouncementDegrees(state.rotationDeltaDegrees)),
+            signedDegrees(
+                announced.update(
+                    rotationAnnouncementDegrees(state.rotationDeltaDegrees, announced.value),
+                ),
+            ),
         ),
         textColor = colors.badgeText,
         background = colors.badgeBackground,
@@ -405,28 +420,129 @@ private fun signedDegrees(angle: Int): String = "${if (angle > 0) "+" else ""}$a
 /*
  * The badges are polite live regions: every change of their content description is queued
  * for TalkBack. The visible text follows the gesture degree by degree, but the description
- * only moves in coarse steps, so a twist or a pinch is announced a handful of times rather
- * than once per degree or percent.
+ * only moves in coarse steps, with hysteresis, so a twist or a pinch is announced a handful
+ * of times rather than once per degree or percent, and a value held on a step boundary does
+ * not flip back and forth. [EditingEndAnnouncement] then speaks the exact value once.
  */
 
 /**
- * The rotation the badge announces: the live delta truncated toward zero to a multiple of
- * [ROTATION_ANNOUNCE_STEP_DEGREES], i.e. the last step the twist has fully crossed.
+ * The last step a badge announced, kept across recompositions of that badge.
+ *
+ * Written from composition: [update] stores what the description shows, and recomposing with
+ * the same input gives the same step, so a discarded or repeated composition changes nothing.
  */
-internal fun rotationAnnouncementDegrees(deltaDegrees: Float): Int =
-    deltaDegrees.roundToInt() / ROTATION_ANNOUNCE_STEP_DEGREES * ROTATION_ANNOUNCE_STEP_DEGREES
+internal class AnnouncedStep {
+    var value: Int? = null
+        private set
+
+    fun update(step: Int): Int = step.also { value = it }
+}
+
+/**
+ * The rotation the badge announces: the live delta truncated toward zero to a multiple of
+ * [ROTATION_ANNOUNCE_STEP_DEGREES], i.e. the last step the twist has fully crossed. Given the
+ * [previous] announcement, it only moves once the delta is [ANNOUNCE_HYSTERESIS] past a step.
+ */
+internal fun rotationAnnouncementDegrees(deltaDegrees: Float, previous: Int? = null): Int =
+    steppedAnnouncement(
+        value = deltaDegrees.roundToInt(),
+        previous = previous,
+        origin = 0,
+        step = ROTATION_ANNOUNCE_STEP_DEGREES,
+    )
 
 /**
  * The scale the badge announces: the last [SCALE_ANNOUNCE_STEP_PERCENT] step the pinch has
  * fully crossed away from `100 %` (so `97 %` still reads `100`, `89 %` reads `90`), or the
  * exact value when the pinch presses against a limit — the value no longer moves there, and
- * the limit is what the user needs to hear.
+ * the limit is what the user needs to hear. Given the [previous] announcement, it only moves
+ * once the value is [ANNOUNCE_HYSTERESIS] past a step, including on the way off a limit.
  */
-internal fun scaleAnnouncementPercent(percent: Float, atLimit: Boolean): Int {
+internal fun scaleAnnouncementPercent(percent: Float, atLimit: Boolean, previous: Int? = null): Int {
     val exact = percent.roundToInt()
     if (atLimit) return exact
-    return BASELINE_PERCENT +
-        (exact - BASELINE_PERCENT) / SCALE_ANNOUNCE_STEP_PERCENT * SCALE_ANNOUNCE_STEP_PERCENT
+    return steppedAnnouncement(
+        value = exact,
+        previous = previous,
+        origin = BASELINE_PERCENT,
+        step = SCALE_ANNOUNCE_STEP_PERCENT,
+    )
+}
+
+/**
+ * [value] truncated toward [origin] to a multiple of [step], with hysteresis around
+ * [previous]: the announcement stays on [previous] until [value] has left its step by about
+ * [margin], in either direction. [previous] need not be a step itself (an
+ * exact scale limit): it holds while [value] stays in the step that contains it.
+ */
+internal fun steppedAnnouncement(
+    value: Int,
+    previous: Int?,
+    origin: Int,
+    step: Int,
+    margin: Int = ANNOUNCE_HYSTERESIS,
+): Int {
+    // Integer division truncates toward zero, i.e. toward the origin.
+    fun stepOf(v: Int) = origin + (v - origin) / step * step
+    if (previous == null) return stepOf(value)
+    val home = stepOf(previous)
+    if (stepOf(value) == home) return previous
+    // Pull the value back toward the last announcement by the margin: only a value that is
+    // still outside the announced step after that has really left it.
+    val pulled = if (previous > value) value + margin else value - margin
+    val step2 = stepOf(pulled)
+    return if (step2 == home) previous else step2
+}
+
+/**
+ * Speaks the exact final value once, when a twist or a pinch ends.
+ *
+ * The badges announce coarse steps and leave with their gesture, so the last thing heard
+ * would otherwise be a step behind the result (a 44° twist ending on "+30"). This node stays
+ * composed with the overlay: it has no description at rest, takes the exact value of the
+ * gestures that just ended, and drops it when the next gesture begins, so the next end is a
+ * change again. An application rotating or scaling the node at rest is never announced.
+ */
+@Composable
+internal fun EditingEndAnnouncement(state: NodeEditingFeedbackState, modifier: Modifier = Modifier) {
+    val resources = LocalResources.current
+    var announcement by remember(state) { mutableStateOf<String?>(null) }
+    LaunchedEffect(state, resources) {
+        var previous = state.activeKinds
+        snapshotFlow { state.activeKinds }.collect { kinds ->
+            if ((kinds - previous).isNotEmpty()) announcement = null
+            val ended = previous - kinds
+            previous = kinds
+            val parts = buildList {
+                if (NodeEditingKind.Rotate in ended) {
+                    add(
+                        resources.getString(
+                            R.string.sceneview_editing_rotation_description,
+                            signedDegrees(state.rotationDeltaDegrees.roundToInt()),
+                        ),
+                    )
+                }
+                if (NodeEditingKind.Scale in ended) {
+                    add(
+                        resources.getString(
+                            R.string.sceneview_editing_scale_description,
+                            state.scalePercent.roundToInt(),
+                        ),
+                    )
+                }
+            }
+            if (parts.isNotEmpty()) announcement = parts.joinToString(", ")
+        }
+    }
+    // 1 dp rather than 0: a node without bounds may be left out of the accessibility tree.
+    Box(
+        modifier = modifier
+            .size(1.dp)
+            .clearAndSetSemantics {
+                announcement?.let { contentDescription = it }
+                liveRegion = LiveRegionMode.Polite
+            },
+    )
 }
 
 /** Dark scrim pill with a hairline border — centered horizontally on its offset. */
@@ -551,11 +667,10 @@ internal class NodeScreenAnchors {
  * Runs on every displayed frame, at rest too, so it allocates as little as possible.
  *
  * A node with its own non-empty bounds (the common single [ModelNode]) returns them as is:
- * one box read, no corner loop, no matrix. A [ModelNode] whose rest-pose box is still empty
- * (geometry not ready, `sanitizeEmptyBoundingBoxes`) gets the placeholder in O(1): its glTF
- * sub-nodes are never walked, which would cost one JNI read and one [Box] per renderable each
- * frame and read animated sub-node transforms that may be stale. Only a pivot without bounds
- * of its own walks its subtree, through the overlay-held [scratch].
+ * one box read, no corner loop, no matrix. A node without bounds of its own — a pivot, or a
+ * [ModelNode] whose rest-pose box is empty — walks its subtree through the overlay-held
+ * [scratch], skipping every model's glTF nodes (see [isGltfNodeOf]): an empty model with
+ * nothing attached gets the placeholder after one look at its direct children.
  *
  * Internal for `NodeEditingOverlayBoundsTest`.
  */
@@ -566,7 +681,6 @@ internal fun Node.localBounds(scratch: ContentBoundsScratch): Pair<Float3, Float
         val e = box.halfExtent
         return Float3(c[0], c[1], c[2]) to Float3(e[0], e[1], e[2])
     }
-    if (this is ModelNode) return defaultBounds()
     return scratch.contentBounds(this) ?: defaultBounds()
 }
 
@@ -578,6 +692,17 @@ private fun Node.ownBoundingBox(): Box? = when (this) {
     is RenderableComponent -> axisAlignedBoundingBox
     else -> null
 }
+
+/**
+ * `true` for one of [model]'s own glTF nodes, `false` for a node the application attached.
+ *
+ * A model whose rest-pose box is empty (geometry not ready, or a mesh-less glTF used as a
+ * container) is walked like a pivot, but never into its glTF hierarchy: that would cost one
+ * JNI read and one [Box] per renderable each frame, from animated transforms that may be
+ * stale. Only the children the application attached to it count.
+ */
+private fun Node.isGltfNodeOf(model: ModelNode): Boolean =
+    this is ModelNode.ChildNode && modelInstance === model.modelInstance
 
 private fun Box.isNonEmpty(): Boolean = halfExtent.let { it[0] > 0f || it[1] > 0f || it[2] > 0f }
 
@@ -620,6 +745,7 @@ internal class ContentBoundsScratch {
     private fun collectChildren(parent: Node, toPivot: Transform?, depth: Int, skipHidden: Boolean) {
         for (child in parent.childNodes) {
             if (child.isDestroyed || (child is ModelNode && child.isModelDestroyed)) continue
+            if (parent is ModelNode && child.isGltfNodeOf(parent)) continue
             if (skipHidden && !child.isVisible) continue
             // `child.transform` is the node's cached matrix: read it, never write it.
             val childToPivot = toPivot?.let { multiplyInto(slot(depth), it, child.transform) }
@@ -628,10 +754,7 @@ internal class ContentBoundsScratch {
             if (box != null && box.isNonEmpty()) {
                 // A node's own bounds take precedence over its children's.
                 addBox(box, childToPivot)
-            } else if (child !is ModelNode) {
-                // A model whose rest-pose box is still empty contributes nothing: its glTF
-                // sub-nodes are never walked (cost per frame, possibly stale animated
-                // transforms), and an invented box would misplace its siblings' ring.
+            } else {
                 collectChildren(child, childToPivot, depth + 1, skipHidden)
             }
         }
@@ -833,6 +956,9 @@ internal const val ROTATION_ANNOUNCE_STEP_DEGREES = 15
 
 /** The scale badge announces the pinch in steps of this many percent. */
 internal const val SCALE_ANNOUNCE_STEP_PERCENT = 10
+
+/** How far past a step boundary, in degrees or percent, a badge's announcement moves. */
+internal const val ANNOUNCE_HYSTERESIS = 2
 
 private const val BASELINE_PERCENT = 100
 

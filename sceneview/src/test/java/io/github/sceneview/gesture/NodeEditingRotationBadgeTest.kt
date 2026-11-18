@@ -116,7 +116,30 @@ class NodeEditingRotationBadgeTest {
         composeRule.runOnIdle { feedback.onRotationEdited(node, -13f) }
         composeRule.onNodeWithContentDescription("Rotation -15 degrees").assert(politeLiveRegion)
 
-        composeRule.runOnIdle { feedback.onRotationEdited(node, -1f) }
+        // −32°: past −30° by the hysteresis margin.
+        composeRule.runOnIdle { feedback.onRotationEdited(node, -3f) }
         composeRule.onNodeWithContentDescription("Rotation -30 degrees").assert(politeLiveRegion)
+    }
+
+    @Test
+    fun `a twist held on a step boundary does not flip the announcement`() {
+        composeRule.runOnIdle { feedback.onEditingBegin(node, NodeEditingKind.Rotate) }
+
+        fun twistTo(degrees: Float, announced: String) {
+            composeRule.runOnIdle {
+                feedback.onRotationEdited(node, degrees - feedback.rotationDeltaDegrees)
+            }
+            composeRule.onNodeWithContentDescription(announced).assert(politeLiveRegion)
+        }
+
+        twistTo(14f, "Rotation 0 degrees")
+        twistTo(16f, "Rotation 0 degrees")
+        twistTo(14f, "Rotation 0 degrees")
+        twistTo(16f, "Rotation 0 degrees")
+        twistTo(17f, "Rotation +15 degrees")
+        twistTo(14f, "Rotation +15 degrees")
+        twistTo(13f, "Rotation +15 degrees")
+        twistTo(16f, "Rotation +15 degrees")
+        twistTo(12f, "Rotation 0 degrees")
     }
 }
