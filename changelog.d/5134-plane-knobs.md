@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **arsceneview: `sceneUnderstanding` no longer turns planes back on over `planeRenderer = false` ([#5134](https://github.com/sceneview/sceneview/issues/5134)).** Planes are now drawn only when `planeRenderer` and `SceneUnderstanding.planeVisualization` are both `true`, written once per recomposition. `ARSceneView(planeRenderer = false, sceneUnderstanding = SceneUnderstanding(occlusion = true))` keeps planes hidden, and `SceneUnderstanding.Minimal` / `.None` still hide them on their own. No API change.

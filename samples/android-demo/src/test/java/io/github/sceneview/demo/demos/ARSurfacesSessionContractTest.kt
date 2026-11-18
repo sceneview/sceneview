@@ -27,7 +27,7 @@ class ARSurfacesSessionContractTest {
             source.contains("planeRenderer = showcase.planesVisible"),
         )
         assertFalse(
-            "sceneUnderstanding also writes the plane renderer and would fight planeRenderer",
+            "The showcase keeps one depth switch, on the camera stream; planeRenderer is its plane toggle",
             source.contains("sceneUnderstanding ="),
         )
         assertFalse(source.contains("isDepthOcclusionEnabled = false"))

@@ -85,8 +85,8 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     // The camera's depth pass is switched on where the stream is made. The grouped
-    // `sceneUnderstanding` knob would do it too, but it also writes the plane renderer,
-    // a second write racing `planeRenderer` on every recomposition.
+    // `sceneUnderstanding` knob would do it too; `planeRenderer` stays the one plane toggle
+    // (planes draw only when it and `sceneUnderstanding.planeVisualization` agree, #5134).
     val cameraStream = rememberARCameraStream(materialLoader) {
         createARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
     }
