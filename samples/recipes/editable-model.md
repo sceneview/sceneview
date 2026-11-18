@@ -73,7 +73,7 @@ SceneView { root in
 ## Opt-in gesture feedback (Android)
 
 Show live on-model feedback while the user manipulates the node — a selection ring, a
-rotation ring with yaw readout, a scale percentage badge that bounces at
+rotation ring with a signed angle readout shown only while twisting, a scale percentage badge that bounces at
 `editableScaleRange` limits, and a contact shadow while dragging:
 
 ```kotlin
@@ -91,7 +91,7 @@ Box {
             state = rememberNodeEditingFeedback(node),
             view = view,
             modifier = Modifier.matchParentSize(),
-            selected = true,                  // white ring while no gesture is active
+            selected = true,                  // white ring, no badge, while no gesture is active
         )
     }
 }

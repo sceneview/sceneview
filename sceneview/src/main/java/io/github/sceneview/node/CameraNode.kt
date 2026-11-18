@@ -608,7 +608,7 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         // own disposal, the two have no ordering (#3937). Filament makes it a no-op when absent.
         releaseViewport()
         onViewportChanged = null
-        runCatching { engine.destroyCameraComponent(entity) }
+        if (!preserveModelComponents) runCatching { engine.destroyCameraComponent(entity) }
 
         super.destroy()
     }

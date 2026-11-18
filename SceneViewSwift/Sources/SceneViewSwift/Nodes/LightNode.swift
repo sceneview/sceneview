@@ -85,6 +85,14 @@ public struct LightNode {
         return LightNode(entity: light)
     }
 
+    /// The shared system-default main light for both 3D and AR scenes.
+    static func defaultMainLight() -> LightNode {
+        let main = directional(color: .white, intensity: 10_000, castsShadow: true)
+        // Match Android's key-light travel direction (-0.25, -1, -0.25).
+        main.entity.look(at: .zero, from: [0.25, 1, 0.25], relativeTo: nil)
+        return main
+    }
+
     /// Creates a "fill" directional light — the soft secondary light in a key+fill setup.
     ///
     /// Mirrors SceneView Android's `LightNode.fill(...)` / `rememberFillLightNode()`

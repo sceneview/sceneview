@@ -67,9 +67,10 @@ sealed interface FrameRatePolicy {
      * knows about: a touch, a camera manipulator still coasting, a playing animation, a smooth
      * transform, a node added / moved / removed, a visibility, geometry or material change, an async
      * model or environment load, a video frame arriving on a `VideoNode`, a surface resize, a
-     * lifecycle resume, an active `surfaceMirrorer`. After the last change it keeps drawing for a
-     * short settle window, because Filament finalises texture uploads, IBL and shadow work across
-     * several frames.
+     * lifecycle resume, an active `surfaceMirrorer`, a non-null `SceneView.onAnimationFrame`
+     * driver. The view-level `onFrame` observer does not keep it awake. After the last change it
+     * keeps drawing for a short settle window, because Filament finalises texture uploads, IBL and
+     * shadow work across several frames.
      *
      * What it never treats as a change is a **recomposition**: an invalidation comes from the thing
      * that changed, not from the fact that the composable ran again. Write your own screen the same

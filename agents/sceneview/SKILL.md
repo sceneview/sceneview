@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-09-06'
+  last-updated: '2026-11-15'
   keywords:
   - sceneview
   - 3d
@@ -30,11 +30,11 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.69.5` and
-  `io.github.sceneview:arsceneview:4.69.5`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.69.6` and
+  `io.github.sceneview:arsceneview:4.69.6`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.69.5`). RealityKit renderer.
+  via Swift Package Manager (tag `4.69.6`). RealityKit renderer.
 - **Compose Multiplatform** — `SceneViewer(…)`, one composable from `commonMain`
   (`io.github.sceneview:sceneview-compose`, **unreleased**). *Viewer subset only* — model,
   orbit camera, key light, environment, tap. **No AR, no custom materials, no
@@ -74,6 +74,72 @@ Trigger on any of:
 
 Skip for plain ARCore-SDK, Sceneform (deprecated), Unity, Unreal, or RealityKit
 projects that do NOT use the SceneViewSwift wrapper.
+
+## Open any 3D file — Android
+
+Use **one entry point** for every supported mesh format. Put the file under `src/main/assets/`,
+or pass a `content://`, `file://` or HTTPS location to the same helper:
+`rememberModelInstance(modelLoader, "models/part.stl", unit = ModelUnit.Millimeters)`.
+Import `io.github.sceneview.core.model.ModelUnit`. `ModelLoader.supportedFormats` contains
+`GLB`, `GLTF`, `THREE_MF`, `STL`, `OBJ`, `PLY_MESH` (`ModelFormat` in the same package).
+
+| Format | Unit used in the scene | Colours / textures | One-liner (inside a composable) |
+|---|---|---|---|
+| `.glb` | Metres, fixed by glTF | glTF materials and textures | `rememberModelInstance(modelLoader, "model.glb")` |
+| `.gltf` | Metres, fixed by glTF | glTF materials and sibling textures/buffers | `rememberModelInstance(modelLoader, "model.gltf")` |
+| `.3mf` | Declared unit → metres; Z-up → Y-up | Object/triangle colours; no textures | `rememberModelInstance(modelLoader, "print.3mf")` |
+| `.stl` (ASCII / binary) | Millimetres by default; override with `unit` | Grey mesh; no textures | `rememberModelInstance(modelLoader, "part.stl", unit = ModelUnit.Millimeters)` |
+| `.obj` | Millimetres by default; override with `unit` | Grey automatically; `ObjLoader` with an MTL resolver reads colours; no textures | `rememberModelInstance(modelLoader, "part.obj", unit = ModelUnit.Inches)` |
+| `.ply` mesh (ASCII / binary) | Millimetres by default; override with `unit` | Vertex RGBA; no textures | `rememberModelInstance(modelLoader, "scan.ply", unit = ModelUnit.Meters)` |
+
+`ModelUnit` offers `Meters`, `Centimeters`, `Millimeters`, `Inches`. It only changes unitless
+STL/OBJ/PLY meshes. GLB/glTF stay in metres and 3MF retains its declared unit even when `unit` is
+passed. **Real size:** omit `scaleToUnits` (or pass `null`), keep the default node scale of 1;
+`scaleToUnits = 1f` fits the model into a one-metre box and discards its authored size.
+
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.SceneView
+import io.github.sceneview.core.model.ModelUnit
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun RealSizeStlViewer() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/part.stl", unit = ModelUnit.Millimeters)
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+        instance?.let { ModelNode(modelInstance = it, scaleToUnits = null) }
+    }
+}
+```
+
+For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced` callback:
+`AnchorNode(anchor = anchor) { ModelNode(modelInstance = instance, scaleToUnits = null) }`.
+
+**Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
+parses them, with `io.github.sceneview.core.model.UnsupportedModelFormat(extension)`: thrown by
+`createModel*` and `awaitModelInstance`, so
+`rememberModelLoadState(modelLoader, location, unit = ModelUnit.Millimeters)` shows it as
+`ModelLoadState.Failed.error`. `rememberModelInstance`, the `suspend` `loadModel` /
+`loadModelInstance` / `loadInstancedModel` and the `*Async` callbacks log it and return `null`
+(or an empty instance list), as for a file a converter cannot parse.
+`ModelFormat.sniff(fileName: String?, head: ByteArray)` also recognises `PLY_SPLAT` and `SPZ`,
+but they require `SplatNode` / `SplatParser`, not mesh loading: they are excluded from
+`supportedFormats` and refused by `ModelConverter` / `ModelLoader` with the same typed error.
+
+For raw bytes in shared Kotlin code, use `ModelConverter.toGlb(bytes, format, unit)` from
+`io.github.sceneview.core.model`, after `ModelFormat.sniff(fileName, bytes)`. Recognisable bytes
+win over a wrong extension; the extension is the fallback. Supply the complete file for 3MF's
+ZIP-directory check and binary STL's length/count check. A bare `.ply` extension defaults to
+mesh; its header distinguishes Gaussian splats. GLB is returned without copying. JSON glTF is
+wrapped in a GLB JSON chunk; its resource URIs are retained and must still be resolved.
+The shared API runs on Kotlin platforms; Apple Swift and the web JavaScript APIs retain their
+own entry points and format support (see their sections below).
 
 ## Compose Multiplatform: `SceneViewer` (viewer subset, unreleased)
 
@@ -247,10 +313,10 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
    60 mm print is life-size and upright in AR — never add a scale factor of your own
    to "fix" it.
 
-7. **Only glTF/GLB, 3MF (Android) and USDZ (Apple) load.** STL, PLY meshes and
-   OBJ + MTL are open issues (sceneview/sceneview#3486, #3487, #3488), and 3MF is not
-   wired into `sceneview-web` yet (#3491). Say the format is not supported and name
-   the issue rather than inventing a loader for it.
+7. **Use the same model entry point for GLB/glTF, 3MF, STL, OBJ and PLY meshes on Android.**
+   The "Open any 3D file" section above lists units and limits. STEP/FBX/USDZ are refused with
+   `UnsupportedModelFormat`; Gaussian PLY/SPZ need `SplatNode`. Apple and web keep their own
+   format support; do not infer their capabilities from Android's `supportedFormats`.
 
 8. **Don't recompose-thrash the loaders.** `rememberEngine` / `rememberModelLoader`
    / `rememberMaterialLoader` / `rememberEnvironmentLoader` belong at the top of

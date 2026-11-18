@@ -1,4 +1,8 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3ExpressiveApi::class,
+    io.github.sceneview.ExperimentalSceneViewApi::class,
+)
 
 package io.github.sceneview.demo
 
@@ -95,12 +99,14 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -171,6 +177,7 @@ import io.github.sceneview.demo.ui.LocalGlassGround
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -388,28 +395,42 @@ val LocalDemoChromeBottomWidth = androidx.compose.runtime.compositionLocalOf { D
 /**
  * How a demo tells the scaffold about what it anchors over the bottom of its own scene, one
  * gutter above the scaffold's chrome ([LocalDemoChromeBottomInset]): the placement screen's
- * decision card and coaching line. Called with that element's top edge in window pixels, or
- * with null when it shows nothing. A no-op outside a [DemoScaffold].
+ * decision card and coaching line. Each element reports its top edge in window pixels and
+ * whether messages must wait for it, or null when it shows nothing. Keys keep registrations
+ * independent, so removing one leaves the others intact. A no-op outside a [DemoScaffold].
  *
  * The scaffold cannot measure it — it lives in the `scene` slot — yet its snackbar lands
  * exactly there, one gutter above the same chrome. Reported, the snackbar rests above it
  * instead of across its buttons (#4483). Use [reportsDemoSceneBottomCard].
  */
 internal val LocalDemoSceneBottomCard =
-    androidx.compose.runtime.compositionLocalOf<(Int?) -> Unit> { {} }
+    androidx.compose.runtime.compositionLocalOf<(Any, DemoSceneBottomCard?) -> Unit> { { _, _ -> } }
+
+/** A measured card; a corner card defers messages because they can span both columns. */
+internal data class DemoSceneBottomCard(val topPx: Int, val deferSnackbar: Boolean)
 
 /**
  * Reports this element to the scaffold as the demo's bottom-anchored card
  * ([LocalDemoSceneBottomCard]), so a snackbar rests above it. Goes after the paddings that
  * place the element, so the reported box is what is drawn. An element measured empty reports
- * nothing, as does one that has left the composition.
+ * nothing, as does one that has left the composition. Set [deferSnackbar] for a corner card:
+ * even beside the chrome, it can overlap a wider snackbar at large font scales. The message
+ * waits until the card leaves instead of being placed across its text or actions.
  */
 @Composable
-internal fun Modifier.reportsDemoSceneBottomCard(): Modifier {
+internal fun Modifier.reportsDemoSceneBottomCard(deferSnackbar: Boolean = false): Modifier {
     val report = LocalDemoSceneBottomCard.current
-    androidx.compose.runtime.DisposableEffect(report) { onDispose { report(null) } }
+    val key = remember { Any() }
+    DisposableEffect(report, key) { onDispose { report(key, null) } }
     return onGloballyPositioned { coordinates ->
-        report(coordinates.positionInWindow().y.roundToInt().takeIf { coordinates.size.height > 0 })
+        report(
+            key,
+            if (coordinates.size.height > 0) {
+                DemoSceneBottomCard(coordinates.positionInWindow().y.roundToInt(), deferSnackbar)
+            } else {
+                null
+            },
+        )
     }
 }
 
@@ -630,6 +651,10 @@ fun DemoScaffold(
     overlaysFollowChrome: Boolean = false,
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
+    // The stage a themed demo draws in the same colours in both themes (3D Scan's result keeps
+    // its capture's dark stage, 2026-11-13): the scene's ground, the ground under the status bar
+    // and its icons take its colours, while the controls keep the theme's.
+    sceneChrome: StageChrome? = null,
     // The settings sheet's glass lets a scene read through it. Over a stage of text — a table of
     // figures — the rows behind would read through the sheet's own: such a stage asks for the
     // opaque `surface-container` a browsing sheet has.
@@ -657,6 +682,7 @@ fun DemoScaffold(
     // The stage's ground and the chrome over it (#4080): media glass unless the demo draws a
     // themed stage of its own, which then follows the app theme.
     val chrome = if (themedStage) themedStageChrome() else StageChrome.Media
+    val stage = sceneChrome ?: chrome
     val haptic = rememberHapticFeedback()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -788,7 +814,7 @@ fun DemoScaffold(
 
     // The system bar keeps its own ground when a scene tap hides the controls. Its icon
     // request must live just as long; full screen hides the bar and releases both.
-    RequestLightStatusBarIcons(active = !focused && chrome.lightStatusIcons)
+    RequestLightStatusBarIcons(active = !focused && stage.lightStatusIcons)
 
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
     // `sample_interaction` / `settings`: every sample's settings sheet, logged in one place.
@@ -950,9 +976,17 @@ fun DemoScaffold(
         // Height of what that band actually draws, apart from its dock reserve: zero for a
         // band that is composed but empty, which is then no stack for anyone.
         var bottomOverlayContentPx by remember { mutableIntStateOf(0) }
-        // Top edge, in window pixels, of what the demo itself anchors over the bottom of its
-        // scene, above the stack ([reportsDemoSceneBottomCard]); null while it shows nothing.
-        var sceneBottomCardTopPx by remember { mutableStateOf<Int?>(null) }
+        // Each scene card owns its edge in window pixels. The highest one holds the resting
+        // line, and disposing another card cannot clear it ([reportsDemoSceneBottomCard]).
+        val sceneBottomCards = remember { mutableStateMapOf<Any, DemoSceneBottomCard>() }
+        val reportSceneBottomCard = remember {
+            { key: Any, card: DemoSceneBottomCard? ->
+                if (card == null) sceneBottomCards.remove(key) else sceneBottomCards[key] = card
+                Unit
+            }
+        }
+        var sdkOverlayCount by remember { mutableIntStateOf(0) }
+        val reportSdkOverlay = remember { { visible: Boolean -> sdkOverlayCount += if (visible) 1 else -1 } }
         Box(Modifier.fillMaxSize()) {
             BottomSheetScaffold(
                 sheetContent = {
@@ -1122,7 +1156,7 @@ fun DemoScaffold(
                         // Painted with the stage colour, the chrome sits on one continuous stage.
                         .then(
                             if (bottomOverlayReservesScene) {
-                                Modifier.background(chrome.ground)
+                                Modifier.background(stage.ground)
                             } else {
                                 Modifier
                             }
@@ -1189,7 +1223,8 @@ fun DemoScaffold(
                                 },
                                 LocalDemoBottomChromeCover provides bottomChromeCover,
                                 LocalDemoSheetCover provides settingsSheetCover,
-                                LocalDemoSceneBottomCard provides { sceneBottomCardTopPx = it },
+                                LocalDemoSceneBottomCard provides reportSceneBottomCard,
+                                io.github.sceneview.ar.LocalAROverlayVisibility provides reportSdkOverlay,
                             ) {
                                 ProvideDemoSceneCover(
                                     sheetState = settingsSheetState,
@@ -1278,7 +1313,7 @@ fun DemoScaffold(
                             Modifier
                                 .fillMaxWidth()
                                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                                .background(chrome.scrim),
+                                .background(stage.scrim),
                         )
                     }
 
@@ -1394,9 +1429,16 @@ fun DemoScaffold(
             // Above the sheet, not in the scaffold's content (#4019): the content is drawn
             // under the sheet, so a snackbar raised from it — "Demo reset" always is, its
             // row lives in the sheet — showed through the glass as a ghost nobody could read.
-            DemoSnackbarHost(
+            // Removing the host also pauses Material's timeout: the queued message is shown
+            // after the SDK or corner scene cards have left, even on a short screen.
+            if (sdkOverlayCount == 0 && sceneBottomCards.values.none { it.deferSnackbar }) DemoSnackbarHost(
                 hostState = snackbarHostState,
                 sheetState = settingsSheetState,
+                sheetRestingTopPx = rootHeightPx - when (settingsSheetState.currentValue) {
+                    SheetValue.Hidden -> 0f
+                    SheetValue.PartiallyExpanded -> settingsPeekPx
+                    SheetValue.Expanded -> settingsContentPx.toFloat()
+                },
                 dockBand = maxOf(
                     SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md,
                     with(rootDensity) { dockBandPx.toDp() },
@@ -1408,7 +1450,7 @@ fun DemoScaffold(
                 } else {
                     0
                 },
-                sceneBottomCardTopPx = sceneBottomCardTopPx,
+                sceneBottomCardTopPx = sceneBottomCards.values.minOfOrNull { it.topPx },
                 // The chrome a tap on the scene hides takes the band with it (the replay's
                 // timeline): hidden, it is no more there to rest above than under a full sheet.
                 bottomStackHidden = dockHidden || !overlaysShown,
@@ -1420,7 +1462,8 @@ fun DemoScaffold(
 
 /**
  * The scaffold's snackbar: over the whole window and above the settings sheet in z-order,
- * so nothing a demo or the sheet draws can cover it (#4019).
+ * so nothing a demo or the sheet draws can cover it (#4019). The caller defers this host
+ * while SDK or corner scene cards are present, so its full width cannot cross their column.
  *
  * At rest it floats `space-md` above whatever is highest at the bottom of the scene: the
  * card a demo anchors over its scene ([reportsDemoSceneBottomCard]), the demo's bottom stack
@@ -1440,13 +1483,16 @@ fun DemoScaffold(
  * the stack at once, so the snackbar rides the sheet down and stops there. Either way it is
  * one travel, never a dip across the chips and back.
  *
- * The sheet's offset and the resting line are read while placing, so a sheet on the move
- * re-places the snackbar without recomposing anything.
+ * The sheet's offset and the animated stack visibility are read while placing, so sheet
+ * travel re-places the snackbar. Leaving a detent changes the derived settled flag in
+ * composition; the measured band and card edges also arrive through composition, one frame
+ * after their layout measurements.
  */
 @Composable
 private fun BoxScope.DemoSnackbarHost(
     hostState: SnackbarHostState,
     sheetState: SheetState,
+    sheetRestingTopPx: Float,
     dockBand: Dp,
     bottomStackBandPx: Int,
     sceneBottomCardTopPx: Int?,
@@ -1456,11 +1502,24 @@ private fun BoxScope.DemoSnackbarHost(
     val density = LocalDensity.current
     val topInsetPx = WindowInsets.safeDrawing.getTop(density)
     val bottomInsetPx = WindowInsets.safeDrawing.getBottom(density)
+    // `targetValue == currentValue` stays true during the first pixels of a hand drag.
+    // Compare the real offset to the measured detent too, and only recompose when that
+    // answer changes, rather than on every pixel of sheet travel.
+    val sheetAtRest by remember(sheetState, sheetRestingTopPx) {
+        derivedStateOf {
+            try {
+                abs(sheetState.requireOffset() - sheetRestingTopPx) < 0.5f
+            } catch (_: IllegalStateException) {
+                false
+            }
+        }
+    }
     val stackGone = demoBottomStackGone(
         hidden = bottomStackHidden,
         sheetRequested = sheetRequested,
         sheetShown = sheetState.currentValue != SheetValue.Hidden,
-        sheetSettled = sheetState.targetValue == sheetState.currentValue,
+        sheetSettled = sheetState.targetValue == sheetState.currentValue &&
+            !sheetState.isAnimationRunning && sheetAtRest,
     )
     // Down at the pace of the stack's own fade; back up at once, ahead of a closing sheet.
     val bottomStackVisibility = animateFloatAsState(

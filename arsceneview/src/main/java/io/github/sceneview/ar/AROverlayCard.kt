@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -49,6 +51,9 @@ import androidx.compose.ui.unit.sp
  * inside the padding. A test that asks whether the card overlaps something has to ask about
  * what is drawn (#4533).
  *
+ * With host [contentPadding], vertical margins and padding yield before the explanation;
+ * recovery actions scroll as a group when they cannot fit in the band above the host's controls.
+ *
  * @param action the action's label, or `null` for a card that only explains.
  */
 @Composable
@@ -63,7 +68,12 @@ internal fun BoxScope.AROverlayCard(
     secondaryAction: String? = null,
     onSecondaryAction: () -> Unit = {},
     secondaryActionTag: String = "",
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
+    ReportAROverlayVisibility()
+    // Hosts supplying insets may leave less room than our own margins and padding ask for.
+    // Default callers retain their existing spacing (including hosts that already lend margins).
+    val hostPadded = contentPadding != PaddingValues(0.dp)
     Layout(
         content = {
             Column(
@@ -90,7 +100,10 @@ internal fun BoxScope.AROverlayCard(
                 )
             }
             if (action != null) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     AROverlayCardAction(action, onAction, actionTag)
                     if (secondaryAction != null) {
                         Spacer(Modifier.height(8.dp))
@@ -100,7 +113,9 @@ internal fun BoxScope.AROverlayCard(
             }
         },
         modifier = modifier
+            .padding(contentPadding)
             .align(Alignment.Center)
+            .then(if (hostPadded) Modifier.lendAROverlayCardMargin() else Modifier)
             .padding(AROverlayCardMargin)
             .widthIn(max = 320.dp)
             .testTag(cardTag)
@@ -108,12 +123,19 @@ internal fun BoxScope.AROverlayCard(
             .padding(horizontal = AROverlayCardPadding),
     ) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val actionPlaceable = measurables.getOrNull(1)?.measure(loose)
+        val actionPlaceable = measurables.getOrNull(1)?.let { actions ->
+            // Like the explanation, a scrollable action group needs a finite viewport even
+            // inside a scrolling host. Its natural height keeps both actions whole there.
+            val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight
+            else actions.maxIntrinsicHeight(constraints.maxWidth)
+            actions.measure(loose.copy(maxHeight = maxHeight))
+        }
         val actionHeight = actionPlaceable?.height ?: 0
         val padding = AROverlayCardPadding.roundToPx() * 2
         val gap = if (actionPlaceable != null) AROverlayCardActionGap.roundToPx() else 0
         val textMaxHeight = if (constraints.hasBoundedHeight) {
-            (constraints.maxHeight - padding - gap - actionHeight).coerceAtLeast(0)
+            val reservedPadding = if (hostPadded) 0 else padding
+            (constraints.maxHeight - reservedPadding - gap - actionHeight).coerceAtLeast(0)
         } else {
             // A scrolling container refuses an unlimited height: hand it the height it asks for.
             measurables[0].maxIntrinsicHeight(constraints.maxWidth)
@@ -210,3 +232,14 @@ internal val AROverlayCardActionGap = 16.dp
 internal val AROverlayCardActionPadding = 20.dp
 
 private val OverlayCardBackground = Color.Black.copy(alpha = 0.85f)
+
+
+/** Lends only our vertical margin, keeping the card's ground inside the host's available band. */
+private fun Modifier.lendAROverlayCardMargin(): Modifier = layout { measurable, constraints ->
+    val lent = if (constraints.hasBoundedHeight) AROverlayCardMargin.roundToPx() * 2 else 0
+    val placeable = measurable.measure(constraints.copy(maxHeight = constraints.maxHeight + lent))
+    val height = constraints.constrainHeight(placeable.height)
+    layout(placeable.width, height) {
+        placeable.place(0, (height - placeable.height) / 2)
+    }
+}

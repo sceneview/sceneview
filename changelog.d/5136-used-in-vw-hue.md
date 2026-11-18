@@ -1,0 +1,3 @@
+<!-- category: Docs -->
+- **Volkswagen Group and Philips Hue apps on the Used in wall ([#5136](https://github.com/sceneview/sceneview/pull/5136)).** The website, README, llms.txt and docs now list the Volkswagen, myAudi, My Porsche, My CUPRA and Philips Hue apps, checked in their Google Play builds on November 17, 2026, with each brand's official logo.
+- **Lenskart and Safie described by their actual proof.** Lenskart ships Sceneform Maintained, SceneView's predecessor, and Safie presented SceneView in a public talk; the site and docs no longer say their Google Play builds contain SceneView.

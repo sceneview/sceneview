@@ -162,6 +162,8 @@ class MainActivity : ComponentActivity() {
         // `--es support_qa prompt|thanks|pending` (debug builds only): show the interstitial
         // now, optionally in its after-purchase state, so captures need no real purchase.
         if (BuildConfig.DEBUG && savedInstanceState == null) applySupportQa(intent?.getStringExtra("support_qa"))
+        // Debug builds only: pinches and double taps played from `adb shell am broadcast` (QaGestures).
+        QaGestures.install(this)
         // Usage statistics + push (demo app only). A no-op in a build without a Firebase config,
         // and Firebase itself only starts once the consent allows it (telemetry/Telemetry.kt).
         Telemetry.ensureInit(this)

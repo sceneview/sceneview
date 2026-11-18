@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.69.5")     // 3D
-implementation("io.github.sceneview:arsceneview:4.69.5")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.69.6")     // 3D
+implementation("io.github.sceneview:arsceneview:4.69.6")    // AR + 3D
 ```
 
 ---
@@ -45,6 +45,15 @@ val viewNodeManager = rememberViewNodeManager()
 ---
 
 ## SceneView
+
+Inside a scrolling list, pager or draggable bottom sheet, set
+`disallowParentIntercept = true` to keep touches that start on the scene with the scene
+until the finger lifts or the stream is cancelled. The default (`false`) lets the parent
+intercept drags. Changes apply to the next touch stream. This option is specific to Android
+`SceneView` and works with both surface types.
+
+An `isEditable = true` node absorbs touches instead of moving the camera, including
+double-tap zoom. Keep a display-only subject non-editable if dragging it should orbit the camera.
 
 ```kotlin
 SceneView(
@@ -493,7 +502,7 @@ fun ARDebugScreen() {
 ```kotlin
 bridge.requestSaveAndShare { result ->
     // result.path     -> /Users/dev/.sceneview/recordings/<ts>.rrd
-    // result.viewerUrl -> https://sceneview.github.io/rerun/?url=<…>
+    // result.viewerUrl -> null (local save; host the file before sharing a link)
     // result.events   -> 1234
 }
 ```

@@ -36,18 +36,18 @@ describe("COLOR_TEMPERATURES", () => {
 describe("generateLightingDesign", () => {
   describe.each([false, true])("fixture types with ar=%s", (ar) => {
     const fixtures: [LightType, string, number][] = [
-      ["ambient", "POINT", 40_000],
-      ["spot", "SPOT", 120_000],
-      ["accent", "SPOT", 60_000],
-      ["pendant", "POINT", 80_000],
-      ["recessed", "SPOT", 100_000],
-      ["track", "SPOT", 90_000],
-      ["sconce", "POINT", 50_000],
-      ["floor-lamp", "POINT", 60_000],
-      ["table-lamp", "POINT", 40_000],
-      ["chandelier", "POINT", 150_000],
-      ["strip-led", "POINT", 30_000],
-      ["natural", "DIRECTIONAL", 80_000],
+      ["ambient", "POINT", 4_000],
+      ["spot", "SPOT", 12_000],
+      ["accent", "SPOT", 6_000],
+      ["pendant", "POINT", 8_000],
+      ["recessed", "SPOT", 10_000],
+      ["track", "SPOT", 9_000],
+      ["sconce", "POINT", 5_000],
+      ["floor-lamp", "POINT", 6_000],
+      ["table-lamp", "POINT", 4_000],
+      ["chandelier", "POINT", 15_000],
+      ["strip-led", "POINT", 3_000],
+      ["natural", "DIRECTIONAL", 8_000],
     ];
     // Already scaled model bounds, including wide, deep, and tall rooms.
     const rooms = [
@@ -108,7 +108,7 @@ describe("generateLightingDesign", () => {
       }
     });
 
-    it.each(fixtures)("emits %s in Filament's expected photometric unit", (light, type, lux) => {
+    it.each(fixtures)("emits %s at the default light's scale in Filament's expected photometric unit", (light, type, lux) => {
       const code = generateLightingDesign({ lights: [light], ar });
       const intensity = code.match(/intensity\((.+)\)/)![1];
       if (type === "DIRECTIONAL") {

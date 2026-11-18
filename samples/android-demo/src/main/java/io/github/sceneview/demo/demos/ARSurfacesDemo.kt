@@ -29,6 +29,8 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.ar.createARCameraStream
+import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.common.LocalMotionSensorSilent
@@ -65,12 +67,16 @@ import io.github.sceneview.rememberOnGestureListener
  *
  * 1. **Scanning** — marks grow over each surface the phone finds.
  * 2. **Found** — tap the floor to place the sofa.
- * 3. **Placed** — the surfaces fade out (`planeRenderer = false`), the sofa does **not**
+ * 3. **Placed** — the surfaces fade out (`planeRenderer` follows
+ *    [SurfaceShowcaseState.planesVisible]), the sofa does **not**
  *    freeze: drag it along the floor, twist it, pinch it, or tap somewhere else to move it
  *    there. The surfaces come back for the length of a drag. The dock keeps **Surfaces**
  *    (show them again) and **Reset** (pick the sofa up, scan again) on screen throughout.
  *
  * The rules of step 3 live in [SurfaceShowcaseState], which is pure and unit-tested.
+ * The session requests `Config.DepthMode.AUTOMATIC` and the camera stream turns on its depth
+ * pass (`isDepthOcclusionEnabled`), so nearer real furniture hides the marks (#4228). A phone
+ * without the Depth API falls back to `DISABLED` and draws the marks unoccluded.
  */
 @Composable
 fun ARSurfacesDemo(onBack: () -> Unit) {
@@ -78,6 +84,12 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // The camera's depth pass is switched on where the stream is made. The grouped
+    // `sceneUnderstanding` knob would do it too, but it also writes the plane renderer,
+    // a second write racing `planeRenderer` on every recomposition.
+    val cameraStream = rememberARCameraStream(materialLoader) {
+        createARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
+    }
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch.
     val arPlaybackDataset = rememberArPlaybackDataset()
@@ -186,7 +198,20 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { arSessionFailed = true },
+                onSessionFailure = {
+                    arSessionFailed = true
+                    // The failed session is closed: its last frame and the sofa's anchor are
+                    // freed native objects, and a tap under the "Try again" card would read
+                    // them (a native crash, not an exception). The SDK already released the
+                    // node's anchor; drop every reference and scan again on the new session.
+                    latestFrame.frame = null
+                    sofaAnchorNode.node = null
+                    placedAnchor = null
+                    showcase = showcase.onRemoved()
+                    planeDetected = false
+                    cameraReady = false
+                    isTracking = false
+                },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -195,6 +220,10 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                 // Fading the surfaces only stops drawing them: detection, hit tests and
                 // the gestures on the sofa keep working.
                 planeRenderer = showcase.planesVisible,
+                // Real furniture hides the plane marks only with both halves (#4228): a
+                // session that produces depth, and the camera stream's depth pass.
+                depthMode = Config.DepthMode.AUTOMATIC,
+                cameraStream = cameraStream,
                 sessionConfiguration = { _: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 },

@@ -165,6 +165,9 @@ class SceneRenderer(
      */
     var onSurfaceDestroyed: (() -> Unit)? = null
 
+    // Read on DOWN so recomposition does not change ownership partway through a touch stream.
+    internal var disallowParentIntercept: Boolean = false
+
     // ── Surface attachment ───────────────────────────────────────────────────────────────────────
 
     /**
@@ -203,7 +206,7 @@ class SceneRenderer(
         renderViewRef = WeakReference(surfaceView)
 
         onTouch?.let { dispatch ->
-            surfaceView.setOnTouchListener { _, event -> dispatch(event); true }
+            surfaceView.setOnTouchListener(makeTouchListener(dispatch))
         }
     }
 
@@ -237,7 +240,7 @@ class SceneRenderer(
         renderViewRef = WeakReference(textureView)
 
         onTouch?.let { dispatch ->
-            textureView.setOnTouchListener { _, event -> dispatch(event); true }
+            textureView.setOnTouchListener(makeTouchListener(dispatch))
         }
     }
 
@@ -274,6 +277,7 @@ class SceneRenderer(
      * Call this from a `withFrameNanos` block. The [onBeforeRender] callback is invoked
      * after the swap chain check but before `beginFrame`, giving the caller a chance to
      * run per-frame logic (model loading, node updates, camera manipulator, AR frame, etc.).
+     * Pending resource destroys advance even when no swap chain is available.
      *
      * Returns `true` when a frame actually reached the surface, `false` when it did not: no swap
      * chain yet, [shouldPresent] declined, or `Renderer.beginFrame` refused the frame for pacing.
@@ -294,7 +298,12 @@ class SceneRenderer(
         shouldPresent: (() -> Boolean)? = null,
         onBeforeRender: () -> Unit
     ): Boolean {
-        val sc = swapChainRef.get() ?: return false
+        val sc = swapChainRef.get() ?: run {
+            // Pending destroys keep an OnDemand loop awake even while its surface is absent.
+            // Advance their grace period so the loop can finish draining and park again.
+            EngineDestroyQueue.of(engine).drainFrame(frameSource)
+            return false
+        }
 
         onBeforeRender()
 
@@ -323,9 +332,9 @@ class SceneRenderer(
 
         // Destroy GPU resources whose grace period has elapsed, after endFrame on the main (render)
         // thread — see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from
-        // a Choreographer callback so it advances in lock-step with real rendered frames, and
-        // stops the moment the surface (and thus the render loop) goes away. Reported under this
-        // renderer's identity: the queue belongs to the engine, and counts one frame per pass of
+        // a Choreographer callback so it advances with render-loop ticks, including attempts that
+        // cannot present while the surface is absent. Reported under this renderer's identity:
+        // the queue belongs to the engine, and counts one frame per pass of
         // the renderers sharing it, not one per renderer (sceneview/sceneview#4359).
         EngineDestroyQueue.of(engine).drainFrame(frameSource)
 
@@ -427,6 +436,33 @@ class SceneRenderer(
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────────────────────
+
+    private fun makeTouchListener(dispatch: (MotionEvent) -> Unit): android.view.View.OnTouchListener {
+        var interceptDisallowed = false
+        return android.view.View.OnTouchListener { touchView, event ->
+            val action = event.actionMasked
+            if (action == MotionEvent.ACTION_DOWN) {
+                interceptDisallowed = disallowParentIntercept
+                if (interceptDisallowed) {
+                    // AndroidView's interop filter then consumes the moves it delivers in
+                    // Initial, so a Compose parent's draggable/scrollable cannot take them
+                    // in Main (#3898).
+                    touchView.parent?.requestDisallowInterceptTouchEvent(true)
+                }
+            }
+            try {
+                dispatch(event)
+            } finally {
+                if (interceptDisallowed &&
+                    (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+                ) {
+                    touchView.parent?.requestDisallowInterceptTouchEvent(false)
+                    interceptDisallowed = false
+                }
+            }
+            true
+        }
+    }
 
     /**
      * Builds the [UiHelper.RendererCallback] that manages swap chain creation, destruction

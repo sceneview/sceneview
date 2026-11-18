@@ -985,7 +985,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      *
      * With custom AR placement and depth occlusion, also declare `ARSceneScope.GroundContact`
      * with a world-space surface centre, normal and radius covering this shadow and any placement
-     * ring. It prevents surface depth noise from cutting them; `AutoPlacementScene` does this
+     * ring. It prevents surface depth noise from cutting them; `AutoPlacementModel` does this
      * automatically.
      *
      * ```kotlin
