@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-internal const val OBJECT_MEASURE_UNCERTAINTY = "Approximate — accuracy not calibrated"
+internal const val OBJECT_MEASURE_UNCERTAINTY = "Beta · approximate — accuracy not calibrated"
 
 internal fun objectMeasureNumber(value: ObjectMeasureValue?): String = value?.let {
     BigDecimal.valueOf(it.millimeters).setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
