@@ -1022,7 +1022,8 @@ internal fun RerunModelScreen(
                 // oriented cloud fits the budget.
                 val reconstruction = when {
                     scope.hasFloorPlan -> ReconstructionMethod.Poisson
-                    scope == ScanScope.Object -> objectReconstruction(from, captureAims, surfelsVoxelM)
+                    // Read once with the object's box (ObjectResultInputs), not again here.
+                    scope == ScanScope.Object -> if (objectInputs?.filled == true) ReconstructionMethod.Poisson else ReconstructionMethod.Fused
                     else -> ReconstructionMethod.Fused
                 }
                 runCatching {
@@ -1229,7 +1230,12 @@ internal fun RerunModelScreen(
     val space = rememberSpaceMeasure(scope, surfels, captureView, surfelsVoxelM)
     LaunchedEffect(space) { onSpace((space as? SpaceMeasure.Found)?.fit) }
     // An object's own box (ObjectResultUi): its three sides on a card, the box on the model.
-    val subject = rememberScanSubject(scope, surfels, captureAims, surfelsVoxelM)
+    // The box read once with the fill (ObjectResultInputs), not again here.
+    val subject = when {
+        scope != ScanScope.Object || captureAims.isNullOrEmpty() -> null
+        objectInputs == null -> SubjectMeasure.Measuring
+        else -> objectInputs?.subject?.let { SubjectMeasure.Found(it) } ?: SubjectMeasure.None
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),

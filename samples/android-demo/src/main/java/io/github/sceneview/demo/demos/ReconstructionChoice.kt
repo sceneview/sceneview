@@ -55,6 +55,13 @@ internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubje
 }
 
 /**
+ * Whether the scan shown ([shownId]) has its data: `false` only while its own files are being read
+ * ([readingId], the stored scan an opening reads). An opening let go half-way, then another scan
+ * shown, holds that scan back from nothing.
+ */
+internal fun captureLoaded(readingId: String?, shownId: String?): Boolean = readingId == null || readingId != shownId
+
+/**
  * What an [ScanScope.Object] scan's result is decided on, read once per scan and its data: the box
  * it went round ([subject], [ScanSubject]) and whether it is filled ([filled], as
  * [objectReconstruction] would say, #5114) — off its [source] while the scan still has one, else

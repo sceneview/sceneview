@@ -383,8 +383,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     }
     // The model on screen, once built or read back: what the export sheet writes first.
     var resultModel by remember { mutableStateOf<RerunScanModel?>(null) }
-    // False while a stored scan's files are read (openStored): an object's result waits for them.
-    var scanDataLoaded by remember { mutableStateOf(true) }
+    // The stored scan whose files are being read (openStored), `null` once read: an object's
+    // result waits for them. Tied to the scan, so an opening let go half-way holds no other back.
+    var scanDataReading by remember { mutableStateOf<String?>(null) }
     // A space's measure, heard from its result screen: what the export sheet writes as JSON.
     var resultSpace by remember { mutableStateOf<SpaceFit?>(null) }
     // How the scan shown was filmed, off its path: a space opens towards the phone, round what it aimed at.
@@ -573,6 +574,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         scanMeasure = null
         scanStill = null
         scanMedia = media
+        // Its data are these: nothing is left to read for it, whatever an opening let go left.
+        scanDataReading = null
         scanTitle = title
         scanPack = pack
         showingScan = true
@@ -593,7 +596,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         scanStill = null
         scanMedia = null
         // Its saved cloud and path are read below: the result decides nothing on them until then.
-        scanDataLoaded = false
+        scanDataReading = id
         scanTitle = title
         scanPack = null
         scanId = id
@@ -651,7 +654,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 }
             }
             // Read, or known not to read: the result decides on what there is.
-            scanDataLoaded = true
+            if (scanDataReading == id) scanDataReading = null
         }
     }
     // A file opened here ("Open file") or handed over by another app: kept as a session, then
@@ -961,7 +964,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onSpace = { resultSpace = it },
             captureView = scanView ?: qaSpaceView,
             captureAims = scanAims,
-            captureLoaded = scanDataLoaded || !showingScan,
+            captureLoaded = captureLoaded(scanDataReading, scanId) || !showingScan,
             surfelsVoxelM = scanMedia?.takeIf { showingScan }?.dense?.voxelM,
             // A room opens on its shell, built from the recording once it is read.
             shellInput = remember(scanMedia, showingScan, scanKind) {
