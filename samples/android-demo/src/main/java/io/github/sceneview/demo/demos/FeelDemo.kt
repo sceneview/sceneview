@@ -323,6 +323,7 @@ fun FeelDemo(onBack: () -> Unit) {
     }
     val pads = remember { arrayOfNulls<Node>(FeelMaterial.entries.size) }
     val mark = remember { arrayOfNulls<Node>(1) }
+    val markFaces = remember { arrayOfNulls<io.github.sceneview.node.RenderableNode>(3) }
     // Selection, the solid on stage and the slide between them, advanced per presented frame.
     val switch = remember { MatterSwitch() }
     var openingPrepared by remember(materials) { mutableStateOf(false) }
@@ -524,6 +525,10 @@ fun FeelDemo(onBack: () -> Unit) {
             if (isVisible) position = if (warmingOpening) Position(y = 1f) else
                 Position(y = simulation.opening.heightAbovePad -
                     MatterSurfaces.visualDepth(simulation.pads[0].depthMm, FeelMaterial.MemoryFoam) - simulation.opening.squash)
+            // The mark is three open plates: away from the foam, the key light throws their
+            // hard outline into the well as a dark angular patch. Shadow only near contact.
+            val casts = MatterOpening.castsShadow(simulation.opening.heightAbovePad, simulation.opening.travel)
+            markFaces.forEach { face -> if (face != null && face.isShadowCaster != casts) face.isShadowCaster = casts }
         }
         if (now - timing[0] >= 50L) {
             timing[0] = now
@@ -632,17 +637,17 @@ fun FeelDemo(onBack: () -> Unit) {
                                                 CubeNode(size = Size(face, thickness, face),
                                                     position = Position(y = side - thickness / 2f),
                                                     materialInstance = materials.mark[0], apply = {
-                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                        markFaces[0] = this; isShadowCaster = true; isShadowReceiver = false; isTouchable = false
                                                     })
                                                 CubeNode(size = Size(face, face, thickness),
                                                     position = Position(y = side / 2f, z = (side - thickness) / 2f),
                                                     materialInstance = materials.mark[1], apply = {
-                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                        markFaces[1] = this; isShadowCaster = true; isShadowReceiver = false; isTouchable = false
                                                     })
                                                 CubeNode(size = Size(thickness, face, face),
                                                     position = Position(x = (side - thickness) / 2f, y = side / 2f),
                                                     materialInstance = materials.mark[2], apply = {
-                                                        isShadowCaster = true; isShadowReceiver = false; isTouchable = false
+                                                        markFaces[2] = this; isShadowCaster = true; isShadowReceiver = false; isTouchable = false
                                                     })
                                             }
                                         }
