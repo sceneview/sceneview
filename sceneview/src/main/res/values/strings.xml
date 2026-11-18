@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NodeEditingOverlay badges (#5139). Spoken by TalkBack as polite live regions, in coarse
+         steps; the visible badge shows the bare number. -->
+    <!-- %1$s is a signed whole number of degrees, e.g. "+15", "0", "-30". -->
+    <string name="sceneview_editing_rotation_description">Rotation %1$s degrees</string>
+    <!-- %1$d is the node scale as a percentage of its baseline, e.g. 120. -->
+    <string name="sceneview_editing_scale_description">Scale %1$d percent</string>
+</resources>

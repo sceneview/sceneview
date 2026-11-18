@@ -93,14 +93,30 @@ class NodeEditingRotationBadgeTest {
     fun `badge and live region appear during the twist and leave with it`() {
         composeRule.runOnIdle {
             feedback.onEditingBegin(node, NodeEditingKind.Rotate)
-            feedback.onRotationEdited(node, 12f)
+            feedback.onRotationEdited(node, 32f)
         }
 
-        composeRule.onNodeWithContentDescription("Rotation +12°").assert(politeLiveRegion)
+        composeRule.onNodeWithContentDescription("Rotation +30 degrees").assert(politeLiveRegion)
         composeRule.onAllNodes(politeLiveRegion).assertCountEquals(1)
 
         composeRule.runOnIdle { feedback.onEditingEnd(node, NodeEditingKind.Rotate) }
 
         assertNoRotationBadge()
+    }
+
+    @Test
+    fun `the announced angle moves in fifteen degree steps`() {
+        composeRule.runOnIdle {
+            feedback.onEditingBegin(node, NodeEditingKind.Rotate)
+            feedback.onRotationEdited(node, -16f)
+        }
+        composeRule.onNodeWithContentDescription("Rotation -15 degrees").assert(politeLiveRegion)
+
+        // 13° more: the visible angle moves, the description does not, so nothing is queued.
+        composeRule.runOnIdle { feedback.onRotationEdited(node, -13f) }
+        composeRule.onNodeWithContentDescription("Rotation -15 degrees").assert(politeLiveRegion)
+
+        composeRule.runOnIdle { feedback.onRotationEdited(node, -1f) }
+        composeRule.onNodeWithContentDescription("Rotation -30 degrees").assert(politeLiveRegion)
     }
 }

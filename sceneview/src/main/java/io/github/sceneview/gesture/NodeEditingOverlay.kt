@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -55,6 +56,7 @@ import com.google.android.filament.View
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
+import io.github.sceneview.R
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.math.Transform
 import io.github.sceneview.node.ModelNode
@@ -340,7 +342,10 @@ fun NodeEditingOverlay(
             val atLimit = state.scaleLimit != null
             FeedbackBadge(
                 text = "${state.scalePercent.roundToInt()} %",
-                description = "Scale ${state.scalePercent.roundToInt()} percent",
+                description = stringResource(
+                    R.string.sceneview_editing_scale_description,
+                    scaleAnnouncementPercent(state.scalePercent, atLimit),
+                ),
                 textColor = if (atLimit) colors.limit else colors.badgeText,
                 background = colors.badgeBackground,
                 border = if (atLimit) colors.limit else colors.badgeBorder,
@@ -375,10 +380,12 @@ internal fun RotationBadge(
     modifier: Modifier = Modifier,
 ) {
     if (NodeEditingKind.Rotate !in state.activeKinds) return
-    val angleText = rotationBadgeText(state.rotationDeltaDegrees)
     FeedbackBadge(
-        text = angleText,
-        description = "Rotation $angleText",
+        text = rotationBadgeText(state.rotationDeltaDegrees),
+        description = stringResource(
+            R.string.sceneview_editing_rotation_description,
+            signedDegrees(rotationAnnouncementDegrees(state.rotationDeltaDegrees)),
+        ),
         textColor = colors.badgeText,
         background = colors.badgeBackground,
         border = colors.badgeBorder,
@@ -390,9 +397,36 @@ internal fun RotationBadge(
  * The live angle: the signed delta since the twist began, never the absolute heading, so
  * it stays continuous across the heading's ±180° seam and each new twist starts at `0°`.
  */
-internal fun rotationBadgeText(deltaDegrees: Float): String {
-    val angle = deltaDegrees.roundToInt()
-    return "${if (angle > 0) "+" else ""}$angle°"
+internal fun rotationBadgeText(deltaDegrees: Float): String =
+    "${signedDegrees(deltaDegrees.roundToInt())}°"
+
+private fun signedDegrees(angle: Int): String = "${if (angle > 0) "+" else ""}$angle"
+
+/*
+ * The badges are polite live regions: every change of their content description is queued
+ * for TalkBack. The visible text follows the gesture degree by degree, but the description
+ * only moves in coarse steps, so a twist or a pinch is announced a handful of times rather
+ * than once per degree or percent.
+ */
+
+/**
+ * The rotation the badge announces: the live delta truncated toward zero to a multiple of
+ * [ROTATION_ANNOUNCE_STEP_DEGREES], i.e. the last step the twist has fully crossed.
+ */
+internal fun rotationAnnouncementDegrees(deltaDegrees: Float): Int =
+    deltaDegrees.roundToInt() / ROTATION_ANNOUNCE_STEP_DEGREES * ROTATION_ANNOUNCE_STEP_DEGREES
+
+/**
+ * The scale the badge announces: the last [SCALE_ANNOUNCE_STEP_PERCENT] step the pinch has
+ * fully crossed away from `100 %` (so `97 %` still reads `100`, `89 %` reads `90`), or the
+ * exact value when the pinch presses against a limit — the value no longer moves there, and
+ * the limit is what the user needs to hear.
+ */
+internal fun scaleAnnouncementPercent(percent: Float, atLimit: Boolean): Int {
+    val exact = percent.roundToInt()
+    if (atLimit) return exact
+    return BASELINE_PERCENT +
+        (exact - BASELINE_PERCENT) / SCALE_ANNOUNCE_STEP_PERCENT * SCALE_ANNOUNCE_STEP_PERCENT
 }
 
 /** Dark scrim pill with a hairline border — centered horizontally on its offset. */
@@ -511,23 +545,28 @@ internal class NodeScreenAnchors {
         canvasScale(canvasSize)?.let { radiusY * it.y } ?: 0f
 }
 
-/** Local-space content bounds, falling back only when the entire subtree is empty. */
-private fun Node.localBounds(): Pair<Float3, Float3> = localBounds(ContentBoundsScratch())
-
 /**
+ * Local-space content bounds, falling back to a small placeholder when there is no content.
+ *
  * Runs on every displayed frame, at rest too, so it allocates as little as possible.
  *
  * A node with its own non-empty bounds (the common single [ModelNode]) returns them as is:
- * one box read, no corner loop, no matrix. Only a pivot without bounds of its own walks its
- * subtree, through the overlay-held [scratch].
+ * one box read, no corner loop, no matrix. A [ModelNode] whose rest-pose box is still empty
+ * (geometry not ready, `sanitizeEmptyBoundingBoxes`) gets the placeholder in O(1): its glTF
+ * sub-nodes are never walked, which would cost one JNI read and one [Box] per renderable each
+ * frame and read animated sub-node transforms that may be stale. Only a pivot without bounds
+ * of its own walks its subtree, through the overlay-held [scratch].
+ *
+ * Internal for `NodeEditingOverlayBoundsTest`.
  */
-private fun Node.localBounds(scratch: ContentBoundsScratch): Pair<Float3, Float3> {
+internal fun Node.localBounds(scratch: ContentBoundsScratch): Pair<Float3, Float3> {
     if (isDestroyed || (this is ModelNode && isModelDestroyed)) return defaultBounds()
     ownBoundingBox()?.takeIf { it.isNonEmpty() }?.let { box ->
         val c = box.center
         val e = box.halfExtent
         return Float3(c[0], c[1], c[2]) to Float3(e[0], e[1], e[2])
     }
+    if (this is ModelNode) return defaultBounds()
     return scratch.contentBounds(this) ?: defaultBounds()
 }
 
@@ -589,7 +628,10 @@ internal class ContentBoundsScratch {
             if (box != null && box.isNonEmpty()) {
                 // A node's own bounds take precedence over its children's.
                 addBox(box, childToPivot)
-            } else {
+            } else if (child !is ModelNode) {
+                // A model whose rest-pose box is still empty contributes nothing: its glTF
+                // sub-nodes are never walked (cost per frame, possibly stale animated
+                // transforms), and an invented box would misplace its siblings' ring.
                 collectChildren(child, childToPivot, depth + 1, skipHidden)
             }
         }
@@ -785,6 +827,14 @@ private fun DrawScope.drawSweepArrowHead(
 }
 
 private const val DEFAULT_HALF_EXTENT = 0.25f
+
+/** The rotation badge announces the twist in steps of this many degrees. */
+internal const val ROTATION_ANNOUNCE_STEP_DEGREES = 15
+
+/** The scale badge announces the pinch in steps of this many percent. */
+internal const val SCALE_ANNOUNCE_STEP_PERCENT = 10
+
+private const val BASELINE_PERCENT = 100
 
 /** Ground-plane axes — the translate affordance. */
 private val AXIS_ANGLES = floatArrayOf(0f, 90f, 180f, 270f)

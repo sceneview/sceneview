@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **`NodeEditingOverlay`: TalkBack hears the rotation and scale badges in steps, not every degree ([#5139](https://github.com/sceneview/sceneview/issues/5139)).** The badges' polite live-region description now moves in 15° and 10 % steps (exact at a scale limit) while the visible text stays live, and the "Rotation … degrees" / "Scale … percent" descriptions are localisable string resources.
+- **`NodeEditingOverlay`: a model whose bounds are not ready yet no longer walks its glTF nodes every frame ([#5139](https://github.com/sceneview/sceneview/issues/5139)).** A `ModelNode` with an empty rest-pose box gets the small placeholder ring again in O(1), instead of one native read per renderable per frame from possibly stale animated transforms.
