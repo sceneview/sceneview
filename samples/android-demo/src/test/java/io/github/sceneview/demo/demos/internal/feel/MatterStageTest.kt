@@ -22,7 +22,7 @@ class MatterStageTest {
     private fun hit(stage: MatterStage, x: Float, y: Float, z: Float) = stage.pointOnSlab(
         stage.eyeX, stage.eyeY, stage.eyeZ, x - stage.eyeX, y - stage.eyeY, z - stage.eyeZ)
 
-    @Test fun heroFillsAbout75PercentOfPortraitWidthAndFitsShortWindows() {
+    @Test fun heroFillsAbout85PercentOfPortraitWidthAndFitsShortWindows() {
         val mesh = MatterMeshes.slab()
         for ((width, height) in listOf(1080 to 1600, 360 to 400, 900 to 300)) {
             val stage = stage(width, height)
@@ -35,13 +35,13 @@ class MatterStageTest {
             }
             if (height > width) {
                 val occupied = (points.maxOf { it.first } - points.minOf { it.first }) / width
-                assertTrue("hero width is $occupied", occupied in .74f.. .76f)
+                assertTrue("hero width is $occupied", occupied in .84f.. .86f)
             }
             val centreY = (points.maxOf { it.second } + points.minOf { it.second }) / 2f
             assertEquals("silhouette centres in the visible scene", height * .5f, centreY, height * .012f)
             if (width == 1080) {
-                assertEquals(30f, MatterStage.ELEVATION, 0f)
-                assertTrue("dent view is more top-down", stage.eyeY / stage.distance > .30f)
+                assertEquals(26f, MatterStage.ELEVATION, 0f)
+                assertTrue("lower camera still sees the well", stage.eyeY / stage.distance > .30f)
             }
             assertFalse(stage.frame())
             stage.heightPx += 40
@@ -77,10 +77,37 @@ class MatterStageTest {
         }
         val left = points.minOf { it.first }; val right = points.maxOf { it.first }
         val top = points.minOf { it.second }; val bottom = points.maxOf { it.second }
-        assertEquals("75% of 1080, not of the full-window height", 810.0, right - left, 12.0)
-        assertEquals("horizontal silhouette centre", 540.0, (left + right) / 2, 3.0)
+        assertEquals("85% of 1080, not of the full-window height", 918.0, right - left, 12.0)
+        assertEquals("rounded silhouette stays centred within 1.4 dp", 540.0, (left + right) / 2, 4.0)
         assertEquals("centre of [356,1919] above controls", 1137.5, (top + bottom) / 2, 6.0)
         assertTrue(bottom < surfaceHeight - panelHeight - bottomInset)
+    }
+
+    @Test fun fullIdleOrbitKeepsAMarginAndPickingOnTheRenderedSurface() {
+        val mesh = MatterMeshes.slab(rigid = true)
+        for ((width, height) in listOf(1080 to 1563, 360 to 400, 900 to 300)) {
+            val stage = stage(width, height)
+            for (yaw in -6..6) {
+                stage.orbit(yaw.toFloat())
+                val azimuth = Math.toRadians((MatterStage.AZIMUTH + yaw).toDouble())
+                val sin = kotlin.math.sin(azimuth).toFloat()
+                val cos = kotlin.math.cos(azimuth).toFloat()
+                for (i in mesh.positions.indices step 3) {
+                    val x = mesh.positions[i] - stage.targetX
+                    val y = mesh.positions[i + 1] - stage.targetY
+                    val z = mesh.positions[i + 2] - stage.targetZ
+                    val depth = stage.distance - (x * sin + z * cos) * MatterStage.COS - y * MatterStage.SIN
+                    val right = (x * cos - z * sin) / (depth * MatterStage.TAN_HALF_FOV)
+                    val up = (-(x * sin + z * cos) * MatterStage.SIN + y * MatterStage.COS) /
+                        (depth * MatterStage.TAN_HALF_FOV * height / width)
+                    assertTrue("horizontal margin at yaw=$yaw", kotlin.math.abs(right) < .96f)
+                    assertTrue("vertical margin at yaw=$yaw", kotlin.math.abs(up) < .96f)
+                }
+                val picked = hit(stage, -.6f, 0f, .2f)!!
+                assertEquals(-.6f, picked.first, .001f)
+                assertEquals(.2f, picked.second, .001f)
+            }
+        }
     }
 
     @Test fun roundedSilhouettePicksTopFrontAndSideButRejectsEmptyBevelCorner() {

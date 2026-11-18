@@ -153,6 +153,7 @@ vertex {
 }
 fragment {
     #include "matter_detail.fs"
+    #include "matter_studio.fs"
     // hash11 from "Hash without Sine", (c) 2014 David Hoskins, MIT (see the file header):
     // no sin(), stable at highp on mobile GPUs.
     highp float steelHash(highp float x) {
@@ -168,22 +169,15 @@ fragment {
         f = f * f * (3.0 - 2.0 * f);
         return mix(steelHash(i), steelHash(i + 1.0), f) - 0.5;
     }
-    // Pre-exposed studio radiance seen in a mirror direction: dim floor, bright ceiling,
-    // one long overhead softbox along the brushing and the key spot. Same scale as the
-    // unlit floor (STUDIO_GREY 0.08), so steel reflects a room that exists on screen.
-    vec3 steelStudio(vec3 r) {
-        float up = smoothstep(-0.25, 0.85, r.y);
-        float level = mix(0.05, 0.42, up);
-        float box = smoothstep(0.55, 0.95, r.y);
-        float key = pow(max(dot(r, vec3(-0.38, 0.76, 0.51)), 0.0), 12.0);
-        return vec3(level + 0.45 * box + 0.9 * key);
-    }
     void material(inout MaterialInputs material) {
         highp vec3 p = variable_rest.xyz;
         mediump vec2 detail = mix(vec2(0.5), texture(materialParams_detail, getUV0()).rg, materialParams.detailBlend);
         vec3 colour = materialParams.albedo;
         float rough = materialParams.roughness;
         vec3 n = normalize(variable_bentNormal.xyz);
+        // Polished roundovers keep their geometric normal. Strong brushed bump and
+        // anisotropy on the narrow front bevel made its reflection read as a dent.
+        float top = smoothstep(0.75, 0.995, n.y);
         // Brushing grooves run along rest-space X. Three octaves across them, each faded
         // once it is finer than about a pixel, so the lines stay crisp but never shimmer.
         highp float across = p.z + p.y;
@@ -198,8 +192,9 @@ fragment {
         // The baked atlas keeps the slow, wide variation of the brushing pass.
         lines += (detail.r - 0.5) * 0.5;
         colour *= 1.0 + lines * 0.24;
-        rough += lines * 0.10 + (detail.g - 0.5) * 0.04;
-        vec3 detailed = matterBump(n, lines * 0.0016);
+        rough += (lines * 0.10 + (detail.g - 0.5) * 0.04) * top;
+        rough = mix(max(rough, 0.38), rough, top);
+        vec3 detailed = matterBump(n, lines * 0.0016 * top);
         mat3 frame = getWorldTangentFrame();
         mat3 toTangent = transpose(frame);
         material.normal = toTangent * detailed;
@@ -210,20 +205,19 @@ fragment {
         prepareMaterial(material);
         float cavity = variable_bentTangent.w;
         vec3 v = getWorldViewVector();
-        // Same bent reflection Filament uses for anisotropic IBL, applied to the studio.
-        vec3 across3 = normalize(cross(detailed, groove));
-        vec3 bent = normalize(mix(detailed, cross(cross(groove, v), groove),
-            abs(materialParams.anisotropy) * clamp(5.0 * rough, 0.0, 1.0)));
-        vec3 r = reflect(-v, bent);
-        vec3 studio = steelStudio(r) + steelStudio(normalize(r + across3 * 0.18)) +
-            steelStudio(normalize(r - across3 * 0.18));
+        // The finite strip supplies spatial motion on the flat top. Its long Z axis
+        // spreads the highlight across the X brushing; Filament handles anisotropic IBL.
+        // A broad neutral edge reflection avoids a bright/dark groove along the bevel.
+        vec3 r = reflect(-v, detailed);
+        vec3 studio = mix(vec3(0.30), matterStudioStrip(getUserWorldPosition(), r,
+            0.65 + rough * 2.0), top);
         material.baseColor = vec4(colour * (1.0 - 0.42 * cavity), 1.0);
         material.roughness = clamp(rough, 0.045, 1.0);
         material.metallic = materialParams.metallic;
         material.reflectance = 0.5;
         material.ambientOcclusion = 1.0 - 0.72 * cavity;
-        material.anisotropy = materialParams.anisotropy;
-        material.emissive = vec4(colour * studio * (1.0 / 3.0) * (1.0 - 0.8 * cavity), 0.0);
+        material.anisotropy = materialParams.anisotropy * top;
+        material.emissive = vec4(colour * studio * (1.0 - 0.8 * cavity), 0.0);
         material.postLightingColor = matterRipple(p);
     }
 }

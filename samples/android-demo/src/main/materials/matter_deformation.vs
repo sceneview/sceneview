@@ -77,6 +77,22 @@ highp vec4 dentField(highp vec2 p) {
             gate * 10.0 * cos(offset * 10.0)) * delta / distance;
     }
     #endif
+    #ifdef MATTER_EDGE_TAPER
+    // Finish the well, displaced rim and recovery trail BEFORE the bevel. A separable
+    // quintic has zero slope and curvature at both ends, including at the corners.
+    // Carry the product-rule gradient into the normal: fading height alone leaves a
+    // sharp lighting crest even when the silhouette is smooth. Opening squash is
+    // applied later so the whole supported slab can still compress uniformly.
+    float edgeWidth = max(materialParams.radius * 0.65, materialParams.dimensions.w * 4.0);
+    vec2 edgeT = clamp((materialParams.dimensions.xz - abs(p) - materialParams.dimensions.w) /
+        edgeWidth, 0.0, 1.0);
+    vec2 edge = edgeT * edgeT * edgeT * (edgeT * (edgeT * 6.0 - 15.0) + 10.0);
+    vec2 edgeDerivative = -sign(p) * 30.0 * edgeT * edgeT *
+        (edgeT - 1.0) * (edgeT - 1.0) / edgeWidth;
+    float taper = edge.x * edge.y;
+    gradient = gradient * taper + field * edgeDerivative * edge.yx;
+    field *= taper;
+    #endif
     return vec4(field, gradient, pile);
 }
 #endif

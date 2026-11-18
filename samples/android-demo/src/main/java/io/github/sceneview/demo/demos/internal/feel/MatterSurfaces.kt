@@ -6,8 +6,8 @@ package io.github.sceneview.demo.demos.internal.feel
  * coloured by volume absorption. The other RGB values are diffuse albedos.
  *
  *                 albedo / reflectance     roughness  metal  coat  sheen
- * Memory foam     .70 .63 .45              .94        0      0     0
- * Gel             1 1 1                   .14        0      0     0  (clear aqua absorption, IOR 1.36)
+ * Memory foam     .82 .77 .68              .88        0      0     0
+ * Gel             1 1 1                   .11        0      0     0  (clear aqua absorption, IOR 1.36)
  * Velvet          .009 .065 .028           .90        0      0     pale pile, strength 1, roughness .70
  * Leather         .22 .075 .028            .44        0      .22   0  (coat roughness .30)
  * Carrara marble  .82 .83 .80              .09        0      1     0  (coat roughness .055)
@@ -31,8 +31,8 @@ internal object MatterSurfaces {
     )
 
     private val surfaces = arrayOf(
-        Surface(.70f, .63f, .45f, .94f, bulge = .12f, visualMm = .032f),
-        Surface(1f, 1f, 1f, .14f, bulge = .20f, visualMm = .036f),
+        Surface(.82f, .77f, .68f, .88f, bulge = .035f, rimWidth = .65f, visualMm = .032f),
+        Surface(1f, 1f, 1f, .11f, bulge = .20f, visualMm = .036f),
         Surface(.009f, .065f, .028f, .90f, sheen = 1f, sheenRoughness = .70f,
             bulge = .10f, visualMm = .055f),
         Surface(.22f, .075f, .028f, .44f, coat = .22f, coatRoughness = .30f,
@@ -43,21 +43,21 @@ internal object MatterSurfaces {
     const val GEL_IOR = 1.36f
     const val GEL_TRANSMISSION = 1f
     // Beer-Lambert coefficients per model-space unit. Through 0.95 units these transmit
-    // 80%, 95%, 96% RGB: a clear aqua tint from above, deeper along the long side paths.
-    const val GEL_ABSORPTION_RED = .24f
-    const val GEL_ABSORPTION_GREEN = .055f
-    const val GEL_ABSORPTION_BLUE = .04f
+    // 94%, 98%, 99% RGB: a slight aqua tint that stays clear along the side paths too.
+    const val GEL_ABSORPTION_RED = .065f
+    const val GEL_ABSORPTION_GREEN = .020f
+    const val GEL_ABSORPTION_BLUE = .015f
     operator fun get(material: FeelMaterial): Surface = surfaces[material.ordinal]
 
     /** Signed for gel's overshoot; always leaves a supported layer under the deepest dent. */
     fun visualDepth(depthMm: Float, material: FeelMaterial): Float {
         if (material.rigid || !depthMm.isFinite()) return 0f
         val depth = if (material == FeelMaterial.MemoryFoam) {
-            // A light 3 mm press already makes a 0.39-unit bowl, with a smooth return to zero.
+            // A light 3 mm press already makes a 0.43-unit bowl, with a smooth return to zero.
             // Only the display mapping changes; the spring and slow recovery stay physical.
-            FeelSimulation.PAD_THICKNESS * .78f * depthMm.coerceAtLeast(0f) / (depthMm.coerceAtLeast(0f) + 2.7f)
+            FeelSimulation.PAD_THICKNESS * .82f * depthMm.coerceAtLeast(0f) / (depthMm.coerceAtLeast(0f) + 2.4f)
         } else depthMm * get(material).visualMm
-        return depth.coerceIn(-FeelSimulation.PAD_THICKNESS * .25f, FeelSimulation.PAD_THICKNESS * .78f)
+        return depth.coerceIn(-FeelSimulation.PAD_THICKNESS * .25f, FeelSimulation.PAD_THICKNESS * .82f)
     }
 
     /** The shader's signed peak displacement, converted with the same scene millimetre scale. */
