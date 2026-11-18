@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * `ARSceneView` has two plane knobs, `planeRenderer` and `SceneUnderstanding.planeVisualization`.
@@ -77,5 +78,18 @@ class PlaneVisibilityRuleTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `ARSceneView writes plane visibility once, through the rule`() {
+        // Source contract: a second `arPlaneRenderer.isEnabled =` write (as before #5134)
+        // would let one knob silently override the other again.
+        val source = File("src/main/java/io/github/sceneview/ar/ARSceneView.kt").readText()
+        val writes = Regex("""arPlaneRenderer\.isEnabled\s*=(?!=)""").findAll(source).toList()
+        assertEquals("exactly one arPlaneRenderer.isEnabled write in ARSceneView.kt", 1, writes.size)
+        assertTrue(
+            "the one write goes through resolvePlaneVisibility",
+            source.contains("arPlaneRenderer.isEnabled = resolvePlaneVisibility(planeRenderer, sceneUnderstanding)"),
+        )
     }
 }
