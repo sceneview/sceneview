@@ -283,6 +283,34 @@ class ScanDepthModelTest {
         assertTrue("the sides' foot is gone: $lowSide", lowSide > 0)
     }
 
+    @Test
+    fun `a low object with no support seen round it is cut nowhere`() {
+        val positions = ArrayList<Float>()
+        val normals = ArrayList<Float>()
+        val indices = ArrayList<Int>()
+        fun sheet(o: FloatArray, u: FloatArray, v: FloatArray, nu: Int, nv: Int, n: FloatArray) {
+            val base = positions.size / 3
+            for (j in 0..nv) for (i in 0..nu) {
+                for (k in 0 until 3) positions += o[k] + u[k] * i + v[k] * j
+                normals += n.toList()
+            }
+            for (j in 0 until nv) for (i in 0 until nu) {
+                val a = base + j * (nu + 1) + i
+                indices += listOf(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2)
+            }
+        }
+        val step = 0.01f
+        // A box 6 cm high, its floor never meshed: only its top and sides.
+        sheet(floatArrayOf(-0.1f, 0.06f, -0.1f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 20, 20, floatArrayOf(0f, 1f, 0f))
+        sheet(floatArrayOf(-0.1f, 0f, -0.1f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 20, 6, floatArrayOf(0f, 0f, -1f))
+        sheet(floatArrayOf(-0.1f, 0f, 0.1f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 20, 6, floatArrayOf(0f, 0f, 1f))
+        val count = positions.size / 3
+        val mesh = RerunMesh(positions.toFloatArray(), normals.toFloatArray(), IntArray(count) { GREY }, indices.toIntArray())
+        val box = ScanBox(centerX = 0f, centerZ = 0f, baseY = 0f, yaw = 0f, length = 0.2f, depth = 0.2f, height = 0.06f)
+        val cropped = checkNotNull(cropToSubject(mesh, box))
+        assertEquals("top and sides kept whole", mesh.triangleCount, cropped.triangleCount)
+    }
+
     /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
     private fun store(recording: Boolean, header: ScanDepthHeader = HEADER, recordedFrames: List<DepthFrame> = frames): RerunSessionStore {
         val store = RerunSessionStore(folder.newFolder())

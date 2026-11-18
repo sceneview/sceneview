@@ -4,6 +4,7 @@ import io.github.sceneview.demo.demos.FILLED_OBJECT_M
 import io.github.sceneview.demo.demos.RerunModelSource
 import io.github.sceneview.demo.demos.fillsObject
 import io.github.sceneview.demo.demos.ObjectResultInputs
+import io.github.sceneview.demo.demos.captureLoaded
 import io.github.sceneview.demo.demos.objectReconstruction
 import io.github.sceneview.demo.demos.rebuildsStale
 import org.junit.Assert.assertEquals
@@ -253,6 +254,22 @@ class ScanSubjectTest {
         assertSame(ObjectResultInputs.NONE, ObjectResultInputs.of(ScanScope.Object, null, null, crate, VOXEL, loaded = true))
         // Not an object: decided at once, whatever is loaded.
         assertSame(ObjectResultInputs.NONE, ObjectResultInputs.of(ScanScope.Room, null, null, null, VOXEL, loaded = false))
+    }
+
+    @Test
+    fun `an opening let go half-way holds no later scan back`() {
+        val crate = round(CRATE_X, CRATE_Z, HEIGHT / 2)
+        // A stored scan is opened: its files are read, its result waits.
+        assertFalse(captureLoaded(readingId = "stored", shownId = "stored"))
+        assertNull(ObjectResultInputs.of(ScanScope.Object, null, null, crate, VOXEL, captureLoaded("stored", "stored")))
+        // Back, before they were read: the flag stays on that scan. A live scan is shown next —
+        // its own data in hand, saved or not yet — and is decided at once.
+        for (live in listOf("live", null)) {
+            assertTrue(captureLoaded(readingId = "stored", shownId = live))
+            val inputs = checkNotNull(ObjectResultInputs.of(ScanScope.Object, RerunModelSource.Surfels(cloud), cloud, crate, VOXEL, captureLoaded("stored", live)))
+            assertTrue(inputs.filled)
+        }
+        assertTrue(captureLoaded(readingId = null, shownId = "stored"))
     }
 
     @Test
