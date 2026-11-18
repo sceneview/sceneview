@@ -45,8 +45,7 @@ Docs use `docs/docs/assets/images/logo-sceneview.svg`, `favicon.svg` (PWA) and
 to the root favicon; its inline header symbol remains for the demo-code batch.
 
 Composed artwork still containing the former mark is outside this identity export:
-`feature-graphic.svg`, `exports/store/`, `exports/social/`, `social-preview.html`,
-`website-static/og-image.{svg,png}`, the docs hero/badge illustrations, and the Android
+`feature-graphic.svg`, `exports/store/`, `social-preview.html`, the docs hero/badge illustrations, and the Android
 TV banner. Store screenshots, thumbnails and demo code are unchanged.
 
 Export specifications: [Android adaptive icons](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive),
@@ -79,5 +78,5 @@ Not repeated here, so they cannot drift: use the M3 role table in `DESIGN.md` §
 
 ### Website
 - [x] Favicon — `website-static/favicon.svg` (compact monochrome, light/dark)
-- [x] OG image (1200x630) — `website-static/og-image.svg` (gradient, to flatten)
+- [x] OG image (1200x630) — `website-static/og-image.svg` (flat; the PNG is rendered with the site fonts, copied to `exports/social/`)
 - [x] Apple touch icon (180x180) — `website-static/apple-touch-icon.svg` (flat, full square)
