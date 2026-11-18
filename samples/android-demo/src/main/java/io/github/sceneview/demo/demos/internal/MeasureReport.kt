@@ -159,3 +159,18 @@ fun measureShareText(
     lines += "AR measurements on a phone are accurate to a few centimetres."
     return lines.joinToString("\n")
 }
+
+/** Readable dimensions and per-dimension provenance alongside the JSON attachment. */
+internal fun objectMeasureShareText(values: Map<ObjectDimension, ObjectMeasureValue>): String {
+    val dimensions = ObjectDimension.entries.joinToString(" × ") { objectMeasureNumber(values[it]) }
+    val provenance = ObjectDimension.entries.mapNotNull { axis ->
+        values[axis]?.let { value ->
+            "${axis.symbol} " + when (value.provenance) {
+                ObjectMeasureProvenance.Measured -> "measured"
+                ObjectMeasureProvenance.Manual -> "entered manually"
+            }
+        }
+    }.joinToString("; ")
+    return "Object $dimensions mm (L × W × H) — approximate" +
+        if (provenance.isEmpty()) "." else "; $provenance."
+}

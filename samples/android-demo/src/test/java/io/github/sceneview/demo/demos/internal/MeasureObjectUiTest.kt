@@ -51,8 +51,8 @@ class MeasureObjectUiTest {
         compose.onNodeWithText("Width: 53.5 mm · manual").assertIsDisplayed()
         compose.onAllNodesWithText("Repeat")[1].performScrollTo().performClick()
         compose.onNodeWithText("Capture width · 2 of 3").assertIsDisplayed()
-        compose.onNodeWithText("L: 220").assertIsDisplayed()
-        compose.onNodeWithText("H: 35").assertIsDisplayed()
+        compose.onNodeWithText("L: 220 mm").assertIsDisplayed()
+        compose.onNodeWithText("H: 35 mm").assertIsDisplayed()
         compose.onNodeWithText("Capture endpoint 1").assertIsDisplayed()
     }
 }

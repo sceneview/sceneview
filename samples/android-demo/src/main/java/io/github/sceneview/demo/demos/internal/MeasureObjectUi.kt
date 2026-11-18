@@ -34,6 +34,18 @@ internal fun objectMeasureNumber(value: ObjectMeasureValue?): String = value?.le
     BigDecimal.valueOf(it.millimeters).setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
 } ?: "—"
 
+internal fun objectMeasureChip(axis: ObjectDimension, value: ObjectMeasureValue?): String =
+    "${axis.symbol}: ${objectMeasureNumber(value)}" + if (value != null) " mm" else ""
+
+internal fun objectMeasureStatus(axis: ObjectDimension, value: ObjectMeasureValue): String =
+    "${axis.name} " + when (value.provenance) {
+        ObjectMeasureProvenance.Manual -> "entered manually"
+        ObjectMeasureProvenance.Measured -> "captured"
+    } + ". Continue, correct or repeat."
+
+internal fun objectMeasureInputError(input: String, edited: Boolean): Boolean =
+    edited && parseObjectMillimeters(input) == null
+
 @Composable
 internal fun <P> MeasureObjectCard(
     measure: ObjectMeasure<P>,
@@ -73,13 +85,13 @@ internal fun <P> MeasureObjectCard(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         ObjectDimension.entries.forEach { axis ->
                             TextButton(onClick = { onChange(measure.select(axis)) }, modifier = Modifier.weight(1f)) {
-                                Text("${axis.symbol}: ${objectMeasureNumber(measure.dimension(axis).value)}")
+                                Text(objectMeasureChip(axis, measure.dimension(axis).value))
                             }
                         }
                     }
                     val dimension = measure.dimension()
                     Text(
-                        if (dimension.value != null) "${measure.selected.name} captured. Continue, correct or repeat."
+                        if (dimension.value != null) objectMeasureStatus(measure.selected, dimension.value)
                         else "Aim at endpoint ${dimension.endpoints.size + 1} of 2 on the object, then tap Capture.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -98,7 +110,7 @@ internal fun <P> MeasureObjectCard(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             val value = measure.dimension(axis).value
                             TextButton(onClick = { editing = axis }, modifier = Modifier.weight(1f)) {
-                                Text("${axis.name}: ${objectMeasureNumber(value)} mm" + if (value?.provenance == ObjectMeasureProvenance.Manual) " · manual" else "")
+                                Text("${axis.name}: ${objectMeasureNumber(value)} mm" + if (value?.provenance == ObjectMeasureProvenance.Manual) " · manual" else "", color = MaterialTheme.colorScheme.onSurface)
                             }
                             TextButton(onClick = { onChange(measure.repeat(axis)) }) { Text("Repeat") }
                         }
@@ -109,16 +121,18 @@ internal fun <P> MeasureObjectCard(
     }
     editing?.let { axis ->
         var input by remember(axis) { mutableStateOf(measure.dimension(axis).value?.let { objectMeasureNumber(it) }.orEmpty()) }
+        var edited by remember(axis) { mutableStateOf(false) }
         val parsed = parseObjectMillimeters(input)
+        val inputError = objectMeasureInputError(input, edited)
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text("${axis.name} in millimeters") },
             text = {
                 OutlinedTextField(
-                    value = input, onValueChange = { input = it }, singleLine = true,
+                    value = input, onValueChange = { input = it; edited = true }, singleLine = true,
                     label = { Text("Millimeters") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = parsed == null,
-                    supportingText = { Text("Enter a nonnegative number. Saved as manual.") },
+                    isError = inputError,
+                    supportingText = { Text(if (inputError) "Enter a number above 0." else "Saved as manual.") },
                 )
             },
             confirmButton = { TextButton(enabled = parsed != null, onClick = {

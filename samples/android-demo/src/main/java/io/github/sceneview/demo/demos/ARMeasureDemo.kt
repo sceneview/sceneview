@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import android.content.ClipData
+import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
@@ -198,6 +200,7 @@ import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.objectMeasureDepthHit
+import io.github.sceneview.demo.demos.internal.objectMeasureShareText
 import io.github.sceneview.demo.demos.internal.objectMeasureJson
 import io.github.sceneview.demo.demos.internal.objectMeasureNumber
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -578,10 +581,11 @@ fun MeasureScreen(onBack: () -> Unit) {
                         label = if (objectSharing) "Preparing JSON…" else "Share JSON",
                         enabled = objectMeasure.stage == ObjectMeasureStage.Review && objectMeasure.complete && !objectSharing,
                         onClick = {
-                            val json = objectMeasureJson(
-                                ObjectDimension.entries.mapNotNull { axis -> objectMeasure.dimension(axis).value?.let { axis to it } }.toMap(),
-                                Build.MODEL,
-                            )
+                            val values = ObjectDimension.entries.mapNotNull { axis ->
+                                objectMeasure.dimension(axis).value?.let { axis to it }
+                            }.toMap()
+                            val json = objectMeasureJson(values, Build.MODEL)
+                            val text = objectMeasureShareText(values)
                             objectSharing = true
                             shareScope.launch {
                                 val uri = withContext(Dispatchers.IO) {
@@ -592,7 +596,16 @@ fun MeasureScreen(onBack: () -> Unit) {
                                         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                                     }.getOrNull()
                                 }
-                                if (uri == null || !shareFile(context, uri, "application/json", "Share object dimensions")) {
+                                if (uri == null || !runCatching {
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TEXT, text)
+                                        clipData = ClipData.newRawUri(null, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(send, "Share object dimensions"))
+                                }.isSuccess) {
                                     objectMessage = "Could not share the JSON file. Try again."
                                 }
                                 objectSharing = false
@@ -729,7 +742,7 @@ fun MeasureScreen(onBack: () -> Unit) {
                             if (next == objectMeasure) {
                                 anchor?.detach()
                                 objectMessage = if (!depthSupported) "Depth unavailable. Enter the dimension with Edit mm."
-                                    else "No valid endpoint. Aim on the object and try again; repeat if the first endpoint lost tracking."
+                                    else "Couldn't find the surface here. Move the phone slowly sideways, then aim at the object's edge again."
                             } else {
                                 changeObject(next)
                                 aim = null
@@ -923,6 +936,7 @@ fun MeasureScreen(onBack: () -> Unit) {
                     if (cameraReady && arCoreAvailability == null && !arSessionFailed && (!objectMode || objectMeasure.stage == ObjectMeasureStage.Capture)) {
                         MeasureReticle(
                             aim = aim,
+                            validObjectHit = objectMode && aim != null,
                             raising = !objectMode && (phase == MeasurePhase.Raising || marking),
                             wallFoot = !objectMode && board.mode != MeasureMode.Distance && phase != MeasurePhase.Raising && !marking,
                             // A refused tap says why for a moment; aiming off a wall it reads says it all along.
@@ -1421,10 +1435,11 @@ internal fun MeasureReticle(
     modifier: Modifier = Modifier,
     wallFoot: Boolean = false,
     refusal: MeasureRefusal? = null,
+    validObjectHit: Boolean = false,
 ) {
     val kind = aim?.snap?.kind ?: MeasureSnapKind.None
     val onFoot = aim?.wallFoot != null
-    val locked = aim != null && (kind != MeasureSnapKind.None || aim.closes)
+    val locked = validObjectHit || (aim != null && (kind != MeasureSnapKind.None || aim.closes))
     val guide = kind == MeasureSnapKind.Vertical || kind == MeasureSnapKind.Level || kind == MeasureSnapKind.Square
     val ringScale by animateFloatAsState(
         targetValue = when {
@@ -1457,6 +1472,7 @@ internal fun MeasureReticle(
             val radius = size.minDimension / 2f - SceneViewTokens.Glass.edgeWidth.toPx() * 3
             val stroke = SceneViewTokens.Glass.edgeWidth.toPx()
             drawCircle(SceneViewTokens.Glass.edgeHalo, radius = radius, style = Stroke(stroke * 4))
+            if (validObjectHit) drawCircle(accent.copy(alpha = 0.3f), radius = radius)
             drawCircle(accent, radius = radius, style = Stroke(stroke * 2))
             if (raising) {
                 // Raising: a crosshair, the aim is a line on the wall, not a point.

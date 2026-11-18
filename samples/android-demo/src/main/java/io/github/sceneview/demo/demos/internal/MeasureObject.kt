@@ -13,7 +13,7 @@ internal enum class ObjectMeasureStage { Prepare, Capture, Review }
 internal enum class ObjectMeasureProvenance { Measured, Manual }
 
 internal data class ObjectMeasureValue(val millimeters: Double, val provenance: ObjectMeasureProvenance) {
-    init { require(millimeters.isFinite() && millimeters >= 0.0) }
+    init { require(millimeters.isFinite() && millimeters > 0.0) }
 }
 
 internal data class ObjectMeasureDimension<P>(
@@ -72,10 +72,10 @@ internal data class ObjectMeasure<P>(
 
 private fun Position.finite() = x.isFinite() && y.isFinite() && z.isFinite()
 
-/** Accept a decimal comma as well as a decimal point, but never NaN, infinity or negative sizes. */
+/** Accept a decimal comma as well as a decimal point, but never NaN, infinity or nonpositive sizes. */
 internal fun parseObjectMillimeters(text: String): Double? =
     text.trim().replace(',', '.').takeIf { it.matches(Regex("[0-9]+(?:\\.[0-9]+)?")) }
-        ?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        ?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
 
 /** Depth only: a support plane or feature fallback cannot masquerade as an object endpoint. */
 internal fun <T> objectMeasureDepthHit(depthPoint: T?, depthImage: () -> T?): T? = depthPoint ?: depthImage()

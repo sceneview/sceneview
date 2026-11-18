@@ -56,7 +56,7 @@ class MeasureObjectTest {
 
     @Test fun `manual only fallback can finish without depth`() {
         var measure = ObjectMeasure<Position>().start()
-        ObjectDimension.entries.forEach { measure = measure.correct(it, 0.0).next() }
+        ObjectDimension.entries.forEach { measure = measure.correct(it, 1.0).next() }
         assertTrue(measure.complete)
         assertEquals(ObjectMeasureStage.Review, measure.stage)
     }
@@ -92,11 +92,46 @@ class MeasureObjectTest {
 
     @Test fun `manual input rejects invalid numeric values`() {
         assertEquals(52.5, parseObjectMillimeters(" 52,5 ")!!, 0.0)
-        assertEquals(0.0, parseObjectMillimeters("0")!!, 0.0)
-        listOf("", "-1", "NaN", "Infinity", "1e309", "1,2,3", "2mm").forEach { assertNull(parseObjectMillimeters(it)) }
-        listOf(-1.0, Double.NaN, Double.POSITIVE_INFINITY).forEach {
+        listOf("", "0", "0.0", "-1", "NaN", "Infinity", "1e309", "1,2,3", "2mm").forEach { assertNull(parseObjectMillimeters(it)) }
+        listOf(0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY).forEach {
             assertThrows(IllegalArgumentException::class.java) { ObjectMeasureValue(it, ObjectMeasureProvenance.Manual) }
         }
+    }
+
+    @Test fun `status describes each dimensions provenance honestly`() {
+        ObjectDimension.entries.forEach { axis ->
+            assertEquals("${axis.name} entered manually. Continue, correct or repeat.",
+                objectMeasureStatus(axis, ObjectMeasureValue(182.0, ObjectMeasureProvenance.Manual)))
+            assertEquals("${axis.name} captured. Continue, correct or repeat.",
+                objectMeasureStatus(axis, ObjectMeasureValue(182.0, ObjectMeasureProvenance.Measured)))
+        }
+    }
+
+    @Test fun `capture chips include units only for present values`() {
+        ObjectDimension.entries.forEach { axis ->
+            assertEquals("${axis.symbol}: —", objectMeasureChip(axis, null))
+            assertEquals("${axis.symbol}: 182 mm", objectMeasureChip(axis, ObjectMeasureValue(182.0, ObjectMeasureProvenance.Manual)))
+            assertEquals("${axis.symbol}: 53.5 mm", objectMeasureChip(axis, ObjectMeasureValue(53.5, ObjectMeasureProvenance.Measured)))
+        }
+    }
+
+    @Test fun `editor shows errors only after invalid edits`() {
+        assertFalse(objectMeasureInputError("", false))
+        listOf("", "0", "-2", "abc").forEach { assertTrue(objectMeasureInputError(it, true)) }
+        assertFalse(objectMeasureInputError("0.1", true))
+    }
+
+    @Test fun `share includes dimensions approximation and mixed provenance`() {
+        val values = mapOf(
+            ObjectDimension.Length to ObjectMeasureValue(182.0, ObjectMeasureProvenance.Manual),
+            ObjectDimension.Width to ObjectMeasureValue(120.0, ObjectMeasureProvenance.Measured),
+            ObjectDimension.Height to ObjectMeasureValue(35.0, ObjectMeasureProvenance.Manual),
+        )
+        assertEquals("Object 182 × 120 × 35 mm (L × W × H) — approximate; L entered manually; W measured; H entered manually.",
+            objectMeasureShareText(values))
+        assertEquals("Object 182 × — × — mm (L × W × H) — approximate; L entered manually.",
+            objectMeasureShareText(values.filterKeys { it == ObjectDimension.Length }))
+        assertEquals("Object — × — × — mm (L × W × H) — approximate.", objectMeasureShareText(emptyMap()))
     }
 
     @Test fun `JSON preserves numbers provenance unknowns and uncalibrated uncertainty`() {
