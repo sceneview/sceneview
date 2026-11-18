@@ -88,8 +88,8 @@ def parse_hud(text):
     # Compose may merge the HUD into one node. Accept comma, thin/NBSP, apostrophe and dot
     # grouping for counts, plus either decimal separator for floor area.
     # scan_coverage_label says "Scan map: 14 m² of floor covered..."; older HUDs
-    # put "14 m² floor" directly in the status line.
-    area = re.search(r"(\d+(?:[.,]\d+)?)\s*m(?:²|2)\s+(?:of\s+)?floor\b", text, re.I)
+    # put "14 m² floor" directly in the status line; the live HUD says "Room · 0:25 · 12 m² scanned".
+    area = re.search(r"(\d+(?:[.,]\d+)?)\s*m(?:²|2)\s+(?:(?:of\s+)?floor\b|scanned\b)", text, re.I)
     points = re.search(r"(\d(?:[\d,.'’\s\u00a0\u202f]*\d)?)\s+points?\b", text, re.I)
     return {"floor_m2": float(area[1].replace(",", ".")) if area else None,
             "points": int(re.sub(r"\D", "", points[1])) if points else None}
@@ -516,6 +516,8 @@ def record_run(device, walk, result, run_dir, seconds, build_identity):
         touched_app = True
         select_room(device)
         result["scan_scope"] = "room"
+        # The default 256 KiB main buffer wraps while the result builds and drops the first ScanBench lines.
+        device.call("logcat", "-G", "16M")
         device.call("logcat", "-b", "all", "-c")
         result["clip_duration_s"] = seconds
         result["live_requested_s"] = math.ceil(seconds + 20)
@@ -542,10 +544,13 @@ def record_run(device, walk, result, run_dir, seconds, build_identity):
                         rows.append(stop_ui)
                         writer.writerow(stop_ui)
                         polls.flush()
-                        if "stop and review" not in stop_ui["targets"]:
-                            raise BenchError('"Stop and review" not found; live capture retained')
+                        # The live HUD's stop is "Finish scan" (RoomScan.FINISH_SCAN); older builds said "Stop and review".
+                        stop_label = next((label for label in ("Finish scan", "Stop and review")
+                                           if label.casefold() in stop_ui["targets"]), None)
+                        if stop_label is None:
+                            raise BenchError('Neither "Finish scan" nor "Stop and review" found; live capture retained')
                         recorder = Recorder(device, run_dir, "result", 0, 25, token)
-                        tap_epoch = tap(device, stop_ui["targets"], "Stop and review")
+                        tap_epoch = tap(device, stop_ui["targets"], stop_label)
                         live_end_epoch = tap_epoch
                         result["stop_tap_epoch_s"] = tap_epoch
                     next_poll = time.monotonic()
