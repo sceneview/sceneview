@@ -14,10 +14,10 @@
 //   ior, transmission    — dielectric interface and transmitted fraction.
 //   absorption           — Beer-Lambert RGB coefficients per model-space unit.
 //   background, key*, contact — same analytic studio radiance as matter_floor.mat.
-// The studio floor is the only transmitted object in this demo. Intersect it in world
+// The studio floor is the only transmitted geometry in this demo. Intersect it in world
 // space instead of projecting a box exit into the opaque screen-colour buffer. That
 // projection folds the contact footprint into the well when the exit changes planes.
-// Cost: one analytic floor sample and one caustic footprint from screen derivatives;
+// Cost: one analytic floor sample, two analytic strip samples and one caustic footprint;
 // no scene-colour resolve/mips, texture or ray march.
 // matc profile: --optimize-size -p mobile -a opengl -a vulkan (Filament 1.77.3).
 material {
@@ -110,7 +110,12 @@ fragment {
         // is still required: dents shorten the optical column and raised rims lengthen it.
         // The grazing guard only bounds nearly horizontal rays on the vertical bevel.
         float down = max(-ray.y, 0.25);
-        float path = max(p.y + materialParams.dimensions.y, 0.002) / down;
+        // Bound absorption by the first side/bottom exit, not an infinite optical
+        // column. Matter slabs translate but never rotate, so ray.xz is also local XZ.
+        vec2 sideDistance = (materialParams.dimensions.xz - sign(ray.xz) * p.xz) /
+            max(abs(ray.xz), vec2(0.001));
+        float bottomDistance = max(p.y + materialParams.dimensions.y, 0.002) / max(-ray.y, 0.001);
+        float path = max(min(bottomDistance, min(sideDistance.x, sideDistance.y)), 0.002);
         // API world space, like the floor: the key, pool and contact are not camera-relative.
         highp vec3 world = getUserWorldPosition();
         float floorDistance = max(world.y - materialParams.keyTarget.y, 0.002) / down;
@@ -142,7 +147,19 @@ fragment {
         vec3 rested = normalize(centred - clamp(centred, -halfSize + materialParams.dimensions.w,
             halfSize - materialParams.dimensions.w) + vec3(0.0, 1e-5, 0.0));
         float top = smoothstep(0.92, 0.995, rested.y);
-        transmitted *= mix(1.0, 0.6 + 0.4 * focus * sqrt(focus), top);
+        // An off-camera neutral bounce card fills the vertical faces. The midnight
+        // floor alone made a clear interface read as an opaque black-green block.
+        // Keep the continuous floor projection in the well: never switch exit planes
+        // for that sample, which would fold a box-shaped seam through the refraction.
+        transmitted = mix(vec3(0.20), transmitted, mix(0.25, 1.0, top));
+        // A bottom-reflected strip supplies internal glints. Fade it when the ray
+        // exits a side first; no additional geometry, scene-colour pass or ray march.
+        vec3 internalRay = vec3(ray.x, -ray.y, ray.z);
+        float bottomReflection = smoothstep(0.0, 0.15, min(sideDistance.x, sideDistance.y) - bottomDistance);
+        transmitted += 0.28 * bottomReflection *
+            matterStudioStrip(world + ray * bottomDistance, internalRay, 0.75);
+        // Unit gain at rest; stronger bright/dark pairs make release ripples legible.
+        transmitted *= mix(1.0, 0.3 + 0.7 * focus * sqrt(focus), top);
         transmitted *= exp(-materialParams.absorption * path) * materialParams.albedo;
         float f0 = (materialParams.ior - 1.0) / (materialParams.ior + 1.0);
         f0 *= f0;
@@ -156,7 +173,9 @@ fragment {
         material.roughness = materialParams.roughness;
         material.ior = materialParams.ior;
         // w=0 keeps the pre-exposed floor sample identical to the unlit floor outside.
-        material.emissive = vec4(transmitted * ((1.0 - fresnel) * materialParams.transmission), 0.0);
+        vec3 interfaceLight = matterStudioStrip(world, reflect(-v, n), 0.65);
+        material.emissive = vec4(transmitted * ((1.0 - fresnel) * materialParams.transmission) +
+            interfaceLight * fresnel, 0.0);
         material.ambientOcclusion = 1.0;
     }
 }
