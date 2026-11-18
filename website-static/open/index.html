@@ -114,6 +114,15 @@
       font-size: 15px;
       line-height: 1.55;
     }
+    .spatial-card {
+      padding: 24px;
+      margin-bottom: 24px;
+      border-radius: 16px;
+      background: var(--color-surface-container);
+      border: 1px solid var(--color-outline-variant);
+      overflow-wrap: anywhere;
+    }
+    .spatial-card h2 { margin: 0 0 12px; font-size: 24px; }
     .demo-name {
       display: inline-block;
       background: var(--color-surface-container);
@@ -278,6 +287,12 @@
       </p>
     </div>
 
+    <section id="spatial-card" class="spatial-card" hidden aria-label="Spatial answer">
+      <h2 id="spatial-label"></h2>
+      <p id="spatial-dimensions"></p>
+      <p>Opens at real scale in the SceneView app on Android</p>
+    </section>
+
     <div id="content-mobile" class="platform-detected">
       <h1 id="mobile-title">Open in SceneView Demo</h1>
       <p>If the app didn't open automatically, install it and try again.</p>
@@ -359,6 +374,7 @@
     // "ar-cloud-anchor" wrong (→ "AR Cloud Anchor" vs the app's "Cloud
     // Anchors"), so we just hardcode the truth.
     const DEMO_TITLES = {
+      'spatial-answer': 'Spatial answer',
       'model-viewer': 'Model Viewer',
       'geometry': 'Geometry Primitives',
       'animation': 'Animation',
@@ -445,16 +461,34 @@
     // possible answer to it.
     installFileDrop();
 
+    const answerParam = demoId === 'spatial-answer' ? params.get('answer') : null;
+    let spatialAnswer = null;
+    if (!urlParam && answerParam !== null) {
+      try { spatialAnswer = decodeSpatialAnswer(answerParam); } catch (_) { /* Show the existing invalid panel. */ }
+      if (spatialAnswer) {
+        document.getElementById('spatial-card').hidden = false;
+        document.getElementById('spatial-label').textContent = spatialAnswer.label;
+        document.getElementById('spatial-dimensions').textContent = spatialAnswer.object.kind === 'box'
+          ? (([w, h, d]) => `${w} × ${d} cm, ${h} cm high`)(spatialAnswer.object.sizeM.map(m => Math.round(m * 100)))
+          : 'Bundled asset · authored metre scale';
+      }
+    }
+
     if (modelUrl) {
       viewModel(modelUrl, lastPathSegment(modelUrl));
     } else if (urlParam) {
       document.getElementById('content-loading').style.display = 'none';
       show('content-invalid');
       console.warn('open: refused a non-http(s) ?url= value');
-    } else if (!demoId) {
+    } else if (!demoId || (answerParam !== null && !spatialAnswer)) {
       // Invalid request — hide loading and show the error panel.
       document.getElementById('content-loading').style.display = 'none';
       show('content-invalid');
+    } else if (spatialAnswer) {
+      // Spatial answers are Android-only. Keep the answer and install actions visible everywhere.
+      prepareAppButtons(demoId, true);
+      show('content-mobile');
+      if (isAndroid) window.location.href = appSchemeUrl(demoId);
     } else if (isMobile) {
       attemptOpenInApp(demoId);
     } else {
@@ -463,8 +497,26 @@
 
     // ─── Mobile path ─────────────────────────────────────────────────────
     function attemptOpenInApp(id) {
-      const schemeUrl = APP_SCHEME + encodeURIComponent(id);
-      const storeUrl = isAndroid
+      const schemeUrl = prepareAppButtons(id, isAndroid);
+
+      // 1500ms after attempting the scheme, reveal manual actions if still here.
+      const start = Date.now();
+      const t = setTimeout(() => {
+        if (document.hidden || Date.now() - start > 2000) return;
+        show('content-mobile');
+      }, 1500);
+      window.addEventListener('pagehide', () => clearTimeout(t), { once: true });
+      window.location.href = schemeUrl;
+    }
+
+    function appSchemeUrl(id) {
+      return APP_SCHEME + encodeURIComponent(id) +
+        (id === 'spatial-answer' && answerParam !== null ? '?answer=' + encodeURIComponent(answerParam) : '');
+    }
+
+    function prepareAppButtons(id, android) {
+      const schemeUrl = appSchemeUrl(id);
+      const storeUrl = android
         ? `https://play.google.com/store/apps/details?id=${PLAY_PACKAGE_ID}`
         : APP_STORE_URL;
 
@@ -472,29 +524,31 @@
       // fires — feels more responsive than a layout shift mid-redirect.
       document.getElementById('btn-retry').setAttribute('href', schemeUrl);
       document.getElementById('btn-store').setAttribute('href', storeUrl);
-      document.getElementById('btn-store').textContent = isAndroid
+      document.getElementById('btn-store').textContent = android
         ? 'Install on Google Play'
         : 'Open the App Store';
       document.getElementById('mobile-title').textContent =
         `Open ${humanReadable(id)} in SceneView Demo`;
 
-      // 1500ms after attempting the scheme, if we're still here (= the
-      // app didn't intercept the navigation), reveal the manual buttons.
-      // Browsers that DO intercept will background this tab so the
-      // timeout never fires.
-      const start = Date.now();
-      const t = setTimeout(() => {
-        // Heuristic: if the page was hidden during the timeout the OS
-        // likely switched to the app — don't show "didn't open".
-        if (document.hidden || Date.now() - start > 2000) return;
-        show('content-mobile');
-      }, 1500);
-      window.addEventListener('pagehide', () => clearTimeout(t), { once: true });
+      return schemeUrl;
+    }
 
-      // Fire the scheme. On most mobile browsers this hits the OS link
-      // resolver, which opens the app (success) or shows a "no app"
-      // dialog (failure → our timeout fires).
-      window.location.href = schemeUrl;
+    function decodeSpatialAnswer(raw) {
+      if (raw.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(raw)) throw new Error('Invalid payload');
+      const binary = atob(raw.replace(/-/g, '+').replace(/_/g, '/'));
+      if (btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') !== raw) throw new Error('Invalid base64url');
+      const spec = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, c => c.charCodeAt(0))));
+      if (!spec || spec.v !== 1 || typeof spec.label !== 'string' || spec.label.length > 60 ||
+          !['user', 'estimated', 'measured'].includes(spec.dimensionSource) ||
+          !['floor', 'table'].includes(spec.placement)) throw new Error('Invalid answer');
+      const object = spec.object;
+      if (object?.kind === 'box') {
+        if (!Array.isArray(object.sizeM) || object.sizeM.length !== 3 ||
+            object.sizeM.some(m => typeof m !== 'number' || !Number.isFinite(m) || m <= 0.01 || m > 10)) throw new Error('Invalid size');
+      } else if (object?.kind !== 'asset' || object.assetId !== 'wishbone-chair') {
+        throw new Error('Unknown asset');
+      }
+      return spec;
     }
 
     // ─── Desktop path: render a QR code targeting THIS page's URL ────────
