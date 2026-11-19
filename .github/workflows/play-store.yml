@@ -137,16 +137,16 @@ jobs:
               VERSION_NAME="$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)"
             fi
           fi
-          echo "code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
           # Detect a clean minor/major bump (`X.Y.0`). `endsWith(ref, '.0')`
           # in a GHA `if:` expression mis-matches `v4.3.10` — using a real
           # bash regex here closes that hole.
           if [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
-            echo "is_minor_bump=true" >> $GITHUB_OUTPUT
+            echo "is_minor_bump=true" >> "$GITHUB_OUTPUT"
           else
-            echo "is_minor_bump=false" >> $GITHUB_OUTPUT
+            echo "is_minor_bump=false" >> "$GITHUB_OUTPUT"
           fi
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
 
@@ -179,20 +179,21 @@ jobs:
       # mis-deploying.
       - name: Compute target tracks
         id: tracks
+        env:
+          INPUT_TRACK: ${{ github.event.inputs.track }}
         run: |
-          INPUT_TRACK='${{ github.event.inputs.track }}'
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$INPUT_TRACK" ] && [ "$INPUT_TRACK" != "auto" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_TRACK" ] && [ "$INPUT_TRACK" != "auto" ]; then
             if [ "$INPUT_TRACK" = "internal+production" ]; then
               TRACKS='["internal","production"]'
             else
               TRACKS="[\"$INPUT_TRACK\"]"
             fi
-          elif [[ '${{ github.ref }}' == refs/tags/v* ]]; then
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TRACKS='["internal","production"]'
           else
             TRACKS='["internal"]'
           fi
-          echo "tracks=$TRACKS" >> $GITHUB_OUTPUT
+          echo "tracks=$TRACKS" >> "$GITHUB_OUTPUT"
           echo "Will publish to: $TRACKS"
 
       - name: Validate keystore secret
@@ -267,8 +268,8 @@ jobs:
               -PversionName=${{ steps.version.outputs.name }}
           }
           aab_ok() {
-            local aab
-            aab=$(ls samples/android-demo/build/outputs/bundle/release/*.aab 2>/dev/null | head -n1)
+            local aabs=(samples/android-demo/build/outputs/bundle/release/*.aab)
+            local aab="${aabs[0]}"
             [ -n "$aab" ] && [ -s "$aab" ] && unzip -tq "$aab" >/dev/null 2>&1
           }
           # An .aab is a zip. A truncated / zero-byte artifact from a flaky
@@ -304,7 +305,8 @@ jobs:
           EXPECT_NAME: ${{ steps.version.outputs.name }}
           EXPECT_CODE: ${{ steps.version.outputs.code }}
         run: |
-          AAB=$(ls samples/android-demo/build/outputs/bundle/release/*.aab | head -n1)
+          AABS=(samples/android-demo/build/outputs/bundle/release/*.aab)
+          AAB="${AABS[0]}"
           bash .claude/scripts/validate-release-artifact.sh \
             "$AAB" "$EXPECT_PKG" "$EXPECT_NAME" "$EXPECT_CODE"
 
@@ -370,7 +372,7 @@ jobs:
         track: ${{ fromJSON(needs.build.outputs.tracks) }}
 
     steps:
-      - name: Checkout (for CHANGELOG.md → whatsnew extraction)
+      - name: Checkout (for Play Store release notes)
         uses: actions/checkout@v7
 
       - name: Download AAB artifact
@@ -379,65 +381,20 @@ jobs:
           name: sceneview-demo-${{ needs.build.outputs.version_name }}
           path: aab
 
-      # Populate Play Store's "What's new in this version" from the matching
-      # `## vX.Y.Z` section in CHANGELOG.md. Writes a single
+      # Prefer curated notes written for demo users: snapshot versions try
+      # whatsnew/unreleased/en-US.txt, then whatsnew/<X.Y.Z>/en-US.txt;
+      # clean release versions try only their own versioned file.
+      # Fall back to CHANGELOG.md only when no matching curated file exists.
+      # The script caps either source at 500 UTF-16 code units and writes a single
       # `whatsnew/whatsnew-en-US` file consumed by `r0adkll/upload-google-play`
-      # via `whatsNewDirectory:`. Snapshot builds (version_name like
-      # `4.4.0-abcd1234`) strip the suffix to find the base release section.
-      #
-      # Google Play caps "What's new" at 500 characters per locale — we truncate
-      # with a trailing ellipsis if longer. If the section isn't found (e.g.
-      # release-cut hasn't moved `## Unreleased` to `## vX.Y.Z` yet), we leave
-      # the file absent so the action skips notes rather than uploading the
-      # version string only.
+      # via `whatsNewDirectory:`. Empty or missing notes and unexpected versions
+      # leave the file absent and extracted=false.
       - name: Extract release notes for Play Store
         id: notes
         env:
           VERSION_NAME: ${{ needs.build.outputs.version_name }}
         run: |
-          set -euo pipefail
-          # Strip the snapshot suffix (`4.4.0-abcd1234` → `4.4.0`) — only the
-          # canonical release lives in CHANGELOG.md.
-          BASE_VERSION="${VERSION_NAME%-*}"
-          mkdir -p whatsnew
-          # `ver` interpolates into a regex inside awk — the dots in `4.3.1`
-          # would otherwise match any character (so `## v4-3-1` would also
-          # hit). `gsub` escapes them before use. Same hygiene applied in
-          # app-store.yml's submission script.
-          awk -v ver="## v$BASE_VERSION" '
-            BEGIN { gsub(/\./, "\\.", ver) }
-            $0 ~ "^"ver"( |$)"   { found=1; next }
-            found && /^## v[0-9]/ { exit }
-            found                 { print }
-          ' CHANGELOG.md > whatsnew/raw.md || true
-
-          if [ ! -s whatsnew/raw.md ]; then
-            echo "::warning::No '## v$BASE_VERSION' section in CHANGELOG.md — Play Store 'What's new' will be left empty"
-            rm -rf whatsnew
-            echo "extracted=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Strip markdown → plain text (stores render literally). Order matters:
-          # links first (`[label](url)` → `label`), then bold/italic/code, then
-          # heading hashes, then squeeze blank-line runs.
-          python3 - << 'PYEOF' > whatsnew/whatsnew-en-US
-          import re, sys
-          text = open('whatsnew/raw.md').read()
-          text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)   # [label](url) → label
-          text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)         # **bold** → bold
-          text = re.sub(r'`([^`]+)`', r'\1', text)               # `code` → code
-          text = re.sub(r'^#{1,6}\s*', '', text, flags=re.M)     # leading ###
-          text = re.sub(r'\n{3,}', '\n\n', text)                 # squeeze blank lines
-          text = text.strip()
-          if len(text) > 500:
-              text = text[:497].rstrip() + '…'
-          sys.stdout.write(text)
-          PYEOF
-          rm -f whatsnew/raw.md
-          echo "extracted=true" >> "$GITHUB_OUTPUT"
-          echo "What's new payload ($(wc -c < whatsnew/whatsnew-en-US) chars):"
-          cat whatsnew/whatsnew-en-US
+          python3 .github/scripts/play_store_notes.py "$VERSION_NAME"
 
       # Two-mode publish:
       #
@@ -797,6 +754,7 @@ jobs:
             # Read first, on the same credentials, so the run log records what
             # the destructive call is about to remove. Read-only; never fails
             # the job (`|| true`) — the apply below is the operation that counts.
+            # shellcheck disable=SC2086 # deliberate word-splitting of the flags
             /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py \
               --dry-run $LISTING_FLAGS || true
           fi

@@ -91,7 +91,7 @@ dependencies {
 }
 ```
 The app module needs `compileSdk = 37` (the published AARs declare `minCompileSdk=37`), `minSdk` 24 or higher, AGP 9.4.0+ and Kotlin 2.3 or newer (SceneView is compiled with 2.4.21, whose metadata a 2.3 compiler reads; Kotlin 2.2 is refused). SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions, so the app compiles Java and Kotlin with JVM target 21:
-```kotlin notest Gradle Kotlin DSL (app module build.gradle.kts), not a Kotlin source file
+```kotlin
 android {
     compileSdk = 37
     defaultConfig { minSdk = 24 }

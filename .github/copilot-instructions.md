@@ -36,7 +36,7 @@ fun My3DScreen() {
         modelLoader = modelLoader,
         cameraManipulator = rememberCameraManipulator()
     ) {
-        rememberModelInstance(modelLoader, "models/helmet.glb")?.let {
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
             ModelNode(modelInstance = it, scaleToUnits = 1.0f, autoAnimate = true)
         }
     }

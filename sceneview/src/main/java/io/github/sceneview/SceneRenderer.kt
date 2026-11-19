@@ -134,6 +134,9 @@ class SceneRenderer(
     /** The `SurfaceView` / `TextureView` this renderer is attached to — weak, the view owns us. */
     private var renderViewRef: WeakReference<android.view.View>? = null
 
+    /** The listener UiHelper installed, so teardown never notifies a replacement listener. */
+    private var textureViewListenerRef: WeakReference<TextureView.SurfaceTextureListener>? = null
+
     private val mirrorHost = object : SurfaceMirrorer.Host {
         override val renderView: android.view.View?
             get() = renderViewRef?.get()
@@ -236,7 +239,12 @@ class SceneRenderer(
         // system, so there is no surface of ours to vote a frame rate on.
         uiHelper.renderCallback =
             makeRendererCallback(viewHeight = { textureView.height }, votable = false)
+        val listenerBefore = textureView.surfaceTextureListener
         uiHelper.attachTo(textureView)
+        // Only the listener UiHelper just installed: a no-op attach must not capture a foreign one.
+        textureViewListenerRef = textureView.surfaceTextureListener
+            ?.takeIf { it !== listenerBefore }
+            ?.let { WeakReference(it) }
         renderViewRef = WeakReference(textureView)
 
         onTouch?.let { dispatch ->
@@ -410,7 +418,7 @@ class SceneRenderer(
      * Safe to call multiple times.
      */
     fun destroy() {
-        // UiHelper.detach invokes onDetachedFromSurface synchronously. Its wait shares the
+        // Surface teardown invokes onDetachedFromSurface synchronously. Its wait shares the
         // mirror wait's budget, excluding time spent in onHostLost.
         val budget = surfaceDetachBudget ?: SurfaceDetachBudget()
         surfaceDetachBudget = budget
@@ -419,6 +427,15 @@ class SceneRenderer(
             // bound at its first mirrored frame.
             surfaceMirrorer?.destroy(budget)
             surfaceMirrorer = null
+            val textureView = renderViewRef?.get() as? TextureView
+            val listener = textureView?.surfaceTextureListener
+            if (listener != null && listener === textureViewListenerRef?.get()) {
+                // UiHelper.detach() removes the listener without releasing its Surface (#4337).
+                // Deliver the normal release callback first. Ignore its return value: TextureView
+                // still owns the SurfaceTexture and releases it after detach clears the listener.
+                textureView.surfaceTexture?.let { listener.onSurfaceTextureDestroyed(it) }
+            }
+            textureViewListenerRef = null
             renderViewRef = null
             votableSurfaceRef.set(null)
             votedFrameRate = 0f

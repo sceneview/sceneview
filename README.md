@@ -105,15 +105,20 @@ import io.github.sceneview.rememberModelInstance
 @Composable
 fun ModelScreen() {
     SceneView(modifier = Modifier.fillMaxSize()) {          // orbit camera + default lighting
-        rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f, autoAnimate = true)
         }
     }
 }
 ```
 
-`models/helmet.glb` lives in `src/main/assets/`. `rememberModelInstance` returns `null` until the
-model is loaded, then recomposes. Never call `modelLoader.createModel*` from a background
+Download the Khronos glTF Sample Assets **Toy Car** (CC0):
+[ToyCar.glb](https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/ToyCar/glTF-Binary/ToyCar.glb).
+Save it as `app/src/main/assets/models/toy_car.glb`, as in the
+[quickstart](docs/docs/quickstart.md#step-3-add-a-3d-model).
+
+`rememberModelInstance` returns `null` until the model is loaded, then recomposes.
+Never call `modelLoader.createModel*` from a background
 coroutine: Filament calls must run on the main thread, and `rememberModelInstance` handles that.
 
 ### AR (Android)
@@ -149,10 +154,10 @@ fun ARScreen() {
             }
         }
     ) {
-        val helmet = rememberModelInstance(modelLoader, "models/helmet.glb")
+        val toyCar = rememberModelInstance(modelLoader, "models/toy_car.glb")
         anchor?.let { a ->
             AnchorNode(anchor = a) {
-                helmet?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
+                toyCar?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
             }
         }
     }
@@ -186,7 +191,7 @@ implementation("io.github.sceneview:sceneview-compose:4.69.7")
 ```
 
 ```kotlin
-SceneViewer(model = ModelSource.Asset("models/helmet.glb"), modifier = Modifier.fillMaxSize())
+SceneViewer(model = ModelSource.Asset("models/toy_car.glb"), modifier = Modifier.fillMaxSize())
 ```
 
 A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iOS setup:
@@ -339,7 +344,7 @@ SceneView(
     cameraManipulator = rememberCameraManipulator()
 ) {
     // Model — async loaded, appears when ready
-    rememberModelInstance(modelLoader, "models/helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(modelInstance = it, scaleToUnits = 1.0f, autoAnimate = true)
     }
 

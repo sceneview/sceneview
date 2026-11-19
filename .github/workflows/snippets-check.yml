@@ -24,9 +24,10 @@ name: Snippets
 #        direction stays covered there and is NOT duplicated here.
 #
 # INPUTS: kept in lock-step with tools/snippets-check/build.gradle's
-# `generateDocSnippets` task (llms.txt + agents/sceneview/references/*.md +
-# tools/extract-doc-snippets.js). `agents/sceneview/references/**` is the
-# broad form so a newly-added reference file is covered without editing here.
+# `generateDocSnippets` task (llms.txt + README.md + docs/docs/quickstart.md +
+# agents/sceneview/references/*.md + tools/extract-doc-snippets.js).
+# `agents/sceneview/references/**` is the broad form so a newly-added reference
+# file is covered without editing here.
 #
 # NOT A REQUIRED CHECK ON `main`: this workflow is positively path-filtered,
 # and a required check that does not trigger registers no check run at all —
@@ -39,6 +40,8 @@ on:
     branches: [main]
     paths:
       - 'llms*.txt'
+      - 'README.md'
+      - 'docs/docs/quickstart.md'
       - 'agents/sceneview/references/**'
       - 'tools/extract-doc-snippets.js'
       - 'tools/snippets-check/**'
@@ -48,6 +51,8 @@ on:
     branches: [main]
     paths:
       - 'llms*.txt'
+      - 'README.md'
+      - 'docs/docs/quickstart.md'
       - 'agents/sceneview/references/**'
       - 'tools/extract-doc-snippets.js'
       - 'tools/snippets-check/**'

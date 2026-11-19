@@ -80,7 +80,7 @@ fun ModelViewerScreen() {
     ) {
         // ModelNode is a member of this block: no import for it
         // null while the file loads, then the model appears
-        rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1f)
         }
     }
@@ -108,7 +108,7 @@ fun TapToPlaceScreen() {
         modelLoader = modelLoader,
         onPlaced = { anchor -> // a NAMED parameter: the trailing lambda is `content`
             AnchorNode(anchor = anchor) {
-                rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+                rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
                     ModelNode(modelInstance = instance, scaleToUnits = 0.3f)
                 }
             }
@@ -350,7 +350,7 @@ fun My3DScreen() {
         },
         mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f }
     ) {
-        rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
         }
     }
@@ -387,8 +387,8 @@ fun ARSceneView(
     updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
     focusMode: Config.FocusMode = Config.FocusMode.AUTO,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
-    planeRenderer: Boolean = true,  // The one plane renderer (#4307): dots on floors, dashes on walls, rings on ceilings. false FADES the surfaces out; detection, hit tests and gestures keep working.
-    sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
+    planeRenderer: Boolean = true,  // The one plane renderer (#4307): dots on floors, dashes on walls, rings on ceilings. false FADES the surfaces out; detection, hit tests and gestures keep working. Planes draw only if this AND sceneUnderstanding.planeVisualization are true when sceneUnderstanding is non-null; null = planeRenderer decides alone (#5134).
+    sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags. Never turns planes back on over planeRenderer = false.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
     renderQuality: RenderQuality? = null,   // v4.19.0+ (#2524) — one-line preset; NULLABLE: null keeps createARView's camera-feed-tuned defaults (no SSAO/bloom). Pass Performance/Cinematic to opt in. Filmic AR tone mapper preserved.
@@ -601,7 +601,7 @@ data class SceneUnderstanding(
     val occlusion: Boolean = true,        // ARCameraStream.isDepthOcclusionEnabled
     val lighting: Boolean = true,         // LightEstimator.isEnabled
     val physics: Boolean = false,         // Reserved — Scene Semantics / Mesh, #1760/#1761
-    val planeVisualization: Boolean = true // PlaneRenderer.isEnabled
+    val planeVisualization: Boolean = true // ANDed with ARSceneView's planeRenderer (see rule below)
 )
 ```
 
@@ -629,7 +629,20 @@ ARSceneView(
 // Imperative: cameraStream.isDepthOcclusionEnabled = true
 ```
 
-When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+When `sceneUnderstanding` is non-null, `occlusion` and `lighting` override `cameraStream.isDepthOcclusionEnabled` and `lightEstimator.isEnabled` on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+
+**Plane visibility rule (#5134):** planes are drawn only when `planeRenderer` AND `sceneUnderstanding.planeVisualization` are both `true` (when `sceneUnderstanding` is non-null; null = `planeRenderer` decides alone). Either one set to `false` hides them; neither turns them back on over the other. Turning occlusion on never brings planes back:
+
+```kotlin
+var showPlanes by remember { mutableStateOf(false) }
+ARSceneView(
+    depthMode = Config.DepthMode.AUTOMATIC,
+    sceneUnderstanding = SceneUnderstanding(occlusion = true), // planeVisualization stays true
+    planeRenderer = showPlanes, // the runtime toggle: false keeps planes hidden
+) { /* ... */ }
+```
+
+`SceneUnderstanding.Minimal` / `.None` hide planes on their own (`planeVisualization = false`). To toggle planes at runtime, drive `planeRenderer` and leave `planeVisualization` at its default.
 
 ### GroundContact — depth occlusion with custom placement (Android)
 
@@ -655,6 +668,7 @@ fun CustomPlacementOcclusion(contactCenter: () -> Position?, ringRadius: Float) 
     ARSceneView(
         depthMode = Config.DepthMode.AUTOMATIC,
         sceneUnderstanding = SceneUnderstanding(occlusion = true),
+        planeRenderer = false, // occlusion does not force planes on: this keeps them hidden (#5134)
     ) {
         // Declare your custom placement nodes here too.
         GroundContact(center = contactCenter, radius = ringRadius)
@@ -1925,6 +1939,14 @@ instant-placement hits. Plane hits always win; the instant fallback is only cons
 plane answered, and it comes from `Frame.hitTestInstantPlacement` at a 1 m approximate distance
 (`Frame.hitTest` never returns an `InstantPlacementPoint` — the trap #3571 fixed). A successful
 placement fires a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
+An `AnchorNode` declared in `onPlaced` holds its physical drop location through an independent
+world anchor while an instant-placement point has only approximate depth. Its numerical pose
+can still change as ARCore corrects world coordinates. Once ARCore reports `FULL_TRACKING`, it
+blends between the held and refined anchors' current poses over 300 ms, then follows normal
+tracking corrections. The temporary world anchor is detached after refinement or when the
+placement is moved, replaced, cleared, or disposed. This applies to the anchors
+created by `PlacementScene`; an `Anchor` passed directly to `ARSceneView`'s `AnchorNode` does not
+carry its source trackable and retains the usual anchor-following behavior.
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
 
@@ -4240,7 +4262,11 @@ Box {
 (ring only, no badge at rest), a rotation ring with a live sweep arc and a signed
 rotation-delta badge shown and announced only during the two-finger twist, a scale
 percentage badge that bounces at the `editableScaleRange` bounds, and a contact shadow
-while dragging.
+while dragging. TalkBack hears the badges in coarse steps (15°, 10 %), not every degree, then
+the exact value once when the gesture ends. To localise what it says, override the string
+resources `sceneview_editing_rotation_description` ("Rotation %1$s degrees", `%1$s` a signed
+whole number such as "+15") and `sceneview_editing_scale_description` ("Scale %1$d percent")
+in your app's `res/values-<lang>/strings.xml`.
 
 To build custom feedback instead, read `rememberNodeEditingFeedback(node)` directly —
 it is snapshot state, so a composable reading it recomposes live during the gesture:

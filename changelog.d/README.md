@@ -66,6 +66,42 @@ before any tag land in `Changed`:
 - **The API it adds along the way.** …
 ```
 
+### Play Store "What's new"
+
+Write the Android demo's Play Store notes for the next release in
+`samples/android-demo/whatsnew/unreleased/en-US.txt`: a short English summary
+of the changes a demo user can see or feel, in plain text, with no PR or issue
+numbers and no SDK jargon. Keep the whole file within **500 UTF-16 code units**,
+including spaces and line breaks (an emoji outside the BMP uses two units).
+Do not copy the SDK changelog into this file.
+
+The two Play deployment workflows use different notes:
+
+- `.github/workflows/main-internal-deploy.yml` runs on matching pushes to
+  `main` (and manual dispatch). It writes `main@<short SHA>: <commit subject>`
+  directly to `whatsnew/whatsnew-en-US`; it does not read curated notes or the
+  SDK changelog.
+- `.github/workflows/play-store.yml` runs on release tags and manual dispatch
+  (unless `listing_only` skips publishing). It calls
+  `.github/scripts/play_store_notes.py`: a snapshot version such as
+  `4.69.7-abcd1234`, from a branch dispatch after `v4.69.7`, reads
+  `unreleased/en-US.txt` first, then `4.69.7/en-US.txt`. A clean release
+  version reads only its own `<X.Y.Z>/en-US.txt` curated file, even on a
+  manual dispatch at that tag.
+
+The release PR's `collate-changelog.sh <X.Y.Z>` renames `unreleased/` to
+`<X.Y.Z>/`. Recreate `unreleased/en-US.txt` for the next release; collation
+warns when it is missing, including during `--dry-run`. Keep older version
+directories: they support re-publishing a release.
+
+Only when no matching file exists does the script fall back to the
+`## vX.Y.Z` section of `CHANGELOG.md`, stripping Markdown as before. An empty
+curated file deliberately leaves the notes empty; a missing changelog section
+also leaves them empty. The script logs the selected source and trims either
+source to 500 UTF-16 code units, including a trailing ellipsis when truncated,
+without splitting a surrogate pair. An unexpected version emits a warning and
+publishes without notes (`extracted=false`).
+
 ### Maintainer-only notes
 
 **Every HTML comment in a fragment is stripped before collation** — single-line,
