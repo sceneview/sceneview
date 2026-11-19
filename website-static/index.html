@@ -209,15 +209,15 @@
             <li>Open source under Apache 2.0</li>
             <li hidden><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
           </ul>
-          <p class="plat-note">SwiftUI (iOS, macOS, visionOS), Flutter and React Native are end of life. 4.68.0 (November 2026) is the last release. No new releases. <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">DEPRECATION.md</a>.</p>
+          <p class="plat-note hero__eol-note">SwiftUI (iOS, macOS, visionOS), Flutter and React Native are end of life. 4.68.0 (November 2026) is the last release. No new releases. <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">DEPRECATION.md</a>.</p>
           <div class="install">
             <div class="seg" role="tablist" aria-label="Install for" data-install>
               <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
-              <button type="button" role="tab" id="it-apple" aria-controls="ins-apple" aria-selected="false" tabindex="-1" data-key="apple" data-label="Apple (end of life)" data-href="/docs/quickstart-ios/">Apple (end of life)</button>
               <button type="button" role="tab" id="it-web" aria-controls="ins-web" aria-selected="false" tabindex="-1" data-key="web" data-label="Web" data-href="/docs/quickstart-web/">Web</button>
+              <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
+              <button type="button" role="tab" id="it-apple" aria-controls="ins-apple" aria-selected="false" tabindex="-1" data-key="apple" data-label="Apple (end of life)" data-href="/docs/quickstart-ios/">Apple (end of life)</button>
               <button type="button" role="tab" id="it-flutter" aria-controls="ins-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-label="Flutter (end of life)" data-href="/docs/quickstart-flutter/">Flutter (end of life)</button>
               <button type="button" role="tab" id="it-rn" aria-controls="ins-rn" aria-selected="false" tabindex="-1" data-key="rn" data-label="React Native (end of life)" data-href="/docs/quickstart-react-native/">React Native (end of life)</button>
-              <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
             </div>
             <div class="install__panels">
             <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.69.7"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.69.7")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
@@ -593,7 +593,7 @@
           <caption class="sr-only">SceneView compared with Unity, Filament used directly, Three.js and RealityKit</caption>
           <thead><tr><th scope="col"></th><th scope="col">SceneView</th><th scope="col">Unity</th><th scope="col">Filament, direct</th><th scope="col">Three.js</th><th scope="col">RealityKit</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Declarative UI</th><td>Compose, JavaScript</td><td>No, editor and C#</td><td>No, imperative</td><td>No, imperative</td><td>SwiftUI</td></tr>
+            <tr><th scope="row">Declarative UI</th><td>Jetpack Compose, Compose Multiplatform, Kotlin/JS DSL</td><td>No, editor and C#</td><td>No, imperative</td><td>No, imperative</td><td>SwiftUI</td></tr>
             <tr><th scope="row">Setup</th><td>One Gradle dependency or web scripts</td><td>Separate engine, embedded as a library</td><td>Engine, materials and loaders wired by hand</td><td>One npm package</td><td>Part of the Apple SDKs</td></tr>
             <tr><th scope="row">Platforms</th><td>Android Stable; web and desktop Alpha; SwiftUI, Flutter and React Native end of life at 4.68.0</td><td>Most platforms</td><td>Android, Apple, desktop, web</td><td>Web</td><td>Apple only</td></tr>
             <tr><th scope="row">AR</th><td>ARCore, WebXR; ARKit end of life at 4.68.0</td><td>AR Foundation</td><td>Bring your own</td><td>WebXR</td><td>ARKit</td></tr>

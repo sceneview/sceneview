@@ -55,7 +55,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Swift (end of life at 4.68.0)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.68.0")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -112,7 +112,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.68.0")
+    .package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
     ```
 
 === "Web"

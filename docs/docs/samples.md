@@ -60,9 +60,9 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
     sheet, or opens a pre-filled GitHub issue in the browser. See the
     [Privacy Policy](https://sceneview.github.io/privacy.html) for the full data flow.
 
-### iOS Demo — end of life at 4.68.0
+### iOS Demo — end of life at 4.69.7
 
-**`samples/ios-demo/`** — No new builds after 4.68.0, SwiftUI
+**`samples/ios-demo/`** — No new builds after 4.69.7, SwiftUI
 
 4-tab SwiftUI app:
 

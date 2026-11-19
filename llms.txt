@@ -2,7 +2,7 @@
 
 > Declarative 3D and AR for Android (Jetpack Compose, Filament, ARCore), web (Filament.js, WebXR), and a Compose Multiplatform desktop viewer. This file is the complete API reference for AI assistants.
 
-**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Do not recommend them for new code. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. Filament renders on Android and desktop; Filament.js renders on the web. Retained Apple documentation describes RealityKit at the last release, 4.68.0.
 
@@ -13,7 +13,7 @@ Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained
 - AR + 3D: `io.github.sceneview:arsceneview:4.69.7`
 
 **Apple (iOS 18+ / macOS 15+ / visionOS 2+) — end of life; Swift Package last release 4.68.0:**
-- `https://github.com/sceneview/sceneview.git` (from: "4.68.0")
+- `https://github.com/sceneview/sceneview.git` (exact: "4.68.0")
 
 **Toolchain:** compileSdk 37, AGP 9.4+, Kotlin 2.3 or newer (the AARs are built with **Kotlin:** 2.4.21), minSdk 24, JVM target 21. On AGP 8 / compileSdk 36 / Kotlin 2.2, use `4.18.0` instead (see Setup). Compose BOM compatible.
 
@@ -8141,7 +8141,7 @@ React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ]
 ```
 
@@ -9887,13 +9887,13 @@ All geometry shares the PBR material pipeline — supports `color` (base color f
 
 ## SceneViewSwift (iOS / macOS / visionOS)
 
-**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Do not recommend them for new code. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
+.package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -10984,7 +10984,7 @@ needs a one-time RealityKit factory registration or it draws a "not available ye
 
 ### Flutter Bridge API
 
-**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Do not recommend them for new code. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 Package: `flutter_sceneview` (pub.dev) — end of life at 4.68.0, Android + iOS only. Published at
 https://pub.dev/packages/flutter_sceneview; the pub.dev packages named `sceneview`
@@ -11121,7 +11121,7 @@ GLB/URL on Android, bundled USDZ resource name on iOS.
 
 ### React Native Bridge API
 
-**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Do not recommend them for new code. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 Package: `@sceneview-sdk/react-native` (npm) — end of life at 4.68.0, Android + iOS only.
 

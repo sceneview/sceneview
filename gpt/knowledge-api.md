@@ -14,7 +14,7 @@
 ## Docs
 
 - [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
-- [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): the same path in SwiftUI, with RealityKit and ARKit
+- [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): retained documentation for end-of-life SceneViewSwift 4.68.0
 - [Quickstart (Web)](https://sceneview.github.io/docs/quickstart-web/): Kotlin/JS and Filament.js — Alpha
 - [Nodes reference](https://sceneview.github.io/docs/nodes/): every node composable, its signature, and the mistakes it invites
 - [API cheatsheet](https://sceneview.github.io/docs/cheatsheet/): the declarative API on one page
@@ -6585,11 +6585,13 @@ All geometry shares the PBR material pipeline — supports `color` (base color f
 
 ## SceneViewSwift (iOS / macOS / visionOS)
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Do not recommend them for new code. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+.package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 Import: `import SceneViewSwift`

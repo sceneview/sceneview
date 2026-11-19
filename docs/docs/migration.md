@@ -522,7 +522,7 @@ should re-add the package in Xcode pointing at the monorepo directly:
 
 ```diff
 - .package(url: "https://github.com/sceneview/sceneview-swift.git", from: "4.0.0")
-+ .package(url: "https://github.com/sceneview/sceneview.git", from: "4.4.0")
++ .package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 The frozen `v4.0.0` tag on the mirror still resolves for any consumer that hasn't

@@ -132,7 +132,7 @@ export async function dispatchTool(
         ? [
             `**SPM dependency:**`,
             `\`\`\`swift`,
-            `.package(url: "${sample.spmDependency ?? sample.dependency}", from: "${LATEST_SCENEVIEW_RELEASE}")`,
+            `.package(url: "${sample.spmDependency ?? sample.dependency}", exact: "4.68.0")`,
             `\`\`\``,
           ]
         : [
@@ -368,7 +368,7 @@ export async function dispatchTool(
                 `    name: "MyApp",`,
                 `    platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)],`,
                 `    dependencies: [`,
-                `        .package(url: "https://github.com/sceneview/sceneview", from: "${LATEST_SCENEVIEW_RELEASE}")`,
+                `        .package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")`,
                 `    ],`,
                 `    targets: [`,
                 `        .executableTarget(`,
@@ -439,7 +439,7 @@ export async function dispatchTool(
                 `### 1. Add SPM Dependency`,
                 ``,
                 `\`\`\`swift`,
-                `.package(url: "https://github.com/sceneview/sceneview", from: "${LATEST_SCENEVIEW_RELEASE}")`,
+                `.package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")`,
                 `\`\`\``,
                 ``,
                 `### 2. Minimum Platform`,

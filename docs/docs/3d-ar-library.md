@@ -131,7 +131,7 @@ AR, use `arsceneview` on Android and `ARSceneView` on Apple.
 Swift Package Manager: `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`:
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
+.package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 ```swift

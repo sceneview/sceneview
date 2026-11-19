@@ -57,7 +57,7 @@ API or the doc gets fixed.
   <a href="https://sceneview.github.io/web-demo/"><img src="website-static/assets/brand/stores/web-demo.svg" alt="Open the web demo" height="56"></a>
 </p>
 
-The iOS and macOS demo has no new builds after 4.68.0 — see [DEPRECATION.md](DEPRECATION.md).
+The iOS and macOS demo has no new builds after 4.69.7 — see [DEPRECATION.md](DEPRECATION.md).
 
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
 `https://sceneview.github.io/open?demo=<id>`. Start with
@@ -226,7 +226,7 @@ capture of it.
 | Platform | Status | Install | Open it | Capture |
 |---|---|---|---|---|
 | **Android** | Shipped · Stable | [Maven Central](https://central.sonatype.com/artifact/io.github.sceneview/sceneview) | [Google Play](https://play.google.com/store/apps/details?id=io.github.sceneview.demo) | <img src="website-static/assets/demos/runs-on-android.jpg" alt="SceneView Android demo: Model Viewer rendering a helmet with Filament" height="160"> |
-| **iOS** | End of life — [4.68.0, no new builds](DEPRECATION.md) | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
+| **iOS** | End of life — [4.69.7, no new builds](DEPRECATION.md) | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
 | **Web** | Shipped · Alpha | [npm `sceneview-web`](https://www.npmjs.com/package/sceneview-web) | [Live web demo](https://sceneview.github.io/web-demo/) | <img src="website-static/assets/demos/runs-on-web.jpg" alt="SceneView web demo: Toy Car rendered by Filament.js in a browser" height="100"> |
 
 *Shipped* means released and publicly reachable; the second word is the API maturity.
@@ -256,7 +256,7 @@ The other platforms in the table below join this section once a capture backs th
 | Android AR | `io.github.sceneview:arsceneview:4.69.7` |
 | Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.7` |
 | KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.69.7` |
-| Apple (SPM) — deprecated | `https://github.com/sceneview/sceneview.git`, exact `4.68.0` |
+| Apple (SPM) — deprecated | `https://github.com/sceneview/sceneview.git`, `exact: "4.68.0"` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
 | Flutter — deprecated | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |

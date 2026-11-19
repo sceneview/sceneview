@@ -16,7 +16,7 @@ export const PLATFORM_ROADMAP = `# SceneView Multi-Platform Roadmap
 |----------|--------|----------|----------|
 | **Android (Compose)** | Stable | \`io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}\` | Filament |
 | **Android (AR)** | Stable | \`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}\` | Filament + ARCore |
-| **iOS (SwiftUI)** | Alpha | SceneViewSwift SPM \`from: "${LATEST_SCENEVIEW_RELEASE}"\` | RealityKit + ARKit |
+| **iOS (SwiftUI)** | Alpha | SceneViewSwift SPM \`exact: "4.68.0"\` | RealityKit + ARKit |
 | **macOS (SwiftUI)** | Alpha | SceneViewSwift SPM (in Package.swift) | RealityKit |
 | **visionOS (SwiftUI)** | Alpha | SceneViewSwift SPM (in Package.swift) | RealityKit |
 | **KMP Core** | Stable | \`io.github.sceneview:sceneview-core:${LATEST_SCENEVIEW_RELEASE}\` | N/A (shared logic) |
@@ -356,7 +356,7 @@ export const AR_SETUP_GUIDE = `# SceneView AR — Complete Setup Guide (Android 
 ## 1. SPM Dependency
 
 \`\`\`swift
-.package(url: "https://github.com/sceneview/sceneview", from: "${LATEST_SCENEVIEW_RELEASE}")
+.package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
 \`\`\`
 
 ## 2. Info.plist — Camera Permission

@@ -13,7 +13,7 @@ description: "End of life at 4.68.0. SwiftUI + RealityKit sample code for SceneV
 These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **35 demos** covering every category.
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
+.package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 All demo source files live in

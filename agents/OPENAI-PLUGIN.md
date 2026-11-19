@@ -42,8 +42,7 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 ## Listing copy (English, as submitted)
 
 - **Name:** SceneView 3D & AR
-- **Short description:** Write working 3D and AR code for Android and the web on
-  the first try.
+- **Short description:** Write 3D and AR code for Android, web and Compose Multiplatform desktop
 - **Long description:** see `interface.longDescription` in the manifest — keep the two in
   sync by editing the manifest, this file only mirrors it.
 - **Category:** Developer Tools · **Capabilities:** Read

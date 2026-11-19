@@ -234,7 +234,7 @@ let package = Package(
     name: "MyApp",
     platforms: [.iOS(.v18), .macOS(.v15), .visionOS(.v1)],
     dependencies: [
-        .package(url: "https://github.com/sceneview/sceneview", from: "${LATEST_SCENEVIEW_RELEASE}")
+        .package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
     ],
     targets: [
         .executableTarget(
@@ -326,7 +326,7 @@ const IOS_AR = `## SceneViewSwift — iOS AR Setup
 ### 1. SPM Dependency
 
 \`\`\`swift
-.package(url: "https://github.com/sceneview/sceneview", from: "${LATEST_SCENEVIEW_RELEASE}")
+.package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
 \`\`\`
 
 ### 2. Info.plist — Camera Permission (Required)

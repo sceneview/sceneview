@@ -1431,7 +1431,7 @@ fun NodeHierarchyScreen() {
     description:
       "SwiftUI 3D scene with a USDZ model, IBL environment, orbit camera, and animation playback.",
     tags: ["3d", "model", "environment", "camera", "animation", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create a SwiftUI screen that loads a USDZ model and displays it with IBL lighting, orbit camera, and animation playback. Use SceneViewSwift.",
@@ -1473,7 +1473,7 @@ struct ModelViewerScreen: View {
     description:
       "AR scene with plane detection. Tap a surface to place a 3D model using ARKit + RealityKit.",
     tags: ["ar", "model", "anchor", "plane-detection", "placement", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create an iOS AR screen that detects surfaces and lets the user tap to place a USDZ model. Use SceneViewSwift.",
@@ -1516,7 +1516,7 @@ struct ARModelViewerScreen: View {
     description:
       "Detects reference images in the camera feed and overlays 3D content above them using ARKit.",
     tags: ["ar", "model", "image-tracking", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create an iOS AR screen that detects a printed reference image and places a 3D model above it. Use SceneViewSwift.",
@@ -1557,7 +1557,7 @@ struct AugmentedImageScreen: View {
     description:
       "Procedural geometry shapes — cube, sphere, cylinder, cone, and plane — with PBR materials.",
     tags: ["3d", "geometry", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create a SwiftUI scene showing procedural geometry shapes (cube, sphere, cylinder, cone, plane) with different materials. Use SceneViewSwift.",
@@ -1614,7 +1614,7 @@ struct GeometryShapesScreen: View {
     description:
       "Directional, point, and spot lights with configurable intensity, color, and shadows.",
     tags: ["3d", "lighting", "environment", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create a SwiftUI 3D scene with directional, point, and spot lights illuminating geometry. Use SceneViewSwift.",
@@ -1681,7 +1681,7 @@ struct LightingScreen: View {
     description:
       "Interactive physics simulation with bouncing spheres, gravity, and configurable restitution.",
     tags: ["3d", "physics", "geometry", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create a SwiftUI 3D scene where tapping spawns coloured spheres that fall under gravity and bounce off a floor. Use SceneViewSwift.",
@@ -1748,7 +1748,7 @@ struct PhysicsDemoScreen: View {
     description:
       "Camera-facing 3D text labels using TextNode and BillboardNode for always-facing-camera behavior.",
     tags: ["3d", "text", "geometry", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create a SwiftUI 3D scene with floating text labels that always face the camera, showing planet names. Use SceneViewSwift.",
@@ -1798,7 +1798,7 @@ struct TextLabelsScreen: View {
     title: "iOS Video on 3D Surface",
     description: "Video playback on a 3D plane using VideoNode with play/pause controls.",
     tags: ["3d", "video", "ios", "swift"],
-    dependency: `https://github.com/sceneview/sceneview — from: "${LATEST_SCENEVIEW_RELEASE}"`,
+    dependency: `https://github.com/sceneview/sceneview — exact: "4.68.0"`,
     spmDependency: "https://github.com/sceneview/sceneview",
     prompt:
       "Create a SwiftUI 3D scene with a video playing on a floating 3D plane. Include play/pause controls. Use SceneViewSwift.",
