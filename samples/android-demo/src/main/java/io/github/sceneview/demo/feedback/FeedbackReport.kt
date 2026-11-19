@@ -56,9 +56,21 @@ enum class FeedbackCategory(val reportValue: String) {
 
 internal const val FEEDBACK_DESCRIPTION_MIN_CHARS = 10
 
-/** Whitespace alone cannot enable either report destination. */
+/** CJK scripts carry more meaning per character; count code points without whitespace. */
 internal fun isFeedbackDescriptionValid(description: String): Boolean =
-    description.count { !it.isWhitespace() } >= FEEDBACK_DESCRIPTION_MIN_CHARS
+    description.codePoints().map { codePoint ->
+        if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) {
+            0
+        } else {
+            when (Character.UnicodeScript.of(codePoint)) {
+                Character.UnicodeScript.HAN,
+                Character.UnicodeScript.HIRAGANA,
+                Character.UnicodeScript.KATAKANA,
+                Character.UnicodeScript.HANGUL -> 2
+                else -> 1
+            }
+        }
+    }.sum() >= FEEDBACK_DESCRIPTION_MIN_CHARS
 
 /**
  * Lines requested from `logcat -t` for the app's own pid.
@@ -302,8 +314,8 @@ fun formatReportTitle(info: BugReportInfo, note: String): String {
     val demo = info.metadata["Demo"]
     return when {
         summary.isNotEmpty() -> "[Demo app] ${summary.take(80)}"
-        demo != null -> "[Demo app] Bug report — $demo"
-        else -> "[Demo app] Bug report"
+        demo != null -> "[Demo app] Feedback — $demo"
+        else -> "[Demo app] Feedback"
     }
 }
 
@@ -312,7 +324,7 @@ fun formatReportTitle(info: BugReportInfo, note: String): String {
  * the share path: note, metadata, the AR tracking lines and the full log tail.
  */
 fun formatReportFile(info: BugReportInfo, note: String): String = buildString {
-    appendLine("SceneView demo — bug report")
+    appendLine("SceneView demo — feedback")
     appendLine()
     val text = note.trim()
     if (text.isNotEmpty()) {
@@ -351,7 +363,7 @@ fun formatShareText(
     note: String,
     logAttached: Boolean = true,
 ): String = buildString {
-    appendLine("SceneView demo — bug report")
+    appendLine("SceneView demo — feedback")
     appendLine()
     val text = note.trim()
     if (text.isNotEmpty()) {
@@ -416,7 +428,7 @@ fun formatIssueBody(
     appendLogDetails("AR tracking (last ${arTracking.size} lines)", arTracking)
     appendLogDetails("App log (last ${logcat.size} lines)", logcat)
     appendLine()
-    appendLine("_Reported from the in-app bug reporter._")
+    appendLine("_Sent from the in-app feedback form._")
 }.trimEnd()
 
 /** One folded, fenced block of log [lines] under [summary]; nothing when there are none. */
@@ -466,8 +478,8 @@ private val LEADING_DATE = Regex("""^\d{2}-\d{2} (?=\d{2}:\d{2}:\d{2})""")
 fun buildGitHubIssueUrl(info: BugReportInfo, note: String): String {
     val title = formatReportTitle(info, note)
     val compact = info.copy(
-        logcat = info.logcat.map(::compactLogLine),
-        arTracking = info.arTracking.map(::compactLogLine),
+        logcat = collapseFeedbackLog(info.logcat).map(::compactLogLine),
+        arTracking = collapseFeedbackLog(info.arTracking).map(::compactLogLine),
     )
 
     fun url(body: String): String = GITHUB_NEW_ISSUE_URL +
@@ -483,8 +495,7 @@ fun buildGitHubIssueUrl(info: BugReportInfo, note: String): String {
         val noLog = compact.copy(logcat = emptyList(), arTracking = emptyList())
         val wholeNote = url(formatIssueBody(noLog, note, 0))
         if (wholeNote.length <= ISSUE_URL_MAX_LENGTH) return wholeNote
-        // Metadata-only body still too long (pathological note) — truncate the note.
-        return url(formatIssueBody(noLog, note.take(1000), 0))
+        return fitIssueNoteToUrl(noLog, note, ::url)
     }
     // The ceiling counts both log blocks, so the search starts above the AR
     // tracking lines the zero-line body already carries.
@@ -494,6 +505,31 @@ fun buildGitHubIssueUrl(info: BugReportInfo, note: String): String {
     while (low <= high) {
         val mid = (low + high) / 2
         val candidate = urlWith(mid)
+        if (candidate.length <= ISSUE_URL_MAX_LENGTH) {
+            best = candidate
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return best
+}
+
+/** Fit the note to the encoded URL budget, keeping Unicode code points intact. */
+private fun fitIssueNoteToUrl(info: BugReportInfo, note: String, url: (String) -> String): String {
+    // A pathological metadata row must not exhaust the budget even with an empty note.
+    val context = if (url(formatIssueBody(info, "", 0)).length <= ISSUE_URL_MAX_LENGTH) {
+        info
+    } else {
+        info.copy(metadata = emptyMap())
+    }
+    var best = url(formatIssueBody(context, "", 0))
+    var low = 1
+    var high = minOf(note.codePointCount(0, note.length), ISSUE_URL_MAX_LENGTH)
+    while (low <= high) {
+        val mid = (low + high) / 2
+        val prefix = note.take(note.offsetByCodePoints(0, mid))
+        val candidate = url(formatIssueBody(context, prefix, 0))
         if (candidate.length <= ISSUE_URL_MAX_LENGTH) {
             best = candidate
             low = mid + 1

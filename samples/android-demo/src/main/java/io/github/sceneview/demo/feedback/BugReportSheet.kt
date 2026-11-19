@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -50,7 +48,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +67,7 @@ import io.github.sceneview.demo.common.VoiceDictationListeningHint
 import io.github.sceneview.demo.common.rememberVoiceDictation
 import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import kotlinx.coroutines.launch
 
 /**
@@ -100,6 +101,8 @@ fun BugReportSheet(
     var category by remember { mutableStateOf(FeedbackCategory.Bug) }
     val info = remember(report.info, category) { report.info.copy(category = category) }
     val descriptionValid = isFeedbackDescriptionValid(note)
+    var descriptionTouched by remember { mutableStateOf(false) }
+    var noteFieldFocused by remember { mutableStateOf(false) }
     var includeScreenshot by remember { mutableStateOf(report.screenshot != null) }
     var sendError by remember { mutableStateOf<String?>(null) }
     var previewExpanded by remember { mutableStateOf(false) }
@@ -109,7 +112,19 @@ fun BugReportSheet(
     // rises, and this requester nudges the scroll position the moment the field gains
     // focus, so the field (not just its top edge) lands above the keyboard on first tap.
     val noteFieldBringIntoView = remember { BringIntoViewRequester() }
+    val noteFieldFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+
+    fun validateDescriptionForSend(): Boolean {
+        if (descriptionValid) return true
+        descriptionTouched = true
+        sendError = null
+        scope.launch {
+            noteFieldFocusRequester.requestFocus()
+            noteFieldBringIntoView.bringIntoView()
+        }
+        return false
+    }
 
     // Voice dictation (#4618): chains the system dialog through pauses, appending to the note.
     val dictation = rememberVoiceDictation(
@@ -170,31 +185,27 @@ fun BugReportSheet(
                 onIncludedChange = { includeScreenshot = it },
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(SceneViewTokens.Space.md))
             Text(
                 stringResource(R.string.feedback_report_category),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FeedbackCategory.entries.forEach { option ->
-                    FilterChip(
-                        selected = category == option,
-                        onClick = { category = option },
-                        label = {
-                            Text(
-                                stringResource(
-                                    when (option) {
-                                        FeedbackCategory.Bug -> R.string.feedback_report_category_bug
-                                        FeedbackCategory.FeatureRequest -> R.string.feedback_report_category_feature
-                                        FeedbackCategory.Question -> R.string.feedback_report_category_question
-                                    },
-                                ),
-                            )
+            Spacer(Modifier.height(SceneViewTokens.Space.sm))
+            ConnectedChoiceRow(
+                options = FeedbackCategory.entries,
+                selected = category,
+                onSelect = { category = it },
+                label = { option ->
+                    stringResource(
+                        when (option) {
+                            FeedbackCategory.Bug -> R.string.feedback_report_category_bug
+                            FeedbackCategory.FeatureRequest -> R.string.feedback_report_category_feature
+                            FeedbackCategory.Question -> R.string.feedback_report_category_question
                         },
                     )
-                }
-            }
+                },
+            )
 
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
@@ -202,7 +213,7 @@ fun BugReportSheet(
                 onValueChange = { note = it },
                 label = { Text(stringResource(R.string.feedback_report_note_label)) },
                 placeholder = { Text(stringResource(R.string.feedback_report_note_placeholder)) },
-                isError = note.isNotEmpty() && !descriptionValid,
+                isError = descriptionTouched && !descriptionValid,
                 minLines = 3,
                 trailingIcon = if (dictation.available) {
                     {
@@ -216,21 +227,22 @@ fun BugReportSheet(
                 },
                 supportingText = {
                     Column {
-                        if (!descriptionValid) {
-                            Text(
-                                stringResource(
-                                    R.string.feedback_report_note_required,
-                                    FEEDBACK_DESCRIPTION_MIN_CHARS,
-                                ),
-                            )
-                        }
+                        Text(
+                            stringResource(
+                                R.string.feedback_report_note_required,
+                                FEEDBACK_DESCRIPTION_MIN_CHARS,
+                            ),
+                        )
                         if (dictation.listening) VoiceDictationListeningHint()
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .bringIntoViewRequester(noteFieldBringIntoView)
-                    .onFocusEvent { state ->
+                    .focusRequester(noteFieldFocusRequester)
+                    .onFocusChanged { state ->
+                        if (noteFieldFocused && !state.isFocused) descriptionTouched = true
+                        noteFieldFocused = state.isFocused
                         if (state.isFocused) {
                             scope.launch { noteFieldBringIntoView.bringIntoView() }
                         }
@@ -257,6 +269,7 @@ fun BugReportSheet(
             // GitHub first (#3263) — the primary, default destination.
             Button(
                 onClick = {
+                    if (!validateDescriptionForSend()) return@Button
                     if (openGitHubIssue(context, info, note)) {
                         sendError = null
                         onDismiss()
@@ -264,7 +277,6 @@ fun BugReportSheet(
                         sendError = noAppError
                     }
                 },
-                enabled = descriptionValid,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -277,6 +289,7 @@ fun BugReportSheet(
             }
             TextButton(
                 onClick = {
+                    if (!validateDescriptionForSend()) return@TextButton
                     if (shareReport(context, report.copy(info = info), note, includeScreenshot)) {
                         sendError = null
                         onDismiss()
@@ -284,7 +297,6 @@ fun BugReportSheet(
                         sendError = noAppError
                     }
                 },
-                enabled = descriptionValid,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.feedback_report_share))
@@ -507,7 +519,6 @@ private fun shareReport(
     note: String,
     includeScreenshot: Boolean,
 ): Boolean {
-    if (!isFeedbackDescriptionValid(note)) return false
     val title = formatReportTitle(report.info, note)
     val authority = "${context.packageName}.fileprovider"
     val reportUri = writeReportFile(context, report.info, note)?.let { file ->
@@ -558,7 +569,6 @@ private fun shareReport(
  * app can handle it — see [shareReport] for how the caller uses the result.
  */
 private fun openGitHubIssue(context: Context, info: BugReportInfo, note: String): Boolean {
-    if (!isFeedbackDescriptionValid(note)) return false
     val url = buildGitHubIssueUrl(info, note)
     logOutboundLink(url)
     return runCatching {

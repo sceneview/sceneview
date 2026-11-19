@@ -353,9 +353,9 @@
     <string name="feedback_report_category_bug">Bug</string>
     <string name="feedback_report_category_feature">Feature request</string>
     <string name="feedback_report_category_question">Question</string>
-    <string name="feedback_report_note_label">Describe the issue</string>
-    <string name="feedback_report_note_required">Describe what happened in a sentence (at least %1$d characters, excluding spaces).</string>
-    <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
+    <string name="feedback_report_note_label">Description</string>
+    <string name="feedback_report_note_required">Add a sentence (at least %1$d characters, excluding spaces; CJK characters count as two).</string>
+    <string name="feedback_report_note_placeholder">What would you like to share or ask?</string>
     <!--
       Names what the report carries, so "nothing leaves your device until you
       choose" above is verifiable rather than a promise: %1$s is the screen the
@@ -371,10 +371,10 @@
     <string name="feedback_report_privacy">Sent only through the app you pick — no account, no upload, no recording. File paths, links and e-mail addresses in the log are masked.</string>
     <string name="feedback_report_share">Share report</string>
     <string name="feedback_report_open_github">Send to GitHub</string>
-    <string name="feedback_report_share_chooser">Share bug report</string>
+    <string name="feedback_report_share_chooser">Share feedback</string>
     <string name="feedback_report_no_app">No app available to send the report</string>
     <string name="feedback_report_voice_cd">Dictate description</string>
-    <string name="feedback_report_voice_prompt">Describe the issue</string>
+    <string name="feedback_report_voice_prompt">Describe your feedback</string>
     <!-- Voice dictation while listening (#4618), shared by every dictating field. -->
     <string name="voice_dictation_listening">Dictating… pause any time, tap outside the dialog to finish</string>
     <string name="voice_dictation_stop_cd">Stop dictation</string>
