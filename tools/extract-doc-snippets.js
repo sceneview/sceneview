@@ -36,6 +36,7 @@
  *                  left alone (bodyless members are their legal form).
  *                  Leading `import` lines are hoisted above the wrapper and
  *                  evict a same-simple-name explicit preamble import.
+ *                  Complete files with a package use only their own imports.
  *   - `notest`   — explicitly opted out in the doc with ```kotlin notest
  *                  (for intentionally non-standalone fragments). Every
  *                  `notest` MUST carry a reason: ```kotlin notest <reason>.
@@ -83,10 +84,10 @@ const SOURCES = [
 ];
 
 // ─── Preamble imports ───────────────────────────────────────────────────────
-// Injected into every generated file. Snippets are documentation fragments:
-// they omit imports the way every Kotlin doc does, so the harness supplies
-// the SDK surface wholesale. Wildcards keep this list short; a snippet's own
-// explicit imports are hoisted AFTER these and win any ambiguity.
+// Documentation fragments omit imports, so the harness supplies the SDK
+// surface wholesale. Complete files with a package use only their own imports.
+// Wildcards keep this list short; a snippet's own explicit imports are hoisted
+// AFTER these and win any ambiguity.
 const PREAMBLE_IMPORTS = [
   "android.content.Context",
   "android.graphics.Bitmap",
@@ -220,7 +221,7 @@ const TOP_LEVEL_RE =
 
 // Heuristic for Gradle DSL blocks mistagged ```kotlin.
 const GRADLE_RE =
-  /^\s*(dependencies\s*\{|plugins\s*\{|implementation\s*\(|api\s*\(|classpath\s*\()/m;
+  /^\s*(dependencies\s*\{|plugins\s*\{|android\s*\{|kotlin\s*\{|import\s+org\.jetbrains\.kotlin\.gradle\b|implementation\s*\(|api\s*\(|classpath\s*\()/m;
 
 // ─── Fence parsing ──────────────────────────────────────────────────────────
 
@@ -459,11 +460,13 @@ function emit(block, slug, index) {
   // fragment's first lines, before any code).
   const hoisted = [];
   const body = [];
+  let completeFile = false;
   let inHeader = true;
   for (const l of codeLines) {
     if (inHeader && /^package\s+/.test(l.trim())) {
       // Complete-file examples keep their package in the doc; generated
       // sources use the unique per-block package above to avoid collisions.
+      completeFile = true;
       continue;
     } else if (inHeader && /^import\s+/.test(l.trim())) {
       hoisted.push(l.trim());
@@ -487,7 +490,9 @@ function emit(block, slug, index) {
       h.replace(/^import\s+/, "").replace(/\/\/.*$/, "").trim().split(".").pop()
     )
   );
-  const preambleImports = PREAMBLE_IMPORTS.filter(
+  // Complete files must supply every import themselves, so missing imports
+  // fail compilation just as they would when copied from the documentation.
+  const preambleImports = completeFile ? [] : PREAMBLE_IMPORTS.filter(
     (imp) => imp.endsWith("*") || !hoistedSimple.has(imp.split(".").pop())
   );
 
