@@ -2,8 +2,6 @@ package io.github.sceneview.demo.feedback
 
 import android.content.Intent
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.focus.FocusManager
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -19,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.requestFocus
 import androidx.core.content.IntentCompat
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
@@ -38,7 +37,6 @@ class FeedbackSheetTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    private lateinit var focusManager: FocusManager
     private val fieldError = SemanticsMatcher.keyIsDefined(SemanticsProperties.Error)
     private val helper = "Add a sentence (at least 10 characters, excluding spaces; CJK characters count as two)."
 
@@ -72,9 +70,12 @@ class FeedbackSheetTest {
     fun `description shows errors after focus loss and keeps its helper stable across the boundary`() {
         showSheet()
         val field = composeRule.onNode(hasSetTextAction())
+        // SetText does not move focus: tap first, as a person does before typing.
+        field.performClick().assertIsFocused()
         field.performTextReplacement(" 12345 6789 ")
         field.assert(!fieldError)
-        composeRule.runOnIdle { focusManager.clearFocus() }
+        // The sheet lives in its own window: move focus to another control inside it.
+        composeRule.onNodeWithText("Bug").requestFocus()
         field.assert(fieldError)
 
         field.performClick()
@@ -141,7 +142,6 @@ class FeedbackSheetTest {
     private fun showSheet(onDismiss: () -> Unit = {}) {
         composeRule.setContent {
             SceneViewDemoTheme {
-                focusManager = LocalFocusManager.current
                 BugReportSheet(
                     report = PendingBugReport(BugReportInfo(emptyMap(), emptyList()), screenshot = null),
                     onDismiss = onDismiss,
