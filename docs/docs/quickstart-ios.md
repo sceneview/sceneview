@@ -1,11 +1,11 @@
 ---
-title: Apple Quickstart — SceneView for iOS, macOS, visionOS
-description: "Set up SceneViewSwift in your Xcode project in 10 minutes. Build a 3D model viewer with orbit camera and environment lighting using SwiftUI and RealityKit."
+title: Apple Quickstart — SceneView for iOS, macOS, visionOS — end of life at 4.68.0
+description: "End of life at 4.68.0. Set up SceneViewSwift in your Xcode project in 10 minutes. Build a 3D model viewer with orbit camera and environment lighting using SwiftUI and RealityKit."
 ---
 # Quickstart — Apple Platforms
 
-!!! warning "Deprecated"
-    SceneView for SwiftUI is deprecated: 4.68.0 is the last release. Published versions stay installable and the source stays available — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). For Android, start with the [quickstart](quickstart.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 
 !!! tip "Looking for Android?"
     See the [Android Quickstart](quickstart.md) for Jetpack Compose setup.
@@ -51,7 +51,7 @@ https://github.com/sceneview/sceneview.git
 !!! tip
     You can also add the dependency manually in your `Package.swift`:
     ```swift
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
     ```
 
 ---

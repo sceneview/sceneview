@@ -37,7 +37,7 @@ Pod::Spec.new do |s|
   # only `s.version` above was registered. A stale floor is not inert: it lets an
   # older SceneViewSwift satisfy the dependency, so the bridge can link against a
   # runtime that predates the APIs it calls.
-  s.dependency 'SceneViewSwift', '~> 4.69'
+  s.dependency 'SceneViewSwift', '~> 4.68'
   # Must match SceneViewSwift/Package.swift's `.iOS("18.0")`. This said 17.0
   # while the package it bridges to required 18.0 — a host app that believed
   # the podspec and targeted 17.0 got availability errors from RealityKit's

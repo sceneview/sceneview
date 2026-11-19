@@ -1,5 +1,7 @@
 # Migrating to SceneViewSwift
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 This page covers the rewrites AI agents most often need when bringing existing
 Apple-platform 3D code onto SceneViewSwift. The full per-API mapping is in
 [`docs/docs/cheatsheet-ios.md`](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md);
@@ -10,7 +12,7 @@ the cross-platform rename map is in
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
 ```
 
 ```swift

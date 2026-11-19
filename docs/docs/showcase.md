@@ -2,10 +2,9 @@
 
 SceneView is the only actively maintained, Compose-native 3D and AR library for Kotlin.
 It delivers Filament's physically-based rendering and ARCore's full AR capabilities through
-a declarative API that developers already understand. SceneViewSwift (alpha) brings
-the same experience to iOS, macOS, and visionOS via RealityKit, and the web build plus the
-Flutter and React Native bridges carry it further. Android XR headsets are still on the roadmap.
-To see these features running, install the demo apps: [Android samples](samples.md), [Apple samples](samples-ios.md).
+a declarative API that developers already understand. Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 ---
 

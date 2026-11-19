@@ -20,11 +20,11 @@
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH). -->
   <script src="/assets/analytics.js"></script>
   <title>SceneView for companies — license, data, maturity, releases</title>
-  <meta name="description" content="What a company needs to evaluate SceneView: Apache-2.0 license, no telemetry in the SDK, platform maturity, release cadence, versioning, security reporting and third-party notices.">
+  <meta name="description" content="Android (Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. SwiftUI, Flutter and React Native are end of life at 4.68.0.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://sceneview.github.io/companies.html">
   <meta property="og:title" content="SceneView for companies">
-  <meta property="og:description" content="Apache-2.0, no telemetry in the SDK, Android stable, other platforms alpha, a release every few days. The facts a company checks before adopting SceneView.">
+  <meta property="og:description" content="Android (Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. SwiftUI, Flutter and React Native are end of life at 4.68.0.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://sceneview.github.io/companies.html">
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
@@ -32,7 +32,7 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="SceneView for companies">
-  <meta name="twitter:description" content="License, data collection, platform maturity, release cadence and security reporting, on one page.">
+  <meta name="twitter:description" content="Android (Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. SwiftUI, Flutter and React Native are end of life at 4.68.0.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
   <meta name="theme-color" content="#005bc1">
   <meta property="og:site_name" content="SceneView">
@@ -436,7 +436,7 @@
       <div class="companies-glance__item" role="listitem">
         <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">devices</span>
         <span class="companies-glance__value">Android stable</span>
-        <span class="companies-glance__label">iOS, web and the cross-platform bridges are alpha.</span>
+        <span class="companies-glance__label">Web and desktop are Alpha. SwiftUI, Flutter and React Native are end of life at 4.68.0.</span>
       </div>
       <div class="companies-glance__item" role="listitem">
         <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">update</span>
@@ -491,7 +491,7 @@
 
       <section id="platforms" aria-labelledby="platforms-title">
         <h2 id="platforms-title"><span class="material-symbols-outlined" aria-hidden="true">devices</span>Platforms and maturity</h2>
-        <p>Only Android is marked stable today. Alpha platforms ship and are usable, with fewer guarantees: their APIs may still change between 4.x releases.</p>
+        <p>Android (Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. SwiftUI (iOS, macOS, visionOS), Flutter and React Native are end of life. 4.68.0 (November 2026) is the last release. No new releases. <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">DEPRECATION.md</a>.</p>
         <div class="companies-table-wrap">
           <table class="companies-table">
             <thead>
@@ -500,11 +500,11 @@
             <tbody>
               <tr><td>Android</td><td><span class="companies-status companies-status--stable">Stable</span></td><td>Jetpack Compose, Filament, ARCore. API 24+, OpenGL ES 3.0.</td></tr>
               <tr><td>Android TV</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose TV, Filament.</td></tr>
-              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
+              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status">End of life at 4.68.0</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
               <tr><td>Web</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Filament.js on WebGL2 / WASM.</td></tr>
               <tr><td>Compose Multiplatform</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Viewer subset, no AR.</td></tr>
               <tr><td>Desktop (JVM)</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose Desktop, Filament.</td></tr>
-              <tr><td>Flutter, React Native</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
+              <tr><td>Flutter, React Native</td><td><span class="companies-status">End of life at 4.68.0</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
             </tbody>
           </table>
         </div>
@@ -513,7 +513,7 @@
 
       <section id="releases" aria-labelledby="releases-title">
         <h2 id="releases-title"><span class="material-symbols-outlined" aria-hidden="true">update</span>Release cadence</h2>
-        <p><strong>SceneView ships every week.</strong> Android artifacts are published on Maven Central, the web and React Native packages on npm, the Flutter plugin on pub.dev and the Apple package through Swift Package Manager.</p>
+        <p><strong>SceneView ships every week.</strong> Android and Compose Multiplatform artifacts are published on Maven Central, and the web package on npm. SwiftUI, Flutter and React Native have no new releases after 4.68.0.</p>
         <p class="companies-source">Full history: <a href="https://github.com/sceneview/sceneview/releases" target="_blank" rel="noopener">GitHub releases</a> and the <a href="https://github.com/sceneview/sceneview/blob/main/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.</p>
       </section>
 

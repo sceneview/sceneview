@@ -5,6 +5,10 @@ description: "Which 3D model formats SceneView opens on each platform: glTF / GL
 
 # Model Formats
 
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 SceneView loads a model from a path, a URI or a byte buffer. **The format is detected from
 the bytes, not from the file name** — a file shared into your app with no extension and a
 `application/octet-stream` MIME type still opens.

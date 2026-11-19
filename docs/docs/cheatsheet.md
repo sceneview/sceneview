@@ -7,8 +7,8 @@ description: "Complete API reference for SceneView's 48+ node types, composables
 
 A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next to your keyboard.
 
-!!! tip "Building for Apple platforms?"
-    See the [Apple API Cheatsheet](cheatsheet-ios.md) for SwiftUI + RealityKit equivalents.
+!!! note "Apple package: end of life at 4.68.0"
+    See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) and the retained [Apple API Cheatsheet](cheatsheet-ios.md) for SwiftUI + RealityKit equivalents.
 
 ---
 
@@ -530,11 +530,11 @@ each using the platform-native audio / vibration backend:
 | **Spatial Audio** | `SpatialAudioNode { }` composable | `io.github.sceneview.web.audio.SpatialAudioNode` — a real Kotlin/JS class backed by the Web Audio `PannerNode` (HRTF panning + distance falloff). Load assets with `loadAudioSource(url)` / `loadAudioSourcePromise(url)`; drive the listener with `setSpatialAudioListenerPose(...)`. **Exposed to Kotlin/JS consumers** — it is *not* `@JsExport`-ed to a plain-JavaScript `sceneview.js` global (the module uses `suspend`, `external` Web Audio declarations and a `sealed interface`, none `@JsExport`-compatible). The web Spatial Audio demo (#1944) uses this API. | `SpatialAudioNode.spatial(...)` |
 | **Haptic Feedback** | `rememberHapticFeedback()` → `SceneViewHaptic` | `io.github.sceneview.web.haptic.SceneViewHaptic` — semantic presets via the [Web Vibration API](https://developer.mozilla.org/docs/Web/API/Navigator/vibrate) (`navigator.vibrate`). **`@JsExport`-ed** — callable from plain JavaScript as `sceneview.haptic.light()` / `.success()` / `.continuous(intensity, durationMs)` etc. Durations only — `intensity` / `sharpness` are accepted for cross-platform parity but ignored at runtime (the Vibration API has no amplitude control). Silent no-op on browsers without `navigator.vibrate` (most desktop, Safari iOS). | `SceneViewHaptic()` (Core Haptics) |
 
-See the [Apple API Cheatsheet](cheatsheet-ios.md#spatial-audio--haptic-parity-1900-1901)
+See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) and the retained [Apple API Cheatsheet](cheatsheet-ios.md#spatial-audio--haptic-parity-1900-1901)
 for the iOS maturity detail.
 
 ---
 
 ## Apple platforms
 
-Building for iOS, macOS, or visionOS? See the [Apple API Cheatsheet](cheatsheet-ios.md).
+Building for iOS, macOS, or visionOS? See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) and the retained [Apple API Cheatsheet](cheatsheet-ios.md).

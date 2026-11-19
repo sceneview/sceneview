@@ -10,11 +10,11 @@ one SceneView platform.
 | Skill | Platform | Install script |
 |---|---|---|
 | [`sceneview`](sceneview/SKILL.md) | Android — Jetpack Compose + Filament + ARCore | `.claude/scripts/install-sceneview-skill.sh` |
-| [`sceneview-ios`](sceneview-ios/SKILL.md) | Apple — SwiftUI + RealityKit (iOS/macOS/visionOS) | `.claude/scripts/install-sceneview-ios-skill.sh` |
+| [`sceneview-ios`](sceneview-ios/SKILL.md) | Apple — end of life at 4.68.0; retained SwiftUI + RealityKit reference | `.claude/scripts/install-sceneview-ios-skill.sh` |
 | [`sceneview-web`](sceneview-web/SKILL.md) | Web — Filament.js (WebGL2/WASM) + WebXR | `.claude/scripts/install-sceneview-web-skill.sh` |
 
 All three are Apache-2.0 (see each `SKILL.md` frontmatter `license` field) and
-maintained in this repository by the [`sceneview`](https://github.com/sceneview) org.
+available in this repository; the Apple skill documents the end-of-life 4.68.0 package ([DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md)). Android and web skills are maintained by the [`sceneview`](https://github.com/sceneview) org.
 
 ## Local install (primary distribution)
 
@@ -110,7 +110,7 @@ publishes one, the submission proceeds through Google's issue tracker:
 | Skill | Registry status |
 |---|---|
 | `sceneview` | Pending — submission filed via Issue Tracker; awaiting a public `android-cli` registry flow |
-| `sceneview-ios` | Not yet submitted — follows `sceneview` acceptance |
+| `sceneview-ios` | Retained reference — package end of life at 4.68.0 |
 | `sceneview-web` | Not yet submitted — follows `sceneview` acceptance |
 
 Update this table and [issue #1082](https://github.com/sceneview/sceneview/issues/1082)

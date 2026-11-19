@@ -1,9 +1,11 @@
 ---
-title: Samples — SceneView for iOS, macOS, visionOS
-description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer, geometry shapes, camera controls, AR tap-to-place, physics, audio, text, reflections, and 30+ more demos."
+title: Samples — SceneView for iOS, macOS, visionOS — end of life at 4.68.0
+description: "End of life at 4.68.0. SwiftUI + RealityKit sample code for SceneViewSwift: model viewer, geometry shapes, camera controls, AR tap-to-place, physics, audio, text, reflections, and 30+ more demos."
 ---
 
 # Samples — Apple Platforms
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 !!! tip "Looking for Android samples?"
     See [Samples](samples.md) for Jetpack Compose sample apps with source code.
@@ -11,7 +13,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **35 demos** covering every category.
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
 ```
 
 All demo source files live in

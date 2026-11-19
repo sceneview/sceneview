@@ -1,22 +1,26 @@
 ---
-title: SceneView — 3D & AR SDK for Android, iOS, Web, and more
-description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 10 platforms supported."
+title: SceneView — 3D & AR SDK for Android, Web, and Compose Multiplatform desktop
+description: "Open-source 3D & AR SDK maintained for Android (Compose), web, and Compose Multiplatform desktop. SwiftUI, Flutter and React Native are end of life at 4.68.0."
 ---
 
 # SceneView
 
 SceneView is an open-source SDK that puts 3D and AR scenes in your UI as declarative
-components: Jetpack Compose on Android, SwiftUI on Apple platforms, and a web component on the web.
+components: Jetpack Compose on Android, Filament.js on the web, and a Compose Multiplatform desktop viewer.
+
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 | Platform | Built on | Get started |
 |---|---|---|
 | Android | Jetpack Compose, Filament, ARCore | [Quickstart](quickstart.md) |
-| iOS, macOS, visionOS | SwiftUI, RealityKit, ARKit | [Quickstart (Apple)](quickstart-ios.md) |
+| iOS, macOS, visionOS — end of life at 4.68.0 | SwiftUI, RealityKit, ARKit | [Quickstart (Apple)](quickstart-ios.md) |
 | Web | Filament.js (WebGL2, WebAssembly) | [Quickstart (Web)](quickstart-web.md) |
 | Desktop | Compose Multiplatform | [Compose Multiplatform](compose-multiplatform.md) |
 | Android TV | Jetpack Compose, Filament | [Quickstart (TV)](quickstart-tv.md) |
-| Flutter | Native bridge to Android and iOS | [Quickstart (Flutter)](quickstart-flutter.md) |
-| React Native | Native bridge to Android and iOS | [Quickstart (React Native)](quickstart-react-native.md) |
+| Flutter — end of life at 4.68.0 | Native bridge to Android and iOS | [Quickstart (Flutter)](quickstart-flutter.md) |
+| React Native — end of life at 4.68.0 | Native bridge to Android and iOS | [Quickstart (React Native)](quickstart-react-native.md) |
 
 [Get started](quickstart.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/sceneview/sceneview){ .md-button }
@@ -48,10 +52,10 @@ No boilerplate. No manual cleanup. Just declare what you want.
     }
     ```
 
-=== "Swift (iOS / macOS / visionOS)"
+=== "Swift (end of life at 4.68.0)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.69.7")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.68.0")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -73,10 +77,10 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
 ## Features
 
-- **Model Viewer.** Load glTF/GLB (Android, Web), USDZ (Apple), plus OBJ, STL, PLY and 3MF on Android, with PBR materials, HDR environment lighting, and automatic animations. Built-in orbit camera with gesture controls. See [Model Formats](formats.md).
-- **Augmented Reality.** Place 3D objects on real-world surfaces with a single tap. ARCore on Android, ARKit on iOS. Plane detection, image tracking, anchor persistence, and face tracking.
+- **Model Viewer.** Load glTF/GLB (Android, Web), USDZ (end-of-life Apple package), plus OBJ, STL, PLY and 3MF on Android, with PBR materials, HDR environment lighting, and automatic animations. Built-in orbit camera with gesture controls. See [Model Formats](formats.md).
+- **Augmented Reality.** Place 3D objects on real-world surfaces with a single tap. ARCore on Android. ARKit examples remain available for the end-of-life iOS package. Plane detection, image tracking, anchor persistence, and face tracking.
 - **Declarative API.** Nodes are composables inside `SceneView { }`. State drives the scene. No `addChildNode()` or `destroy()` calls. Toggle a Boolean to show/hide. Update state to animate.
-- **Cross-Platform.** Android uses Filament. Apple uses RealityKit. Web uses Filament.js (WASM). Shared logic via Kotlin Multiplatform. Native performance everywhere.
+- **Cross-Platform.** Maintained targets use Filament on Android and desktop, and Filament.js (WASM) on the web. Shared logic via Kotlin Multiplatform. Native performance everywhere.
 - **Procedural Geometry.** Cube, Sphere, Cylinder, Plane, Line, Path, Text nodes. All declarative, all with PBR materials. Build scenes without any 3D files.
 - **AI-First Design.** Every API optimized so AI assistants generate correct code on the first try. `llms.txt` at the repo root, MCP server for tool-augmented generation, full code recipes.
 - **Dynamic Sky & Fog.** Time-of-day sun with physically-based colour model. Atmospheric fog with density and height controls. Create mood and atmosphere reactively.
@@ -104,11 +108,11 @@ No boilerplate. No manual cleanup. Just declare what you want.
     }
     ```
 
-=== "iOS / macOS / visionOS"
+=== "SwiftUI (end of life at 4.68.0)"
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.69.7")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.68.0")
     ```
 
 === "Web"
@@ -162,8 +166,8 @@ Step-by-step guides to build your first 3D and AR apps.
 
 - [3D with Compose](codelabs/codelab-3d-compose.md): Build your first 3D scene with a rotating glTF model, HDR lighting, and orbit camera gestures.
 - [AR with Compose](codelabs/codelab-ar-compose.md): Place 3D objects in the real world using ARCore plane detection and anchor tracking.
-- [3D with SwiftUI](codelabs/codelab-3d-swiftui.md): Build a 3D model viewer on iOS/macOS using SceneViewSwift, RealityKit, and orbit camera.
-- [AR with SwiftUI](codelabs/codelab-ar-swiftui.md): Detect planes with ARKit and tap to place 3D objects in the real world on iOS.
+- [3D with SwiftUI — end of life at 4.68.0](codelabs/codelab-3d-swiftui.md): Build a 3D model viewer on iOS/macOS using SceneViewSwift, RealityKit, and orbit camera.
+- [AR with SwiftUI — end of life at 4.68.0](codelabs/codelab-ar-swiftui.md): Detect planes with ARKit and tap to place 3D objects in the real world on iOS.
 
 ---
 

@@ -69,7 +69,7 @@ project-scoped file named by the documentation (local and user scopes live in
 
 Verify with `claude mcp list` — `sceneview` should show `✔ Connected`. There is
 also a plugin carrying the same three skills as the Codex plugin — `sceneview`
-(Compose), `sceneview-ios` (SwiftUI) and `sceneview-web` (Filament.js / WebXR) —
+(Compose), `sceneview-ios` (retained SwiftUI reference, end of life at 4.68.0) and `sceneview-web` (Filament.js / WebXR) —
 together with the MCP server: `/plugin marketplace add sceneview/claude-marketplace`,
 then `/plugin install sceneview@sceneview`.
 References: [code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp)
@@ -108,7 +108,7 @@ args = ["-y", "sceneview-mcp"]
 ```
 
 The repository is also a Codex plugin, carrying three skills — `sceneview`
-(Compose), `sceneview-ios` (SwiftUI) and `sceneview-web` (Filament.js / WebXR).
+(Compose), `sceneview-ios` (retained SwiftUI reference, end of life at 4.68.0) and `sceneview-web` (Filament.js / WebXR).
 Codex scans `.agents/skills` in every directory from your working directory up
 to the repository root, so in a checkout it finds them with no setup;
 `.agents/plugins/marketplace.json` declares the repository as a local

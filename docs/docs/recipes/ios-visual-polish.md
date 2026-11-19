@@ -1,9 +1,11 @@
 ---
-title: iOS visual-polish pipeline — HDR skybox + PBR materials + AR Quick Look
-description: "Make SceneViewSwift demos look hand-crafted: wrap-around HDR skybox, physically-based materials with chrome-mirror reflections, and a one-line Apple AR Quick Look entry point."
+title: iOS visual-polish pipeline — HDR skybox + PBR materials + AR Quick Look — end of life at 4.68.0
+description: "End of life at 4.68.0. Make SceneViewSwift demos look hand-crafted: wrap-around HDR skybox, physically-based materials with chrome-mirror reflections, and a one-line Apple AR Quick Look entry point."
 ---
 
 # iOS visual-polish pipeline
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 **Intent:** "My iOS SceneView demo looks flat. How do I get the polished, reflective,
 starfield-wrapped look without writing a custom RealityKit scene?"

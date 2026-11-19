@@ -15,7 +15,7 @@ chatting with other SceneView developers.
 **Channels you will find:**
 
 - **#general** — Introductions, announcements, and general discussion
-- **#help** — Ask questions about SceneView (Android, iOS, Web, Flutter, React Native)
+- **#help** — Ask questions about SceneView (Android, web, Compose Multiplatform desktop). SwiftUI, Flutter and React Native are end of life at 4.68.0; issues and pull requests for these packages are no longer triaged. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 - **#showcase** — Share screenshots and videos of what you built
 - **#contributing** — Coordinate contributions and discuss PRs
 

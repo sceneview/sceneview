@@ -1,11 +1,13 @@
 # visionOS Spatial Computing
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 SceneViewSwift supports visionOS 2+ via RealityKit. This page documents the spatial
 computing features available on Apple Vision Pro and how SceneViewSwift will integrate
 them.
 
 !!! info "Status: Research & Roadmap"
-    visionOS spatial features are **planned** for a future release. The API designs
+    This is a historical research proposal; no new SceneViewSwift releases are planned. The API designs
     shown here are **target proposals** -- final APIs may differ after implementation.
 
 ---

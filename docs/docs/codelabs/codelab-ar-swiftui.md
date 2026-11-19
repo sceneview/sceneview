@@ -1,5 +1,7 @@
 # CodeLab: AR with SwiftUI — SceneViewSwift
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 **Time:** ~15 minutes
 **Prerequisites:** Complete the [3D with SwiftUI codelab](codelab-3d-swiftui.md) first, or have basic SceneViewSwift knowledge
 **What you'll build:** An AR scene that detects horizontal planes and places 3D objects at tapped locations
@@ -29,7 +31,7 @@ If you have not already added SceneViewSwift, follow the same SPM steps from the
 
 1. **File > Add Package Dependencies**
 2. URL: `https://github.com/sceneview/sceneview.git`
-3. Version: from `4.69.7`
+3. Version: from `4.68.0`
 
 ### Camera permission
 

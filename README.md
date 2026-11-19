@@ -12,7 +12,7 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 | Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.69.7` | `SceneView { }` |
 | Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.69.7` | `ARSceneView { }` or `PlacementScene` |
 | Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
-| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.7` | `SceneViewer(model = …)` in `commonMain` |
+| Kotlin / Compose Multiplatform (Android, desktop) | `io.github.sceneview:sceneview-compose:4.69.7` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
 Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `ARScene`)?
@@ -34,10 +34,10 @@ API or the doc gets fixed.
 <!-- Platforms -->
 [![Android 3D](https://img.shields.io/maven-central/v/io.github.sceneview/sceneview?label=Android%203D&logo=android&color=34a853)](https://central.sonatype.com/artifact/io.github.sceneview/sceneview)
 [![Android AR](https://img.shields.io/maven-central/v/io.github.sceneview/arsceneview?label=Android%20AR&logo=android&color=34a853)](https://central.sonatype.com/artifact/io.github.sceneview/arsceneview)
-[![iOS / macOS / visionOS](https://img.shields.io/github/v/release/sceneview/sceneview?label=Swift&logo=swift&color=f05138)](https://github.com/sceneview/sceneview)
+[![SwiftUI end of life at 4.68.0](https://img.shields.io/badge/SwiftUI-4.68.0%20end%20of%20life-grey?logo=swift)](DEPRECATION.md)
 [![sceneview-web](https://img.shields.io/npm/v/sceneview-web?label=sceneview-web&logo=javascript&color=f7df1e)](https://www.npmjs.com/package/sceneview-web)
-[![Flutter](https://img.shields.io/pub/v/flutter_sceneview?label=Flutter&logo=flutter&color=02569B)](https://pub.dev/packages/flutter_sceneview)
-[![React Native](https://img.shields.io/npm/v/@sceneview-sdk/react-native?label=React%20Native&logo=react&color=61DAFB)](https://www.npmjs.com/package/@sceneview-sdk/react-native)
+[![Flutter end of life at 4.68.0](https://img.shields.io/badge/Flutter-4.68.0%20end%20of%20life-grey)](DEPRECATION.md)
+[![React Native end of life at 4.68.0](https://img.shields.io/badge/React%20Native-4.68.0%20end%20of%20life-grey)](DEPRECATION.md)
 [![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=npm&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
 
 <!-- Status -->
@@ -56,6 +56,8 @@ API or the doc gets fixed.
   <a href="https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763"><img src="website-static/assets/brand/stores/app-store.svg" alt="Download on the App Store" height="56"></a>&nbsp;
   <a href="https://sceneview.github.io/web-demo/"><img src="website-static/assets/brand/stores/web-demo.svg" alt="Open the web demo" height="56"></a>
 </p>
+
+The iOS and macOS demo has no new builds after 4.68.0 — see [DEPRECATION.md](DEPRECATION.md).
 
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
 `https://sceneview.github.io/open?demo=<id>`. Start with
@@ -183,7 +185,7 @@ with `tools:replace="android:value"`. Both snippets are in the
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
-### Compose Multiplatform (Android · iOS · desktop)
+### Compose Multiplatform (Android · desktop)
 
 ```kotlin
 // commonMain dependencies
@@ -194,13 +196,14 @@ implementation("io.github.sceneview:sceneview-compose:4.69.7")
 SceneViewer(model = ModelSource.Asset("models/toy_car.glb"), modifier = Modifier.fillMaxSize())
 ```
 
-A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iOS setup:
+A viewer by design — load, orbit, light, tap; no AR. Android and desktop are maintained.
+The retained iOS host requires end-of-life SceneViewSwift 4.68.0. Scope and historical iOS setup:
 [`sceneview-compose/`](sceneview-compose/README.md).
 
 ### iOS, Flutter and React Native
 
 SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native
-(`@sceneview-sdk/react-native`) is deprecated: 4.68.0 is their last release. Published versions stay
+(`@sceneview-sdk/react-native`) is end of life: **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay
 installable and the source stays in this repository — [what that means and the timeline](DEPRECATION.md).
 
 ### Your AI assistant
@@ -223,7 +226,7 @@ capture of it.
 | Platform | Status | Install | Open it | Capture |
 |---|---|---|---|---|
 | **Android** | Shipped · Stable | [Maven Central](https://central.sonatype.com/artifact/io.github.sceneview/sceneview) | [Google Play](https://play.google.com/store/apps/details?id=io.github.sceneview.demo) | <img src="website-static/assets/demos/runs-on-android.jpg" alt="SceneView Android demo: Model Viewer rendering a helmet with Filament" height="160"> |
-| **iOS** | Shipped · Alpha | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
+| **iOS** | End of life — [4.68.0, no new builds](DEPRECATION.md) | [Swift Package](SceneViewSwift/) | [App Store](https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763) | <img src="website-static/assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" height="160"> |
 | **Web** | Shipped · Alpha | [npm `sceneview-web`](https://www.npmjs.com/package/sceneview-web) | [Live web demo](https://sceneview.github.io/web-demo/) | <img src="website-static/assets/demos/runs-on-web.jpg" alt="SceneView web demo: Toy Car rendered by Filament.js in a browser" height="100"> |
 
 *Shipped* means released and publicly reachable; the second word is the API maturity.
@@ -237,12 +240,12 @@ The other platforms in the table below join this section once a capture backs th
 |---|---|---|---|
 | **Android** | Filament | Jetpack Compose | Stable |
 | **Android TV** | Filament | Compose TV | Alpha |
-| **iOS / macOS / visionOS** | RealityKit | SwiftUI | Deprecated — [4.68.0 is the last release](DEPRECATION.md) |
+| **iOS / macOS / visionOS** | RealityKit | SwiftUI | End of life — [4.68.0 is the last release](DEPRECATION.md) |
 | **Web** | Filament.js (WebGL2 / WASM) | JavaScript + Kotlin/JS | Alpha |
-| **Compose Multiplatform** | Filament (Android, desktop) · RealityKit (iOS) | `sceneview-compose` | Alpha — viewer subset |
+| **Compose Multiplatform** | Filament (Android, desktop); retained iOS host uses end-of-life SceneViewSwift | `sceneview-compose` | Alpha — viewer subset |
 | **Desktop (JVM)** | Filament, via filament-kmp | Compose Desktop (`sceneview-compose`) | Alpha |
-| **Flutter** | Native per platform | PlatformView | Deprecated — [4.68.0 is the last release](DEPRECATION.md) |
-| **React Native** | Native per platform | Fabric | Deprecated — [4.68.0 is the last release](DEPRECATION.md) |
+| **Flutter** | Native per platform | PlatformView | End of life — [4.68.0 is the last release](DEPRECATION.md) |
+| **React Native** | Native per platform | Fabric | End of life — [4.68.0 is the last release](DEPRECATION.md) |
 | **AI assistants** | — | `llms.txt`, MCP server, skills | Stable |
 
 ## Install
@@ -449,7 +452,9 @@ Kotlin in `sceneview-core`. Tracked next:
 
 ---
 
-## Apple (iOS / macOS / visionOS)
+## Apple (iOS / macOS / visionOS) — end of life at 4.68.0
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 Native Swift Package built on RealityKit, with a node set mirroring the Android API. Content you
 can build synchronously uses the `@NodeBuilder` form:

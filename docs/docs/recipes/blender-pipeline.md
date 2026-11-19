@@ -5,6 +5,10 @@ description: Author a custom 3D model in Blender and ship it in a SceneView app 
 
 # Blender → SceneView asset pipeline
 
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 **Intent:** "I authored a 3D model in Blender — how do I get it into a SceneView app on iOS and Android?"
 
 !!! tip "Read the source tutorial first"

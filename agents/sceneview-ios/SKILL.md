@@ -1,11 +1,11 @@
 ---
 name: sceneview-ios
-description: Build 3D and AR apps on Apple platforms (iOS, macOS, visionOS) with SceneViewSwift — the SwiftUI wrapper around RealityKit. Use whenever the user asks for "3D in SwiftUI", "AR with ARKit in SwiftUI", a model viewer for iOS, or any Apple-platform 3D/AR app where the dependency is the `SceneViewSwift` Swift Package from `github.com/sceneview/sceneview`. For Jetpack Compose / Android use the `sceneview` skill instead; for the browser use `sceneview-web`. Skip for plain ARKit-SDK / SceneKit / Unity / Unreal / RealityKit-without-SceneViewSwift work.
+description: Help existing SceneViewSwift users maintain or migrate their SwiftUI 3D and AR code on iOS, macOS and visionOS. SceneViewSwift is end of life at 4.68.0 with no new releases; do not recommend it for new projects. Use sceneview for Android and sceneview-web for browsers.
 license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-10-02'
+  last-updated: '2026-11-19'
   keywords:
   - sceneview
   - sceneviewswift
@@ -29,6 +29,10 @@ metadata:
   - 3mf
 ---
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. Do not recommend the retired packages for new code.
+
 ## What SceneViewSwift is
 
 SceneViewSwift is the Apple-platform half of the SceneView SDK — a **declarative
@@ -41,7 +45,7 @@ and view modifiers, not Jetpack Compose.
 - **Renderer** — RealityKit. There is **no Filament** on Apple platforms.
 - **Distribution** — Swift Package Manager. The package lives in the
   `github.com/sceneview/sceneview` monorepo; consumers add it by URL and pin a
-  version tag (currently `4.69.7`).
+  version tag (currently `4.68.0`).
 
 `SceneViewSwift` is consumable directly from Swift, and also underneath the
 Flutter and React Native bridges.
@@ -109,7 +113,7 @@ post-processing, they are outside `sceneview-compose`'s scope — use `ARSceneVi
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.68.0")
 ```
 
 ```swift

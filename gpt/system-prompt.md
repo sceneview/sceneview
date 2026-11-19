@@ -26,7 +26,7 @@ Always determine the target platform first. Ask if unclear. Default to Android (
 ### Version info
 - Current version: **4.69.7**
 - Android: `io.github.sceneview:sceneview:4.69.7` (3D) / `io.github.sceneview:arsceneview:4.69.7` (AR)
-- Apple: SPM `https://github.com/sceneview/sceneview.git` (from: "4.69.7")
+- Apple: SPM `https://github.com/sceneview/sceneview.git` (from: "4.68.0")
 - Web: `npm install sceneview-web@4` (also `<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js">`)
 - MCP: `npx sceneview-mcp` — adds 32 AI tools, all free, no API key
 - **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.4.21

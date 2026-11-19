@@ -1,9 +1,13 @@
 ---
 title: Samples — SceneView
-description: "Platform demo apps and code recipes for SceneView: Android, iOS, Web, Desktop, Android TV, Flutter, React Native."
+description: "Maintained Android, web and Compose Multiplatform desktop samples. Retained SwiftUI, Flutter and React Native samples are end of life at 4.68.0."
 ---
 
 # Samples
+
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 One unified showcase app per platform. Clone the repo and run:
 
@@ -56,9 +60,9 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
     sheet, or opens a pre-filled GitHub issue in the browser. See the
     [Privacy Policy](https://sceneview.github.io/privacy.html) for the full data flow.
 
-### iOS Demo
+### iOS Demo — end of life at 4.68.0
 
-**`samples/ios-demo/`** — App Store ready, SwiftUI
+**`samples/ios-demo/`** — No new builds after 4.68.0, SwiftUI
 
 4-tab SwiftUI app:
 
@@ -125,7 +129,7 @@ D-pad controlled 3D viewer:
 ./gradlew :samples:android-tv-demo:assembleDebug
 ```
 
-### Flutter Demo
+### Flutter Demo — end of life at 4.68.0
 
 **`samples/flutter-demo/`** — PlatformView bridge
 
@@ -138,7 +142,7 @@ Native SceneView rendering inside Flutter:
 cd samples/flutter-demo && flutter run
 ```
 
-### React Native Demo
+### React Native Demo — end of life at 4.68.0
 
 **`samples/react-native-demo/`** — Fabric bridge
 

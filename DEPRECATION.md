@@ -10,7 +10,7 @@ SceneView in a browser.
 | `SceneViewSwift` (Swift Package, iOS · macOS · visionOS) | 4.68.0 | No new releases |
 | `flutter_sceneview` (pub.dev) | 4.68.0 | No new releases; marked discontinued on pub.dev |
 | `@sceneview-sdk/react-native` (npm) | 4.68.0 | No new releases; marked deprecated on npm |
-| SceneView Demo for iOS and macOS (App Store) | 4.68.0 | No new builds |
+| SceneView Demo for iOS and macOS (App Store) | 4.69.7 | No new builds after 4.69.7 |
 
 Unchanged: `io.github.sceneview:sceneview`, `arsceneview`, `sceneview-core` and `sceneview-compose` on Maven
 Central, `sceneview-web` on npm, and the `sceneview-mcp` server.

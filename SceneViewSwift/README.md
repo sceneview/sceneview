@@ -1,6 +1,6 @@
 # SceneViewSwift
 
-> **Deprecated.** SceneView for SwiftUI (`SceneViewSwift`): 4.68.0 is the last release. Published versions stay installable and this source stays available under Apache 2.0 — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+> **End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 3D and AR scenes in SwiftUI, powered by RealityKit. The Apple companion to [SceneView for Android](https://github.com/sceneview/sceneview).
 
@@ -17,13 +17,13 @@ Add SceneViewSwift via Swift Package Manager:
    ```
    https://github.com/sceneview/sceneview
    ```
-3. Select the version rule and add the package to your target.
+3. Select **Exact Version**, enter **4.68.0** (the last release), and add the package to your target.
 
 Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.69.7")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.68.0")
 ]
 ```
 

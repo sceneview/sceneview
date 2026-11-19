@@ -113,8 +113,9 @@ SceneView 2.x had a different Compose API. Code in that shape does not compile o
 
 ## Also on iOS and the web
 
-The same model renders on Apple platforms with SceneViewSwift (SwiftUI + RealityKit, ARKit for
-AR) and in the browser with sceneview-web (Filament.js, WebXR):
+SceneView Web renders the same model in the browser with Filament.js and WebXR.
+The retained SceneViewSwift package renders on Apple platforms with SwiftUI, RealityKit
+and ARKit, but is end of life at 4.68.0; see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md):
 [Apple quickstart](quickstart-ios.md), [Web quickstart](quickstart-web.md).
 
 ## See also

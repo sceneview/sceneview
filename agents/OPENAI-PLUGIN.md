@@ -1,5 +1,7 @@
 # SceneView as a ChatGPT / Codex plugin — package & submission packet
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 OpenAI's unit of distribution is the **plugin**: a folder with a manifest at
 `.codex-plugin/plugin.json`, optional skills, an optional MCP server and optional UI,
 listed in one **Plugins Directory shared by ChatGPT and Codex**
@@ -40,7 +42,7 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 ## Listing copy (English, as submitted)
 
 - **Name:** SceneView 3D & AR
-- **Short description:** Write working 3D and AR code for Android, Apple and the web on
+- **Short description:** Write working 3D and AR code for Android and the web on
   the first try.
 - **Long description:** see `interface.longDescription` in the manifest — keep the two in
   sync by editing the manifest, this file only mirrors it.
@@ -59,7 +61,7 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 1. Build a Jetpack Compose screen that loads a `.glb` model with SceneView, orbit camera
    and a light.
 2. Add ARCore plane detection with SceneView and place the model where the user taps.
-3. Write a SwiftUI view that shows a USDZ model with SceneViewSwift on iOS and visionOS.
+3. Maintain or migrate this existing SceneViewSwift 4.68.0 app; the package is end of life.
 4. Render a GLB in the browser with `sceneview-web` and add a WebXR "View in AR" button.
 5. Migrate this SceneView 2.x snippet to the 4.x composable API.
 6. Show me this 3D model URL inline and tell me how to load it in Compose.
@@ -72,7 +74,7 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 |---|---|---|---|
 | P1 | "Load `models/helmet.glb` in a Compose screen with SceneView" | Skill `sceneview` triggers; code uses `SceneView { }`, `rememberEngine`, `rememberModelLoader`, `rememberModelInstance`; dependency `io.github.sceneview:sceneview:4.69.7` | Kotlin snippet that compiles against the declared Maven dependency |
 | P2 | "Place that model on a detected plane when I tap" | `ARSceneView { }` with plane detection and a hit-test on tap; dependency `arsceneview` | Kotlin snippet |
-| P3 | "Same thing on iOS with SwiftUI" | Skill `sceneview-ios`; `SceneView { }` / `ARSceneView { }` from SceneViewSwift, SPM tag `4.51.0` | Swift snippet |
+| P3 | "Same thing on iOS with SwiftUI" | Skill `sceneview-ios`; `SceneView { }` / `ARSceneView { }` from SceneViewSwift, SPM last release `4.68.0` (end of life) | Swift snippet |
 | P4 | "Show me `https://…/moto_helmet_v2.glb` in 3D" (MCP shape only) | Tool `view_3d_model` is called; the widget renders the model inline; text names the URL | `structuredContent.modelUrl` + widget |
 | P5 | "Which SceneView sample fits an AR anchor demo?" (MCP shape only) | `list_samples` then `get_sample` | Sample id + Kotlin source |
 | P6 | "Open this `.3mf` in Compose and place it in AR at its real size" | Skill `sceneview` triggers; the answer uses the ordinary `rememberModelInstance(modelLoader, uri)` path and invents no `loadThreeMf` API; the millimetre → metre scaling is named | Kotlin snippet |
