@@ -53,9 +53,9 @@
 
 ---
 
-## Start here — two complete Android screens
+## Start here — complete Android screens
 
-Both files compile as they are against `io.github.sceneview:arsceneview:4.69.7` (CI builds every
+These examples compile as they are against `io.github.sceneview:arsceneview:4.69.7` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -82,6 +82,49 @@ fun ModelViewerScreen() {
         // null while the file loads, then the model appears
         rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1f)
+        }
+    }
+}
+```
+
+**Loading state and errors.**
+
+`rememberModelInstance` returns `null` while loading or after a failure; use
+`rememberModelLoadState` to tell them apart. Keep the scene visible and overlay its status.
+Incrementing `retry` changes the composition `key` and starts a fresh load of the same path;
+recomposition alone does not retry.
+
+```kotlin
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ModelLoadState
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberModelLoadState
+
+@Composable
+fun ModelViewerWithLoading() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    var retry by remember { mutableIntStateOf(0) }
+    val state = key(retry) { rememberModelLoadState(modelLoader, "models/helmet.glb") }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+            if (state is ModelLoadState.Ready) {
+                ModelNode(modelInstance = state.instance, scaleToUnits = 1f, autoAnimate = true)
+            }
+        }
+        when (state) {
+            is ModelLoadState.Loading -> CircularProgressIndicator()
+            is ModelLoadState.Failed -> Button(onClick = { retry++ }) { Text("Load failed. Retry") }
+            is ModelLoadState.Ready -> Unit
         }
     }
 }
@@ -4322,6 +4365,8 @@ fun rememberModelInstance(
 ): ModelInstance?
 ```
 Returns `null` while loading, recomposes when ready. **Always handle the null case.** All three overloads share one body: a failed load is `null` and logged (a file in no supported format under the `ModelLoader` tag, with the `UnsupportedModelFormat` message); the instance is returned before its textures finish decoding.
+For a UI that distinguishes loading from failure and offers retry, use `rememberModelLoadState`
+as in **Start here** above.
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
@@ -4357,7 +4402,9 @@ sealed interface ModelLoadState {
     data class Failed(val error: Throwable) : ModelLoadState
 }
 ```
-For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+Use this for loading and error UI for any model, including large or generated ones. It exposes
+the failure cause instead of leaving an empty scene. The **Loading state and errors** variant in
+**Start here** also shows retry: wrap the call in `key(retry)` and increment it from a button.
 ```kotlin
 when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
     is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })

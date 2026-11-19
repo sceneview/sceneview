@@ -202,7 +202,7 @@ That is the entire app. Here is what each piece does:
 | `rememberEnvironmentLoader(engine)` | Loads HDR environment maps for lighting |
 | `rememberCameraManipulator()` | Adds built-in orbit, pan, and zoom touch gestures |
 | `SceneView { }` | The 3D viewport composable — nodes go inside the trailing lambda |
-| `rememberModelInstance(...)` | Asynchronously loads a model; returns `null` until ready |
+| `rememberModelInstance(...)` | Asynchronously loads a model; returns `null` until ready or after a failure |
 | `ModelNode(...)` | Places the loaded model in the scene |
 
 !!! warning "Always handle the null case"
@@ -221,6 +221,7 @@ For an optional loading and retry overlay, call this composable from `setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -244,7 +245,7 @@ fun ModelScreenWithLoading() {
             }
         }
         when (state) {
-            is ModelLoadState.Loading -> Text("Loading model")
+            is ModelLoadState.Loading -> CircularProgressIndicator()
             is ModelLoadState.Failed -> Button(onClick = { retry++ }) { Text("Load failed. Retry") }
             is ModelLoadState.Ready -> Unit
         }

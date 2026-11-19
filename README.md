@@ -132,6 +132,7 @@ recomposition alone does not retry.
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -155,7 +156,7 @@ fun ModelScreenWithLoading() {
             }
         }
         when (state) {
-            is ModelLoadState.Loading -> Text("Loading model")
+            is ModelLoadState.Loading -> CircularProgressIndicator()
             is ModelLoadState.Failed -> Button(onClick = { retry++ }) { Text("Load failed. Retry") }
             is ModelLoadState.Ready -> Unit
         }

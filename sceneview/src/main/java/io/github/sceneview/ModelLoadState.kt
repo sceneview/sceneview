@@ -40,9 +40,11 @@ sealed interface ModelLoadState {
 }
 
 /**
- * Loads a model with [ModelLoader.awaitModelInstance] and remembers where it stands, for a UI that
- * shows the progress of a large model (a generated one: tens of MB, 4K textures) and says why one
- * did not load, where [rememberModelInstance] only gives `null` until the instance exists.
+ * Loads a model with [ModelLoader.awaitModelInstance] and remembers where it stands, for any UI that
+ * must tell loading from failure: it shows the progress of a large model (a generated one: tens of
+ * MB, 4K textures) and says why one did not load, where [rememberModelInstance] only gives `null`
+ * while loading or after a failure. `Ready` arrives once the textures are in, and a glTF that
+ * requires an unsupported extension ends in `Failed`.
  *
  * ```kotlin
  * when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {

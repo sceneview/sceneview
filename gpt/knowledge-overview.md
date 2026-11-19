@@ -30,7 +30,7 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 
 **Toolchain:** compileSdk 37, AGP 9.4+, Kotlin 2.3 or newer (the AARs are built with **Kotlin:** 2.4.21), minSdk 24, JVM target 21. On AGP 8 / compileSdk 36 / Kotlin 2.2, use `4.18.0` instead (see Setup). Compose BOM compatible.
 
-**Reading this file:** it is long (about 600 kB). For a first Android screen, everything you need is in the first 20 kB: **Setup** and **Start here** (two complete, compiled files). Look up anything else by its `##` heading.
+**Reading this file:** it is long (about 600 kB). For a first Android screen, everything you need is in the first 20 kB: **Setup** and **Start here** (complete, compiled files). Look up anything else by its `##` heading.
 
 **Which artifact for which app** (all open source, Apache 2.0):
 
@@ -52,7 +52,7 @@ to emit the 2.x API; use the 4.x names instead:
 | `Scene(childNodes = …)` | `SceneView { … }` — nodes are composables declared in the trailing block |
 | `ARScene(childNodes = …)` | `ARSceneView { … }` |
 | `rememberNodes { add(…) }`, `childNodes = listOf(…)` | declare `ModelNode(…)`, `AnchorNode(…) { … }` inside the block |
-| `ModelNode(modelInstance = modelLoader.createModelInstance(…))` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it) }` — `null` while loading |
+| `ModelNode(modelInstance = modelLoader.createModelInstance(…))` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it) }` — `null` while loading or after failure; use `rememberModelLoadState` for errors |
 | `io.github.sceneview.model.ModelNode`, `io.github.sceneview.node.ModelNode` used as a composable | `ModelNode` is a member of the `SceneView { }` scope — no import |
 
 **Used in production:** SceneView has more than 1,300 stars on GitHub and over 500 public
@@ -113,10 +113,12 @@ composables (`ModelNode`, `AnchorNode`, `CubeNode`, `LightNode`…) are members 
 `ARSceneView { }` content scope: they need **no import**. Do not write `import io.github.sceneview.ModelNode` (nor `io.github.sceneview.ar.AnchorNode`):
 no such top-level function exists, and the build fails with *Unresolved reference 'ModelNode'*.
 ```kotlin
+import io.github.sceneview.ModelLoadState
 import io.github.sceneview.SceneView
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoadState
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener   // not io.github.sceneview.gesture
 import io.github.sceneview.ar.ARSceneView
