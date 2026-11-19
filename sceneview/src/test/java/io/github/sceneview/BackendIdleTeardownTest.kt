@@ -149,8 +149,8 @@ class BackendIdleTeardownTest {
             reached = true
             clock += 2_000
             scheduler.runNext()
-            assertEquals("retirement does not leak into the next shared wait",
-                if (episode == 0) episode + 1 else episode, runs)
+            assertEquals("a replacement reached right now proves readiness even after a long gap",
+                episode + 1, runs)
             scheduler.runAll()
             assertEquals(episode + 1, runs)
             assertEquals(0, teardowns.size)
