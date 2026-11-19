@@ -35,8 +35,13 @@ class SitemapTest(unittest.TestCase):
             "viewer.html": '<body><canvas></canvas><script>'
                            'button.onclick = () => { location.href = "/open/"; };'
                            '</script></body>',
-            "go/index.html": '<body>Download links</body>',
+            "go/index.html": '<meta name="robots" content="index, follow">'
+                             '<link rel="canonical" href="/go/"><body>Download links</body>',
             "go/android/index.html": '<body>Redirect</body>',
+            "go/ios/index.html": '<body>Redirect</body>',
+            "go/codex/index.html": '<body>Redirect</body>',
+            "playground.html": '<link rel="canonical" href="/web-demo/">'
+                               '<meta http-equiv="refresh" content="0; url=/web-demo/">',
             "404.html": '<body>Not found</body>',
             "moved.html": '<META content="0; url=/view" HTTP-EQUIV="Refresh">'
                           '<body><a href="/view">Moved</a></body>',
@@ -49,9 +54,21 @@ class SitemapTest(unittest.TestCase):
             path = self.site / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(html, encoding="utf-8")
+        sources = {
+            "samples/web-demo/site/index.html": '<body><canvas></canvas></body>',
+            "samples/web-demo/site/js/app.js": '// Demo code\n',
+            "website-static/js/sceneview.js": '// Shared viewer\n',
+            "llms.txt": "Full API reference\n",
+            "docs/docs/llms-full.txt": "Compact overview\n",
+        }
+        for name, content in sources.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
         self.commit("2026-04-11T12:00:00+00:00")
         with (self.site / "view.html").open("a", encoding="utf-8") as page:
             page.write("<!-- Updated viewer -->")
+        (self.root / "llms.txt").write_text("Updated API reference\n", encoding="utf-8")
         self.commit("2026-11-18T12:00:00+00:00")
 
     def git(self, *args, **kwargs):
@@ -60,7 +77,7 @@ class SitemapTest(unittest.TestCase):
         )
 
     def commit(self, date):
-        self.git("add", "website-static")
+        self.git("add", ".")
         self.git(
             "-c", "user.name=Sitemap Test", "-c", "user.email=thomas.gorisse@gmail.com",
             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
@@ -78,10 +95,41 @@ class SitemapTest(unittest.TestCase):
         ]
         self.assertEqual([
             ("https://sceneview.github.io/", "2026-04-11"),
+            ("https://sceneview.github.io/go/", "2026-04-11"),
+            ("https://sceneview.github.io/llms-full.txt", "2026-04-11"),
+            ("https://sceneview.github.io/llms.txt", "2026-11-18"),
             ("https://sceneview.github.io/nested/", "2026-04-11"),
             ("https://sceneview.github.io/view", "2026-11-18"),
             ("https://sceneview.github.io/viewer.html", "2026-04-11"),
+            ("https://sceneview.github.io/web-demo/", "2026-04-11"),
         ], entries)
+
+    def test_external_urls_follow_their_deployed_source_history(self):
+        sources = (
+            ("web-demo/", "samples/web-demo/site/index.html"),
+            ("web-demo/", "samples/web-demo/site/js/app.js"),
+            ("web-demo/", "website-static/js/sceneview.js"),
+            ("llms.txt", "llms.txt"),
+            ("llms-full.txt", "docs/docs/llms-full.txt"),
+        )
+        for day, (route, source) in enumerate(sources, start=19):
+            with self.subTest(source=source):
+                with (self.root / source).open("a", encoding="utf-8") as content:
+                    content.write("\nUpdated source\n")
+                date = f"2026-11-{day}"
+                self.commit(f"{date}T12:00:00+00:00")
+                xml = ET.fromstring(SITEMAP.generate(self.root))
+                entries = {
+                    entry.findtext(f"{{{SITEMAP.NAMESPACE}}}loc"):
+                    entry.findtext(f"{{{SITEMAP.NAMESPACE}}}lastmod")
+                    for entry in xml
+                }
+                self.assertEqual(date, entries[SITEMAP.ORIGIN + route])
+
+    def test_missing_external_source_is_rejected(self):
+        (self.root / "docs/docs/llms-full.txt").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing sitemap source: docs/docs/llms-full.txt"):
+            SITEMAP.generate(self.root)
 
     def test_javascript_only_redirect_forms(self):
         for script in (
@@ -113,6 +161,21 @@ class SitemapTest(unittest.TestCase):
         self.assertEqual(1, stale.returncode)
         self.assertIn("Run python3 tools/generate-sitemap.py", stale.stderr)
         self.assertEqual("stale sitemap\n", target.read_text(encoding="utf-8"))
+        output = self.root / "temporary-sitemap.xml"
+        exported = subprocess.run(command + ["--output", str(output)], capture_output=True, text=True)
+        self.assertEqual(0, exported.returncode, exported.stderr)
+        self.assertEqual(SITEMAP.generate(self.root), output.read_text(encoding="utf-8"))
+        self.assertEqual("stale sitemap\n", target.read_text(encoding="utf-8"))
+        # The real-tree CI command must surface parse errors in a new page.
+        (self.site / "broken.html").write_text(
+            '<link rel="canonical" href="https://[invalid"><body>Broken canonical</body>',
+            encoding="utf-8",
+        )
+        broken = subprocess.run(command + ["--output", str(output)], capture_output=True, text=True)
+        self.assertEqual(1, broken.returncode)
+        self.assertIn("Sitemap error:", broken.stderr)
+        self.assertEqual("stale sitemap\n", target.read_text(encoding="utf-8"))
+        (self.site / "broken.html").unlink()
         target.unlink()
         missing = subprocess.run(command + ["--check"], capture_output=True, text=True)
         self.assertEqual(1, missing.returncode)

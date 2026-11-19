@@ -336,11 +336,12 @@ jobs:
               - '.github/copilot-instructions.md'
               - 'pro/gpt-store/gpt-instructions.md'
               - 'agents/OPENAI-PLUGIN.md'
-            # The deploy-time sitemap generator (docs.yml) and its offline tests.
+            # Exercise the deploy-time sitemap generator on fixtures and real HTML.
             website-sitemap:
               - '.github/workflows/ci.yml'
               - 'tools/generate-sitemap.py'
               - 'tools/test_generate_sitemap.py'
+              - 'website-static/**/*.html'
 
       # The `outputs:` block above warns that a missing output evaluates to the
       # empty string and silently skips every downstream job — "a gate that can
@@ -503,7 +504,8 @@ jobs:
 
   # ── Website sitemap generator ──────────────────────────────────────────
   # docs.yml regenerates website-static/sitemap.xml at deploy time, with
-  # per-page <lastmod> from git; these offline tests keep the generator honest.
+  # per-page <lastmod> from git; test fixtures and generate from the real tree
+  # without comparing committed dates, which change when a PR is merged.
   website-sitemap:
     name: Website sitemap generator tests
     needs: changes
@@ -512,9 +514,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Generating the real sitemap needs each source's complete history.
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Run the sitemap generator tests
         run: python3 -m unittest discover -s tools -p 'test_generate_sitemap.py' -v
+
+      - name: Generate the sitemap from the real website
+        run: python3 tools/generate-sitemap.py --output "$RUNNER_TEMP/sitemap.xml"
 
   # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
   # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until

@@ -1,2 +1,2 @@
 <!-- category: Fixed -->
-- **Website sitemap stays current.** The deploy now generates `sitemap.xml` with canonical URLs and each page's last git change as `<lastmod>`, and leaves out redirects (`/go/*`), the 404 page and pages marked `noindex`. CI runs the generator's offline tests.
+- **Website sitemap stays current.** The deploy now generates `sitemap.xml` with canonical URLs and each page's last git change as `<lastmod>`, including the `/go/` hub, `/web-demo/` and both llms references. It leaves out `/go/*/` subpages, redirects, the 404 page and pages marked `noindex`. CI tests the generator and generates a temporary sitemap from the real website sources.

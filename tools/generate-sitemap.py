@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the marketing sitemap; --check reports drift without writing files."""
+"""Generate the marketing sitemap; --check reports drift, --output writes elsewhere."""
 
 import argparse
 import difflib
@@ -14,6 +14,13 @@ import xml.etree.ElementTree as ET
 
 ORIGIN = "https://sceneview.github.io/"
 NAMESPACE = "http://www.sitemaps.org/schemas/sitemap/0.9"
+# docs.yml assembles these routes outside website-static. The web demo also
+# stages the shared viewer; /llms.txt is copied through its generated docs mirror.
+EXTERNAL_URLS = {
+    "web-demo/": ("samples/web-demo/site", "website-static/js/sceneview.js"),
+    "llms.txt": ("llms.txt",),
+    "llms-full.txt": ("docs/docs/llms-full.txt",),
+}
 JS_REDIRECT = re.compile(
     r"\b(?:(?:window|document|self|top)\s*\.\s*)?location"
     r"(?:\s*\.\s*href)?\s*=(?!=)|"
@@ -85,6 +92,16 @@ def git(root, *args):
     ).strip()
 
 
+def last_modified(root, *sources):
+    for source in sources:
+        if not (root / source).exists():
+            raise ValueError(f"Missing sitemap source: {source}")
+    lastmod = git(root, "log", "-1", "--format=%cs", "--", *sources)
+    if not lastmod:
+        raise ValueError(f"No Git history for {', '.join(sources)}; commit the sitemap sources first.")
+    return lastmod
+
+
 def generate(root):
     if git(root, "rev-parse", "--is-shallow-repository") == "true":
         raise ValueError("Sitemap dates require full Git history (checkout fetch-depth: 0).")
@@ -92,7 +109,7 @@ def generate(root):
     entries = {}
     for path in sorted(site.rglob("*.html")):
         relative = path.relative_to(site)
-        if relative.parts[0] == "go" or path.name == "404.html":
+        if (relative.parts[0] == "go" and len(relative.parts) > 2) or path.name == "404.html":
             continue
         page = Page(path.read_text(encoding="utf-8"))
         if page.excluded:
@@ -103,12 +120,13 @@ def generate(root):
         url = urljoin(ORIGIN + quote(route), page.canonical or "")
         if urlsplit(url).netloc != urlsplit(ORIGIN).netloc:
             continue  # An external canonical belongs in that site's sitemap.
-        lastmod = git(root, "log", "-1", "--format=%cs", "--", path.relative_to(root).as_posix())
-        if not lastmod:
-            raise ValueError(f"No Git history for {path.relative_to(root)}; commit the HTML first.")
+        lastmod = last_modified(root, path.relative_to(root).as_posix())
         entries[url] = max(entries.get(url, ""), lastmod)
     if not entries:
         raise ValueError("No indexable HTML pages found in website-static.")
+    for route, sources in EXTERNAL_URLS.items():
+        url = urljoin(ORIGIN, route)
+        entries[url] = max(entries.get(url, ""), last_modified(root, *sources))
     ET.register_namespace("", NAMESPACE)
     sitemap = ET.Element(f"{{{NAMESPACE}}}urlset")
     for url, lastmod in sorted(entries.items()):
@@ -121,10 +139,12 @@ def generate(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if the committed sitemap is stale")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="fail if the committed sitemap is stale")
+    mode.add_argument("--output", type=Path, help="write to this path instead of the committed sitemap")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    target = root / "website-static/sitemap.xml"
+    target = args.output if args.output is not None else root / "website-static/sitemap.xml"
     try:
         expected = generate(root)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
@@ -142,7 +162,7 @@ def main():
         print("Sitemap is up to date.")
     else:
         target.write_text(expected, encoding="utf-8")
-        print("Generated website-static/sitemap.xml.")
+        print(f"Generated {args.output if args.output is not None else 'website-static/sitemap.xml'}.")
     return 0
 
 
