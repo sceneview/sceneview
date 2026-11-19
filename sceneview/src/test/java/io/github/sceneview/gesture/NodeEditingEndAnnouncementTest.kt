@@ -126,4 +126,49 @@ class NodeEditingEndAnnouncementTest {
 
         assertSilent()
     }
+    @Test
+    fun `a third finger restarting a pinch preserves its captured end value`() {
+        composeRule.runOnIdle {
+            node.scale = Scale(1.17f)
+            feedback.onEditingBegin(node, NodeEditingKind.Scale)
+        }
+        composeRule.runOnIdle {
+            feedback.onEditingEnd(node, NodeEditingKind.Scale)
+            node.scale = Scale(1.42f)
+            feedback.onEditingBegin(node, NodeEditingKind.Scale)
+        }
+        composeRule.onNodeWithContentDescription("Scale 117 percent").assert(politeLiveRegion)
+    }
+
+    @Test
+    fun `an end announcement expires after three seconds`() {
+        composeRule.runOnIdle {
+            feedback.onEditingBegin(node, NodeEditingKind.Rotate)
+            feedback.onRotationEdited(node, 44f)
+        }
+        composeRule.runOnIdle { feedback.onEditingEnd(node, NodeEditingKind.Rotate) }
+        composeRule.onNodeWithContentDescription("Rotation +44 degrees").assert(politeLiveRegion)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.mainClock.advanceTimeBy(2_000)
+        composeRule.onNodeWithContentDescription("Rotation +44 degrees").assert(politeLiveRegion)
+        composeRule.mainClock.advanceTimeBy(1_100)
+        assertSilent()
+    }
+
+    @Test
+    fun `simultaneous twist and pinch ends keep both captured values`() {
+        composeRule.runOnIdle {
+            feedback.onEditingBegin(node, NodeEditingKind.Rotate)
+            feedback.onRotationEdited(node, 44f)
+            node.scale = Scale(1.17f)
+            feedback.onEditingBegin(node, NodeEditingKind.Scale)
+        }
+        composeRule.runOnIdle {
+            feedback.onEditingEnd(node, NodeEditingKind.Rotate)
+            feedback.onEditingEnd(node, NodeEditingKind.Scale)
+        }
+        composeRule.onNodeWithContentDescription("Rotation +44 degrees, Scale 117 percent")
+            .assert(politeLiveRegion)
+    }
+
 }

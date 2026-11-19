@@ -35,6 +35,13 @@ class NodeEditingFeedbackState(
     scaleBaseline: Float = node.scale.x,
 ) : NodeEditingListener {
 
+    // Captured synchronously: an end/begin pair can happen before Compose observes either.
+    internal class EndValue(val kind: NodeEditingKind, val value: Float)
+    internal var endValues by mutableStateOf(emptyMap<NodeEditingKind, EndValue>())
+        private set
+    internal var gestureStarts by mutableIntStateOf(0)
+        private set
+
     /** The gestures currently active on [node] — twist and pinch can run simultaneously. */
     var activeKinds by mutableStateOf(emptySet<NodeEditingKind>())
         private set
@@ -122,6 +129,7 @@ class NodeEditingFeedbackState(
     }
 
     override fun onEditingBegin(node: Node, kind: NodeEditingKind) {
+        gestureStarts++
         activeKinds = activeKinds + kind
         when (kind) {
             NodeEditingKind.Rotate -> {
@@ -137,6 +145,13 @@ class NodeEditingFeedbackState(
     }
 
     override fun onEditingEnd(node: Node, kind: NodeEditingKind) {
+        if (kind in activeKinds) {
+            when (kind) {
+                NodeEditingKind.Rotate -> endValues = endValues + (kind to EndValue(kind, rotationDeltaDegrees))
+                NodeEditingKind.Scale -> endValues = endValues + (kind to EndValue(kind, scalePercent))
+                NodeEditingKind.Move -> Unit
+            }
+        }
         activeKinds = activeKinds - kind
         when (kind) {
             NodeEditingKind.Scale -> scaleLimit = null

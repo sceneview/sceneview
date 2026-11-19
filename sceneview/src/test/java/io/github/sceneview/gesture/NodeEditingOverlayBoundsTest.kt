@@ -8,6 +8,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
+import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.RestPoseBounds
 import io.github.sceneview.node.FilamentWithoutJni
 import io.github.sceneview.node.ModelNode
@@ -187,22 +188,22 @@ class NodeEditingOverlayBoundsTest {
     }
 
     @Test
-    fun `a model node with an empty rest-pose box keeps the placeholder without walking its glTF nodes`() {
+    fun `an empty model includes app content attached under a glTF node`() {
         val model = modelNode(minMax = FloatArray(6))
         val gltfContent = countingContent(Float3(0f, 3f, 0f), Float3(2f))
         model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
 
         val (center, halfExtent) = bounds(model)
 
-        assertVector(Float3(0f), center)
-        assertVector(Float3(0.25f), halfExtent)
-        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
+        assertVector(Float3(0f, 3f, 0f), center)
+        assertVector(Float3(2f), halfExtent)
+        assertEquals("app-attached box reads", 1, gltfContent.boxReads)
     }
 
     @Test
     fun `an empty model used as a container keeps the bounds of what the app attached to it`() {
         val model = modelNode(minMax = FloatArray(6))
-        val gltfContent = countingContent(Float3(0f, -5f, 0f), Float3(5f))
+        val gltfContent = countingGltfContent(model)
         model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
         model.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
 
@@ -214,10 +215,10 @@ class NodeEditingOverlayBoundsTest {
     }
 
     @Test
-    fun `an empty model node under a pivot is not walked into and does not widen the bounds`() {
+    fun `an empty model under a pivot ignores its own glTF boxes`() {
         val pivot = Node(engine)
         val model = modelNode(minMax = FloatArray(6))
-        val gltfContent = countingContent(Float3(0f, -5f, 0f), Float3(5f))
+        val gltfContent = countingGltfContent(model)
         model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
         pivot.addChildNode(model)
         pivot.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
@@ -229,12 +230,49 @@ class NodeEditingOverlayBoundsTest {
         assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
     }
 
+    @Test
+    fun `app content under a nested glTF anchor keeps the full transform chain`() {
+        val model = modelNode(minMax = FloatArray(6))
+        val anchor = gltfNode(model).apply { position = Position(1f, 2f, 3f) }
+        val nested = gltfNode(model).apply {
+            position = Position(0f, 1f, 0f)
+            scale = Scale(2f)
+        }
+        nested.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
+        anchor.addChildNode(nested)
+        model.addChildNode(anchor)
+
+        val (center, halfExtent) = bounds(model)
+
+        assertVector(Float3(1f, 4f, 3f), center)
+        assertVector(Float3(0.4f, 1f, 0.4f), halfExtent)
+    }
+
+    @Test
+    fun `an empty model with only its own glTF boxes keeps the placeholder`() {
+        val model = modelNode(minMax = FloatArray(6))
+        val gltfContent = countingGltfContent(model)
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
+
+        val (center, halfExtent) = bounds(model)
+
+        assertVector(Float3(0f), center)
+        assertVector(Float3(0.25f), halfExtent)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
+    }
+
+    private fun countingGltfContent(model: ModelNode) =
+        object : CountingContent(Float3(0f, -5f, 0f), Float3(5f)), ModelNode.ChildNode {
+            override var name: String? = null
+            override val modelInstance: ModelInstance = model.modelInstance
+        }.apply { transform = Transform() }
+
     /** One of [model]'s own glTF nodes, as `ModelNode` builds them from the asset's entities. */
     private fun gltfNode(model: ModelNode): Node =
         model.EmptyNode(model.modelInstance, GLTF_ENTITY).apply { transform = Transform() }
 
     /** A renderable that counts how often the overlay reads its box. */
-    private inner class CountingContent(center: Float3, halfExtent: Float3) :
+    private open inner class CountingContent(center: Float3, halfExtent: Float3) :
         Node(engine), RenderableComponent {
         var boxReads = 0
         private val box = Box(center.x, center.y, center.z, halfExtent.x, halfExtent.y, halfExtent.z)
