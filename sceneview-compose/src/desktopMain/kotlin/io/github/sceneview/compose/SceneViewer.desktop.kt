@@ -21,12 +21,14 @@ import io.github.erkko68.filament.compose.scene.Direction
 import io.github.erkko68.filament.compose.scene.DirectionalLight
 import io.github.erkko68.filament.compose.scene.Environment
 import io.github.erkko68.filament.compose.scene.GltfInstance
+import io.github.erkko68.filament.compose.scene.IndirectLight
 import io.github.erkko68.filament.compose.scene.LightIntensity
 import io.github.erkko68.filament.compose.scene.LinearColor
 import io.github.erkko68.filament.compose.scene.Position
 import io.github.erkko68.filament.compose.scene.ShadowConfig
 import io.github.erkko68.filament.compose.scene.Shadows
 import io.github.erkko68.filament.compose.scene.Skybox
+import io.github.erkko68.filament.compose.scene.SphericalHarmonics
 import io.github.erkko68.filament.compose.scene.rememberCameraState as rememberFilamentCameraState
 import io.github.erkko68.filament.compose.scene.rememberGltfAsset
 import io.github.erkko68.filament.compose.scene.rememberHdrEnvironment
@@ -106,7 +108,8 @@ public actual fun SceneViewer(
  * Background and image-based lighting of [source], declared as scene content. An HDR lights
  * the scene at [DEFAULT_IBL_INTENSITY] × [Lighting.ambientIntensity] and, when
  * [EnvironmentSource.Hdr.showSkybox], is also the background. Default and Color are a solid
- * background with no image-based light.
+ * background lit by a neutral studio irradiance at the same intensity, as on Android: without
+ * it every face turned away from the sun rendered pure black.
  */
 @Composable
 private fun FilamentSceneScope.SceneEnvironment(
@@ -126,11 +129,25 @@ private fun FilamentSceneScope.SceneEnvironment(
                 skyboxEnabled = source.showSkybox,
             )
         }
-        is EnvironmentSource.Color ->
+        is EnvironmentSource.Color -> {
             Skybox(color = LinearColor(source.red, source.green, source.blue), alpha = source.alpha)
-        is EnvironmentSource.Default ->
+            StudioAmbient(lighting)
+        }
+        is EnvironmentSource.Default -> {
             Skybox(color = DEFAULT_BACKGROUND)
+            StudioAmbient(lighting)
+        }
     }
+}
+
+/** Diffuse-only ambient light: soft fill for the shaded side, no reflection map to load. */
+@Composable
+private fun FilamentSceneScope.StudioAmbient(lighting: Lighting) {
+    IndirectLight(
+        reflections = null,
+        irradiance = SphericalHarmonics.NeutralStudio,
+        intensity = DEFAULT_IBL_INTENSITY * lighting.ambientIntensity,
+    )
 }
 
 @Composable
