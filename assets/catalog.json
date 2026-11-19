@@ -3220,7 +3220,8 @@
       "author": "Amazon.com",
       "license": "CC-BY-4.0",
       "shippedAs": [
-        "rivet_aiden_armchair.glb"
+        "rivet_aiden_armchair.glb",
+        "rivet_aiden_armchair_homepage_meshopt.glb"
       ],
       "formats": {},
       "tags": [
@@ -3576,7 +3577,8 @@
       "author": "The Fresh Lab",
       "license": "CC-BY-4.0",
       "shippedAs": [
-        "smeg_toaster.glb"
+        "smeg_toaster.glb",
+        "smeg_toaster_homepage_meshopt.glb"
       ],
       "formats": {},
       "tags": [

@@ -1483,6 +1483,15 @@
       "author": "Amazon.com"
     },
     {
+      "path": "website-static/models/platforms/rivet_aiden_armchair_homepage_meshopt.glb",
+      "scope": "web",
+      "sha256": "5a337957281923f5a46a89647fefd1281da86d21b6e25fa97cbb281be8d75df3",
+      "size": 923752,
+      "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X2WN27.glb",
+      "license": "CC-BY-4.0",
+      "author": "Amazon.com"
+    },
+    {
       "path": "website-static/models/platforms/rivet_anne_desk.glb",
       "scope": "web",
       "sha256": "75c9a78ac7899f35e06ea9da168ffe67dae08552edb0cd007a32dc49e4e8367d",
@@ -1559,6 +1568,15 @@
       "scope": "web",
       "sha256": "5213ffded7d6c154c039eb83ee1bdd798d044fb9a581235eb94138db528058e0",
       "size": 3032820,
+      "source": "https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1",
+      "license": "CC-BY-4.0",
+      "author": "The Fresh Lab"
+    },
+    {
+      "path": "website-static/models/platforms/smeg_toaster_homepage_meshopt.glb",
+      "scope": "web",
+      "sha256": "55350ffc635a26a114e42b99b9ffae619adb2be3b94d71d671052d4321e8a8d6",
+      "size": 518252,
       "source": "https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1",
       "license": "CC-BY-4.0",
       "author": "The Fresh Lab"
