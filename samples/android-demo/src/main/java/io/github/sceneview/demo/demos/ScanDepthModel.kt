@@ -116,7 +116,10 @@ internal fun depthModelOf(
     val close = scope.preset == ScanPreset.OBJECT
     val settings = RoomDepthMesh.Settings(farM = if (close) minOf(header.farM, RoomDepthMesh.RELIABLE_FAR_M) else RoomDepthMesh.RELIABLE_FAR_M)
     // The pose guard runs again over the recording: a slip the phone let through is kept out too.
-    val fused = RoomDepthMesh.fuse(depth, settings, guard = RoomDepthMesh.replayGuard()) { progress(it * FUSE_SHARE) } ?: return null
+    val fused = RoomDepthMesh.fuse(
+        depth, settings, guard = RoomDepthMesh.replayGuard(),
+        traceFloor = BuildConfig.DEBUG && scope == ScanScope.Room, floorY = floorY,
+    ) { progress(it * FUSE_SHARE) } ?: return null
     // A room that stands as no room — a short walk, part of a room — stands on a clean slab of
     // floor, at the room's floor or ARCore's; a Home's levels and stairs are left as fused.
     val sure = floorY ?: fused.floorPlaneY

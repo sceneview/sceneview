@@ -61,7 +61,8 @@ class ScanBenchTest {
             line,
             line.contains(""""floor_triangles_removed":5000,"floor_triangles_off_slab":800,"floor_triangles_in_dropped_pieces":640"""),
         )
-        assertTrue(line, line.endsWith(""""below_triangles":10,"stray_triangles":20}}"""))
+        assertTrue(line, line.contains(""""below_triangles":10,"stray_triangles":20},"floor_trace_y":null"""))
+        assertTrue(line, line.endsWith(""""floor_m2_by_stage":null,"floor_gate_counts":null}"""))
     }
 
     @Test
@@ -73,7 +74,7 @@ class ScanBenchTest {
         )
         bench.depthModel("shell", fused, floorY = null, floorSource = null, slab = null)
         val line = lines.single()
-        assertTrue(line, line.endsWith(""""floor_y":null,"floor_source":null,"arcore_floor_y":null,"slab":null}"""))
+        assertTrue(line, line.contains(""""floor_y":null,"floor_source":null,"arcore_floor_y":null,"slab":null,"""))
         lines.clear()
         bench.depthModel("a \"b\"\\c\n", fused, floorY = Float.NaN, floorSource = "x", slab = null)
         assertTrue(lines.single(), lines.single().contains(""""opens_on":"a \"b\"\\c\u000a","""))

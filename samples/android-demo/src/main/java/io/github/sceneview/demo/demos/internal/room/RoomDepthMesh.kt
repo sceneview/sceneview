@@ -13,7 +13,9 @@ import io.github.sceneview.demo.demos.internal.model.MeshCleanup
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FilterInputStream
+import java.io.IOException
 import java.io.InputStream
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.sqrt
 
@@ -71,6 +73,30 @@ internal object RoomDepthMesh {
         val segmentFrames: List<Int> = emptyList(),
         val fuseMs: Long,
         val meshMs: Long,
+        val floorTrace: FloorTrace? = null,
+    )
+
+    data class FloorTrace(
+        val floorY: Float,
+        val stride: Int,
+        val capped: Boolean,
+        val widerDroppedBlocks: Int?,
+        val widerTruncationM2: Float?,
+        val widerTruncationWeightM2: Float?,
+        val cells: RerunMarchingCubes.FloorCells,
+        val componentsM2: Float,
+        val classification: FloorClassification,
+        val observedVoxels: Int,
+        val widerBandOnlyVoxels: Int?,
+    )
+
+    data class FloorClassification(
+        val nearFloorM2: Float,
+        val heightBandM2: Float,
+        val classifiedM2: Float,
+        val heightTriangles: Int,
+        val normalTriangles: Int,
+        val classifiedTriangles: Int,
     )
 
     /**
@@ -78,18 +104,23 @@ internal object RoomDepthMesh {
      * verdict, when the phone's pose guard did not hold it back — and, with a [guard], when that
      * guard, handed every recorded pose in turn, lets it through too: a slip the phone missed is
      * still kept out. `null` when [depth] is not a depth recording, or none of its frames is
-     * fused. [progress] (0–1) may throw to stop it.
+     * fused. [progress] (0–1) may throw to stop it. With [traceFloor], measure the floor at
+     * [floorY] or the floor found in the fused segment and try a wider band on a separate TSDF.
      */
     fun fuse(
         depth: File,
         settings: Settings = Settings(),
         integrates: Map<Long, Boolean>? = null,
         guard: PoseContinuity? = null,
+        traceFloor: Boolean = false,
+        floorY: Float? = null,
         progress: (Float) -> Unit = {},
     ): Result? {
-        // Only extracted arrays and scalar statistics cross this call boundary. The TSDF and
-        // its block index are no longer retained when hole closing allocates its topology.
-        val raw = extract(depth, settings, integrates, guard, progress) ?: return null
+        val probe = if (traceFloor) FloorProbe(floorY) else null
+        // The nominal TSDF is released before the diagnostic replay or hole closing allocates.
+        val raw = extract(depth, settings, integrates, guard, probe, progress) ?: return null
+        val replay = probe?.replay
+        val wider = replay?.measureWider(depth, settings) { progress(MESH_END) }
         val started = System.nanoTime()
         val (mesh, holes) = if (settings.holeSpanM > 0f) {
             closeHoles(raw.mesh, settings.holeSpanM) { progress(MESH_END + (1f - MESH_END) * it) }
@@ -97,7 +128,9 @@ internal object RoomDepthMesh {
             raw.mesh to 0
         }
         progress(1f)
-        return raw.copy(mesh = mesh, holesClosed = holes, meshMs = raw.meshMs + since(started))
+        val meshMs = raw.meshMs + since(started)
+        val floorTrace = replay?.finish(wider, mesh)
+        return raw.copy(mesh = mesh, holesClosed = holes, meshMs = meshMs, floorTrace = floorTrace)
     }
 
     private fun extract(
@@ -105,6 +138,7 @@ internal object RoomDepthMesh {
         settings: Settings,
         integrates: Map<Long, Boolean>?,
         guard: PoseContinuity?,
+        probe: FloorProbe?,
         progress: (Float) -> Unit,
     ): Result? {
         val started = System.nanoTime()
@@ -139,13 +173,7 @@ internal object RoomDepthMesh {
                 plan += segment
                 coverage(recorded.frame, settings, reached[segment])
                 if (segment == 0) {
-                    tsdf?.integrate(
-                        recorded.frame,
-                        minConfidence = settings.minConfidence,
-                        farM = settings.farM,
-                        truncationShare = settings.truncationShare,
-                        distanceWeighted = true,
-                    )
+                    tsdf?.integrateRoomFrame(recorded.frame, settings)
                     fusedFirst++
                     recorded.floorPlaneY?.let { firstFloors += it }
                 }
@@ -166,13 +194,7 @@ internal object RoomDepthMesh {
             fused = 0
             read(depth) { recorded, share ->
                 if (plan[index++] == chosen) {
-                    again.integrate(
-                        recorded.frame,
-                        minConfidence = settings.minConfidence,
-                        farM = settings.farM,
-                        truncationShare = settings.truncationShare,
-                        distanceWeighted = true,
-                    )
+                    again.integrateRoomFrame(recorded.frame, settings)
                     fused++
                     recorded.floorPlaneY?.let { againFloors += it }
                 }
@@ -197,10 +219,30 @@ internal object RoomDepthMesh {
             progress = { progress(FUSE_SHARE + (MESH_END - FUSE_SHARE) * it) },
             weakestCorner = settings.weakestCorner,
         )
+        val floorPlaneY = floors.sorted().getOrNull(floors.size / 2)
+        val meshMs = since(meshStarted)
+        if (probe != null) {
+            val y = probe.hint ?: floorPlaneY ?: ScanFloorSlab.floorOf(extraction.mesh)
+            if (y != null && y.isFinite()) {
+                val area = FloorArea(y)
+                val voxels = HashMap<Long, LongArray>()
+                var observed = 0
+                floorVoxelLayers(surface, y) { key, layer, mask ->
+                    voxels.getOrPut(key) { LongArray(RerunTsdf.BLOCK) }[layer] = mask
+                    observed += mask.countOneBits()
+                }
+                probe.replay = FloorReplay(
+                    area, plan, chosen, extraction.stride, extraction.capped,
+                    measureFloorCells(surface, settings, extraction.stride, area, extraction.cappedAt),
+                    area.classify(extraction.mesh).classifiedM2,
+                    voxels, observed,
+                )
+            }
+        }
         return Result(
             mesh = extraction.mesh,
             holesClosed = 0,
-            floorPlaneY = floors.sorted().getOrNull(floors.size / 2),
+            floorPlaneY = floorPlaneY,
             guardHeld = guardHeld,
             segments = segments,
             chosenSegment = chosen,
@@ -215,8 +257,161 @@ internal object RoomDepthMesh {
             droppedComponents = extraction.droppedComponents,
             capped = extraction.capped,
             fuseMs = fuseMs,
-            meshMs = since(meshStarted),
+            meshMs = meshMs,
         )
+    }
+
+    private fun RerunTsdf.integrateRoomFrame(frame: DepthFrame, settings: Settings) {
+        integrate(
+            frame,
+            minConfidence = settings.minConfidence,
+            farM = settings.farM,
+            truncationShare = settings.truncationShare,
+            distanceWeighted = true,
+        )
+    }
+
+    private class FloorProbe(val hint: Float?) {
+        var replay: FloorReplay? = null
+    }
+
+    private data class WiderBand(
+        val droppedBlocks: Int,
+        val observedM2: Float,
+        val weightM2: Float,
+        val newVoxels: Int,
+    )
+
+    /** The selected frames and a compact snapshot of the nominal floor band, with no TSDF retained. */
+    private class FloorReplay(
+        val area: FloorArea,
+        val plan: List<Int>,
+        val chosen: Int,
+        val stride: Int,
+        val capped: Boolean,
+        val cells: RerunMarchingCubes.FloorCells,
+        val componentsM2: Float,
+        val voxels: Map<Long, LongArray>,
+        val observedVoxels: Int,
+    ) {
+        fun measureWider(depth: File, settings: Settings, checkActive: () -> Unit): WiderBand? {
+            val wider = fuseWider(depth, settings, checkActive) ?: return null
+            val widerCells = measureFloorCells(wider, settings, stride, area)
+            var newVoxels = 0
+            floorVoxelLayers(wider, area.y) { key, layer, mask ->
+                val nominal = voxels[key]?.get(layer) ?: 0L
+                newVoxels += (mask and nominal.inv()).countOneBits()
+            }
+            return WiderBand(wider.droppedBlocks, widerCells.observedM2, widerCells.weightM2, newVoxels)
+        }
+
+        fun finish(wider: WiderBand?, mesh: RerunMesh) = FloorTrace(
+            area.y, stride, capped, wider?.droppedBlocks, wider?.observedM2, wider?.weightM2,
+            cells, componentsM2, area.classify(mesh), observedVoxels, wider?.newVoxels,
+        )
+
+        private fun fuseWider(depth: File, settings: Settings, checkActive: () -> Unit): RerunTsdf? {
+            val wide = settings.copy(truncationM = settings.truncationM * 2f, truncationShare = settings.truncationShare * 2f)
+            val tsdf = RerunTsdf(wide.voxelM, wide.truncationM, wide.maxBytes)
+            var index = 0
+            try {
+                read(depth) { recorded, _ ->
+                    if (plan.getOrNull(index++) == chosen) tsdf.integrateRoomFrame(recorded.frame, wide)
+                    checkActive()
+                } ?: return null
+            } catch (_: IOException) {
+                // The result came from the first read. A failed diagnostic reread leaves it usable.
+                return null
+            }
+            return tsdf.takeIf { index == plan.size }
+        }
+    }
+
+    private fun measureFloorCells(tsdf: RerunTsdf, settings: Settings, stride: Int, area: FloorArea, cappedAt: Long = Long.MAX_VALUE) =
+        RerunMarchingCubes.measureFloorCells(
+            tsdf, stride, area.y, ScanFloorSlab.FLOOR_BAND_M, settings.minWeight, settings.weakestCorner, cappedAt, area::classified,
+        )
+
+    /** One 8 × 8 mask per observed voxel layer in the slab's height band. */
+    private inline fun floorVoxelLayers(tsdf: RerunTsdf, y: Float, layer: (Long, Int, Long) -> Unit) {
+        val coord = IntArray(3)
+        val side = RerunTsdf.BLOCK
+        for (block in 0 until tsdf.blockCount) {
+            tsdf.blockCoord(block, coord)
+            val key = RerunTsdf.blockKey(coord[0], coord[1], coord[2])
+            val weights = tsdf.weight[block]
+            for (ly in 0 until side) {
+                if (abs((coord[1] * side + ly) * tsdf.voxelM - y) > ScanFloorSlab.FLOOR_BAND_M) continue
+                var mask = 0L
+                for (lz in 0 until side) {
+                    for (lx in 0 until side) {
+                        if (weights[(lz * side + ly) * side + lx] > 0f) mask = mask or (1L shl (lz * side + lx))
+                    }
+                }
+                if (mask != 0L) layer(key, ly, mask)
+            }
+        }
+    }
+
+    private class FloorArea(val y: Float) {
+        private val band = ScanFloorSlab.FLOOR_BAND_M
+
+        /** XZ projected m². Same all-vertices height and two-sided face normal as ScanFloorSlab.isFloor. */
+        fun classified(p: FloatArray, a: Int, b: Int, c: Int): Float =
+            if (heightError(p, a, b, c) <= band) projected(p, a, b, c, classifyNormal = true) else 0f
+
+        fun classify(mesh: RerunMesh): FloorClassification {
+            val p = mesh.positions
+            val ix = mesh.indices
+            var near = 0.0
+            var inBand = 0.0
+            var accepted = 0.0
+            var heightTriangles = 0
+            var normalTriangles = 0
+            var classifiedTriangles = 0
+            for (t in ix.indices step 3) {
+                val a = ix[t]
+                val b = ix[t + 1]
+                val c = ix[t + 2]
+                val error = heightError(p, a, b, c)
+                if (error > band * 2f) continue
+                val area = projected(p, a, b, c)
+                near += area
+                if (error > band) {
+                    heightTriangles++
+                } else {
+                    inBand += area
+                    val classified = projected(p, a, b, c, classifyNormal = true)
+                    if (classified > 0f) {
+                        accepted += classified
+                        classifiedTriangles++
+                    } else {
+                        normalTriangles++
+                    }
+                }
+            }
+            return FloorClassification(near.toFloat(), inBand.toFloat(), accepted.toFloat(), heightTriangles, normalTriangles, classifiedTriangles)
+        }
+
+        private fun heightError(p: FloatArray, a: Int, b: Int, c: Int) =
+            maxOf(abs(p[a * 3 + 1] - y), abs(p[b * 3 + 1] - y), abs(p[c * 3 + 1] - y))
+
+        private fun projected(p: FloatArray, a: Int, b: Int, c: Int, classifyNormal: Boolean = false): Float {
+            val ux = p[b * 3] - p[a * 3]
+            val uz = p[b * 3 + 2] - p[a * 3 + 2]
+            val vx = p[c * 3] - p[a * 3]
+            val vz = p[c * 3 + 2] - p[a * 3 + 2]
+            val ny = abs(uz * vx - ux * vz)
+            if (classifyNormal) {
+                val uy = p[b * 3 + 1] - p[a * 3 + 1]
+                val vy = p[c * 3 + 1] - p[a * 3 + 1]
+                val nx = uy * vz - uz * vy
+                val nz = ux * vy - uy * vx
+                val length = sqrt(nx * nx + ny * ny + nz * nz)
+                if (!(length > 0f && ny / length >= 0.8f)) return 0f
+            }
+            return ny * 0.5f
+        }
     }
 
     /**

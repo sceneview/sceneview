@@ -93,6 +93,63 @@ class ScanPartialWalkTest {
     }
 
     @Test
+    fun `floor trace follows the gates without changing the walk's mesh or slab`() {
+        val depth = recording()
+        val settings = RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M)
+        val plain = checkNotNull(RoomDepthMesh.fuse(depth, settings, guard = RoomDepthMesh.replayGuard()))
+        val traced = checkNotNull(
+            RoomDepthMesh.fuse(depth, settings, guard = RoomDepthMesh.replayGuard(), traceFloor = true, floorY = 0f),
+        )
+        assertNull(plain.floorTrace)
+        val trace = checkNotNull(traced.floorTrace)
+        assertSameMesh(plain.mesh, traced.mesh)
+        val plainSlab = checkNotNull(ScanFloorSlab.of(plain.mesh, 0f))
+        val tracedSlab = checkNotNull(ScanFloorSlab.of(traced.mesh, 0f, trace = true))
+        assertSameMesh(plainSlab.mesh, tracedSlab.mesh)
+        assertEquals(plainSlab.floorY.toRawBits(), tracedSlab.floorY.toRawBits())
+        assertEquals(plainSlab.areaM2.toRawBits(), tracedSlab.areaM2.toRawBits())
+        assertEquals(plainSlab.floorTriangles, trace.classification.classifiedTriangles)
+
+        val line = ScanBench.depthModelLine("depth_model", traced, 0f, "scan", tracedSlab)
+        fun keysOf(name: String) = line.substringAfter("\"$name\":{").substringBefore('}')
+            .split(',').map { it.substringBefore(':').trim('"') }
+        assertEquals(
+            listOf("wider_truncation", "truncation", "weakest_corner", "weight", "meshed", "components", "near_floor", "height_band", "classified"),
+            keysOf("floor_m2_by_stage"),
+        )
+        assertEquals(
+            listOf(
+                "observed_voxels", "wider_band_only_voxels", "unobserved_corner_cells", "weakest_corner_cells",
+                "min_weight_cells", "height_triangles", "normal_triangles",
+            ),
+            keysOf("floor_gate_counts"),
+        )
+        assertTrue(line, line.contains(""""floor_trace_y":0.000,"floor_trace_stride":1,"floor_trace_capped":false"""))
+        assertTrue(line, checkNotNull(trace.widerTruncationM2) > 0f)
+        assertTrue(line, checkNotNull(trace.widerBandOnlyVoxels) > 0)
+        assertTrue(line, trace.observedVoxels > 0 && trace.cells.unobservedCornerCells > 0)
+        assertTrue(line, trace.cells.observedM2 >= trace.cells.weakestCornerM2)
+        assertTrue(line, trace.cells.weakestCornerM2 >= trace.cells.weightM2)
+        assertEquals("uncapped", trace.cells.weightM2, trace.cells.meshedM2, 0f)
+        assertTrue(line, trace.cells.meshedM2 + 0.001f >= trace.componentsM2)
+        val classification = trace.classification
+        assertTrue(line, classification.nearFloorM2 >= classification.heightBandM2)
+        assertTrue(line, classification.heightBandM2 >= classification.classifiedM2)
+        assertTrue(line, classification.classifiedM2 in 1f..(ROOM_MAX.x - ROOM_MIN.x) * (ROOM_MAX.z - ROOM_MIN.z))
+        println(line)
+    }
+
+    private fun assertSameMesh(expected: RerunMesh, actual: RerunMesh) {
+        assertTrue("indices", expected.indices.contentEquals(actual.indices))
+        assertTrue("colours", expected.colors.contentEquals(actual.colors))
+        assertEquals("position array size", expected.positions.size, actual.positions.size)
+        for (i in expected.positions.indices) {
+            assertEquals(expected.positions[i].toRawBits(), actual.positions[i].toRawBits())
+            assertEquals(expected.normals[i].toRawBits(), actual.normals[i].toRawBits())
+        }
+    }
+
+    @Test
     fun `without the guard run again the unflagged slip fuses a ghost room`() {
         // The control: the same recording fused as the phone's verdicts alone say.
         val unguarded = checkNotNull(RoomDepthMesh.fuse(recording(), RoomDepthMesh.Settings(farM = RoomDepthMesh.RELIABLE_FAR_M)))
