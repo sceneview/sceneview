@@ -994,7 +994,8 @@ class ARSceneScope internal constructor(
             }
         }
         SideEffect {
-            node.trackable = trackable
+            // The remember key replaces the node when the trackable changes. Reassigning it
+            // here would restore a native handle cleared by releaseSessionNodes on close.
             node.onTrackingStateChanged = onTrackingStateChanged
             node.onUpdated = onUpdated
         }

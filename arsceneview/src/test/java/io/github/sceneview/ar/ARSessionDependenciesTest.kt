@@ -9,6 +9,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -34,6 +35,7 @@ import io.github.sceneview.ar.arcore.rememberEarthState
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.node.AugmentedFaceNode
 import io.github.sceneview.ar.node.ReticleNode
+import io.github.sceneview.ar.node.TrackableNode
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.ar.scene.OwnedVisualizers
 import io.github.sceneview.ar.scene.PlaneRenderer
@@ -101,6 +103,7 @@ class ARSessionDependenciesTest {
         cameras.clear()
         timestamps.clear()
         detached.clear()
+        anchorDetachFailure = null
         nextNativeHandle = 1L
         reportedPlanes.clear()
         nativeTrackableReads = 0
@@ -269,6 +272,124 @@ class ARSessionDependenciesTest {
         assertEquals(readsAfterClose, nativeFaceReads)
         assertTrue(node.isDestroyed)
         assertTrue(replacementNode.isDestroyed)
+    }
+
+    @Test
+    fun `generic trackable recomposition cannot restore a released native handle`() {
+        arCore.resume(context, null)
+        val firstSession = arCore.session!!
+        val firstPlane = nativeObject(Plane::class.java, firstSession)
+        var trackedPlane by mutableStateOf(firstPlane)
+        var callbackVersion by mutableStateOf(0)
+        val trackingChanges = mutableListOf<TrackingState>()
+        val scopeNodes = mutableStateListOf<Node>()
+        val scope = ARSceneScope(
+            engine = engine,
+            modelLoader = allocateWithoutJni(io.github.sceneview.loaders.ModelLoader::class.java),
+            materialLoader = allocateWithoutJni(io.github.sceneview.loaders.MaterialLoader::class.java),
+            environmentLoader = allocateWithoutJni(io.github.sceneview.loaders.EnvironmentLoader::class.java),
+            _nodes = scopeNodes,
+        )
+        arCore.onSessionClosing = { releaseSessionNodes(scopeNodes.toList()) }
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).addActivityIfNotPresent(
+            ComponentName(app.packageName, ComponentActivity::class.java.name)
+        )
+        val rule = createComposeRule()
+        val body = object : Statement() {
+            override fun evaluate() {
+                rule.setContent {
+                    val version = callbackVersion
+                    scope.TrackableNode(
+                        trackable = trackedPlane,
+                        onTrackingStateChanged = { trackingChanges += it },
+                        onUpdated = { check(version == callbackVersion) },
+                    )
+                }
+                lateinit var firstNode: TrackableNode<*>
+                rule.runOnIdle {
+                    firstNode = scopeNodes.single() as TrackableNode<*>
+                    assertSame(firstPlane, firstNode.trackable)
+                    assertEquals(listOf(TrackingState.TRACKING), trackingChanges)
+                    updateFailure = FatalException("EGL context creation failed")
+                    assertNull(arCore.updateSessionOrNull())
+                    assertTrue(firstSession.isClosed)
+                    assertNull(firstNode.trackable)
+                    callbackVersion++
+                }
+                rule.runOnIdle {
+                    assertSame(firstNode, scopeNodes.single())
+                    assertNull(firstNode.trackable)
+                    assertEquals(TrackingState.STOPPED, firstNode.trackingState)
+                    assertFalse(firstNode.isVisible)
+                    assertEquals(listOf(TrackingState.TRACKING, TrackingState.STOPPED), trackingChanges)
+                    assertThrows(IllegalStateException::class.java) { firstPlane.trackingState }
+                    updateFailure = null
+                    arCore.retrySession()
+                    trackedPlane = nativeObject(Plane::class.java, arCore.session!!)
+                }
+                rule.runOnIdle {
+                    val replacement = scopeNodes.single() as TrackableNode<*>
+                    assertNotSame(firstNode, replacement)
+                    assertTrue(firstNode.isDestroyed)
+                    assertSame(trackedPlane, replacement.trackable)
+                    assertEquals(TrackingState.TRACKING, replacement.trackingState)
+                    val session = arCore.session!!
+                    replacement.update(session, frame(session, 2_000_000_000L))
+                    assertSame(session, replacement.session)
+                }
+            }
+        }
+        rule.apply(body, Description.createTestDescription(javaClass, "closed generic trackable")).evaluate()
+        assertTrue(scopeNodes.isEmpty())
+    }
+
+    @Test
+    fun `releasing an anchor reports stopped once before close and rearms with a fresh anchor`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val node = anchorNode(session)
+        val changes = mutableListOf<TrackingState>()
+        node.onTrackingStateChanged = {
+            assertFalse(session.isClosed)
+            assertEquals(it, node.trackingState)
+            changes += it
+        }
+
+        releaseSessionNodes(nodes)
+        releaseSessionNodes(nodes)
+        assertEquals(listOf(TrackingState.STOPPED), changes)
+        assertFalse(node.isVisible)
+        assertEquals(listOf(node.anchor), detached)
+
+        node.anchor = nativeObject(Anchor::class.java, session)
+        assertEquals(listOf(TrackingState.STOPPED, TrackingState.TRACKING), changes)
+        assertTrue(node.isVisible)
+
+        arCore.destroy()
+        assertEquals(listOf(TrackingState.STOPPED, TrackingState.TRACKING, TrackingState.STOPPED), changes)
+        node.destroy()
+        assertEquals(3, changes.size)
+        assertEquals(2, detached.size)
+    }
+
+    @Test
+    fun `releasing an anchor reports stopped even if native detach throws`() {
+        arCore.resume(context, null)
+        val node = anchorNode(arCore.session!!)
+        val changes = mutableListOf<TrackingState>()
+        node.onTrackingStateChanged = { changes += it }
+        val failure = IllegalStateException("Native detach failed")
+        anchorDetachFailure = failure
+
+        assertSame(failure, assertThrows(IllegalStateException::class.java) { node.releaseSessionAnchor() })
+
+        assertEquals(listOf(TrackingState.STOPPED), changes)
+        assertEquals(TrackingState.STOPPED, node.trackingState)
+        assertFalse(node.isVisible)
+        node.releaseSessionAnchor()
+        assertEquals(listOf(TrackingState.STOPPED), changes)
+        assertEquals(listOf(node.anchor), detached)
     }
 
     @Test
@@ -559,7 +680,10 @@ class ARSessionDependenciesTest {
         @RealObject private lateinit var real: Anchor
         @Implementation protected fun getPose(): Pose = open(real) { Pose.IDENTITY }
         @Implementation protected fun getTrackingState(): TrackingState = open(real) { TrackingState.TRACKING }
-        @Implementation protected fun detach() = open(real) { detached += real }
+        @Implementation protected fun detach() = open(real) {
+            detached += real
+            anchorDetachFailure?.let { throw it }
+        }
     }
 
     @Implements(Plane::class)
@@ -623,6 +747,7 @@ class ARSessionDependenciesTest {
         val cameras = IdentityHashMap<Frame, Camera>()
         val timestamps = IdentityHashMap<Frame, Long>()
         val detached = mutableListOf<Anchor>()
+        var anchorDetachFailure: Exception? = null
         var nextFrame: Frame? = null
         var updateFailure: Exception? = null
         var nextNativeHandle = 1L

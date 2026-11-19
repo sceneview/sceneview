@@ -194,6 +194,7 @@ open class AnchorNode(
             instantPlacement = null
             anchor.detach()
         } finally {
+            trackingState = TrackingState.STOPPED
             updateVisibility()
         }
     }
