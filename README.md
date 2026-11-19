@@ -616,15 +616,15 @@ Declared in their public source code or published build files (checked November 
 ## Sponsors
 
 <!-- Same message as the website home page (#fund) and companies.html#sponsor: edit the three together.
-     Generic on purpose: no company is named. Open Collective first, GitHub Sponsors second, nothing else. -->
+     Optional, never insistent (no guilt, no "almost nobody"). Generic on purpose: no company is named. Open Collective first, GitHub Sponsors second, nothing else. -->
 
-### SceneView runs in commercial products. Sponsor it.
+If SceneView helps you build, consider supporting its maintenance.
 
-Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, **sponsor it.**
+Recurring contributions fund bug fixes, Filament updates, documentation and releases. Individuals and small teams are welcome; small contributions matter too. Teams that want public recognition can choose a sponsor tier with a logo and link.
 
-**Sponsor.** Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.
+**[Support SceneView on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
-**[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
+Sponsorship supports shared maintenance. It does not include a support contract or priority on issues. Thank you to everyone who contributes code, reports bugs, improves the docs or sponsors SceneView.
 
 Questions about SceneView in your product: [hello@sceneview.dev](mailto:hello@sceneview.dev).
 
