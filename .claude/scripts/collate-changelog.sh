@@ -301,6 +301,17 @@ RESULT="$TMP_DIR/changelog_new"
     awk '/^## v[0-9]/ { found=1 } found { print }' "$CHANGELOG"
 } > "$RESULT"
 
+# Warn before --dry-run returns too: each release consumes unreleased/.
+WHATSNEW_DIR="$REPO_ROOT/samples/android-demo/whatsnew"
+if [ ! -f "$WHATSNEW_DIR/unreleased/en-US.txt" ]; then
+    WHATSNEW_WARNING="Missing samples/android-demo/whatsnew/unreleased/en-US.txt — no new Play Store notes to pin for $VERSION; builds fall back to the SDK changelog when versioned notes are absent."
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+        echo "::warning::$WHATSNEW_WARNING"
+    else
+        echo -e "${YELLOW}Warning:${NC} $WHATSNEW_WARNING"
+    fi
+fi
+
 if [ "$DRY_RUN" = true ]; then
     echo ""
     echo -e "${CYAN}=== DRY RUN — new CHANGELOG.md head ===${NC}"
@@ -315,6 +326,19 @@ mv "$RESULT" "$CHANGELOG"
 for f in "${FRAGMENTS[@]}"; do
     rm -f "$f"
 done
+
+# ─── 6. Pin the demo's Play Store notes to this release ─────────────────
+# `samples/android-demo/whatsnew/unreleased/` holds the user-facing Play notes
+# written since the last release (see changelog.d/README.md). The tagged build
+# reads `whatsnew/<version>/`, so the release PR renames the directory.
+if [ -d "$WHATSNEW_DIR/unreleased" ]; then
+    if [ -e "$WHATSNEW_DIR/$VERSION" ]; then
+        echo -e "${YELLOW}!${NC} $WHATSNEW_DIR/$VERSION already exists — left unreleased/ in place"
+    else
+        mv "$WHATSNEW_DIR/unreleased" "$WHATSNEW_DIR/$VERSION"
+        echo -e "${GREEN}✓${NC} Play Store notes pinned to whatsnew/$VERSION"
+    fi
+fi
 
 echo ""
 echo -e "${GREEN}✓${NC} Collated ${#FRAGMENTS[@]} fragment(s) into ${CYAN}## v$VERSION — $DATE${NC}"
