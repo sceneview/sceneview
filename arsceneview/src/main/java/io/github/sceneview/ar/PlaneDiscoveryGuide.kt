@@ -486,6 +486,7 @@ fun BoxScope.PlaneDiscoveryGuideOverlay(
 
     // Expanded built-in tip card (the ARCore Elements `_moreHelpWindow` equivalent).
     if (tipsOpen) {
+        ReportAROverlayVisibility()
         Box(modifier = modifier.align(Alignment.Center)) {
             helpCard { showTips = false }
         }

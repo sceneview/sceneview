@@ -11,12 +11,15 @@ import io.github.sceneview.ExperimentalSceneViewApi
  *
  * These centred SDK cards call the listener with `true` on entering composition and `false` on
  * leaving: each [ARCoachingOverlay] card (including its exit transition),
- * [ARCameraPermissionOverlay], [ARCoreAvailabilityOverlay] and the "camera in use" card that
+ * [ARCameraPermissionOverlay], [ARCoreAvailabilityOverlay], the expanded help card in
+ * [PlaneDiscoveryGuideOverlay] (including a custom `helpCard`) and the "camera in use" card that
  * [ARSceneView] shows while another scene holds the camera. Several cards may coexist: count the
  * balanced notifications rather than assigning the last boolean. Replacing the listener releases
  * each card from the previous one before registering it with the new one. The small "Surface
- * found" pill and the plane-discovery tips card do not report. Nothing is reported unless a listener is provided. This is an
- * Android Compose host contract; other platforms have their own overlay lifecycles.
+ * found" pill, plane-discovery hint pill and hand hint do not report. A standalone
+ * [PlaneDiscoveryHelpCard] does not report outside the guide. Nothing is reported unless a
+ * listener is provided. This is an Android Compose host contract; other platforms have their
+ * own overlay lifecycles.
  *
  * Experimental: the set of reporting cards and the callback shape may evolve.
  */
