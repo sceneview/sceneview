@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **AR session node cleanup ([#5132](https://github.com/sceneview/sceneview/issues/5132)).** Generic trackable nodes no longer restore closed-session handles during recomposition, and anchor nodes notify tracking listeners when session cleanup stops tracking. Scene ticks, model uploads and presentation continue after nonfatal resume failures while the session remains open, and stop when it is closed or absent.

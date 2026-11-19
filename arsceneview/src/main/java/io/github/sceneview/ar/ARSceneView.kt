@@ -349,6 +349,14 @@ internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
     uri == null || uri.scheme in PLAYBACK_DATASET_URI_ALLOWED_SCHEMES
 
 /**
+ * Node ticks, model uploads and presentation require an open session; `null` means no session.
+ * A nonfatal resume failure can publish [ARCoreAvailability.SessionFailed] while keeping the
+ * session open, so availability alone must not freeze scene work. Paused sessions are safe here:
+ * [ARSession.updateOrNull] independently gates native frame updates on resume.
+ */
+internal fun canTickARScene(sessionIsClosed: Boolean?): Boolean = sessionIsClosed == false
+
+/**
  * Tracks whether a `remember`ed value has genuinely changed since the last call, so a reactive
  * `LaunchedEffect(value) { ... }` can tell "the caller changed this parameter" apart from its own
  * mount-time execution (#2573).
@@ -1787,7 +1795,7 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        arCore.arCoreAvailability != ARCoreAvailability.SessionFailed &&
+                        canTickARScene(arCore.session?.isClosed) &&
                             (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
                     }
                 ) {
@@ -1852,8 +1860,8 @@ fun ARSceneView(
                         }
                     }
 
-                    // A fatal update closed the session; nodes may still hold its native handles.
-                    if (arCore.arCoreAvailability == ARCoreAvailability.SessionFailed) return@renderFrame
+                    // Recheck after update: a fatal failure may have just closed the session.
+                    if (!canTickARScene(arCore.session?.isClosed)) return@renderFrame
 
                     // Before any node's onFrame, as in SceneView: animator commits then reindex
                     // nothing under the nodes' cached transform handles.

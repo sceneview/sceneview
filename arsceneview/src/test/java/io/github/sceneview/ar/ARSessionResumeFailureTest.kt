@@ -389,6 +389,7 @@ class ARSessionResumeFailureTest {
         assertFalse(failed.isClosed)
         assertEquals(2, failures.size)
         assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
+        assertTrue(canTickARScene(arCore.session?.isClosed))
 
         resumeFailure = null
         arCore.retryARCoreAvailability()
@@ -442,6 +443,8 @@ class ARSessionResumeFailureTest {
         assertEquals(listOf(failure), failures)
         assertNull(arCore.session)
         assertTrue(failed.isClosed)
+        assertFalse(canTickARScene(arCore.session?.isClosed))
+        assertFalse(canTickARScene(failed.isClosed))
         assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
         assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
     }
