@@ -63,6 +63,12 @@ internal object RoomDepthMesh {
         val guardHeld: Int = 0,
         /** Walk segments a slip with no end split the recording into; only the largest is the surface. */
         val segments: Int = 1,
+        /** The segment fused as the surface, from 0: the one whose depth reached the most cells. */
+        val chosenSegment: Int = 0,
+        /** Each segment's coverage: the [COVERAGE_CELL_M] cells its depth reached. */
+        val segmentCells: List<Int> = emptyList(),
+        /** Each segment's frames the phone and the guard let through. */
+        val segmentFrames: List<Int> = emptyList(),
         val fuseMs: Long,
         val meshMs: Long,
     )
@@ -176,6 +182,8 @@ internal object RoomDepthMesh {
             floors = againFloors
         }
         val segments = reached.size
+        val segmentFrames = IntArray(segments)
+        for (s in plan) if (s >= 0) segmentFrames[s]++
         val surface = tsdf ?: return null
         if (fused == 0) return null
         val fuseMs = since(started)
@@ -195,6 +203,9 @@ internal object RoomDepthMesh {
             floorPlaneY = floors.sorted().getOrNull(floors.size / 2),
             guardHeld = guardHeld,
             segments = segments,
+            chosenSegment = chosen,
+            segmentCells = reached.map { it.size },
+            segmentFrames = segmentFrames.toList(),
             frames = count,
             fused = fused,
             blocks = surface.blockCount,

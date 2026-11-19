@@ -11,6 +11,7 @@
 1794500110.200  1  1 I ScanBench: []
 1794500112.000  1  1 I ScanBench: {"schema":2,"event":"cadence","fps":60}
 1794500112.010  1  1 I ScanBench: {"schema":2,"event":"geometry","surface_ready":true,"outside_elements":999}
+1794500112.500  1  1 I ScanBench: {"schema":2,"event":"depth_model","opens_on":"depth_model","segments":2,"segment_chosen":1,"slab":{"pieces_before":3,"pieces_after":1}}
 1794500113.000  1  1 E AndroidRuntime: FATAL EXCEPTION: main
 1794500114.000  1  1 I am_anr: [0,123,io.github.sceneview.demo.qa]
 1794500114.100  1  1 E ActivityManager: ANR in io.github.sceneview.demo.qa
