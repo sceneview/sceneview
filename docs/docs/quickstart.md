@@ -33,7 +33,7 @@ SceneView 4.63.0 sets these floors on the app that depends on it.
 
 In the app module's `build.gradle.kts`:
 
-```kotlin
+```kotlin notest Gradle Kotlin DSL (app module build.gradle.kts), not a Kotlin source file
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 android {

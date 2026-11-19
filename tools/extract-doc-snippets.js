@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Extract the ```kotlin snippets embedded in the AI-first doc surfaces
- * (`llms.txt` + `agents/sceneview/references/*.md`) into per-snippet Kotlin
- * source files that the `:snippets-check` Gradle module compiles in CI.
+ * (`llms.txt`, `README.md`, the Android quickstart and agent references) into
+ * per-snippet Kotlin source files that `:snippets-check` compiles in CI.
  *
  * WHY THIS EXISTS (issue #2759)
  * -----------------------------
@@ -75,6 +75,8 @@ const repoRoot = resolve(toolsDir, "..");
 // slug → repo-relative path. The slug becomes part of the generated package.
 const SOURCES = [
   { slug: "llms", path: "llms.txt" },
+  { slug: "readme", path: "README.md" },
+  { slug: "quickstart", path: "docs/docs/quickstart.md" },
   { slug: "cheatsheet", path: "agents/sceneview/references/cheatsheet.md" },
   { slug: "migration", path: "agents/sceneview/references/migration.md" },
   { slug: "recipes", path: "agents/sceneview/references/recipes.md" },
@@ -459,7 +461,11 @@ function emit(block, slug, index) {
   const body = [];
   let inHeader = true;
   for (const l of codeLines) {
-    if (inHeader && /^import\s+/.test(l.trim())) {
+    if (inHeader && /^package\s+/.test(l.trim())) {
+      // Complete-file examples keep their package in the doc; generated
+      // sources use the unique per-block package above to avoid collisions.
+      continue;
+    } else if (inHeader && /^import\s+/.test(l.trim())) {
       hoisted.push(l.trim());
     } else {
       if (l.trim() !== "" || !inHeader) {
