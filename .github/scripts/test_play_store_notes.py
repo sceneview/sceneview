@@ -84,9 +84,10 @@ class PlayStoreNotesTest(unittest.TestCase):
         self.changelog("## v4.69.7\n- SDK internals.\n")
         self.assertEqual(release_notes(self.root, "4.69.7"), "")
 
-    def test_character_limit_for_both_sources_including_unicode(self):
+    def test_utf16_limit_for_both_sources_including_emoji(self):
         for character in ("a", "é", "🧊"):
-            for length in (499, 500, 501, 1000):
+            units_per_character = len(character.encode("utf-16-le")) // 2
+            for length in (249, 250, 251, 499, 500, 501, 1000):
                 for source in ("curated", "changelog"):
                     with self.subTest(character=character, length=length, source=source):
                         text = character * length
@@ -95,15 +96,29 @@ class PlayStoreNotesTest(unittest.TestCase):
                         else:
                             self.source.unlink(missing_ok=True)
                             self.changelog(f"## v4.69.7\n{text}\n")
-                        expected = text if length <= 500 else text[:499] + "…"
-                        self.assertEqual(release_notes(self.root, "4.69.7"), expected)
+                        expected = (
+                            text if length * units_per_character <= 500
+                            else character * (499 // units_per_character) + "…"
+                        )
+                        notes = release_notes(self.root, "4.69.7")
+                        self.assertEqual(notes, expected)
+                        self.assertLessEqual(len(notes.encode("utf-16-le")) // 2, 500)
+
+    def test_truncation_preserves_complete_emoji_at_the_boundary(self):
+        for prefix_length, expected in (
+            (497, "a" * 497 + "🧊…"),
+            (498, "a" * 498 + "…"),
+        ):
+            with self.subTest(prefix_length=prefix_length):
+                self.curated("a" * prefix_length + "🧊more")
+                self.assertEqual(release_notes(self.root, "4.69.7"), expected)
 
     def test_truncation_trims_whitespace_before_ellipsis(self):
         self.curated("a" * 497 + "\n\n" + "b" * 10)
         self.assertEqual(release_notes(self.root, "4.69.7"), "a" * 497 + "…")
 
     def test_invalid_version_is_rejected(self):
-        for version in ("", "../4.69.7", "4x69x7", "4.69.7/other"):
+        for version in ("", "../4.69.7", "4x69x7", "4.69.7/other", "assets-v2-abc1234"):
             with self.subTest(version=version), self.assertRaises(ValueError):
                 release_notes(self.root, version)
 
@@ -119,7 +134,31 @@ class PlayStoreNotesTest(unittest.TestCase):
             (self.root / "outputs").read_text(encoding="utf-8"),
             "earlier=value\nextracted=true\n",
         )
-        self.assertIn("24 characters", result.stdout)
+        self.assertIn("24 UTF-16 code units", result.stdout)
+        self.assertIn(f"Play Store notes source: {self.source}", result.stdout)
+
+    def test_cli_reports_unreleased_and_changelog_sources(self):
+        unreleased = self.root / "samples/android-demo/whatsnew/unreleased/en-US.txt"
+        unreleased.parent.mkdir(parents=True)
+        unreleased.write_text("Next release copy.", encoding="utf-8")
+        result = self.run_script("4.69.7-abcd1234")
+        self.assertIn(f"Play Store notes source: {unreleased}", result.stdout)
+        unreleased.unlink()
+        self.changelog("## v4.69.7\n- Legacy copy.\n")
+        result = self.run_script("4.69.7")
+        self.assertIn(
+            f"Play Store notes source: {self.root / 'CHANGELOG.md'} (## v4.69.7)",
+            result.stdout,
+        )
+
+    def test_cli_reports_utf16_size_for_emoji(self):
+        self.curated("🧊" * 251)
+        result = self.run_script("4.69.7")
+        self.assertEqual(
+            (self.root / "whatsnew/whatsnew-en-US").read_text(encoding="utf-8"),
+            "🧊" * 249 + "…",
+        )
+        self.assertIn("499 UTF-16 code units", result.stdout)
 
     def test_cli_missing_notes_removes_stale_payload_and_reports_false(self):
         payload = self.root / "whatsnew/whatsnew-en-US"
@@ -130,13 +169,35 @@ class PlayStoreNotesTest(unittest.TestCase):
         self.assertEqual((self.root / "outputs").read_text(), "extracted=false\n")
         self.assertIn("::warning::No release notes", result.stdout)
 
-    def test_current_release_copy_is_short_and_has_no_issue_references(self):
+    def test_cli_invalid_version_warns_and_reports_false_without_failing(self):
+        payload = self.root / "whatsnew/whatsnew-en-US"
+        payload.parent.mkdir()
+        for version in ("assets-v2-abc1234", "../4.69.7", ""):
+            with self.subTest(version=version):
+                payload.write_text("Stale notes.", encoding="utf-8")
+                (self.root / "outputs").unlink(missing_ok=True)
+                result = self.run_script(version)
+                self.assertFalse(payload.exists())
+                self.assertEqual((self.root / "outputs").read_text(), "extracted=false\n")
+                self.assertIn("::warning::Invalid release version:", result.stdout)
+                self.assertIn("will be left empty", result.stdout)
+
+    def test_all_curated_copy_is_short_and_has_no_issue_references(self):
+        sources = sorted((REPO_ROOT / "samples/android-demo/whatsnew").glob("*/en-US.txt"))
+        self.assertTrue(sources, "No curated Play Store notes found")
+        for source in sources:
+            with self.subTest(source=source):
+                text = source.read_text(encoding="utf-8")
+                self.assertTrue(text.strip())
+                self.assertLessEqual(len(text.encode("utf-16-le")) // 2, 500)
+                self.assertNotRegex(text, r"#\d+|https?://|`")
+
+    def test_unreleased_copy_is_used_by_snapshots_when_present(self):
         source = REPO_ROOT / "samples/android-demo/whatsnew/unreleased/en-US.txt"
+        if not source.is_file():
+            self.skipTest("unreleased notes have been pinned to a release")
         text = source.read_text(encoding="utf-8")
-        self.assertTrue(text.strip())
-        self.assertLessEqual(len(text), 500)
-        self.assertNotRegex(text, r"#\d+|https?://|`")
-        self.assertEqual(release_notes(REPO_ROOT, "4.69.7-abcd1234"), text.strip())
+        self.assertEqual(release_notes(REPO_ROOT, "0.0.0-snapshot"), text.strip())
 
     def test_snapshots_prefer_unreleased_notes_and_tags_never_read_them(self):
         self.curated("Released copy.")

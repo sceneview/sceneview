@@ -7,7 +7,7 @@ import re
 
 
 def release_notes(root: Path, version: str) -> str:
-    """Read curated notes or the legacy changelog section, capped at 500 chars."""
+    """Read curated notes or the legacy changelog, capped at 500 UTF-16 units."""
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", version):
         raise ValueError(f"Invalid release version: {version}")
     base_version, _, suffix = version.partition("-")
@@ -21,11 +21,13 @@ def release_notes(root: Path, version: str) -> str:
         candidates.insert(0, whatsnew / "unreleased" / "en-US.txt")
     source = next((c for c in candidates if c.is_file()), None)
     if source is not None:
+        print(f"Play Store notes source: {source}")
         text = source.read_text(encoding="utf-8")
     else:
         changelog = root / "CHANGELOG.md"
         if not changelog.is_file():
             return ""
+        print(f"Play Store notes source: {changelog} (## v{base_version})")
         lines = []
         found = False
         heading = re.compile(rf"^## v{re.escape(base_version)}(?: |$)")
@@ -44,8 +46,10 @@ def release_notes(root: Path, version: str) -> str:
         text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
         text = re.sub(r"\n{3,}", "\n\n", text)
     text = text.strip()
-    if len(text) > 500:
-        text = text[:499].rstrip() + "…"
+    utf16 = text.encode("utf-16-le")
+    if len(utf16) > 1000:
+        # Reserve one unit for the ellipsis; ignore a split surrogate pair.
+        text = utf16[:998].decode("utf-16-le", errors="ignore").rstrip() + "…"
     return text
 
 
@@ -55,15 +59,21 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--output-dir", type=Path, default=Path("whatsnew"))
     args = parser.parse_args()
-    text = release_notes(args.root, args.version)
+    missing_notes_reason = f"No release notes for {args.version}"
+    try:
+        text = release_notes(args.root, args.version)
+    except ValueError as error:
+        missing_notes_reason = str(error)
+        text = ""
     output = args.output_dir / "whatsnew-en-US"
     if text:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(text, encoding="utf-8")
-        print(f"What's new payload ({len(text)} characters):\n{text}")
+        units = len(text.encode("utf-16-le")) // 2
+        print(f"What's new payload ({units} UTF-16 code units):\n{text}")
     else:
         output.unlink(missing_ok=True)
-        print(f"::warning::No release notes for {args.version} — Play Store 'What's new' will be left empty")
+        print(f"::warning::{missing_notes_reason} — Play Store 'What's new' will be left empty")
     if github_output := os.environ.get("GITHUB_OUTPUT"):
         with open(github_output, "a", encoding="utf-8") as stream:
             stream.write(f"extracted={str(bool(text)).lower()}\n")

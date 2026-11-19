@@ -381,12 +381,14 @@ jobs:
           name: sceneview-demo-${{ needs.build.outputs.version_name }}
           path: aab
 
-      # Prefer samples/android-demo/whatsnew/<X.Y.Z>/en-US.txt, written for
-      # demo users. Fall back to CHANGELOG.md only when that file is missing.
-      # The script caps either source at 500 characters and writes a single
+      # Prefer curated notes written for demo users: snapshot versions try
+      # whatsnew/unreleased/en-US.txt, then whatsnew/<X.Y.Z>/en-US.txt;
+      # clean release versions try only their own versioned file.
+      # Fall back to CHANGELOG.md only when no matching curated file exists.
+      # The script caps either source at 500 UTF-16 code units and writes a single
       # `whatsnew/whatsnew-en-US` file consumed by `r0adkll/upload-google-play`
-      # via `whatsNewDirectory:`. Snapshots use their base release's notes;
-      # empty or missing notes leave the file absent and extracted=false.
+      # via `whatsNewDirectory:`. Empty or missing notes and unexpected versions
+      # leave the file absent and extracted=false.
       - name: Extract release notes for Play Store
         id: notes
         env:
