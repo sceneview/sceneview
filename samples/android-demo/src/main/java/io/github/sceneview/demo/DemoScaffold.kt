@@ -179,6 +179,7 @@ import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -1429,9 +1430,18 @@ fun DemoScaffold(
             // Above the sheet, not in the scaffold's content (#4019): the content is drawn
             // under the sheet, so a snackbar raised from it — "Demo reset" always is, its
             // row lives in the sheet — showed through the glass as a ghost nobody could read.
-            // Removing the host also pauses Material's timeout: the queued message is shown
-            // after the SDK or corner scene cards have left, even on a short screen.
-            if (sdkOverlayCount == 0 && sceneBottomCards.values.none { it.deferSnackbar }) DemoSnackbarHost(
+            // Removing the host pauses Material's timeout. Drop a message after ten seconds
+            // behind any SDK or corner card: permission/availability cards can stay forever,
+            // and an old reset or capture action is no longer useful when they finally leave.
+            val snackbarDeferred = sdkOverlayCount > 0 || sceneBottomCards.values.any { it.deferSnackbar }
+            val pendingSnackbar = snackbarHostState.currentSnackbarData
+            LaunchedEffect(snackbarDeferred, pendingSnackbar) {
+                if (snackbarDeferred && pendingSnackbar != null) {
+                    delay(SNACKBAR_DEFERRAL_TIMEOUT_MS)
+                    pendingSnackbar.dismiss()
+                }
+            }
+            if (!snackbarDeferred) DemoSnackbarHost(
                 hostState = snackbarHostState,
                 sheetState = settingsSheetState,
                 sheetRestingTopPx = rootHeightPx - when (settingsSheetState.currentValue) {
@@ -1580,6 +1590,8 @@ internal fun demoBottomStackGone(
     sheetShown: Boolean,
     sheetSettled: Boolean,
 ): Boolean = hidden || (sheetRequested && sheetShown && sheetSettled)
+
+private const val SNACKBAR_DEFERRAL_TIMEOUT_MS = 10_000L
 
 /**
  * Top edge, in window pixels, of what a demo stacks above the dock — or [windowHeight] when it

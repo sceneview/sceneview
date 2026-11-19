@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -163,6 +165,38 @@ class AROverlayVisibilityTest {
             Box(Modifier.size(360.dp, 240.dp)) { ARCameraInUseOverlay(true) }
         }
         composeRule.onNodeWithTag(CAMERA_IN_USE_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun planeDiscoveryTips_reportOnlyWhileOpen_andReleaseOnDismissOrPhaseChange() {
+        val recorder = Recorder()
+        var phase by mutableStateOf(PlaneDiscoveryPhase.HELP_OFFERED)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalAROverlayVisibility provides recorder.listener) {
+                Box(Modifier.fillMaxSize()) {
+                    PlaneDiscoveryGuideOverlay(phase = phase, handHint = {})
+                }
+            }
+        }
+        composeRule.runOnIdle { assertEquals(emptyList<Boolean>(), recorder.events) }
+
+        val context = RuntimeEnvironment.getApplication()
+        val help = context.getString(R.string.sceneview_plane_discovery_help)
+        val dismiss = context.getString(R.string.sceneview_plane_discovery_got_it)
+        composeRule.onNodeWithText(help).performClick()
+        composeRule.onNodeWithText(dismiss).assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(listOf(true), recorder.events) }
+
+        composeRule.onNodeWithText(dismiss).performClick()
+        composeRule.runOnIdle { assertEquals(listOf(true, false), recorder.events) }
+
+        composeRule.onNodeWithText(help).performClick()
+        composeRule.runOnIdle { phase = PlaneDiscoveryPhase.DONE }
+        composeRule.onNodeWithText(dismiss).assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(listOf(true, false, true, false), recorder.events)
+            assertEquals(0, recorder.count)
+        }
     }
 
     private companion object {

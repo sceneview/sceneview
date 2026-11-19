@@ -1,14 +1,18 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package io.github.sceneview.demo
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
@@ -25,6 +29,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
@@ -48,6 +53,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -318,6 +324,50 @@ class DemoScaffoldBottomBandTest {
         }
     }
 
+    @Test
+    fun snackbar_blockedByAPersistentPermissionCard_isDroppedAfterTenSeconds() {
+        val shown = mutableStateOf(true)
+        showResetSnackbar(bottomOverlay = null, scene = {
+            Box(Modifier.fillMaxSize()) {
+                if (shown.value) ARCameraPermissionOverlay(ARCameraPermissionState(true, {}, {}))
+            }
+        })
+        assertBlockedSnackbarExpires { shown.value = false }
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-xhdpi")
+    fun snackbar_blockedByAPersistentCornerCard_isDroppedAfterTenSeconds() {
+        val shown = mutableStateOf(true)
+        val state = TapToPlaceState().apply {
+            cameraReady = true
+            isTracking = true
+            phase = PlacementPhase.NO_SURFACE
+        }
+        showResetSnackbar(bottomOverlay = null, scene = {
+            Box(Modifier.fillMaxSize()) {
+                if (shown.value) TapToPlaceStatusOverlays(state, onViewIn3D = {}, onRestartSession = {})
+            }
+        })
+        assertBlockedSnackbarExpires { shown.value = false }
+    }
+
+    private fun assertBlockedSnackbarExpires(removeCard: () -> Unit) {
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+        composeRule.mainClock.advanceTimeBy(10_100)
+        composeRule.runOnIdle { removeCard() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
+
+        // Expiring the old message must release showSnackbar's caller and allow a fresh one.
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.RESET_ACTION).performClick()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_CLOSE).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
+    }
+
     private fun assertSnackbarWaitsForSdkOverlay(overlay: @Composable BoxScope.() -> Unit) {
         val shown = mutableStateOf(true)
         showResetSnackbar(
@@ -327,7 +377,7 @@ class DemoScaffoldBottomBandTest {
         )
         composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).assertDoesNotExist()
         // A queued message must survive longer than Material's normal short timeout.
-        composeRule.mainClock.advanceTimeBy(5_000)
+        composeRule.mainClock.advanceTimeBy(9_000)
         composeRule.runOnIdle { shown.value = false }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
@@ -400,6 +450,25 @@ class DemoScaffoldBottomBandTest {
         val snackbar = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
         assertEquals(openSheet.top.value, settledSheet.top.value, HALF_A_DP)
         assertEquals(SceneViewTokens.Space.md.value, (settledSheet.top - snackbar.bottom).value, HALF_A_DP)
+    }
+
+    @Test
+    fun snackbar_partiallyExpandedSheetWithTallControls_releasesTheStackRestingLine() {
+        showResetSnackbar(
+            bottomOverlay = { Box(Modifier.fillMaxWidth().height(360.dp).testTag(OVERLAY_PROBE)) },
+            closeSheet = false,
+            controls = { Box(Modifier.fillMaxWidth().height(420.dp)) },
+        )
+        assertEquals(
+            SheetValue.PartiallyExpanded,
+            DemoSheetDetentStore.lastDetent(RuntimeEnvironment.getApplication(), "Band"),
+        )
+        val stack = composeRule.onNodeWithTag(OVERLAY_PROBE).getUnclippedBoundsInRoot()
+        val sheet = composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_SHEET).getUnclippedBoundsInRoot()
+        val snackbar = composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+        assertTrue("the peek sheet should be below the tall stack", sheet.top > stack.top)
+        assertTrue("settled peek must release the stack resting line", snackbar.bottom > stack.top)
+        assertEquals(SceneViewTokens.Space.md.value, (sheet.top - snackbar.bottom).value, HALF_A_DP)
     }
 
     @Test
@@ -528,6 +597,7 @@ class DemoScaffoldBottomBandTest {
         fontScale: Float = 1f,
         closeSheet: Boolean = true,
         modeSwitch: DemoModeSwitch? = null,
+        controls: (@Composable ColumnScope.() -> Unit)? = null,
     ) {
         composeRule.setContent {
             ScaledDensity(fontScale) {
@@ -536,6 +606,7 @@ class DemoScaffoldBottomBandTest {
                         title = "Band",
                         onBack = {},
                         onReset = {},
+                        controls = controls,
                         bottomOverlay = bottomOverlay,
                         modeSwitch = modeSwitch,
                     ) { scene() }
@@ -545,7 +616,7 @@ class DemoScaffoldBottomBandTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB).performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag(DemoScaffoldTestTags.RESET_ACTION).performClick()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.RESET_ACTION).performScrollTo().performClick()
         if (closeSheet) composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_CLOSE).performClick()
         composeRule.waitForIdle()
     }
