@@ -15,6 +15,7 @@ import dev.romainguy.kotlin.math.inverse
 import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.Entity
 import io.github.sceneview.core.splat.SplatCloud
+import io.github.sceneview.isValid
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.safeDestroyEntity
