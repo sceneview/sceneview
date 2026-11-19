@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal.feel
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -227,6 +228,26 @@ class FeelSimulationTest {
         simulation.contactMillis[FeelMaterial.Marble.ordinal] = time
         assertTrue(simulation.moving(FeelMaterial.Marble, time + 100L, true))
         assertTrue(!simulation.moving(FeelMaterial.Marble, time + MatterMeshes.RIPPLE_MILLIS, true))
+    }
+
+    @Test fun trailFramePredicatesCheckEverySlotAndKeepTheirDistinctThresholds() {
+        val simulation = FeelSimulation()
+        val material = FeelMaterial.MemoryFoam
+        val trail = simulation.trails[material.ordinal]
+        assertFalse(simulation.moving(material, 0L, motion = false))
+        assertFalse(simulation.needsFrames(material, 0L, motion = false))
+        for (slot in 0 until FeelSimulation.TRAIL_POINTS) {
+            val strength = slot * 4 + 2
+            trail[strength] = FeelSimulation.STILL_TRAIL
+            assertFalse(simulation.moving(material, 0L, motion = false))
+            assertTrue(simulation.needsFrames(material, 0L, motion = false))
+            trail[strength] = FeelSimulation.STILL_TRAIL + .001f
+            assertTrue(simulation.moving(material, 0L, motion = false))
+            assertTrue(simulation.needsFrames(material, 0L, motion = false))
+            trail[strength] = 0f
+        }
+        assertFalse(simulation.moving(material, 0L, motion = false))
+        assertFalse(simulation.needsFrames(material, 0L, motion = false))
     }
 
     @Test fun touchCancelsTheOpeningAndCannotLeaveAHiddenLoad() {
