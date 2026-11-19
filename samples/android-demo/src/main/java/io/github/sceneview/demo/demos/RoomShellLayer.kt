@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import android.util.Log
 import androidx.compose.runtime.Composable
 import io.github.sceneview.SceneScope
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.RerunGlbMesh
@@ -107,6 +108,10 @@ internal suspend fun roomShellOf(
     }
     val glb = RoomShellGlb.write(shell.faces, JpegAtlasEncoder, objects = shell.objectMesh) ?: return null
     Log.i(SHELL_TAG, "room shell: ${shell.box}, ${shell.stats}, glb ${glb.size / KB} KB")
+    // The floor the shell stands on: the scan's when it had one, else the room box read it off the cloud.
+    if (BuildConfig.DEBUG && fused != null) {
+        ScanBench().depthModel("shell", fused, shell.box.floorY, if (input.floorY != null) "scan" else "cloud", slab = null)
+    }
     if (store != null && id != null) {
         runCatching { store.saveRoomShell(id, glb, shell.objects, ROOM_SHELL_VERSION) }
             .onFailure { Log.w(SHELL_TAG, "room shell not kept", it) }

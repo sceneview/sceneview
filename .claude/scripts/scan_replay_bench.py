@@ -147,6 +147,7 @@ def select_layers(text):
 
 def parse_logcat(text, launch_epoch, live_end_epoch=None):
     first, outside, fps = None, None, []
+    depth_model = None
     fatals = anrs = 0
     observed = False
     for line in text.splitlines():
@@ -165,6 +166,10 @@ def parse_logcat(text, launch_epoch, live_end_epoch=None):
             continue
         if not isinstance(data, dict) or data.get("schema") not in (1, 2):
             continue
+        # Sent once the result is fused from the depth recording, after the live phase: kept as is.
+        if data.get("event") == "depth_model":
+            depth_model = data
+            continue
         if live_end_epoch is not None and epoch > live_end_epoch:
             continue
         observed = True
@@ -180,7 +185,8 @@ def parse_logcat(text, launch_epoch, live_end_epoch=None):
             "ar_fps_mean": statistics.mean(fps) if fps else None,
             "ar_fps_worst": min(fps) if fps else None, "ar_seconds": len(fps),
             "fatals": fatals if launch_epoch is not None else None,
-            "anrs": anrs if launch_epoch is not None else None, "bench_observed": observed}
+            "anrs": anrs if launch_epoch is not None else None, "bench_observed": observed,
+            "depth_model": depth_model}
 
 
 def truth(value):

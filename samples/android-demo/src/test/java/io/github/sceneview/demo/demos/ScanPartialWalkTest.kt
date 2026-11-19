@@ -130,6 +130,9 @@ class ScanPartialWalkTest {
         )
         assertEquals("segments", 2, fused.segments)
         assertEquals("the walk before the slip is the surface", LATE_SLIP, fused.fused)
+        assertEquals("segment fused", 0, fused.chosenSegment)
+        assertEquals("one coverage per segment", 2, fused.segmentCells.size)
+        assertEquals("frames per segment, the fused one first", LATE_SLIP, fused.segmentFrames[0])
         val p = fused.mesh.positions
         val ghost = (0 until fused.mesh.vertexCount).count { offTheRoom(p[it * 3], p[it * 3 + 1], p[it * 3 + 2]) > OFF_M }
         assertEquals("vertices out of place", 0, ghost)
@@ -154,6 +157,16 @@ class ScanPartialWalkTest {
         assertEquals("segments", 2, fused.segments)
         val stuck = (PoseContinuity.STUCK_AFTER_NANOS / FRAME_NANOS).toInt()
         assertEquals("the walk after the slip, fewer frames, is the surface", FRAMES - STILL - stuck, fused.fused)
+        assertEquals("segment fused", 1, fused.chosenSegment)
+        assertTrue(
+            "the fused segment covers more: ${fused.segmentCells}",
+            fused.segmentCells[1] > fused.segmentCells[0],
+        )
+        assertTrue(
+            "the other has more frames: ${fused.segmentFrames}",
+            fused.segmentFrames[0] > fused.segmentFrames[1],
+        )
+        assertEquals("frames of the fused segment", fused.fused, fused.segmentFrames[1])
     }
 
     /**

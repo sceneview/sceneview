@@ -48,13 +48,48 @@ class ScanFloorSlabTest {
         assertEquals("two pieces", 2, slabPieces(result.mesh))
     }
 
+    @Test
+    fun `the pieces before and after the strays went, and the floor they take out, are counted`() {
+        val mesh = plates(gapM = 3f, between = Between.Nothing, small = CRUMB)
+        val result = checkNotNull(ScanFloorSlab.of(mesh, floorY = 0f, trace = true))
+        assertEquals("pieces before", 2, result.piecesBeforeM2.size)
+        assertEquals("largest first", BIG * BIG, result.piecesBeforeM2[0], AREA_SLACK_M2)
+        assertEquals("the crumb", CRUMB * CRUMB, result.piecesBeforeM2[1], CRUMB_SLACK_M2)
+        assertEquals("pieces after", 1, result.piecesAfterM2.size)
+        assertEquals("the slab is the big plate", result.areaM2, result.piecesAfterM2.single(), 1e-4f)
+        val crumbTriangles = 2 * (CRUMB / STEP_M).toInt().let { it * it }
+        assertEquals("every floor triangle taken out", mesh.triangleCount, result.floorTriangles)
+        assertEquals("the crumb's triangles", 72, crumbTriangles)
+        // The grid's opening shaves the corner cells: 67 of the crumb's 72 lie in its dropped piece,
+        // and off the slab are those 72 and 2 at the big plate's shaved corners.
+        assertEquals("the crumb's floor, in a dropped piece", 67, result.floorTrianglesInDroppedPieces)
+        assertEquals("off the slab", 74, result.floorTrianglesOffSlab)
+        assertEquals("nothing under the floor", 0, result.belowTriangles)
+        assertEquals("no stray piece", 0, result.strayTriangles)
+    }
+
+    @Test
+    fun `without trace the slab is the same and the counts are left out`() {
+        val mesh = plates(gapM = 3f, between = Between.Nothing, small = CRUMB)
+        val traced = checkNotNull(ScanFloorSlab.of(mesh, floorY = 0f, trace = true))
+        val plain = checkNotNull(ScanFloorSlab.of(mesh, floorY = 0f))
+        assertEquals(traced.areaM2, plain.areaM2, 0f)
+        assertEquals(traced.mesh.triangleCount, plain.mesh.triangleCount)
+        assertTrue(traced.mesh.positions.contentEquals(plain.mesh.positions))
+        assertTrue(traced.mesh.normals.contentEquals(plain.mesh.normals))
+        assertTrue(traced.mesh.colors.contentEquals(plain.mesh.colors))
+        assertTrue(traced.mesh.indices.contentEquals(plain.mesh.indices))
+        assertTrue(plain.piecesBeforeM2.isEmpty() && plain.piecesAfterM2.isEmpty())
+        assertEquals(0, plain.floorTrianglesOffSlab + plain.floorTrianglesInDroppedPieces)
+    }
+
     private enum class Between { Nothing, Sofa, Wall, WallFoot }
 
     /**
-     * A [BIG] square of floor at the origin and a [SMALL] one [gapM] beyond it along x, and in
+     * A [BIG] square of floor at the origin and a [small] one [gapM] beyond it along x, and in
      * the gap [between]: nothing, a sofa's top and front (45 cm), or a wall (2.4 m).
      */
-    private fun plates(gapM: Float, between: Between): RerunMesh {
+    private fun plates(gapM: Float, between: Between, small: Float = SMALL): RerunMesh {
         val positions = ArrayList<Float>()
         val normals = ArrayList<Float>()
         val indices = ArrayList<Int>()
@@ -81,7 +116,7 @@ class ScanFloorSlabTest {
             sheet(floatArrayOf(x0, 0f, 0f), floatArrayOf(STEP_M, 0f, 0f), floatArrayOf(0f, 0f, STEP_M), n, n, up)
         }
         plate(0f, BIG)
-        plate(BIG + gapM, SMALL)
+        plate(BIG + gapM, small)
         val across = (gapM / FINE_M).toInt()
         val along = (SMALL / FINE_M).toInt()
         when (between) {
@@ -128,6 +163,12 @@ class ScanFloorSlabTest {
     private companion object {
         const val BIG = 2f
         const val SMALL = 1.5f
+
+        /** 30 cm square: under a fifth of [BIG]'s plate and under half a square metre, a stray. */
+        const val CRUMB = 0.3f
+
+        /** The crumb on the 4 cm grid: a cell's border round it, give or take. */
+        const val CRUMB_SLACK_M2 = 0.04f
         const val GAP_M = 0.6f
         const val SOFA_M = 0.45f
         const val WALL_M = 2.4f

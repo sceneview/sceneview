@@ -34,6 +34,18 @@ internal object ScanFloorSlab {
         val floorTriangles: Int,
         /** Other triangles dropped: under the floor, or left as stray pieces. */
         val droppedTriangles: Int,
+        /** With `trace`: the floor's pieces before the strays went ([Grid.largestPieces]), m², largest first. */
+        val piecesBeforeM2: List<Float> = emptyList(),
+        /** With `trace`: the pieces the slab is laid over, m², largest first. */
+        val piecesAfterM2: List<Float> = emptyList(),
+        /** With `trace`: floor triangles whose cell the slab does not cover, a floor drawn nowhere. */
+        val floorTrianglesOffSlab: Int = 0,
+        /** Of [floorTrianglesOffSlab], those in a piece dropped as a stray. */
+        val floorTrianglesInDroppedPieces: Int = 0,
+        /** Of [droppedTriangles], those more than [BELOW_M] under a known floor… */
+        val belowTriangles: Int = 0,
+        /** …and those left as stray pieces once the floor was out. */
+        val strayTriangles: Int = 0,
     )
 
     /**
@@ -41,10 +53,11 @@ internal object ScanFloorSlab {
      * read off the mesh ([floorOf]). With [cutBelow], what lies more than [BELOW_M] under the
      * floor goes too: only under a floor that is known, as a guessed one may be a bed's top.
      * `null` when the mesh shows no floor big enough to stand as one ([MIN_AREA_M2]): it is then
-     * shown as fused.
+     * shown as fused. With [trace], the [Result]'s pieces and floor counts are filled in too (a
+     * debug build's bench line): they cost a pass over the floor and two over the grid.
      */
     @Suppress("ReturnCount")
-    fun of(mesh: RerunMesh, floorY: Float? = null, cutBelow: Boolean = floorY != null): Result? {
+    fun of(mesh: RerunMesh, floorY: Float? = null, cutBelow: Boolean = floorY != null, trace: Boolean = false): Result? {
         if (mesh.triangleCount == 0) return null
         val y0 = floorY ?: floorOf(mesh) ?: return null
         val p = mesh.positions
@@ -128,6 +141,7 @@ internal object ScanFloorSlab {
         val wall = grid.dilate(walled, WALL_REACH_CELLS)
         kept = grid.bridged(kept, BRIDGE_CELLS) { c -> furniture[c] && !wall[c] }
         // Strays go; a plate of real floor stays, a second piece rather than erased.
+        val beforeStrays = kept
         kept = grid.largestPieces(kept, MIN_PIECE_SHARE, minCells = (KEPT_PLATE_M2 / (CELL_M * CELL_M)).roundToInt())
         val cells = kept.count { it }
         val area = cells * CELL_M * CELL_M
@@ -141,8 +155,28 @@ internal object ScanFloorSlab {
             val cy = (p[ix[t * 3] * 3 + 1] + p[ix[t * 3 + 1] * 3 + 1] + p[ix[t * 3 + 2] * 3 + 1]) / 3f
             cy >= y0 - BELOW_M
         }
+        val aboveCount = keep.count { it }
         dropSmallPieces(mesh, keep, MIN_PIECE_TRIANGLES)
         val keptCount = keep.count { it }
+        // The floor the slab leaves out, by the cell of each floor triangle's middle.
+        var offSlab = 0
+        var inDropped = 0
+        if (trace) {
+            for (t in 0 until tris) {
+                if (!onFloor[t]) continue
+                var cx = 0f
+                var cz = 0f
+                for (k in 0 until 3) {
+                    val v = ix[t * 3 + k]
+                    cx += p[v * 3] / 3f
+                    cz += p[v * 3 + 2] / 3f
+                }
+                val c = grid.cell(cx, cz)
+                if (kept[c]) continue
+                offSlab++
+                if (beforeStrays[c]) inDropped++
+            }
+        }
         val slab = SlabBuilder(grid, kept, colors, y0).build()
         val merged = merge(mesh, keep, keptCount, slab)
         return Result(
@@ -151,6 +185,12 @@ internal object ScanFloorSlab {
             areaM2 = area,
             floorTriangles = floorCount,
             droppedTriangles = tris - floorCount - keptCount,
+            piecesBeforeM2 = if (trace) grid.pieceAreas(beforeStrays) else emptyList(),
+            piecesAfterM2 = if (trace) grid.pieceAreas(kept) else emptyList(),
+            floorTrianglesOffSlab = offSlab,
+            floorTrianglesInDroppedPieces = inDropped,
+            belowTriangles = tris - floorCount - aboveCount,
+            strayTriangles = aboveCount - keptCount,
         )
     }
 
@@ -359,6 +399,9 @@ internal object ScanFloorSlab {
             val most = sizes.maxOrNull() ?: return BooleanArray(size)
             return BooleanArray(size) { label[it] >= 0 && (sizes[label[it]] >= most * share || sizes[label[it]] >= minCells) }
         }
+
+        /** The areas of [on]'s 8-connected pieces, m², largest first. */
+        fun pieceAreas(on: BooleanArray): List<Float> = pieces(on).second.sortedDescending().map { it * CELL_M * CELL_M }
 
         /** Each cell's 8-connected piece of [on] (`-1` off it), and each piece's cell count. */
         private fun pieces(on: BooleanArray): Pair<IntArray, List<Int>> {

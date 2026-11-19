@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.RerunGlbMesh
 import io.github.sceneview.demo.demos.internal.RerunMesh
@@ -118,11 +119,15 @@ internal fun depthModelOf(
     val fused = RoomDepthMesh.fuse(depth, settings, guard = RoomDepthMesh.replayGuard()) { progress(it * FUSE_SHARE) } ?: return null
     // A room that stands as no room — a short walk, part of a room — stands on a clean slab of
     // floor, at the room's floor or ARCore's; a Home's levels and stairs are left as fused.
+    val sure = floorY ?: fused.floorPlaneY
     val slab = if (scope == ScanScope.Room) {
-        val sure = floorY ?: fused.floorPlaneY
-        ScanFloorSlab.of(fused.mesh, sure, cutBelow = sure != null)
+        ScanFloorSlab.of(fused.mesh, sure, cutBelow = sure != null, trace = BuildConfig.DEBUG)
     } else {
         null
+    }
+    if (BuildConfig.DEBUG) {
+        val source = if (floorY != null) "scan" else if (fused.floorPlaneY != null) "arcore" else null
+        ScanBench().depthModel("depth_model", fused, sure, source, slab)
     }
     // An object is its own: cropped to the box its scan went round ([subject]), the table or the
     // floor it stood on left out. Its box comes from the saved cloud and the trace's aims, so a
