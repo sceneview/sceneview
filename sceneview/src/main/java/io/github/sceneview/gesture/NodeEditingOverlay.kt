@@ -635,10 +635,10 @@ internal class NodeScreenAnchors {
                 (xPos.x + xNeg.x + zPos.x + zNeg.x) / 4f,
                 (xPos.y + xNeg.y + zPos.y + zNeg.y) / 4f,
             )
-            // Semi-axes from the two projected chords: the X pair spans the ellipse
-            // horizontally, the Z (depth) pair spans it vertically.
-            radiusX = (abs(xPos.x - xNeg.x) / 2f).coerceAtLeast(1f)
-            radiusY = max(abs(zPos.y - zNeg.y), abs(xPos.y - xNeg.y)) / 2f
+            // Each screen-axis extent combines both half-chords, so turning the local
+            // axes cannot collapse the projected circle's bounding ellipse.
+            radiusX = projectedRingRadius(xPos.x, xNeg.x, zPos.x, zNeg.x).coerceAtLeast(1f)
+            radiusY = projectedRingRadius(xPos.y, xNeg.y, zPos.y, zNeg.y)
         } else {
             base = null
         }
@@ -663,6 +663,10 @@ internal class NodeScreenAnchors {
     fun radiusYInCanvas(canvasSize: Size): Float =
         canvasScale(canvasSize)?.let { radiusY * it.y } ?: 0f
 }
+
+/** One screen-axis extent of the ellipse spanned by the projected local X and Z chords. */
+internal fun projectedRingRadius(xPos: Float, xNeg: Float, zPos: Float, zNeg: Float): Float =
+    hypot((xPos - xNeg) / 2f, (zPos - zNeg) / 2f)
 
 /**
  * Local-space content bounds, falling back to a small placeholder when there is no content.
