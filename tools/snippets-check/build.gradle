@@ -1,10 +1,11 @@
 // :snippets-check — compile-only guard for the AI-first doc snippets (#2759).
 //
 // This module has NO hand-written sources. Its single source set is GENERATED
-// by `tools/extract-doc-snippets.js` from the ```kotlin blocks of `llms.txt`
-// and `agents/sceneview/references/*.md`. Compiling it proves the documented
-// snippets still match the real API: a rename that breaks documented code is
-// a deterministic CI red instead of a silently-lying doc.
+// by `tools/extract-doc-snippets.js` from the ```kotlin blocks of `llms.txt`,
+// `README.md`, the Android quickstart and `agents/sceneview/references/*.md`.
+// Compiling it proves the documented snippets still match the real API: a
+// rename that breaks documented code is a deterministic CI red instead of a
+// silently-lying doc.
 //
 // Never published, never shipped — deliberately excluded from apiCheck,
 // coverage, and the release artifacts. Run locally with:
@@ -55,12 +56,14 @@ kotlin {
 }
 
 tasks.register('generateDocSnippets', Exec) {
-    description = 'Extract the ```kotlin blocks of llms.txt + agent references into compilable sources'
+    description = 'Extract Kotlin blocks from llms.txt, README, quickstart and agent references into compilable sources'
     group = 'verification'
     workingDir = rootDir
     commandLine 'node', 'tools/extract-doc-snippets.js', '--out', "$buildDir/generated/snippets"
     inputs.files(
         "$rootDir/llms.txt",
+        "$rootDir/README.md",
+        "$rootDir/docs/docs/quickstart.md",
         "$rootDir/agents/sceneview/references/cheatsheet.md",
         "$rootDir/agents/sceneview/references/migration.md",
         "$rootDir/agents/sceneview/references/recipes.md",

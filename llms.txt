@@ -118,7 +118,7 @@ dependencies {
 }
 ```
 The app module needs `compileSdk = 37` (the published AARs declare `minCompileSdk=37`), `minSdk` 24 or higher, AGP 9.4.0+ and Kotlin 2.3 or newer (SceneView is compiled with 2.4.21, whose metadata a 2.3 compiler reads; Kotlin 2.2 is refused). SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions, so the app compiles Java and Kotlin with JVM target 21:
-```kotlin notest Gradle Kotlin DSL (app module build.gradle.kts), not a Kotlin source file
+```kotlin
 android {
     compileSdk = 37
     defaultConfig { minSdk = 24 }
@@ -210,7 +210,7 @@ fun ModelViewerScreen() {
     ) {
         // ModelNode is a member of this block: no import for it
         // null while the file loads, then the model appears
-        rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1f)
         }
     }
@@ -238,7 +238,7 @@ fun TapToPlaceScreen() {
         modelLoader = modelLoader,
         onPlaced = { anchor -> // a NAMED parameter: the trailing lambda is `content`
             AnchorNode(anchor = anchor) {
-                rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+                rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
                     ModelNode(modelInstance = instance, scaleToUnits = 0.3f)
                 }
             }
@@ -481,7 +481,7 @@ fun My3DScreen() {
         },
         mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f }
     ) {
-        rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
         }
     }
