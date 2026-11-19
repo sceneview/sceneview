@@ -186,10 +186,8 @@ class BugReportFormatTest {
     }
 
     @Test
-    fun `issue url packs a usable log window, not a couple of dozen lines`() {
-        // Regression guard for #3390: the coarse fallback ladder used to snap to
-        // 30 lines — too short to see a repeating warning twice and measure its
-        // period. Realistic threadtime lines, so the budget arithmetic is real.
+    fun `issue url packs a repeated warning with its count and time span`() {
+        // #4995: the whole run fits as one line, with both ends still measurable (#3390).
         val lines = (1..ISSUE_LOGCAT_MAX_LINES).map {
             val millis = (it % 1000).toString().padStart(3, '0')
             "06-01 12:00:00.$millis  6543  6560 W Filament: throttled draw call skipped"
@@ -199,7 +197,9 @@ class BugReportFormatTest {
 
         val body = URLDecoder.decode(url.substringAfter("&body="), "UTF-8")
         val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
-        assertTrue("packed only $packed lines", packed >= 60)
+        assertEquals(1, packed)
+        assertTrue(body.contains("×$ISSUE_LOGCAT_MAX_LINES (last at 12:00:00.400)"))
+        assertTrue(body.contains("12:00:00.001 W Filament: throttled draw call skipped"))
         assertTrue(body.contains("| Screen | Demo · model-viewer |"))
     }
 
@@ -394,7 +394,8 @@ class BugReportFormatTest {
         assertTrue(body.contains("16:55:46.108 I SceneView: AR tracking: state=PAUSED reason=NONE for=400s"))
         assertFalse(body.contains("29383"))
         val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
-        assertTrue("packed only $packed general lines", packed >= 10)
+        assertEquals(1, packed)
+        assertTrue(body.contains("×$ISSUE_LOGCAT_MAX_LINES"))
     }
 
     @Test

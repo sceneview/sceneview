@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -68,10 +70,10 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlinx.coroutines.launch
 
 /**
- * The lightweight "Report a bug" bottom sheet (#2188 successor).
+ * The lightweight "Send feedback" bottom sheet (#2188 successor).
  *
  * Zero permissions, zero services: a screenshot preview with an
- * include/exclude toggle, an optional description (with an optional voice
+ * include/exclude toggle, a required description (with an optional voice
  * dictation shortcut, #3263), and two exits — a pre-filled GitHub issue in
  * the browser (the primary, default action) or the system share sheet
  * (a short summary, the whole report as a .txt file and the screenshot; the
@@ -95,6 +97,9 @@ fun BugReportSheet(
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var note by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(FeedbackCategory.Bug) }
+    val info = remember(report.info, category) { report.info.copy(category = category) }
+    val descriptionValid = isFeedbackDescriptionValid(note)
     var includeScreenshot by remember { mutableStateOf(report.screenshot != null) }
     var sendError by remember { mutableStateOf<String?>(null) }
     var previewExpanded by remember { mutableStateOf(false) }
@@ -166,11 +171,38 @@ fun BugReportSheet(
             )
 
             Spacer(Modifier.height(16.dp))
+            Text(
+                stringResource(R.string.feedback_report_category),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FeedbackCategory.entries.forEach { option ->
+                    FilterChip(
+                        selected = category == option,
+                        onClick = { category = option },
+                        label = {
+                            Text(
+                                stringResource(
+                                    when (option) {
+                                        FeedbackCategory.Bug -> R.string.feedback_report_category_bug
+                                        FeedbackCategory.FeatureRequest -> R.string.feedback_report_category_feature
+                                        FeedbackCategory.Question -> R.string.feedback_report_category_question
+                                    },
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
                 label = { Text(stringResource(R.string.feedback_report_note_label)) },
                 placeholder = { Text(stringResource(R.string.feedback_report_note_placeholder)) },
+                isError = note.isNotEmpty() && !descriptionValid,
                 minLines = 3,
                 trailingIcon = if (dictation.available) {
                     {
@@ -182,10 +214,18 @@ fun BugReportSheet(
                 } else {
                     null
                 },
-                supportingText = if (dictation.listening) {
-                    { VoiceDictationListeningHint() }
-                } else {
-                    null
+                supportingText = {
+                    Column {
+                        if (!descriptionValid) {
+                            Text(
+                                stringResource(
+                                    R.string.feedback_report_note_required,
+                                    FEEDBACK_DESCRIPTION_MIN_CHARS,
+                                ),
+                            )
+                        }
+                        if (dictation.listening) VoiceDictationListeningHint()
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -198,12 +238,12 @@ fun BugReportSheet(
             )
 
             Spacer(Modifier.height(12.dp))
-            AttachedContextHint(info = report.info)
+            AttachedContextHint(info = info)
 
             // #4526: what the attached file carries, masked, before anyone sends it.
             if (report.info.logcat.isNotEmpty() || report.info.arTracking.isNotEmpty()) {
                 ReportPreview(
-                    info = report.info,
+                    info = info,
                     note = note,
                     expanded = previewExpanded,
                     onExpandedChange = { previewExpanded = it },
@@ -217,13 +257,14 @@ fun BugReportSheet(
             // GitHub first (#3263) — the primary, default destination.
             Button(
                 onClick = {
-                    if (openGitHubIssue(context, report.info, note)) {
+                    if (openGitHubIssue(context, info, note)) {
                         sendError = null
                         onDismiss()
                     } else {
                         sendError = noAppError
                     }
                 },
+                enabled = descriptionValid,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -236,13 +277,14 @@ fun BugReportSheet(
             }
             TextButton(
                 onClick = {
-                    if (shareReport(context, report, note, includeScreenshot)) {
+                    if (shareReport(context, report.copy(info = info), note, includeScreenshot)) {
                         sendError = null
                         onDismiss()
                     } else {
                         sendError = noAppError
                     }
                 },
+                enabled = descriptionValid,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.feedback_report_share))
@@ -348,6 +390,7 @@ private fun ScreenshotCard(
 @Composable
 private fun AttachedContextHint(info: BugReportInfo) {
     val screen = info.metadata["Screen"] ?: return
+    val logLines = remember(info.logcat) { collapseFeedbackLog(info.logcat).takeLast(SHARE_LOGCAT_MAX_LINES).size }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -365,8 +408,8 @@ private fun AttachedContextHint(info: BugReportInfo) {
                 screen,
                 pluralStringResource(
                     R.plurals.feedback_report_log_lines,
-                    info.logcat.size,
-                    info.logcat.size,
+                    logLines,
+                    logLines,
                 ),
             ),
             style = MaterialTheme.typography.bodySmall,
@@ -464,6 +507,7 @@ private fun shareReport(
     note: String,
     includeScreenshot: Boolean,
 ): Boolean {
+    if (!isFeedbackDescriptionValid(note)) return false
     val title = formatReportTitle(report.info, note)
     val authority = "${context.packageName}.fileprovider"
     val reportUri = writeReportFile(context, report.info, note)?.let { file ->
@@ -514,6 +558,7 @@ private fun shareReport(
  * app can handle it — see [shareReport] for how the caller uses the result.
  */
 private fun openGitHubIssue(context: Context, info: BugReportInfo, note: String): Boolean {
+    if (!isFeedbackDescriptionValid(note)) return false
     val url = buildGitHubIssueUrl(info, note)
     logOutboundLink(url)
     return runCatching {

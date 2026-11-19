@@ -342,14 +342,19 @@
     <string name="feedback_action_cd">Send feedback</string>
     <!-- Generic close a11y label — also reused by GalleryModelViewerScreen. -->
     <string name="feedback_cd_close">Close</string>
-    <string name="feedback_report_title">Report a bug</string>
+    <string name="feedback_report_title">Send feedback</string>
     <string name="feedback_report_body">The report bundles your device info, the app\'s recent log, and an optional screenshot. Nothing leaves your device until you choose where to send it.</string>
     <string name="feedback_report_screenshot_include">Include screenshot</string>
     <string name="feedback_report_screenshot_cd">Screenshot preview</string>
     <string name="feedback_report_screenshot_unavailable">Screenshot couldn\'t be captured — the report will be text-only.</string>
     <string name="feedback_report_screenshot_may_be_black">On this device the 3D viewport may appear black in the capture.</string>
     <string name="feedback_report_screenshot_share_only">The screenshot is attached when you share — the GitHub link can\'t carry an image.</string>
-    <string name="feedback_report_note_label">Describe the issue (optional)</string>
+    <string name="feedback_report_category">Category</string>
+    <string name="feedback_report_category_bug">Bug</string>
+    <string name="feedback_report_category_feature">Feature request</string>
+    <string name="feedback_report_category_question">Question</string>
+    <string name="feedback_report_note_label">Describe the issue</string>
+    <string name="feedback_report_note_required">Describe what happened in a sentence (at least %1$d characters, excluding spaces).</string>
     <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
     <!--
       Names what the report carries, so "nothing leaves your device until you

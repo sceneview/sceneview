@@ -43,7 +43,22 @@ data class BugReportInfo(
      * [collectArTrackingLog]. Empty outside AR, or if unreadable.
      */
     val arTracking: List<String> = emptyList(),
+    /** Carried in the report body even when GitHub cannot apply labels for its author. */
+    val category: FeedbackCategory = FeedbackCategory.Bug,
 )
+
+/** The reporter's intent, independent of their GitHub repository permissions. */
+enum class FeedbackCategory(val reportValue: String) {
+    Bug("Bug"),
+    FeatureRequest("Feature request"),
+    Question("Question"),
+}
+
+internal const val FEEDBACK_DESCRIPTION_MIN_CHARS = 10
+
+/** Whitespace alone cannot enable either report destination. */
+internal fun isFeedbackDescriptionValid(description: String): Boolean =
+    description.count { !it.isWhitespace() } >= FEEDBACK_DESCRIPTION_MIN_CHARS
 
 /**
  * Lines requested from `logcat -t` for the app's own pid.
@@ -57,7 +72,8 @@ internal const val LOGCAT_TAIL_LINES = 1200
 
 /**
  * Max logcat lines carried by the report file the share path attaches. The
- * file has no URL or Binder budget, so the whole captured tail rides along.
+ * file has no URL or Binder budget, so the whole captured tail rides along,
+ * with consecutive repeats collapsed and frame-fence noise removed.
  */
 internal const val SHARE_LOGCAT_MAX_LINES = LOGCAT_TAIL_LINES
 
@@ -303,16 +319,17 @@ fun formatReportFile(info: BugReportInfo, note: String): String = buildString {
         appendLine(text)
         appendLine()
     }
+    appendLine("Category: ${info.category.reportValue}")
     info.metadata.forEach { (key, value) -> appendLine("$key: $value") }
     // Ahead of the general log on purpose: it is short, and it answers the
     // first question about an AR report.
-    val arTracking = info.arTracking.takeLast(AR_TRACKING_MAX_LINES)
+    val arTracking = collapseFeedbackLog(info.arTracking).takeLast(AR_TRACKING_MAX_LINES)
     if (arTracking.isNotEmpty()) {
         appendLine()
         appendLine("AR tracking (last ${arTracking.size} lines):")
         arTracking.forEach { appendLine(it) }
     }
-    val logcat = info.logcat.takeLast(SHARE_LOGCAT_MAX_LINES)
+    val logcat = collapseFeedbackLog(info.logcat).takeLast(SHARE_LOGCAT_MAX_LINES)
     if (logcat.isNotEmpty()) {
         appendLine()
         appendLine("Recent app log (last ${logcat.size} lines):")
@@ -345,14 +362,15 @@ fun formatShareText(
         }
         appendLine()
     }
+    appendLine("Category: ${info.category.reportValue}")
     info.metadata.forEach { (key, value) -> appendLine("$key: $value") }
-    val arTracking = info.arTracking.takeLast(AR_TRACKING_MAX_LINES)
+    val arTracking = collapseFeedbackLog(info.arTracking).takeLast(AR_TRACKING_MAX_LINES)
     if (arTracking.isNotEmpty()) {
         appendLine()
         appendLine("AR tracking (last ${arTracking.size} lines):")
         arTracking.forEach { appendLine(it) }
     }
-    val logLines = info.logcat.takeLast(SHARE_LOGCAT_MAX_LINES).size
+    val logLines = collapseFeedbackLog(info.logcat).takeLast(SHARE_LOGCAT_MAX_LINES).size
     if (logLines > 0) {
         appendLine()
         if (logAttached) {
@@ -368,6 +386,7 @@ fun formatShareText(
 /**
  * Markdown body for a pre-filled GitHub issue: the note, a metadata table,
  * the AR tracking lines and the logcat tail, each folded in a `<details>` block.
+ * Repeats are collapsed and known noise removed before the line budget is applied.
  *
  * The screenshot cannot ride in a URL — the UI says so and keeps it on the
  * share path instead.
@@ -388,11 +407,12 @@ fun formatIssueBody(
     appendLine()
     appendLine("| | |")
     appendLine("|---|---|")
+    appendLine("| Category | ${info.category.reportValue} |")
     info.metadata.forEach { (key, value) ->
         appendLine("| $key | ${value.replace("|", "\\|")} |")
     }
-    val arTracking = info.arTracking.takeLast(ISSUE_AR_TRACKING_MAX_LINES)
-    val logcat = info.logcat.takeLast((maxLogcatLines - arTracking.size).coerceAtLeast(0))
+    val arTracking = collapseFeedbackLog(info.arTracking).takeLast(ISSUE_AR_TRACKING_MAX_LINES)
+    val logcat = collapseFeedbackLog(info.logcat).takeLast((maxLogcatLines - arTracking.size).coerceAtLeast(0))
     appendLogDetails("AR tracking (last ${arTracking.size} lines)", arTracking)
     appendLogDetails("App log (last ${logcat.size} lines)", logcat)
     appendLine()
@@ -440,7 +460,8 @@ private val LEADING_DATE = Regex("""^\d{2}-\d{2} (?=\d{2}:\d{2}:\d{2})""")
  * the markdown mid-tag, so [ISSUE_URL_MAX_LENGTH] is a hard budget. Body length
  * grows monotonically with the line count, so the largest fitting tail is
  * binary-searched: the previous coarse 60/30/10/0 ladder snapped an ordinary
- * report down to 30 lines, far too short to read a repeating warning (#3390).
+ * report down to 30 lines (#3390). Category travels in the body: GitHub's
+ * `labels` URL parameter requires repository triage permissions (#4995).
  */
 fun buildGitHubIssueUrl(info: BugReportInfo, note: String): String {
     val title = formatReportTitle(info, note)
@@ -451,7 +472,6 @@ fun buildGitHubIssueUrl(info: BugReportInfo, note: String): String {
 
     fun url(body: String): String = GITHUB_NEW_ISSUE_URL +
         "?title=" + urlEncode(title) +
-        "&labels=" + urlEncode("bug") +
         "&body=" + urlEncode(body)
 
     fun urlWith(lines: Int): String = url(formatIssueBody(compact, note, lines))
