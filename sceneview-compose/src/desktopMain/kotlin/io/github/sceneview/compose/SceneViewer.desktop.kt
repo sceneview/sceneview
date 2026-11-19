@@ -107,9 +107,10 @@ public actual fun SceneViewer(
 /**
  * Background and image-based lighting of [source], declared as scene content. An HDR lights
  * the scene at [DEFAULT_IBL_INTENSITY] × [Lighting.ambientIntensity] and, when
- * [EnvironmentSource.Hdr.showSkybox], is also the background. Default and Color are a solid
- * background lit by a neutral studio irradiance at the same intensity, as on Android: without
- * it every face turned away from the sun rendered pure black.
+ * [EnvironmentSource.Hdr.showSkybox], is also the background. Default is a solid background
+ * lit by a neutral studio irradiance at the same intensity, as on Android: without it every face
+ * turned away from the sun rendered pure black. Color is the flat background alone, with no
+ * image-based lighting, as its contract says: the key light is the only light.
  */
 @Composable
 private fun FilamentSceneScope.SceneEnvironment(
@@ -131,7 +132,6 @@ private fun FilamentSceneScope.SceneEnvironment(
         }
         is EnvironmentSource.Color -> {
             Skybox(color = LinearColor(source.red, source.green, source.blue), alpha = source.alpha)
-            StudioAmbient(lighting)
         }
         is EnvironmentSource.Default -> {
             Skybox(color = DEFAULT_BACKGROUND)
