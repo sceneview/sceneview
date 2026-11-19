@@ -16,9 +16,11 @@ export const PLATFORM_ROADMAP = `# SceneView Multi-Platform Roadmap
 |----------|--------|----------|----------|
 | **Android (Compose)** | Stable | \`io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}\` | Filament |
 | **Android (AR)** | Stable | \`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}\` | Filament + ARCore |
-| **iOS (SwiftUI)** | Alpha | SceneViewSwift SPM \`exact: "4.68.0"\` | RealityKit + ARKit |
-| **macOS (SwiftUI)** | Alpha | SceneViewSwift SPM (in Package.swift) | RealityKit |
-| **visionOS (SwiftUI)** | Alpha | SceneViewSwift SPM (in Package.swift) | RealityKit |
+| **iOS (SwiftUI)** | End of life at 4.68.0 | SceneViewSwift SPM \`exact: "4.68.0"\` | RealityKit + ARKit |
+| **macOS (SwiftUI)** | End of life at 4.68.0 | SceneViewSwift SPM (in Package.swift) | RealityKit |
+| **visionOS (SwiftUI)** | End of life at 4.68.0 | SceneViewSwift SPM (in Package.swift) | RealityKit |
+| **Flutter** | End of life at 4.68.0 | \`flutter_sceneview\` | Filament / RealityKit |
+| **React Native** | End of life at 4.68.0 | \`@sceneview-sdk/react-native\` | Filament / RealityKit |
 | **KMP Core** | Stable | \`io.github.sceneview:sceneview-core:${LATEST_SCENEVIEW_RELEASE}\` | N/A (shared logic) |
 
 ## Architecture: Native Renderers per Platform
@@ -38,7 +40,9 @@ KMP shares **logic**, not **rendering**. Each platform uses its native renderer.
 - **Compose-native DSL**: all nodes are \`@Composable\` functions inside \`SceneView { }\` or \`ARSceneView { }\`.
 - **48+ node types**: ModelNode, LightNode, AnchorNode, CameraNode, TextNode, PathNode, ViewNode, PlaneNode, SphereNode, CylinderNode, CubeNode, DynamicSkyNode, FogNode, ReflectionProbeNode, PhysicsNode, BillboardNode, LineNode, and more.
 
-## Apple — Alpha (SceneViewSwift)
+## Apple — End of life at 4.68.0 (SceneViewSwift)
+
+No new releases. These examples are retained for existing users.
 
 - **3D + AR** in SwiftUI via RealityKit — iOS 18+ / macOS 15+ / visionOS 2+
 - Node types: ModelNode, AnchorNode, GeometryNode, LightNode, CameraNode, ImageNode, VideoNode, PhysicsNode, AugmentedImageNode
@@ -58,9 +62,8 @@ Shared Kotlin Multiplatform module providing:
 
 ## Upcoming
 
-- **SceneViewSwift stabilization** — API parity with the Android core nodes, KMP core consumed as an XCFramework
-- **Android XR and visionOS spatial computing**
-- **Cross-framework bridges** — Flutter and React Native over the same native cores
+- **Android XR spatial computing**
+- **Web and Compose Multiplatform desktop** — continued development of maintained Alpha targets
 
 These are not tied to a version number: \`4\` is the current major line, and \`5.0.0\` is a
 deliberate milestone rather than an automatic bump.

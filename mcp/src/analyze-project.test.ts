@@ -89,6 +89,52 @@ describe("analyzeProject — version extraction", () => {
   });
 });
 
+describe("analyzeProject — retired platform releases", () => {
+  const projects = [
+    ["ios", "Package.swift", (v: string) => `.package(url: "https://github.com/sceneview/sceneview", exact: "${v}")`],
+    ["flutter", "pubspec.yaml", (v: string) => `dependencies:\n  flutter_sceneview: ^${v}\n  other_package: ^99.0.0\n`],
+    ["flutter", "pubspec.yaml", (v: string) => `dependencies:\n  flutter_sceneview:\n    git:\n      url: https://github.com/sceneview/sceneview.git\n      ref: ${v}\n  other_package: ^99.0.0\n`],
+    ["react-native", "package.json", (v: string) => JSON.stringify({ dependencies: { "@sceneview-sdk/react-native": `~${v}` } })],
+  ] as const;
+
+  it.each(projects)("compares %s in %s against 4.68.0", async (platform, file, contents) => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sv-analyze-eol-"));
+    try {
+      for (const version of ["4.67.0", "4.68.0", "4.69.7"]) {
+        await fs.writeFile(path.join(tmp, file), contents(version));
+        const result = await analyzeProject({ path: tmp });
+        expect(result.projectType).toBe(platform);
+        expect(result.sceneViewVersion).toBe(version);
+        expect(result.latestVersion).toBe("4.68.0");
+        expect(result.isOutdated).toBe(version === "4.67.0");
+        const upgrade = result.suggestions.find((s) => s.type === "suggestion/upgrade-sceneview");
+        if (version === "4.67.0") {
+          expect(upgrade?.message).toContain("4.68.0 (end of life; no new releases)");
+          expect(upgrade?.message).not.toContain(LATEST_SCENEVIEW_VERSION);
+          expect(upgrade?.message).not.toContain("Kotlin rewrites");
+        } else {
+          expect(upgrade).toBeUndefined();
+        }
+      }
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Web projects on the maintained release", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sv-analyze-web-"));
+    try {
+      await fs.writeFile(path.join(tmp, "package.json"), JSON.stringify({ dependencies: { "sceneview-web": "4.68.0" } }));
+      const result = await analyzeProject({ path: tmp });
+      expect(result.projectType).toBe("web");
+      expect(result.latestVersion).toBe(LATEST_SCENEVIEW_VERSION);
+      expect(result.isOutdated).toBe(true);
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("analyzeProject — anti-pattern detection", () => {
   it("flags threading violations in the warnings fixture", async () => {
     const result = await analyzeProject({ path: ANDROID_WARN });

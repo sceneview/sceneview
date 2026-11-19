@@ -59,10 +59,9 @@ SceneView(cameraManipulator = rememberCameraManipulator()) { ... }
 
 ### Multi-platform trajectory
 
-SceneViewSwift (alpha) supports iOS, macOS, and visionOS via RealityKit. Flutter and
-React Native bridges and a Compose Multiplatform viewer façade (`sceneview-compose`) ship
-alongside it; Android XR headsets are still on the roadmap. One declarative API across all
-target platforms.
+Android, web and the Compose Multiplatform desktop viewer (`sceneview-compose`) are
+maintained; Android XR headsets are still on the roadmap. SceneViewSwift (iOS, macOS,
+visionOS), Flutter and React Native are end of life at 4.68.0, with no new releases.
 
 ### AI-assisted development
 
@@ -180,7 +179,7 @@ attach 3D objects to landmarks. Front-camera AR.
 | **Node types** | 46+ composable nodes |
 | **Rendering** | Google Filament — PBR, 60fps mobile |
 | **AR backend** | ARCore — latest features |
-| **Platforms** | Android (stable) + iOS/macOS/visionOS (alpha) |
+| **Platforms** | Android (stable), web and desktop (alpha); iOS/macOS/visionOS, Flutter and React Native end of life at 4.68.0 |
 | **Setup** | 1 Gradle line, 0 XML |
 | **Model viewer** | ~5 lines of Kotlin |
 | **AR placement** | ~15 lines of Kotlin |

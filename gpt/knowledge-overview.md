@@ -1290,7 +1290,7 @@ sv.deviceTier();                                   // { tier, detected, mobile, 
 | Android | Filament | Jetpack Compose | `samples/android-demo` | Stable |
 | Android TV | Filament | Compose TV | `samples/android-tv-demo` | Alpha |
 | Android XR | Filament + SceneCore | Compose for XR | -- | Planned |
-| iOS | RealityKit | SwiftUI | `samples/ios-demo` | End of life — [4.68.0 is the last release](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) |
+| iOS | RealityKit | SwiftUI | `samples/ios-demo` | End of life — [package 4.68.0, demo app 4.69.7](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) |
 | macOS | RealityKit | SwiftUI | via SceneViewSwift | End of life — [4.68.0 is the last release](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) |
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | End of life — [4.68.0 is the last release](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md) |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |

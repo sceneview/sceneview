@@ -357,7 +357,7 @@ export async function dispatchTool(
                 `\`\`\``,
                 `https://github.com/sceneview/sceneview`,
                 `\`\`\``,
-                `Set version rule to **"from: ${LATEST_SCENEVIEW_RELEASE}"**.`,
+                `Set version rule to **"Exact Version 4.68.0"**.`,
                 ``,
                 `Or in Package.swift:`,
                 `\`\`\`swift`,
@@ -744,7 +744,7 @@ export async function dispatchTool(
 
     // ── list_platforms ────────────────────────────────────────────────────────
     case "list_platforms": {
-      // All `version:` and `dependency:` fields use `LATEST_SCENEVIEW_RELEASE`
+      // Maintained `version:` and `dependency:` fields use `LATEST_SCENEVIEW_RELEASE`
       // explicitly so each platform row renders the actually-current SDK
       // version. Pre-fix these were double-quoted strings with a literal
       // `${LATEST_SCENEVIEW_RELEASE}` substring that never interpolated —
@@ -789,8 +789,8 @@ export async function dispatchTool(
           platform: "iOS",
           renderer: "RealityKit",
           framework: "SwiftUI",
-          status: "Alpha",
-          version: LATEST_SCENEVIEW_RELEASE,
+          status: "End of life at 4.68.0",
+          version: "4.68.0",
           dependency: "SceneViewSwift (SPM)",
           features: ["3D", "AR (ARKit)", `${IOS_NODE_TYPE_COUNT} node types`, "USDZ models"],
         },
@@ -798,8 +798,8 @@ export async function dispatchTool(
           platform: "macOS",
           renderer: "RealityKit",
           framework: "SwiftUI",
-          status: "Alpha",
-          version: LATEST_SCENEVIEW_RELEASE,
+          status: "End of life at 4.68.0",
+          version: "4.68.0",
           dependency: "SceneViewSwift (SPM)",
           features: ["3D", "Orbit camera", "USDZ models"],
         },
@@ -807,8 +807,8 @@ export async function dispatchTool(
           platform: "visionOS",
           renderer: "RealityKit",
           framework: "SwiftUI",
-          status: "Alpha",
-          version: LATEST_SCENEVIEW_RELEASE,
+          status: "End of life at 4.68.0",
+          version: "4.68.0",
           dependency: "SceneViewSwift (SPM)",
           features: ["3D", "Immersive spaces", "Hand tracking (planned)"],
         },
@@ -834,9 +834,18 @@ export async function dispatchTool(
           platform: "Flutter",
           renderer: "Filament / RealityKit",
           framework: "PlatformView",
-          status: "Alpha",
-          version: LATEST_SCENEVIEW_RELEASE,
-          dependency: "flutter pub: flutter_sceneview (git ref until first publish, #2735)",
+          status: "End of life at 4.68.0",
+          version: "4.68.0",
+          dependency: "flutter_sceneview (4.68.0)",
+          features: ["3D", "AR", "Android + iOS bridge"],
+        },
+        {
+          platform: "React Native",
+          renderer: "Filament / RealityKit",
+          framework: "Fabric",
+          status: "End of life at 4.68.0",
+          version: "4.68.0",
+          dependency: "@sceneview-sdk/react-native@4.68.0",
           features: ["3D", "AR", "Android + iOS bridge"],
         },
       ];

@@ -826,6 +826,8 @@ SPM_FILES=(
     agents/sceneview-ios/SKILL.md
     agents/sceneview-ios/references/migration.md
 )
+SPM_CONTEXT_RE='sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency|Set version rule to'
+SPM_PIN_RE='(from|exact):? "?([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?|\$\{LATEST_SCENEVIEW_RELEASE\})"?|Exact Version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'
 for spm_file in "${SPM_FILES[@]}"; do
     F="$REPO_ROOT/$spm_file"
     [ -f "$F" ] || continue
@@ -833,9 +835,10 @@ for spm_file in "${SPM_FILES[@]}"; do
     # monorepo tags even when its lower bound is the last Apple release.
     while IFS= read -r RULE; do
         [ -n "$RULE" ] && add_check "$spm_file (SPM exact:)" "$RULE" "true" "exact: \"$EOL_VERSION\""
-    done < <(grep -E 'sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency' "$F" 2>/dev/null \
+    done < <(grep -E "$SPM_CONTEXT_RE" "$F" 2>/dev/null \
         | grep -v '^- \.package(' \
-        | grep -oE '(from|exact):? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?' \
+        | grep -oE "$SPM_PIN_RE" \
+        | sed -E 's/^Exact Version (.*)$/exact: "\1"/' \
         | sort -u || true)
 done
 
@@ -1611,9 +1614,9 @@ with open('$RN_DEMO_PKG', 'w') as f:
     for spm_file in "${SPM_FILES[@]}"; do
         F="$REPO_ROOT/$spm_file"
         [ -f "$F" ] || continue
-        BEFORE=$(grep -E '(sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency).*(from|exact):? "?[0-9]+\.[0-9]+\.[0-9]+' "$F" || true)
-        perl -i -pe 'if (m{sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency} && !/^- \.package\(/) { s/(from|exact):? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?/exact: "'"$EOL_VERSION"'"/g }' "$F"
-        AFTER=$(grep -E '(sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency).*(from|exact):? "?[0-9]+\.[0-9]+\.[0-9]+' "$F" || true)
+        BEFORE=$(grep -E "$SPM_CONTEXT_RE" "$F" | grep -E "$SPM_PIN_RE" || true)
+        perl -i -pe 'if (/Set version rule to/) { s/((from|exact):\s*([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?|\$\{LATEST_SCENEVIEW_RELEASE\})|Exact Version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)/Exact Version '"$EOL_VERSION"'/g } elsif (m{sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency} && !/^- \.package\(/) { s/(from|exact):? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?/exact: "'"$EOL_VERSION"'"/g }' "$F"
+        AFTER=$(grep -E "$SPM_CONTEXT_RE" "$F" | grep -E "$SPM_PIN_RE" || true)
         if [ "$BEFORE" != "$AFTER" ]; then
             echo -e "  Fixed: $spm_file (SPM exact: -> $EOL_VERSION)"
         fi

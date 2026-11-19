@@ -105,14 +105,26 @@ describe("BEST_PRACTICES", () => {
 });
 
 describe("PLATFORM_ROADMAP", () => {
-  it("uses the latest release in every Maven and SPM coordinate", () => {
+  it("uses the maintained release for Maven and the last Apple release for SPM", () => {
     const maven = [...PLATFORM_ROADMAP.matchAll(/\bio\.github\.sceneview:[\w.-]+:([^\s`"']+)/g)];
     const spm = [...PLATFORM_ROADMAP.matchAll(/\b(?:from|exact)\s*:\s*"([^"]+)"/g)];
     expect(maven.length).toBeGreaterThan(0);
     expect(spm.length).toBeGreaterThan(0);
-    for (const [coordinate, version] of [...maven, ...spm]) {
+    for (const [coordinate, version] of maven) {
       expect(version, coordinate).toBe(LATEST_SCENEVIEW_RELEASE);
     }
+    for (const [coordinate, version] of spm) {
+      expect(version, coordinate).toBe("4.68.0");
+      expect(coordinate).toMatch(/^exact/);
+    }
+  });
+
+  it("marks retired platforms as end of life without promising stabilization", () => {
+    for (const platform of ["iOS (SwiftUI)", "macOS (SwiftUI)", "visionOS (SwiftUI)", "Flutter", "React Native"]) {
+      expect(PLATFORM_ROADMAP).toContain(`| **${platform}** | End of life at 4.68.0 |`);
+    }
+    expect(PLATFORM_ROADMAP).not.toContain("SceneViewSwift stabilization");
+    expect(PLATFORM_ROADMAP).not.toContain("Cross-framework bridges");
   });
 
   it("names every shipped platform row", () => {

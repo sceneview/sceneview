@@ -20,6 +20,7 @@ CURRENT = "4.69.7"
 FUTURE = "99.12.3-rc.1"
 URL = "https://github.com/sceneview/sceneview.git"
 PIN = f'.package(url: "{URL}", exact: "{EOL}")\n'
+XCODE_RULE = f'Set version rule to **"Exact Version {EOL}"**.\n'
 
 
 class RetiredVersionsTest(unittest.TestCase):
@@ -52,9 +53,9 @@ class RetiredVersionsTest(unittest.TestCase):
             "SceneViewSwift.podspec": f"s.version = '{EOL}'\n",
             "Package.swift": PIN,
             "mcp/src/guides.ts": PIN + f'SceneViewSwift SPM exact: "{EOL}"\n',
-            "mcp/src/platform-setup.ts": PIN,
+            "mcp/src/platform-setup.ts": PIN + XCODE_RULE,
             "mcp/src/samples.ts": f'dependency: `{URL} — exact: "{EOL}"`,\n',
-            "mcp/src/tools/handler.ts": PIN + '`.package(url: "${sample.spmDependency ?? sample.dependency}", exact: "4.68.0")`\n',
+            "mcp/src/tools/handler.ts": PIN + XCODE_RULE + '`.package(url: "${sample.spmDependency ?? sample.dependency}", exact: "4.68.0")`\n',
             "SceneViewSwift/README.md": PIN,
             ".cursorrules": f'// SPM: {URL} exact: "{EOL}"\n',
             ".windsurfrules": f'// SPM: {URL} exact: "{EOL}"\n',
@@ -128,6 +129,18 @@ class RetiredVersionsTest(unittest.TestCase):
         self.run_sync(1, "--fix")
         self.assert_frozen()
         self.run_sync(0)
+
+    def test_mcp_xcode_rules_are_checked_and_repaired_independently_of_snippets(self):
+        for name in ("mcp/src/platform-setup.ts", "mcp/src/tools/handler.ts"):
+            for rule in (f"Exact Version {CURRENT}", f"from: {EOL}",
+                         "from: ${LATEST_SCENEVIEW_RELEASE}"):
+                with self.subTest(file=name, rule=rule):
+                    self.write(name, self.frozen[name].replace(f"Exact Version {EOL}", rule))
+                    report = self.run_sync(1)
+                    self.assertIn(f"{name} (SPM exact:)", report)
+                    self.run_sync(1, "--fix")
+                    self.assert_frozen()
+                    self.run_sync(0)
 
 
 unittest.main(verbosity=2)

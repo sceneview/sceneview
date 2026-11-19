@@ -274,6 +274,11 @@
       background: rgba(22, 163, 74, 0.1);
     }
 
+    .companies-status--eol {
+      color: var(--color-on-surface-variant);
+      background: var(--color-surface-container-highest);
+    }
+
     .companies-status--alpha {
       color: var(--color-status-alpha);
       background: rgba(124, 58, 237, 0.1);
@@ -500,11 +505,11 @@
             <tbody>
               <tr><td>Android</td><td><span class="companies-status companies-status--stable">Stable</span></td><td>Jetpack Compose, Filament, ARCore. API 24+, OpenGL ES 3.0.</td></tr>
               <tr><td>Android TV</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose TV, Filament.</td></tr>
-              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status">End of life at 4.68.0</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
+              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status companies-status--eol">End of life at 4.68.0</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
               <tr><td>Web</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Filament.js on WebGL2 / WASM.</td></tr>
               <tr><td>Compose Multiplatform</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Viewer subset, no AR.</td></tr>
               <tr><td>Desktop (JVM)</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose Desktop, Filament.</td></tr>
-              <tr><td>Flutter, React Native</td><td><span class="companies-status">End of life at 4.68.0</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
+              <tr><td>Flutter, React Native</td><td><span class="companies-status companies-status--eol">End of life at 4.68.0</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
             </tbody>
           </table>
         </div>

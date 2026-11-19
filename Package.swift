@@ -18,7 +18,7 @@
 //
 //     .package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
 //
-// and pin to any tag the monorepo has cut, no manual mirroring required.
+// 4.68.0 is the last Apple release; keep this exact pin, with no manual mirroring required.
 // The `SceneViewSwift/Package.swift` sub-manifest is left in place for
 // internal use by `swift test --package-path SceneViewSwift` and for any
 // pre-archive consumer still resolving against the mirror's frozen v4.0.0.

@@ -52,6 +52,14 @@ No boilerplate. No manual cleanup. Just declare what you want.
     }
     ```
 
+=== "Web (JavaScript)"
+
+    ```html
+    <!-- One-liner 3D for the web -->
+    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
+    <scene-view model="helmet.glb" auto-rotate camera-orbit></scene-view>
+    ```
+
 === "Swift (end of life at 4.68.0)"
 
     ```swift
@@ -63,14 +71,6 @@ No boilerplate. No manual cleanup. Just declare what you want.
         root.addChild(model!.entity)
     }
     .cameraControls(.orbit)
-    ```
-
-=== "Web (JavaScript)"
-
-    ```html
-    <!-- One-liner 3D for the web -->
-    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
-    <scene-view model="helmet.glb" auto-rotate camera-orbit></scene-view>
     ```
 
 ---
@@ -108,17 +108,17 @@ No boilerplate. No manual cleanup. Just declare what you want.
     }
     ```
 
+=== "Web"
+
+    ```html
+    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
+    ```
+
 === "SwiftUI (end of life at 4.68.0)"
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
     .package(url: "https://github.com/sceneview/sceneview", exact: "4.68.0")
-    ```
-
-=== "Web"
-
-    ```html
-    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
     ```
 
 ---
@@ -143,7 +143,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
     }
     ```
 
-=== "Swift (iOS)"
+=== "Swift (iOS, end of life at 4.68.0)"
 
     ```swift
     ARSceneView(

@@ -223,7 +223,7 @@ In Xcode: **File > Add Package Dependencies** > paste:
 \`\`\`
 https://github.com/sceneview/sceneview
 \`\`\`
-Set version rule to **"from: ${LATEST_SCENEVIEW_RELEASE}"**.
+Set version rule to **"Exact Version 4.68.0"**.
 
 Or in Package.swift:
 \`\`\`swift
@@ -903,7 +903,7 @@ const SETUPS: Record<Platform, PlatformSetup> = {
   ios: {
     name: "iOS / macOS / visionOS (SwiftUI)",
     renderer: "RealityKit (Metal)",
-    status: `Alpha (v${LATEST_SCENEVIEW_RELEASE})`,
+    status: "End of life at 4.68.0",
     guide3d: IOS_3D,
     guideAr: IOS_AR,
   },
@@ -917,14 +917,14 @@ const SETUPS: Record<Platform, PlatformSetup> = {
   flutter: {
     name: "Flutter (PlatformView bridge)",
     renderer: "Filament (Android) / RealityKit (iOS)",
-    status: "Alpha",
+    status: "End of life at 4.68.0",
     guide3d: FLUTTER_3D,
     guideAr: FLUTTER_AR,
   },
   "react-native": {
     name: "React Native (Fabric bridge)",
     renderer: "Filament (Android) / RealityKit (iOS)",
-    status: "Alpha",
+    status: "End of life at 4.68.0",
     guide3d: REACT_NATIVE_3D,
     guideAr: REACT_NATIVE_AR,
   },
