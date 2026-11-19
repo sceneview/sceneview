@@ -85,4 +85,15 @@ class NodeEditingFeedbackBadgeTest {
         assertEquals(300, scaleAnnouncementPercent(299f, atLimit = false, previous = 300))
         assertEquals(290, scaleAnnouncementPercent(297f, atLimit = false, previous = 300))
     }
+    @Test
+    fun `hovering near the maximum does not bypass hysteresis on rejected updates`() {
+        var previous: Int? = null
+        val samples = listOf(294f to false, 295f to true, 294f to false, 296f to true, 295f to true)
+        val announced = samples.map { (percent, rejected) ->
+            scaleAnnouncementPercent(percent, rejected, previous).also { previous = it }
+        }
+        assertEquals(listOf(290, 295, 295, 295, 295), announced)
+        assertEquals(298, scaleAnnouncementPercent(298f, atLimit = true, previous = 295))
+    }
+
 }

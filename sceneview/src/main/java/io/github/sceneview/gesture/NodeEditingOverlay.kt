@@ -27,7 +27,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -65,6 +64,7 @@ import io.github.sceneview.math.Transform
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.utils.worldToScreen
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -454,13 +454,16 @@ internal fun rotationAnnouncementDegrees(deltaDegrees: Float, previous: Int? = n
 /**
  * The scale the badge announces: the last [SCALE_ANNOUNCE_STEP_PERCENT] step the pinch has
  * fully crossed away from `100 %` (so `97 %` still reads `100`, `89 %` reads `90`), or the
- * exact value when the pinch presses against a limit — the value no longer moves there, and
- * the limit is what the user needs to hear. Given the [previous] announcement, it only moves
- * once the value is [ANNOUNCE_HYSTERESIS] past a step, including on the way off a limit.
+ * exact value when the pinch presses against a limit. Rejected updates can happen near a
+ * limit too, so exact limit-band values also need [ANNOUNCE_HYSTERESIS] of movement from
+ * [previous]. Away from a limit, that margin applies at each step, including on the way off
+ * a limit. The end announcement always gives the exact final value.
  */
 internal fun scaleAnnouncementPercent(percent: Float, atLimit: Boolean, previous: Int? = null): Int {
     val exact = percent.roundToInt()
-    if (atLimit) return exact
+    if (atLimit) {
+        return if (previous == null || abs(percent - previous) >= ANNOUNCE_HYSTERESIS) exact else previous
+    }
     return steppedAnnouncement(
         value = exact,
         previous = previous,
@@ -500,38 +503,38 @@ internal fun steppedAnnouncement(
  * The badges announce coarse steps and leave with their gesture, so the last thing heard
  * would otherwise be a step behind the result (a 44° twist ending on "+30"). This node stays
  * composed with the overlay: it has no description at rest, takes the exact value of the
- * gestures that just ended, and drops it when the next gesture begins, so the next end is a
- * change again. An application rotating or scaling the node at rest is never announced.
+ * gestures that just ended, and drops it after three seconds or on the next gesture.
+ * Keeping the live region exposed briefly lets TalkBack announce it without leaving stale
+ * text. An application rotating or scaling the node at rest is never announced.
  */
 @Composable
 internal fun EditingEndAnnouncement(state: NodeEditingFeedbackState, modifier: Modifier = Modifier) {
     val resources = LocalResources.current
     var announcement by remember(state) { mutableStateOf<String?>(null) }
-    LaunchedEffect(state, resources) {
-        var previous = state.activeKinds
-        snapshotFlow { state.activeKinds }.collect { kinds ->
-            if ((kinds - previous).isNotEmpty()) announcement = null
-            val ended = previous - kinds
-            previous = kinds
-            val parts = buildList {
-                if (NodeEditingKind.Rotate in ended) {
-                    add(
-                        resources.getString(
-                            R.string.sceneview_editing_rotation_description,
-                            signedDegrees(state.rotationDeltaDegrees.roundToInt()),
-                        ),
-                    )
-                }
-                if (NodeEditingKind.Scale in ended) {
-                    add(
-                        resources.getString(
-                            R.string.sceneview_editing_scale_description,
-                            state.scalePercent.roundToInt(),
-                        ),
-                    )
-                }
+    val handledEnds = remember(state) { mutableMapOf<NodeEditingKind, NodeEditingFeedbackState.EndValue>() }
+    val ends = state.endValues
+    LaunchedEffect(state, resources, ends, state.gestureStarts) {
+        // Prefer newly captured ends over a begin from the same MotionEvent.
+        val parts = ends.values.filter { it !== handledEnds[it.kind] }.mapNotNull { end ->
+            handledEnds[end.kind] = end
+            when (end.kind) {
+                NodeEditingKind.Rotate -> resources.getString(
+                    R.string.sceneview_editing_rotation_description,
+                    signedDegrees(end.value.roundToInt()),
+                )
+                NodeEditingKind.Scale -> resources.getString(
+                    R.string.sceneview_editing_scale_description,
+                    end.value.roundToInt(),
+                )
+                NodeEditingKind.Move -> null
             }
-            if (parts.isNotEmpty()) announcement = parts.joinToString(", ")
+        }
+        announcement = parts.takeIf { it.isNotEmpty() }?.joinToString(", ")
+    }
+    LaunchedEffect(announcement, ends) {
+        if (announcement != null) {
+            delay(END_ANNOUNCEMENT_MILLIS)
+            announcement = null
         }
     }
     // 1 dp rather than 0: a node without bounds may be left out of the accessibility tree.
@@ -669,8 +672,8 @@ internal class NodeScreenAnchors {
  * A node with its own non-empty bounds (the common single [ModelNode]) returns them as is:
  * one box read, no corner loop, no matrix. A node without bounds of its own — a pivot, or a
  * [ModelNode] whose rest-pose box is empty — walks its subtree through the overlay-held
- * [scratch], skipping every model's glTF nodes (see [isGltfNodeOf]): an empty model with
- * nothing attached gets the placeholder after one look at its direct children.
+ * [scratch], skipping every model's glTF boxes (see [isGltfNodeOf]) while still walking
+ * through glTF anchors to find application-attached descendants.
  *
  * Internal for `NodeEditingOverlayBoundsTest`.
  */
@@ -697,9 +700,9 @@ private fun Node.ownBoundingBox(): Box? = when (this) {
  * `true` for one of [model]'s own glTF nodes, `false` for a node the application attached.
  *
  * A model whose rest-pose box is empty (geometry not ready, or a mesh-less glTF used as a
- * container) is walked like a pivot, but never into its glTF hierarchy: that would cost one
- * JNI read and one [Box] per renderable each frame, from animated transforms that may be
- * stale. Only the children the application attached to it count.
+ * container) is walked like a pivot. Its glTF nodes contribute no boxes, avoiding JNI
+ * bounds reads from animated transforms that may be stale, but their application-attached
+ * descendants still count.
  */
 private fun Node.isGltfNodeOf(model: ModelNode): Boolean =
     this is ModelNode.ChildNode && modelInstance === model.modelInstance
@@ -742,20 +745,25 @@ internal class ContentBoundsScratch {
             Float3((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, (maxZ - minZ) * 0.5f)
     }
 
-    private fun collectChildren(parent: Node, toPivot: Transform?, depth: Int, skipHidden: Boolean) {
+    private fun collectChildren(
+        parent: Node,
+        toPivot: Transform?,
+        depth: Int,
+        skipHidden: Boolean,
+        model: ModelNode? = parent as? ModelNode,
+    ) {
         for (child in parent.childNodes) {
             if (child.isDestroyed || (child is ModelNode && child.isModelDestroyed)) continue
-            if (parent is ModelNode && child.isGltfNodeOf(parent)) continue
             if (skipHidden && !child.isVisible) continue
             // `child.transform` is the node's cached matrix: read it, never write it.
             val childToPivot = toPivot?.let { multiplyInto(slot(depth), it, child.transform) }
                 ?: child.transform
-            val box = child.ownBoundingBox()
+            val box = if (model != null && child.isGltfNodeOf(model)) null else child.ownBoundingBox()
             if (box != null && box.isNonEmpty()) {
                 // A node's own bounds take precedence over its children's.
                 addBox(box, childToPivot)
             } else {
-                collectChildren(child, childToPivot, depth + 1, skipHidden)
+                collectChildren(child, childToPivot, depth + 1, skipHidden, child as? ModelNode ?: model)
             }
         }
     }
@@ -1021,3 +1029,6 @@ private val BADGE_GAP = 14.dp
 // visually centers on the anchor without a two-pass layout measurement.
 private const val BADGE_HALF_WIDTH_HINT_PX = 28
 private const val BADGE_HALF_HEIGHT_HINT_PX = 14
+
+/** Let the polite announcement be spoken, then remove its traversable text. */
+private const val END_ANNOUNCEMENT_MILLIS = 3_000L
