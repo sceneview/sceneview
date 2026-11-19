@@ -17,6 +17,8 @@ internal data class SplatOrderUpload(
 internal class SplatOrderUploads(
     upload: (SplatOrderUpload, onReleased: () -> Unit) -> Unit,
     onDeferredUpload: () -> Unit,
+    /** Asked before a pending order goes out: false once the target (its engine) is gone. */
+    private val targetAlive: () -> Boolean = { true },
 ) {
     private var destroyed = false
 
@@ -24,13 +26,18 @@ internal class SplatOrderUploads(
     // same gate, and replace the entire pending order (including its filtered draw-slot count).
     private val uploads = LatestWinsUploadGate<SplatOrderUpload>(
         merge = { _, next -> next },
-        canUpload = { !destroyed },
+        canUpload = { !destroyed && targetAlive() },
         upload = upload,
         onDeferredUpload = { onDeferredUpload() },
     )
 
     fun submit(value: SplatOrderUpload) {
         if (!destroyed) uploads.submit(value)
+    }
+
+    /** Drops the order waiting for the gate: a newer filter made it stale. */
+    fun discardPending() {
+        uploads.discardPending()
     }
 
     fun destroy() {

@@ -191,6 +191,14 @@ open class SplatNode(
             showDrawSlots(min(clamped, sortedCount))
         }
 
+    private val orderUploads = SplatOrderUploads(
+        upload = { value, onReleased -> uploadOrder(value, onReleased) },
+        onDeferredUpload = { requestRender() },
+        // A release can arrive after the engine went (imperative use): never upload on a dead one.
+        targetAlive = { !isSplatDestroyed && engine.isValid },
+    )
+    private val orderReleaseHandler by lazy { Handler(Looper.getMainLooper()) }
+
     /**
      * Which splats are drawn: splat `i` is left out while `shownSplats[i]` is `false`; `null`
      * (the default) draws them all. The array must hold one entry per splat of [splatCloud].
@@ -209,6 +217,9 @@ open class SplatNode(
                 "shownSplats must hold one entry per splat: expected ${splatCloud.count}, was ${value?.size}"
             }
             field = value
+            // An order sorted under the previous filter and still waiting would draw the splats
+            // this filter hides: drop it, the re-sort below replaces it.
+            orderUploads.discardPending()
             // The order uploaded at construction holds every splat: until a filtered sort lands,
             // draw none rather than the hidden ones.
             if (value != null && !hasSortLanded) {
@@ -225,12 +236,6 @@ open class SplatNode(
 
     /** Whether a background sort has uploaded its order yet. */
     private var hasSortLanded = false
-
-    private val orderUploads = SplatOrderUploads(
-        upload = { value, onReleased -> uploadOrder(value, onReleased) },
-        onDeferredUpload = { requestRender() },
-    )
-    private val orderReleaseHandler by lazy { Handler(Looper.getMainLooper()) }
 
     /**
      * Draws the first [count] slots of the current order. Batches that become empty are hidden;

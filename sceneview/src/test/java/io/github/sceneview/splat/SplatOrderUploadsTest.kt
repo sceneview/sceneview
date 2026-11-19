@@ -10,7 +10,7 @@ import org.junit.Test
 
 /** Exercises SplatNode's actual upload decision without an Engine or a consuming frame. */
 class SplatOrderUploadsTest {
-    private class Backend {
+    private class Backend(alive: () -> Boolean = { true }) {
         val uploaded = mutableListOf<SplatOrderUpload>()
         val releases = ArrayDeque<() -> Unit>()
         var deferredFrames = 0
@@ -22,6 +22,7 @@ class SplatOrderUploadsTest {
                 maxInFlight = maxOf(maxInFlight, releases.size)
             },
             onDeferredUpload = { deferredFrames++ },
+            targetAlive = alive,
         )
 
         fun consume() = releases.removeFirst().invoke()
@@ -126,5 +127,36 @@ class SplatOrderUploadsTest {
         assertTrue(source.contains("onDeferredUpload = { requestRender() }"))
         assertTrue(source.contains("Handler(Looper.getMainLooper())"))
         assertTrue(source.substringAfter("override fun destroy()").contains("orderUploads.destroy()"))
+    }
+
+    @Test
+    fun `a release after the engine went never uploads the pending order`() {
+        var engineAlive = true
+        val backend = Backend(alive = { engineAlive })
+        val initial = order(0)
+        backend.orders.submit(initial)
+        backend.orders.submit(order(1))
+
+        engineAlive = false
+        backend.consume()
+
+        assertEquals(listOf(initial), backend.uploaded)
+        assertTrue(backend.releases.isEmpty())
+    }
+
+    @Test
+    fun `a new filter drops the order sorted under the previous one`() {
+        val backend = Backend()
+        val initial = order(0)
+        backend.orders.submit(initial)
+        backend.orders.submit(order(1))
+
+        backend.orders.discardPending()
+        backend.consume()
+
+        assertEquals(listOf(initial), backend.uploaded)
+        val next = order(2)
+        backend.orders.submit(next)
+        assertSame(next, backend.uploaded.last())
     }
 }
