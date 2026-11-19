@@ -8,7 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.sceneview.loaders.ModelLoadProgress
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.loaders.UnsupportedGltfExtensionException
 import io.github.sceneview.loaders.texturedGlb
@@ -73,11 +72,10 @@ class ModelLoadStateComposeTest {
             assertTrue("first state ${states.first()}", states.first() is ModelLoadState.Loading)
             val loading = states.filterIsInstance<ModelLoadState.Loading>().map { it.progress.fraction }
             assertEquals("progress went back: $states", loading.sorted(), loading)
-            // Four 1024 px textures take several frames to decode: the composition sees them going.
-            assertTrue(
-                "no texture step seen: $states",
-                states.any { it is ModelLoadState.Loading && it.progress.stage == ModelLoadProgress.Stage.Textures },
-            )
+            // Not asserted here: that the composition saw a Textures step. Progress writes within
+            // one frame are conflated, and four plain 1024 px textures can decode in a single
+            // frame on a fast CI emulator (Creating -> Ready). LargeModelLoadTest checks the
+            // Textures reports on the loader's own callback, which sees every one of them.
             assertEquals(1, modelLoader.registeredModels())
             harness.runOnMain { assertTrue("textures still loading when Ready", !modelLoader.isLoading) }
 
