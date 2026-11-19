@@ -119,7 +119,9 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         if (material == FeelMaterial.MemoryFoam && imprintStrength > 0f) return true
         val i = material.ordinal
         if (abs(pads[i].depthMm) > STILL_MM || abs(pads[i].velocity) > STILL_MM_PER_SECOND) return true
-        if ((0 until TRAIL_POINTS).any { trails[i][it * 4 + 2] > STILL_TRAIL }) return true
+        for (slot in 0 until TRAIL_POINTS) {
+            if (trails[i][slot * 4 + 2] > STILL_TRAIL) return true
+        }
         if (motion && material == FeelMaterial.Gel && gelReleasedAt != Long.MIN_VALUE &&
             now - gelReleasedAt in 0L..(GEL_WAVE_SECONDS * 1000).toLong()) return true
         return motion && material.rigid && contactMillis[i] != Long.MIN_VALUE &&
@@ -132,7 +134,9 @@ internal class FeelSimulation(openingEnabled: Boolean = false) {
         if (material == FeelMaterial.MemoryFoam && imprintStrength > 0f) return true
         val i = material.ordinal
         if (pads[i].depthMm != 0f || pads[i].velocity != 0f) return true
-        if ((0 until TRAIL_POINTS).any { trails[i][it * 4 + 2] > 0f }) return true
+        for (slot in 0 until TRAIL_POINTS) {
+            if (trails[i][slot * 4 + 2] > 0f) return true
+        }
         if (motion && material == FeelMaterial.Gel && gelReleasedAt != Long.MIN_VALUE &&
             now - gelReleasedAt in 0L..(GEL_WAVE_SECONDS * 1000).toLong()) return true
         return motion && material.rigid && contactMillis[i] != Long.MIN_VALUE &&

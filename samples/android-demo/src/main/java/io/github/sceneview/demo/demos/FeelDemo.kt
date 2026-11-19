@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -715,14 +716,15 @@ private const val HINT_DONE = "hint_done"
 
 /**
  * One line, once per install: ~300 dp at 100 % font scale, inside the 379 dp a 411 dp phone
- * leaves between the stage margins. Larger font scales wrap it into two balanced lines, never
- * one orphan word. A plain Row, not a Surface: a non-clickable M3 Surface still consumes
- * pointer events, and a fling may start on the floor under this pill.
+ * leaves between the stage margins. A capped width and start-aligned text keep the icon
+ * beside the instruction when larger font scales wrap it. A plain Row, not a Surface:
+ * a non-clickable M3 Surface still consumes pointer events, and a fling may start on the
+ * floor under this pill.
  */
 @Composable
 private fun MatterHintPill() {
     val colors = MaterialTheme.colorScheme
-    Row(Modifier.background(colors.surfaceContainerHigh, CircleShape)
+    Row(Modifier.widthIn(max = 320.dp).background(colors.surfaceContainerHigh, CircleShape)
         .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
         horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         verticalAlignment = Alignment.CenterVertically) {
@@ -730,7 +732,7 @@ private fun MatterHintPill() {
             modifier = Modifier.size(18.dp))
         Text(stringResource(R.string.demo_feel_instruction),
             style = MaterialTheme.typography.bodyMedium.copy(lineBreak = LineBreak.Heading),
-            color = colors.onSurface, textAlign = TextAlign.Center)
+            color = colors.onSurface, textAlign = TextAlign.Start)
     }
 }
 

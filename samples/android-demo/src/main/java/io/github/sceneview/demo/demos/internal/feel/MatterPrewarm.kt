@@ -13,6 +13,7 @@ package io.github.sceneview.demo.demos.internal.feel
  * Main thread only, called once per presented frame. Pure logic: the caller places the node.
  */
 internal class MatterPrewarm {
+    private val entries = FeelMaterial.entries
     private val warmed = mutableSetOf<FeelMaterial>()
     private var drawing: FeelMaterial? = null
     private var drawnFrames = 0
@@ -21,7 +22,7 @@ internal class MatterPrewarm {
     private var cooldown = 0
 
     /** Every material has been drawn at least once. */
-    val done: Boolean get() = warmed.size == FeelMaterial.entries.size
+    val done: Boolean get() = warmed.size == entries.size
 
     /** Done, and the frames owed to the last warm presented: [next] has nothing left to do. */
     val retired: Boolean get() = done && cooldown == 0
@@ -30,8 +31,15 @@ internal class MatterPrewarm {
      * True while a material is ready to be warmed, one is being drawn, or the frames after a
      * warm are still owed: keep frames coming.
      */
-    fun needsFrames(available: (FeelMaterial) -> Boolean): Boolean =
-        drawing != null || cooldown > 0 || (!done && FeelMaterial.entries.any { it !in warmed && available(it) })
+    fun needsFrames(available: (FeelMaterial) -> Boolean): Boolean {
+        if (drawing != null || cooldown > 0) return true
+        if (done) return false
+        for (index in entries.indices) {
+            val kind = entries[index]
+            if (kind !in warmed && available(kind)) return true
+        }
+        return false
+    }
 
     /**
      * Returns the material to draw hidden on THIS frame, or null.
@@ -57,10 +65,15 @@ internal class MatterPrewarm {
         if (!idle) { gap = GAP_FRAMES; return null }
         if (done) return null
         if (gap > 0) { gap--; return null }
-        val next = FeelMaterial.entries.firstOrNull { it !in warmed && available(it) } ?: return null
-        drawing = next
-        drawnFrames = 0
-        return next
+        for (index in entries.indices) {
+            val kind = entries[index]
+            if (kind !in warmed && available(kind)) {
+                drawing = kind
+                drawnFrames = 0
+                return kind
+            }
+        }
+        return null
     }
 
     companion object {
