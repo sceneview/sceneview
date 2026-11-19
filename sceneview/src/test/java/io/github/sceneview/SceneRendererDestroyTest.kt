@@ -1,8 +1,11 @@
 package io.github.sceneview
 
 import android.graphics.SurfaceTexture
+import android.hardware.display.DisplayManager
 import android.os.Looper
+import android.view.Display
 import android.view.Surface
+import android.view.TextureView
 import com.google.android.filament.Engine
 import com.google.android.filament.Renderer
 import com.google.android.filament.SwapChain
@@ -12,14 +15,17 @@ import io.github.sceneview.node.FilamentWithoutJni
 import io.github.sceneview.testing.ShadowFilamentEngine
 import io.github.sceneview.utils.SurfaceMirrorer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
@@ -98,6 +104,96 @@ class SceneRendererDestroyTest {
         assertNotNull(budgets[0])
         assertSame(budgets[0], budgets[1])
         assertNull(field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer))
+    }
+
+    @Test
+    @Config(sdk = [24, 36])
+    fun destroyReleasesUiHelperSurfaceWhileTextureViewStillOwnsItsTexture() {
+        val (textureView, surface) = attachAvailableTextureView()
+        val texture = textureView.surfaceTexture!!
+        assertTrue(surface.isValid)
+        assertTrue(textureView.isAvailable)
+        val budgets = mutableListOf<SurfaceDetachBudget?>()
+        backend.onWait = {
+            budgets += field(sceneRenderer, "surfaceDetachBudget").get(sceneRenderer)
+                as SurfaceDetachBudget?
+            true
+        }
+
+        try {
+            sceneRenderer.destroy()
+
+            assertFalse("UiHelper's Surface must be released before its listener is removed", surface.isValid)
+            assertNull(textureView.surfaceTextureListener)
+            assertSame("TextureView retains ownership of its SurfaceTexture", texture, textureView.surfaceTexture)
+            sceneRenderer.destroy()
+            assertEquals(listOf("mirror", "window"), calls)
+            assertEquals(2, budgets.size)
+            assertNotNull(budgets[0])
+            assertSame(budgets[0], budgets[1])
+        } finally {
+            surface.release()
+            texture.release()
+        }
+    }
+
+    @Test
+    fun destroyAfterTextureDestroyedDoesNotDestroyOrWaitTwice() {
+        val (textureView, surface) = attachAvailableTextureView()
+        val texture = textureView.surfaceTexture!!
+        try {
+            textureView.surfaceTextureListener!!.onSurfaceTextureDestroyed(texture)
+            assertFalse(surface.isValid)
+            sceneRenderer.destroy()
+            sceneRenderer.destroy()
+            assertEquals(listOf("window", "mirror"), calls)
+        } finally {
+            surface.release()
+            texture.release()
+        }
+    }
+
+    @Test
+    fun destroyDoesNotNotifyAReplacementTextureListener() {
+        val (textureView, surface) = attachAvailableTextureView()
+        val texture = textureView.surfaceTexture!!
+        val originalListener = textureView.surfaceTextureListener!!
+        textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) = Unit
+            override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+            override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean =
+                error("SceneRenderer must only notify its own UiHelper listener")
+        }
+        try {
+            sceneRenderer.destroy()
+            assertTrue("A replacement listener must not receive the synthetic destroy event", surface.isValid)
+        } finally {
+            originalListener.onSurfaceTextureDestroyed(texture)
+            surface.release()
+            texture.release()
+        }
+    }
+
+    private fun attachAvailableTextureView(): Pair<TextureView, Surface> {
+        val context = RuntimeEnvironment.getApplication()
+        val textureView = TextureView(context)
+        val display = context.getSystemService(DisplayManager::class.java)
+            .getDisplay(Display.DEFAULT_DISPLAY)
+        sceneRenderer.attachToTextureView(textureView, true, context, display)
+        val uiHelper = field(sceneRenderer, "uiHelper").get(sceneRenderer) as UiHelper
+        lateinit var surface: Surface
+        // Keep the real UiHelper/TextureView lifecycle, replacing only native window creation
+        // and resize. Teardown still uses SceneRenderer's production swap-chain callback.
+        uiHelper.renderCallback = object : UiHelper.RendererCallback {
+            override fun onNativeWindowChanged(nativeWindow: Surface) { surface = nativeWindow }
+            override fun onResized(width: Int, height: Int) = Unit
+            override fun onDetachedFromSurface() = callback.onDetachedFromSurface()
+        }
+        val texture = SurfaceTexture(0)
+        textureView.setSurfaceTexture(texture)
+        textureView.surfaceTextureListener!!.onSurfaceTextureAvailable(texture, 1, 1)
+        return textureView to surface
     }
 
     @Test
