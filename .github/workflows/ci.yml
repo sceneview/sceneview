@@ -25,6 +25,7 @@ name: CI
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
 #   - app-store-scripts  App Store submit/catch-up unit tests (gated on `app-store-scripts`)
 #   - agent-rules-versions  Maven version sync regression tests (gated on `agent-rules-versions`)
+#   - website-sitemap  sitemap generator tests     (gated on `website-sitemap`)
 
 on:
   push:
@@ -156,6 +157,7 @@ jobs:
       # The App Store submit/catch-up programs — gates `app-store-scripts`.
       app-store-scripts: ${{ steps.filter.outputs.app-store-scripts }}
       agent-rules-versions: ${{ steps.filter.outputs.agent-rules-versions }}
+      website-sitemap: ${{ steps.filter.outputs.website-sitemap }}
     steps:
       # Checked out on non-PR events. `dorny/paths-filter` reads the diff from
       # the GitHub API on `pull_request` and never touches the working tree; a
@@ -334,6 +336,11 @@ jobs:
               - '.github/copilot-instructions.md'
               - 'pro/gpt-store/gpt-instructions.md'
               - 'agents/OPENAI-PLUGIN.md'
+            # The deploy-time sitemap generator (docs.yml) and its offline tests.
+            website-sitemap:
+              - '.github/workflows/ci.yml'
+              - 'tools/generate-sitemap.py'
+              - 'tools/test_generate_sitemap.py'
 
       # The `outputs:` block above warns that a missing output evaluates to the
       # empty string and silently skips every downstream job — "a gate that can
@@ -359,6 +366,7 @@ jobs:
             changelog=${{ steps.filter.outputs.changelog }}
             app-store-scripts=${{ steps.filter.outputs.app-store-scripts }}
             agent-rules-versions=${{ steps.filter.outputs.agent-rules-versions }}
+            website-sitemap=${{ steps.filter.outputs.website-sitemap }}
         run: |
           set -euo pipefail
           bad=0
@@ -492,6 +500,21 @@ jobs:
 
       - name: Check agent-rule Maven pins and self-test version sync
         run: bash .claude/scripts/test-sync-versions-agent-rules.sh
+
+  # ── Website sitemap generator ──────────────────────────────────────────
+  # docs.yml regenerates website-static/sitemap.xml at deploy time, with
+  # per-page <lastmod> from git; these offline tests keep the generator honest.
+  website-sitemap:
+    name: Website sitemap generator tests
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.website-sitemap == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the sitemap generator tests
+        run: python3 -m unittest discover -s tools -p 'test_generate_sitemap.py' -v
 
   # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
   # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until
