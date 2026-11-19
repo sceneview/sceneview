@@ -316,6 +316,20 @@ for f in "${FRAGMENTS[@]}"; do
     rm -f "$f"
 done
 
+# ─── 6. Pin the demo's Play Store notes to this release ─────────────────
+# `samples/android-demo/whatsnew/unreleased/` holds the user-facing Play notes
+# written since the last release (see changelog.d/README.md). The tagged build
+# reads `whatsnew/<version>/`, so the release PR renames the directory.
+WHATSNEW_DIR="$REPO_ROOT/samples/android-demo/whatsnew"
+if [ -d "$WHATSNEW_DIR/unreleased" ]; then
+    if [ -e "$WHATSNEW_DIR/$VERSION" ]; then
+        echo -e "${YELLOW}!${NC} $WHATSNEW_DIR/$VERSION already exists — left unreleased/ in place"
+    else
+        mv "$WHATSNEW_DIR/unreleased" "$WHATSNEW_DIR/$VERSION"
+        echo -e "${GREEN}✓${NC} Play Store notes pinned to whatsnew/$VERSION"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}✓${NC} Collated ${#FRAGMENTS[@]} fragment(s) into ${CYAN}## v$VERSION — $DATE${NC}"
 [ "$HAS_UNRELEASED" = true ] && echo -e "${GREEN}✓${NC} Folded legacy ## Unreleased entries into the new section"

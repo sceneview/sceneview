@@ -66,6 +66,27 @@ before any tag land in `Changed`:
 - **The API it adds along the way.** …
 ```
 
+### Play Store "What's new"
+
+Write the Android demo's Play Store notes for the next release in
+`samples/android-demo/whatsnew/unreleased/en-US.txt`: a short English summary
+of the changes a demo user can see or feel, in plain text, with no PR or issue
+numbers and no SDK jargon. Keep the whole file within **500 characters**,
+including spaces and line breaks. Do not copy the SDK changelog into this file.
+
+`play-store.yml` reads the notes through `.github/scripts/play_store_notes.py`.
+Snapshot builds from `main` (`4.69.7-abcd1234`, i.e. commits after the
+`v4.69.7` tag) read `unreleased/` first. The release PR's
+`collate-changelog.sh <X.Y.Z>` renames `unreleased/` to `<X.Y.Z>/`, and the
+tagged build reads that directory only. Keep older version directories: they
+support re-publishing a release.
+
+Only when no matching file exists does the script fall back to the
+`## vX.Y.Z` section of `CHANGELOG.md`, stripping Markdown as before. An empty
+curated file deliberately leaves the notes empty; a missing changelog section
+also leaves them empty. Both sources are trimmed to 500 Unicode characters,
+including a trailing ellipsis when truncated.
+
 ### Maintainer-only notes
 
 **Every HTML comment in a fragment is stripped before collation** — single-line,

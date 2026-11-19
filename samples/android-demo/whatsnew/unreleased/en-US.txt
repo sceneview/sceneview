@@ -1,0 +1,4 @@
+- Matter has brighter brushed steel, clearer aqua gel and smoother material changes. Press and hold to feel each surface.
+- AR surface marks can hide behind real furniture on supported phones. Returning to AR no longer flashes black.
+- TalkBack announces rotation and size changes while you edit a model.
+- AR messages wait until guidance cards close, keeping instructions clear.
