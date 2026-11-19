@@ -398,6 +398,25 @@ if [ -f "$CLAUDE_MD" ] && grep -q 'io\.github\.sceneview:sceneview:' "$CLAUDE_MD
     add_check "CLAUDE.md (code examples)" "$V"
 fi
 
+# Agent rules and prompts — check every Maven coordinate, including AR and
+# repeated references after the first install snippet. Only Maven versions
+# belong to this sweep; deprecated platform pins are handled separately.
+AGENT_RULE_FILES=(
+    .cursorrules
+    .windsurfrules
+    .github/copilot-instructions.md
+    pro/gpt-store/gpt-instructions.md
+    agents/OPENAI-PLUGIN.md
+)
+AGENT_MAVEN_RE='(io\.github\.sceneview:[[:alnum:]_.-]+:)[0-9]+\.[0-9]+\.[0-9]+(-[[:alnum:].-]+)?(\+[[:alnum:].-]+)?'
+for agentf in "${AGENT_RULE_FILES[@]}"; do
+    F="$REPO_ROOT/$agentf"
+    [ -f "$F" ] || continue
+    while IFS= read -r COORDINATE; do
+        add_check "$agentf (Maven ${COORDINATE%:*})" "${COORDINATE##*:}"
+    done < <(grep -oE "$AGENT_MAVEN_RE" "$F" | sort -u || true)
+done
+
 # README.md
 README="$REPO_ROOT/README.md"
 if [ -f "$README" ]; then
@@ -1239,6 +1258,17 @@ if [ "$FIX_MODE" = "--fix" ] && [ "$ERRORS" -gt 0 ]; then
     done
 
     echo -e "${YELLOW}Applying fixes...${NC}"
+
+    # Fix every agent-rule Maven coordinate in one pass, so mixed versions
+    # and prerelease suffixes cannot be partially replaced by an older pin.
+    for agentf in "${AGENT_RULE_FILES[@]}"; do
+        F="$REPO_ROOT/$agentf"
+        [ -f "$F" ] || continue
+        if grep -oE "$AGENT_MAVEN_RE" "$F" | cut -d: -f3 | grep -Fxv "$SOURCE_VERSION" >/dev/null; then
+            _sed_inplace -E "s/$AGENT_MAVEN_RE/\\1$SOURCE_VERSION/g" "$F"
+            echo -e "  Fixed: $agentf (Maven coordinates -> $SOURCE_VERSION)"
+        fi
+    done
 
     # Fix module gradle.properties
     for module in sceneview arsceneview sceneview-core sceneview-compose; do
