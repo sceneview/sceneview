@@ -24,6 +24,7 @@ name: CI
 #   - flutter-demo   plugin analyze+test, demo APK  (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
 #   - app-store-scripts  App Store submit/catch-up unit tests (gated on `app-store-scripts`)
+#   - agent-rules-versions  Maven version sync regression tests (gated on `agent-rules-versions`)
 
 on:
   push:
@@ -154,6 +155,7 @@ jobs:
       changelog: ${{ steps.filter.outputs.changelog }}
       # The App Store submit/catch-up programs — gates `app-store-scripts`.
       app-store-scripts: ${{ steps.filter.outputs.app-store-scripts }}
+      agent-rules-versions: ${{ steps.filter.outputs.agent-rules-versions }}
     steps:
       # Checked out on non-PR events. `dorny/paths-filter` reads the diff from
       # the GitHub API on `pull_request` and never touches the working tree; a
@@ -322,6 +324,16 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/scripts/app_store_*'
               - '.github/scripts/test_app_store_*'
+            agent-rules-versions:
+              - '.github/workflows/ci.yml'
+              - '.claude/scripts/sync-versions.sh'
+              - '.claude/scripts/test-sync-versions-agent-rules.sh'
+              - 'gradle.properties'
+              - '.cursorrules'
+              - '.windsurfrules'
+              - '.github/copilot-instructions.md'
+              - 'pro/gpt-store/gpt-instructions.md'
+              - 'agents/OPENAI-PLUGIN.md'
 
       # The `outputs:` block above warns that a missing output evaluates to the
       # empty string and silently skips every downstream job — "a gate that can
@@ -346,6 +358,7 @@ jobs:
             build-system=${{ steps.filter.outputs.build-system }}
             changelog=${{ steps.filter.outputs.changelog }}
             app-store-scripts=${{ steps.filter.outputs.app-store-scripts }}
+            agent-rules-versions=${{ steps.filter.outputs.agent-rules-versions }}
         run: |
           set -euo pipefail
           bad=0
@@ -466,6 +479,19 @@ jobs:
 
       - name: Run the offline App Store script tests
         run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_*.py' -v
+
+  # ── Agent-rule Maven versions ──────────────────────────────────────────
+  agent-rules-versions:
+    name: Agent rules Maven version tests
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.agent-rules-versions == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check agent-rule Maven pins and self-test version sync
+        run: bash .claude/scripts/test-sync-versions-agent-rules.sh
 
   # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
   # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until
