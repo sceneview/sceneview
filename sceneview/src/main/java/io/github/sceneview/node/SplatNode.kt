@@ -1,5 +1,7 @@
 package io.github.sceneview.node
 
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.MainThread
 import com.google.android.filament.Box
 import com.google.android.filament.EntityManager
@@ -13,6 +15,7 @@ import dev.romainguy.kotlin.math.inverse
 import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.Entity
 import io.github.sceneview.core.splat.SplatCloud
+import io.github.sceneview.isValid
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.safeDestroyEntity
@@ -21,6 +24,8 @@ import io.github.sceneview.safeDestroyRenderable
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.safeRecycleEntity
 import io.github.sceneview.splat.SplatBuffers
+import io.github.sceneview.splat.SplatOrderUpload
+import io.github.sceneview.splat.SplatOrderUploads
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,7 +36,6 @@ import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
-import java.nio.IntBuffer
 import kotlin.math.max
 import kotlin.math.min
 
@@ -188,6 +192,14 @@ open class SplatNode(
             showDrawSlots(min(clamped, sortedCount))
         }
 
+    private val orderUploads = SplatOrderUploads(
+        upload = { value, onReleased -> uploadOrder(value, onReleased) },
+        onDeferredUpload = { requestRender() },
+        // A release can arrive after the engine went (imperative use): never upload on a dead one.
+        targetAlive = { !isSplatDestroyed && engine.isValid },
+    )
+    private val orderReleaseHandler by lazy { Handler(Looper.getMainLooper()) }
+
     /**
      * Which splats are drawn: splat `i` is left out while `shownSplats[i]` is `false`; `null`
      * (the default) draws them all. The array must hold one entry per splat of [splatCloud].
@@ -206,6 +218,9 @@ open class SplatNode(
                 "shownSplats must hold one entry per splat: expected ${splatCloud.count}, was ${value?.size}"
             }
             field = value
+            // An order sorted under the previous filter and still waiting would draw the splats
+            // this filter hides: drop it, the re-sort below replaces it.
+            orderUploads.discardPending()
             // The order uploaded at construction holds every splat: until a filtered sort lands,
             // draw none rather than the hidden ones.
             if (value != null && !hasSortLanded) {
@@ -272,7 +287,13 @@ open class SplatNode(
                 Texture.Format.RGBA_INTEGER, Texture.Type.UINT
             )
         )
-        uploadOrder(SplatBuffers.packOrder(identityOrder, textureSize))
+        orderUploads.submit(
+            SplatOrderUpload(
+                SplatBuffers.packOrder(identityOrder, textureSize),
+                splatCloud.count,
+                isSorted = false,
+            )
+        )
 
         // The shared unit quad ([-1, 1]^2 at z = 0) instanced once per splat.
         quadVertexBuffer = VertexBuffer.Builder()
@@ -431,11 +452,7 @@ open class SplatNode(
             val packedOrder = SplatBuffers.packOrder(sortOrder, sorted, textureSize)
             withContext(Dispatchers.Main) {
                 if (isSplatDestroyed) return@withContext
-                // The order first, then the slots it fills: no slot is drawn before it is written.
-                uploadOrder(packedOrder)
-                sortedCount = sorted
-                hasSortLanded = true
-                showDrawSlots(min(splatCount, sorted))
+                orderUploads.submit(SplatOrderUpload(packedOrder, sorted))
             }
         }
     }
@@ -473,11 +490,22 @@ open class SplatNode(
     }
 
     @MainThread
-    private fun uploadOrder(order: IntBuffer) {
+    private fun uploadOrder(value: SplatOrderUpload, onReleased: () -> Unit) {
         orderTexture.setImage(
             engine, 0,
-            Texture.PixelBufferDescriptor(order, Texture.Format.R_INTEGER, Texture.Type.UINT)
+            Texture.PixelBufferDescriptor(
+                value.order, Texture.Format.R_INTEGER, Texture.Type.UINT
+            ).apply {
+                setCallback(orderReleaseHandler, Runnable { onReleased() })
+            }
         )
+        if (value.isSorted) {
+            // The order first, then the slots it fills: a pending sort must not expose slots
+            // from its count while the texture still contains the previous order.
+            sortedCount = value.sortedCount
+            hasSortLanded = true
+            showDrawSlots(min(splatCount, sortedCount))
+        }
     }
 
     private fun floatBufferOf(vararg values: Float): FloatBuffer =
@@ -498,6 +526,7 @@ open class SplatNode(
         // on the EngineDestroyQueue (benign today, but future-proof it).
         if (isSplatDestroyed) return
         isSplatDestroyed = true
+        orderUploads.destroy()
         hasOwnFrameWork = false
         coroutineScope.cancel()
         // Renderable components first (while entity ids are still valid), then the entities.
