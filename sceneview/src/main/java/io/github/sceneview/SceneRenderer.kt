@@ -239,8 +239,12 @@ class SceneRenderer(
         // system, so there is no surface of ours to vote a frame rate on.
         uiHelper.renderCallback =
             makeRendererCallback(viewHeight = { textureView.height }, votable = false)
+        val listenerBefore = textureView.surfaceTextureListener
         uiHelper.attachTo(textureView)
-        textureViewListenerRef = WeakReference(textureView.surfaceTextureListener)
+        // Only the listener UiHelper just installed: a no-op attach must not capture a foreign one.
+        textureViewListenerRef = textureView.surfaceTextureListener
+            ?.takeIf { it !== listenerBefore }
+            ?.let { WeakReference(it) }
         renderViewRef = WeakReference(textureView)
 
         onTouch?.let { dispatch ->
