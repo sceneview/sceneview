@@ -4394,7 +4394,11 @@ Box {
 (ring only, no badge at rest), a rotation ring with a live sweep arc and a signed
 rotation-delta badge shown and announced only during the two-finger twist, a scale
 percentage badge that bounces at the `editableScaleRange` bounds, and a contact shadow
-while dragging.
+while dragging. TalkBack hears the badges in coarse steps (15°, 10 %), not every degree, then
+the exact value once when the gesture ends. To localise what it says, override the string
+resources `sceneview_editing_rotation_description` ("Rotation %1$s degrees", `%1$s` a signed
+whole number such as "+15") and `sceneview_editing_scale_description` ("Scale %1$d percent")
+in your app's `res/values-<lang>/strings.xml`.
 
 To build custom feedback instead, read `rememberNodeEditingFeedback(node)` directly —
 it is snapshot state, so a composable reading it recomposes live during the gesture:

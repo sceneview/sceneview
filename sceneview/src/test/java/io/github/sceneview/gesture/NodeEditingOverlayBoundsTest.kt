@@ -30,13 +30,7 @@ class NodeEditingOverlayBoundsTest {
         engine = FilamentWithoutJni.engine()
     }
 
-    // Reflection also runs against the original private function for the red regression run.
-    @Suppress("UNCHECKED_CAST")
-    private fun bounds(node: Node): Pair<Float3, Float3> =
-        Class.forName("io.github.sceneview.gesture.NodeEditingOverlayKt")
-            .getDeclaredMethod("localBounds", Node::class.java)
-            .apply { isAccessible = true }
-            .invoke(null, node) as Pair<Float3, Float3>
+    private fun bounds(node: Node): Pair<Float3, Float3> = node.localBounds(ContentBoundsScratch())
 
     private fun content(center: Float3, halfExtent: Float3) =
         object : Node(engine), RenderableComponent {
@@ -192,10 +186,74 @@ class NodeEditingOverlayBoundsTest {
         assertVector(Float3(0.25f), halfExtent)
     }
 
+    @Test
+    fun `a model node with an empty rest-pose box keeps the placeholder without walking its glTF nodes`() {
+        val model = modelNode(minMax = FloatArray(6))
+        val gltfContent = countingContent(Float3(0f, 3f, 0f), Float3(2f))
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
+
+        val (center, halfExtent) = bounds(model)
+
+        assertVector(Float3(0f), center)
+        assertVector(Float3(0.25f), halfExtent)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
+    }
+
+    @Test
+    fun `an empty model used as a container keeps the bounds of what the app attached to it`() {
+        val model = modelNode(minMax = FloatArray(6))
+        val gltfContent = countingContent(Float3(0f, -5f, 0f), Float3(5f))
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
+        model.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
+
+        val (center, halfExtent) = bounds(model)
+
+        assertVector(Float3(0f, 0.5f, 0f), center)
+        assertVector(Float3(0.2f, 0.5f, 0.2f), halfExtent)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
+    }
+
+    @Test
+    fun `an empty model node under a pivot is not walked into and does not widen the bounds`() {
+        val pivot = Node(engine)
+        val model = modelNode(minMax = FloatArray(6))
+        val gltfContent = countingContent(Float3(0f, -5f, 0f), Float3(5f))
+        model.addChildNode(gltfNode(model).apply { addChildNode(gltfContent) })
+        pivot.addChildNode(model)
+        pivot.addChildNode(content(Float3(0f, 0.5f, 0f), Float3(0.2f, 0.5f, 0.2f)))
+
+        val (center, halfExtent) = bounds(pivot)
+
+        assertVector(Float3(0f, 0.5f, 0f), center)
+        assertVector(Float3(0.2f, 0.5f, 0.2f), halfExtent)
+        assertEquals("glTF sub-node boxes read", 0, gltfContent.boxReads)
+    }
+
+    /** One of [model]'s own glTF nodes, as `ModelNode` builds them from the asset's entities. */
+    private fun gltfNode(model: ModelNode): Node =
+        model.EmptyNode(model.modelInstance, GLTF_ENTITY).apply { transform = Transform() }
+
+    /** A renderable that counts how often the overlay reads its box. */
+    private inner class CountingContent(center: Float3, halfExtent: Float3) :
+        Node(engine), RenderableComponent {
+        var boxReads = 0
+        private val box = Box(center.x, center.y, center.z, halfExtent.x, halfExtent.y, halfExtent.z)
+        override var axisAlignedBoundingBox: Box
+            get() = box.also { boxReads++ }
+            set(_) = Unit
+    }
+
+    private fun countingContent(center: Float3, halfExtent: Float3) =
+        CountingContent(center, halfExtent).apply { transform = Transform() }
+
     /** A real [ModelNode] whose rest-pose box is [minMax] (`[minX, minY, minZ, maxX, maxY, maxZ]`). */
     private fun modelNode(minMax: FloatArray): ModelNode =
         ModelNode(FilamentWithoutJni.modelInstance(engine)).apply {
             RestPoseBounds.record(model, minMax)
             transform = Transform()
         }
+
+    private companion object {
+        const val GLTF_ENTITY = 42
+    }
 }

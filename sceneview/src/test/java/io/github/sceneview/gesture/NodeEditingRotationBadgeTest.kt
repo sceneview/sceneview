@@ -93,14 +93,53 @@ class NodeEditingRotationBadgeTest {
     fun `badge and live region appear during the twist and leave with it`() {
         composeRule.runOnIdle {
             feedback.onEditingBegin(node, NodeEditingKind.Rotate)
-            feedback.onRotationEdited(node, 12f)
+            feedback.onRotationEdited(node, 32f)
         }
 
-        composeRule.onNodeWithContentDescription("Rotation +12°").assert(politeLiveRegion)
+        composeRule.onNodeWithContentDescription("Rotation +30 degrees").assert(politeLiveRegion)
         composeRule.onAllNodes(politeLiveRegion).assertCountEquals(1)
 
         composeRule.runOnIdle { feedback.onEditingEnd(node, NodeEditingKind.Rotate) }
 
         assertNoRotationBadge()
+    }
+
+    @Test
+    fun `the announced angle moves in fifteen degree steps`() {
+        composeRule.runOnIdle {
+            feedback.onEditingBegin(node, NodeEditingKind.Rotate)
+            feedback.onRotationEdited(node, -16f)
+        }
+        composeRule.onNodeWithContentDescription("Rotation -15 degrees").assert(politeLiveRegion)
+
+        // 13° more: the visible angle moves, the description does not, so nothing is queued.
+        composeRule.runOnIdle { feedback.onRotationEdited(node, -13f) }
+        composeRule.onNodeWithContentDescription("Rotation -15 degrees").assert(politeLiveRegion)
+
+        // −32°: past −30° by the hysteresis margin.
+        composeRule.runOnIdle { feedback.onRotationEdited(node, -3f) }
+        composeRule.onNodeWithContentDescription("Rotation -30 degrees").assert(politeLiveRegion)
+    }
+
+    @Test
+    fun `a twist held on a step boundary does not flip the announcement`() {
+        composeRule.runOnIdle { feedback.onEditingBegin(node, NodeEditingKind.Rotate) }
+
+        fun twistTo(degrees: Float, announced: String) {
+            composeRule.runOnIdle {
+                feedback.onRotationEdited(node, degrees - feedback.rotationDeltaDegrees)
+            }
+            composeRule.onNodeWithContentDescription(announced).assert(politeLiveRegion)
+        }
+
+        twistTo(14f, "Rotation 0 degrees")
+        twistTo(16f, "Rotation 0 degrees")
+        twistTo(14f, "Rotation 0 degrees")
+        twistTo(16f, "Rotation 0 degrees")
+        twistTo(17f, "Rotation +15 degrees")
+        twistTo(14f, "Rotation +15 degrees")
+        twistTo(13f, "Rotation +15 degrees")
+        twistTo(16f, "Rotation +15 degrees")
+        twistTo(12f, "Rotation 0 degrees")
     }
 }
