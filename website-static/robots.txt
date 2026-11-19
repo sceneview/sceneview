@@ -6,8 +6,7 @@
 # never read the `noindex` it contains, so a blocked-but-linked URL can stay
 # in an index with no content — the opposite of what was wanted. The `noindex`
 # is the one that does the work, so the `Disallow:` lines are gone. This also
-# unblocks `/go/web`, which is listed in the sitemap and redirects to
-# `/preview/`.
+# unblocks `/go/web`, which redirects to `/preview/`.
 #
 # The named groups below are a statement, not a rule change: robots.txt group
 # matching is winner-takes-all, so a crawler that matches a named group ignores

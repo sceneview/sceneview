@@ -39,6 +39,7 @@ on:
       - 'assets/manifest.json'
       - 'tools/fetch-assets.sh'
       - 'tools/test-website.cjs'
+      - 'tools/generate-sitemap.py'
       - '.github/actions/fetch-assets/**'
       - 'llms.txt'
       - 'CHANGELOG.md'
@@ -83,6 +84,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Per-page sitemap dates need history, without fetching old asset blobs.
+          fetch-depth: 0
+          filter: blob:none
       - name: Fetch binary assets (web)
         uses: ./.github/actions/fetch-assets
         with:
@@ -94,6 +99,9 @@ jobs:
       # ci.yml → build, "Check asset credits").
       - name: Check asset credits
         run: python3 .claude/scripts/generate-credits.py --check
+
+      - name: Generate static website sitemap
+        run: python3 tools/generate-sitemap.py
 
       # ── 1. Copy static website (marketing site — root) ─────────────────
       - name: Assemble site root from static HTML
