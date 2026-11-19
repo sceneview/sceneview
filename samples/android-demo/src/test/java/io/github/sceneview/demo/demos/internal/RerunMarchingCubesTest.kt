@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
 import kotlin.random.Random
 
 /** Marching cubes' table, its closed surfaces, its small-piece filter, and the model's GLB. */
@@ -63,6 +64,44 @@ class RerunMarchingCubesTest {
         assertTrue(kept.mesh.bounds()[3] < 20 * voxel)
         assertClosed(kept.mesh)
         assertFinite(kept.mesh)
+    }
+
+    @Test
+    fun `floor area distinguishes missing corners, weak weights and the triangle cap`() {
+        val tsdf = RerunTsdf()
+        val voxel = tsdf.voxelM
+        for (patch in 0..4) {
+            for (z in 0..1) for (y in 0..1) for (x in 0..1) {
+                val firstCorner = x == 0 && y == 0 && z == 0
+                if (patch == 3 && firstCorner) continue
+                val weight = when {
+                    patch == 1 && firstCorner -> 0.025f
+                    patch == 2 -> 0.25f
+                    else -> 1f
+                }
+                tsdf.update(patch * RerunTsdf.BLOCK + x, y, z, voxel * (y - 0.5f), weight)
+            }
+        }
+        val extraction = RerunMarchingCubes.extract(tsdf, minComponentTriangles = 0, maxTriangles = 2, weakestCorner = 0.05f)
+        assertTrue(extraction.capped)
+        assertEquals(2, extraction.mesh.triangleCount)
+        val cells = RerunMarchingCubes.measureFloorCells(
+            tsdf, extraction.stride, voxel / 2, voxel, 0.5f, 0.05f, extraction.cappedAt,
+        ) { p, a, b, c ->
+            val ux = p[b * 3] - p[a * 3]
+            val uz = p[b * 3 + 2] - p[a * 3 + 2]
+            val vx = p[c * 3] - p[a * 3]
+            val vz = p[c * 3 + 2] - p[a * 3 + 2]
+            abs(uz * vx - ux * vz) / 2
+        }
+        val area = voxel * voxel
+        assertEquals(4 * area, cells.observedM2, 1e-8f)
+        assertEquals(3 * area, cells.weakestCornerM2, 1e-8f)
+        assertEquals(2 * area, cells.weightM2, 1e-8f)
+        assertEquals(area, cells.meshedM2, 1e-8f)
+        assertEquals(1, cells.weakestCornerCells)
+        assertEquals(1, cells.minWeightCells)
+        assertTrue(cells.unobservedCornerCells > 0)
     }
 
     @Test
