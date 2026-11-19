@@ -140,7 +140,7 @@ class ArDebugFrame(
  * are merged into a [POINT_VOXEL_M] voxel map capped at [MAX_MAP_POINTS]; planes and anchors keep
  * one snapshot per change.
  */
-class ArDebugTrace {
+class ArDebugTrace(private val onJournalCap: () -> Unit = {}) {
     private var originNanos = Long.MIN_VALUE
 
     private var poseTimes = FloatArray(256)
@@ -156,6 +156,7 @@ class ArDebugTrace {
     /** Each point-cloud observation: when, and which map points it saw. */
     private val observationTimes = ArrayList<Float>()
     private val observations = ArrayList<IntArray>()
+    private var observationBytes = 0L
 
     /** Per plane id, its snapshots in time order; an empty polygon marks the plane gone. */
     private val planeHistory = LinkedHashMap<Int, MutableList<Pair<Float, DebugPlane>>>()
@@ -174,11 +175,20 @@ class ArDebugTrace {
     private val floorCellSet = HashSet<Long>()
 
     /**
-     * When set, every event that changed the trace is appended here as it was kept — the
-     * confident, finite points only, a plane or an anchor only when it changed — so replaying
-     * the journal into a fresh trace rebuilds this one exactly. A room scan keeps one to save.
+     * Set to an empty list to record a bounded [ArDebugJournal]. Events are exact until its
+     * budget is reached; afterwards replay keeps a decimated timeline for Save / Try again.
+     * The returned list is read-only so every append passes through the same total budget.
      */
-    var journal: MutableList<ArDebugEvent>? = null
+    var journal: List<ArDebugEvent>?
+        get() = eventJournal
+        set(value) {
+            eventJournal = value?.let { events ->
+                ArDebugJournal(onJournalCap).also { bounded -> events.forEach(bounded::append) }
+            }
+        }
+    private var eventJournal: ArDebugJournal? = null
+
+    val journalBytes: Long get() = eventJournal?.bytes ?: 0L
 
     /**
      * An object scan's distance cutoff (#4683): set, the points further than it from the phone
@@ -229,7 +239,7 @@ class ArDebugTrace {
 
     /**
      * The map points observation [index] saw, as indices into the map (the order of
-     * [ArDebugFrame.mapPoints]); empty once a long session has forgotten it.
+     * [ArDebugFrame.mapPoints]). A long session decimates old observations to stay in budget.
      */
     fun observationPoints(index: Int): IntArray = observations[index]
 
@@ -255,7 +265,7 @@ class ArDebugTrace {
      */
     fun addPose(nanos: Long, pose: DebugPose) {
         cutoff?.follow(pose)
-        journal?.add(ArDebugEvent.CameraPose(nanos, pose))
+        eventJournal?.append(ArDebugEvent.CameraPose(nanos, pose))
         val t = secondsOf(nanos)
         val last = poses.lastOrNull()
         if (last != null && t <= poseTimes[poses.size - 1] + 1e-6f) {
@@ -323,7 +333,7 @@ class ArDebugTrace {
     private fun addPointsKept(nanos: Long, positions: FloatArray, confidences: FloatArray?, colors: IntArray?) {
         val t = secondsOf(nanos)
         val count = positions.size / 3
-        val seen = IntArray(count)
+        val seen = IntArray(minOf(count, MAX_MAP_POINTS))
         var seenCount = 0
         val kept = journal?.let { PointJournal(count, colors != null) }
         val adaptive = pointConfidence
@@ -358,7 +368,7 @@ class ArDebugTrace {
                 pointCount - 1
             }
             if (index >= 0) {
-                seen[seenCount++] = index
+                if (seenCount < seen.size) seen[seenCount++] = index
                 val color = colors?.getOrNull(i) ?: 0
                 if (color != 0 && pointColors[index] == 0) {
                     pointColors[index] = color
@@ -366,15 +376,62 @@ class ArDebugTrace {
                 }
             }
         }
-        if (observations.size >= MAX_OBSERVATIONS) {
-            // Keep the timeline but forget what the oldest half of the observations saw.
-            for (i in 0 until observations.size / 2) observations[i] = EMPTY_INTS
+        val observation = seen.copyOf(seenCount)
+        while (observations.size >= MAX_OBSERVATIONS || observationBytes + observation.size * 4L > MAX_OBSERVATION_BYTES) {
+            thinObservations()
         }
         observationTimes.add(t)
-        observations.add(seen.copyOf(seenCount))
-        kept?.let { journal?.add(it.event(nanos)) }
+        observations.add(observation)
+        observationBytes += observation.size * 4L
+        kept?.let { eventJournal?.append(it.event(nanos)) }
         adaptive?.record(nanos, passed, passedAtBase)
         touch(t)
+    }
+
+    /** Halves actual storage, rather than repeatedly clearing the same oldest half forever. */
+    private fun thinObservations() {
+        var out = 0
+        observationBytes = 0L
+        for (i in observations.indices step 2) {
+            observations[out] = observations[i]
+            observationTimes[out] = observationTimes[i]
+            observationBytes += observations[out].size * 4L
+            out++
+        }
+        observations.subList(out, observations.size).clear()
+        observationTimes.subList(out, observationTimes.size).clear()
+    }
+
+    /** Releases a closed capture's arrays even if a former live-media reader still holds it. */
+    fun clear() {
+        journal = null
+        originNanos = Long.MIN_VALUE
+        poses.clear()
+        poseTimes = FloatArray(256)
+        pointXyz = FloatArray(3 * 1024)
+        pointFirstSeen = FloatArray(1024)
+        pointColors = IntArray(1024)
+        pointCount = 0
+        hasPointColors = false
+        voxelIndex.clear()
+        observations.clear()
+        observationTimes.clear()
+        observationBytes = 0L
+        planeHistory.clear()
+        anchorHistory.clear()
+        imageTimes = FloatArray(64)
+        imagePaths.clear()
+        depthTimes = FloatArray(64)
+        depthTotals = IntArray(64)
+        depthCount = 0
+        floorCellTimes = FloatArray(64)
+        floorCellKeys = LongArray(64)
+        floorCellCount = 0
+        floorCellSet.clear()
+        cutoff = null
+        pointConfidence = null
+        duration = 0f
+        version++
     }
 
     /** Adds a snapshot of plane [id]. An empty [polygon] records that the plane went away. */
@@ -387,7 +444,7 @@ class ArDebugTrace {
         val last = history.lastOrNull()?.second
         if (last != null && last.kind == kind && last.polygon.contentEquals(kept)) return
         history.add(t to DebugPlane(id, kind, kept))
-        journal?.add(ArDebugEvent.Plane(nanos, id, kind, kept))
+        eventJournal?.append(ArDebugEvent.Plane(nanos, id, kind, kept))
         touch(t)
     }
 
@@ -407,7 +464,7 @@ class ArDebugTrace {
         val last = history.lastOrNull()?.second
         if (last != null && last.pose == pose) return
         history.add(t to DebugAnchor(id, pose, placedAt = history.firstOrNull()?.first ?: t))
-        journal?.add(ArDebugEvent.Anchor(nanos, id, pose))
+        eventJournal?.append(ArDebugEvent.Anchor(nanos, id, pose))
         touch(t)
     }
 
@@ -418,7 +475,7 @@ class ArDebugTrace {
         if (imagePaths.size == imageTimes.size) imageTimes = imageTimes.copyOf(imageTimes.size * 2)
         imageTimes[imagePaths.size] = t
         imagePaths.add(path)
-        journal?.add(ArDebugEvent.Image(nanos, path))
+        eventJournal?.append(ArDebugEvent.Image(nanos, path))
         touch(t)
     }
 
@@ -440,7 +497,7 @@ class ArDebugTrace {
         depthTimes[depthCount] = t
         depthTotals[depthCount] = total
         depthCount++
-        journal?.add(ArDebugEvent.DepthStats(nanos, added, kept, total))
+        eventJournal?.append(ArDebugEvent.DepthStats(nanos, added, kept, total))
         touch(t)
     }
 
@@ -465,7 +522,7 @@ class ArDebugTrace {
             floorCellKeys[floorCellCount] = key
             floorCellCount++
         }
-        journal?.add(ArDebugEvent.FloorCells(nanos, fresh.toLongArray()))
+        eventJournal?.append(ArDebugEvent.FloorCells(nanos, fresh.toLongArray()))
         touch(t)
     }
 
@@ -628,6 +685,9 @@ class ArDebugTrace {
         const val MIN_POINT_CONFIDENCE = 0.2f
 
         const val MAX_OBSERVATIONS = 6_000
+
+        /** Four bytes per observed map index; share the journal's 4 MiB scale, not 6,000 huge clouds. */
+        const val MAX_OBSERVATION_BYTES = 4L * 1024 * 1024
 
         /** A point cloud older than this no longer counts as "what ARCore sees now". */
         const val LIVE_POINTS_WINDOW_S = 1.5f

@@ -279,6 +279,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     ForgetRoomSurveysOnExit()
+    val liveModels = rememberRerunLiveModels()
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
     // with `--es ar_playback_file <path>` (#1576): that harness drives the live path.
     val arPlaybackDataset = rememberArPlaybackDataset()
@@ -361,6 +362,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 else -> null
             },
         )
+    }
+    DisposableEffect(modelSource) {
+        val live = modelSource as? RerunModelSource.Live
+        onDispose { live?.release() }
     }
     // The model on screen, once built or read back: what the export sheet writes first.
     var resultModel by remember { mutableStateOf<RerunScanModel?>(null) }
@@ -774,11 +779,13 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         ) {
             RerunLiveScreen(
                 onBack = leaveLive,
+                liveModels = liveModels,
                 onScanned = { scan, title, pack, id, photo, measured, still ->
                     scanPhoto = photo?.let { scan to it }
                     sessionsVersion++
                     if (recordingForDollhouse) {
                         recordingForDollhouse = false
+                        liveModels.forget()
                         openDollhouse(null, title, scan)
                     } else {
                         // Save scan lands on the model, built here and kept with the scan.
@@ -1393,6 +1400,7 @@ private fun RerunDeveloperSection() {
 @Suppress("LongParameterList", "LongMethod") // the live AR screen, moved as-is behind the replay
 private fun RerunLiveScreen(
     onBack: () -> Unit,
+    liveModels: RerunLiveModels.Owner,
     /**
      * The scan, its title, pack, id, photo layer, and the dimensions and picture of the live model
      * its capture last showed.
@@ -1423,13 +1431,6 @@ private fun RerunLiveScreen(
     val captureScope = remember { RerunScanBuilds.captureScope() }
     val attached = remember { AtomicBoolean(true) }
     val saveJob = remember { AtomicReference<Job?>(null) }
-    DisposableEffect(Unit) {
-        onDispose {
-            attached.set(false)
-            val saving = saveJob.get()?.takeIf { it.isActive }
-            if (saving == null) captureScope.cancel() else saving.invokeOnCompletion { captureScope.cancel() }
-        }
-    }
 
     // QA only (`--es qa_state connected|saved`): draw the connected status, or the saved
     // dialog, on the emulator, which can reach neither ARCore nor a computer (#2754).
@@ -1472,6 +1473,30 @@ private fun RerunLiveScreen(
     // Capture mode: the scan in progress, and its 3D card's camera. A scan records into the
     // debug session's trace, so the 3D view and the scan are the same data.
     var scan by remember { mutableStateOf<ScanCapture?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            attached.set(false)
+            val capture = scan
+            val saving = saveJob.get()?.takeIf { it.isActive }
+            if (saving == null) {
+                captureScope.cancel()
+                capture?.close()
+            } else {
+                saving.invokeOnCompletion {
+                    captureScope.cancel()
+                    capture?.close()
+                }
+            }
+        }
+    }
+    LaunchedEffect(scan) {
+        val capture = scan ?: return@LaunchedEffect
+        capture.logMemory("start")
+        while (true) {
+            delay(SCAN_MEMORY_INTERVAL_MS)
+            capture.logMemory("periodic")
+        }
+    }
     // Done freezes capture and starts saving; Back can pause it behind the leave dialog.
     var phase by remember { mutableStateOf(ScanPhase.Scanning) }
     // The built scan, held across a failed write so Try again writes the same one.
@@ -1661,7 +1686,7 @@ private fun RerunLiveScreen(
     // Record starts on the frame on screen, whose camera gives the scan its lens.
     val onStartScan = start@{
         val frame = latestFrame ?: return@start
-        val capture = ScanCapture.start(frame, captureScope, rawDepth, scanScope.preset) ?: return@start
+        val capture = ScanCapture.start(frame, captureScope, liveModels, rawDepth, scanScope.preset) ?: return@start
         debugFullScreen = false
         debugSession.trace = capture.trace
         debugSession.goLive()
@@ -1678,9 +1703,10 @@ private fun RerunLiveScreen(
     }
     val moveTo = { next: ScanPhase -> phase = next }
     // Drops the capture, built or not: the camera goes back to waiting for the next one.
-    val dropCapture = {
+    fun dropCapture(keepModel: Boolean = false) {
         if (scan != null) {
             debugSession.trace = ArDebugTrace()
+            scan?.close(keepModel)
             scan = null
         }
         qaScan = null
@@ -1845,7 +1871,7 @@ private fun RerunLiveScreen(
                         .getOrNull()
                 }
             } else null
-            dropCapture()
+            dropCapture(keepModel = attached.get() && next == SaveNext.Open && opened != null)
             if (!attached.get()) {
                 // The screen was left while it saved: the scan is kept and listed, nothing opens.
                 onSavedAway(opened, title, savedId, homeOf)
@@ -2612,6 +2638,9 @@ private const val AUTO_START_POLL_MS = 100L
 
 /** The scan HUD's clock ticks ten times a second, tracking or not. */
 private const val HUD_TICK_MS = 100L
+
+/** Heap/journal snapshots during a debug capture, including tracking loss and review. */
+private const val SCAN_MEMORY_INTERVAL_MS = 60_000L
 
 /** How often a cupboard or shelf capture reads which faces its live scan closes. */
 private const val SPACE_FACES_MS = 500L

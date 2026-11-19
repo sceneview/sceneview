@@ -274,10 +274,14 @@ internal sealed interface RerunModelSource {
  * lens, fresh depth only — on its own worker: a frame that arrives while one integrates is left
  * to the surfel map alone, so neither slows the other.
  */
-internal class RerunLiveModel(private val preset: ScanPreset = ScanPreset.ROOM) {
+internal class RerunLiveModel(
+    private val owner: RerunLiveModels.Owner,
+    private val preset: ScanPreset = ScanPreset.ROOM,
+) {
     /** The TSDF while it records; `null` once [keepFor] has handed it on, so only its slot holds it. */
     @Volatile
     private var tsdf: RerunTsdf? = RerunTsdf(voxelM = preset.modelVoxelM)
+    private var transferred: java.lang.ref.WeakReference<RerunTsdf>? = null
     private val busy = AtomicBoolean(false)
 
     @Volatile
@@ -315,31 +319,91 @@ internal class RerunLiveModel(private val preset: ScanPreset = ScanPreset.ROOM) 
     fun keepFor(pack: RerunCapturePack?) {
         val tsdf = tsdf ?: return
         this.tsdf = null
-        if (pack != null && tsdf.frames > 0) RerunLiveModels.keep(pack, tsdf)
+        if (pack != null && tsdf.frames > 0) {
+            owner.keep(pack, tsdf)
+            transferred = java.lang.ref.WeakReference(tsdf)
+        }
+    }
+
+    /** Drops an abandoned capture's TSDF; an integration already running releases its local copy on return. */
+    fun close(keepTransferred: Boolean = false) {
+        job?.cancel()
+        job = null
+        tsdf = null
+        if (!keepTransferred) transferred?.get()?.let(RerunLiveModels::forget)
+        transferred = null
     }
 }
 
 /**
  * The last recording's TSDF, kept in memory with the scan it belongs to (one slot: ~50 MB at
- * most). A scan reopened from the list in the same process finds it by its manifest's bytes.
+ * most). It survives capture -> result so [RerunModelSource.of] can mesh it. The owning demo
+ * releases it on exit; a later reopen uses the saved model or surfels instead.
  */
 internal object RerunLiveModels {
     @Volatile
     private var kept: Pair<ByteArray, RerunTsdf>? = null
 
-    fun keep(pack: RerunCapturePack, tsdf: RerunTsdf) {
+    @Synchronized
+    private fun keep(pack: RerunCapturePack, tsdf: RerunTsdf) {
         kept = pack.manifest to tsdf
     }
 
+    @Synchronized
     fun find(pack: RerunCapturePack?): RerunTsdf? {
         pack ?: return null
         return kept?.takeIf { it.first.contentEquals(pack.manifest) }?.second
     }
 
     /** Empties the slot when it holds [tsdf]. */
+    @Synchronized
     fun forget(tsdf: RerunTsdf) {
         if (kept?.second === tsdf) kept = null
     }
+
+    /** One demo composition, including its result screen. A detached save cannot refill a closed owner. */
+    class Owner : AutoCloseable {
+        private var closed = false
+        // The owner must not undo Live.release() by retaining a second strong reference.
+        private var held: java.lang.ref.WeakReference<RerunTsdf>? = null
+
+        @Synchronized
+        fun keep(pack: RerunCapturePack, tsdf: RerunTsdf) {
+            if (closed) return
+            held = java.lang.ref.WeakReference(tsdf)
+            RerunLiveModels.keep(pack, tsdf)
+        }
+
+        @Synchronized
+        override fun close() {
+            closed = true
+            forget()
+        }
+
+        /** AR placement has no model-result reader. The owner stays reusable for another capture. */
+        @Synchronized
+        fun forget() {
+            held?.get()?.let(RerunLiveModels::forget)
+            held = null
+        }
+    }
+}
+
+/** The cache belongs to the entire demo, so capture -> result can still use the live TSDF. */
+@Composable
+internal fun rememberRerunLiveModels(): RerunLiveModels.Owner {
+    val owner = remember { RerunLiveModels.Owner() }
+    DisposableEffect(owner) {
+        onDispose {
+            owner.close()
+            if (BuildConfig.DEBUG) {
+                val heap = Runtime.getRuntime()
+                Log.d("SceneView/ScanMem", "demo-exit used=${heap.totalMemory() - heap.freeMemory()} " +
+                    "max=${heap.maxMemory()} liveTsdfBytes=0")
+            }
+        }
+    }
+    return owner
 }
 
 /**
