@@ -121,6 +121,48 @@ Save it as `app/src/main/assets/models/toy_car.glb`, as in the
 Never call `modelLoader.createModel*` from a background
 coroutine: Filament calls must run on the main thread, and `rememberModelInstance` handles that.
 
+#### Loading state and errors
+
+`rememberModelInstance` returns `null` while loading or after a failure; use
+`rememberModelLoadState` to tell them apart. Keep the scene visible and overlay its status.
+Incrementing `retry` changes the composition `key` and starts a fresh load of the same path;
+recomposition alone does not retry.
+
+```kotlin
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ModelLoadState
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberModelLoadState
+
+@Composable
+fun ModelScreenWithLoading() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    var retry by remember { mutableIntStateOf(0) }
+    val state = key(retry) { rememberModelLoadState(modelLoader, "models/helmet.glb") }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+            if (state is ModelLoadState.Ready) {
+                ModelNode(modelInstance = state.instance, scaleToUnits = 1f, autoAnimate = true)
+            }
+        }
+        when (state) {
+            is ModelLoadState.Loading -> Text("Loading model")
+            is ModelLoadState.Failed -> Button(onClick = { retry++ }) { Text("Load failed. Retry") }
+            is ModelLoadState.Ready -> Unit
+        }
+    }
+}
+```
+
 ### AR (Android)
 
 ```kotlin
