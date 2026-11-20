@@ -7,23 +7,33 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,7 +42,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,6 +50,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -50,12 +63,10 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.telemetry.SupportResult
@@ -63,12 +74,12 @@ import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 
-/** Who opened the sheet: the user from About, or the moderated interstitial. */
-enum class SupportSheetMode { About, Prompt }
+/** Where the sheet opened; only the moderated prompt offers reminder preferences. */
+enum class SupportSheetMode { About, Prompt, Home, Menu }
 
 /**
- * "Support SceneView": three amounts, one tap each straight into Google Play's purchase
- * sheet. Opened from the About card, and — as [SupportSheetMode.Prompt] — by
+ * "Support SceneView": select an amount, then tip through Google Play's purchase sheet.
+ * Opened from Home, its menu or About, and — as [SupportSheetMode.Prompt] — by
  * [SupportPrompt] after a moment of value, where it adds "Not now" / "Don't ask again".
  *
  * A bottom sheet rather than a screen: the amounts and the answers sit where a thumb
@@ -100,17 +111,28 @@ fun SupportSheet(
     DemoModalBottomSheet(
         onDismissRequest = { dismiss(null) },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = SupportBilling.outcome != SupportBilling.Outcome.Thanks,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         SupportSheetContent(
             mode = mode,
-            availability = if (SupportBilling.qaPrices != null) SupportBilling.Availability.Ready else SupportBilling.availability,
+            availability = when {
+                SupportBilling.qaUnavailable -> SupportBilling.Availability.Unavailable
+                SupportBilling.qaPrices != null -> SupportBilling.Availability.Ready
+                else -> SupportBilling.availability
+            },
             prices = SupportBilling.qaPrices ?: SupportBilling.prices.mapValues { (_, details) -> details.formattedPrice() },
             inFlight = SupportBilling.inFlight,
             outcome = SupportBilling.outcome,
             onTierClick = { tier ->
                 context.findActivity()?.let { SupportBilling.buy(it, tier, analytics) }
             },
-            onOpenCollectiveClick = { openOpenCollective(context) },
+            onOpenCollectiveClick = {
+                analytics.openCollective()
+                SupportBilling.clearOutcome()
+                onDismiss()
+                openOpenCollective(context)
+            },
             onNotNow = { dismiss(SupportResult.NotNow) },
             onOptOut = {
                 analytics.close(SupportResult.Never)
@@ -118,11 +140,12 @@ fun SupportSheet(
                 onOptOut()
             },
             onDone = { dismiss(null) },
+            arPlacement = SupportPrompt.moment == SupportMoment.ArPlacement,
         )
     }
 }
 
-/** Stateless body of [SupportSheet], shared with the previews. */
+/** Body of [SupportSheet], shared with previews; the selected amount survives recreation. */
 @Composable
 fun SupportSheetContent(
     mode: SupportSheetMode,
@@ -135,35 +158,40 @@ fun SupportSheetContent(
     onNotNow: () -> Unit,
     onOptOut: () -> Unit,
     onDone: () -> Unit,
+    arPlacement: Boolean = false,
 ) {
     val navigationBars = WindowInsets.navigationBars.asPaddingValues()
+    var selectedTier by rememberSaveable { mutableStateOf<SupportTier?>(null) }
+    val state = supportSheetState(availability, prices, outcome, selectedTier)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = SceneViewTokens.Space.lg)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = SceneViewTokens.Space.md)
             // The last row clears the gesture pill and a 3-button bar alike.
             .padding(bottom = navigationBars.calculateBottomPadding() + SceneViewTokens.Space.md),
     ) {
-        AnimatedContent(targetState = outcome, label = "support-sheet") { shown ->
-            when (shown) {
-                SupportBilling.Outcome.Thanks -> SupportOutcome(
+        AnimatedContent(targetState = state, contentKey = { it.action }, label = "support-sheet") { shown ->
+            when (shown.action) {
+                SupportSheetAction.Thanks -> SupportOutcome(
                     icon = Icons.Filled.Favorite,
                     title = stringResource(R.string.support_thanks_title),
                     body = stringResource(R.string.support_thanks_body),
                     onDone = onDone,
                 )
-                SupportBilling.Outcome.Pending -> SupportOutcome(
+                SupportSheetAction.Pending -> SupportOutcome(
                     icon = Icons.Outlined.HourglassTop,
                     title = stringResource(R.string.support_pending_title),
                     body = stringResource(R.string.support_pending_body),
                     onDone = onDone,
                 )
-                null, SupportBilling.Outcome.Failed -> SupportAsk(
+                else -> SupportAsk(
                     mode = mode,
-                    availability = availability,
-                    prices = prices,
+                    state = shown,
+                    arPlacement = arPlacement,
                     inFlight = inFlight,
-                    failed = shown == SupportBilling.Outcome.Failed,
+                    failed = outcome == SupportBilling.Outcome.Failed,
+                    onSelectTier = { selectedTier = it },
                     onTierClick = onTierClick,
                     onOpenCollectiveClick = onOpenCollectiveClick,
                     onNotNow = onNotNow,
@@ -177,10 +205,11 @@ fun SupportSheetContent(
 @Composable
 private fun SupportAsk(
     mode: SupportSheetMode,
-    availability: SupportBilling.Availability,
-    prices: Map<String, String?>,
+    state: SupportSheetState,
+    arPlacement: Boolean,
     inFlight: String?,
     failed: Boolean,
+    onSelectTier: (SupportTier) -> Unit,
     onTierClick: (SupportTier) -> Unit,
     onOpenCollectiveClick: () -> Unit,
     onNotNow: () -> Unit,
@@ -189,53 +218,60 @@ private fun SupportAsk(
     Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md)) {
         SupportHeader(
             icon = Icons.Filled.Favorite,
-            title = stringResource(R.string.support_sheet_title),
+            title = stringResource(supportHeadline(mode, if (arPlacement) SupportMoment.ArPlacement else SupportMoment.Sample)),
             body = stringResource(R.string.support_sheet_body),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = SceneViewTokens.Space.sm),
-            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-        ) {
-            SupportTier.entries.forEach { tier ->
-                SupportTierTile(
-                    tier = tier,
-                    price = prices[tier.productId],
-                    featured = tier == SupportTier.Medium,
-                    enabled = availability == SupportBilling.Availability.Ready &&
-                        prices[tier.productId] != null && inFlight == null,
-                    loading = availability == SupportBilling.Availability.Connecting || inFlight == tier.productId,
-                    onClick = { onTierClick(tier) },
-                    modifier = Modifier.weight(1f),
+        when (state.action) {
+            SupportSheetAction.Tip -> {
+                state.selected?.let { selected ->
+                    Button(
+                        onClick = { onTierClick(selected.tier) },
+                        enabled = inFlight == null,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = SceneViewTokens.Layout.touchTarget),
+                    ) {
+                        Text(stringResource(R.string.support_tip, selected.price))
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                ) {
+                    state.offers.forEach { offer ->
+                        SupportTierTile(
+                            offer = offer,
+                            selected = offer == state.selected,
+                            enabled = inFlight == null,
+                            onClick = { onSelectTier(offer.tier) },
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                }
+                if (inFlight != null) {
+                    LoadingIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
+                if (failed) {
+                    Text(
+                        stringResource(R.string.support_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
+                Text(
+                    stringResource(R.string.support_sheet_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
-        }
-        val note = when {
-            failed -> stringResource(R.string.support_failed)
-            availability == SupportBilling.Availability.Unavailable -> stringResource(R.string.support_unavailable)
-            else -> stringResource(R.string.support_sheet_note)
-        }
-        Text(
-            text = note,
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { liveRegion = LiveRegionMode.Polite },
-            style = MaterialTheme.typography.bodySmall,
-            color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        // Without Google Play there is still one way to give; never a second link.
-        if (availability == SupportBilling.Availability.Unavailable) {
-            OutlinedButton(
+            SupportSheetAction.OpenCollective -> Button(
                 onClick = onOpenCollectiveClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = SceneViewTokens.Layout.touchTarget),
-                shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+                modifier = Modifier.fillMaxWidth().heightIn(min = SceneViewTokens.Layout.touchTarget),
             ) {
-                Text(stringResource(R.string.about_support_open_collective))
+                Text(stringResource(R.string.about_support_open_collective), textAlign = TextAlign.Center)
             }
+            else -> LoadingIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
         }
         if (mode == SupportSheetMode.Prompt) {
             Row(
@@ -292,87 +328,54 @@ private fun SupportHeader(icon: ImageVector, title: String, body: String) {
     }
 }
 
-/**
- * One amount. The middle one is filled (`primary`), the two others tonal: a suggested
- * default without a pre-selection, since a tap here is already the purchase.
- */
+/** Select an amount without opening Play; the checked smallest available tier is the default. */
 @Composable
 private fun SupportTierTile(
-    tier: SupportTier,
-    price: String?,
-    featured: Boolean,
+    offer: SupportOffer,
+    selected: Boolean,
     enabled: Boolean,
-    loading: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Play can't take a purchase (no billing, no products): the tiles stay as context but read
-    // as disabled — no primary fill, Material's 38 % content — so nothing looks tappable.
-    val dimmed = !enabled && !loading
-    val container = when {
-        dimmed -> MaterialTheme.colorScheme.surfaceContainerHigh
-        featured -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-    val content = when {
-        dimmed -> MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTENT_ALPHA)
-        featured -> MaterialTheme.colorScheme.onPrimary
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    val label = stringResource(tier.labelRes)
     Surface(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier
-            .heightIn(min = SceneViewTokens.Space.x4l)
-            .semantics { role = Role.Button },
-        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-        color = container,
-        contentColor = content,
+        modifier = modifier.selectable(
+            selected = selected,
+            enabled = enabled,
+            role = Role.RadioButton,
+            onClick = onClick,
+        ),
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(
+            SceneViewTokens.Layout.hairlineWidth,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+        ),
     ) {
         Column(
-            modifier = Modifier.padding(
-                horizontal = SceneViewTokens.Space.sm,
-                vertical = SceneViewTokens.Space.md,
+            modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget).padding(
+                horizontal = SceneViewTokens.Space.xs,
+                vertical = SceneViewTokens.Space.sm,
             ),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {
-            Box(
-                modifier = Modifier.heightIn(min = SceneViewTokens.Layout.dockIconSize + SceneViewTokens.Space.xs),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (loading) {
-                    LoadingIndicator(
-                        modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize + SceneViewTokens.Space.xs),
-                        color = content,
-                    )
-                } else {
-                    // A long local price ("1 099,00 ₹") or a large font scale shrinks to fit
-                    // the tile instead of wrapping or clipping.
-                    Text(
-                        text = price ?: "—",
-                        style = SceneViewTokens.Type.card,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        autoSize = TextAutoSize.StepBased(
-                            minFontSize = TILE_MIN_FONT_SIZE,
-                            maxFontSize = SceneViewTokens.Type.card.fontSize,
-                        ),
-                    )
-                }
-            }
+            Icon(
+                if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                contentDescription = null,
+                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+            )
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                offer.price,
+                style = MaterialTheme.typography.labelLarge,
                 textAlign = TextAlign.Center,
+                maxLines = 1,
                 autoSize = TextAutoSize.StepBased(
-                    minFontSize = TILE_MIN_FONT_SIZE,
-                    maxFontSize = MaterialTheme.typography.labelMedium.fontSize,
+                    minFontSize = 10.sp,
+                    maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
                 ),
             )
+            Text(stringResource(offer.tier.labelRes), style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
         }
     }
 }
@@ -389,7 +392,7 @@ private fun SupportOutcome(icon: ImageVector, title: String, body: String, onDon
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = SceneViewTokens.Layout.touchTarget),
-            shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+            shape = CircleShape,
         ) { Text(stringResource(R.string.support_done)) }
     }
 }
@@ -404,12 +407,19 @@ private fun openOpenCollective(context: Context) {
     logOutboundLink(SUPPORT_OPEN_COLLECTIVE_URL)
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SUPPORT_OPEN_COLLECTIVE_URL)))
+    }.onFailure {
+        Toast.makeText(
+            context,
+            context.getString(R.string.about_no_browser, SUPPORT_OPEN_COLLECTIVE_URL),
+            Toast.LENGTH_LONG,
+        ).show()
     }
 }
 
 const val SUPPORT_OPEN_COLLECTIVE_URL = "https://opencollective.com/sceneview"
 
 private val PreviewPrices = mapOf(
+    SupportTier.Tiny.productId to "$0.99",
     SupportTier.Small.productId to "$2.99",
     SupportTier.Medium.productId to "$9.99",
     SupportTier.Large.productId to "$24.99",
@@ -417,6 +427,7 @@ private val PreviewPrices = mapOf(
 
 @Preview(name = "Prompt · dark", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
 @Preview(name = "Prompt · light")
+@Preview(name = "Prompt · large text", fontScale = 1.3f)
 @Composable
 private fun SupportPromptPreview() {
     SceneViewDemoTheme {
@@ -436,9 +447,3 @@ private fun SupportPromptPreview() {
         }
     }
 }
-
-/** Material 3's disabled content emphasis. */
-private const val DISABLED_CONTENT_ALPHA = 0.38f
-
-/** Smallest size a tile's price or label shrinks to before it ellipsizes. */
-private val TILE_MIN_FONT_SIZE = 10.sp

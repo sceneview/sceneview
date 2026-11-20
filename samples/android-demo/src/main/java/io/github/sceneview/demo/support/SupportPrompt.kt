@@ -38,6 +38,9 @@ object SupportPrompt {
     var valueMoment: Boolean by mutableStateOf(false)
         private set
 
+    internal var moment: SupportMoment by mutableStateOf(SupportMoment.Sample)
+        private set
+
     private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
@@ -54,12 +57,17 @@ object SupportPrompt {
 
     /** A sample closed after [seconds] of use. */
     fun onSampleUsed(seconds: Long) {
-        if (seconds >= VALUE_MOMENT_MIN_SECONDS) valueMoment = true
+        if (seconds >= VALUE_MOMENT_MIN_SECONDS) {
+            // Closing an AR sample also reports its duration; keep the placement headline.
+            if (!valueMoment) moment = SupportMoment.Sample
+            valueMoment = true
+        }
     }
 
     /** The user placed something in AR for the first time in a session. */
     fun onArPlacement() {
         valueMoment = true
+        moment = SupportMoment.ArPlacement
     }
 
     /**
@@ -85,12 +93,17 @@ object SupportPrompt {
         return true
     }
 
+    /** A manual support sheet replaces the automatic ask for this moment of value. */
+    internal fun clearValueMoment() {
+        valueMoment = false
+    }
+
     /** "Not now", a swipe, the scrim, Back: the next window is [MIN_INTERVAL_MILLIS] away. */
     fun dismiss() {
         isShown = false
     }
 
-    /** "Don't ask again": the interstitial never comes back. About keeps the entry. */
+    /** "Don't ask again": the interstitial never comes back. Manual support entries remain available. */
     fun optOut() {
         prefs?.edit { putBoolean(KEY_OPTED_OUT, true) }
         isShown = false
@@ -113,6 +126,7 @@ object SupportPrompt {
             .also { it.edit(commit = true) { clear() } }
         isShown = false
         valueMoment = false
+        moment = SupportMoment.Sample
     }
 
     internal fun shouldOffer(

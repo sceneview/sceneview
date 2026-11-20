@@ -2,8 +2,11 @@ package io.github.sceneview.demo.telemetry
 
 /**
  * The demo app's analytics taxonomy — every event the app may log, with its exact name and
- * parameters. **Shared word for word with the iOS demo**: rename nothing here without renaming
- * it there, or the two platforms stop being comparable in one dashboard.
+ * parameters. The shared events match the iOS demo; coordinate changes to those names there.
+ * Android only: support `entry_source`, `home`/`menu` shown sources, purchase launched/pending
+ * events, and the `tier_tiny`,
+ * `purchase_cancelled`, `purchase_failed`, `purchase_already_owned`, `purchase_pending` and
+ * `open_collective` support results.
  *
  * Event and parameter names are snake_case and at most [MAX_NAME] characters, user-property
  * names at most [MAX_USER_PROPERTY_NAME] (GA4's limits); string values are cut to [MAX_VALUE]
@@ -106,11 +109,25 @@ sealed class AnalyticsEvent(val name: String) {
     }
 
     data class SupportPromptShown(val source: SupportPromptSource) : AnalyticsEvent("support_prompt_shown") {
-        override fun rawParams() = mapOf("source" to source.value)
+        override fun rawParams() = mapOf("source" to source.value, "entry_source" to source.entrySource)
     }
 
-    data class SupportPromptResult(val result: SupportResult) : AnalyticsEvent("support_prompt_result") {
-        override fun rawParams() = mapOf("result" to result.value)
+    data class SupportPurchaseLaunched(val productId: String, val source: SupportPromptSource) :
+        AnalyticsEvent("support_prompt_purchase_launched") {
+        override fun rawParams() = mapOf("product_id" to productId, "entry_source" to source.entrySource)
+    }
+
+    data class SupportPurchasePending(val productId: String, val source: SupportPromptSource) :
+        AnalyticsEvent("support_prompt_purchase_pending") {
+        override fun rawParams() = mapOf("product_id" to productId, "entry_source" to source.entrySource)
+    }
+
+    data class SupportPromptResult(val result: SupportResult, val source: SupportPromptSource? = null) :
+        AnalyticsEvent("support_prompt_result") {
+        override fun rawParams() = buildMap {
+            put("result", result.value)
+            source?.let { put("entry_source", it.entrySource) }
+        }
     }
 
     data class PushOpened(val campaign: String, val sampleId: String) : AnalyticsEvent("push_opened") {
@@ -199,24 +216,31 @@ enum class PromptResult(val value: String) {
 }
 
 /** How the support sheet was opened, for `support_prompt_shown.source`. */
-enum class SupportPromptSource(val value: String) {
-    Auto("auto"),
-    Settings("settings"),
+enum class SupportPromptSource(val value: String, val entrySource: String) {
+    // Preserve existing shown.source values for historical reports.
+    Auto("auto", "prompt"),
+    Settings("settings", "about"),
+    Home("home", "home"),
+    Menu("menu", "menu"),
 }
 
 /** The final answer for one display of the support sheet. */
 enum class SupportResult(val value: String) {
+    TierTiny("tier_tiny"),
     TierSmall("tier_small"),
     TierMedium("tier_medium"),
     TierLarge("tier_large"),
     PurchaseCancelled("purchase_cancelled"),
     PurchaseFailed("purchase_failed"),
+    PurchaseAlreadyOwned("purchase_already_owned"),
+    PurchasePending("purchase_pending"),
+    OpenCollective("open_collective"),
     NotNow("not_now"),
     Never("never"),
     Dismissed("dismissed");
 
     internal val isCompletedPurchase: Boolean
-        get() = this == TierSmall || this == TierMedium || this == TierLarge
+        get() = this == TierTiny || this == TierSmall || this == TierMedium || this == TierLarge
 }
 
 /** User properties, set once and updated when they change. Values are the strings listed. */
