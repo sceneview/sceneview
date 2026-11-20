@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Website: lighter interactive homepage models.** The toaster and armchair now load as meshopt-compressed variants (`gltfpack 0.25.0 -cc -vp 16 -vt 14 -vn 12 -ke`, no simplification): 83 % and 65 % smaller, every triangle kept. The armchair's textures are resized to 1024² for the homepage preview, and its normal map is stored as a high-quality JPEG instead of a lossless PNG.

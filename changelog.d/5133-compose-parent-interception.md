@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Compose parent drag regression coverage ([#5133](https://github.com/sceneview/sceneview/issues/5133)).** Robolectric tests now exercise SceneView's surface touch listeners through `AndroidView` inside a `verticalScroll` column: opting in to `disallowParentIntercept` keeps the drag without scrolling, while the default lets the parent scroll and cancels the surface's touch stream. Both `SurfaceView` and `TextureView` are covered.

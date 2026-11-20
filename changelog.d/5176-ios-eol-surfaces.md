@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-- Mark SwiftUI (iOS, macOS, visionOS), Flutter and React Native as end of life at 4.68.0 across public documentation, website and agent references. Keep Android, web and Compose Multiplatform desktop listed as maintained, pin Swift Package installs to exact 4.68.0, and freeze retired Flutter and React Native package/demo versions during version synchronization. The retained iOS/macOS demo app has no new builds after 4.69.7.
-- Keep MCP setup, roadmap and project analysis aligned with the last retired-platform release, retain product descriptions alongside short end-of-life notices, and test frozen package and SwiftPM version rules in CI.

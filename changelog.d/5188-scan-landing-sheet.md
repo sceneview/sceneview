@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **3D Scan (demo): the landing's Settings sheet is readable over the scan list ([#5188](https://github.com/sceneview/sceneview/issues/5188)).** The sheet is opaque `surface-container` on this page, so the cards no longer read through its text, and the cards fade into the page before they reach the Settings button instead of showing their titles through its glass mid-scroll.
