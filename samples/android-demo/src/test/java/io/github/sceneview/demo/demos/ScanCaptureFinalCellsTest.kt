@@ -4,6 +4,7 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseSamples
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,7 +29,8 @@ class ScanCaptureFinalCellsTest {
             scope, owner, rawDepth = true,
         )
         var now = 0L
-        val map = ScanDenseMap(maxPoints = 20_000, clock = { now })
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { now }, liveDispatcher = Dispatchers.Unconfined,
+            beforeBuild = { CompletableDeferred<Unit>().await() })
         // Install the pure map without ARCore sensor images or a racing worker.
         ScanCapture::class.java.getDeclaredField("dense").apply { isAccessible = true }.set(capture, map)
         try {
@@ -42,7 +44,7 @@ class ScanCaptureFinalCellsTest {
             val samples = DenseSamples(8_000, positions, FloatArray(positions.size), IntArray(8_000), ByteArray(8_000))
             map.add(samples)
             now += ScanDenseMap.LIVE_INTERVAL_NS
-            map.add(samples, deferLive = true)
+            map.add(samples)
             assertTrue(map.live == null)
             val cells = map.coveredCells()
             assertTrue(cells.isNotEmpty())

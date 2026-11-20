@@ -46,8 +46,6 @@ import io.github.sceneview.demo.demos.internal.YuvFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.joinAll
@@ -132,9 +130,7 @@ internal class ScanCapture(
     private var dense = if (rawDepth) ScanDenseMap(maxPoints = budget.densePoints) else null
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
-    private var liveJob: Job? = null
     private val denseGate = Mutex()
-    private var depthSlotStarted = Long.MIN_VALUE
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
     private val frameCounters = ScanFrameCounters()
     /** Cumulative intake and TSDF losses; survives releasing the dense map and live model. */
@@ -339,7 +335,6 @@ internal class ScanCapture(
             depth.close()
             return null
         }
-        depthSlotStarted = System.nanoTime()
         depthGate.mark(frame.timestamp)
         val confidence = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
         return ScanDepth(depth, confidence, frame.camera.pose.toScanPose(), frame.timestamp)
@@ -402,8 +397,6 @@ internal class ScanCapture(
     fun fuseDepth(depth: ScanDepth, image: ScanImage?) {
         if (closed.get()) return
         val dense = dense ?: return
-        // Budget from acquisition, including the main-thread image copy and worker queue.
-        val slotAtNanos = if (depthSlotStarted == Long.MIN_VALUE) System.nanoTime() else depthSlotStarted
         if (image == null) {
             intake.count(Outcome.NoImage)
             frameCounters.unavailableDepth()
@@ -420,21 +413,11 @@ internal class ScanCapture(
         // The floor the live map's "to redo" cells are judged from: ARCore's, stable as the phone moves.
         dense.floorPlaneY = ArDebugGeometry.floorPlaneHeight(trace.lastPlanes())
         fusing.set(true)
-        if (liveJob == null) liveJob = scope.launch(Dispatchers.Default) {
-            while (!closed.get()) {
-                val pending = denseGate.withLock {
-                    if (!fusing.get()) dense.advancePendingLive()
-                    dense.hasPendingLive && !fusing.get()
-                }
-                // Spend idle time on the pending deadline; back off when there is no work.
-                delay(if (pending) 1 else 10)
-            }
-        }
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
                 val (samples, stats) = denseGate.withLock {
                     val samples = dense.project(frame, depth.nanos, farM = preset.farM)
-                    samples to dense.add(samples, deferLive = true, slotAtNanos = slotAtNanos)
+                    samples to dense.add(samples)
                 }
                 intake.count(
                     when {
@@ -495,8 +478,6 @@ internal class ScanCapture(
         if (closed.get()) return null
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
-        liveJob?.cancelAndJoin()
-        liveJob = null
         dense?.discardPendingLive()
         model?.join()
         val finalCells = if (finishedEvents == null) {
@@ -585,9 +566,8 @@ internal class ScanCapture(
         if (!closed.compareAndSet(false, true)) return
         val started = System.nanoTime()
         logMemory("exit-before-release")
-        liveJob?.cancel()
-        val pendingLiveJob = liveJob
-        liveJob = null
+        val denseMap = dense
+        val pendingLiveJob = denseMap?.close()
         val depthJob = fuseJob
         fuseJob = null
         val modelJob = model?.close(keepTransferred = keepModel)
@@ -600,6 +580,7 @@ internal class ScanCapture(
         // dense map until it returns; no thread mutates that map to try to free it early.
         releaseJob = releaseScanCapture(jobs + listOfNotNull(depthJob, pendingLiveJob, modelJob)) {
             val cleanupStarted = System.nanoTime()
+            denseMap?.releaseLiveBuffers()
             jobs.clear()
             recordedFrames.clear()
             poses.clear()

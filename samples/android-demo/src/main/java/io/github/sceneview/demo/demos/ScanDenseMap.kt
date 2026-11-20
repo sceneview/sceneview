@@ -5,7 +5,6 @@ import io.github.sceneview.demo.demos.internal.CoverageGrid
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFuseStats
-import io.github.sceneview.demo.demos.internal.CooperativeBuild
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.DenseSamples
@@ -19,6 +18,17 @@ import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExecutorCoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlin.coroutines.coroutineContext
 
 /**
  * A depth scan's dense map as the capture screen sees it (#4629): [DenseFusion] on this phone's
@@ -32,17 +42,20 @@ internal class ScanDenseMap(
     maxPoints: Int = ScanMemoryBudget(Runtime.getRuntime().maxMemory()).densePoints,
     maxLevel: Int = DenseFusion.MAX_LEVEL,
     private val clock: () -> Long = System::nanoTime,
+    liveDispatcher: CoroutineDispatcher? = null,
+    /** Test seam: virtual build cost or a suspended build, before reading the owned snapshot. */
+    private val beforeBuild: suspend () -> Unit = {},
+    private val fuse: (DenseFusion, DenseSamples) -> DenseFuseStats = { map, samples -> map.add(samples) },
 ) {
     val fusion = DenseFusion(maxPoints = maxPoints, maxLevel = maxLevel)
 
-    /** Retained primitive storage of the map and its current live snapshot, for memory tests. */
+    /** Includes both copied buffers, their shared workspace, and the published layer. */
     internal val storageBytes: Long
-        get() {
-            val layer = live
-            val ready = readyLive
-            val pendingBytes = if (ready != null) snapshotBytes(ready) else liveDrawn?.let { cloudBytes(it) } ?: 0L
-            return fusion.storageBytes + pendingBytes + (layer?.let { snapshotBytes(it) } ?: 0L)
-        }
+        get() = fusion.storageBytes + snapshotStorageBytes + (live?.let { snapshotBytes(it) } ?: 0L)
+
+    internal val snapshotStorageBytes: Long
+        get() = (snapshots?.sumOf { it.storageBytes } ?: 0L) + (snapshots?.first()?.workspaceBytes ?: 0L) +
+            coverageScratch.storageBytes
 
     private val points = AtomicInteger(0)
     private val frame = AtomicInteger(0)
@@ -53,41 +66,32 @@ internal class ScanDenseMap(
     @Volatile
     private var full = false
 
-    /**
-     * The last complete live view. Every stage yields on the fusion worker; a build keeps its
-     * original deadline and array view through compaction. Capture also pumps it while depth is
-     * stale. The normal budget targets one second; only a build older than two seconds drains.
-     */
-    @Volatile
-    var live: ReplayDenseLayer? = null
-        private set
-    private var liveAtNanos = Long.MIN_VALUE
-    private var liveBuild: CooperativeBuild<ReplayDenseLayer>? = null
-    private var liveDrawn: DenseCloud? = null
-    private var readyLive: ReplayDenseLayer? = null
-    private var liveSourceAtNanos = Long.MIN_VALUE
+    /** One volatile hand-off publishes the layer and its source timestamp together. */
+    private data class Published(val layer: ReplayDenseLayer, val nanos: Long)
+    @Volatile private var published: Published? = null
+    val live: ReplayDenseLayer? get() = published?.layer
+    private val publicationGate = Any()
+    private val closed = AtomicBoolean(false)
+    private val buildRoot = SupervisorJob()
+    private val ownedDispatcher: ExecutorCoroutineDispatcher? = if (liveDispatcher == null) {
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "SceneView-ScanPreview").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 }
+        }.asCoroutineDispatcher()
+    } else null
+    private val buildScope = CoroutineScope(buildRoot + (liveDispatcher ?: checkNotNull(ownedDispatcher)))
+    @Volatile private var buildJob: Job? = null
+    @Volatile private var snapshots: Array<DenseFusion.LiveSnapshot>? = null
+    private var nextSnapshot = 0
+    private var buildAtNanos = Long.MIN_VALUE
+    private val coverageScratch = CoverageGrid.KeyScratch()
     private val ageSinceLogNs = AtomicLong()
     private val timings = ScanDenseTimings()
-    internal val hasPendingLive: Boolean get() = liveBuild != null
+    internal val hasPendingLive: Boolean get() = buildJob?.isCompleted == false
     internal val snapshotAgeNs: Long
-        get() {
-            val since = if (liveSourceAtNanos == Long.MIN_VALUE) buildAtNanos else liveSourceAtNanos
-            return if (since == Long.MIN_VALUE) 0L else (clock() - since).coerceAtLeast(0L)
-        }
-    private var liveEye: DebugPose? = null
-    private var buildAtNanos = Long.MIN_VALUE
-    private var buildAdds = 0
-    private var lastSlotStarted = Long.MIN_VALUE
-    private var buildVersion = 0
-    private var buildRestarted = false
-    internal var lastBuildSpanNs = 0L
+        get() = published?.let { (clock() - it.nanos).coerceAtLeast(0L) } ?: 0L
+    @Volatile internal var lastBuildSpanNs = 0L
         private set
-    internal var lastBuildAdds = 0
-        private set
-    internal var maxLiveBatchNanos = 0L
-        private set
-    /** CPU split for the last add and its deferred completion; diagnostics only. */
-    internal val work = ScanDenseWork()
+    internal val work = ScanDenseWork(clock)
 
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
     private var eye: DebugPose? = null
@@ -149,18 +153,17 @@ internal class ScanDenseMap(
     val frames: Int get() = frame.get()
 
     /** Merges one depth frame's [samples], then takes [live] when it is due. On the worker. */
-    fun add(samples: DenseSamples, deferLive: Boolean = false, slotAtNanos: Long = Long.MIN_VALUE): DenseFuseStats {
-        work.clear()
+    fun add(samples: DenseSamples): DenseFuseStats {
         val started = clock()
         val compactions = fusion.compactions
-        val stats = work.measure(ScanDenseWork.FUSE) { fusion.add(samples) }
+        val stats = work.measure(ScanDenseWork.FUSE) { fuse(fusion, samples) }
         if (fusion.compactions != compactions) adjustedAtNanos = clock()
         full = fusion.saturated
         points.set(stats.confirmed)
         shown.set(rising.update(stats.confirmed))
         frame.set(fusion.frames)
-        lastSlotStarted = if (slotAtNanos == Long.MIN_VALUE) started else slotAtNanos
-        snapshotLive(lastSlotStarted, countAdd = true, deferPublication = deferLive)
+        recordLiveAge()
+        snapshotLive()
         val elapsed = (clock() - started).coerceAtLeast(0L)
         val ms = elapsed / NANOS_PER_MS
         timings.add(elapsed)
@@ -200,125 +203,106 @@ internal class ScanDenseMap(
         val age = takeSnapshotAgePeakNs()
         return "dense kept ${fusion.count} saved $count drawn ${live?.cloud?.count ?: 0} " +
             "levels $levels compactions ${fusion.compactions} full $full " +
-            timings.line() + " live span ${ms(lastBuildSpanNs)} ms/$lastBuildAdds adds " +
-            "live age max ${ms(age)} ms; pin copy max ${ms(fusion.maxLiveDetachNanos)} ms; " +
-            "batch max ${ms(maxLiveBatchNanos)} ms; index clear ${ms(fusion.liveIndexClearNanos)} ms; ${work.line()}"
+            timings.line() + " live age max ${ms(age)} ms; ${work.line()}"
     }
 
-    /** Also used by the JVM probe so a publication cannot hide the preceding age peak. */
+    private fun recordLiveAge() {
+        ageSinceLogNs.accumulateAndGet(snapshotAgeNs, ::maxOf)
+    }
+
     internal fun takeSnapshotAgePeakNs(): Long = maxOf(ageSinceLogNs.getAndSet(0L), snapshotAgeNs)
 
-    /** Explicit drain for callers that require a complete view (never called per capture add). */
-    fun finishPendingLive() {
-        if (liveBuild != null) advanceLive(Long.MAX_VALUE, deferred = true)
+    /** QA and explicit end states await the last snapshot; capture adds never call this. */
+    suspend fun finishPendingLive() { buildJob?.join() }
+
+    /** Stop publication immediately; callers join this alongside the fusion job before release. */
+    fun close(): Job {
+        synchronized(publicationGate) {
+            closed.set(true)
+            buildRoot.cancel()
+        }
+        return buildRoot
     }
 
-    /** Idle pump, serialized with adds but outside the depth gate; it never starts a new build. */
-    fun advancePendingLive() {
-        if (liveBuild == null) return
-        snapshotLive(lastSlotStarted, countAdd = false)
+    /** No buffer is released under a CPU reader, even when cancellation cannot interrupt it. */
+    suspend fun discardPendingLive() {
+        close().join()
+        // Saving or retrying still displays the last complete layer. Exit drops it below.
+        releaseBuffers(clearLayer = false)
     }
 
-    /** Capture stopped: final reads use fusion, so no unfinished preview needs to retain arrays. */
-    fun discardPendingLive() {
-        liveBuild = null
-        liveDrawn = null
-        readyLive = null
-        buildAtNanos = Long.MIN_VALUE
-        fusion.releaseLiveRead()
+    /** Called only after both fusion and preview workers have joined. */
+    internal fun releaseLiveBuffers() = releaseBuffers(clearLayer = true)
+
+    private fun releaseBuffers(clearLayer: Boolean) {
+        check(buildRoot.isCompleted)
+        snapshots = null
+        coverageScratch.release()
+        if (clearLayer) published = null
+        buildJob = null
+        ownedDispatcher?.close()
     }
 
-    /** Final floor coverage is always read from fusion, independently of the live build. */
     fun coveredCells(): LongArray = CoverageGrid.coveredKeys(
         fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS),
     )
 
-    private fun snapshotLive(slotStarted: Long, countAdd: Boolean, deferPublication: Boolean = false) {
+    /** On the fusion worker, under capture's dense gate: the only copy shared with preview. */
+    private fun snapshotLive() {
         val now = clock()
-        if (liveBuild == null) {
-            if (!countAdd || liveAtNanos != Long.MIN_VALUE && now - liveAtNanos < LIVE_INTERVAL_NS) return
-            liveAtNanos = now
-            buildAtNanos = now
-            buildAdds = 0
-            liveEye = eye
-            buildRestarted = false
-            buildVersion = fusion.topologyVersion
-            liveBuild = CooperativeBuild { pause -> assembleLive(pause) }
+        if (closed.get() || hasPendingLive || buildAtNanos != Long.MIN_VALUE && now - buildAtNanos < LIVE_INTERVAL_NS) return
+        val buffers = snapshots ?: run {
+            val first = DenseFusion.LiveSnapshot(fusion)
+            arrayOf(first, DenseFusion.LiveSnapshot(fusion, first)).also { snapshots = it }
         }
-        if (countAdd) buildAdds++
-        // Refresh a young, small view once if compaction changed it. Reserve three quarters
-        // of the deadline for the replacement. Thereafter the pinned array view wins: even a
-        // compaction on every add cannot reset its progress or move its original deadline.
-        if (!buildRestarted && fusion.count <= LIVE_DRAWN_SURFELS &&
-            buildVersion != fusion.topologyVersion && now - buildAtNanos < LIVE_INTERVAL_NS / 4
-        ) {
-            fusion.releaseLiveRead()
-            liveDrawn = null
-            readyLive = null
-            liveBuild = CooperativeBuild { pause -> assembleLive(pause) }
-            buildVersion = fusion.topologyVersion
-            buildRestarted = true
+        val read = buffers[nextSnapshot]
+        nextSnapshot = 1 - nextSnapshot
+        val copyAt = clock()
+        read.copyFrom(fusion)
+        timings.copy((clock() - copyAt).coerceAtLeast(0L))
+        val at = eye
+        val floor = LiveCoverageGround.floorHint(floorPlaneY, firstEyeY)
+        buildAtNanos = now
+        buildJob = buildScope.launch {
+            beforeBuild()
+            coroutineContext.ensureActive()
+            val context = coroutineContext
+            val layer = assembleLive(read, at, floor) { context.ensureActive() }
+            val ended = clock()
+            timings.build((ended - now).coerceAtLeast(0L))
+            lastBuildSpanNs = ended - now
+            synchronized(publicationGate) {
+                context.ensureActive()
+                if (!closed.get() && layer.whole.isNotEmpty()) {
+                    recordLiveAge()
+                    published = Published(layer, now)
+                    recordLiveAge()
+                }
+            }
         }
-        val budget = ScanLiveDeadline.budget(now - buildAtNanos, now - slotStarted, countAdd)
-        if (budget > 0L) advanceLive(budget, deferred = !countAdd, deferPublication = deferPublication)
     }
 
-    private fun advanceLive(budget: Long, deferred: Boolean, deferPublication: Boolean = false) {
-        val started = clock()
-        work.resume()
-        val layer = try { readyLive ?: liveBuild?.advance(budget, clock, started) } finally { work.pause() }
-        maxLiveBatchNanos = maxOf(maxLiveBatchNanos, liveBuild?.maxBatchNanos ?: 0L)
-        val ended = clock()
-        if (deferred) timings.deferred((ended - started).coerceAtLeast(0L))
-        if (layer == null) {
-            ageSinceLogNs.accumulateAndGet(if (liveSourceAtNanos == Long.MIN_VALUE) ended - buildAtNanos else ended - liveSourceAtNanos, ::maxOf)
-            return
+    /** All inputs belong to the copied buffer; no fusion arrays or dense gate are read here. */
+    private fun assembleLive(read: DenseFusion.LiveSnapshot, at: DebugPose?, floor: Float, checkActive: () -> Unit): ReplayDenseLayer {
+        val drawn = work.measure(ScanDenseWork.MERGE) {
+            if (at != null) read.liveCloud(at.x, at.y, at.z, LIVE_DRAWN_SURFELS) else read.cloud(LIVE_MAX_SURFELS)
         }
-        // A small deferred build may fit its very first add. Publish it from the idle pump
-        // instead, preserving the caller's deferral without draining or repeating any stage.
-        if (deferPublication && readyLive == null && buildAdds == 1 && ended - buildAtNanos < LIVE_INTERVAL_NS) {
-            readyLive = layer
-            return
+        checkActive()
+        val whole = work.measure(ScanDenseWork.WHOLE) { read.cloudPositions(DenseFusion.MIN_VIEWS, LIVE_MAX_SURFELS) }
+        val covered = work.measure(ScanDenseWork.COVERED) { CoverageGrid.coveredKeys(whole, scratch = coverageScratch) }
+        checkActive()
+        val weak = work.measure(ScanDenseWork.WEAK) {
+            if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
+                LiveCoverageGround.weakCells(read.surfels(), read.voxelM, covered, CoverageGrid.CELL_METRES, floor)
+            }
         }
-        ageSinceLogNs.accumulateAndGet(if (liveSourceAtNanos == Long.MIN_VALUE) ended - buildAtNanos else ended - liveSourceAtNanos, ::maxOf)
-        if (layer.whole.isNotEmpty()) {
-            live = layer
-            liveSourceAtNanos = buildAtNanos
+        checkActive()
+        val mesh = work.measure(ScanDenseWork.MESH) {
+            DenseSurfels.mesh(drawn, read.voxelM, DenseSurfels.LIVE_HALF_SIDE_VOXELS, DenseFusion.LEVEL_LIMIT)
         }
-        lastBuildSpanNs = ended - buildAtNanos
-        lastBuildAdds = buildAdds
-        buildAtNanos = Long.MIN_VALUE
-        liveBuild = null
-        liveDrawn = null
-        readyLive = null
-        fusion.releaseLiveRead()
-    }
-
-    private suspend fun assembleLive(pause: suspend () -> Unit): ReplayDenseLayer {
-        work.stage(ScanDenseWork.MERGE)
-        val read = fusion.liveRead()
-        val at = liveEye
-        val drawn = if (at != null) {
-            read.buildLiveCloud(at.x, at.y, at.z, LIVE_DRAWN_SURFELS, 1, pause)
-        } else {
-            // Before projection (unit tests and sparse startup), retain the same stride cloud.
-            read.cloudSliced(LIVE_MAX_SURFELS, pause)
-        }
-        liveDrawn = drawn
-        work.stage(ScanDenseWork.WHOLE)
-        val whole = read.cloudPositionsSliced(DenseFusion.MIN_VIEWS, LIVE_MAX_SURFELS, pause)
-        work.stage(ScanDenseWork.COVERED)
-        val covered = CoverageGrid.coveredKeysSliced(whole, pause)
-        work.stage(ScanDenseWork.WEAK)
-        val weak = if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
-            LiveCoverageGround.weakCellsSliced(read.surfels(), read.voxelM, covered, CoverageGrid.CELL_METRES,
-                LiveCoverageGround.floorHint(floorPlaneY, firstEyeY), pause)
-        }
-        work.stage(ScanDenseWork.MESH)
-        val mesh = DenseSurfels.meshSliced(drawn, read.voxelM, DenseSurfels.LIVE_HALF_SIDE_VOXELS, DenseFusion.LEVEL_LIMIT, pause)
-        val offsets = DenseSurfels.cornerOffsetsSliced(mesh, pause)
-        work.stage(ScanDenseWork.ATLAS)
-        val atlas = DenseSurfels.atlasSliced(drawn, ReplayDenseLayer.DENSE_FALLBACK_COLOR, pause)
+        val offsets = work.measure(ScanDenseWork.MESH) { DenseSurfels.cornerOffsets(mesh) }
+        checkActive()
+        val atlas = work.measure(ScanDenseWork.ATLAS) { DenseSurfels.atlas(drawn, ReplayDenseLayer.DENSE_FALLBACK_COLOR) }
         return ReplayDenseLayer(drawn, read.voxelM, mesh, atlas, coveredCells = covered, whole = whole, weakCells = weak,
             offsets = offsets)
     }
@@ -341,9 +325,6 @@ internal class ScanDenseMap(
         private const val SNAPSHOT_OVERHEAD_BYTES = 2048L
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_INTERVAL_NS = 1_000_000_000L
-
-        /** Retained for source compatibility with existing freshness checks. */
-        const val LIVE_MAX_ADDS = 3
 
         /**
          * The map's surfels a live snapshot reads at most for the floor cells it covers, and

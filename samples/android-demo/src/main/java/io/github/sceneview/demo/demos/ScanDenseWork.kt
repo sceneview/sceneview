@@ -1,34 +1,19 @@
 package io.github.sceneview.demo.demos
 
-/** CPU timings exclude time suspended between slices. Never used to change snapshot contents. */
-internal class ScanDenseWork {
-    val nanos = LongArray(7)
-    private val loggedNanos = java.util.concurrent.atomic.AtomicLongArray(7)
-    private var active = MERGE
-    private var started = 0L
-    private var running = false
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicLongArray
 
-    fun clear() = nanos.fill(0)
-
-    fun resume() { running = true; started = System.nanoTime() }
-    fun pause() {
-        if (running) record(active, System.nanoTime() - started)
-        running = false
-    }
-    fun stage(stage: Int) { pause(); active = stage; resume() }
+/** Independent stage totals from fusion and preview; no shared active-stage state. */
+internal class ScanDenseWork(private val clock: () -> Long = System::nanoTime) {
+    private val loggedNanos = AtomicLongArray(7)
 
     fun <T> measure(stage: Int, block: () -> T): T {
-        val started = System.nanoTime()
-        try { return block() } finally { record(stage, System.nanoTime() - started) }
-    }
-
-    private fun record(stage: Int, elapsed: Long) {
-        nanos[stage] += elapsed
-        loggedNanos.addAndGet(stage, elapsed)
+        val started = clock()
+        try { return block() } finally { loggedNanos.addAndGet(stage, (clock() - started).coerceAtLeast(0L)) }
     }
 
     fun line(): String = "ScanDenseWork " + listOf("fuse", "merge", "whole", "covered", "weak", "mesh", "atlas")
-        .mapIndexed { i, name -> "$name=${"%.1f".format(java.util.Locale.ROOT, loggedNanos.getAndSet(i, 0L) / 1e6)}" }.joinToString(" ")
+        .mapIndexed { i, name -> "$name=${"%.1f".format(Locale.ROOT, loggedNanos.getAndSet(i, 0L) / 1e6)}" }.joinToString(" ")
 
     companion object {
         const val FUSE = 0
@@ -41,14 +26,15 @@ internal class ScanDenseWork {
     }
 }
 
-/** Logging reads and resets an interval atomically while the worker continues to record. */
+/** Logging resets one interval atomically while both workers continue to record. */
 internal class ScanDenseTimings {
-    private val totals = LongArray(2)
-    private val maxima = LongArray(2)
-    private val counts = LongArray(2)
+    private val totals = LongArray(3)
+    private val maxima = LongArray(3)
+    private val counts = LongArray(3)
 
     @Synchronized fun add(nanos: Long) = record(0, nanos)
-    @Synchronized fun deferred(nanos: Long) = record(1, nanos)
+    @Synchronized fun copy(nanos: Long) = record(1, nanos)
+    @Synchronized fun build(nanos: Long) = record(2, nanos)
 
     private fun record(kind: Int, nanos: Long) {
         totals[kind] += nanos
@@ -57,13 +43,10 @@ internal class ScanDenseTimings {
     }
 
     @Synchronized fun line(): String {
-        val means = totals.indices.map { i ->
-            "%.1f".format(java.util.Locale.ROOT, totals[i] / counts[i].coerceAtLeast(1) / 1e6)
-        }
-        val max = maxima.map { "%.1f".format(java.util.Locale.ROOT, it / 1e6) }
-        // Keep the replay analyzer's existing `add N ms (max N)` fields readable.
+        val means = totals.indices.map { i -> "%.1f".format(Locale.ROOT, totals[i] / counts[i].coerceAtLeast(1) / 1e6) }
+        val max = maxima.map { "%.1f".format(Locale.ROOT, it / 1e6) }
         val line = "add ${means[0]} ms (max ${max[0]}) mean; " +
-            "deferred snapshot mean ${means[1]} ms (max ${max[1]})"
+            "snapshot copy mean ${means[1]} ms (max ${max[1]}); build duration mean ${means[2]} ms (max ${max[2]})"
         totals.fill(0); maxima.fill(0); counts.fill(0)
         return line
     }

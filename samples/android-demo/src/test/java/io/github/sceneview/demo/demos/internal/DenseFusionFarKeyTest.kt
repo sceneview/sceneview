@@ -111,7 +111,7 @@ class DenseFusionFarKeyTest {
             val walk = ScanWalkthrough(yawSteps = YAW_STEPS, revisit = false)
             var now = 0L
             val budget = DenseFusion.budgetFor(PHONE_HEAP)
-            val dense = ScanDenseMap(maxPoints = budget, clock = { now })
+            val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = budget, clock = { now })
             val fusion = DenseFusion(maxPoints = budget)
             val turning = Figures("turning at the stops", MIN_HELD, STRIDE_COVER_TURNING)
             val roomFrames = walk.frameCount / ScanWalkthrough.ROOMS

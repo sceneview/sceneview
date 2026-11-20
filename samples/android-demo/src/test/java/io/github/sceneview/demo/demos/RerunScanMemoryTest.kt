@@ -168,9 +168,15 @@ class RerunScanMemoryTest {
             }
             val thumbnail = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
             (capture.live.thumbnails as MutableMap<String, Bitmap>)["test.jpg"] = thumbnail
+            val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = Dispatchers.Unconfined)
+            map.add(ScanLiveFreshnessTest.patch(8_000))
+            assertTrue(map.snapshotStorageBytes > 0)
+            ScanCapture::class.java.getDeclaredField("dense").apply { isAccessible = true }.set(capture, map)
             capture.close()
             capture.close()
             capture.releaseJob?.join()
+            assertEquals(0L, map.snapshotStorageBytes)
+            assertNull(map.live)
             assertEquals(1, reader.mapPointCount)
             assertEquals(1, reader.observationCount)
             assertNull(capture.trace.journal)

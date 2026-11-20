@@ -43,7 +43,7 @@ class ScanDenseDeterminismTest {
         private fun fingerprints(): List<String> = buildList {
             for (budget in listOf(600_000, 2_000)) {
                 var now = 0L
-                val map = ScanDenseMap(maxPoints = budget, clock = { now })
+                val map = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = budget, clock = { now })
                 ReconstructionBench.QUICK.frames().forEachIndexed { i, frame ->
                     now += 100_000_000L
                     map.add(map.project(frame, now))
