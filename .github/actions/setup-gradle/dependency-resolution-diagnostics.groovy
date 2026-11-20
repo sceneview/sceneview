@@ -21,6 +21,10 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
         @Input Property<Boolean> getRefresh()
     }
 
+    static final int MAX_MODULES = 8
+    static final int MAX_URLS = 16
+    static final long PROBE_DEADLINE_NANOS = 45_000_000_000L
+
     static String safe(Object value) {
         String.valueOf(value).replaceAll(/[\p{Cntrl}]/, ' ').take(4096)
     }
@@ -76,7 +80,9 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
         def modules = new LinkedHashMap<String, List<String>>()
         def urls = new LinkedHashSet<String>()
         failures.findAll { it =~ /(?i)Could not (find|resolve|GET|HEAD)\b/ }.each { message ->
-            def coordinates = message =~ /([A-Za-z0-9_][A-Za-z0-9_.-]*):([A-Za-z0-9_][A-Za-z0-9_.-]*):([A-Za-z0-9_][A-Za-z0-9_.+~-]*)/
+            // Only the coordinates Gradle reports as missing: right after "Could not find/resolve"
+            // or inside parentheses. Project paths (":a:b") and "Required by" parents are skipped.
+            def coordinates = message =~ /(?:(?i:Could not (?:find|resolve))\s+|\()(?<!:)([A-Za-z0-9_][A-Za-z0-9_.-]*):([A-Za-z0-9_][A-Za-z0-9_.-]*):([A-Za-z0-9_][A-Za-z0-9_.+~-]*)/
             coordinates.each { match -> addModule(modules, match[1], match[2], match[3].replaceAll(/[.,;]+$/, '')) }
             (message =~ /https:\/\/[^\s'"<>\)]+/).each { match ->
                 URI uri = repositoryUri(match.toString())
@@ -88,6 +94,8 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
                 }
             }
         }
+        // A blackholed repository makes Gradle report every dependency: probe a bounded sample.
+        while (modules.size() > MAX_MODULES) modules.remove(modules.keySet().last())
         modules.values().each { module ->
             String path = "${module[0].replace('.', '/')}/${module[1]}/${module[2]}/"
             ['pom', 'jar'].each { extension ->
@@ -98,7 +106,7 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
                 }
             }
         }
-        [modules: modules, urls: urls]
+        [modules: modules, urls: urls.take(MAX_URLS) as LinkedHashSet]
     }
 
     static void fileInfo(File root, File file, String match) {
@@ -112,7 +120,7 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
             line("module ${id}: files-2.1 directory ${files.isDirectory() ? 'present' : 'absent'}")
             if (files.isDirectory()) files.eachFileRecurse { if (it.isFile()) fileInfo(root, it, id) }
         }
-        line('Metadata matches below identify files only; binary indexes are not decoded missing-resource records.')
+        line('Metadata matches name files that mention this exact artifact-version; they are not decoded hit or miss records.')
         def metadata = (root.listFiles() ?: []).findAll { it.isDirectory() && it.name.startsWith('metadata-') }
         if (metadata.empty) line('metadata-* directories absent')
         metadata.each { directory ->
@@ -126,23 +134,20 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
                 // bounded chunks, retaining overlap, and report candidate filenames only.
                 // Per-version descriptors are matched by path above; scanning them would list every version.
                 if (ids.empty && file.name.endsWith('.bin') && !file.path.contains('/descriptors/')) {
-                    def groups = new HashSet<String>()
-                    def artifacts = new HashSet<String>()
-                    int overlap = modules.values().collect { Math.max(it[0].length(), it[1].length()) }.max() ?: 1
+                    // Index files store artifact file names; require the exact "artifact-version" string
+                    // so cached neighbouring versions of the same module do not match.
+                    def needles = modules.collectEntries { id, module -> [(id): "${module[1]}-${module[2]}".toString()] }
+                    int overlap = (needles.values().collect { it.length() }.max() ?: 1) as int
                     file.withInputStream { stream ->
                         byte[] buffer = new byte[65536]
                         String tail = ''
                         int count
                         while ((count = stream.read(buffer)) != -1) {
                             String chunk = tail + new String(buffer, 0, count, StandardCharsets.ISO_8859_1)
-                            modules.each { id, module ->
-                                if (chunk.contains(module[0]) || chunk.contains(module[0].replace('.', '/'))) groups.add(id)
-                                if (chunk.contains(module[1])) artifacts.add(id)
-                            }
+                            needles.each { id, needle -> if (chunk.contains(needle)) ids.add(id) }
                             tail = chunk.takeRight(overlap)
                         }
                     }
-                    ids.addAll(groups.intersect(artifacts))
                 }
                 if (!ids.empty) {
                     matched = true
@@ -215,7 +220,11 @@ abstract class DependencyResolutionDiagnostics implements FlowAction<DependencyR
             try { networkProperties() } catch (Throwable ignored) { line('JVM properties unavailable') }
             try { cacheInfo(parameters.userHome.get(), found.modules) }
             catch (Throwable failureInCache) { line("cache inspection unavailable (${failureInCache.class.simpleName})") }
-            found.urls.each { url -> if (request(url, 'HEAD') == 200) request(url, 'GET') }
+            long deadline = System.nanoTime() + PROBE_DEADLINE_NANOS
+            for (String url : found.urls) {
+                if (System.nanoTime() > deadline) { line('Probe deadline reached; remaining URLs skipped.'); break }
+                if (request(url, 'HEAD') == 200) request(url, 'GET')
+            }
         } catch (Throwable ignored) {
             if (grouped) line('Diagnostics incomplete; original build result preserved.')
         } finally {

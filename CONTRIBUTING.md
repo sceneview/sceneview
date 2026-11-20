@@ -447,11 +447,13 @@ On GitHub-hosted runners, failed Gradle dependency resolution adds a
 It records live HEAD responses (and a one-byte ranged GET after HTTP 200)
 from the reported Central / Google Maven URLs, module-cache filenames with
 sizes and modification times, JVM network properties, and the offline / refresh flags.
-Live 200 responses alongside a matching cached missing-resource record point
-to a poisoned cache; live 404 / 5xx responses or timeouts point to the network
-or CDN. Binary metadata matches identify candidate files, not decoded miss
-records, so file presence alone does not prove a poisoned cache. These checks
-only run after failure and do not change dependency resolution or caching.
+A live 200 for an artifact Gradle reported missing means the file was there
+when the build gave up, so suspect Gradle's cached lookup state or a transient
+CDN answer; live 404 / 5xx responses or timeouts point to the network or CDN.
+Metadata lines only name cache files that mention the exact artifact-version;
+they are not decoded hit or miss records. Probes are capped at 8 modules,
+16 URLs and 45 seconds. These checks only run after failure and do not change
+dependency resolution or caching.
 
 ### CI on docs-only PRs
 

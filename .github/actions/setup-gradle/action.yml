@@ -69,7 +69,7 @@ runs:
       run: |
         gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
         mkdir -p "$gradle_home/init.d"
-        cp "$DIAGNOSTICS_ACTION_PATH/dependency-resolution.init.gradle" \
+        cp "$DIAGNOSTICS_ACTION_PATH/dependency-resolution-diagnostics.groovy" \
           "$gradle_home/init.d/sceneview-dependency-resolution.gradle"
 
     # Verify the checked-in gradle-wrapper.jar matches the SHA of a known-good
