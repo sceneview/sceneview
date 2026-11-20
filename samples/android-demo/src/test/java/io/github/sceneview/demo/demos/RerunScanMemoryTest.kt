@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.ReplayLens
@@ -123,18 +124,23 @@ class RerunScanMemoryTest {
             capture.logMemory("start")
             assertTrue(capture.finish() != null)
             capture.logMemory("periodic")
-            val before = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
-            assertTrue(before, before.contains("finishedEvents=2"))
+            // The ScanMem lines are debug-only; the release checks below hold in both variants.
+            if (BuildConfig.DEBUG) {
+                val before = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
+                assertTrue(before, before.contains("finishedEvents=2"))
+            }
             capture.close()
             capture.close()
             assertTrue(capture.trace.isEmpty)
             assertEquals(0, capture.trace.observationCount)
             assertNull(capture.trace.journal)
             assertNull(capture.live.liveDense?.invoke())
-            val exit = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
-            assertTrue(exit, exit.startsWith("exit used="))
-            assertTrue(exit, exit.contains(" max="))
-            assertTrue(exit, exit.contains("journalEvents=0 journalBytes=0 finishedEvents=0 finishedBytes=0"))
+            if (BuildConfig.DEBUG) {
+                val exit = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
+                assertTrue(exit, exit.startsWith("exit used="))
+                assertTrue(exit, exit.contains(" max="))
+                assertTrue(exit, exit.contains("journalEvents=0 journalBytes=0 finishedEvents=0 finishedBytes=0"))
+            }
         } finally {
             capture.close()
             owner.close()
