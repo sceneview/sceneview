@@ -29,6 +29,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -41,6 +44,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -57,6 +61,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -90,6 +95,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -216,7 +222,6 @@ import io.github.sceneview.demo.demos.internal.rerunShowsSaveAction
 import io.github.sceneview.demo.demos.internal.rerunStatusUx
 import io.github.sceneview.demo.demos.internal.turnedBy
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -237,6 +242,11 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import io.github.sceneview.demo.theme.themedStageChrome
+import io.github.sceneview.demo.theme.LocalStageChrome
+import io.github.sceneview.demo.common.RequestLightStatusBarIcons
+import io.github.sceneview.demo.ui.GlassIconButton
+import io.github.sceneview.demo.ui.GlassPill
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -305,8 +315,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var exampleRead by remember { mutableStateOf(false) }
     var exampleAsked by remember { mutableStateOf(false) }
     // The room feeds the example replay and the staged QA capture states.
-    val sample by produceState<RerunReplayMedia?>(null) {
-        value = runCatching { loadRerunReplay(context) }.getOrNull()
+    var sample by remember { mutableStateOf<RerunReplayMedia?>(null) }
+    LaunchedEffect(Unit) {
+        sample = runCatching { loadRerunReplay(context) }.getOrNull()
         exampleRead = true
     }
 
@@ -315,8 +326,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var sessionsVersion by remember { mutableIntStateOf(0) }
     // A scan saved after its capture screen was left (#4500) lands in the list too.
     val savedAway = RerunScanBuilds.savedAway
-    val sessions by produceState<List<LandingSession>?>(null, sessionsVersion, savedAway) {
-        value = store.landingSessions()
+    val landingCache = remember { RerunLandingCache() }
+    val landingLocale = LocalLocale.current.platformLocale
+    val sessions by produceState<List<LandingSession>?>(null, sessionsVersion, savedAway, landingLocale) {
+        value = store.landingSessions(landingCache, landingLocale)
     }
     // What the landing says about the last file opened: why it did not open, or that it is opening.
     var notice by remember { mutableStateOf<String?>(null) }
@@ -384,7 +397,10 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // QA captures hold still: no intro fly-in, no idle sway. Each opening is framed afresh.
     val replayOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null, band = stageBand) }
     LaunchedEffect(media, openCount) {
-        val replay = media ?: return@LaunchedEffect
+        val replay = media ?: run {
+            replaySession.trace = ArDebugTrace()
+            return@LaunchedEffect
+        }
         replaySession.trace = replay.trace
         // Held until the stage is on screen: the example then plays from its first frame; your own
         // scan opens whole, on its last frame, ready to be turned with a finger.
@@ -463,16 +479,47 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         screen = RerunScreen.Dollhouse
     }
 
-    val toLanding = {
+    fun clearScanResult() {
         opening?.cancel()
         opening = null
+        (modelSource as? RerunModelSource.Live)?.release()
+        modelSource = null
+        liveModels.forget()
+        scanMedia = null
+        scanPack = null
+        scanPhoto = null
+        scanStill = null
+        scanMeasure = null
+        resultModel = null
+        resultSpace = null
+        rescanTarget = null
+        dollhouseMedia = null
+        replaySession.trace = ArDebugTrace()
+        hasResult = false
+        showingScan = false
+        exporting = false
+    }
+    val toLanding = {
+        clearScanResult()
         screen = RerunScreen.Landing
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            clearScanResult()
+            sample = null
+        }
     }
     // The floor plan opens from an export sheet (#4540) and Back returns to the screen whose sheet
     // opened it: the replay's or the result's (#4599). QA opens it straight, with no opener.
     var planOpener by remember { mutableStateOf<RerunScreen?>(null) }
     val leavePlan = { screen = planReturnOf(planOpener, hasResult) }
-    val leaveDollhouse = { dollhouseReturn?.let { screen = it } ?: onBack() }
+    val leaveDollhouse = {
+        when (val back = dollhouseReturn) {
+            null -> onBack()
+            RerunScreen.Landing -> toLanding()
+            else -> screen = back
+        }
+    }
     val leaveLive = {
         if (recordingForDollhouse) {
             recordingForDollhouse = false
@@ -589,8 +636,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 }
                 kept -> Unit
                 else -> {
+                    toLanding()
                     notice = ScanCopy.OPEN_FAILED
-                    screen = RerunScreen.Landing
                 }
             }
         }
@@ -687,8 +734,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     LaunchedEffect(inbox) {
         val delivery = inbox ?: return@LaunchedEffect
         if (!RerunInbox.claim(delivery, activity)) return@LaunchedEffect
-        opening?.cancel()
-        screen = RerunScreen.Landing
+        toLanding()
         importFile(delivery.uri) { RerunInbox.read(delivery) }
     }
 
@@ -831,9 +877,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             onRevealed = { revealed = true },
             onExport = { exporting = true },
             // Your own room only: the sample is not a room of yours to stand on a table.
-            onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
-                { openDollhouse(scanId, scanTitle, scan) }
-            },
+            onViewInAr = if (showingScan && scanMedia != null) rememberRerunClick {
+                scanMedia?.let { openDollhouse(scanId, scanTitle, it) }
+            } else null,
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
@@ -880,9 +926,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             },
             // The recording behind the model, once it is read: a scan reopened shows its model first.
             onReplay = scanMedia?.takeIf { showingScan }?.let { { screen = RerunScreen.Replay } },
-            onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
-                { openDollhouse(scanId, scanTitle, scan) }
-            },
+            onViewInAr = if (showingScan && scanMedia != null) rememberRerunClick {
+                scanMedia?.let { openDollhouse(scanId, scanTitle, it) }
+            } else null,
             onExport = { exporting = true },
             engine = engine,
             modelLoader = modelLoader,
@@ -990,14 +1036,29 @@ private enum class RerunMode { Scene, Map, Camera }
  */
 @Composable
 private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, actions: RerunLandingActions) {
-    DemoScaffold(
-        title = stringResource(R.string.demo_ar_rerun_title),
-        onBack = onBack,
-        controls = { RerunSheet() },
-        dock = emptyList(),
-        themedStage = true,
-    ) {
-        RerunLanding(state, actions)
+    val chrome = themedStageChrome()
+    RequestLightStatusBarIcons(active = chrome.lightStatusIcons)
+    CompositionLocalProvider(LocalStageChrome provides chrome) {
+        Box(Modifier.fillMaxSize()) {
+            RerunLanding(state, actions)
+            Row(
+                modifier = Modifier
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                    .padding(horizontal = Space.md, vertical = Space.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
+                GlassIconButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    onClick = onBack,
+                    ground = chrome.scrimDock,
+                )
+                GlassPill(ground = chrome.scrimDock) {
+                    Text(stringResource(R.string.demo_ar_rerun_title), style = Type.card, color = chrome.onGlass)
+                }
+            }
+        }
     }
 }
 
@@ -1473,22 +1534,6 @@ private fun RerunLiveScreen(
     // Capture mode: the scan in progress, and its 3D card's camera. A scan records into the
     // debug session's trace, so the 3D view and the scan are the same data.
     var scan by remember { mutableStateOf<ScanCapture?>(null) }
-    DisposableEffect(Unit) {
-        onDispose {
-            attached.set(false)
-            val capture = scan
-            val saving = saveJob.get()?.takeIf { it.isActive }
-            if (saving == null) {
-                captureScope.cancel()
-                capture?.close()
-            } else {
-                saving.invokeOnCompletion {
-                    captureScope.cancel()
-                    capture?.close()
-                }
-            }
-        }
-    }
     LaunchedEffect(scan) {
         val capture = scan ?: return@LaunchedEffect
         capture.logMemory("start")
@@ -1706,6 +1751,7 @@ private fun RerunLiveScreen(
     fun dropCapture(keepModel: Boolean = false) {
         if (scan != null) {
             debugSession.trace = ArDebugTrace()
+            debugRecorder.clear()
             scan?.close(keepModel)
             scan = null
         }
@@ -1720,6 +1766,23 @@ private fun RerunLiveScreen(
         leaveAsked = false
         discardAsked = false
         phase = ScanPhase.Scanning
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            attached.set(false)
+            debugSession.trace = ArDebugTrace()
+            debugRecorder.clear()
+            val saving = saveJob.get()?.takeIf { it.isActive }
+            if (saving == null) {
+                captureScope.cancel()
+                dropCapture()
+            } else {
+                saving.invokeOnCompletion {
+                    captureScope.cancel()
+                    dropCapture()
+                }
+            }
+        }
     }
     // Save scan builds the capture — no more photos, the last ones encoded, its planes painted
     // from its photos — writes it on the phone and opens it, read back from what was saved. A
@@ -1903,7 +1966,10 @@ private fun RerunLiveScreen(
             }
         }
         saveJob.set(job)
-        job.invokeOnCompletion { RerunScanBuilds.ended(away = !attached.get()) }
+        job.invokeOnCompletion {
+            saveJob.compareAndSet(job, null)
+            RerunScanBuilds.ended(away = !attached.get())
+        }
     }
     val onSaveScan = { saveScan(if (scanScope.roomByRoom) SaveNext.FinishHome else SaveNext.Open) }
     val onDiscardScan = {
@@ -2080,8 +2146,8 @@ private fun RerunLiveScreen(
                                 fileSaveFailed = fileSaveFailed,
                                 // Save as file: the scan written as a .svscan for the share sheet — Files,
                                 // Drive — when saving on the phone keeps failing the same way (#4815).
-                                onSaveAsFile = unsaved?.takeIf { saveFailure?.offersFile == true }?.let { (pack, title) ->
-                                    {
+                                onSaveAsFile = if (unsaved != null && saveFailure?.offersFile == true) rememberRerunClick {
+                                        val (pack, title) = unsaved ?: return@rememberRerunClick
                                         if (!fileSaving) {
                                             fileSaving = true
                                             fileSaveFailed = false
@@ -2103,8 +2169,7 @@ private fun RerunLiveScreen(
                                                     }
                                             }
                                         }
-                                    }
-                                },
+                                } else null,
                             )
             } else if (arCoreAvailability == null || qaState != null) {
                 ScanControls(

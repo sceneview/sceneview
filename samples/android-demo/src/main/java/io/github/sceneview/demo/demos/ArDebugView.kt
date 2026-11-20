@@ -299,7 +299,10 @@ internal class ArDebugRecorder {
         livePlanes += seen
     }
 
-    private fun reset(trace: ArDebugTrace) {
+    /** Detaches a closed capture even when no subsequent AR frame arrives. */
+    fun clear() = reset(null)
+
+    private fun reset(trace: ArDebugTrace?) {
         recordedFor = trace
         pointsGate.reset()
         planesGate.reset()

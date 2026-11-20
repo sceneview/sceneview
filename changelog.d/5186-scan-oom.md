@@ -1,2 +1,2 @@
 <!-- category: Fixed -->
-- **Demo app: reduce memory pressure during long 3D scans on smaller phones.** Share 35% of the app's heap between the live model, dense map and replay journal, using coarser detail when needed; phones with 512 MiB or more keep their existing detail. Bound replay observations, preserve failed-save retries, and release capture media off the main thread after workers stop when leaving a scan.
+- **Demo app: smoother, more reliable 3D scans.** Request a large heap to preserve full scan detail, with a memory safety net below 384 MiB. Scale replay storage to the heap while keeping photos, floor coverage, anchors and plane removals. Release scan memory reliably and load the saved-scans list lazily for faster exits.

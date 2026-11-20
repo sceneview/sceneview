@@ -142,8 +142,16 @@ class ArDebugFrame(
  */
 class ArDebugTrace(
     private val journalMaxBytes: Long = ArDebugJournal.MAX_BYTES,
+    // Saved replays explicitly disable these live limits when opening their finished journal.
+    private val observationMaxBytes: Long = ScanMemoryBudget(Runtime.getRuntime().maxMemory()).observationBytes,
+    private val observationMaxCount: Int = MAX_OBSERVATIONS,
     private val onJournalCap: () -> Unit = {},
 ) {
+    init {
+        require(observationMaxBytes >= MAX_MAP_POINTS * 4L)
+        require(observationMaxCount >= 2)
+    }
+
     private var originNanos = Long.MIN_VALUE
 
     private var poseTimes = FloatArray(256)
@@ -380,7 +388,7 @@ class ArDebugTrace(
             }
         }
         val observation = seen.copyOf(seenCount)
-        while (observations.size >= MAX_OBSERVATIONS || observationBytes + observation.size * 4L > MAX_OBSERVATION_BYTES) {
+        while (observations.size >= observationMaxCount || observationBytes + observation.size * 4L > observationMaxBytes) {
             thinObservations()
         }
         observationTimes.add(t)

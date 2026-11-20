@@ -11,7 +11,7 @@ class RerunScanBudgetTest {
         val budget = ScanMemoryBudget(256 * MIB)
         assertTrue(budget.retainedBytes <= budget.totalBytes)
         assertTrue(budget.modelVoxelM(ScanPreset.ROOM) > ScanPreset.ROOM.modelVoxelM)
-        assertTrue(budget.modelVoxelM(ScanPreset.OBJECT) > ScanPreset.OBJECT.modelVoxelM)
+        assertEquals(0.0125f, budget.modelVoxelM(ScanPreset.OBJECT), 0f)
         val tsdf = RerunTsdf(voxelM = budget.modelVoxelM(ScanPreset.ROOM), maxBytes = budget.tsdfBytes)
         var now = 0L
         val dense = ScanDenseMap(maxPoints = budget.densePoints, clock = { now })
@@ -48,13 +48,14 @@ class RerunScanBudgetTest {
     }
 
     @Test
-    fun `512 MiB and larger heaps keep current dense cap TSDF cap and preset voxels`() {
-        for (mib in listOf(512, 768, 1024)) {
+    fun `384 MiB and larger heaps keep 4_69_7 dense cap TSDF cap and preset voxels`() {
+        for (mib in listOf(384, 512, 768, 1024)) {
             val heap = mib * MIB
             val budget = ScanMemoryBudget(heap)
             assertEquals(RerunTsdf.MAX_BYTES, budget.tsdfBytes)
             assertEquals(DenseFusion.budgetFor(heap), budget.densePoints)
-            assertEquals(ArDebugJournal.MAX_BYTES, budget.journalBytes)
+            assertTrue(budget.journalBytes >= ArDebugJournal.MAX_BYTES)
+            assertTrue(budget.observationBytes >= ArDebugTrace.MAX_OBSERVATION_BYTES)
             for (preset in listOf(ScanPreset.ROOM, ScanPreset.OBJECT)) {
                 assertEquals(preset.modelVoxelM, budget.modelVoxelM(preset), 0f)
             }
@@ -70,6 +71,28 @@ class RerunScanBudgetTest {
         repeat(1_000) { dense.add(patch(it + 64)) }
         assertEquals(atCap, dense.storageBytes)
         assertTrue(dense.count <= 32)
+    }
+
+    @Test
+    fun `256 vs 512 MiB scales both timeline caps and only the smaller heap reduces maps`() {
+        val small = ScanMemoryBudget(256 * MIB)
+        val large = ScanMemoryBudget(512 * MIB)
+        assertEquals(4 * MIB, small.journalBytes)
+        assertEquals(4 * MIB, small.observationBytes)
+        assertEquals(8 * MIB, large.journalBytes)
+        assertEquals(8 * MIB, large.observationBytes)
+        assertTrue(small.tsdfBytes < large.tsdfBytes)
+        assertTrue(small.densePoints < large.densePoints)
+        assertEquals(0.0125f, small.modelVoxelM(ScanPreset.OBJECT), 0f)
+        assertEquals(0.0125f, large.modelVoxelM(ScanPreset.OBJECT), 0f)
+        assertTrue(small.retainedBytes <= 256 * MIB * ScanMemoryBudget.SHARE_PERCENT / 100)
+        // Both sides of the exact safety-net threshold are pinned.
+        assertTrue(ScanMemoryBudget(384 * MIB - 1).tsdfBytes < RerunTsdf.MAX_BYTES)
+        assertEquals(RerunTsdf.MAX_BYTES, ScanMemoryBudget(384 * MIB).tsdfBytes)
+        println("scan budgets: 256 MiB tsdf=${small.tsdfBytes} dense=${small.densePoints} " +
+            "journal=${small.journalBytes} observations=${small.observationBytes}; " +
+            "512 MiB tsdf=${large.tsdfBytes} dense=${large.densePoints} " +
+            "journal=${large.journalBytes} observations=${large.observationBytes}")
     }
 
     private fun patch(tick: Int): DenseSamples {

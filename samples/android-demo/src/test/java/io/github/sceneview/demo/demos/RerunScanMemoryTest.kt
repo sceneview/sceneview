@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos
 
+import android.graphics.Bitmap
+import android.content.pm.ApplicationInfo
+import org.robolectric.RuntimeEnvironment
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -130,12 +133,16 @@ class RerunScanMemoryTest {
                 val before = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
                 assertTrue(before, before.contains("finishedEvents=2"))
             }
+            val thumbnail = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+            (capture.live.thumbnails as MutableMap<String, Bitmap>)["test.jpg"] = thumbnail
             capture.close()
             capture.close()
             capture.releaseJob?.join()
             assertEquals(1, reader.mapPointCount)
             assertEquals(1, reader.observationCount)
             assertNull(capture.trace.journal)
+            assertTrue(capture.live.thumbnails.isEmpty())
+            assertTrue("Compose may still draw the closed scan's thumbnail", !thumbnail.isRecycled)
             assertNull(capture.live.liveDense?.invoke())
             if (BuildConfig.DEBUG) {
                 val logs = ShadowLog.getLogsForTag("SceneView/ScanMem").map { it.msg }
@@ -150,6 +157,51 @@ class RerunScanMemoryTest {
             capture.close()
             owner.close()
             scope.cancel()
+        }
+    }
+
+    @Test
+    fun `demo opts into a large heap`() {
+        val flags = RuntimeEnvironment.getApplication().applicationInfo.flags
+        assertTrue(flags and ApplicationInfo.FLAG_LARGE_HEAP != 0)
+    }
+
+    @Test
+    fun `stale semantics click drops its callback when the screen closes`() {
+        var open by mutableStateOf(true)
+        var tapped = 0
+        lateinit var staleClick: RerunClick
+        composeRule.setContent {
+            if (open) staleClick = rememberRerunClick { tapped++ }
+        }
+        composeRule.runOnIdle {
+            staleClick()
+            assertEquals(1, tapped)
+            open = false
+        }
+        composeRule.runOnIdle {
+            assertNull(staleClick.action)
+            staleClick()
+            assertEquals(1, tapped)
+        }
+    }
+
+    @Test
+    fun `small TSDF and failed or cancelled meshing detach the live source`() {
+        for (fails in listOf(false, true)) {
+            val owner = RerunLiveModels.Owner()
+            val pack = pack(if (fails) 10 else 11)
+            val tsdf = RerunTsdf()
+            owner.keep(pack, tsdf)
+            val source = RerunModelSource.Live(tsdf, null)
+            try {
+                runCatching { buildRerunModel(source) { if (fails) error("cancel extraction") } }
+                    .also { assertEquals(!fails, it.isSuccess) }
+                assertNull(source.tsdf)
+                assertNull(RerunLiveModels.find(pack))
+            } finally {
+                owner.close()
+            }
         }
     }
 

@@ -92,7 +92,11 @@ internal class ScanCapture(
     private val budget: ScanMemoryBudget = ScanMemoryBudget(Runtime.getRuntime().maxMemory()),
 ) : AutoCloseable {
     /** The scan's trace; its journal is what [finish] saves. */
-    val trace = ArDebugTrace(journalMaxBytes = budget.journalBytes) {
+    val trace = ArDebugTrace(
+        journalMaxBytes = budget.journalBytes,
+        observationMaxBytes = budget.observationBytes,
+        observationMaxCount = ArDebugTrace.MAX_OBSERVATIONS,
+    ) {
         Log.w(MEMORY_TAG, "journal cap ${budget.journalBytes} bytes reached; decimating scan observations")
     }.apply {
         keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M
@@ -260,30 +264,23 @@ internal class ScanCapture(
                 val (width, height) = size
                 val argb = ScanProjection.uprightImage(pixels, intrinsics, sensor, display, lens, width, height)
                 val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
-                try {
-                    val encoded = ScanPhotoPolicy.encode(sharp, size) { w, h, quality ->
-                        val scaled = if (w == width && h == height) bitmap
-                        else Bitmap.createScaledBitmap(bitmap, w, h, true)
-                        try {
-                            val out = ByteArrayOutputStream()
-                            if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
-                        } finally {
-                            if (scaled !== bitmap) scaled.recycle()
-                        }
-                    } ?: return@launch
-                    jpegs[path] = encoded.bytes
-                    // Same small live thumbnails as before, even when the stored photo is sharp.
-                    val (thumbWidth, thumbHeight) = ScanPhotoPolicy.thumbnailSize(encoded.width, encoded.height)
-                    thumbnails[path] = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
-                } finally {
-                    bitmap.recycle()
-                }
+                val encoded = ScanPhotoPolicy.encode(sharp, size) { w, h, quality ->
+                    val scaled = if (w == width && h == height) bitmap
+                    else Bitmap.createScaledBitmap(bitmap, w, h, true)
+                    val out = ByteArrayOutputStream()
+                    if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
+                } ?: return@launch
+                jpegs[path] = encoded.bytes
+                // A scaled bitmap can alias its source. Compose may still draw this thumbnail
+                // after close, so none of these bitmaps is explicitly recycled.
+                val (thumbWidth, thumbHeight) = ScanPhotoPolicy.thumbnailSize(encoded.width, encoded.height)
+                thumbnails[path] = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
             } finally {
                 inFlight.decrementAndGet()
                 // Encoding is CPU work: cancellation can arrive after its last suspension.
                 if (closed.get()) {
                     jpegs.remove(path)
-                    thumbnails.remove(path)?.recycle()
+                    thumbnails.remove(path)
                 }
             }
         }
@@ -538,7 +535,7 @@ internal class ScanCapture(
         logMemory("exit-before-release")
         val depthJob = fuseJob
         fuseJob = null
-        model?.close(keepTransferred = keepModel)
+        val modelJob = model?.close(keepTransferred = keepModel)
         model = null
         dense = null
         finishedEvents = null
@@ -546,13 +543,12 @@ internal class ScanCapture(
         trace.journal = null
         // No new producers may start after closed was set. An in-flight fusion owns its local
         // dense map until it returns; no thread mutates that map to try to free it early.
-        releaseJob = releaseScanCapture(jobs + listOfNotNull(depthJob)) {
+        releaseJob = releaseScanCapture(jobs + listOfNotNull(depthJob, modelJob)) {
             val cleanupStarted = System.nanoTime()
             jobs.clear()
             recordedFrames.clear()
             poses.clear()
             jpegs.clear()
-            thumbnails.values.forEach(Bitmap::recycle)
             thumbnails.clear()
             logCloseTiming("close-cleanup", cleanupStarted)
         }
