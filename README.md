@@ -148,7 +148,7 @@ fun ModelScreenWithLoading() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     var retry by remember { mutableIntStateOf(0) }
-    val state = key(retry) { rememberModelLoadState(modelLoader, "models/helmet.glb") }
+    val state = key(retry) { rememberModelLoadState(modelLoader, "models/toy_car.glb") }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
             if (state is ModelLoadState.Ready) {
