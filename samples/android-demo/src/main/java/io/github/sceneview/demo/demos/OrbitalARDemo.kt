@@ -58,6 +58,7 @@ import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.demos.internal.OrbitalSessionState
 import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
@@ -563,7 +564,8 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // The user's initial-pose anchor. Created lazily on the first tracked frame, since
     // ARCore world origin is undefined until tracking begins. After that, all four flyers
     // ride this anchor — turning the phone shows them passing by in world space.
-    var userAnchor by remember { mutableStateOf<Anchor?>(null) }
+    val sessionState = remember { OrbitalSessionState<Anchor>() }
+    var userAnchor by sessionState::userAnchor
     var isTracking by remember { mutableStateOf(false) }
     // ARCore verdict (#3374): non-null once we know AR cannot start on this device. The
     // SDK draws the explanation over the scene; the demo's own status pill must then stop
@@ -875,6 +877,13 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                     onSessionFailure = { failure ->
                         Log.e(TAG, "AR session failed to start: $failure")
                         arSessionFailed = true
+                        // The scaffold removes the scene and closes the session on every failure.
+                        if (sessionState.onFailure(fatal = true)) {
+                            cameraReady = false
+                            isTracking = false
+                            projectedTargets = emptyMap()
+                            offscreenTargets = emptyMap()
+                        }
                     },
                     sessionConfiguration = { _: Session, config: Config ->
                         // Plane detection off — the formation lives in world space around the

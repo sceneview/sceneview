@@ -13,6 +13,8 @@ import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.demo.demos.internal.FeaturePlacementSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.rememberOnGestureListener
 import java.io.File
 
@@ -34,6 +36,7 @@ internal fun FeaturePlacementScene(
     onSessionResumed: (Session) -> Unit = {},
     onSessionUpdated: (Session, Frame) -> Unit = { _, _ -> },
     onSessionFailed: (Exception) -> Unit = {},
+    onSessionFailure: (ARSessionFailure) -> Unit = {},
     onARCoreAvailability: (ARCoreAvailability?) -> Unit = {},
     arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? =
         { ARCoreAvailabilityOverlay(it) },
@@ -42,8 +45,9 @@ internal fun FeaturePlacementScene(
     content: @Composable ARSceneScope.(AutoPlacementResult?) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    var placement by remember(state) { mutableStateOf<AutoPlacementResult?>(null) }
-    var planes by remember { mutableStateOf<List<Plane>>(emptyList()) }
+    val sessionState = remember(state) { FeaturePlacementSessionState<AutoPlacementResult, Plane>() }
+    var placement by sessionState::placement
+    var planes by sessionState::planes
     val ready by rememberUpdatedState(assetReady)
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
@@ -55,10 +59,9 @@ internal fun FeaturePlacementScene(
             placement = null
         }
     }
-    val currentPlacement by rememberUpdatedState(placement)
     DisposableEffect(state) {
         onDispose {
-            currentPlacement?.anchor?.detach()
+            sessionState.placement?.anchor?.detach()
             state.dismiss()
         }
     }
@@ -77,6 +80,10 @@ internal fun FeaturePlacementScene(
             onSessionResumed(session)
         },
         onSessionFailed = { state.cameraFailed(); onSessionFailed(it) },
+        onSessionFailure = { failure ->
+            if (sessionState.onFailure(failure)) state.resetPlacement(SystemClock.uptimeMillis())
+            onSessionFailure(failure)
+        },
         onARCoreAvailability = onARCoreAvailability,
         arCoreAvailabilityOverlay = arCoreAvailabilityOverlay,
         onTrackingFailureChanged = onTrackingFailureChanged,

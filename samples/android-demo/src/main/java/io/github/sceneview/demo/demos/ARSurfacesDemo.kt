@@ -27,6 +27,8 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.demos.internal.SurfaceSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.createARCameraStream
@@ -106,10 +108,8 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
     // elsewhere gives the node a new anchor and detaches this one, and the node's current
     // anchor is never written back here — that would rebuild the node, whose teardown
     // detaches the very anchor it was just given.
-    var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
-    // Read by the tap handler only: plain holders, so a new frame never recomposes.
-    val latestFrame = remember { FrameHolder() }
-    val sofaAnchorNode = remember { AnchorNodeHolder() }
+    val sessionState = remember { SurfaceSessionState<Frame, AnchorNode, Anchor>() }
+    var placedAnchor by sessionState::placedAnchor
 
     // #3341: non-null once ARCore has ruled this device out. The flag the scanning
     // banner waits on never flips then, so that banner has to read the verdict or
@@ -154,7 +154,7 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                     // Leaving the composition destroys the node, which detaches whichever
                     // anchor it holds by now.
                     placedAnchor = null
-                    sofaAnchorNode.node = null
+                    sessionState.anchorNode = null
                     showcase = showcase.onRemoved()
                 },
                 enabled = showcase.removeEnabled,
@@ -198,19 +198,15 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = {
+                onSessionFailure = { failure ->
                     arSessionFailed = true
-                    // The failed session is closed: its last frame and the sofa's anchor are
-                    // freed native objects, and a tap under the "Try again" card would read
-                    // them (a native crash, not an exception). The SDK already released the
-                    // node's anchor; drop every reference and scan again on the new session.
-                    latestFrame.frame = null
-                    sofaAnchorNode.node = null
-                    placedAnchor = null
-                    showcase = showcase.onRemoved()
-                    planeDetected = false
-                    cameraReady = false
-                    isTracking = false
+                    // A nonfatal resume failure keeps the sofa's anchor valid.
+                    if (sessionState.onFailure(failure)) {
+                        showcase = showcase.onRemoved()
+                        planeDetected = false
+                        cameraReady = false
+                        isTracking = false
+                    }
                 },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
@@ -236,7 +232,7 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                 arCoreAvailabilityOverlay = { ArAvailabilityStage(it) },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
                 onSessionUpdated = { _, frame ->
-                    latestFrame.frame = frame
+                    sessionState.latestFrame = frame
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     if (!planeDetected) {
@@ -249,9 +245,9 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                         // A tap on the sofa itself is not a request to move it.
                         // Nothing to place until the sofa is in.
                         val canPlace = node == null && sofa.instance != null
-                        val anchor = if (canPlace) latestFrame.frame?.floorHit(event)?.createAnchor() else null
+                        val anchor = if (canPlace) sessionState.latestFrame?.floorHit(event)?.createAnchor() else null
                         if (anchor != null) {
-                            val placedNode = sofaAnchorNode.node
+                            val placedNode = sessionState.anchorNode
                             if (placedNode != null) {
                                 // The setter detaches the anchor the sofa was standing on.
                                 placedNode.anchor = anchor
@@ -277,7 +273,7 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                             // The sofa lands where it was placed from: on a floor or a table,
                             // inside what the phone has actually seen of it.
                             moveHitTest = { frame, event -> frame.floorHit(event) }
-                            sofaAnchorNode.node = this
+                            sessionState.anchorNode = this
                         },
                     ) {
                         sofa.instance?.let {
@@ -301,16 +297,6 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
             )
         }
     }
-}
-
-/** Latest AR frame, for the tap handler. Not Compose state: it changes every frame. */
-private class FrameHolder {
-    var frame: Frame? = null
-}
-
-/** The sofa's anchor node, for the tap handler that re-places it. Not Compose state. */
-private class AnchorNodeHolder {
-    var node: AnchorNode? = null
 }
 
 /** Where [event] hits a tracked floor or table inside its polygon, or `null`. */

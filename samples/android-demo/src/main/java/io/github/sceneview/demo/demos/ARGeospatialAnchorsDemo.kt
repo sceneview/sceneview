@@ -40,7 +40,6 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -64,7 +63,6 @@ import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.NodeScope
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.arcore.awaitVpsAvailability
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -87,7 +85,9 @@ import io.github.sceneview.demo.common.rememberHasArcoreApiKey
 import io.github.sceneview.demo.common.rememberIsNetworkAvailable
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.toCloudServiceStatus
+import io.github.sceneview.demo.demos.internal.GeospatialSessionState
 import io.github.sceneview.demo.demos.internal.CloudRequestGeneration
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.demo.demos.internal.DropFeedback
 import io.github.sceneview.demo.demos.internal.DropOutcome
 import io.github.sceneview.demo.demos.internal.GeospatialAnchorMode
@@ -122,6 +122,8 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import java.util.Locale
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -356,11 +358,6 @@ private class GeospatialDrop(val id: Int, val mode: GeospatialAnchorMode) {
     }
 }
 
-/** Plain holder for the latest camera pose: written per frame, read on tap, never drawn. */
-private class CameraPoseHolder {
-    var pose: Pose? = null
-}
-
 @Composable
 private fun GeospatialSection(
     onBack: () -> Unit,
@@ -378,7 +375,8 @@ private fun GeospatialSection(
     // rejected key (#3262).
     val isNetworkAvailable = rememberIsNetworkAvailable()
 
-    var arSession by remember { mutableStateOf<Session?>(null) }
+    val sessionState = remember { GeospatialSessionState<Session, Pose, GeospatialDrop>() }
+    var arSession by sessionState::arSession
     var cameraReady by remember { mutableStateOf(false) }
     // Whether ARCameraInitScrim's card is the one saying "Starting camera…" (#3825).
     var cameraScrimNarrating by remember { mutableStateOf(true) }
@@ -393,10 +391,9 @@ private fun GeospatialSection(
     var sessionError by remember { mutableStateOf<String?>(null) }
     val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
 
-    val cameraPose = remember { CameraPoseHolder() }
-    val drops = remember { mutableStateListOf<GeospatialDrop>() }
+    val drops = sessionState.drops
     var nextId by remember { mutableStateOf(0) }
-    val requestGeneration = remember { CloudRequestGeneration() }
+    val requestGeneration = sessionState.requests
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     // Street View (VPS) coverage where the user stands, re-asked every ~100 m. The helper
@@ -408,7 +405,7 @@ private fun GeospatialSection(
         val here = latestFix ?: return@LaunchedEffect
         if (vps == VpsCoverage.Unknown) vps = VpsCoverage.Checking
         vps = try {
-            when (session.awaitVpsAvailability(here.latitude, here.longitude)) {
+            when (session.awaitDemoVpsAvailability(here.latitude, here.longitude, requestGeneration, mainHandler)) {
                 VpsAvailability.AVAILABLE -> VpsCoverage.Available
                 VpsAvailability.UNAVAILABLE -> VpsCoverage.Unavailable
                 else -> VpsCoverage.Error
@@ -460,8 +457,10 @@ private fun GeospatialSection(
         rooftop: RooftopAnchorNodeImpl?,
     ) {
         if (!requestGeneration.accepts(generation) || drop !in drops) {
-            terrain?.destroy()
-            rooftop?.destroy()
+            if (requestGeneration.canRelease(generation)) {
+                terrain?.destroy()
+                rooftop?.destroy()
+            }
             return
         }
         drop.future = null
@@ -480,7 +479,7 @@ private fun GeospatialSection(
     val onDrop: () -> Unit = onDrop@{
         val session = arSession ?: return@onDrop
         val earth = session.earth ?: return@onDrop
-        val camera = cameraPose.pose ?: return@onDrop
+        val camera = sessionState.cameraPose ?: return@onDrop
         if (earth.trackingState != TrackingState.TRACKING) return@onDrop
         val target = dropPoseAhead(
             cameraX = camera.tx(),
@@ -645,12 +644,25 @@ private fun GeospatialSection(
                 Log.e(TAG, "AR session failed", exception)
                 sessionError = friendlyArSessionError(exception)
             },
-            onARCoreAvailability = { arCoreAvailability = it },
+            onSessionFailure = { failure ->
+                if (sessionState.onFailure(failure)) {
+                    cameraReady = false
+                    isTracking = false
+                    earthState = null
+                    fix = null
+                    tracker = GeospatialLocalizationTracker()
+                    vps = VpsCoverage.Unknown
+                }
+            },
+            onARCoreAvailability = {
+                arCoreAvailability = it
+                if (it == null) sessionError = null
+            },
             onSessionUpdated = { session: Session, arFrame: Frame ->
                 cameraReady = true
                 val camera = arFrame.camera
                 isTracking = camera.trackingState == TrackingState.TRACKING
-                cameraPose.pose = camera.displayOrientedPose
+                sessionState.cameraPose = camera.displayOrientedPose
                 val earth = session.earth
                 earthState = earth?.earthState
                 val earthTracking = earth?.trackingState == TrackingState.TRACKING
@@ -914,3 +926,21 @@ private fun DropOutcome.isFailure(): Boolean =
     this == DropOutcome.NoDataHere || this == DropOutcome.NotAuthorized || this == DropOutcome.Failed
 
 private fun Double.roundTo(step: Double): Double = Math.round(this / step) * step
+
+/** Cancelling a VPS lookup after fatal close must not call its freed native future. */
+private suspend fun Session.awaitDemoVpsAvailability(
+    latitude: Double,
+    longitude: Double,
+    requests: CloudRequestGeneration,
+    mainHandler: Handler,
+): VpsAvailability = suspendCancellableCoroutine { continuation ->
+    val generation = requests.current
+    val future = checkVpsAvailabilityAsync(latitude, longitude) { result ->
+        mainHandler.post {
+            if (continuation.isActive && requests.canRelease(generation)) continuation.resume(result)
+        }
+    }
+    continuation.invokeOnCancellation {
+        if (requests.canRelease(generation)) runCatching { future.cancel() }
+    }
+}

@@ -51,7 +51,8 @@ import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
 import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.demo.common.placement.FeaturePlacementScene
-import io.github.sceneview.demo.demos.internal.CloudRequestGeneration
+import io.github.sceneview.demo.demos.internal.CloudAnchorSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.math.Position
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -172,18 +173,21 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     ARHapticFeedback(placementState)
     var show3D by remember { mutableStateOf(false) }
     var invalidMove by remember { mutableStateOf(false) }
-    var localPlacement by remember { mutableStateOf<AutoPlacementResult?>(null) }
-    var resolvedAnchor by remember { mutableStateOf<Anchor?>(null) }
-    val requestGeneration = remember { CloudRequestGeneration() }
+    val sessionState = remember {
+        CloudAnchorSessionState<Session, AutoPlacementResult, Anchor, HostCloudAnchorFuture, ResolveCloudAnchorFuture>()
+    }
+    var localPlacement by sessionState::localPlacement
+    var resolvedAnchor by sessionState::resolvedAnchor
+    val requestGeneration = sessionState.requests
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    var hostFuture by remember { mutableStateOf<HostCloudAnchorFuture?>(null) }
-    var hostAnchor by remember { mutableStateOf<Anchor?>(null) }
+    var hostFuture by sessionState::hostFuture
+    var hostAnchor by sessionState::hostAnchor
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    var arSession by remember { mutableStateOf<Session?>(null) }
-    var resolveFuture by remember { mutableStateOf<ResolveCloudAnchorFuture?>(null) }
+    var arSession by sessionState::arSession
+    var resolveFuture by sessionState::resolveFuture
 
     // ── Flow state ──────────────────────────────────────────────────────────
     // `rememberSaveable` on the two pieces a rotation must not destroy: a hosted code the
@@ -373,7 +377,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 // cancelled Compose coroutine would strand a late native anchor result.
                 mainHandler.post {
                     if (!requestGeneration.accepts(generation)) {
-                        anchor?.detach()
+                        if (requestGeneration.canRelease(generation)) anchor?.detach()
                     } else {
                         resolveFuture = null
                         if (result == Anchor.CloudAnchorState.SUCCESS && anchor != null) {
@@ -563,6 +567,15 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 },
                 onPlaced = { localPlacement = it },
                 onSessionCreated = { session -> arSession = session },
+                onSessionFailure = { failure ->
+                    if (sessionState.onFailure(failure)) {
+                        hostTask = CloudAnchorTask.Idle
+                        resolveTask = CloudAnchorTask.Idle
+                        roomQuality = RoomQuality.Insufficient
+                        cameraReady = false
+                        isTracking = false
+                    }
+                },
                 onARCoreAvailability = { arCoreAvailability = it },
                 arCoreAvailabilityOverlay = if (forcedScenario != null) null else { { ARCoreAvailabilityOverlay(it) } },
                 onSessionUpdated = { session: Session, frame: Frame ->

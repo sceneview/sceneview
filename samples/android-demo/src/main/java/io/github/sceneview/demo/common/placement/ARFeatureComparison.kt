@@ -285,6 +285,9 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                     }
                 },
                 onSessionFailed = { cameraFailed = true },
+                onSessionFailure = { failure ->
+                    if (failure is ARSessionFailure.Fatal) session = null
+                },
                 onARCoreAvailability = { availability = it },
                 onTrackingFailureChanged = { trackingFailure = it },
             ) { placement ->

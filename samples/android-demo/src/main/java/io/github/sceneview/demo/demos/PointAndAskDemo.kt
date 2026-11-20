@@ -51,7 +51,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,6 +86,8 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Point
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.demos.internal.AskSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
@@ -396,7 +397,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     }
 
     var isTracking by remember { mutableStateOf(false) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    val sessionState = remember { AskSessionState<Frame, AnswerPanel, PlacedProp>() }
+    var latestFrame by sessionState::latestFrame
+    var arSessionFailed by remember { mutableStateOf(false) }
     // QA camera backdrop (#3308): the emulator has no camera HAL, so a blurred room photo
     // stands in for the camera feed until a real frame arrives. This demo had none, which
     // meant its emulator screenshots were flat black — the same thing a lost AR layer looks
@@ -413,16 +416,16 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // Long-press placements — each drops the picker's currently selected model on the hit
     // surface. Drop-3D mode (#3083): which model is a `controls`-sheet picker, not a fixed
     // constant — see `DROP_PROPS`.
-    val placedProps = remember { mutableStateListOf<PlacedProp>() }
+    val placedProps = sessionState.placedProps
     var nextPropId by remember { mutableStateOf(0) }
     var selectedProp by remember { mutableStateOf(DROP_PROPS[0]) }
 
     // World-anchored answers (P2) — one per tap that lands on a tracked surface, until
     // Reset. `pendingPanel` is the one the in-flight round streams into; `null` means the
     // tap hit nothing trackable and the answer falls back to the screen-space card.
-    val panels = remember { mutableStateListOf<AnswerPanel>() }
+    val panels = sessionState.panels
     var nextPanelId by remember { mutableStateOf(0) }
-    var pendingPanel by remember { mutableStateOf<AnswerPanel?>(null) }
+    var pendingPanel by sessionState::pendingPanel
 
     // A round is busy while the screen card is working OR any anchored panel is still
     // streaming. `AskFlow.isBusy` covers the screen card; the panels add the anchored half.
@@ -548,9 +551,12 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         // screen-space card when the tap hit nothing trackable. Resolved once, here, so a
         // panel pinned by a LATER tap can never steal this round's deltas.
         val panel = pendingPanel
+        val generation = sessionState.generation
         val onStep: (AskStep) -> Unit = { newStep ->
-            panel?.accept(newStep, failedText)
-            step = newStep
+            if (sessionState.generation == generation) {
+                panel?.accept(newStep, failedText)
+                step = newStep
+            }
         }
         val fail: (AskFailure) -> Unit = { failure ->
             Log.w(ASK_LOG_TAG, "Point & Ask round failed: $failure (#3407).")
@@ -601,6 +607,10 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 is AskCaptureOutcome.Captured -> outcome.frame
             }
 
+            if (sessionState.generation != generation) {
+                frame.bitmap.recycle()
+                return@LaunchedEffect
+            }
             if (keepFramePreview) {
                 lastFramePreview?.thumbnail?.recycle()
                 lastFramePreview = framePreviewOf(frame)
@@ -608,6 +618,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             flow.onFrameAccepted()
             onStep(flow.step)
             askJob = scope.askAboutBitmap(frame.bitmap, askEngine, question) { failure, text ->
+                if (sessionState.generation != generation) return@askAboutBitmap
                 when {
                     failure != null -> flow.onFailure(failure)
                     text != null -> flow.onDelta(text)
@@ -992,6 +1003,20 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 // question. Same reasoning as `hideOverlaysForCapture` for the 2D chrome.
                 planeRenderer = !hideOverlaysForCapture,
                 viewNodeWindowManager = viewNodeManager,
+                onSessionFailure = { failure ->
+                    arSessionFailed = true
+                    if (sessionState.onFailure(failure)) {
+                        askJob?.cancel()
+                        askJob = null
+                        captureToken = 0
+                        hideOverlaysForCapture = false
+                        cameraReady = false
+                        isTracking = false
+                        flow.reset()
+                        syncStep()
+                    }
+                },
+                onARCoreAvailability = { if (it == null) arSessionFailed = false },
                 onSessionUpdated = { _, frame ->
                     latestFrame = frame
                     cameraReady = true
@@ -1008,6 +1033,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 },
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { e, _ ->
+                        if (arSessionFailed) return@rememberOnGestureListener
                         // `busy` is hoisted to the demo scope so the status pill above
                         // shares it — see its declaration for why askState is not enough.
                         //
