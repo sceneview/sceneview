@@ -33,8 +33,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-/** One of the three contribution amounts, as a Play one-time product. */
+/** Contribution amounts in ascending order; an unlisted Play product is optional. */
 enum class SupportTier(val productId: String, val labelRes: Int) {
+    Tiny("support_tiny", R.string.support_tier_tiny),
     Small("support_small", R.string.support_tier_small),
     Medium("support_medium", R.string.support_tier_medium),
     Large("support_large", R.string.support_tier_large),
@@ -113,6 +114,7 @@ object SupportBilling : PurchasesUpdatedListener {
         repeat(CONNECT_ATTEMPTS) { attempt ->
             val result = billing.awaitConnection()
             if (result.responseCode == BillingResponseCode.OK) return true
+            if (supportBillingUnavailable(result.responseCode)) return false
             Log.i(TAG, "Billing connection ${attempt + 1}/$CONNECT_ATTEMPTS: ${result.responseCode} ${result.debugMessage}")
             if (attempt < CONNECT_ATTEMPTS - 1) {
                 delay(wait)
@@ -130,7 +132,9 @@ object SupportBilling : PurchasesUpdatedListener {
                 .build()
         }
         val details = billing.queryProductDetails(QueryProductDetailsParams.newBuilder().setProductList(products).build())
-        val found = details.productDetailsList.orEmpty().associateBy { it.productId }
+        val found = details.productDetailsList.orEmpty()
+            .filter { it.oneTimePurchaseOfferDetails != null }
+            .associateBy { it.productId }
         prices = found
         availability = if (details.billingResult.responseCode == BillingResponseCode.OK && found.isNotEmpty()) {
             Availability.Ready
@@ -144,7 +148,7 @@ object SupportBilling : PurchasesUpdatedListener {
         if (owned.billingResult.responseCode == BillingResponseCode.OK) handle(owned.purchasesList, silent = true)
     }
 
-    /** One tap on an amount: Google Play's own purchase sheet, nothing in between. */
+    /** The primary tip button opens Google's purchase sheet for the selected amount. */
     internal fun buy(activity: Activity, tier: SupportTier, analytics: SupportPromptAnalyticsSession) {
         val billing = client ?: return
         val details = prices[tier.productId] ?: return
@@ -156,14 +160,21 @@ object SupportBilling : PurchasesUpdatedListener {
                 listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).build()),
             )
             .build()
+        analytics.purchaseLaunched(tier.productId)
         val result = billing.launchBillingFlow(activity, params)
         if (result.responseCode != BillingResponseCode.OK) {
             Log.w(TAG, "launchBillingFlow: ${result.responseCode} ${result.debugMessage}")
             inFlight = null
             analyticsSessions.remove(tier.productId)?.purchaseResult(
-                SupportResult.PurchaseFailed,
+                supportBillingFailure(result.responseCode),
             )
-            report(Outcome.Failed)
+            if (supportBillingUnavailable(result.responseCode)) {
+                availability = Availability.Unavailable
+            } else if (result.responseCode == BillingResponseCode.ITEM_ALREADY_OWNED) {
+                scope.launch { refresh(billing) }
+            } else if (result.responseCode != BillingResponseCode.USER_CANCELED) {
+                report(Outcome.Failed)
+            }
         }
     }
 
@@ -174,20 +185,19 @@ object SupportBilling : PurchasesUpdatedListener {
             inFlight = null
             when (result.responseCode) {
                 BillingResponseCode.OK -> handle(list, silent = false)
-                BillingResponseCode.USER_CANCELED -> attemptedProduct?.let { productId ->
-                    analyticsSessions.remove(productId)?.purchaseResult(
-                        SupportResult.PurchaseCancelled,
-                    )
-                }
-                // Play still holds an unconsumed one: consume it, then the next tap works.
-                BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it) }
                 else -> {
                     attemptedProduct?.let { productId ->
-                        analyticsSessions.remove(productId)?.purchaseResult(
-                            SupportResult.PurchaseFailed,
-                        )
+                        analyticsSessions.remove(productId)?.purchaseResult(supportBillingFailure(result.responseCode))
                     }
-                    report(Outcome.Failed)
+                    when (result.responseCode) {
+                        BillingResponseCode.BILLING_UNAVAILABLE, BillingResponseCode.FEATURE_NOT_SUPPORTED -> {
+                            availability = Availability.Unavailable
+                        }
+                        // Play still holds an unconsumed one: consume it, then the next tap works.
+                        BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it) }
+                        BillingResponseCode.USER_CANCELED -> Unit
+                        else -> report(Outcome.Failed)
+                    }
                 }
             }
         }
@@ -198,7 +208,10 @@ object SupportBilling : PurchasesUpdatedListener {
         for (purchase in ours) {
             when (purchase.purchaseState) {
                 Purchase.PurchaseState.PURCHASED -> consume(purchase, silent)
-                Purchase.PurchaseState.PENDING -> if (!silent) report(Outcome.Pending)
+                Purchase.PurchaseState.PENDING -> {
+                    purchase.products.forEach { productId -> analyticsSessions[productId]?.purchasePending(productId) }
+                    if (!silent) report(Outcome.Pending)
+                }
                 else -> Unit
             }
         }
@@ -212,12 +225,10 @@ object SupportBilling : PurchasesUpdatedListener {
             SupportPrompt.onSupported()
             // A purchase found at start-up (a pending payment Play confirmed while the
             // app was closed) is consumed quietly: no sheet pops up on its own to thank.
-            if (!silent) {
-                tier?.let { completed ->
-                    analyticsSessions.remove(completed.productId)?.purchaseResult(completed.analyticsResult)
-                }
-                report(Outcome.Thanks)
+            tier?.let { completed ->
+                analyticsSessions.remove(completed.productId)?.purchaseResult(completed.analyticsResult)
             }
+            if (!silent) report(Outcome.Thanks)
         } else {
             if (!silent) {
                 tier?.let { failed ->
@@ -237,7 +248,8 @@ object SupportBilling : PurchasesUpdatedListener {
      */
     private fun report(value: Outcome) {
         if (sheetVisible) {
-            outcome = value
+            // The thank-you stays until Done, even if a later callback reports another state.
+            if (outcome != Outcome.Thanks) outcome = value
         } else if (value == Outcome.Thanks) {
             appContext?.let { Toast.makeText(it, R.string.support_thanks_toast, Toast.LENGTH_LONG).show() }
         }
@@ -260,10 +272,16 @@ object SupportBilling : PurchasesUpdatedListener {
      */
     internal var qaPrices: Map<String, String>? = null
 
+    /** Debug QA (`--es support_qa unavailable`), independent of Play's connection. */
+    internal var qaUnavailable: Boolean = false
+
     private const val CONNECT_ATTEMPTS = 3
     private const val FIRST_RETRY_MILLIS = 1_000L
     private const val TAG = "SupportBilling"
 }
+
+internal fun supportBillingUnavailable(responseCode: Int): Boolean =
+    responseCode == BillingResponseCode.BILLING_UNAVAILABLE || responseCode == BillingResponseCode.FEATURE_NOT_SUPPORTED
 
 /** [BillingClient.startConnection] as one suspend call: the setup result, or a disconnect. */
 private suspend fun BillingClient.awaitConnection(): BillingResult = suspendCancellableCoroutine { cont ->

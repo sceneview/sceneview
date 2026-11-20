@@ -159,7 +159,7 @@ class MainActivity : ComponentActivity() {
         // third session" rule, and consume any contribution Play confirmed while we were away.
         if (savedInstanceState == null) SupportPrompt.onSessionStart()
         SupportBilling.connect(this)
-        // `--es support_qa prompt|thanks|pending` (debug builds only): show the interstitial
+        // `--es support_qa prompt|ready|unavailable|thanks|pending` (debug builds only): show the interstitial
         // now, optionally in its after-purchase state, so captures need no real purchase.
         if (BuildConfig.DEBUG && savedInstanceState == null) applySupportQa(intent?.getStringExtra("support_qa"))
         // Debug builds only: pinches and double taps played from `adb shell am broadcast` (QaGestures).
@@ -963,14 +963,22 @@ fun PlaceholderDemo(id: String, onBack: () -> Unit) {
 
 /** Debug QA ingress for the Support sheet — see the `support_qa` extra in [MainActivity.onCreate]. */
 private fun applySupportQa(value: String?) {
+    SupportBilling.qaPrices = null
+    SupportBilling.qaUnavailable = false
+    SupportBilling.clearOutcome()
     when (value) {
         "prompt" -> SupportPrompt.forceShow()
         "ready" -> {
             SupportBilling.qaPrices = mapOf(
+                "support_tiny" to "$0.99",
                 "support_small" to "$2.99",
                 "support_medium" to "$9.99",
                 "support_large" to "$24.99",
             )
+            SupportPrompt.forceShow()
+        }
+        "unavailable" -> {
+            SupportBilling.qaUnavailable = true
             SupportPrompt.forceShow()
         }
         "thanks" -> {

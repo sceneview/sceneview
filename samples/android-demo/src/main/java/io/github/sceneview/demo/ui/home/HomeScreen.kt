@@ -51,6 +51,10 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Badge
@@ -104,6 +108,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
@@ -146,6 +151,9 @@ object HomeTestTags {
     const val SEARCH_FIELD = "home-search-field"
     const val HERO = "home-hero"
     const val SEARCH_CLOSE = "home-search-close"
+    const val SUPPORT_ENTRY = "home-support-entry"
+    const val MENU = "home-menu"
+    const val MENU_SUPPORT = "home-menu-support"
 
     /** Test tag of the full-span header drawn above [category]'s first card (#2239). */
     fun sectionHeader(category: String): String =
@@ -166,7 +174,7 @@ object HomeTestTags {
 
 /**
  * The Showcase tab (design spec §2): one `LazyVerticalGrid`, one vertical scroll, no
- * nested scroll. Full-span header spacer, hero, then a standard Material 3 list: the
+ * nested scroll. Full-span header spacer, hero, support entry, then a standard Material 3 list: the
  * "What's new" row, the "Featured" group, a [BrowseOnlineRow] that opens the online
  * gallery, the section chips, then every demo as a [DemoListRow] in flat editorial
  * [DemoEntry.order], one grouped section per category; a chip scrolls to its section
@@ -192,7 +200,7 @@ object HomeTestTags {
  * position with it — while another tab or the online gallery is shown.
  *
  * The "What's new" sheet stays reachable from a small header action instead of
- * a full-span card — the grid is for demos only. Loading is skipped in
+ * a full-span card. Loading is skipped in
  * inspection mode so the snapshot goldens do not churn on every release.
  */
 @Composable
@@ -212,6 +220,8 @@ fun HomeScreen(
      */
     hasUnseenWhatsNew: Boolean = false,
     onWhatsNewSinceClick: () -> Unit = {},
+    onSupportClick: () -> Unit = {},
+    onMenuSupportClick: () -> Unit = {},
     /**
      * A non-blank [query] the user settled on, with how many samples it shows — fired once the
      * field has been still for [SearchTerm.SETTLE_MS], or straight away when a sample is tapped
@@ -415,6 +425,7 @@ fun HomeScreen(
     val chipsShown = !searching && rows.map { it.category }.distinct().size > 1
     val headItemCount = 1 + // header spacer
         (if (searching) 0 else 1) + // hero
+        (if (searching) 0 else 1) + // support entry
         (if (!searching && whatsNewLead != null) 1 else 0) +
         (if (!searching && featuredShelf.isNotEmpty()) 1 + featuredShelf.size else 0) +
         (if (searching) 0 else 1) + // browse online
@@ -496,6 +507,16 @@ fun HomeScreen(
                         pagerState = featuredPagerState,
                         modifier = Modifier.testTag(HomeTestTags.HERO),
                     )
+                }
+                if (!searching) {
+                    item(key = "support", span = { GridItemSpan(maxLineSpan) }) {
+                        HomeSupportEntry(
+                            onClick = onSupportClick,
+                            modifier = Modifier
+                                .testTag(HomeTestTags.SUPPORT_ENTRY)
+                                .padding(top = home.groupGap - home.rowGap),
+                        )
+                    }
                 }
                 // "What's new": the one row that answers "what changed?" without a scroll
                 // through the catalogue (#3927). It counts the New / Updated cards and opens
@@ -659,6 +680,7 @@ fun HomeScreen(
             // to the release-notes sheet.
             showWhatsNew = hasUnseenWhatsNew || !whatsNew.isNullOrEmpty(),
             whatsNewBadged = hasUnseenWhatsNew,
+            onMenuSupportClick = onMenuSupportClick,
             onWhatsNewClick = {
                 if (hasUnseenWhatsNew) onWhatsNewSinceClick() else whatsNewSheet.open()
             },
@@ -880,6 +902,7 @@ private fun HomeHeader(
     showWhatsNew: Boolean,
     whatsNewBadged: Boolean,
     onWhatsNewClick: () -> Unit,
+    onMenuSupportClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val home = SceneViewTokens.Home
@@ -949,6 +972,7 @@ private fun HomeHeader(
                     overStage = overStage,
                     onWhatsNewClick = onWhatsNewClick,
                     onSearchClick = { searchOpen = true },
+                    onMenuSupportClick = onMenuSupportClick,
                 )
             }
         }
@@ -969,6 +993,7 @@ private fun TitleRow(
     overStage: Boolean,
     onWhatsNewClick: () -> Unit,
     onSearchClick: () -> Unit,
+    onMenuSupportClick: () -> Unit,
 ) {
     val home = SceneViewTokens.Home
     // Over the stage the row uses the hero's own fixed whites (DESIGN.md: the hero
@@ -1004,8 +1029,10 @@ private fun TitleRow(
             text = stringResource(R.string.app_name),
             style = SceneViewTokens.Type.title,
             color = titleColor,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.weight(1f))
         if (showWhatsNew) {
             IconButton(onClick = onWhatsNewClick) {
                 val icon = @Composable {
@@ -1020,12 +1047,36 @@ private fun TitleRow(
                 if (whatsNewBadged) BadgedBox(badge = { Badge() }) { icon() } else icon()
             }
         }
-        IconButton(onClick = onSearchClick, modifier = Modifier.offset(x = 12.dp)) {
+        IconButton(onClick = onSearchClick) {
             Icon(
                 imageVector = Icons.Filled.Search,
                 contentDescription = stringResource(R.string.home_search),
                 tint = iconTint,
             )
+        }
+        Box {
+            var menuExpanded by remember { mutableStateOf(false) }
+            IconButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier.testTag(HomeTestTags.MENU),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = stringResource(R.string.home_more_options),
+                    tint = iconTint,
+                )
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.support_entry_title)) },
+                    leadingIcon = { Icon(Icons.Outlined.FavoriteBorder, contentDescription = null) },
+                    onClick = {
+                        menuExpanded = false
+                        onMenuSupportClick()
+                    },
+                    modifier = Modifier.testTag(HomeTestTags.MENU_SUPPORT),
+                )
+            }
         }
     }
 }

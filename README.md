@@ -47,6 +47,8 @@ API or the doc gets fixed.
 [![Discord](https://img.shields.io/discord/893787194295222292?color=7389D8&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/UbNDDBTNqb)
 [![Open Collective](https://img.shields.io/opencollective/all/sceneview?label=Open%20Collective&color=7FADF2&logo=opencollective)](https://opencollective.com/sceneview)
 
+Using SceneView? You can [support it on Open Collective](https://opencollective.com/sceneview) or through [GitHub Sponsors](https://github.com/sponsors/sceneview).
+
 ---
 
 ## Try it

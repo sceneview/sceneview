@@ -161,6 +161,10 @@ fun RootScreen(
     var arSessionActive by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var galleryOpen by rememberSaveable { mutableStateOf(false) }
+    var supportEntry by rememberSaveable { mutableStateOf<SupportSheetMode?>(null) }
+    supportEntry?.let { mode ->
+        SupportSheet(mode = mode, onDismiss = { supportEntry = null })
+    }
 
     // Publish the visible screen for the bug reporter (#3390). The tab
     // selection lives here as local state, while the NavController the reporter
@@ -237,7 +241,8 @@ fun RootScreen(
     // moment of value once the user is back here — never on the AR View tab, never over a
     // live AR session or another sheet. The short wait lets the screen settle first, so the
     // sheet does not ride in on the back transition from the sample.
-    val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive && !whatsNewSinceSheet.isShown
+    val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive &&
+        !whatsNewSinceSheet.isShown && supportEntry == null
     LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
         if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
         delay(SUPPORT_PROMPT_SETTLE_MILLIS)
@@ -419,6 +424,8 @@ fun RootScreen(
                             onDemoClick(id)
                         },
                         onBrowseOnlineClick = { galleryOpen = true },
+                        onSupportClick = { supportEntry = SupportSheetMode.Home },
+                        onMenuSupportClick = { supportEntry = SupportSheetMode.Menu },
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
                         onWhatsNewSinceClick = { whatsNewSinceSheet.open() },
                     )
@@ -430,7 +437,10 @@ fun RootScreen(
                     },
                     onSessionActiveChange = { arSessionActive = it },
                 )
-                RootTab.About -> AboutTabContent(statusBand = statusBand)
+                RootTab.About -> AboutTabContent(
+                    statusBand = statusBand,
+                    onSupportClick = { supportEntry = SupportSheetMode.About },
+                )
             }
             }
             }
@@ -501,17 +511,12 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
  * Reality Composer: a quiet identity block on the page background, then **one**
  * emphasised surface, then titled groups of plain rows. The emphasised surface is
  * the support card (#3565), placed directly under the identity so it is read
- * without scrolling — and nowhere else in the app, because "non-intrusive" means
- * one card seen once, never a dialog, a launch nag or a badge.
+ * without scrolling. Home and its menu also offer a discreet entry to the same sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AboutTabContent(statusBand: Dp = 0.dp) {
+private fun AboutTabContent(onSupportClick: () -> Unit, statusBand: Dp = 0.dp) {
     val context = LocalContext.current
-    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
-    if (showSupportSheet) {
-        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showSupportSheet = false })
-    }
     val noBrowserMessage = stringResource(R.string.about_no_browser)
     val openLink: (String) -> Unit = { url ->
         logOutboundLink(url)
@@ -573,7 +578,7 @@ private fun AboutTabContent(statusBand: Dp = 0.dp) {
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xl),
     ) {
         AboutIdentity()
-        AboutSupportCard(onSupportInApp = { showSupportSheet = true })
+        AboutSupportCard(onSupportInApp = onSupportClick)
         AboutGroup(title = stringResource(R.string.about_group_more_apps)) {
             MORE_APPS.forEachIndexed { index, app ->
                 if (index > 0) AboutRowDivider(startInset = SceneViewTokens.About.appDividerInset)
