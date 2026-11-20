@@ -7,6 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -63,7 +66,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -120,7 +122,7 @@ internal class RerunLandingActions(
  */
 @Composable
 internal fun RerunLanding(state: RerunLandingState, actions: RerunLandingActions) {
-    LandingPage(state, actions)
+    SessionsSection(state, actions)
 }
 
 /** The themed stage the landing is drawn on. */
@@ -128,55 +130,34 @@ private val stage: StageChrome @Composable get() = LocalStageChrome.current
 
 @Composable
 private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(stage.ground),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .rerunPageScroll()
-                .padding(horizontal = Space.md),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = RerunPageMaxWidth)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(Space.md),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                    Text(
-                        text = ScanCopy.LANDING_TITLE,
-                        style = Type.display.copy(color = stage.onGlass),
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    Text(text = ScanCopy.LANDING_BODY, style = Type.body.copy(color = stage.onGlassMuted))
-                }
-                RecordRoomCard(onClick = actions.onRecord)
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    GlassAction(
-                        icon = Icons.Rounded.PlayArrow,
-                        label = ScanCopy.WATCH_SAMPLE,
-                        onClick = actions.onWatchSample,
-                        modifier = Modifier.weight(1f).testTag(WATCH_SAMPLE_TAG),
-                    )
-                    GlassAction(
-                        icon = Icons.Outlined.FileOpen,
-                        label = ScanCopy.OPEN_FILE,
-                        onClick = actions.onOpenFile,
-                        modifier = Modifier.testTag(OPEN_FILE_TAG),
-                    )
-                }
-                // What happened to the file just opened: under the button that opened it, not
-                // inside the list of sessions.
-                state.notice?.let { NoticeCard(it, onDismiss = actions.onDismissNotice) }
-                if (state.openingFile) OpeningCard(ScanCopy.OPENING_FILE)
-                SessionsSection(state, actions)
-            }
+    Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+            Text(
+                text = ScanCopy.LANDING_TITLE,
+                style = Type.display.copy(color = stage.onGlass),
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(text = ScanCopy.LANDING_BODY, style = Type.body.copy(color = stage.onGlassMuted))
         }
+        RecordRoomCard(onClick = actions.onRecord)
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            GlassAction(
+                icon = Icons.Rounded.PlayArrow,
+                label = ScanCopy.WATCH_SAMPLE,
+                onClick = actions.onWatchSample,
+                modifier = Modifier.weight(1f).testTag(WATCH_SAMPLE_TAG),
+            )
+            GlassAction(
+                icon = Icons.Outlined.FileOpen,
+                label = ScanCopy.OPEN_FILE,
+                onClick = actions.onOpenFile,
+                modifier = Modifier.testTag(OPEN_FILE_TAG),
+            )
+        }
+        // What happened to the file just opened: under the button that opened it, not
+        // inside the list of sessions.
+        state.notice?.let { NoticeCard(it, onDismiss = actions.onDismissNotice) }
+        if (state.openingFile) OpeningCard(ScanCopy.OPENING_FILE)
     }
 }
 
@@ -251,28 +232,45 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
     // next visit to 3D Scan removes it, so no photo of a room outlives its share.
     LaunchedEffect(Unit) { discardSharedScan(context) }
     val sessions = state.sessions
-    Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-        Row {
-            Text(
-                text = ScanCopy.SESSIONS_TITLE,
-                style = Type.card.copy(color = stage.onGlass),
-                modifier = Modifier.weight(1f).alignByBaseline().semantics { heading() },
-            )
-            if (!sessions.isNullOrEmpty()) {
-                Text(
-                    text = ScanCopy.ON_THIS_PHONE,
-                    style = Type.caption.copy(color = stage.onGlassMuted),
-                    modifier = Modifier.alignByBaseline(),
-                )
+    // The full-width viewport receives scroll gestures, including beside the centred cards.
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(stage.ground)
+            .testTag(SESSIONS_LIST_TAG)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .padding(top = RerunHeaderClearance),
+        contentPadding = PaddingValues(
+            start = Space.md, end = Space.md,
+            bottom = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) + Space.md,
+        ),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
+        item(key = "intro", contentType = "intro") { LandingListItem { LandingPage(state, actions) } }
+        item(key = "sessions-heading", contentType = "heading") {
+            LandingListItem {
+                Row {
+                    Text(
+                        text = ScanCopy.SESSIONS_TITLE,
+                        style = Type.card.copy(color = stage.onGlass),
+                        modifier = Modifier.weight(1f).alignByBaseline().semantics { heading() },
+                    )
+                    if (!sessions.isNullOrEmpty()) {
+                        Text(
+                            text = ScanCopy.ON_THIS_PHONE,
+                            style = Type.caption.copy(color = stage.onGlassMuted),
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                    }
+                }
             }
         }
-        // The scan saving behind (#4500) heads the list it is about to join.
-        if (state.savingScan) OpeningCard(ScanCopy.SAVING, testTag = SAVING_SCAN_TAG)
-        when {
-            sessions == null -> Unit
-            sessions.isEmpty() && !state.savingScan -> EmptySessions()
-            sessions.isEmpty() -> Unit
-            else -> sessions.forEach { session ->
+        if (state.savingScan) item(key = "saving") {
+            LandingListItem { OpeningCard(ScanCopy.SAVING, testTag = SAVING_SCAN_TAG) }
+        }
+        if (sessions?.isEmpty() == true && !state.savingScan) item(key = "empty") { LandingListItem { EmptySessions() } }
+        items(sessions.orEmpty(), key = { it.id }, contentType = { "session" }) { session ->
+            LandingListItem {
                 SessionCard(
                     session = session,
                     onOpen = { actions.onOpen(session) },
@@ -281,6 +279,9 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                     onDelete = { confirming = session },
                 )
             }
+        }
+        item(key = "bottom-inset") {
+            Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)))
         }
     }
     sharing?.let { session ->
@@ -304,6 +305,14 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
             },
             dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Constrain card content without narrowing the list's scrollable viewport. */
+@Composable
+private fun LandingListItem(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = RerunPageMaxWidth).fillMaxWidth()) { content() }
     }
 }
 
@@ -394,11 +403,6 @@ private fun SessionCard(
     onDelete: () -> Unit,
 ) {
     val info = session.info
-    val origin = remember(info) { sessionOrigin(info) }
-    val locale = LocalLocale.current.platformLocale
-    val figures = remember(info, locale) {
-        ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration, locale)
-    }
     var menu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -420,13 +424,13 @@ private fun SessionCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = origin,
+                text = session.origin,
                 style = Type.caption.copy(color = stage.onGlassMuted),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = figures,
+                text = session.figures,
                 style = Type.caption.copy(color = stage.onGlassMuted),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -576,3 +580,5 @@ internal const val RECORD_ROOM_TAG = "ar_rerun_record_room"
 internal const val NOTICE_TAG = "ar_rerun_notice"
 internal const val OPENING_TAG = "ar_rerun_opening"
 internal const val SAVING_SCAN_TAG = "ar_rerun_saving_scan"
+
+internal const val SESSIONS_LIST_TAG = "ar_rerun_sessions_list"

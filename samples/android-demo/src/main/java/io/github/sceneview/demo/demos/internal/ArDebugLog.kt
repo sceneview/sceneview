@@ -205,4 +205,5 @@ class ArDebugLogPlayer(
 
 /** A trace holding the whole log at once — the fixture as a finished take, for scrubbing. */
 fun ArDebugTrace.Companion.of(events: List<ArDebugEvent>): ArDebugTrace =
-    ArDebugTrace().also { trace -> events.forEach { it.applyTo(trace) } }
+    ArDebugTrace(observationMaxBytes = Long.MAX_VALUE, observationMaxCount = Int.MAX_VALUE)
+        .also { trace -> events.forEach { it.applyTo(trace) } }

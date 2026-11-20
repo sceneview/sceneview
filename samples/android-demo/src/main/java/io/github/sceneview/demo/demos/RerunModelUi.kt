@@ -135,6 +135,7 @@ import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
 import io.github.sceneview.demo.demos.internal.ScanPreset
+import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import io.github.sceneview.demo.demos.internal.ScanResultCamera
 import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
@@ -274,10 +275,15 @@ internal sealed interface RerunModelSource {
  * lens, fresh depth only — on its own worker: a frame that arrives while one integrates is left
  * to the surfel map alone, so neither slows the other.
  */
-internal class RerunLiveModel(private val preset: ScanPreset = ScanPreset.ROOM) {
+internal class RerunLiveModel(
+    private val owner: RerunLiveModels.Owner,
+    private val preset: ScanPreset = ScanPreset.ROOM,
+    budget: ScanMemoryBudget = ScanMemoryBudget(Runtime.getRuntime().maxMemory()),
+) {
     /** The TSDF while it records; `null` once [keepFor] has handed it on, so only its slot holds it. */
     @Volatile
-    private var tsdf: RerunTsdf? = RerunTsdf(voxelM = preset.modelVoxelM)
+    private var tsdf: RerunTsdf? = RerunTsdf(voxelM = budget.modelVoxelM(preset), maxBytes = budget.tsdfBytes)
+    private var transferred: java.lang.ref.WeakReference<RerunTsdf>? = null
     private val busy = AtomicBoolean(false)
 
     @Volatile
@@ -315,31 +321,86 @@ internal class RerunLiveModel(private val preset: ScanPreset = ScanPreset.ROOM) 
     fun keepFor(pack: RerunCapturePack?) {
         val tsdf = tsdf ?: return
         this.tsdf = null
-        if (pack != null && tsdf.frames > 0) RerunLiveModels.keep(pack, tsdf)
+        if (pack != null && tsdf.frames > 0) {
+            owner.keep(pack, tsdf)
+            transferred = java.lang.ref.WeakReference(tsdf)
+        }
+    }
+
+    /** Drops an abandoned capture's TSDF; an integration already running releases its local copy on return. */
+    fun close(keepTransferred: Boolean = false): Job? {
+        val worker = job
+        worker?.cancel()
+        job = null
+        tsdf = null
+        if (!keepTransferred) transferred?.get()?.let(RerunLiveModels::forget)
+        transferred = null
+        return worker
     }
 }
 
 /**
  * The last recording's TSDF, kept in memory with the scan it belongs to (one slot: ~50 MB at
- * most). A scan reopened from the list in the same process finds it by its manifest's bytes.
+ * most). It survives capture -> result so [RerunModelSource.of] can mesh it. The owning demo
+ * releases it on exit; a later reopen uses the saved model or surfels instead.
  */
 internal object RerunLiveModels {
     @Volatile
     private var kept: Pair<ByteArray, RerunTsdf>? = null
 
-    fun keep(pack: RerunCapturePack, tsdf: RerunTsdf) {
+    @Synchronized
+    private fun keep(pack: RerunCapturePack, tsdf: RerunTsdf) {
         kept = pack.manifest to tsdf
     }
 
+    @Synchronized
     fun find(pack: RerunCapturePack?): RerunTsdf? {
         pack ?: return null
         return kept?.takeIf { it.first.contentEquals(pack.manifest) }?.second
     }
 
     /** Empties the slot when it holds [tsdf]. */
+    @Synchronized
     fun forget(tsdf: RerunTsdf) {
         if (kept?.second === tsdf) kept = null
     }
+
+    /** One demo composition, including its result screen. A detached save cannot refill a closed owner. */
+    class Owner : AutoCloseable {
+        private var closed = false
+        // The owner must not undo Live.release() by retaining a second strong reference.
+        private var held: java.lang.ref.WeakReference<RerunTsdf>? = null
+
+        @Synchronized
+        fun keep(pack: RerunCapturePack, tsdf: RerunTsdf) {
+            if (closed) return
+            held = java.lang.ref.WeakReference(tsdf)
+            RerunLiveModels.keep(pack, tsdf)
+        }
+
+        @Synchronized
+        override fun close() {
+            closed = true
+            forget()
+        }
+
+        /** AR placement has no model-result reader. The owner stays reusable for another capture. */
+        @Synchronized
+        fun forget() {
+            held?.get()?.let(RerunLiveModels::forget)
+            held = null
+        }
+    }
+}
+
+/** The cache belongs to the entire demo, so capture -> result can still use the live TSDF. */
+@Composable
+internal fun rememberRerunLiveModels(): RerunLiveModels.Owner {
+    val owner = remember { RerunLiveModels.Owner() }
+    DisposableEffect(owner) {
+        onDispose { owner.close() }
+    }
+    return owner
 }
 
 /**
@@ -485,8 +546,9 @@ private class Meshed(
 /**
  * Fuses [source] (unless done) and meshes it. Nothing past this function holds the TSDF, so the
  * finish's peak — the cleaning and the photos — never sits on top of its up to
- * [RerunTsdf.MAX_BYTES]. A recording's TSDF that big is also let go from its slot: reopened
- * without a model kept, the scan meshes its surfels instead.
+ * [RerunTsdf.MAX_BYTES]. A live TSDF past half its cap is also let go from its slot: a retry
+ * without one meshes the scan's surfels instead. A smaller one stays for a retry with another
+ * method; the owning demo releases it on Save, Discard and exit.
  *
  * The surface is meshed within what the heap's finish takes ([CleanModel.maxRawTriangles]): on a
  * Pixel 4a's 192 MB, a scan past it meshes with cells twice as coarse, and finishes.
@@ -498,42 +560,48 @@ private fun mesh(
     reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
 ): Meshed {
     val started = System.nanoTime()
-    val reconstructed = reconstructedTsdf(source, reconstruction, reconstructionVoxelM) { progress(it * FUSE_SHARE) }
-    val tsdf = reconstructed ?: when (source) {
-        is RerunModelSource.Live -> checkNotNull(source.tsdf) { "TSDF released" }
-        is RerunModelSource.Surfels -> RerunTsdf().also { t ->
-            t.integrateSurfels(source.cloud) { progress(it * FUSE_SHARE) }
-        }
-        is RerunModelSource.Synthetic -> RerunTsdf().also { t ->
-            val poses = RerunSyntheticRoom.poses()
-            poses.forEachIndexed { i, pose ->
-                t.integrate(TexturedSyntheticRoom.scene.render(pose))
-                progress(FUSE_SHARE * (i + 1) / poses.size)
+    run {
+        val reconstructed = reconstructedTsdf(source, reconstruction, reconstructionVoxelM) { progress(it * FUSE_SHARE) }
+        val tsdf = reconstructed ?: when (source) {
+            is RerunModelSource.Live -> source.tsdf ?: RerunTsdf().also { t ->
+                source.cloud?.let { t.integrateSurfels(it) { progress(it * FUSE_SHARE) } }
+            }
+            is RerunModelSource.Surfels -> RerunTsdf().also { t ->
+                t.integrateSurfels(source.cloud) { progress(it * FUSE_SHARE) }
+            }
+            is RerunModelSource.Synthetic -> RerunTsdf().also { t ->
+                val poses = RerunSyntheticRoom.poses()
+                poses.forEachIndexed { i, pose ->
+                    t.integrate(TexturedSyntheticRoom.scene.render(pose))
+                    progress(FUSE_SHARE * (i + 1) / poses.size)
+                }
             }
         }
+        val fuseMs = (System.nanoTime() - started) / NS_PER_MS
+        // A surfel's weight counts surfels, each already seen in DenseFusion.MIN_VIEWS frames or more:
+        // the default keeps the lateral fade between two surfel columns. Depth frames count views.
+        val minWeight = if (reconstructed != null || source is RerunModelSource.Surfels) RerunMarchingCubes.DEFAULT_MIN_WEIGHT else FRAMES_MIN_WEIGHT
+        val base = if (source is RerunModelSource.Live && reconstructed == null) 0f else FUSE_SHARE
+        val maxTriangles = CleanModel.maxRawTriangles(Runtime.getRuntime().maxMemory())
+        val extraction = RerunMarchingCubes.extractWhole(tsdf, minWeight, maxTriangles) { progress(base + (MESH_SHARE - base) * it) }
+        // Only a big live volume is let go here, so a retry with another method still meshes a small
+        // one; the owning demo releases the rest on Save, Discard and exit (RerunLiveModels.Owner).
+        val release = source is RerunModelSource.Live && reconstructed == null && tsdf.bytes >= tsdf.maxBytes / 2
+        if (release) (source as RerunModelSource.Live).release()
+        return Meshed(
+            surface = RawSurface(extraction.mesh),
+            extractedTriangles = extraction.rawTriangles,
+            droppedComponents = extraction.droppedComponents,
+            maxTriangles = maxTriangles,
+            capped = extraction.capped,
+            fuseMs = fuseMs,
+            frames = tsdf.frames,
+            blocks = tsdf.blockCount,
+            bytes = tsdf.bytes,
+            droppedBlocks = tsdf.droppedBlocks,
+            released = release,
+        )
     }
-    val fuseMs = (System.nanoTime() - started) / NS_PER_MS
-    // A surfel's weight counts surfels, each already seen in DenseFusion.MIN_VIEWS frames or more:
-    // the default keeps the lateral fade between two surfel columns. Depth frames count views.
-    val minWeight = if (reconstructed != null || source is RerunModelSource.Surfels) RerunMarchingCubes.DEFAULT_MIN_WEIGHT else FRAMES_MIN_WEIGHT
-    val base = if (source is RerunModelSource.Live && reconstructed == null) 0f else FUSE_SHARE
-    val maxTriangles = CleanModel.maxRawTriangles(Runtime.getRuntime().maxMemory())
-    val extraction = RerunMarchingCubes.extractWhole(tsdf, minWeight, maxTriangles) { progress(base + (MESH_SHARE - base) * it) }
-    val release = source is RerunModelSource.Live && reconstructed == null && tsdf.bytes >= tsdf.maxBytes / 2
-    if (release && source is RerunModelSource.Live) source.release()
-    return Meshed(
-        surface = RawSurface(extraction.mesh),
-        extractedTriangles = extraction.rawTriangles,
-        droppedComponents = extraction.droppedComponents,
-        maxTriangles = maxTriangles,
-        capped = extraction.capped,
-        fuseMs = fuseMs,
-        frames = tsdf.frames,
-        blocks = tsdf.blockCount,
-        bytes = tsdf.bytes,
-        droppedBlocks = tsdf.droppedBlocks,
-        released = release,
-    )
 }
 
 /**
@@ -758,6 +826,8 @@ internal fun RerunModelScreen(
     /** The grid [surfels] were kept on, in metres, when the scan says it. */
     surfelsVoxelM: Float? = null,
 ) {
+    // The demo owns this source across Model -> Replay / Plan / AR navigation. Meshing releases
+    // it in mesh's finally (also on cancellation); leaving this screen must not release it early.
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
     // them (photoFirstCloud): the result is never a bare stage for as long as the model takes.
@@ -779,6 +849,7 @@ internal fun RerunModelScreen(
         // this one's (RerunScanModel.stalePipeline); it stays when there is nothing to build from.
         val stale = stored?.takeIf { it.stalePipeline && source != null }
         val kept = stored?.takeIf { retry == null && stale == null }
+        if (kept != null) (source as? RerunModelSource.Live)?.release()
         var shownFirst: RerunScanModel? = retry ?: stale
         shownFirst?.let { value = ModelState.Ready(it, final = false) }
         val built = kept ?: source?.let { from ->

@@ -14,22 +14,37 @@ import io.github.sceneview.demo.demos.internal.LiveCoverageGround
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.MonotonicCount
 import io.github.sceneview.demo.demos.internal.ScanDetail
+import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A depth scan's dense map as the capture screen sees it (#4629): [DenseFusion] on this phone's
- * budget ([DenseFusion.budgetFor] its heap), the one count the HUD shows — the points the saved
+ * share of the scan's [ScanMemoryBudget], the one count the HUD shows — the points the saved
  * scan keeps, so the live figure and the saved one agree — the live 3D card's snapshot, and
  * whether the map has just coarsened part of itself to make room ([detail]).
  *
  * [add] runs on one worker thread at a time; the rest is read from the main thread.
  */
 internal class ScanDenseMap(
-    maxPoints: Int = DenseFusion.budgetFor(Runtime.getRuntime().maxMemory()),
+    maxPoints: Int = ScanMemoryBudget(Runtime.getRuntime().maxMemory()).densePoints,
     maxLevel: Int = DenseFusion.MAX_LEVEL,
     private val clock: () -> Long = System::nanoTime,
 ) {
     val fusion = DenseFusion(maxPoints = maxPoints, maxLevel = maxLevel)
+
+    /** Retained primitive storage of the map and its current live snapshot, for memory tests. */
+    internal val storageBytes: Long
+        get() {
+            val layer = live ?: return fusion.storageBytes
+            val cloud = layer.cloud
+            val cloudBytes = cloud.positions.size * 4L + cloud.colors.size * 4L +
+                (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
+            val mesh = layer.mesh
+            val meshBytes = mesh.positions.size * 4L + mesh.indices.size * 4L + mesh.uvs.size * 4L
+            val wholeBytes = if (layer.whole === cloud.positions) 0L else layer.whole.size * 4L
+            return fusion.storageBytes + cloudBytes + meshBytes + wholeBytes + layer.atlas.size +
+                layer.offsets.size * 4L + layer.coveredCells.size * 8L + layer.weakCells.size * 8L + SNAPSHOT_OVERHEAD_BYTES
+        }
 
     private val points = AtomicInteger(0)
     private val frame = AtomicInteger(0)
@@ -202,6 +217,7 @@ internal class ScanDenseMap(
     }
 
     companion object {
+        private const val SNAPSHOT_OVERHEAD_BYTES = 2048L
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_INTERVAL_NS = 1_000_000_000L
 

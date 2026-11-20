@@ -99,6 +99,11 @@ class DenseFusion(
     /** [liveCloud]'s working arrays, kept from one live snapshot to the next. */
     private val scratch = LiveScratch()
 
+    /** Retained primitive-array storage, including indices and live-cloud scratch; no heap walk. */
+    internal val storageBytes: Long
+        get() = px.size * 69L + keys.size * 12L + chunkLevel.size * 9L +
+            chunkIndex.storageBytes + scratch.storageBytes + ARRAY_OVERHEAD_BYTES
+
     /** The current [add] call, numbered from 1: a voxel's views grow once per call. */
     private var view = 0
 
@@ -121,8 +126,15 @@ class DenseFusion(
             val iz = floor(z / voxelM).toInt()
             val ck = pack(ix shr CHUNK_SHIFT, iy shr CHUNK_SHIFT, iz shr CHUNK_SHIFT)
             if (ck != chunkKey) {
+                val found = chunkFor(ck)
+                // A rejected voxel must not leave a new empty chunk forever. Otherwise a full
+                // scan walking into new rooms grows metadata even though count is capped.
+                if (found < 0) {
+                    saturated = true
+                    continue
+                }
+                chunk = found
                 chunkKey = ck
-                chunk = chunkFor(ck)
                 chunkSeen[chunk] = view
             }
             var key = levelKey(ix, iy, iz, chunkLevel[chunk].toInt())
@@ -698,6 +710,7 @@ class DenseFusion(
     private fun chunkFor(key: Long): Int {
         val known = chunkIndex.get(key)
         if (known >= 0) return known
+        if (chunks >= maxPoints) return -1
         if (chunks == chunkLevel.size) {
             val size = chunks * 2
             chunkLevel = chunkLevel.copyOf(size)
@@ -772,6 +785,8 @@ class DenseFusion(
     }
 
     companion object {
+        /** Rounded allowance for the retained primitive-array headers. */
+        private const val ARRAY_OVERHEAD_BYTES = 2048L
         /** The design's surfel size: 2 cm. */
         const val VOXEL_M = 0.02f
 
@@ -964,6 +979,8 @@ class DenseFusion(
  * what the map needs, so a growing map does not grow them every second. One fusion at a time.
  */
 private class LiveScratch {
+    val storageBytes: Long
+        get() = outOf.size * 6L + weight.size * 51L + buckets.size * 4L
     /** Per voxel of the map: the merged surfel it goes to. */
     var outOf = IntArray(0)
 

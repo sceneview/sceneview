@@ -1,5 +1,9 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
@@ -36,4 +40,22 @@ internal object RerunScanBuilds {
         saving = (saving - 1).coerceAtLeast(0)
         if (away) savedAway++
     }
+}
+
+/** A stale accessibility node keeps only this small, cleared handle after its screen closes. */
+internal class RerunClick : () -> Unit {
+    internal var action: (() -> Unit)? = null
+        private set
+
+    fun update(action: () -> Unit) { this.action = action }
+    fun clear() { action = null }
+    override fun invoke() { action?.invoke() }
+}
+
+@Composable
+internal fun rememberRerunClick(action: () -> Unit): RerunClick {
+    val click = remember { RerunClick() }
+    SideEffect { click.update(action) }
+    DisposableEffect(click) { onDispose { click.clear() } }
+    return click
 }

@@ -41,6 +41,7 @@ import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
 import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
@@ -224,30 +225,54 @@ internal fun rerunSessionStore(context: Context) = RerunSessionStore(File(contex
 internal class LandingSession(
     val info: RerunStoredSession,
     val thumbnail: ImageBitmap?,
-    val footprint: ScanFootprint? = null,
+    val footprint: ScanFootprint?,
+    val origin: String,
+    val figures: String,
 ) {
     val id: String get() = info.id
 }
 
-/** Every kept session with its thumbnail, newest first. IO. */
-internal suspend fun RerunSessionStore.landingSessions(): List<LandingSession> = withContext(Dispatchers.IO) {
-    runCatching { sweepOrphans() }
-    list().map { info ->
-        val thumbnail = thumbnail(info.id)?.let { file ->
-            runCatching {
-                // The first photo may be a sharp one: decoded at a card's size, never whole.
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(file.path, bounds)
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = ScanPhotoPolicy.previewSample(bounds.outWidth, bounds.outHeight)
+/** Cached per session file for this demo; all reading and formatting runs on IO. */
+internal class RerunLandingCache {
+    private val sessions = HashMap<File, LandingSession>()
+
+    @Synchronized
+    fun load(store: RerunSessionStore, locale: Locale): List<LandingSession> {
+        val files = HashSet<File>()
+        val loaded = store.list().map { info ->
+            val file = File(store.directoryOf(info.id), RerunSessionStore.INFO)
+            files.add(file)
+            sessions[file]?.takeIf { it.info == info && cachedLocale == locale } ?: run {
+                val thumbnail = store.thumbnail(info.id)?.let { photo ->
+                    runCatching {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeFile(photo.path, bounds)
+                        val options = BitmapFactory.Options().apply {
+                            inSampleSize = ScanPhotoPolicy.previewSample(bounds.outWidth, bounds.outHeight)
+                        }
+                        BitmapFactory.decodeFile(photo.path, options)?.asImageBitmap()
+                    }.getOrNull()
                 }
-                BitmapFactory.decodeFile(file.path, options)?.asImageBitmap()
-            }.getOrNull()
+                LandingSession(
+                    info, thumbnail, if (thumbnail != null) null else store.footprintOf(info.id),
+                    sessionOrigin(info), ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration, locale),
+                ).also { sessions[file] = it }
+            }
         }
-        val footprint = if (thumbnail != null) null else footprintOf(info.id)
-        LandingSession(info, thumbnail, footprint)
+        sessions.keys.retainAll(files)
+        cachedLocale = locale
+        return loaded
     }
+
+    private var cachedLocale: Locale? = null
 }
+
+/** Every kept session with precomputed card strings, newest first, exposed by produceState. */
+internal suspend fun RerunSessionStore.landingSessions(cache: RerunLandingCache, locale: Locale): List<LandingSession> =
+    withContext(Dispatchers.IO) {
+        runCatching { sweepOrphans() }
+        cache.load(this@landingSessions, locale)
+    }
 
 /**
  * Session [id] from above, read once per process: a capture never changes once kept, and reading
