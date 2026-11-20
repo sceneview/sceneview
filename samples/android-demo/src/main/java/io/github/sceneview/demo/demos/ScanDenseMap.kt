@@ -16,6 +16,19 @@ import io.github.sceneview.demo.demos.internal.MonotonicCount
 import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExecutorCoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlin.coroutines.coroutineContext
 
 /**
  * A depth scan's dense map as the capture screen sees it (#4629): [DenseFusion] on this phone's
@@ -29,22 +42,20 @@ internal class ScanDenseMap(
     maxPoints: Int = ScanMemoryBudget(Runtime.getRuntime().maxMemory()).densePoints,
     maxLevel: Int = DenseFusion.MAX_LEVEL,
     private val clock: () -> Long = System::nanoTime,
+    liveDispatcher: CoroutineDispatcher? = null,
+    /** Test seam: virtual build cost or a suspended build, before reading the owned snapshot. */
+    private val beforeBuild: suspend () -> Unit = {},
+    private val fuse: (DenseFusion, DenseSamples) -> DenseFuseStats = { map, samples -> map.add(samples) },
 ) {
     val fusion = DenseFusion(maxPoints = maxPoints, maxLevel = maxLevel)
 
-    /** Retained primitive storage of the map and its current live snapshot, for memory tests. */
+    /** Includes both copied buffers, their shared workspace, and the published layer. */
     internal val storageBytes: Long
-        get() {
-            val layer = live ?: return fusion.storageBytes
-            val cloud = layer.cloud
-            val cloudBytes = cloud.positions.size * 4L + cloud.colors.size * 4L +
-                (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
-            val mesh = layer.mesh
-            val meshBytes = mesh.positions.size * 4L + mesh.indices.size * 4L + mesh.uvs.size * 4L
-            val wholeBytes = if (layer.whole === cloud.positions) 0L else layer.whole.size * 4L
-            return fusion.storageBytes + cloudBytes + meshBytes + wholeBytes + layer.atlas.size +
-                layer.offsets.size * 4L + layer.coveredCells.size * 8L + layer.weakCells.size * 8L + SNAPSHOT_OVERHEAD_BYTES
-        }
+        get() = fusion.storageBytes + snapshotStorageBytes + (live?.let { snapshotBytes(it) } ?: 0L)
+
+    internal val snapshotStorageBytes: Long
+        get() = (snapshots?.sumOf { it.storageBytes } ?: 0L) + (snapshots?.first()?.workspaceBytes ?: 0L) +
+            coverageScratch.storageBytes
 
     private val points = AtomicInteger(0)
     private val frame = AtomicInteger(0)
@@ -55,18 +66,32 @@ internal class ScanDenseMap(
     @Volatile
     private var full = false
 
-    /**
-     * The dense map as the live 3D card draws it: a snapshot taken after a fusion at most every
-     * [LIVE_INTERVAL_NS] of the surfels at least two depth frames saw — from the last [project]ed
-     * frame's eye, [LIVE_DRAWN_SURFELS] at most, near ones whole and far ones merged
-     * ([DenseFusion.liveCloud]); without one, [LIVE_MAX_SURFELS] at most — meshed and coloured off
-     * the main thread, with the floor cells the map covers and its even stride
-     * ([ReplayDenseLayer.whole]). `null` until the first one.
-     */
-    @Volatile
-    var live: ReplayDenseLayer? = null
+    /** One volatile hand-off publishes the layer and its source timestamp together. */
+    private data class Published(val layer: ReplayDenseLayer, val nanos: Long)
+    @Volatile private var published: Published? = null
+    val live: ReplayDenseLayer? get() = published?.layer
+    private val publicationGate = Any()
+    private val closed = AtomicBoolean(false)
+    private val buildRoot = SupervisorJob()
+    private val ownedDispatcher: ExecutorCoroutineDispatcher? = if (liveDispatcher == null) {
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "SceneView-ScanPreview").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 }
+        }.asCoroutineDispatcher()
+    } else null
+    private val buildScope = CoroutineScope(buildRoot + (liveDispatcher ?: checkNotNull(ownedDispatcher)))
+    @Volatile private var buildJob: Job? = null
+    @Volatile private var snapshots: Array<DenseFusion.LiveSnapshot>? = null
+    private var nextSnapshot = 0
+    private var buildAtNanos = Long.MIN_VALUE
+    private val coverageScratch = CoverageGrid.KeyScratch()
+    private val ageSinceLogNs = AtomicLong()
+    private val timings = ScanDenseTimings()
+    internal val hasPendingLive: Boolean get() = buildJob?.isCompleted == false
+    internal val snapshotAgeNs: Long
+        get() = published?.let { (clock() - it.nanos).coerceAtLeast(0L) } ?: 0L
+    @Volatile internal var lastBuildSpanNs = 0L
         private set
-    private var liveAtNanos = Long.MIN_VALUE
+    internal val work = ScanDenseWork(clock)
 
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
     private var eye: DebugPose? = null
@@ -131,14 +156,17 @@ internal class ScanDenseMap(
     fun add(samples: DenseSamples): DenseFuseStats {
         val started = clock()
         val compactions = fusion.compactions
-        val stats = fusion.add(samples)
+        val stats = work.measure(ScanDenseWork.FUSE) { fuse(fusion, samples) }
         if (fusion.compactions != compactions) adjustedAtNanos = clock()
         full = fusion.saturated
         points.set(stats.confirmed)
         shown.set(rising.update(stats.confirmed))
         frame.set(fusion.frames)
+        recordLiveAge()
         snapshotLive()
-        val ms = (clock() - started) / NANOS_PER_MS
+        val elapsed = (clock() - started).coerceAtLeast(0L)
+        val ms = elapsed / NANOS_PER_MS
+        timings.add(elapsed)
         lastAddMs = ms
         if (ms > maxAddMs) maxAddMs = ms
         return stats
@@ -169,52 +197,129 @@ internal class ScanDenseMap(
         }
     }
 
-    /** One line for a device log: the map's figures and what it costs. */
+    /** One line for a device log; age includes the build time, not just time since publication. */
     fun logLine(): String {
         val levels = fusion.levelCounts().joinToString("/")
+        val age = takeSnapshotAgePeakNs()
         return "dense kept ${fusion.count} saved $count drawn ${live?.cloud?.count ?: 0} " +
             "levels $levels compactions ${fusion.compactions} full $full " +
-            "add ${"%.1f".format(lastAddMs)} ms (max ${"%.1f".format(maxAddMs)})"
+            timings.line() + " live age max ${ms(age)} ms; ${work.line()}"
     }
 
+    private fun recordLiveAge() {
+        ageSinceLogNs.accumulateAndGet(snapshotAgeNs, ::maxOf)
+    }
+
+    internal fun takeSnapshotAgePeakNs(): Long = maxOf(ageSinceLogNs.getAndSet(0L), snapshotAgeNs)
+
+    /** QA and explicit end states await the last snapshot; capture adds never call this. */
+    suspend fun finishPendingLive() { buildJob?.join() }
+
+    /** Stop publication immediately; callers join this alongside the fusion job before release. */
+    fun close(): Job {
+        synchronized(publicationGate) {
+            closed.set(true)
+            buildRoot.cancel()
+        }
+        return buildRoot
+    }
+
+    /** No buffer is released under a CPU reader, even when cancellation cannot interrupt it. */
+    suspend fun discardPendingLive() {
+        close().join()
+        // Saving or retrying still displays the last complete layer. Exit drops it below.
+        releaseBuffers(clearLayer = false)
+    }
+
+    /** Called only after both fusion and preview workers have joined. */
+    internal fun releaseLiveBuffers() = releaseBuffers(clearLayer = true)
+
+    private fun releaseBuffers(clearLayer: Boolean) {
+        check(buildRoot.isCompleted)
+        snapshots = null
+        coverageScratch.release()
+        if (clearLayer) published = null
+        buildJob = null
+        ownedDispatcher?.close()
+    }
+
+    fun coveredCells(): LongArray = CoverageGrid.coveredKeys(
+        fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS),
+    )
+
+    /** On the fusion worker, under capture's dense gate: the only copy shared with preview. */
     private fun snapshotLive() {
         val now = clock()
-        if (liveAtNanos != Long.MIN_VALUE && now - liveAtNanos < LIVE_INTERVAL_NS) return
-        liveAtNanos = now
-        // The map's even stride, its positions only: the snapshot keeps them, nothing else of it.
-        val whole = fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS)
-        if (whole.isEmpty()) return
+        if (closed.get() || hasPendingLive || buildAtNanos != Long.MIN_VALUE && now - buildAtNanos < LIVE_INTERVAL_NS) return
+        val buffers = snapshots ?: run {
+            val first = DenseFusion.LiveSnapshot(fusion)
+            arrayOf(first, DenseFusion.LiveSnapshot(fusion, first)).also { snapshots = it }
+        }
+        val read = buffers[nextSnapshot]
+        nextSnapshot = 1 - nextSnapshot
+        val copyAt = clock()
+        read.copyFrom(fusion)
+        timings.copy((clock() - copyAt).coerceAtLeast(0L))
         val at = eye
-        val drawn = if (at == null) {
-            fusion.cloud(minViews = 1, maxPoints = LIVE_MAX_SURFELS)
-        } else {
-            // Over the camera a surfel one depth frame saw already shows: on a slow phone the
-            // second view lags, and the coat must follow the camera, not the saved cloud.
-            fusion.liveCloud(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS, minViews = 1)
+        val floor = LiveCoverageGround.floorHint(floorPlaneY, firstEyeY)
+        buildAtNanos = now
+        buildJob = buildScope.launch {
+            beforeBuild()
+            coroutineContext.ensureActive()
+            val context = coroutineContext
+            val layer = assembleLive(read, at, floor) { context.ensureActive() }
+            val ended = clock()
+            timings.build((ended - now).coerceAtLeast(0L))
+            lastBuildSpanNs = ended - now
+            synchronized(publicationGate) {
+                context.ensureActive()
+                if (!closed.get() && layer.whole.isNotEmpty()) {
+                    recordLiveAge()
+                    published = Published(layer, now)
+                    recordLiveAge()
+                }
+            }
         }
-        val covered = CoverageGrid.coveredKeys(whole)
-        // The floor to scan again, judged on the whole map read in place: the drawn surfels are
-        // merged and, past their budget, picked at random far off.
-        val weak = if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
-            LiveCoverageGround.weakCells(
-                fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES,
-                LiveCoverageGround.floorHint(floorPlaneY, firstEyeY),
-            )
-        }
-        live = ReplayDenseLayer(
-            cloud = drawn,
-            voxelM = fusion.voxelM,
-            mesh = DenseSurfels.mesh(drawn, fusion.voxelM, halfSideVoxels = DenseSurfels.LIVE_HALF_SIDE_VOXELS),
-            atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
-            // The floor cells are found here too, on the worker, from the map as before: the
-            // live map and the area read them, however far the drawn surfels are merged.
-            coveredCells = covered,
-            // The saving orbit and the open top read the map as it stands, not the merged
-            // surfels, dense by the eye and sparse away from it (#4792).
-            whole = whole,
-            weakCells = weak,
-        )
     }
+
+    /** All inputs belong to the copied buffer; no fusion arrays or dense gate are read here. */
+    private fun assembleLive(read: DenseFusion.LiveSnapshot, at: DebugPose?, floor: Float, checkActive: () -> Unit): ReplayDenseLayer {
+        val drawn = work.measure(ScanDenseWork.MERGE) {
+            if (at != null) read.liveCloud(at.x, at.y, at.z, LIVE_DRAWN_SURFELS) else read.cloud(LIVE_MAX_SURFELS)
+        }
+        checkActive()
+        val whole = work.measure(ScanDenseWork.WHOLE) { read.cloudPositions(DenseFusion.MIN_VIEWS, LIVE_MAX_SURFELS) }
+        val covered = work.measure(ScanDenseWork.COVERED) { CoverageGrid.coveredKeys(whole, scratch = coverageScratch) }
+        checkActive()
+        val weak = work.measure(ScanDenseWork.WEAK) {
+            if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
+                LiveCoverageGround.weakCells(read.surfels(), read.voxelM, covered, CoverageGrid.CELL_METRES, floor)
+            }
+        }
+        checkActive()
+        val mesh = work.measure(ScanDenseWork.MESH) {
+            DenseSurfels.mesh(drawn, read.voxelM, DenseSurfels.LIVE_HALF_SIDE_VOXELS, DenseFusion.LEVEL_LIMIT)
+        }
+        val offsets = work.measure(ScanDenseWork.MESH) { DenseSurfels.cornerOffsets(mesh) }
+        checkActive()
+        val atlas = work.measure(ScanDenseWork.ATLAS) { DenseSurfels.atlas(drawn, ReplayDenseLayer.DENSE_FALLBACK_COLOR) }
+        return ReplayDenseLayer(drawn, read.voxelM, mesh, atlas, coveredCells = covered, whole = whole, weakCells = weak,
+            offsets = offsets)
+    }
+
+    private fun ms(nanos: Long): String = String.format(Locale.ROOT, "%.1f", nanos / 1e6)
+
+    private fun snapshotBytes(layer: ReplayDenseLayer): Long {
+        val cloud = layer.cloud
+        val mesh = layer.mesh
+        val meshBytes = mesh.positions.size * 4L + mesh.indices.size * 4L + mesh.uvs.size * 4L
+        val wholeBytes = if (layer.whole === cloud.positions) 0L else layer.whole.size * 4L
+        return cloudBytes(cloud) + meshBytes + wholeBytes + layer.atlas.size + layer.offsets.size * 4L +
+            layer.coveredCells.size * 8L + layer.weakCells.size * 8L + SNAPSHOT_OVERHEAD_BYTES
+    }
+
+    private fun cloudBytes(cloud: DenseCloud): Long = cloud.positions.size * 4L + cloud.colors.size * 4L +
+        (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
 
     companion object {
         private const val SNAPSHOT_OVERHEAD_BYTES = 2048L

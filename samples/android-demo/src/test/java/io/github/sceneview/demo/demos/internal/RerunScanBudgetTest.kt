@@ -14,7 +14,7 @@ class RerunScanBudgetTest {
         assertEquals(0.0125f, budget.modelVoxelM(ScanPreset.OBJECT), 0f)
         val tsdf = RerunTsdf(voxelM = budget.modelVoxelM(ScanPreset.ROOM), maxBytes = budget.tsdfBytes)
         var now = 0L
-        val dense = ScanDenseMap(maxPoints = budget.densePoints, clock = { now })
+        val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = budget.densePoints, clock = { now })
         val journal = ArDebugJournal(maxBytes = budget.journalBytes)
         var peakStorage = 0L
         repeat(4_201) { tick ->
@@ -61,6 +61,19 @@ class RerunScanBudgetTest {
             }
             assertTrue(budget.retainedBytes <= budget.totalBytes)
         }
+    }
+
+    @Test
+    fun `small heaps reserve two snapshot buffers and reduce dense points from the previous allowance`() {
+        val heap = 256 * MIB
+        val budget = ScanMemoryBudget(heap)
+        val reserve = budget.journalBytes + budget.observationBytes + ScanMemoryBudget.TSDF_INDEX_BYTES
+        val oldScale = (heap * ScanMemoryBudget.SHARE_PERCENT / 100 - reserve).toDouble() /
+            (RerunTsdf.MAX_BYTES + DenseFusion.budgetFor(heap) * 192L)
+        val previousPoints = (DenseFusion.budgetFor(heap) * oldScale.coerceAtMost(1.0)).toInt()
+        assertTrue("${budget.densePoints} vs $previousPoints", budget.densePoints < previousPoints)
+        assertTrue(ScanMemoryBudget.DENSE_BYTES_PER_POINT >= 192L + 2 * 53L)
+        assertTrue(budget.retainedBytes <= budget.totalBytes)
     }
 
     @Test

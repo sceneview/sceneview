@@ -231,7 +231,7 @@ class ScanLiveWallsRealScanTest {
          */
         fun syntheticScan(): ByteArray {
             val walk = ScanWalkthrough(yawSteps = WALK_YAW_STEPS, revisit = false)
-            val dense = ScanDenseMap(maxPoints = DenseFusion.budgetFor(PHONE_BYTES), clock = { 0L })
+            val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = DenseFusion.budgetFor(PHONE_BYTES), clock = { 0L })
             val events = ArrayList<ArDebugEvent>()
             var now = 0L
             for (i in 0 until walk.frameCount / ScanWalkthrough.ROOMS * SYNTHETIC_ROOMS) {

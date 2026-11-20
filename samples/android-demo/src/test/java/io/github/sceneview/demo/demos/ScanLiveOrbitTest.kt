@@ -91,7 +91,7 @@ class ScanLiveOrbitTest {
         /** The room fused twice into a live scan's dense map, a second apart, from [EYE]. */
         fun scan(): Snapshot {
             var now = 0L
-            val dense = ScanDenseMap(maxPoints = MAX_POINTS, clock = { now })
+            val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = MAX_POINTS, clock = { now })
             val room = room()
             val eye = DepthFrame(1, 1, shortArrayOf(0), null, IntArray(1), 1f, 1f, 0.5f, 0.5f, EYE)
             dense.add(dense.project(eye, now))

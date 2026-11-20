@@ -46,6 +46,8 @@ import io.github.sceneview.demo.demos.internal.YuvFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,8 +130,12 @@ internal class ScanCapture(
     private var dense = if (rawDepth) ScanDenseMap(maxPoints = budget.densePoints) else null
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
+    private val denseGate = Mutex()
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
-    private var model = if (rawDepth) RerunLiveModel(modelOwner, preset, budget) else null
+    private val frameCounters = ScanFrameCounters()
+    /** Cumulative intake and TSDF losses; survives releasing the dense map and live model. */
+    val frameCounts: ScanFrameCounts get() = frameCounters.snapshot()
+    private var model = if (rawDepth) RerunLiveModel(modelOwner, preset, budget, frameCounters) else null
     private val closed = AtomicBoolean(false)
     // Which depth estimate was taken last, and how long the scan has waited for one.
     private val depthWindow = DepthWindow()
@@ -307,6 +313,8 @@ internal class ScanCapture(
         if (dense == null || !depthGate.isDue(frame.timestamp)) return null
         if (fusing.get()) {
             intake.count(Outcome.Busy)
+            depthGate.mark(frame.timestamp)
+            frameCounters.busyDepth()
             return null
         }
         val depth = runCatching { frame.acquireRawDepthImage16Bits() }
@@ -314,6 +322,7 @@ internal class ScanCapture(
             .getOrNull()
         if (depth == null) {
             intake.count(Outcome.NoDepth)
+            frameCounters.unavailableDepth()
             return null
         }
         // Before the gate, so a device log says what the scan sees even when it fuses nothing.
@@ -322,6 +331,7 @@ internal class ScanCapture(
         logVerdict(verdict, frame.timestamp, depth.timestamp)
         if (!depthWindow.take(verdict, frame.timestamp, depth.timestamp)) {
             intake.count(Outcome.Stale)
+            frameCounters.staleDepth()
             depth.close()
             return null
         }
@@ -389,21 +399,26 @@ internal class ScanCapture(
         val dense = dense ?: return
         if (image == null) {
             intake.count(Outcome.NoImage)
+            frameCounters.unavailableDepth()
             return
         }
         val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv, dense.confidence.threshold.toInt())
         if (frame == null) {
             intake.count(Outcome.Unreadable)
+            frameCounters.unavailableDepth()
             return
         }
+        frameCounters.acceptDepth()
         model?.offer(frame, scope)
         // The floor the live map's "to redo" cells are judged from: ARCore's, stable as the phone moves.
         dense.floorPlaneY = ArDebugGeometry.floorPlaneHeight(trace.lastPlanes())
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
-                val samples = dense.project(frame, depth.nanos, farM = preset.farM)
-                val stats = dense.add(samples)
+                val (samples, stats) = denseGate.withLock {
+                    val samples = dense.project(frame, depth.nanos, farM = preset.farM)
+                    samples to dense.add(samples)
+                }
                 intake.count(
                     when {
                         samples.count == 0 -> Outcome.NoSamples
@@ -426,7 +441,11 @@ internal class ScanCapture(
     fun recordDepthStats(nanos: Long) {
         val dense = dense ?: return
         val total = dense.count
-        intake.lineIfDue(nanos, total)?.let { Log.i(LOG_TAG, "$it; ${dense.logLine()}") }
+        intake.lineIfDue(nanos, total)?.let {
+            val counts = frameCounts
+            Log.i(LOG_TAG, "$it; ${counts.logLine()}; ${dense.logLine()}")
+            if (BuildConfig.DEBUG) Log.i(ScanBench.TAG, depthLine(counts))
+        }
         if (total == recordedTotal) return
         recordedTotal = total
         recordedFrames[nanos] = dense.frames
@@ -444,7 +463,7 @@ internal class ScanCapture(
         val map = dense ?: return null
         while (!fusing.compareAndSet(false, true)) fuseJob?.join() ?: return null
         return try {
-            withContext(Dispatchers.Default) { map.takeIf { it.fusion.count > 0 }?.savedCloud() }
+            withContext(Dispatchers.Default) { denseGate.withLock { map.takeIf { it.fusion.count > 0 }?.savedCloud() } }
         } finally {
             fusing.set(false)
         }
@@ -459,7 +478,11 @@ internal class ScanCapture(
         if (closed.get()) return null
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
+        dense?.discardPendingLive()
         model?.join()
+        val finalCells = if (finishedEvents == null) {
+            withContext(Dispatchers.Default) { dense?.coveredCells() }
+        } else null
         // The journal is taken once and kept: a build that threw (out of memory, painting the
         // planes) is retried from the same events, not from a journal already let go.
         val journal = finishedEvents ?: run {
@@ -467,7 +490,7 @@ internal class ScanCapture(
                 recordDepthStats(last.nanos)
                 // The last fusion's floor cells, which no frame observed before the stop (#4734):
                 // the result's m² reads the cells journaled, so they go in with the rest.
-                dense?.live?.coveredCells?.takeIf { it.isNotEmpty() }?.let { trace.addFloorCells(last.nanos, it) }
+                finalCells?.takeIf { it.isNotEmpty() }?.let { trace.addFloorCells(last.nanos, it) }
             }
             // The journal is already a read-only, bounded list. Transfer it without copying
             // or walking its events; keep its running byte total for O(1) debug snapshots.
@@ -524,7 +547,8 @@ internal class ScanCapture(
                 "finishedEvents=${events?.size ?: 0} finishedBytes=$finishedBytes " +
                 "poses=${trace.poseCount} points=${trace.mapPointCount} observations=${trace.observationCount} " +
                 "densePoints=$denseCount budgetBytes=${budget.retainedBytes} " +
-                "tsdfBudget=${budget.tsdfBytes} denseBudget=${budget.denseBytes} journalBudget=${budget.journalBytes}",
+                "tsdfBudget=${budget.tsdfBytes} denseBudget=${budget.denseBytes} journalBudget=${budget.journalBytes} " +
+                frameCounts.logLine(),
         )
     }
 
@@ -542,6 +566,8 @@ internal class ScanCapture(
         if (!closed.compareAndSet(false, true)) return
         val started = System.nanoTime()
         logMemory("exit-before-release")
+        val denseMap = dense
+        val pendingLiveJob = denseMap?.close()
         val depthJob = fuseJob
         fuseJob = null
         val modelJob = model?.close(keepTransferred = keepModel)
@@ -552,8 +578,9 @@ internal class ScanCapture(
         trace.journal = null
         // No new producers may start after closed was set. An in-flight fusion owns its local
         // dense map until it returns; no thread mutates that map to try to free it early.
-        releaseJob = releaseScanCapture(jobs + listOfNotNull(depthJob, modelJob)) {
+        releaseJob = releaseScanCapture(jobs + listOfNotNull(depthJob, pendingLiveJob, modelJob)) {
             val cleanupStarted = System.nanoTime()
+            denseMap?.releaseLiveBuffers()
             jobs.clear()
             recordedFrames.clear()
             poses.clear()

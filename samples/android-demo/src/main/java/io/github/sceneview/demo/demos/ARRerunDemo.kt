@@ -244,6 +244,8 @@ import kotlinx.coroutines.Dispatchers
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1596,16 +1598,23 @@ private fun RerunLiveScreen(
             player.trace, source.manifest, emptyMap(), source.thumbnails, ByteArray(0), growing = true,
             liveDense = long?.let { { it.dense.live } },
         )
-        long?.let { launch { it.run { phase.integrates } } }
-        var last = 0L
-        var played = 0f
-        while (true) {
-            withFrameNanos { now ->
-                val dt = if (last == 0L) 0f else (now - last) / 1e9f
-                last = now
-                // The tracking-loss state scans a few seconds first, so it loses a real capture.
-                val tracking = !qaTrackingLost || played < QA_TRACKING_LOST_AFTER_S
-                if (phase.integrates && tracking) played += dt.also { player.advance(it) }
+        val longJob = long?.let { launch { it.run { phase.integrates } } }
+        try {
+            var last = 0L
+            var played = 0f
+            while (true) {
+                withFrameNanos { now ->
+                    val dt = if (last == 0L) 0f else (now - last) / 1e9f
+                    last = now
+                    // The tracking-loss state scans a few seconds first, so it loses a real capture.
+                    val tracking = !qaTrackingLost || played < QA_TRACKING_LOST_AFTER_S
+                    if (phase.integrates && tracking) played += dt.also { player.advance(it) }
+                }
+            }
+        } finally {
+            withContext(NonCancellable) {
+                longJob?.cancelAndJoin()
+                long?.dense?.discardPendingLive()
             }
         }
     }

@@ -4,7 +4,7 @@ import kotlin.math.sqrt
 
 /**
  * Safety net for devices still below 384 MiB after the demo requests a large heap.
- * Small heaps share 35% between TSDF, dense points, journal and live observation indices.
+ * Small heaps share 35% between TSDF, dense points and preview buffers, journal and observation indices.
  * At 384 MiB and above, the pre-budget TSDF cap and preset voxels stay unchanged, and the
  * dense cap reaches [DenseFusion.MAX_BUDGET]. Full model detail is kept; replay history is still thinned.
  * Journal and observation allowances grow with the heap (4 MiB each at 256 MiB, 8 MiB at
@@ -42,7 +42,9 @@ internal class ScanMemoryBudget(val maxHeapBytes: Long) {
 
     companion object {
         const val SHARE_PERCENT = 35
-        const val DENSE_BYTES_PER_POINT = 192L
+        /** Fusion, two 53-byte snapshots with geometric headroom, retained merge/index work,
+         * and the live layer. The larger allowance matters only below the full-quality heap. */
+        const val DENSE_BYTES_PER_POINT = 512L
         const val TSDF_INDEX_BYTES = 2L * 1024 * 1024
         const val FULL_QUALITY_HEAP_BYTES = 384L * 1024 * 1024
         private const val TIMELINE_REFERENCE_HEAP_BYTES = 256L * 1024 * 1024

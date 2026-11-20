@@ -139,7 +139,7 @@ class ScanLiveWallsWholeTest {
             val walls = ScanWallsState(Found(found))
             val coverage = ScanCoverageState()
             var now = 0L
-            val dense = ScanDenseMap(maxPoints = DenseFusion.budgetFor(PHONE_BYTES), clock = { now })
+            val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = DenseFusion.budgetFor(PHONE_BYTES), clock = { now })
             val seen = ArrayList<Seen>()
             var layer: ReplayDenseLayer? = null
             for (i in 0 until walkthrough.frameCount / ScanWalkthrough.ROOMS * rooms) {

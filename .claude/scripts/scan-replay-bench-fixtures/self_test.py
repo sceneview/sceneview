@@ -74,6 +74,15 @@ def run_tests(bench, out):
             null_last = '1794500110.900 1 1 I ScanBench: {"schema":2,"outside_elements":null}\n'
             self.assertIsNone(bench.parse_logcat((fixtures / "logcat.txt").read_text() + null_last, 1794500100, 1794500111)["outside_elements"])
 
+        def test_depth_event_does_not_claim_live_bench_observed(self):
+            line = ('100.500 1 1 I ScanBench: {"schema":2,"event":"depth",'
+                    '"depth_accepted":10,"depth_busy":2,"depth_stale":3,'
+                    '"depth_unavailable":4,"tsdf_dropped":5}\n')
+            result = bench.parse_logcat(line, 100)
+            self.assertFalse(result["bench_observed"])
+            self.assertIsNone(result["ar_fps_mean"])
+            self.assertIsNone(result["first_surface_s"])
+
         def test_polls_missing_intervals_and_result(self):
             with (fixtures / "polls.tsv").open() as stream:
                 rows = list(csv.DictReader(stream, delimiter="\t"))

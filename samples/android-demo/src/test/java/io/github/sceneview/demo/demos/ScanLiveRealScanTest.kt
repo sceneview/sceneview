@@ -325,7 +325,7 @@ class ScanLiveRealScanTest {
         /** The walkthrough's two rooms as the recorder saves them: camera path and dense cloud. */
         fun syntheticScan(): ByteArray {
             val walk = ScanWalkthrough(yawSteps = WALK_YAW_STEPS, revisit = false)
-            val dense = ScanDenseMap(maxPoints = DenseFusion.budgetFor(256L shl 20), clock = { 0L })
+            val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = DenseFusion.budgetFor(256L shl 20), clock = { 0L })
             val events = ArrayList<ArDebugEvent>()
             var now = 0L
             for (i in 0 until minOf(WALK_FRAMES, walk.frameCount)) {
