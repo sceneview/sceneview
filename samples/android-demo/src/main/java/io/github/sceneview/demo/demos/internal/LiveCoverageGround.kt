@@ -133,14 +133,20 @@ internal object LiveCoverageGround {
      * a cell whose floor is merged coarser than [MAX_JUDGED_LEVEL]. Nothing is weak before
      * [MIN_JUDGED_CELLS] cells are covered.
      */
-    fun weakCells(surfels: Surfels, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): LongArray {
+    fun weakCells(surfels: Surfels, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): LongArray =
+        checkNotNull(CooperativeBuild { pause -> weakCellsSliced(surfels, voxelM, covered, cellM, floorY, pause) }.advance(Long.MAX_VALUE))
+
+    internal suspend fun weakCellsSliced(
+        surfels: Surfels, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float, pause: suspend () -> Unit,
+    ): LongArray {
         if (covered.size < MIN_JUDGED_CELLS || cellM <= 0f || voxelM <= 0f || surfels.count == 0) return LongArray(0)
-        val shares = shares(surfels, voxelM, covered, cellM, floorOf(surfels, voxelM, floorY))
-        val index = indexOf(covered)
+        val shares = sharesSliced(surfels, voxelM, covered, cellM, floorOfSliced(surfels, voxelM, floorY, pause), pause)
+        val index = indexOf(covered, pause)
         fun isCovered(cx: Int, cz: Int) = index.get(CoverageGrid.key(cx, cz)) >= 0
         var n = 0
         val weak = LongArray(covered.size)
         for ((k, key) in covered.withIndex()) {
+            if (k > 0 && k % 4096 == 0) pause()
             val cx = CoverageGrid.cxOf(key)
             val cz = CoverageGrid.czOf(key)
             val inner = isCovered(cx - 1, cz) && isCovered(cx + 1, cz) && isCovered(cx, cz - 1) && isCovered(cx, cz + 1)
@@ -173,13 +179,19 @@ internal object LiveCoverageGround {
      * little floor to tell keeps [floorY]. Two passes over the surfels, no allocation per surfel.
      */
     @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
-    fun shares(surfels: Surfels, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): Shares {
-        val index = indexOf(covered)
+    fun shares(surfels: Surfels, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): Shares =
+        checkNotNull(CooperativeBuild { pause -> sharesSliced(surfels, voxelM, covered, cellM, floorY, pause) }.advance(Long.MAX_VALUE))
+
+    private suspend fun sharesSliced(
+        surfels: Surfels, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float, pause: suspend () -> Unit,
+    ): Shares {
+        val index = indexOf(covered, pause)
         // The floor of each tile: the surfel area at each height near the room's floor.
         val bins = (2 * TILE_SEARCH_M / voxelM).toInt() + 1
         val tileSlot = LongIntMap()
         val tileAreas = ArrayList<FloatArray>()
         for (i in 0 until surfels.count) {
+            if (i > 0 && i % 16384 == 0) pause()
             if (!surfels.kept(i)) continue
             val b = floor((surfels.y(i) - floorY + TILE_SEARCH_M) / voxelM).toInt()
             if (b !in 0 until bins) continue
@@ -194,10 +206,12 @@ internal object LiveCoverageGround {
             tileAreas[slot][b] += side * side
         }
         val minTileArea = TILE_MIN_SHARE * TILE_M * TILE_M
-        val tileFloors = FloatArray(tileAreas.size) { t ->
+        val tileFloors = FloatArray(tileAreas.size)
+        for (t in tileAreas.indices) {
+            if (t > 0 && t % 4096 == 0) pause()
             val area = tileAreas[t]
             val peak = if (area.sum() < minTileArea) null else peakOf(area, minTileArea)
-            peak?.let { floorY - TILE_SEARCH_M + (it + HALF) * voxelM } ?: floorY
+            tileFloors[t] = peak?.let { floorY - TILE_SEARCH_M + (it + HALF) * voxelM } ?: floorY
         }
         fun floorAt(x: Float, z: Float): Float {
             val slot = tileSlot.get(CoverageGrid.key(floor(x / TILE_M).toInt(), floor(z / TILE_M).toInt()))
@@ -211,7 +225,9 @@ internal object LiveCoverageGround {
         val standing = FloatArray(covered.size)
         val coarsest = IntArray(covered.size)
         val cellArea = cellM * cellM
+        var footprintWork = 0
         for (i in 0 until surfels.count) {
+            if (i > 0 && i % 16384 == 0) pause()
             if (!surfels.kept(i)) continue
             val x = surfels.x(i)
             val z = surfels.z(i)
@@ -230,28 +246,35 @@ internal object LiveCoverageGround {
             // The surfel's footprint, in voxel squares: one for a full-detail surfel.
             val sx = floor(x / voxelM).toInt() - span / 2
             val sz = floor(z / voxelM).toInt() - span / 2
-            for (a in 0 until span) for (b in 0 until span) {
-                val vx = sx + a
-                val vz = sz + b
-                val k = if (span == 1) own else {
-                    index.get(CoverageGrid.key(floor((vx + HALF) * voxelM / cellM).toInt(), floor((vz + HALF) * voxelM / cellM).toInt()))
+            for (a in 0 until span) {
+                for (b in 0 until span) {
+                    if (++footprintWork % 4096 == 0) pause()
+                    val vx = sx + a
+                    val vz = sz + b
+                    val k = if (span == 1) own else {
+                        index.get(CoverageGrid.key(floor((vx + HALF) * voxelM / cellM).toInt(), floor((vz + HALF) * voxelM / cellM).toInt()))
+                    }
+                    if (k < 0) continue
+                    val key = covered[k]
+                    val bit = (vx - firstVoxel(CoverageGrid.cxOf(key), cellM, voxelM)) * side +
+                        (vz - firstVoxel(CoverageGrid.czOf(key), cellM, voxelM))
+                    if (bit !in 0 until side * side) continue
+                    bits[k * words + bit / Long.SIZE_BITS] = bits[k * words + bit / Long.SIZE_BITS] or (1L shl bit % Long.SIZE_BITS)
                 }
-                if (k < 0) continue
-                val key = covered[k]
-                val bit = (vx - firstVoxel(CoverageGrid.cxOf(key), cellM, voxelM)) * side +
-                    (vz - firstVoxel(CoverageGrid.czOf(key), cellM, voxelM))
-                if (bit !in 0 until side * side) continue
-                bits[k * words + bit / Long.SIZE_BITS] = bits[k * words + bit / Long.SIZE_BITS] or (1L shl bit % Long.SIZE_BITS)
             }
         }
         val square = voxelM * voxelM / cellArea
-        val floorShare = FloatArray(covered.size) { k ->
+        val floorShare = FloatArray(covered.size)
+        for (k in covered.indices) {
+            if (k > 0 && k % 4096 == 0) pause()
             var n = 0
             for (w in 0 until words) n += java.lang.Long.bitCount(bits[k * words + w])
-            n * square
+            floorShare[k] = n * square
         }
-        val floors = FloatArray(covered.size) { k ->
-            floorAt((CoverageGrid.cxOf(covered[k]) + HALF) * cellM, (CoverageGrid.czOf(covered[k]) + HALF) * cellM)
+        val floors = FloatArray(covered.size)
+        for (k in covered.indices) {
+            if (k > 0 && k % 4096 == 0) pause()
+            floors[k] = floorAt((CoverageGrid.cxOf(covered[k]) + HALF) * cellM, (CoverageGrid.czOf(covered[k]) + HALF) * cellM)
         }
         return Shares(floorShare, standing, floors, coarsest)
     }
@@ -260,9 +283,12 @@ internal object LiveCoverageGround {
     fun shares(cloud: DenseCloud, voxelM: Float, covered: LongArray, cellM: Float, floorY: Float): Shares =
         shares(Surfels.of(cloud), voxelM, covered, cellM, floorY)
 
-    private fun indexOf(covered: LongArray): LongIntMap =
+    private suspend fun indexOf(covered: LongArray, pause: suspend () -> Unit): LongIntMap =
         LongIntMap(Integer.highestOneBit(covered.size.coerceAtLeast(1)) shl 2).apply {
-            covered.forEachIndexed { i, key -> put(key, i) }
+            covered.forEachIndexed { i, key ->
+                if (i > 0 && i % 4096 == 0) pause()
+                put(key, i)
+            }
         }
 
     /** The first voxel square whose centre lies in cell [c]. */
@@ -275,10 +301,14 @@ internal object LiveCoverageGround {
      * low table, however much wider than the floor seen round it. [hint] itself when nothing lies
      * near it: on the live map's worker, ARCore's floor plane ([floorHint]).
      */
-    fun floorOf(surfels: Surfels, voxelM: Float, hint: Float): Float {
+    fun floorOf(surfels: Surfels, voxelM: Float, hint: Float): Float =
+        checkNotNull(CooperativeBuild { pause -> floorOfSliced(surfels, voxelM, hint, pause) }.advance(Long.MAX_VALUE))
+
+    private suspend fun floorOfSliced(surfels: Surfels, voxelM: Float, hint: Float, pause: suspend () -> Unit): Float {
         val bins = (2 * FLOOR_SEARCH_M / voxelM).toInt() + 1
         val area = FloatArray(bins)
         for (i in 0 until surfels.count) {
+            if (i > 0 && i % 16384 == 0) pause()
             if (!surfels.kept(i)) continue
             val b = floor((surfels.y(i) - hint + FLOOR_SEARCH_M) / voxelM).toInt()
             if (b !in 0 until bins) continue

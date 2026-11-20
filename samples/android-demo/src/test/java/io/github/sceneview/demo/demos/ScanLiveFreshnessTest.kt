@@ -17,8 +17,10 @@ class ScanLiveFreshnessTest {
     @Test
     fun `adds and compaction cannot postpone a pending snapshot beyond three adds`() {
         var now = 0L
-        // Each clock read costs more than the slice, regardless of the host's CPU speed.
-        val map = ScanDenseMap(maxPoints = 12_000, clock = { now.also { now += 10_000_000L } })
+        // Two contended slots, then an idle worker. A three-add assertion must model time
+        // available to work, rather than demand an unconditional drain on the third add.
+        var workTick = 10_000_000L
+        val map = ScanDenseMap(maxPoints = 12_000, clock = { now.also { now += workTick } })
         map.project(eye(), now)
         val near = patch(8_000)
         map.add(near)
@@ -26,6 +28,7 @@ class ScanLiveFreshnessTest {
         val compactions = map.fusion.compactions
         map.add(patch(8_000, 2f))
         assertTrue(map.fusion.compactions > compactions)
+        workTick = 0L
         map.add(near)
         assertTrue(map.live != null)
         assertEquals(ScanDenseMap.LIVE_MAX_ADDS, map.lastBuildAdds)

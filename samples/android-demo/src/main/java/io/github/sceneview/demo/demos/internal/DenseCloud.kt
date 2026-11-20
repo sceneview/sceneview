@@ -445,11 +445,15 @@ object DenseSurfels {
      * Each vertex of a [mesh] made by [mesh] minus the centre of its surfel, xyz per vertex: the
      * `custom0` attribute `scan_surfel.mat` finds the centre with. Four vertices per surfel.
      */
-    fun cornerOffsets(mesh: DebugMesh): FloatArray {
+    fun cornerOffsets(mesh: DebugMesh): FloatArray =
+        checkNotNull(CooperativeBuild { pause -> cornerOffsetsSliced(mesh, pause) }.advance(Long.MAX_VALUE))
+
+    internal suspend fun cornerOffsetsSliced(mesh: DebugMesh, pause: suspend () -> Unit): FloatArray {
         val p = mesh.positions
         val out = FloatArray(mesh.vertexCount * 3)
         var q = 0
         while (q + 4 <= mesh.vertexCount) {
+            if (q > 0 && q % 32768 == 0) pause()
             for (axis in 0 until 3) {
                 val base = q * 3 + axis
                 val centre = (p[base] + p[base + 3] + p[base + 6] + p[base + 9]) / 4f
@@ -475,11 +479,19 @@ object DenseSurfels {
         voxelM: Float,
         halfSideVoxels: Float = HALF_SIDE_VOXELS,
         levelCap: Int = DenseFusion.LEVEL_LIMIT,
+    ): DebugMesh = checkNotNull(CooperativeBuild { pause ->
+        meshSliced(cloud, voxelM, halfSideVoxels, levelCap, pause)
+    }.advance(Long.MAX_VALUE))
+
+    internal suspend fun meshSliced(
+        cloud: DenseCloud, voxelM: Float, halfSideVoxels: Float, levelCap: Int,
+        pause: suspend () -> Unit,
     ): DebugMesh {
         val n = minOf(cloud.count, MAX_SURFELS)
         val mesh = DebugMesh(maxOf(n * 4, 1))
         val normals = cloud.normals
         for (i in 0 until n) {
+            if (i > 0 && i % 8192 == 0) pause()
             val half = voxelM * halfSideVoxels * (1 shl cloud.levelOf(i).coerceAtMost(minOf(levelCap, DenseFusion.LEVEL_LIMIT)))
             val x = cloud.positions[i * 3]
             val y = cloud.positions[i * 3 + 1]
@@ -498,7 +510,8 @@ object DenseSurfels {
             val bx = (nyv * tz - nzv * ty)
             val by = (nzv * tx - nxv * tz)
             val bz = (nxv * ty - nyv * tx)
-            val (u, v) = uvOf(i)
+            val u = ((i % ATLAS_SIZE) + 0.5f) / ATLAS_SIZE
+            val v = 1f - ((i / ATLAS_SIZE) + 0.5f) / ATLAS_SIZE
             val a = mesh.vertex(x - tx - bx, y - ty - by, z - tz - bz, u, v)
             val b = mesh.vertex(x + tx - bx, y + ty - by, z + tz - bz, u, v)
             val c = mesh.vertex(x + tx + bx, y + ty + by, z + tz + bz, u, v)
@@ -513,6 +526,19 @@ object DenseSurfels {
 
     /** The atlas's RGBA bytes: surfel `i` is texel `i`, row-major; no colour → [fallback]. */
     fun atlas(cloud: DenseCloud, fallback: Int): ByteArray = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
+
+    internal suspend fun atlasSliced(cloud: DenseCloud, fallback: Int, pause: suspend () -> Unit): ByteArray {
+        val out = ByteArray(ATLAS_SIZE * ATLAS_SIZE * 4)
+        for (i in 0 until minOf(cloud.count, MAX_SURFELS)) {
+            if (i > 0 && i % 16384 == 0) pause()
+            val c = cloud.colors[i].takeIf { it != 0 } ?: fallback
+            out[i * 4] = (c shr 16 and 0xFF).toByte()
+            out[i * 4 + 1] = (c shr 8 and 0xFF).toByte()
+            out[i * 4 + 2] = (c and 0xFF).toByte()
+            out[i * 4 + 3] = 0xFF.toByte()
+        }
+        return out
+    }
 
     /**
      * The half side, in voxels, the capture draws a surfel at over the camera: the saved size,

@@ -276,6 +276,42 @@ internal class CoverageGrid(
             return covered.copyOf(n)
         }
 
+        /** Cooperative equivalent of [coveredKeys], including the sort. */
+        internal suspend fun coveredKeysSliced(points: FloatArray, pause: suspend () -> Unit): LongArray {
+            val total = points.size / 3
+            val counts = LongIntMap(Integer.highestOneBit(total.coerceAtLeast(1)) shl 2)
+            var keys = LongArray(total / MIN_POINTS)
+            var used = 0
+            for (i in 0 until total) {
+                if (i > 0 && i % 16384 == 0) pause()
+                val key = key(floor(points[i * 3] / CELL_METRES).toInt(), floor(points[i * 3 + 2] / CELL_METRES).toInt())
+                val count = counts.get(key) + 1
+                counts.put(key, count)
+                // get returns -1 for a missing cell; emit exactly at its third point.
+                if (count == MIN_POINTS - 1) keys[used++] = key
+            }
+            var scratch = LongArray(used)
+            // Bottom-up merge sort: same signed key order, bounded work even for one huge cell.
+            var width = 1
+            while (width < used) {
+                var first = 0
+                while (first < used) {
+                    val mid = minOf(first + width, used)
+                    val end = minOf(first + 2 * width, used)
+                    var a = first
+                    var b = mid
+                    for (k in first until end) {
+                        if (k > 0 && k % 16384 == 0) pause()
+                        scratch[k] = if (a < mid && (b >= end || keys[a] <= keys[b])) keys[a++] else keys[b++]
+                    }
+                    first = end
+                }
+                val swap = keys; keys = scratch; scratch = swap
+                width *= 2
+            }
+            return keys.copyOf(used)
+        }
+
         @PublishedApi
         internal fun key(cx: Int, cz: Int): Long = (cx.toLong() shl 32) or (cz.toLong() and 0xffffffffL)
 
