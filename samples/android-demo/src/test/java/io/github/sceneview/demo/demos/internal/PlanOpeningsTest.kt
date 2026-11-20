@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.demo.demos.internal.RoomPlanLayoutTest.Companion.WORDING
+import io.github.sceneview.demo.demos.internal.room.WallOpenings
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,8 +13,8 @@ import kotlin.math.hypot
 /**
  * The doors and windows marked on a traced room's walls reach its plan (#4783): drawn on their
  * wall, to scale, where they were marked along it; listed under their wall with the net wall area
- * after the walls; one line each in the shared text. A plan given none, as 3D Scan's, is drawn,
- * listed and shared exactly as before.
+ * after the walls; one line each in the shared text. A plan given none, as 3D Scan's, draws,
+ * lists and shares its walls alone.
  */
 class PlanOpeningsTest {
 
@@ -97,22 +98,27 @@ class PlanOpeningsTest {
         assertTrue("a window sweeps no arc", drawing.lines.none { it.stroke == PlanStroke.Swing })
     }
 
+    /** The leaf of the one door on [drawing]: the opening mark longer than a jamb. */
+    private fun leafOf(drawing: RoomPlanDrawing): PlanLine = drawing.lines.single {
+        it.stroke == PlanStroke.Opening && hypot(it.x1 - it.x0, it.y1 - it.y0) > 2 * 3.5f * 1.01f
+    }
+
     @Test
-    fun `a door is drawn open into the room, its swing reaching its other jamb`() {
+    fun `a door is drawn open into the room, hinged away from the nearer corner, its swing reaching its other jamb`() {
         val drawing = layout(room, listOf(door))
         val scale = drawing.pxPerMetre
         val x0 = drawing.floor[0]
         val y0 = drawing.floor[1]
         val right = x0 + 4f * scale
-        val hinge = y0 + 0.5f * scale
-        val strike = y0 + 1.4f * scale
+        // 0.50 m from wall B's start, 1.60 m from its end: the nearer corner is the start, the hinge the far jamb.
+        val strike = y0 + 0.5f * scale
+        val hinge = y0 + 1.4f * scale
         val wallB = drawing.lines.filter { it.stroke == PlanStroke.Wall && near(it.x0, right) && near(it.x1, right) }
         assertEquals(2, wallB.size)
-        assertTrue(wallB.none { minOf(it.y0, it.y1) < strike - 0.01f && maxOf(it.y0, it.y1) > hinge + 0.01f })
+        assertTrue(wallB.none { minOf(it.y0, it.y1) < hinge - 0.01f && maxOf(it.y0, it.y1) > strike + 0.01f })
         // The leaf: from the hinge, square to the wall, into the room (leftwards), as long as the door is wide.
-        // Longer than a jamb, which crosses the wall the same way.
-        val leaf = drawing.lines.single { it.stroke == PlanStroke.Opening && near(it.y0, it.y1) && it.x0 - it.x1 > 0.5f * scale }
-        assertTrue(near(leaf.x0, right) && near(leaf.y0, hinge))
+        val leaf = leafOf(drawing)
+        assertTrue(near(leaf.x0, right) && near(leaf.y0, hinge) && near(leaf.y1, hinge))
         assertTrue(near(right - leaf.x1, 0.9f * scale))
         val swing = drawing.lines.filter { it.stroke == PlanStroke.Swing }
         assertTrue(swing.size > 4)
@@ -122,20 +128,48 @@ class PlanOpeningsTest {
     }
 
     @Test
-    fun `a plan with no openings is laid out line for line as before`() {
+    fun `a door in a corner is hinged on its other jamb, its leaf clear of the wall beside it`() {
+        // Wall B from its very start: hinged there, the leaf would lie along wall A.
+        val drawing = layout(room, listOf(door.copy(from = 0f, to = 0.9f)))
+        val scale = drawing.pxPerMetre
+        val x0 = drawing.floor[0]
+        val y0 = drawing.floor[1]
+        val right = x0 + 4f * scale
+        val leaf = leafOf(drawing)
+        assertTrue("hinged on the jamb 0.90 m down wall B", near(leaf.x0, right) && near(leaf.y0, y0 + 0.9f * scale))
+        assertTrue("the leaf is square to wall B, 0.90 m off wall A", near(leaf.y1, y0 + 0.9f * scale))
+        val swing = drawing.lines.filter { it.stroke == PlanStroke.Swing }
+        // The swing closes on the corner jamb, and nothing of it lies on wall A before that.
+        assertTrue(near(swing.last().x1, right) && near(swing.last().y1, y0))
+        swing.dropLast(1).forEach { assertTrue("over wall A", it.y1 > y0 + 0.01f) }
+    }
+
+    @Test
+    fun `in a room narrower than its door, the leaf and the swing are drawn shorter, inside the room`() {
+        // 0.60 m deep: a 0.90 m leaf open square from wall A would cross wall C.
+        val corridor = planSurvey(0f, 0f, 4f, 0f, 4f, 0.6f, 0f, 0.6f)
+        val drawing = layout(corridor, listOf(PlanOpening(wall = 0, from = 1.5f, to = 2.4f, bottom = 0f, top = 2.1f)))
+        val scale = drawing.pxPerMetre
+        val x0 = drawing.floor[0]
+        val y0 = drawing.floor[1]
+        val leaf = leafOf(drawing)
+        val reach = hypot(leaf.x1 - leaf.x0, leaf.y1 - leaf.y0)
+        assertTrue("$reach", reach > 0.3f * 0.9f * scale && reach < 0.6f * scale)
+        val marks = drawing.lines.filter { it.stroke == PlanStroke.Swing } + leaf
+        marks.flatMap { listOf(it.x0 to it.y0, it.x1 to it.y1) }.forEach { (x, y) ->
+            assertTrue("($x, $y) outside the room", x >= x0 - 0.01f && x <= x0 + 4f * scale + 0.01f)
+            assertTrue("($x, $y) outside the room", y >= y0 - 0.01f && y < y0 + 0.6f * scale)
+        }
+    }
+
+    @Test
+    fun `a plan with no openings draws no opening`() {
         val scan = planSurvey(0f, 0f, 3f, 0f, 4f, 1f, 4f, 3f, 0f, 3f, spread = 0.03f)
         for (survey in listOf(room, scan)) {
-            val before = layout(survey)
-            val after = layout(survey, emptyList())
-            assertEquals(before.pxPerMetre, after.pxPerMetre)
-            assertTrue(before.floor.contentEquals(after.floor))
-            assertEquals(before.lines.size, after.lines.size)
-            before.lines.zip(after.lines).forEach { (a, b) ->
-                assertEquals(listOf(a.x0, a.y0, a.x1, a.y1), listOf(b.x0, b.y0, b.x1, b.y1))
-                assertEquals(a.stroke, b.stroke)
-            }
-            assertEquals(before.texts.map { Triple(it.text, it.cx, it.cy) }, after.texts.map { Triple(it.text, it.cx, it.cy) })
-            assertTrue(after.lines.none { it.stroke == PlanStroke.Opening || it.stroke == PlanStroke.Swing })
+            val drawing = layout(survey)
+            assertTrue(drawing.lines.none { it.stroke == PlanStroke.Opening || it.stroke == PlanStroke.Swing })
+            // Each wall drawn whole: one line, end to end.
+            assertEquals(survey.walls.size, drawing.lines.count { it.stroke == PlanStroke.Wall })
         }
     }
 
@@ -187,25 +221,29 @@ class PlanOpeningsTest {
     }
 
     @Test
-    fun `a survey given no openings keeps its walls and its text as before`() {
+    fun `a scan's walls list and text, given no openings, are its walls alone`() {
         val scan = planSurvey(0f, 0f, 4f, 0f, 4f, 3f, 0f, 3f, spread = 0.03f)
-        for (survey in listOf(room, scan)) {
-            val before = SurveyReport.wallRows(survey, wording).map { it.label to it.value }
-            val none = SurveyReport.wallRows(survey, wording, PlanOpenings.None).map { it.label to it.value }
-            assertEquals(before, none)
-            assertEquals(survey.walls.size, none.size)
-            val text = SurveyReport.text(survey, wording, "Bedroom", "13 Oct 2026")
-            assertEquals(text, SurveyReport.text(survey, wording, "Bedroom", "13 Oct 2026", PlanOpenings.None))
-            assertFalse(text, "Door" in text || "Window" in text || "Net wall area" in text)
-        }
+        assertEquals(
+            listOf("Wall A" to "4.00 m ± 0.05", "Wall B" to "3.00 m ± 0.05", "Wall C" to "4.00 m ± 0.05", "Wall D" to "3.00 m ± 0.05"),
+            SurveyReport.wallRows(scan, wording).map { it.label to it.value },
+        )
+        val lines = SurveyReport.text(scan, wording, "Bedroom", "13 Oct 2026").lines()
+        val walls = lines.indexOf("Walls: A 4.00 m ± 0.05; B 3.00 m ± 0.05; C 4.00 m ± 0.05; D 3.00 m ± 0.05")
+        assertTrue(lines.toString(), walls > 0)
+        // The walls' line is followed by the notes, as it always was: no opening, no net wall area.
+        assertEquals(wording.spreadNote, lines[walls + 1])
+        assertTrue(lines.toString(), lines.none { it.startsWith("Door") || it.startsWith("Window") || it.startsWith("Net wall area") })
     }
 
     @Test
-    fun `an opening on the floor is a door, one higher up a window`() {
+    fun `an opening below the lowest window sill 3D Scan accepts is a door, one at or above it a window`() {
+        assertEquals(0.3f, WallOpenings.MIN_SILL_M, 0f)
         assertTrue(door.door)
-        assertTrue(door.copy(bottom = 0.08f).door)
+        assertTrue(door.copy(bottom = 0.29f).door)
+        assertFalse(door.copy(bottom = 0.3f).door)
         assertFalse(window.door)
-        assertFalse(door.copy(bottom = 0.4f).door)
+        // A door tapped a little above the floor, 30 cm up or more, reads as a window: that is the rule.
+        assertFalse(door.copy(bottom = 0.35f).door)
     }
 
     // ── From Measure's board to the plan ─────────────────────────────────────────────────────

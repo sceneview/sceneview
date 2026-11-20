@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.demos.internal.room.WallOpenings
 import java.util.Locale
 import kotlin.math.max
 
@@ -102,8 +103,12 @@ class SurveyWording(
     val netWallArea: String = "",
 )
 
-/** One line of the survey's table. [muted] ones say a figure is missing. */
-class SurveyRow(val label: String, val value: String, val muted: Boolean = false)
+/**
+ * One line of the survey's table. [muted] ones say a figure is missing. A door's or a window's row
+ * names the letter of the wall it stands on in [wall], for a table that may set it apart from that
+ * wall's row: the PDF, at the top of a column.
+ */
+class SurveyRow(val label: String, val value: String, val muted: Boolean = false, val wall: String? = null)
 
 /**
  * A door or a window on a plan's wall (#4783), in the plan's frame: on the survey's wall number
@@ -115,16 +120,11 @@ data class PlanOpening(val wall: Int, val from: Float, val to: Float, val bottom
     val height: Float get() = top - bottom
 
     /**
-     * A door stands on the floor: its bottom is within [DOOR_SILL_MAX_M] of it. A window's sill
-     * is higher. Measure marks both the same way, two opposite corners, so nothing else tells
-     * them apart.
+     * A door: an opening whose bottom is under the lowest sill 3D Scan gives a window
+     * ([WallOpenings.belowWindowSill], 0.30 m). Measure marks doors and windows the same way, two
+     * opposite corners, so its bottom is all that tells them apart, and on the scan's own rule.
      */
-    val door: Boolean get() = bottom <= DOOR_SILL_MAX_M
-
-    companion object {
-        /** The highest bottom a door is read with: a tap at a door's foot lands a few centimetres off the floor. */
-        const val DOOR_SILL_MAX_M = 0.15f
-    }
+    val door: Boolean get() = WallOpenings.belowWindowSill(bottom)
 }
 
 /**
@@ -329,7 +329,7 @@ object SurveyReport {
         val rows = ArrayList<SurveyRow>()
         walls.forEachIndexed { i, row ->
             rows += row
-            openings.openings.filter { it.wall == i }.forEach { rows += openingRow(it, wording) }
+            openings.openings.filter { it.wall == i }.forEach { rows += openingRow(it, wording, survey.walls[i].tag) }
         }
         openings.netWallArea?.let { rows += netWallAreaRow(it, wording) }
         return rows
@@ -340,10 +340,11 @@ object SurveyReport {
      * as wide by as high as it was marked. Written as the card under Measure's plan writes it
      * ([measurePlanLength]): to the centimetre in metres, so the page says one size for it.
      */
-    fun openingRow(opening: PlanOpening, wording: SurveyWording): SurveyRow = SurveyRow(
+    fun openingRow(opening: PlanOpening, wording: SurveyWording, wall: String? = null): SurveyRow = SurveyRow(
         label = if (opening.door) wording.door else wording.window,
         value = measurePlanLength(opening.width, wording.units, wording.locale) + " × " +
             measurePlanLength(opening.height, wording.units, wording.locale),
+        wall = wall,
     )
 
     /** The walls' area net of their doors and windows, [squareMetres], as the card under Measure's plan writes it. */

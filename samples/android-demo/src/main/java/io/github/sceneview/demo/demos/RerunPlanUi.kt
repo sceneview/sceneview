@@ -804,6 +804,9 @@ internal object RoomPlanPdf {
     private const val WALLS_X = 350f
     private const val WALL_VALUE_X = 60f
     private const val WALL_LABEL_GAP = 8f
+    private const val MIN_VALUE_SIZE = 7f
+    private const val WALL_OF = " · "
+    private const val ELLIPSIS = "…"
     private const val FOLLOWING_COLUMNS = 3
     private const val FOOT_Y = 806f
     private const val TITLE_SIZE = 20f
@@ -903,7 +906,7 @@ internal object RoomPlanPdf {
             wallPages = SurveyReport.pages(
                 SurveyReport.wallRows(survey, words.survey, openings), firstRows, followingRows * FOLLOWING_COLUMNS,
             )
-            walls(pen, words.survey.walls, wallPages.first(), WALLS_X, tableY, firstRows)
+            walls(pen, words.survey.walls, wallPages.first(), WALLS_X, tableY, firstRows, columns = 1)
             foot(pen, words, notes, 1, wallPages.size)
         }
         wallPages.drop(1).forEachIndexed { i, rows ->
@@ -911,7 +914,7 @@ internal object RoomPlanPdf {
             page(number) { canvas ->
                 val pen = Pen(canvas, paint, ink)
                 head(pen, words, heading)
-                walls(pen, words.pdfWallsContinued, rows, MARGIN, PLAN_TOP + ROW, followingRows)
+                walls(pen, words.pdfWallsContinued, rows, MARGIN, PLAN_TOP + ROW, followingRows, FOLLOWING_COLUMNS)
                 foot(pen, words, notes, number, wallPages.size)
             }
         }
@@ -995,23 +998,51 @@ internal object RoomPlanPdf {
     }
 
     /**
-     * [rows] of walls under [head], in columns of [perColumn] from ([x], [y]). The values start
-     * [WALL_VALUE_X] right of their labels, or further when a label is longer: "Net wall area".
+     * [rows] of walls under [head], in [columns] columns of [perColumn] from ([x], [y]) to the
+     * page's right margin. The values start [WALL_VALUE_X] right of their labels, or further when a
+     * label is longer: "Net wall area".
+     *
+     * A door's or a window's row at the top of a column, set apart from its wall's row, names its
+     * wall: `B · Door`. A value too long for its column, a size in feet and inches, is set smaller,
+     * down to [MIN_VALUE_SIZE], and cut short with an ellipsis past that: it never runs into the
+     * next column.
      */
-    @Suppress("LongParameterList") // a table: its head, its rows, where it stands and how tall
-    private fun walls(pen: Pen, head: String, rows: List<SurveyRow>, x: Float, y: Float, perColumn: Int) {
+    @Suppress("LongParameterList") // a table: its head, its rows, where it stands, how tall and how many columns
+    private fun walls(pen: Pen, head: String, rows: List<SurveyRow>, x: Float, y: Float, perColumn: Int, columns: Int) {
         if (rows.isEmpty()) return
         pen.text(head, x, y, HEAD_SIZE, pen.ink.text, bold = true)
-        val column = CONTENT_WIDTH / FOLLOWING_COLUMNS
+        val column = (MARGIN + CONTENT_WIDTH - x) / columns
+        val labels = rows.mapIndexed { i, row ->
+            if (row.wall != null && i % perColumn == 0) row.wall + WALL_OF + row.label else row.label
+        }
         pen.paint.textSize = TEXT_SIZE
         pen.paint.typeface = Typeface.DEFAULT
-        val valueX = max(WALL_VALUE_X, rows.maxOf { pen.paint.measureText(it.label) } + WALL_LABEL_GAP)
+        val valueX = max(WALL_VALUE_X, labels.maxOf { pen.paint.measureText(it) } + WALL_LABEL_GAP)
+        val room = column - valueX - WALL_LABEL_GAP
         rows.forEachIndexed { i, row ->
             val left = x + (i / perColumn) * column
             val at = y + ROW * (1 + i % perColumn)
-            pen.text(row.label, left, at, TEXT_SIZE, pen.ink.muted)
-            pen.text(row.value, left + valueX, at, TEXT_SIZE, if (row.muted) pen.ink.muted else pen.ink.text)
+            pen.text(labels[i], left, at, TEXT_SIZE, pen.ink.muted)
+            val (value, size) = fitted(pen.paint, row.value, room)
+            pen.text(value, left + valueX, at, size, if (row.muted) pen.ink.muted else pen.ink.text)
         }
+    }
+
+    /**
+     * [value] and the size it is set at to fit [room] points: [TEXT_SIZE] when it fits, smaller
+     * down to [MIN_VALUE_SIZE] when it does not, and cut short with an ellipsis past that.
+     */
+    private fun fitted(paint: Paint, value: String, room: Float): Pair<String, Float> {
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = TEXT_SIZE
+        val width = paint.measureText(value)
+        if (width <= room) return value to TEXT_SIZE
+        val size = max(MIN_VALUE_SIZE, TEXT_SIZE * room / width)
+        paint.textSize = size
+        if (paint.measureText(value) <= room) return value to size
+        var cut = value
+        while (cut.isNotEmpty() && paint.measureText(cut + ELLIPSIS) > room) cut = cut.dropLast(1)
+        return cut.trimEnd() + ELLIPSIS to size
     }
 
     /** The page's foot: what the marks mean, the notice, and the page's number when there are several. */

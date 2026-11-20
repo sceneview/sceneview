@@ -8,6 +8,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -92,10 +93,15 @@ object RoomPlanDxf {
         out.write(drawing.file().toByteArray(Charsets.US_ASCII))
     }
 
-    /** `Door 0.90 × 2.10`, `Window 1.20 × 1.20, sill 0.90`: the size the plan knows, in its units. */
+    /**
+     * `Door 0.93 × 2.04`, `Window 1.20 × 1.20, sill 0.90`: the size the plan knows, in its units —
+     * to the centimetre, as the plan page's card, walls list, PDF and text write a door or a window
+     * (#4783), not in the 5 cm steps of a wall's dimension; to the inch in feet and inches.
+     */
     private fun label(opening: Opening, words: Words, units: MeasureUnitSystem): String {
         fun length(metres: Float) = when (units) {
-            MeasureUnitSystem.Metric -> SurveyFormat.length(metres)
+            MeasureUnitSystem.Metric ->
+                "%.2f".format(Locale.US, (metres.coerceAtLeast(0f) * CENTIMETRES_PER_METRE).roundToInt() / CENTIMETRES_PER_METRE)
             MeasureUnitSystem.Imperial -> SurveyFormat.feetAndInchesMark(metres)
         }
         val size = length(opening.width) + (opening.height?.let { " × " + length(it) } ?: "")
@@ -777,6 +783,7 @@ object RoomPlanDxf {
 
     // Sizes and distances on the drawing, millimetres: a 1:50 print reads its dimensions at 3 mm.
     private const val MM = 1000.0
+    private const val CENTIMETRES_PER_METRE = 100f
     private const val MM_PER_INCH = 25.4
     private const val JOIN = 1.0
     private const val DIMENSION_OFFSET = 600.0
