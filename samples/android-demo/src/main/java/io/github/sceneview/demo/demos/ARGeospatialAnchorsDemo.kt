@@ -405,7 +405,7 @@ private fun GeospatialSection(
         val here = latestFix ?: return@LaunchedEffect
         if (vps == VpsCoverage.Unknown) vps = VpsCoverage.Checking
         vps = try {
-            when (session.awaitDemoVpsAvailability(here.latitude, here.longitude, requestGeneration)) {
+            when (session.awaitDemoVpsAvailability(here.latitude, here.longitude, requestGeneration, mainHandler)) {
                 VpsAvailability.AVAILABLE -> VpsCoverage.Available
                 VpsAvailability.UNAVAILABLE -> VpsCoverage.Unavailable
                 else -> VpsCoverage.Error
@@ -654,8 +654,10 @@ private fun GeospatialSection(
                     vps = VpsCoverage.Unknown
                 }
             },
-            onSessionResumed = { sessionError = null },
-            onARCoreAvailability = { arCoreAvailability = it },
+            onARCoreAvailability = {
+                arCoreAvailability = it
+                if (it == null) sessionError = null
+            },
             onSessionUpdated = { session: Session, arFrame: Frame ->
                 cameraReady = true
                 val camera = arFrame.camera
@@ -930,10 +932,13 @@ private suspend fun Session.awaitDemoVpsAvailability(
     latitude: Double,
     longitude: Double,
     requests: CloudRequestGeneration,
+    mainHandler: Handler,
 ): VpsAvailability = suspendCancellableCoroutine { continuation ->
     val generation = requests.current
     val future = checkVpsAvailabilityAsync(latitude, longitude) { result ->
-        if (continuation.isActive && requests.canRelease(generation)) continuation.resume(result)
+        mainHandler.post {
+            if (continuation.isActive && requests.canRelease(generation)) continuation.resume(result)
+        }
     }
     continuation.invokeOnCancellation {
         if (requests.canRelease(generation)) runCatching { future.cancel() }

@@ -644,7 +644,6 @@ fun PointAndAskDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         monitorArMotionSensors = true,
-        arSessionFailed = arSessionFailed,
         title = stringResource(R.string.demo_point_and_ask_title),
         onBack = onBack,
         onReset = {
@@ -1017,7 +1016,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         syncStep()
                     }
                 },
-                onSessionResumed = { arSessionFailed = false },
+                onARCoreAvailability = { if (it == null) arSessionFailed = false },
                 onSessionUpdated = { _, frame ->
                     latestFrame = frame
                     cameraReady = true

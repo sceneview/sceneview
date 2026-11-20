@@ -59,10 +59,9 @@ internal fun FeaturePlacementScene(
             placement = null
         }
     }
-    val currentPlacement by rememberUpdatedState(placement)
     DisposableEffect(state) {
         onDispose {
-            currentPlacement?.anchor?.detach()
+            sessionState.placement?.anchor?.detach()
             state.dismiss()
         }
     }

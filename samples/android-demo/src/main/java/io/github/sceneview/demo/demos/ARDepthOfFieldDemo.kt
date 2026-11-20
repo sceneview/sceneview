@@ -43,7 +43,6 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.demos.internal.PortraitSessionState
-import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.postprocessing.ARDepthOfFieldOptions
 import io.github.sceneview.ar.postprocessing.arDepthOfField
@@ -209,14 +208,14 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { failure ->
+                onSessionFailure = {
                     arSessionFailed = true
-                    if (sessionState.onFailure(failure)) {
+                    // The scaffold removes the scene and closes the session on every failure.
+                    if (sessionState.onFailure(fatal = true)) {
                         subjectDistance = null
                         ringAt = null
                     }
                 },
-                onSessionResumed = { arSessionFailed = false },
                 onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,

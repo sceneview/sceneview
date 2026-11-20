@@ -39,9 +39,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.ARSessionFailure
 import io.github.sceneview.demo.demos.internal.RecordingSessionState
-import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.recording.ARRecordInterpretation
 import io.github.sceneview.ar.recording.ARRecordInterpreter
 import io.github.sceneview.ar.recording.ARRecorder
@@ -554,8 +552,7 @@ private fun TakeScene(
         if (qaBackdrop) QaCameraBackdrop(seed = QA_SEED)
         ARSceneView(
             lifecycle = rememberHostLifecycle(),
-            onSessionFailure = { take.onSessionFailure(it) },
-            onSessionResumed = { take.sessionFailed = false },
+            onSessionFailure = { take.onSessionFailure() },
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
@@ -652,9 +649,10 @@ private class TakeState(
     private val packet: ByteBuffer =
         ByteBuffer.allocateDirect(PlacementTrack.PACKET_BYTES).order(ByteOrder.LITTLE_ENDIAN)
 
-    fun onSessionFailure(failure: ARSessionFailure) {
+    fun onSessionFailure() {
         sessionFailed = true
-        if (sessionState.onFailure(failure)) {
+        // The scaffold removes the scene and closes the session on every failure.
+        if (sessionState.onFailure(fatal = true)) {
             // Detach first: stop then resets the recorder without touching the closed session.
             recorder.detach()
             recorder.stop()

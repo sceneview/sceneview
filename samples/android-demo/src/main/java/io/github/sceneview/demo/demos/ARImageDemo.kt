@@ -44,7 +44,6 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.demos.internal.ImageSessionState
-import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.common.QaCameraBackdrop
@@ -327,9 +326,10 @@ fun ARImageDemo(onBack: () -> Unit) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-image")
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { failure ->
+                onSessionFailure = {
                     arSessionFailed = true
-                    if (sessionState.onFailure(failure)) {
+                    // The scaffold removes the scene and closes the session on every failure.
+                    if (sessionState.onFailure(fatal = true)) {
                         imageCount = 0
                         cameraReady = false
                         isTracking = false
@@ -341,7 +341,6 @@ fun ARImageDemo(onBack: () -> Unit) {
                         registrationJob?.cancel()
                     }
                 },
-                onSessionResumed = { arSessionFailed = false },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

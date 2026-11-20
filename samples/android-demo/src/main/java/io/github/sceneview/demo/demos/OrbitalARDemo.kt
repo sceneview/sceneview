@@ -59,7 +59,6 @@ import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.demos.internal.OrbitalSessionState
-import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
@@ -878,14 +877,14 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                     onSessionFailure = { failure ->
                         Log.e(TAG, "AR session failed to start: $failure")
                         arSessionFailed = true
-                        if (sessionState.onFailure(failure)) {
+                        // The scaffold removes the scene and closes the session on every failure.
+                        if (sessionState.onFailure(fatal = true)) {
                             cameraReady = false
                             isTracking = false
                             projectedTargets = emptyMap()
                             offscreenTargets = emptyMap()
                         }
                     },
-                    onSessionResumed = { arSessionFailed = false },
                     sessionConfiguration = { _: Session, config: Config ->
                         // Plane detection off — the formation lives in world space around the
                         // user, not on a plane. Disabling planes is cheaper and gives a cleaner

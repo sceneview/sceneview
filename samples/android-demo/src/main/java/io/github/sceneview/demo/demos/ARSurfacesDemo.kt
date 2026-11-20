@@ -208,7 +208,6 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                         isTracking = false
                     }
                 },
-                onSessionResumed = { arSessionFailed = false },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
