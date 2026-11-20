@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -59,6 +61,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -119,11 +122,44 @@ internal class RerunLandingActions(
  * The landing's scrolling page, clear of the demo's header above and its settings button below.
  * It is a themed stage (#4080): ground, cards and text come from [LocalStageChrome], so the page,
  * its menu and its dialog all follow the app theme.
+ *
+ * The cards fade into the stage's ground before they reach the settings button (#5188): the
+ * button's glass sat straight on a card mid-scroll, and its title read through the glass around
+ * the glyph ("Room · … :44 AM"). The fade only draws, so a swipe beside or above the button still
+ * scrolls the list; the list's bottom padding ends the last card above the fade.
  */
 @Composable
 internal fun RerunLanding(state: RerunLandingState, actions: RerunLandingActions) {
-    SessionsSection(state, actions)
+    Box(Modifier.fillMaxSize()) {
+        SessionsSection(state, actions)
+        BottomChromeFade(Modifier.align(Alignment.BottomCenter))
+    }
 }
+
+/**
+ * The stage's ground under the scaffold's bottom chrome, from the system bar up to the list's
+ * bottom padding: solid where the settings button sits, then a gradient to transparent above it.
+ */
+@Composable
+private fun BottomChromeFade(modifier: Modifier = Modifier) {
+    val ground = stage.ground
+    // The same edge the list's bottom padding ends its last card on.
+    val band = landingBottomClearance()
+    Column(modifier.fillMaxWidth().testTag(LANDING_BOTTOM_FADE_TAG)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(BottomFadeLength)
+                .background(Brush.verticalGradient(listOf(ground.copy(alpha = 0f), ground))),
+        )
+        Box(Modifier.fillMaxWidth().height(band - BottomFadeLength).background(ground))
+        Box(Modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.safeDrawing).background(ground))
+    }
+}
+
+/** What the landing keeps clear at the bottom, above the system bar: the scaffold's chrome and a gutter. */
+@Composable
+private fun landingBottomClearance() = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) + Space.md
 
 /** The themed stage the landing is drawn on. */
 private val stage: StageChrome @Composable get() = LocalStageChrome.current
@@ -242,7 +278,7 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
             .padding(top = RerunHeaderClearance),
         contentPadding = PaddingValues(
             start = Space.md, end = Space.md,
-            bottom = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) + Space.md,
+            bottom = landingBottomClearance(),
         ),
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
@@ -558,6 +594,13 @@ private val RecordWellSize = 56.dp
 private val GlassActionHeight = 56.dp
 private val ThumbnailSize = Space.x3l
 
+/**
+ * The gradient at the top of the landing's bottom fade: `SETTINGS_FAB_RESERVED_SPACE` budgets
+ * 24 dp of air above an 80 dp dock band, and the list's gutter adds 16, so 40 dp ends the
+ * gradient where the settings button starts.
+ */
+private val BottomFadeLength = Space.lg + Space.md
+
 /** A point of a footprint thumbnail, and the path walked over them (#4680). */
 private val FootprintDot = 1.5.dp
 private val FootprintPath = 1.5.dp
@@ -582,3 +625,4 @@ internal const val OPENING_TAG = "ar_rerun_opening"
 internal const val SAVING_SCAN_TAG = "ar_rerun_saving_scan"
 
 internal const val SESSIONS_LIST_TAG = "ar_rerun_sessions_list"
+internal const val LANDING_BOTTOM_FADE_TAG = "ar_rerun_landing_bottom_fade"

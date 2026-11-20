@@ -1041,6 +1041,8 @@ internal fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, ac
         controls = { RerunSheet() },
         dock = emptyList(),
         themedStage = true,
+        // A list of cards, not a scene: through the glass sheet the cards read behind its text (#5188).
+        opaqueSheet = true,
     ) {
         RerunLanding(state, actions)
     }
