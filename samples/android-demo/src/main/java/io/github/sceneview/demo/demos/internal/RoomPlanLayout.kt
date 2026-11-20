@@ -3,10 +3,12 @@ package io.github.sceneview.demo.demos.internal
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /*
  * A room survey as a dimensioned floor plan (#4540): the outline to scale, each wall's length on
@@ -123,8 +125,11 @@ object SurveyFormat {
     private const val EPSILON = 1e-3f
 }
 
-/** What a line of the plan is, so each surface paints it its own way. */
-enum class PlanStroke { Wall, WallUnseen, Dimension, Extension, Tick, Scale }
+/**
+ * What a line of the plan is, so each surface paints it its own way. [Opening] is a door's or a
+ * window's jambs, a window's frame and a door's leaf; [Swing] the arc a door sweeps (#4783).
+ */
+enum class PlanStroke { Wall, WallUnseen, Dimension, Extension, Tick, Scale, Opening, Swing }
 
 /** What a text of the plan is. */
 enum class PlanTextRole { Dimension, Area, AreaNote, Tag, Scale }
@@ -198,6 +203,9 @@ object RoomPlanLayout {
     private const val SCALE_MIN = 56f
     private const val TAG_INSET = 11f
     private const val TAG_MIN_WALL = 26f
+    private const val JAMB = 3.5f
+    private const val FRAME = 1.75f
+    private const val SWING_STEPS = 12
     private const val TOP = 0
     private const val RIGHT = 1
     private const val BOTTOM = 2
@@ -207,6 +215,8 @@ object RoomPlanLayout {
     private const val POLE_STEPS = 40
     private const val ALIGNED = 0.01f
 
+    private const val HALF_PI = (Math.PI / 2).toFloat()
+
     /** The round lengths a scale bar is drawn at, metres. */
     private val SCALE_BARS = floatArrayOf(0.5f, 1f, 2f, 5f, 10f)
 
@@ -214,7 +224,13 @@ object RoomPlanLayout {
      * Lays [survey] out in a [width] × [height] box. With [scales] (pixels per metre, any
      * order) the plan is drawn at the largest of them that fits — a paper plan is at 1:50, not
      * at 1:43; without, it fills the box.
+     *
+     * Each of [openings] (#4783) is drawn on its wall, to scale, where it was marked along it: the
+     * wall broken between its two jambs, a window's frame across the gap, a door's leaf open
+     * square into the room and the quarter circle it sweeps. A plan without any is drawn as
+     * it always was.
      */
+    @Suppress("LongParameterList") // a box, its ruler and the scales and openings it may be drawn with
     fun layout(
         survey: RoomSurvey,
         texts: PlanTexts,
@@ -222,6 +238,7 @@ object RoomPlanLayout {
         height: Float,
         metrics: PlanMetrics,
         scales: List<Float>? = null,
+        openings: List<PlanOpening> = emptyList(),
     ): RoomPlanDrawing {
         if (!survey.hasPlan) return RoomPlanDrawing(width, height, 0f, FloatArray(0), emptyList(), emptyList())
         var rows = IntArray(SIDES)
@@ -230,7 +247,7 @@ object RoomPlanLayout {
         repeat(MAX_PASSES) {
             if (drawing != null && rows.all { it == 0 }) return@repeat
             val needed = IntArray(SIDES)
-            val pass = Pass(survey, texts, width, height, metrics, scales, rows.copyOf(), needed)
+            val pass = Pass(survey, texts, width, height, metrics, scales, rows.copyOf(), needed, openings)
             val settled = drawing != null && (0 until SIDES).all { needed[it] <= rows[it] }
             drawing = pass.drawing
             if (settled || needed.all { it == 0 }) return drawing!!
@@ -277,6 +294,7 @@ object RoomPlanLayout {
         scales: List<Float>?,
         private val rows: IntArray,
         private val needed: IntArray,
+        private val openings: List<PlanOpening>,
     ) {
         private val u = metrics.unit
         private val lines = ArrayList<PlanLine>()
@@ -347,13 +365,18 @@ object RoomPlanLayout {
         }
 
         private fun walls() {
-            for (wall in survey.walls) {
+            survey.walls.forEachIndexed { index, wall ->
                 val length = wall.length.value
-                if (length <= 0f) continue
+                if (length <= 0f) return@forEachIndexed
                 val dx = (wall.bx - wall.ax) / length
                 val dy = (wall.by - wall.ay) / length
+                // The doors and windows on this wall, each kept on it: the wall is not drawn across them.
+                val cuts = openings.filter { it.wall == index }
+                    .map { Cut(it.from.coerceIn(0f, length), it.to.coerceIn(0f, length), it.door) }
+                    .filter { it.to > it.from }
+                    .sortedBy { it.from }
                 var at = 0f
-                fun run(from: Float, to: Float, stroke: PlanStroke) {
+                fun segment(from: Float, to: Float, stroke: PlanStroke) {
                     if (to - from <= 0f) return
                     lines += PlanLine(
                         x(wall.ax + dx * from),
@@ -363,14 +386,127 @@ object RoomPlanLayout {
                         stroke,
                     )
                 }
+                fun run(from: Float, to: Float, stroke: PlanStroke) {
+                    var start = from
+                    for (cut in cuts) {
+                        if (cut.to <= start || cut.from >= to) continue
+                        segment(start, cut.from, stroke)
+                        start = max(start, cut.to)
+                    }
+                    segment(start, to, stroke)
+                }
                 for (gap in wall.unseen) {
                     run(at, gap.start, PlanStroke.Wall)
                     run(gap.start, gap.endInclusive, PlanStroke.WallUnseen)
                     at = gap.endInclusive
                 }
                 run(at, length, PlanStroke.Wall)
+                for (cut in cuts) opening(index, dx, dy, cut)
             }
         }
+
+        /**
+         * The door or window [cut] on the wall numbered [index] (its direction [dx], [dy]): a jamb
+         * across the wall at each end; a window's frame, two lines along the gap; a door's leaf open
+         * square into the room and the quarter circle it sweeps to its other jamb.
+         *
+         * A door is hinged on the jamb farther from the wall's nearer corner: hinged at a corner,
+         * its leaf would lie along the wall beside it. Its leaf and swing stay inside the room: in
+         * a narrow room, or by a corner that juts in, they are drawn shorter, and not at all when
+         * even a short one would cross a wall.
+         */
+        private fun opening(index: Int, dx: Float, dy: Float, cut: Cut) {
+            val wall = survey.walls[index]
+            val (ox, oy) = outward(wall)
+            val sx = x(wall.ax + dx * cut.from)
+            val sy = y(wall.ay + dy * cut.from)
+            val ex = x(wall.ax + dx * cut.to)
+            val ey = y(wall.ay + dy * cut.to)
+            val jamb = JAMB * u
+            for ((px, py) in listOf(sx to sy, ex to ey)) {
+                lines += PlanLine(px + ox * jamb, py + oy * jamb, px - ox * jamb, py - oy * jamb, PlanStroke.Opening)
+            }
+            if (!cut.door) {
+                val frame = FRAME * u
+                for (side in floatArrayOf(frame, -frame)) {
+                    lines += PlanLine(sx + ox * side, sy + oy * side, ex + ox * side, ey + oy * side, PlanStroke.Opening)
+                }
+                return
+            }
+            val atEnd = cut.from <= wall.length.value - cut.to
+            val along = if (atEnd) cut.to else cut.from
+            // From the hinge towards the other jamb, and into the room: against the outward normal.
+            val tx = if (atEnd) -dx else dx
+            val ty = if (atEnd) -dy else dy
+            val hx = wall.ax + dx * along
+            val hy = wall.ay + dy * along
+            val radius = swingRadius(index, hx, hy, -ox, -oy, tx, ty, cut.to - cut.from)
+            if (radius <= 0f) return
+            val swing = swingPoints(hx, hy, -ox, -oy, tx, ty, radius)
+            lines += PlanLine(x(hx), y(hy), x(swing[0].first), y(swing[0].second), PlanStroke.Opening)
+            for (step in 1 until swing.size) {
+                val (ax, ay) = swing[step - 1]
+                val (bx, by) = swing[step]
+                lines += PlanLine(x(ax), y(ay), x(bx), y(by), PlanStroke.Swing)
+            }
+        }
+
+        /**
+         * A door's swing, page metres: the open leaf's end, then the quarter circle of [radius]
+         * about its hinge ([hx], [hy]) from there — square into the room ([ix], [iy]) — to the
+         * wall towards its other jamb ([tx], [ty]).
+         */
+        @Suppress("LongParameterList") // a hinge, two directions and a radius
+        private fun swingPoints(
+            hx: Float,
+            hy: Float,
+            ix: Float,
+            iy: Float,
+            tx: Float,
+            ty: Float,
+            radius: Float,
+        ): List<Pair<Float, Float>> = (0..SWING_STEPS).map { step ->
+            val angle = HALF_PI * step / SWING_STEPS
+            val c = cos(angle)
+            val s = sin(angle)
+            (hx + radius * (ix * c + tx * s)) to (hy + radius * (iy * c + ty * s))
+        }
+
+        /**
+         * The longest radius, up to the door's [width], whose leaf and swing about the hinge ([hx],
+         * [hy]) stay inside the room and cross none of its walls but the door's own, number
+         * [index]; 0 when none from [MIN_SWING_SHARE] of its width up does.
+         */
+        @Suppress("LongParameterList") // a wall, a hinge, two directions and a width
+        private fun swingRadius(
+            index: Int,
+            hx: Float,
+            hy: Float,
+            ix: Float,
+            iy: Float,
+            tx: Float,
+            ty: Float,
+            width: Float,
+        ): Float {
+            var radius = width
+            while (radius >= width * MIN_SWING_SHARE) {
+                val swing = swingPoints(hx, hy, ix, iy, tx, ty, radius)
+                // The hinge and the swing's end stand on the door's own wall: the points between are the room's.
+                val path = listOf(hx to hy) + swing
+                val inRoom = (0 until swing.lastIndex).all { inside(swing[it].first, swing[it].second) } &&
+                    LEAF_SAMPLES.all { inside(hx + ix * radius * it, hy + iy * radius * it) }
+                val crosses = (1 until path.size).any { k -> crossesAWall(index, path[k - 1], path[k]) }
+                if (inRoom && !crosses) return radius
+                radius *= SWING_SHRINK
+            }
+            return 0f
+        }
+
+        /** `true` when the segment [a]–[b] (page metres) crosses a wall of the room other than the one numbered [own]. */
+        private fun crossesAWall(own: Int, a: Pair<Float, Float>, b: Pair<Float, Float>): Boolean =
+            survey.walls.withIndex().any { (i, wall) ->
+                i != own && properlyCross(a.first, a.second, b.first, b.second, wall.ax, wall.ay, wall.bx, wall.by)
+            }
 
         @Suppress("LongMethod") // a dimension is its line, two ticks, two extension lines and a label
         private fun dimensions() {
@@ -589,7 +725,38 @@ object RoomPlanLayout {
 
         private fun drawingLeft() = x(0f)
 
+        /** A door or a window on a wall, [from]..[to] metres along it. */
+        private class Cut(val from: Float, val to: Float, val door: Boolean)
+
         private companion object {
+            /** A door's swing is drawn no shorter than this share of its width: shorter, it says nothing. */
+            const val MIN_SWING_SHARE = 0.3f
+            const val SWING_SHRINK = 0.9f
+
+            /** Where along a door's open leaf the room is checked for, as shares of its length. */
+            val LEAF_SAMPLES = floatArrayOf(0.25f, 0.5f, 0.75f, 1f)
+
+            /** `true` when the segments [ax], [ay]–[bx], [by] and [cx], [cy]–[dx], [dy] cross, each strictly between its ends. */
+            @Suppress("LongParameterList") // two segments, end to end
+            fun properlyCross(
+                ax: Float,
+                ay: Float,
+                bx: Float,
+                by: Float,
+                cx: Float,
+                cy: Float,
+                dx: Float,
+                dy: Float,
+            ): Boolean {
+                fun side(px: Float, py: Float, qx: Float, qy: Float, rx: Float, ry: Float) =
+                    (qx - px) * (ry - py) - (qy - py) * (rx - px)
+                val d1 = side(cx, cy, dx, dy, ax, ay)
+                val d2 = side(cx, cy, dx, dy, bx, by)
+                val d3 = side(ax, ay, bx, by, cx, cy)
+                val d4 = side(ax, ay, bx, by, dx, dy)
+                return d1 * d2 < 0f && d3 * d4 < 0f
+            }
+
             const val OVERLAP = 0.01f
             const val MAX_ROWS = 6
             const val EPSILON = 1e-4f

@@ -78,6 +78,9 @@ import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.MeasureUnitSystem
 import io.github.sceneview.demo.demos.internal.PlanLine
 import io.github.sceneview.demo.demos.internal.PlanMetrics
+import io.github.sceneview.demo.demos.internal.PlanOpening
+import io.github.sceneview.demo.demos.internal.PlanOpenings
+import io.github.sceneview.demo.demos.internal.RoomPlanDxf
 import io.github.sceneview.demo.demos.internal.PlanPage
 import io.github.sceneview.demo.demos.internal.PlanStroke
 import io.github.sceneview.demo.demos.internal.PlanTextRole
@@ -197,6 +200,9 @@ private fun planWords(units: MeasureUnitSystem, locale: Locale): PlanWords = Pla
         ),
         units = units,
         locale = locale,
+        door = stringResource(R.string.demo_ar_rerun_plan_door),
+        window = stringResource(R.string.demo_ar_rerun_plan_window),
+        netWallArea = stringResource(R.string.demo_ar_measure_label_net_walls),
     ),
     surveyTitle = stringResource(R.string.demo_ar_rerun_plan_survey_title),
     emptyTitle = stringResource(R.string.demo_ar_rerun_plan_empty_title),
@@ -273,7 +279,11 @@ internal fun RerunPlanScreen(media: RerunReplayMedia?, title: String, date: Stri
  * the page starts under them and is clipped there, so nothing scrolls behind a pill.
  *
  * @param zones the parts of the scan still to scan, in the scan's frame, laid on the plan (#4735).
+ * @param openings the doors and windows marked on the plan's walls and the walls' net area (#4783):
+ *   drawn on the plan, listed under their walls, and carried by the PDF, DXF and text shares. A
+ *   3D Scan has none.
  */
+@Suppress("LongParameterList") // a survey, its heading, its units, and what is laid on its plan
 @Composable
 internal fun RerunPlanView(
     survey: RoomSurvey?,
@@ -283,6 +293,7 @@ internal fun RerunPlanView(
     units: MeasureUnitSystem = SurveyFormat.units(LocalLocale.current.platformLocale),
     locale: Locale = LocalLocale.current.platformLocale,
     zones: List<RescanZone> = emptyList(),
+    openings: PlanOpenings = PlanOpenings.None,
 ) {
     val words = rememberPlanWords(units, locale)
     val context = LocalContext.current
@@ -326,9 +337,9 @@ internal fun RerunPlanView(
                 }
             }
         }
-        val sharePdf = { shareFile { sharePlanPdf(context, survey, words, title, date) } }
-        val shareDxf = { shareFile { sharePlanDxf(context, survey, words, title) } }
-        val shareText = { sharePlanText(context, SurveyReport.text(survey, words.survey, title, date), title) }
+        val sharePdf = { shareFile { sharePlanPdf(context, survey, words, title, date, openings) } }
+        val shareDxf = { shareFile { sharePlanDxf(context, survey, words, title, openings.openings.map(::dxfOpening)) } }
+        val shareText = { sharePlanText(context, SurveyReport.text(survey, words.survey, title, date, openings), title) }
         val dock = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) + Space.md
         // Under the header: a scrolling column clips to its own box, which starts below the pills.
         val frame = Modifier
@@ -344,10 +355,13 @@ internal fun RerunPlanView(
             Row(modifier = frame, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                 BoxWithConstraints(Modifier.weight(PLAN_SHARE).fillMaxHeight()) {
                     if (maxHeight - dock >= maxWidth / MAX_PLAN_RATIO) {
-                        PlanCard(survey, words, Modifier.fillMaxHeight().padding(bottom = dock), fill = true, zones = zones)
+                        PlanCard(
+                            survey, words, Modifier.fillMaxHeight().padding(bottom = dock),
+                            fill = true, zones = zones, openings = openings,
+                        )
                     } else {
                         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = dock)) {
-                            PlanCard(survey, words, hint = words.scrollHint, zones = zones)
+                            PlanCard(survey, words, hint = words.scrollHint, zones = zones, openings = openings)
                         }
                     }
                 }
@@ -358,7 +372,7 @@ internal fun RerunPlanView(
                         .padding(bottom = dock),
                     verticalArrangement = Arrangement.spacedBy(Space.md),
                 ) {
-                    SurveyDetails(survey, words, title, date, PlanShares(sharePdf, shareDxf, shareText))
+                    SurveyDetails(survey, words, title, date, PlanShares(sharePdf, shareDxf, shareText), openings)
                 }
             }
         } else {
@@ -368,8 +382,8 @@ internal fun RerunPlanView(
                     modifier = Modifier.widthIn(max = RerunPageMaxWidth).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(Space.md),
                 ) {
-                    if (survey.hasPlan) PlanCard(survey, words, zones = zones)
-                    SurveyDetails(survey, words, title, date, PlanShares(sharePdf, shareDxf, shareText))
+                    if (survey.hasPlan) PlanCard(survey, words, zones = zones, openings = openings)
+                    SurveyDetails(survey, words, title, date, PlanShares(sharePdf, shareDxf, shareText), openings)
                 }
             }
         }
@@ -383,7 +397,9 @@ internal fun RerunPlanView(
  * @param fill the drawing takes the height the card is given instead of the plan's own shape.
  * @param hint a line above the drawing, for a card that does not show whole.
  * @param zones the parts still to scan, in the scan's frame: none on a plan it cannot be laid on.
+ * @param openings the doors and windows drawn on their walls (#4783).
  */
+@Suppress("LongParameterList") // a plan, its words, its frame, and what is laid on it
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlanCard(
@@ -393,6 +409,7 @@ internal fun PlanCard(
     fill: Boolean = false,
     hint: String? = null,
     zones: List<RescanZone> = emptyList(),
+    openings: PlanOpenings = PlanOpenings.None,
 ) {
     val density = LocalDensity.current
     val unit = density.density * density.fontScale.coerceAtMost(MAX_PLAN_FONT_SCALE)
@@ -442,7 +459,9 @@ internal fun PlanCard(
                         paint.textSize = textSize
                         paint.measureText(text)
                     }
-                    val drawing = RoomPlanLayout.layout(survey, texts, size.width, size.height, metrics)
+                    val drawing = RoomPlanLayout.layout(
+                        survey, texts, size.width, size.height, metrics, openings = openings.openings,
+                    )
                     val origin = ResultFloor.planOrigin(drawing, survey)
                     val under = origin?.let { o -> { canvas: Canvas -> drawPlanFloor(canvas, drawing, o, grid, quads, floor, unit) } }
                     onDrawBehind { drawIntoCanvas { drawRoomPlan(it.nativeCanvas, drawing, ink, unit, under) } }
@@ -493,9 +512,20 @@ private fun LegendMark(label: String, dashed: Boolean, ink: PlanInk, unit: Float
     }
 }
 
-/** The survey under (or beside) the plan: its figures, its walls, what is missing, the notes and the shares. */
+/**
+ * The survey under (or beside) the plan: its figures, its walls — each with its doors and windows,
+ * and the walls' net area, when [openings] has them — what is missing, the notes and the shares.
+ */
+@Suppress("LongParameterList") // a survey, its words, its heading, its shares and its openings
 @Composable
-private fun SurveyDetails(survey: RoomSurvey, words: PlanWords, title: String, date: String?, shares: PlanShares) {
+private fun SurveyDetails(
+    survey: RoomSurvey,
+    words: PlanWords,
+    title: String,
+    date: String?,
+    shares: PlanShares,
+    openings: PlanOpenings,
+) {
     val hints = SurveyReport.hints(survey, words.survey)
     PlanSection(words.surveyTitle, caption = SurveyReport.heading(words.survey, title, date)) {
         SurveyReport.rows(survey, words.survey).forEach { FigureRow(it) }
@@ -512,7 +542,7 @@ private fun SurveyDetails(survey: RoomSurvey, words: PlanWords, title: String, d
     }
     if (survey.walls.isNotEmpty()) {
         PlanSection(words.survey.walls) {
-            SurveyReport.wallRows(survey, words.survey).forEach { FigureRow(it) }
+            SurveyReport.wallRows(survey, words.survey, openings).forEach { FigureRow(it) }
         }
     }
     // The share menu: the PDF, the same plan as a DXF drawing for a CAD tool, then the text.
@@ -712,10 +742,11 @@ internal fun drawRoomPlan(
             PlanStroke.Wall -> WALL_STROKE
             PlanStroke.WallUnseen -> UNSEEN_STROKE
             PlanStroke.Tick, PlanStroke.Scale -> TICK_STROKE
-            PlanStroke.Dimension, PlanStroke.Extension -> HAIR_STROKE
+            PlanStroke.Opening -> OPENING_STROKE
+            PlanStroke.Dimension, PlanStroke.Extension, PlanStroke.Swing -> HAIR_STROKE
         }
         paint.color = when (line.stroke) {
-            PlanStroke.Wall, PlanStroke.Tick, PlanStroke.Scale -> ink.wall
+            PlanStroke.Wall, PlanStroke.Tick, PlanStroke.Scale, PlanStroke.Opening -> ink.wall
             else -> ink.muted
         }
         path.rewind()
@@ -772,6 +803,10 @@ internal object RoomPlanPdf {
     private const val ROOM_VALUE_X = 60f
     private const val WALLS_X = 350f
     private const val WALL_VALUE_X = 60f
+    private const val WALL_LABEL_GAP = 8f
+    private const val MIN_VALUE_SIZE = 7f
+    private const val WALL_OF = " · "
+    private const val ELLIPSIS = "…"
     private const val FOLLOWING_COLUMNS = 3
     private const val FOOT_Y = 806f
     private const val TITLE_SIZE = 20f
@@ -804,7 +839,50 @@ internal object RoomPlanPdf {
         }
     }
 
-    fun write(out: OutputStream, survey: RoomSurvey, words: PlanWords, title: String, date: String?) {
+    /** A page's size in points, A4: what [draw] lays each page out in. */
+    const val WIDTH = PAGE_WIDTH
+    const val HEIGHT = PAGE_HEIGHT
+
+    /**
+     * Writes the survey to [out] as a PDF, the [openings] marked on its walls drawn on its plan and
+     * listed under its walls (#4783): the pages [draw] paints, each on a page of the document.
+     */
+    @Suppress("LongParameterList") // a survey, its words, its heading and its openings
+    fun write(
+        out: OutputStream,
+        survey: RoomSurvey,
+        words: PlanWords,
+        title: String,
+        date: String?,
+        openings: PlanOpenings = PlanOpenings.None,
+    ) {
+        val document = PdfDocument()
+        try {
+            draw(survey, words, title, date, openings) { number, paint ->
+                val page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, number).create())
+                paint(page.canvas)
+                document.finishPage(page)
+            }
+            document.writeTo(out)
+        } finally {
+            document.close()
+        }
+    }
+
+    /**
+     * The survey's pages, [WIDTH] × [HEIGHT] points each, handed in order to [page] with their
+     * number and what paints them; [page] paints each before it returns. The PDF paints them on
+     * its pages ([write]); a test paints them on a bitmap, to read them or to look at them.
+     */
+    @Suppress("LongParameterList") // a survey, its words, its heading, its openings and where its pages go
+    fun draw(
+        survey: RoomSurvey,
+        words: PlanWords,
+        title: String,
+        date: String?,
+        openings: PlanOpenings = PlanOpenings.None,
+        page: (number: Int, paint: (Canvas) -> Unit) -> Unit,
+    ) {
         val light = StageChrome.Light
         val ink = PlanInk(
             wall = light.onGlass.toArgb(),
@@ -813,38 +891,32 @@ internal object RoomPlanPdf {
             fill = light.onGlass.copy(alpha = FLOOR_ALPHA).toArgb(),
         )
         val heading = SurveyReport.heading(words.survey, title, date)
-        val document = PdfDocument()
-        try {
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            val notes = SurveyReport.notes(survey, words.survey).flatMap { wrap(it, CONTENT_WIDTH, SMALL_SIZE, paint) }
-            // The last baseline a table may use: a line clear of the notes above the notice.
-            val tableEnd = FOOT_Y - ROW * (notes.size + 1)
-            var number = 1
-            var page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, number).create())
-            var pen = Pen(page.canvas, paint, ink)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val notes = SurveyReport.notes(survey, words.survey).flatMap { wrap(it, CONTENT_WIDTH, SMALL_SIZE, paint) }
+        // The last baseline a table may use: a line clear of the notes above the notice.
+        val tableEnd = FOOT_Y - ROW * (notes.size + 1)
+        val followingRows = ((tableEnd - PLAN_TOP - ROW) / ROW).toInt()
+        var wallPages: List<List<SurveyRow>> = emptyList()
+        page(1) { canvas ->
+            val pen = Pen(canvas, paint, ink)
             head(pen, words, heading)
-            val tableY = plan(pen, survey, words)
+            val tableY = plan(pen, survey, words, openings)
             figures(pen, survey, words, tableY)
             val firstRows = max(1, ((tableEnd - tableY) / ROW).toInt())
-            val followingRows = ((tableEnd - PLAN_TOP - ROW) / ROW).toInt()
-            val walls = SurveyReport.pages(
-                SurveyReport.wallRows(survey, words.survey), firstRows, followingRows * FOLLOWING_COLUMNS,
+            wallPages = SurveyReport.pages(
+                SurveyReport.wallRows(survey, words.survey, openings), firstRows, followingRows * FOLLOWING_COLUMNS,
             )
-            walls(pen, words.survey.walls, walls.first(), WALLS_X, tableY, firstRows)
-            foot(pen, words, notes, number, walls.size)
-            document.finishPage(page)
-            for (rows in walls.drop(1)) {
-                number++
-                page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, number).create())
-                pen = Pen(page.canvas, paint, ink)
+            walls(pen, words.survey.walls, wallPages.first(), WALLS_X, tableY, firstRows, columns = 1)
+            foot(pen, words, notes, 1, wallPages.size)
+        }
+        wallPages.drop(1).forEachIndexed { i, rows ->
+            val number = i + 2
+            page(number) { canvas ->
+                val pen = Pen(canvas, paint, ink)
                 head(pen, words, heading)
-                walls(pen, words.pdfWallsContinued, rows, MARGIN, PLAN_TOP + ROW, followingRows)
-                foot(pen, words, notes, number, walls.size)
-                document.finishPage(page)
+                walls(pen, words.pdfWallsContinued, rows, MARGIN, PLAN_TOP + ROW, followingRows, FOLLOWING_COLUMNS)
+                foot(pen, words, notes, number, wallPages.size)
             }
-            document.writeTo(out)
-        } finally {
-            document.close()
         }
     }
 
@@ -864,7 +936,7 @@ internal object RoomPlanPdf {
      * the tables start on. The plan is laid out in the height a large room needs, then moved up
      * to the head by what it leaves empty above it: a small room leaves no blank half page.
      */
-    private fun plan(pen: Pen, survey: RoomSurvey, words: PlanWords): Float {
+    private fun plan(pen: Pen, survey: RoomSurvey, words: PlanWords, openings: PlanOpenings): Float {
         if (!survey.hasPlan) {
             val at = PLAN_TOP + ROW * 2
             pen.text(words.emptyTitle, MARGIN, at, HEAD_SIZE, pen.ink.muted)
@@ -879,6 +951,7 @@ internal object RoomPlanPdf {
         val drawing = RoomPlanLayout.layout(
             survey, SurveyReport.planTexts(survey, words.survey), CONTENT_WIDTH, PLAN_HEIGHT, metrics,
             scales = SCALES.map { POINTS_PER_METRE / it },
+            openings = openings.openings,
         )
         val tops = drawing.texts.map { it.top } + drawing.lines.map { min(it.y0, it.y1) }
         val bottoms = drawing.texts.map { it.bottom } + drawing.lines.map { max(it.y0, it.y1) }
@@ -924,18 +997,52 @@ internal object RoomPlanPdf {
         }
     }
 
-    /** [rows] of walls under [head], in columns of [perColumn] from ([x], [y]). */
-    @Suppress("LongParameterList") // a table: its head, its rows, where it stands and how tall
-    private fun walls(pen: Pen, head: String, rows: List<SurveyRow>, x: Float, y: Float, perColumn: Int) {
+    /**
+     * [rows] of walls under [head], in [columns] columns of [perColumn] from ([x], [y]) to the
+     * page's right margin. The values start [WALL_VALUE_X] right of their labels, or further when a
+     * label is longer: "Net wall area".
+     *
+     * A door's or a window's row at the top of a column, set apart from its wall's row, names its
+     * wall: `B · Door`. A value too long for its column, a size in feet and inches, is set smaller,
+     * down to [MIN_VALUE_SIZE], and cut short with an ellipsis past that: it never runs into the
+     * next column.
+     */
+    @Suppress("LongParameterList") // a table: its head, its rows, where it stands, how tall and how many columns
+    private fun walls(pen: Pen, head: String, rows: List<SurveyRow>, x: Float, y: Float, perColumn: Int, columns: Int) {
         if (rows.isEmpty()) return
         pen.text(head, x, y, HEAD_SIZE, pen.ink.text, bold = true)
-        val column = CONTENT_WIDTH / FOLLOWING_COLUMNS
+        val column = (MARGIN + CONTENT_WIDTH - x) / columns
+        val labels = rows.mapIndexed { i, row ->
+            if (row.wall != null && i % perColumn == 0) row.wall + WALL_OF + row.label else row.label
+        }
+        pen.paint.textSize = TEXT_SIZE
+        pen.paint.typeface = Typeface.DEFAULT
+        val valueX = max(WALL_VALUE_X, labels.maxOf { pen.paint.measureText(it) } + WALL_LABEL_GAP)
+        val room = column - valueX - WALL_LABEL_GAP
         rows.forEachIndexed { i, row ->
             val left = x + (i / perColumn) * column
             val at = y + ROW * (1 + i % perColumn)
-            pen.text(row.label, left, at, TEXT_SIZE, pen.ink.muted)
-            pen.text(row.value, left + WALL_VALUE_X, at, TEXT_SIZE, if (row.muted) pen.ink.muted else pen.ink.text)
+            pen.text(labels[i], left, at, TEXT_SIZE, pen.ink.muted)
+            val (value, size) = fitted(pen.paint, row.value, room)
+            pen.text(value, left + valueX, at, size, if (row.muted) pen.ink.muted else pen.ink.text)
         }
+    }
+
+    /**
+     * [value] and the size it is set at to fit [room] points: [TEXT_SIZE] when it fits, smaller
+     * down to [MIN_VALUE_SIZE] when it does not, and cut short with an ellipsis past that.
+     */
+    private fun fitted(paint: Paint, value: String, room: Float): Pair<String, Float> {
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = TEXT_SIZE
+        val width = paint.measureText(value)
+        if (width <= room) return value to TEXT_SIZE
+        val size = max(MIN_VALUE_SIZE, TEXT_SIZE * room / width)
+        paint.textSize = size
+        if (paint.measureText(value) <= room) return value to size
+        var cut = value
+        while (cut.isNotEmpty() && paint.measureText(cut + ELLIPSIS) > room) cut = cut.dropLast(1)
+        return cut.trimEnd() + ELLIPSIS to size
     }
 
     /** The page's foot: what the marks mean, the notice, and the page's number when there are several. */
@@ -995,14 +1102,16 @@ internal object RoomPlanPdf {
 }
 
 /** The survey's PDF, written to the share cache and handed to the share sheet; `false` when it could not be. */
+@Suppress("LongParameterList") // where it goes, the survey, its words, its heading and its openings
 private suspend fun sharePlanPdf(
     context: Context,
     survey: RoomSurvey,
     words: PlanWords,
     title: String,
     date: String?,
+    openings: PlanOpenings,
 ): Boolean {
-    val uri = writePlanShare(context, words.pdfFile.format(title)) { RoomPlanPdf.write(it, survey, words, title, date) }
+    val uri = writePlanShare(context, words.pdfFile.format(title)) { RoomPlanPdf.write(it, survey, words, title, date, openings) }
         ?: return false
     sharePlanFile(context, uri, PDF_MIME_TYPE, title)
     return true
@@ -1058,6 +1167,19 @@ internal fun sharePlanFile(context: Context, uri: Uri, mimeType: String, title: 
     }
     context.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
+
+/**
+ * [opening] as the DXF drawing marks it: a door, its leaf and its swing, or a window, its frame
+ * and its sill. The same reading of its bottom as the plan's ([PlanOpening.door]).
+ */
+private fun dxfOpening(opening: PlanOpening) = RoomPlanDxf.Opening(
+    kind = if (opening.door) RoomPlanDxf.OpeningKind.Door else RoomPlanDxf.OpeningKind.Window,
+    wall = opening.wall,
+    from = opening.from,
+    width = opening.width,
+    height = opening.height,
+    sill = opening.bottom.takeIf { !opening.door },
+)
 
 /** The survey's few lines, handed to the share sheet as plain text. */
 private fun sharePlanText(context: Context, text: String, title: String) {
@@ -1127,6 +1249,7 @@ private const val FLOOR_ALPHA = 0.06f
 private const val WALL_STROKE = 2.5f
 private const val UNSEEN_STROKE = 1.5f
 private const val TICK_STROKE = 1.25f
+private const val OPENING_STROKE = 1f
 private const val HAIR_STROKE = 0.6f
 private const val GRID_MINOR_STROKE = 1f
 private const val GRID_MAJOR_STROKE = 1.5f

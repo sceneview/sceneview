@@ -37,9 +37,17 @@ internal object WallOpenings {
     private const val DOOR_MAX_HIGH_M = 2.6f
     private const val DOOR_MIN_WIDE_M = 0.5f
     private const val DOOR_MAX_WIDE_M = 2.5f
-    private const val MIN_SILL_M = 0.3f
+    /** The lowest sill a window is given: a hole lower down that does not reach the floor is neither. */
+    const val MIN_SILL_M = 0.3f
     private const val FILL_WEIGHT = 0.6f
     private const val THROUGH_WEIGHT = 0.4f
+
+    /**
+     * `true` when an opening's [bottom] (metres above the floor) is under the lowest sill a window
+     * is given ([MIN_SILL_M]). A scan keeps no window that low; Measure, which marks doors and
+     * windows the same way, reads such an opening as a door ([io.github.sceneview.demo.demos.internal.PlanOpening.door]).
+     */
+    fun belowWindowSill(bottom: Float): Boolean = bottom < MIN_SILL_M
 
     /**
      * The openings of [line] between [lo] and [hi] along it, on a wall [height] tall. [front] are
@@ -162,7 +170,7 @@ internal object WallOpenings {
                 if (topEdge !in DOOR_MIN_HIGH_M..DOOR_MAX_HIGH_M || width !in DOOR_MIN_WIDE_M..DOOR_MAX_WIDE_M) continue
                 OpeningKind.Door
             } else {
-                if (bottom < MIN_SILL_M) continue
+                if (belowWindowSill(bottom)) continue
                 OpeningKind.Window
             }
             val seenThrough = through.size.toFloat() / cells

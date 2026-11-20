@@ -46,6 +46,9 @@
     <string name="demo_ar_rerun_plan_walls">Walls</string>
     <!-- %1$s the wall's letter on the plan. -->
     <string name="demo_ar_rerun_plan_wall">Wall %1$s</string>
+    <!-- A door, then a window, listed under the wall it was marked on (Measure's plan, #4783). -->
+    <string name="demo_ar_rerun_plan_door">Door</string>
+    <string name="demo_ar_rerun_plan_window">Window</string>
     <string name="demo_ar_rerun_plan_not_seen">not seen</string>
     <string name="demo_ar_rerun_plan_not_measured">not measured</string>
     <string name="demo_ar_rerun_plan_estimated">estimated</string>

@@ -94,6 +94,17 @@ fun measurePlanOpenings(outline: List<Position>, openings: List<MeasureOpening>)
         .map { it.second }
 }
 
+/**
+ * What a traced room's plan shows besides its survey (#4783): its [openings] on the plan's walls
+ * and the walls' [netWallArea], for the drawing, the walls' table and the PDF and text shares.
+ */
+fun measurePlanOpeningsOnPlan(openings: List<MeasurePlanOpening>, netWallArea: Float?): PlanOpenings = PlanOpenings(
+    openings = openings.map {
+        PlanOpening(wall = it.opening.wall, from = it.opening.from, to = it.opening.to, bottom = it.opening.bottom, top = it.opening.top)
+    },
+    netWallArea = netWallArea,
+)
+
 /** One door or window on the card under a traced room's plan: the plan's [wall] letter, its [width] × [height]. */
 data class MeasurePlanCardOpening(val wall: String, val width: String, val height: String)
 
@@ -117,14 +128,18 @@ fun measurePlanCard(
     openings = openings.map {
         MeasurePlanCardOpening(
             wall = it.wall,
-            width = planCardLength(it.opening.width, units, locale),
-            height = planCardLength(it.opening.height, units, locale),
+            width = measurePlanLength(it.opening.width, units, locale),
+            height = measurePlanLength(it.opening.height, units, locale),
         )
     },
 )
 
-/** A length on the plan's card: in metres below one too, `0.90 m`; feet and inches as the Measure screen writes them. */
-private fun planCardLength(metres: Float, units: MeasureUnitSystem, locale: Locale): String = when (units) {
+/**
+ * A door's or a window's side on a traced room's plan page, on its card and in its walls' table
+ * alike: in metres to the centimetre, below one too, `0.90 m`; feet and inches as the Measure
+ * screen writes them.
+ */
+fun measurePlanLength(metres: Float, units: MeasureUnitSystem, locale: Locale): String = when (units) {
     MeasureUnitSystem.Metric -> String.format(locale, "%.2f m", (metres.coerceAtLeast(0f) * CENTIMETRES_PER_METRE).roundToInt() / CENTIMETRES_PER_METRE)
     MeasureUnitSystem.Imperial -> formatMeasureLength(metres, units, locale)
 }
