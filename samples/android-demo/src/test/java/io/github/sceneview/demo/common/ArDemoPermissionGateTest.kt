@@ -116,7 +116,7 @@ class ArDemoPermissionGateTest {
     /** Timing changes the fallback, never whether the user can request again. */
     @Test
     fun `the instant-return threshold is one second`() {
-        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, resolveCameraPermissionRecovery(false, false, 999, 0))
+        assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, resolveCameraPermissionRecovery(false, false, 999, 0))
         assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, false, 1_000, 0))
         assertFalse(blocked(elapsedMs = 1_000L))
     }
@@ -135,7 +135,7 @@ class ArDemoPermissionGateTest {
     @Test
     fun `two ambiguous answers keep another request available alongside settings`() {
         val recovery = resolveCameraPermissionRecovery(false, false, 5_000, 1)
-        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, recovery)
+        assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, recovery)
         assertEquals(
             ArDemoPermissionUiState.AskPermission,
             arDemoPermissionUiState(granted = false, blocked = recovery == ARCameraPermissionRecovery.Settings),

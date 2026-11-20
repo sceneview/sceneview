@@ -82,7 +82,7 @@ class AutoPlacementRecoveryInsetsTest {
         permission = true,
         fontScale = 2f,
         bottomBar = 24,
-        permissionRecovery = ARCameraPermissionRecovery.RequestWithSettings,
+        permissionRecovery = ARCameraPermissionRecovery.SettingsWithRequest,
     )
 
     @Test
@@ -191,7 +191,7 @@ class AutoPlacementRecoveryInsetsTest {
             assertTrue("explanation cannot be read even after scrolling: $where", visibleBody.height >= 15f * fontScale * density)
         }
         actionNode.performClick()
-        if (permission && permissionRecovery == ARCameraPermissionRecovery.RequestWithSettings) {
+        if (permission && permissionRecovery == ARCameraPermissionRecovery.SettingsWithRequest) {
             assertEquals("settings must remain the primary action", 1, settingsOpened)
             assertEquals(0, clicks)
             val requestNode = composeRule.onNodeWithTag(ARCameraPermissionOverlayTags.REQUEST_ACTION)

@@ -94,7 +94,7 @@ class ARCameraPermissionOverlayLayoutTest {
 
     @Test
     fun inAScrollingColumn_bothPermissionActionsAreWhole() {
-        val state = ARCameraPermissionState(ARCameraPermissionRecovery.RequestWithSettings, {}, {})
+        val state = ARCameraPermissionState(ARCameraPermissionRecovery.SettingsWithRequest, {}, {})
         composeRule.setContent {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Box(Modifier.fillMaxWidth()) { ARCameraPermissionOverlay(state) }
@@ -160,7 +160,7 @@ class ARCameraPermissionOverlayLayoutTest {
         var requests = 0
         var settingsOpened = 0
         val state = ARCameraPermissionState(
-            recovery = ARCameraPermissionRecovery.RequestWithSettings,
+            recovery = ARCameraPermissionRecovery.SettingsWithRequest,
             request = { requests++ },
             openSettings = { settingsOpened++ },
         )

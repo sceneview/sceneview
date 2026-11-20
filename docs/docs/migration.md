@@ -16,6 +16,14 @@ support the project on [Open Collective](https://opencollective.com/sceneview).
 
 ---
 
+## Android camera permission recovery — `SettingsWithRequest`
+
+Replace `ARCameraPermissionRecovery.RequestWithSettings` (4.69.6 and 4.69.7) with
+`ARCameraPermissionRecovery.SettingsWithRequest`. Settings remains the primary action and
+another permission request remains the secondary action. The old name is a deprecated alias
+and existing source still compiles. The enum still has three entries, in the same order:
+`Request`, `SettingsWithRequest`, `Settings`; use these in exhaustive `when` expressions.
+
 ## SceneView 4.53.x to 4.54.0 (Android) — `rememberMediaPlayer` returns a `MediaPlayerState`
 
 ### The video player is prepared off the main thread, and says when it fails ([#4388](https://github.com/sceneview/sceneview/issues/4388))

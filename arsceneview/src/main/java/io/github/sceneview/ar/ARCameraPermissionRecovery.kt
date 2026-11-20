@@ -13,10 +13,21 @@ enum class ARCameraPermissionRecovery {
     Request,
 
     /** The answer is ambiguous: lead with settings and keep another request available. */
-    RequestWithSettings,
+    SettingsWithRequest,
 
     /** Android's rationale flag fell after a refusal: only settings can grant access. */
-    Settings,
+    Settings;
+
+    companion object {
+        /** Compatibility alias for apps written against 4.69.6 and 4.69.7. */
+        @Deprecated(
+            "Renamed to SettingsWithRequest",
+            ReplaceWith("ARCameraPermissionRecovery.SettingsWithRequest"),
+            level = DeprecationLevel.WARNING,
+        )
+        @JvmField
+        val RequestWithSettings: ARCameraPermissionRecovery = SettingsWithRequest
+    }
 }
 
 /**
@@ -50,7 +61,7 @@ fun resolveCameraPermissionRecovery(
     rationaleAfter -> ARCameraPermissionRecovery.Request
     rationaleBefore -> ARCameraPermissionRecovery.Settings
     elapsedMs < CAMERA_PROMPT_INSTANT_RETURN_MS || earlierUnexplainedRefusals >= 1 ->
-        ARCameraPermissionRecovery.RequestWithSettings
+        ARCameraPermissionRecovery.SettingsWithRequest
     else -> ARCameraPermissionRecovery.Request
 }
 

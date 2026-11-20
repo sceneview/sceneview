@@ -595,7 +595,7 @@ internal fun ArLauncherScreen(
                         Spacer(Modifier.width(10.dp))
                         Text(ctaLabel, style = MaterialTheme.typography.titleMedium)
                     }
-                    if (!cameraGranted && cameraRecovery == ARCameraPermissionRecovery.RequestWithSettings && !isChecking) {
+                    if (!cameraGranted && cameraRecovery == ARCameraPermissionRecovery.SettingsWithRequest && !isChecking) {
                         TextButton(onClick = onRequestCamera, modifier = Modifier.fillMaxWidth()) {
                             Text(stringResource(R.string.ar_permission_allow))
                         }

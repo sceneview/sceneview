@@ -103,7 +103,7 @@ class ArDemoPermissionGateComposeTest {
                     permission = ArCameraPermission(
                         granted = false,
                         shouldShowRationale = false,
-                        recovery = ARCameraPermissionRecovery.RequestWithSettings,
+                        recovery = ARCameraPermissionRecovery.SettingsWithRequest,
                         request = { requests++ },
                         openSettings = { settingsOpened++ },
                     ),
@@ -138,7 +138,7 @@ class ArDemoPermissionGateComposeTest {
                 ArLauncherScreen(
                     availability = ArCoreApk.Availability.SUPPORTED_INSTALLED,
                     cameraGranted = false,
-                    cameraRecovery = ARCameraPermissionRecovery.RequestWithSettings,
+                    cameraRecovery = ARCameraPermissionRecovery.SettingsWithRequest,
                     onRequestCamera = { requests++ },
                     onOpenSettings = { settingsOpened++ },
                     onStartArSession = { sessionsStarted++ },
