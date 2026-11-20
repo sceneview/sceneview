@@ -181,7 +181,7 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
 
     /// #2960's rule: every slug's fallback is either the same kind of thing as
     /// its label, or the slug declares `fallbackRole: .placeholder` so the pill
-    /// reads "Offline placeholder" instead of pretending.
+    /// reads "Built-in placeholder" instead of pretending.
     ///
     /// `.subjectMatch` is the init default, so a new slug would claim a match
     /// by omission. This allowlist is what stops that: a `.subjectMatch` slug
@@ -226,8 +226,8 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
 
     /// The placeholder flag has to reach the screen, or it is just metadata.
     func testPillSaysPlaceholderOnlyForABundledPlaceholder() {
-        XCTAssertEqual(AssetSourcePill.label(state: .bundled, isPlaceholder: true), "Offline placeholder")
-        XCTAssertEqual(AssetSourcePill.label(state: .bundled, isPlaceholder: false), "Offline model")
+        XCTAssertEqual(AssetSourcePill.label(state: .bundled, isPlaceholder: true), "Built-in placeholder")
+        XCTAssertEqual(AssetSourcePill.label(state: .bundled, isPlaceholder: false), "Built-in model")
         // A model that actually streamed is never a placeholder.
         XCTAssertEqual(AssetSourcePill.label(state: .streamed, isPlaceholder: true), "Streamed (cached)")
         XCTAssertEqual(AssetSourcePill.label(state: .streaming, isPlaceholder: true), "Streaming…")

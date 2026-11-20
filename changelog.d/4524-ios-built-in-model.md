@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: a model that ships inside the app is labelled "Built-in model", not "Offline model".** The asset-source pill describes where the model comes from, never the network, and "Offline" read as "your phone has no connection". iOS now matches the Android wording from #4521: "Built-in model", "Built-in placeholder" for a stand-in of a different subject, and "Built-in stand-in" in the bundled credit caption. Place, style and accessibility identifier are unchanged; no network detection is added (#4524).

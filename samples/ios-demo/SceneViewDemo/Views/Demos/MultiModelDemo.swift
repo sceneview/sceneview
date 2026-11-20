@@ -31,7 +31,7 @@ import SceneViewSwift
 /// > keyless build a slot still reads "Oak Trees" over its bundled stand-in.
 /// > Both platforms now say so on screen — Android through the scaffold's
 /// > asset-source chip, iOS through ``AssetSourcePill`` (#2960), which reads
-/// > "Offline model" as soon as any one slot resolves out of `fallback/`.
+/// > "Built-in model" as soon as any one slot resolves out of `fallback/`.
 ///
 /// ⚠️ That swap is also why this demo is deliberately absent from the App Store
 /// screenshot set (#2896). The bundled stand-ins are intentionally distinct
@@ -147,7 +147,7 @@ struct MultiModelDemo: View {
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
     /// A WHOLE-SCENE verdict over the four park slots: one stand-in makes the
-    /// pill read "Offline model" for the scene. This demo's header already
+    /// pill read "Built-in model" for the scene. This demo's header already
     /// admits in prose that a keyless slot reads "Oak Trees" over a stand-in
     /// — the pill is that admission made visible on screen (#2960).
     private var assetSource: AssetSourceState {

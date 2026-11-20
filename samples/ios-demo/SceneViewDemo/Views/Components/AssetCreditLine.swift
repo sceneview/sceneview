@@ -34,9 +34,9 @@ struct AssetCreditLine: View {
                 // Unknown bundled file: say so rather than borrow the streamed
                 // author. `BundledAssetCreditsTests` keeps this branch unreachable
                 // for the shipped registry.
-                return "Offline stand-in · uncredited bundled asset"
+                return "Built-in stand-in · uncredited bundled asset"
             }
-            return "Offline stand-in: \(credit.name) by \(credit.author) · \(credit.license)"
+            return "Built-in stand-in: \(credit.name) by \(credit.author) · \(credit.license)"
         }
     }
 
