@@ -46,10 +46,12 @@ object ScanDenseBenchmarkProbe {
         val cap = DenseFusion.budgetFor(512L * 1024 * 1024)
         // Disable coarsening only in the cap run so it actually reaches 600k; normal compaction
         // is exercised separately by the determinism test and the existing budget suites.
-        val map = ScanDenseMap(maxPoints = cap, maxLevel = 0, clock = { now })
+        val origin = System.nanoTime()
+        val map = ScanDenseMap(maxPoints = cap, maxLevel = 0, clock = { now + System.nanoTime() - origin })
         val rows = ArrayList<DoubleArray>()
         println("heap_bytes=${Runtime.getRuntime().maxMemory()} cap=$cap")
-        println("frame,voxels,confirmed,project_ms,add_ms,snapshot_due")
+        println("frame,voxels,confirmed,project_ms,add_ms,deferred_ms,fuse_ms,merge_ms," +
+            "whole_ms,covered_ms,weak_ms,mesh_ms,atlas_ms,index_clear_ms")
         loop@ for (room in 0 until 12) {
             for ((i, source) in ReconstructionBench.FULL.frames().withIndex()) {
                 val pose = source.pose.copy(x = source.pose.x + room * 5f)
@@ -59,12 +61,16 @@ object ScanDenseBenchmarkProbe {
                 val before = System.nanoTime()
                 val samples = map.project(frame, now)
                 val projected = System.nanoTime()
-                map.add(samples)
+                map.add(samples, deferLive = true)
+                val added = System.nanoTime()
+                map.finishPendingLive()
                 val end = System.nanoTime()
-                val row = doubleArrayOf(map.fusion.count.toDouble(), (projected - before) / 1e6, (end - projected) / 1e6)
+                val row = doubleArrayOf(map.fusion.count.toDouble(), (projected - before) / 1e6, (added - projected) / 1e6,
+                    (end - added) / 1e6) + map.work.nanos.map { it / 1e6 }.toDoubleArray() +
+                    (if (map.work.nanos[ScanDenseWork.MERGE] > 0) map.fusion.liveIndexClearNanos / 1e6 else 0.0)
                 rows += row
-                println(String.format(Locale.ROOT, "%d,%d,%d,%.3f,%.3f,%s", room * 270 + i,
-                    map.fusion.count, map.count, row[1], row[2], (room * 270 + i) % 10 == 0))
+                println("${room * 270 + i},${map.fusion.count},${map.count}," +
+                    row.drop(1).joinToString(",") { String.format(Locale.ROOT, "%.3f", it) })
                 if (map.fusion.count == cap) break@loop
             }
         }
@@ -76,13 +82,20 @@ object ScanDenseBenchmarkProbe {
         // Recorded with the original synchronous implementation, over this exact cap sequence.
         check(all == "f935ff8c223acf9ac2d70fefbe28de72a0a5a57a2a47f583485219bc4608ebfa")
         check(saved == "9a9bfd8512a63a95ad124350e93d03866636c900ba69a94ec2345cad94bfc1cd")
+        println("SPLIT columns (mean/max ms): deferred fuse merge whole covered weak mesh atlas index_clear")
         for (low in listOf(0, 50_000, 100_000, 200_000, 400_000, 550_000)) {
             val high = when (low) { 0 -> 50_000; 50_000 -> 100_000; 100_000 -> 200_000; 200_000 -> 400_000; 400_000 -> 550_000; else -> cap + 1 }
             val bin = rows.filter { it[0] >= low && it[0] < high }
             if (bin.isEmpty()) continue
             val adds = bin.map { it[2] }.sorted()
+            val totals = bin.map { it[2] + it[3] }.sorted()
             println(String.format(Locale.ROOT, "BIN %d..%d n=%d project=%.3f add_median=%.3f add_p95=%.3f add_max=%.3f",
                 low, high, bin.size, bin.map { it[1] }.average(), adds[adds.size / 2], adds[(adds.size - 1) * 95 / 100], adds.last()))
+            println(String.format(Locale.ROOT, "TOTAL %d..%d p95=%.3f max=%.3f", low, high,
+                totals[(totals.size - 1) * 95 / 100], totals.last()))
+            println("SPLIT $low..$high mean/max ms " + (3..11).joinToString(" ") { stage ->
+                String.format(Locale.ROOT, "%.3f/%.3f", bin.map { it[stage] }.average(), bin.maxOf { it[stage] })
+            })
         }
     }
 

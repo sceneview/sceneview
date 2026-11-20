@@ -104,6 +104,9 @@ class DenseFusion(
     /** [liveCloud]'s working arrays, kept from one live snapshot to the next. */
     private val scratch = LiveScratch()
     private val liveIndex = LiveIndex()
+    /** Diagnostic CPU cost of clearing the lookup; never used for scheduling. */
+    internal var liveIndexClearNanos = 0L
+        private set
 
     /** Retained primitive-array storage, including indices and live-cloud scratch; no heap walk. */
     internal val storageBytes: Long
@@ -344,7 +347,9 @@ class DenseFusion(
         val outLevel = scratch.outLevel
         val near = scratch.near
         val index = liveIndex
+        val clearStarted = System.nanoTime()
         index.clear()
+        liveIndexClearNanos = System.nanoTime() - clearStarted
         var out = 0
         var nearOut = 0
         // The map holds what a depth frame found together: the voxel before often merges into the same surfel.
@@ -375,6 +380,7 @@ class DenseFusion(
             lastOut = o
             outOf[i] = o
         }
+        index.release()
         if (out == 0) return DenseCloud.Empty
         val past = out > maxPoints
         // Second pass: each part weighs the surface it stands for, four times as much per level.
@@ -463,6 +469,7 @@ class DenseFusion(
         // The pick must mark exactly the surfels sized for: one short leaves an empty slot, a
         // surfel at the origin with no normal and no colour.
         check(k == kept - 1) { "picked ${k + 1} surfels for $kept" }
+        scratch.releaseSurfels(maxPoints)
         return DenseCloud(positions, colors, normals, confidences, if (coarse) levels else null)
     }
 
@@ -822,6 +829,15 @@ class DenseFusion(
             size = 0
         }
 
+        /** The lookup pass is finished. Retain at most 96 KiB, even after a large near field. */
+        fun release() {
+            if (keys.size > RETAINED_LIVE_SLOTS) {
+                keys = LongArray(INITIAL_SLOTS) { EMPTY }
+                values = IntArray(INITIAL_SLOTS)
+            }
+            size = 0
+        }
+
         fun get(key: Long): Int {
             val mask = keys.size - 1
             var slot = mix(key) and mask
@@ -855,6 +871,7 @@ class DenseFusion(
     companion object {
         /** Rounded allowance for the retained primitive-array headers. */
         private const val ARRAY_OVERHEAD_BYTES = 2048L
+        private const val RETAINED_LIVE_SLOTS = 8_192
         /** The design's surfel size: 2 cm. */
         const val VOXEL_M = 0.02f
 
@@ -1068,6 +1085,19 @@ private class LiveScratch {
     var draw = IntArray(0)
     var buckets = IntArray(0)
 
+    /** A near field can merge to far more cells than are drawn. Do not retain those sums. */
+    fun releaseSurfels(drawn: Int) {
+        if (weight.size <= drawn * 2L) return
+        position = Array(AXES) { FloatArray(0) }
+        normal = Array(AXES) { FloatArray(0) }
+        color = Array(AXES) { FloatArray(0) }
+        weight = FloatArray(0)
+        colorWeight = FloatArray(0)
+        conf = ByteArray(0)
+        keep = BooleanArray(0)
+        draw = IntArray(0)
+    }
+
     /** Room for [voxels] voxels, and as many merged surfels. */
     fun forVoxels(voxels: Int) {
         if (outOf.size >= voxels) return
@@ -1123,14 +1153,14 @@ internal class DenseLiveBuild(block: suspend (suspend () -> Unit) -> DenseCloud)
     }
 
     /** Runs small batches for [budgetNanos] at most, plus the last batch's work. */
-    fun advance(budgetNanos: Long): DenseCloud? {
-        val started = System.nanoTime()
+    fun advance(budgetNanos: Long, clock: () -> Long = System::nanoTime): DenseCloud? {
+        val started = clock()
         do {
             val continuation = next ?: break
             next = null
             continuation.resume(Unit)
             outcome?.let { return it.getOrThrow() }
-        } while (System.nanoTime() - started < budgetNanos)
+        } while (budgetNanos == Long.MAX_VALUE || clock() - started < budgetNanos)
         return null
     }
 }

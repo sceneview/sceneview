@@ -1,2 +1,2 @@
 <!-- category: Fixed -->
-- Demo app: Long room scans keep more of what the camera saw because fusing each depth frame is faster.
+- Demo app: Pending live scan snapshots finish across detail adjustments and when depth pauses. Saving reads the final floor coverage directly from the fused map, and depth diagnostics distinguish busy, stale and unavailable frames.

@@ -37,11 +37,10 @@ internal class ScanDenseMap(
     internal val storageBytes: Long
         get() {
             val layer = live
-            val pendingBytes = if (liveWhole === layer?.whole) 0L else liveWhole.size * 4L
+            val pendingBytes = liveDrawn?.let { cloudBytes(it) } ?: 0L
             if (layer == null) return fusion.storageBytes + pendingBytes
             val cloud = layer.cloud
-            val cloudBytes = cloud.positions.size * 4L + cloud.colors.size * 4L +
-                (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
+            val cloudBytes = cloudBytes(cloud)
             val mesh = layer.mesh
             val meshBytes = mesh.positions.size * 4L + mesh.indices.size * 4L + mesh.uvs.size * 4L
             val wholeBytes = if (layer.whole === cloud.positions) 0L else layer.whole.size * 4L
@@ -59,12 +58,14 @@ internal class ScanDenseMap(
     private var full = false
 
     /**
-     * The dense map as the live 3D card draws it: a snapshot started at most every
-     * [LIVE_INTERVAL_NS], merged in bounded batches after successive fusions, of the surfels at least two depth frames saw — from the last [project]ed
-     * frame's eye, [LIVE_DRAWN_SURFELS] at most, near ones whole and far ones merged
-     * ([DenseFusion.liveCloud]); without one, [LIVE_MAX_SURFELS] at most — meshed and coloured off
-     * the main thread, with the floor cells the map covers and its even stride
-     * ([ReplayDenseLayer.whole]). `null` until the first one.
+     * The live card's surfels, including those seen in one depth frame, from the last
+     * [project]ed eye: at most [LIVE_DRAWN_SURFELS], near ones whole and far ones merged.
+     * Without an eye, at most [LIVE_MAX_SURFELS]. Floor cells and [ReplayDenseLayer.whole]
+     * use the confirmed map. Built on the worker, at most once per [LIVE_INTERVAL_NS].
+     * A pending merge finishes within [LIVE_MAX_ADDS] adds or [LIVE_INTERVAL_NS] of starting,
+     * plus the finishing work itself; compaction never resets that deadline. Capture drains
+     * it after the add even if no new depth arrives. Thus published data is at most two
+     * intervals old plus worker execution time, without relying on the next sensor frame.
      */
     @Volatile
     var live: ReplayDenseLayer? = null
@@ -72,7 +73,16 @@ internal class ScanDenseMap(
     private var liveAtNanos = Long.MIN_VALUE
     private var liveBuild: DenseLiveBuild? = null
     private var liveVersion = 0
-    private var liveWhole = FloatArray(0)
+    private var liveDrawn: DenseCloud? = null
+    private var liveEye: DebugPose? = null
+    private var buildAtNanos = Long.MIN_VALUE
+    private var buildAdds = 0
+    internal var lastBuildSpanNs = 0L
+        private set
+    internal var lastBuildAdds = 0
+        private set
+    /** CPU split for the last add and its deferred completion; diagnostics only. */
+    internal val work = ScanDenseWork()
 
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
     private var eye: DebugPose? = null
@@ -134,16 +144,17 @@ internal class ScanDenseMap(
     val frames: Int get() = frame.get()
 
     /** Merges one depth frame's [samples], then takes [live] when it is due. On the worker. */
-    fun add(samples: DenseSamples): DenseFuseStats {
+    fun add(samples: DenseSamples, deferLive: Boolean = false): DenseFuseStats {
+        work.clear()
         val started = clock()
         val compactions = fusion.compactions
-        val stats = fusion.add(samples)
+        val stats = work.measure(ScanDenseWork.FUSE) { fusion.add(samples) }
         if (fusion.compactions != compactions) adjustedAtNanos = clock()
         full = fusion.saturated
         points.set(stats.confirmed)
         shown.set(rising.update(stats.confirmed))
         frame.set(fusion.frames)
-        snapshotLive()
+        snapshotLive(deferAssembly = deferLive)
         val ms = (clock() - started) / NANOS_PER_MS
         lastAddMs = ms
         if (ms > maxAddMs) maxAddMs = ms
@@ -180,61 +191,98 @@ internal class ScanDenseMap(
         val levels = fusion.levelCounts().joinToString("/")
         return "dense kept ${fusion.count} saved $count drawn ${live?.cloud?.count ?: 0} " +
             "levels $levels compactions ${fusion.compactions} full $full " +
-            "add ${"%.1f".format(lastAddMs)} ms (max ${"%.1f".format(maxAddMs)})"
+            "add ${"%.1f".format(lastAddMs)} ms (max ${"%.1f".format(maxAddMs)}) " +
+            "live span ${"%.1f".format(lastBuildSpanNs / NANOS_PER_MS)} ms/$lastBuildAdds adds"
     }
 
-    private fun snapshotLive() {
-        if (liveBuild != null && liveVersion != fusion.topologyVersion) {
-            liveBuild = null
-            liveAtNanos = Long.MIN_VALUE
-        }
+    /** Finish on the fusion worker after add, even if the phone stops supplying depth. */
+    fun finishPendingLive() {
+        if (buildAtNanos != Long.MIN_VALUE) snapshotLive(force = true)
+    }
+
+    /** Final floor coverage, independent of a pending or not-yet-due live snapshot. On the worker. */
+    fun coveredCells(): LongArray = CoverageGrid.coveredKeys(
+        fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS),
+    )
+
+    private fun snapshotLive(force: Boolean = false, deferAssembly: Boolean = false) {
         val now = clock()
-        val at = eye
-        if (liveBuild == null) {
+        if (buildAtNanos == Long.MIN_VALUE) {
             if (liveAtNanos != Long.MIN_VALUE && now - liveAtNanos < LIVE_INTERVAL_NS) return
             liveAtNanos = now
-            liveWhole = fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS)
-            if (liveWhole.isEmpty()) return
+            buildAtNanos = now
+            buildAdds = 0
+        }
+        if (!force) buildAdds++
+        // A compaction moves voxel indices. Restart against the new map, retaining the original
+        // deadline and add count, so repeated compactions cannot starve publication.
+        if (liveVersion != fusion.topologyVersion) {
+            liveBuild = null
+            liveDrawn = null
+        }
+        if (liveBuild == null && liveDrawn == null) {
             liveVersion = fusion.topologyVersion
+            liveEye = eye
+            val at = liveEye
             if (at != null) {
+                // Over the camera a surfel one depth frame saw already shows: on a slow phone the
+                // second view lags, and the coat must follow the camera, not the saved cloud.
                 liveBuild = fusion.liveCloudBuild(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS, minViews = 1)
+            } else {
+                liveDrawn = work.measure(ScanDenseWork.MERGE) { fusion.cloud(minViews = 1, maxPoints = LIVE_MAX_SURFELS) }
             }
         }
-        val drawn = if (at == null) {
-            fusion.cloud(minViews = 1, maxPoints = LIVE_MAX_SURFELS)
-        } else {
-            liveBuild?.advance(LIVE_WORK_NS) ?: return
+        val overdue = now - buildAtNanos >= LIVE_INTERVAL_NS || buildAdds >= LIVE_MAX_ADDS
+        if (liveDrawn == null) {
+            liveDrawn = work.measure(ScanDenseWork.MERGE) {
+                liveBuild?.advance(if (force || overdue) Long.MAX_VALUE else LIVE_WORK_NS, clock)
+            } ?: return
+            liveBuild = null
         }
-        liveBuild = null
-        val whole = liveWhole
-        val covered = CoverageGrid.coveredKeys(whole)
-        // The floor to scan again, judged on the whole map read in place: the drawn surfels are
-        // merged and, past their budget, picked at random far off.
-        val weak = if (at == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
-            LiveCoverageGround.weakCells(
-                fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES,
-                LiveCoverageGround.floorHint(floorPlaneY, firstEyeY),
-            )
-        }
-        live = ReplayDenseLayer(
-            cloud = drawn,
-            voxelM = fusion.voxelM,
-            mesh = DenseSurfels.mesh(drawn, fusion.voxelM, halfSideVoxels = DenseSurfels.LIVE_HALF_SIDE_VOXELS),
-            atlas = DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
-            // The floor cells are found here too, on the worker, from the map as before: the
-            // live map and the area read them, however far the drawn surfels are merged.
-            coveredCells = covered,
-            // The saving orbit and the open top read the map as it stands, not the merged
-            // surfels, dense by the eye and sparse away from it (#4792).
-            whole = whole,
-            weakCells = weak,
-        )
+        // Capture defers the full-map reads, sorting, weak-floor judgement, mesh and atlas until
+        // after add returns. Their cost is measured separately; none is claimed to fit an 8 ms slice.
+        if (deferAssembly && !overdue) return
+        publishLive(checkNotNull(liveDrawn))
+        lastBuildSpanNs = clock() - buildAtNanos
+        lastBuildAdds = buildAdds
+        buildAtNanos = Long.MIN_VALUE
+        liveDrawn = null
     }
+
+    private fun publishLive(drawn: DenseCloud) {
+        val whole = work.measure(ScanDenseWork.WHOLE) {
+            fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS)
+        }
+        if (whole.isEmpty()) return
+        val covered = work.measure(ScanDenseWork.COVERED) { CoverageGrid.coveredKeys(whole) }
+        // Judge the whole map, not the far surfels randomly selected for drawing.
+        val weak = work.measure(ScanDenseWork.WEAK) {
+            if (liveEye == null || !LiveCoverageGround.SHOW_WEAK_CELLS) LongArray(0) else {
+                LiveCoverageGround.weakCells(
+                    fusion.surfels(), fusion.voxelM, covered, CoverageGrid.CELL_METRES,
+                    LiveCoverageGround.floorHint(floorPlaneY, firstEyeY),
+                )
+            }
+        }
+        val mesh = work.measure(ScanDenseWork.MESH) {
+            DenseSurfels.mesh(drawn, fusion.voxelM, halfSideVoxels = DenseSurfels.LIVE_HALF_SIDE_VOXELS)
+        }
+        val atlas = work.measure(ScanDenseWork.ATLAS) {
+            DenseSurfels.atlas(drawn, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR)
+        }
+        live = ReplayDenseLayer(drawn, fusion.voxelM, mesh, atlas, coveredCells = covered, whole = whole, weakCells = weak)
+    }
+
+    private fun cloudBytes(cloud: DenseCloud): Long = cloud.positions.size * 4L + cloud.colors.size * 4L +
+        (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
 
     companion object {
         private const val SNAPSHOT_OVERHEAD_BYTES = 2048L
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_INTERVAL_NS = 1_000_000_000L
+
+        /** At 10 Hz, finish no later than the third add (200 ms after the starting add). */
+        const val LIVE_MAX_ADDS = 3
 
         /** The live merge yields between small batches, leaving most of the 100 ms depth slot for fusion. */
         private const val LIVE_WORK_NS = 8_000_000L

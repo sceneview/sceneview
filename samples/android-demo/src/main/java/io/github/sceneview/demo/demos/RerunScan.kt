@@ -310,6 +310,7 @@ internal class ScanCapture(
         if (dense == null || !depthGate.isDue(frame.timestamp)) return null
         if (fusing.get()) {
             intake.count(Outcome.Busy)
+            depthGate.mark(frame.timestamp)
             frameCounters.busyDepth()
             return null
         }
@@ -318,7 +319,7 @@ internal class ScanCapture(
             .getOrNull()
         if (depth == null) {
             intake.count(Outcome.NoDepth)
-            frameCounters.staleDepth()
+            frameCounters.unavailableDepth()
             return null
         }
         // Before the gate, so a device log says what the scan sees even when it fuses nothing.
@@ -395,13 +396,13 @@ internal class ScanCapture(
         val dense = dense ?: return
         if (image == null) {
             intake.count(Outcome.NoImage)
-            frameCounters.staleDepth()
+            frameCounters.unavailableDepth()
             return
         }
         val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv, dense.confidence.threshold.toInt())
         if (frame == null) {
             intake.count(Outcome.Unreadable)
-            frameCounters.staleDepth()
+            frameCounters.unavailableDepth()
             return
         }
         frameCounters.acceptDepth()
@@ -412,7 +413,7 @@ internal class ScanCapture(
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
                 val samples = dense.project(frame, depth.nanos, farM = preset.farM)
-                val stats = dense.add(samples)
+                val stats = dense.add(samples, deferLive = true)
                 intake.count(
                     when {
                         samples.count == 0 -> Outcome.NoSamples
@@ -422,6 +423,9 @@ internal class ScanCapture(
                 )
                 denseAdded.addAndGet(stats.added)
                 denseKept.addAndGet(stats.kept)
+                // Drain on this worker even if depth stops (still phone or stale sensor). This
+                // also defers coverage, weak cells, mesh and atlas beyond the measured add.
+                dense.finishPendingLive()
             } finally {
                 fusing.set(false)
             }
@@ -438,7 +442,7 @@ internal class ScanCapture(
         intake.lineIfDue(nanos, total)?.let {
             val counts = frameCounts
             Log.i(LOG_TAG, "$it; ${counts.logLine()}; ${dense.logLine()}")
-            if (BuildConfig.DEBUG) Log.i(ScanBench.TAG, ScanBench.depthLine(counts))
+            if (BuildConfig.DEBUG) Log.i(ScanBench.TAG, depthLine(counts))
         }
         if (total == recordedTotal) return
         recordedTotal = total
@@ -473,6 +477,9 @@ internal class ScanCapture(
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
         model?.join()
+        val finalCells = if (finishedEvents == null) {
+            withContext(Dispatchers.Default) { dense?.coveredCells() }
+        } else null
         // The journal is taken once and kept: a build that threw (out of memory, painting the
         // planes) is retried from the same events, not from a journal already let go.
         val journal = finishedEvents ?: run {
@@ -480,7 +487,7 @@ internal class ScanCapture(
                 recordDepthStats(last.nanos)
                 // The last fusion's floor cells, which no frame observed before the stop (#4734):
                 // the result's m² reads the cells journaled, so they go in with the rest.
-                dense?.live?.coveredCells?.takeIf { it.isNotEmpty() }?.let { trace.addFloorCells(last.nanos, it) }
+                finalCells?.takeIf { it.isNotEmpty() }?.let { trace.addFloorCells(last.nanos, it) }
             }
             // The journal is already a read-only, bounded list. Transfer it without copying
             // or walking its events; keep its running byte total for O(1) debug snapshots.

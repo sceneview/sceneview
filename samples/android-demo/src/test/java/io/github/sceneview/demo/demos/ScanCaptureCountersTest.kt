@@ -13,13 +13,14 @@ class ScanCaptureCountersTest {
         repeat(2) { counters.busyDepth() }
         repeat(3) { counters.staleDepth() }
         repeat(4) { counters.dropTsdf() }
-        val expected = ScanFrameCounts(1, 2, 3, 4)
+        repeat(5) { counters.unavailableDepth() }
+        val expected = ScanFrameCounts(1, 2, 3, 4, 5)
         repeat(2) {
             assertEquals(expected, counters.snapshot())
-            assertEquals("depthAccepted=1 depthBusy=2 depthStale=3 tsdfDropped=4", counters.snapshot().logLine())
+            assertEquals("depthAccepted=1 depthBusy=2 depthStale=3 tsdfDropped=4 depthUnavailable=5", counters.snapshot().logLine())
             assertEquals(
-                """{"schema":2,"event":"depth","depthAccepted":1,"depthBusy":2,"depthStale":3,"tsdfDropped":4}""",
-                ScanBench.depthLine(counters.snapshot()),
+                """{"schema":2,"event":"depth","depth_accepted":1,"depth_busy":2,"depth_stale":3,"depth_unavailable":5,"tsdf_dropped":4}""",
+                depthLine(counters.snapshot()),
             )
         }
         counters.acceptDepth()
@@ -37,6 +38,7 @@ class ScanCaptureCountersTest {
                 counters.busyDepth()
                 counters.staleDepth()
                 counters.dropTsdf()
+                counters.unavailableDepth()
             }
         }.apply { start() } }
         start.countDown()
@@ -47,9 +49,10 @@ class ScanCaptureCountersTest {
             assertTrue(next.depthBusy >= previous.depthBusy)
             assertTrue(next.depthStale >= previous.depthStale)
             assertTrue(next.tsdfDropped >= previous.tsdfDropped)
+            assertTrue(next.depthUnavailable >= previous.depthUnavailable)
             previous = next
         }
         threads.forEach { it.join() }
-        assertEquals(ScanFrameCounts(4_000, 4_000, 4_000, 4_000), counters.snapshot())
+        assertEquals(ScanFrameCounts(4_000, 4_000, 4_000, 4_000, 4_000), counters.snapshot())
     }
 }
