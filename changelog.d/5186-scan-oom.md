@@ -1,2 +1,2 @@
 <!-- category: Fixed -->
-- **Demo app: smoother, more reliable 3D scans.** Request a large heap to preserve full scan detail, with a memory safety net below 384 MiB. Scale replay storage to the heap while keeping photos, floor coverage, anchors and plane removals. Release scan memory reliably and load the saved-scans list lazily for faster exits.
+- **Demo app: smoother, more reliable 3D scans.** Request a large heap to keep full model detail on phones with a large heap, with a memory safety net below 384 MiB. Bound previously unlimited replay journal storage (8 MiB at a 512 MiB heap) while keeping photos, floor coverage, anchors, plane appearance times and removals. Release scan memory reliably and load the saved-scans list lazily for faster exits.

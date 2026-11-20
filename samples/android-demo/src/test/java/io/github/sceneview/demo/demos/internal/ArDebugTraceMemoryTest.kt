@@ -117,12 +117,15 @@ class ArDebugTraceMemoryTest {
     }
 
     @Test
-    fun `plane duplicates go first and tombstones survive even an irreducible metadata overflow`() {
+    fun `plane endpoints and tombstones survive even an irreducible metadata overflow`() {
         val journal = ArDebugJournal(700)
         val pose = ArDebugEvent.CameraPose(0, DebugPose(0f, 0f, 0f))
         journal.append(pose)
         repeat(9) { journal.append(ArDebugEvent.Plane(it.toLong(), 1, DebugPlaneKind.Wall, FloatArray(30) { it.toFloat() })) }
-        assertEquals(1, journal.filterIsInstance<ArDebugEvent.Plane>().size)
+        val snapshots = journal.filterIsInstance<ArDebugEvent.Plane>()
+        assertEquals(2, snapshots.size)
+        assertEquals(0L, snapshots.first().nanos)
+        assertEquals(8L, snapshots.last().nanos)
         assertTrue(pose in journal)
         val tombstone = ArDebugEvent.Plane(10, 1, DebugPlaneKind.Wall, FloatArray(0))
         journal.append(tombstone)
@@ -130,8 +133,38 @@ class ArDebugTraceMemoryTest {
         journal.append(floor)
         assertTrue(tombstone in journal)
         assertTrue(floor in journal)
-        assertEquals(2, journal.filterIsInstance<ArDebugEvent.Plane>().size)
+        assertEquals(3, journal.filterIsInstance<ArDebugEvent.Plane>().size)
         assertEquals(journal.sumOf(ArDebugJournal::bytesOf), journal.bytes)
+    }
+
+    @Test
+    fun `plane thinning frees live history and preserves original appearance throughout replay`() {
+        val trace = ArDebugTrace(journalMaxBytes = 2_048).apply { journal = emptyList() }
+        trace.addPose(0L, DebugPose(0f, 1f, 0f))
+        repeat(100) { tick ->
+            trace.addPlane((tick + 1) * 1_000_000_000L, 7, DebugPlaneKind.Floor,
+                FloatArray(90) { if (it % 3 == 1) 0f else tick + it * 0.01f })
+        }
+        val journal = checkNotNull(trace.journal)
+        val snapshots = journal.filterIsInstance<ArDebugEvent.Plane>()
+        assertTrue(snapshots.size in 2 until 100)
+        assertEquals(1_000_000_000L, snapshots.first().nanos)
+        assertEquals(100_000_000_000L, snapshots.last().nanos)
+        assertTrue(trace.journalBytes <= 2_048)
+        // Inspect the actual strong references, not just the journal's byte counter.
+        val field = ArDebugTrace::class.java.getDeclaredField("planeHistory").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val history = field.get(trace) as Map<Int, List<Pair<Float, DebugPlane>>>
+        assertEquals(snapshots.size, history.getValue(7).size)
+        history.getValue(7).forEach { (_, plane) ->
+            assertTrue(snapshots.any { it.polygon === plane.polygon })
+        }
+        for (timeline in listOf(trace, ArDebugTrace.of(journal))) {
+            assertTrue(timeline.frameAt(0.999f).planes.isEmpty())
+            for (seconds in listOf(1f, 2f, 50f, 99f, 100f)) {
+                assertEquals("floor at $seconds", 7, timeline.frameAt(seconds).planes.single().id)
+            }
+        }
     }
 
     @Test
@@ -163,6 +196,23 @@ class ArDebugTraceMemoryTest {
         assertTrue(observationBytes(small) <= 48_000)
         assertTrue(observationBytes(large) <= 96_000)
         assertTrue(large.observationCount > small.observationCount)
+    }
+
+    @Test(timeout = 2_000)
+    fun `an observation larger than its allowance cannot stall thinning`() {
+        val trace = ArDebugTrace()
+        // Fault-inject an allowance below today's constructor minimum to exercise the guard
+        // for a future larger observation. Half-thinning an empty or singleton list cannot help.
+        ArDebugTrace::class.java.getDeclaredField("observationMaxBytes").apply {
+            isAccessible = true
+            setLong(trace, 4L)
+        }
+        repeat(10) { tick ->
+            trace.addPoints(tick * 1_000_000_000L, floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 2f, 0f, 0f))
+        }
+        assertTrue(trace.observationCount <= 2)
+        assertEquals(9f, trace.observationTime(trace.observationCount - 1), 0f)
+        assertEquals(9, trace.frameAt(9f).livePoints.size)
     }
 
     private fun observationBytes(trace: ArDebugTrace): Long =

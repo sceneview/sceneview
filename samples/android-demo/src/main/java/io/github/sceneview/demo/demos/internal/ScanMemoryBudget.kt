@@ -5,8 +5,10 @@ import kotlin.math.sqrt
 /**
  * Safety net for devices still below 384 MiB after the demo requests a large heap.
  * Small heaps share 35% between TSDF, dense points, journal and live observation indices.
- * At 384 MiB and above, the pre-budget TSDF, dense cap and preset voxels stay unchanged.
- * Journal and observation allowances grow with the heap (4 MiB each at 256 MiB).
+ * At 384 MiB and above, the pre-budget TSDF cap and preset voxels stay unchanged, and the
+ * dense cap reaches [DenseFusion.MAX_BUDGET]. Full model detail is kept; replay history is still thinned.
+ * Journal and observation allowances grow with the heap (4 MiB each at 256 MiB, 8 MiB at
+ * 512 MiB); 4.69.7 had no journal byte bound.
  * Replay-critical journal metadata is never discarded, even if it alone exceeds its allowance.
  */
 internal class ScanMemoryBudget(val maxHeapBytes: Long) {

@@ -1,14 +1,15 @@
 package io.github.sceneview.demo.demos.internal
 
 /**
- * A live scan's replay journal. At [maxBytes], discard superseded plane snapshots first,
- * then thin camera/point samples and depth counts across the timeline. Keep the latest plane
+ * A live scan's replay journal. At [maxBytes], thin intermediate plane snapshots first,
+ * then camera/point samples and depth counts across the timeline. Keep the first and last plane
  * snapshot per id, every tombstone, photo pose, Image, FloorCells and Anchor event.
  * If that irreducible metadata alone exceeds the allowance, retain it and report the cap:
  * replay correctness takes priority over a hard byte ceiling. [onCap] fires only once.
  */
 class ArDebugJournal(
     val maxBytes: Long = MAX_BYTES,
+    private val onPlaneRemoved: (ArDebugEvent.Plane) -> Unit = {},
     private val onCap: () -> Unit = {},
 ) : AbstractList<ArDebugEvent>() {
     init {
@@ -34,9 +35,10 @@ class ArDebugJournal(
         events.add(event)
         bytes += cost
         if (bytes <= maxBytes) return
-        thinPlanes()
         while (bytes > maxBytes) {
             val before = bytes
+            thinPlanes()
+            if (bytes != before) continue
             thinSamples()
             if (bytes == before) thinDepthCounts()
             if (bytes == before) removeLastOptionalSample()
@@ -45,10 +47,24 @@ class ArDebugJournal(
     }
 
     private fun thinPlanes() {
+        val first = HashMap<Int, Int>()
         val latest = HashMap<Int, Int>()
-        events.forEachIndexed { i, event -> if (event is ArDebugEvent.Plane && event.polygon.isNotEmpty()) latest[event.id] = i }
+        events.forEachIndexed { i, event ->
+            if (event is ArDebugEvent.Plane && event.polygon.isNotEmpty()) {
+                first.putIfAbsent(event.id, i)
+                latest[event.id] = i
+            }
+        }
+        val intermediates = HashMap<Int, Int>()
         removeWhere { i, event ->
-            event is ArDebugEvent.Plane && event.polygon.isNotEmpty() && latest[event.id] != i
+            if (event !is ArDebugEvent.Plane || event.polygon.isEmpty() ||
+                first[event.id] == i || latest[event.id] == i) {
+                false
+            } else {
+                val index = intermediates[event.id] ?: 0
+                intermediates[event.id] = index + 1
+                index % 2 == 0
+            }
         }
     }
 
@@ -97,7 +113,12 @@ class ArDebugJournal(
         var out = 0
         for (i in events.indices) {
             val event = events[i]
-            if (remove(i, event)) bytes -= bytesOf(event) else events[out++] = event
+            if (remove(i, event)) {
+                bytes -= bytesOf(event)
+                if (event is ArDebugEvent.Plane) onPlaneRemoved(event)
+            } else {
+                events[out++] = event
+            }
         }
         events.subList(out, events.size).clear()
     }

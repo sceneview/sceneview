@@ -137,7 +137,8 @@ class ArDebugFrame(
  *
  * Bounded so a long session cannot grow it without limit: poses are thinned by motion
  * ([POSE_MIN_STEP_M], [POSE_MIN_TURN]) and capped ([MAX_POSES], halved when full); feature points
- * are merged into a [POINT_VOXEL_M] voxel map capped at [MAX_MAP_POINTS]; planes and anchors keep
+ * are merged into a [POINT_VOXEL_M] voxel map capped at [MAX_MAP_POINTS]; live plane histories
+ * follow the journal's thinning, keeping first/last snapshots and every removal. Anchors keep
  * one snapshot per change.
  */
 class ArDebugTrace(
@@ -194,7 +195,8 @@ class ArDebugTrace(
         get() = eventJournal
         set(value) {
             eventJournal = value?.let { events ->
-                ArDebugJournal(journalMaxBytes, onJournalCap).also { bounded -> events.forEach(bounded::append) }
+                ArDebugJournal(journalMaxBytes, onPlaneRemoved = ::removePlaneSnapshot, onCap = onJournalCap)
+                    .also { bounded -> events.forEach(bounded::append) }
             }
         }
     private var eventJournal: ArDebugJournal? = null
@@ -389,6 +391,9 @@ class ArDebugTrace(
         }
         val observation = seen.copyOf(seenCount)
         while (observations.size >= observationMaxCount || observationBytes + observation.size * 4L > observationMaxBytes) {
+            // A single retained observation cannot shrink by half-thinning. Always make progress
+            // even if an incoming observation ever exceeds the allowance by itself.
+            if (observations.size <= 1) break
             thinObservations()
         }
         observationTimes.add(t)
@@ -427,6 +432,11 @@ class ArDebugTrace(
         touch(t)
     }
 
+    /** Drop the same polygon reference as the journal, so thinning really frees its storage. */
+    private fun removePlaneSnapshot(event: ArDebugEvent.Plane) {
+        val t = secondsOf(event.nanos)
+        planeHistory[event.id]?.removeAll { it.first == t && it.second.polygon === event.polygon }
+    }
 
     /**
      * Every plane the session found, as it last stood with a boundary: a plane ARCore merged
@@ -674,8 +684,6 @@ class ArDebugTrace(
         const val KEYFRAME_SPACING_M = 0.6f
 
         const val MAX_KEYFRAMES = 48
-
-        private val EMPTY_INTS = IntArray(0)
 
         /** Packs the voxel of (x, y, z) into one key: 21 signed bits per axis. */
         internal fun voxelKey(x: Float, y: Float, z: Float): Long {

@@ -232,19 +232,23 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
     // next visit to 3D Scan removes it, so no photo of a room outlives its share.
     LaunchedEffect(Unit) { discardSharedScan(context) }
     val sessions = state.sessions
-    Box(Modifier.fillMaxSize().background(stage.ground), contentAlignment = Alignment.TopCenter) {
-        LazyColumn(
-            modifier = Modifier
-                .widthIn(max = RerunPageMaxWidth)
-                .fillMaxSize()
-                .testTag(SESSIONS_LIST_TAG)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .padding(top = RerunHeaderClearance),
-            contentPadding = PaddingValues(start = Space.md, end = Space.md, bottom = Space.lg),
-            verticalArrangement = Arrangement.spacedBy(Space.sm),
-        ) {
-            item(key = "intro", contentType = "intro") { LandingPage(state, actions) }
-            item(key = "sessions-heading", contentType = "heading") {
+    // The full-width viewport receives scroll gestures, including beside the centred cards.
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(stage.ground)
+            .testTag(SESSIONS_LIST_TAG)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .padding(top = RerunHeaderClearance),
+        contentPadding = PaddingValues(
+            start = Space.md, end = Space.md,
+            bottom = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) + Space.md,
+        ),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
+        item(key = "intro", contentType = "intro") { LandingListItem { LandingPage(state, actions) } }
+        item(key = "sessions-heading", contentType = "heading") {
+            LandingListItem {
                 Row {
                     Text(
                         text = ScanCopy.SESSIONS_TITLE,
@@ -260,9 +264,13 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                     }
                 }
             }
-            if (state.savingScan) item(key = "saving") { OpeningCard(ScanCopy.SAVING, testTag = SAVING_SCAN_TAG) }
-            if (sessions?.isEmpty() == true && !state.savingScan) item(key = "empty") { EmptySessions() }
-            items(sessions.orEmpty(), key = { it.id }, contentType = { "session" }) { session ->
+        }
+        if (state.savingScan) item(key = "saving") {
+            LandingListItem { OpeningCard(ScanCopy.SAVING, testTag = SAVING_SCAN_TAG) }
+        }
+        if (sessions?.isEmpty() == true && !state.savingScan) item(key = "empty") { LandingListItem { EmptySessions() } }
+        items(sessions.orEmpty(), key = { it.id }, contentType = { "session" }) { session ->
+            LandingListItem {
                 SessionCard(
                     session = session,
                     onOpen = { actions.onOpen(session) },
@@ -271,9 +279,9 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                     onDelete = { confirming = session },
                 )
             }
-            item(key = "bottom-inset") {
-                Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)))
-            }
+        }
+        item(key = "bottom-inset") {
+            Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)))
         }
     }
     sharing?.let { session ->
@@ -297,6 +305,14 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
             },
             dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Constrain card content without narrowing the list's scrollable viewport. */
+@Composable
+private fun LandingListItem(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = RerunPageMaxWidth).fillMaxWidth()) { content() }
     }
 }
 

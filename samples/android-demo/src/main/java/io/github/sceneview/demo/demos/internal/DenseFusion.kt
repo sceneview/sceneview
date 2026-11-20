@@ -126,13 +126,14 @@ class DenseFusion(
             val iz = floor(z / voxelM).toInt()
             val ck = pack(ix shr CHUNK_SHIFT, iy shr CHUNK_SHIFT, iz shr CHUNK_SHIFT)
             if (ck != chunkKey) {
-                chunk = chunkFor(ck)
+                val found = chunkFor(ck)
                 // A rejected voxel must not leave a new empty chunk forever. Otherwise a full
                 // scan walking into new rooms grows metadata even though count is capped.
-                if (chunk < 0) {
+                if (found < 0) {
                     saturated = true
                     continue
                 }
+                chunk = found
                 chunkKey = ck
                 chunkSeen[chunk] = view
             }

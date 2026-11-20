@@ -264,17 +264,26 @@ internal class ScanCapture(
                 val (width, height) = size
                 val argb = ScanProjection.uprightImage(pixels, intrinsics, sensor, display, lens, width, height)
                 val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
-                val encoded = ScanPhotoPolicy.encode(sharp, size) { w, h, quality ->
-                    val scaled = if (w == width && h == height) bitmap
-                    else Bitmap.createScaledBitmap(bitmap, w, h, true)
-                    val out = ByteArrayOutputStream()
-                    if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
-                } ?: return@launch
-                jpegs[path] = encoded.bytes
-                // A scaled bitmap can alias its source. Compose may still draw this thumbnail
-                // after close, so none of these bitmaps is explicitly recycled.
-                val (thumbWidth, thumbHeight) = ScanPhotoPolicy.thumbnailSize(encoded.width, encoded.height)
-                thumbnails[path] = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
+                var thumbnail: Bitmap? = null
+                try {
+                    val encoded = ScanPhotoPolicy.encode(sharp, size) { w, h, quality ->
+                        val scaled = if (w == width && h == height) bitmap
+                        else Bitmap.createScaledBitmap(bitmap, w, h, true)
+                        try {
+                            val out = ByteArrayOutputStream()
+                            if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
+                        } finally {
+                            if (scaled !== bitmap) scaled.recycle()
+                        }
+                    } ?: return@launch
+                    jpegs[path] = encoded.bytes
+                    val (thumbWidth, thumbHeight) = ScanPhotoPolicy.thumbnailSize(encoded.width, encoded.height)
+                    thumbnail = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
+                    thumbnails[path] = thumbnail
+                } finally {
+                    // Compose owns the thumbnail, including when scaling returned the source.
+                    if (bitmap !== thumbnail) bitmap.recycle()
+                }
             } finally {
                 inFlight.decrementAndGet()
                 // Encoding is CPU work: cancellation can arrive after its last suspension.

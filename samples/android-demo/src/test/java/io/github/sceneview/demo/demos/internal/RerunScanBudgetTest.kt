@@ -48,7 +48,7 @@ class RerunScanBudgetTest {
     }
 
     @Test
-    fun `384 MiB and larger heaps keep 4_69_7 dense cap TSDF cap and preset voxels`() {
+    fun `384 MiB and larger heaps keep TSDF cap and preset voxels with a heap scaled dense cap`() {
         for (mib in listOf(384, 512, 768, 1024)) {
             val heap = mib * MIB
             val budget = ScanMemoryBudget(heap)
@@ -71,6 +71,27 @@ class RerunScanBudgetTest {
         repeat(1_000) { dense.add(patch(it + 64)) }
         assertEquals(atCap, dense.storageBytes)
         assertTrue(dense.count <= 32)
+    }
+
+    @Test
+    fun `saturated map accepts revisited chunks interleaved with rejected new chunks`() {
+        val dense = DenseFusion(maxPoints = 2, maxLevel = 0)
+        fun samples(vararg x: Float) = DenseSamples(
+            x.size, FloatArray(x.size * 3) { if (it % 3 == 0) x[it / 3] else 0.005f },
+            FloatArray(x.size * 3) { if (it % 3 == 1) 1f else 0f },
+            IntArray(x.size) { 0xff557799.toInt() }, ByteArray(x.size) { -1 },
+        )
+        dense.add(samples(0.005f, 1.285f))
+        // A rejected chunk must not overwrite the cached index for the previous known chunk.
+        repeat(100) { tick ->
+            val rejected = 10f + tick
+            val stats = dense.add(samples(0.005f, rejected, 0.005f, 1.285f, rejected, 1.285f))
+            assertEquals(0, stats.added)
+            assertEquals(4, stats.kept)
+            assertEquals(2, stats.total)
+        }
+        assertTrue(dense.saturated)
+        assertEquals(2, dense.confirmed)
     }
 
     @Test

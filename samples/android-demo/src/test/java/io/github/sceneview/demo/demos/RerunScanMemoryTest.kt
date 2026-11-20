@@ -110,6 +110,38 @@ class RerunScanMemoryTest {
     }
 
     @Test
+    fun `saved room handoffs keep only the last TSDF for reopening in the same demo`() = runBlocking {
+        val owner = RerunLiveModels.Owner()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var previous: RerunCapturePack? = null
+        try {
+            repeat(3) { room ->
+                val live = RerunLiveModel(owner)
+                val pack = pack(room + 20)
+                live.offer(
+                    DepthFrame(2, 2, ShortArray(4), null, IntArray(4), 1f, 1f, 0f, 0f, DebugPose(0f, 0f, 0f)),
+                    scope,
+                )
+                live.join()
+                live.keepFor(pack)
+                val tsdf = checkNotNull(RerunLiveModels.find(pack))
+                // Successful saves all hand off this way: Open, NextRoom, FinishHome and saves
+                // outliving the capture screen. No model screen needs to have opened yet.
+                live.close(keepTransferred = true)
+                previous?.let { assertNull(RerunLiveModels.find(it)) }
+                val reopened = RerunModelSource.of(pack, null) as RerunModelSource.Live
+                assertSame(tsdf, reopened.tsdf)
+                previous = pack
+            }
+            owner.close()
+            assertNull(RerunLiveModels.find(previous))
+        } finally {
+            owner.close()
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `exit releases the retry journal and dense reader without clearing the trace under readers`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val owner = RerunLiveModels.Owner()
@@ -187,7 +219,7 @@ class RerunScanMemoryTest {
     }
 
     @Test
-    fun `small TSDF and failed or cancelled meshing detach the live source`() {
+    fun `a small TSDF stays for a retry until its owner closes`() {
         for (fails in listOf(false, true)) {
             val owner = RerunLiveModels.Owner()
             val pack = pack(if (fails) 10 else 11)
@@ -197,11 +229,14 @@ class RerunScanMemoryTest {
             try {
                 runCatching { buildRerunModel(source) { if (fails) error("cancel extraction") } }
                     .also { assertEquals(!fails, it.isSuccess) }
-                assertNull(source.tsdf)
-                assertNull(RerunLiveModels.find(pack))
+                // A retry with another method still meshes the scan's own depth, not its surfels.
+                assertSame(tsdf, source.tsdf)
+                assertSame(tsdf, RerunLiveModels.find(pack))
             } finally {
                 owner.close()
             }
+            // Save, Discard and exit close the owner: nothing keeps the volume past the demo.
+            assertNull(RerunLiveModels.find(pack))
         }
     }
 

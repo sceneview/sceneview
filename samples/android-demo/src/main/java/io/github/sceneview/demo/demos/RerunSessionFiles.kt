@@ -236,6 +236,7 @@ internal class LandingSession(
 internal class RerunLandingCache {
     private val sessions = HashMap<File, LandingSession>()
 
+    @Synchronized
     fun load(store: RerunSessionStore, locale: Locale): List<LandingSession> {
         val files = HashSet<File>()
         val loaded = store.list().map { info ->

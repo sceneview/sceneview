@@ -546,8 +546,9 @@ private class Meshed(
 /**
  * Fuses [source] (unless done) and meshes it. Nothing past this function holds the TSDF, so the
  * finish's peak — the cleaning and the photos — never sits on top of its up to
- * [RerunTsdf.MAX_BYTES]. Every live TSDF is detached after meshing, including on failure:
- * a retry without one meshes the scan's surfels instead.
+ * [RerunTsdf.MAX_BYTES]. A live TSDF past half its cap is also let go from its slot: a retry
+ * without one meshes the scan's surfels instead. A smaller one stays for a retry with another
+ * method; the owning demo releases it on Save, Discard and exit.
  *
  * The surface is meshed within what the heap's finish takes ([CleanModel.maxRawTriangles]): on a
  * Pixel 4a's 192 MB, a scan past it meshes with cells twice as coarse, and finishes.
@@ -559,7 +560,7 @@ private fun mesh(
     reconstructionVoxelM: Float = RerunTsdf.VOXEL_M,
 ): Meshed {
     val started = System.nanoTime()
-    try {
+    run {
         val reconstructed = reconstructedTsdf(source, reconstruction, reconstructionVoxelM) { progress(it * FUSE_SHARE) }
         val tsdf = reconstructed ?: when (source) {
             is RerunModelSource.Live -> source.tsdf ?: RerunTsdf().also { t ->
@@ -583,7 +584,10 @@ private fun mesh(
         val base = if (source is RerunModelSource.Live && reconstructed == null) 0f else FUSE_SHARE
         val maxTriangles = CleanModel.maxRawTriangles(Runtime.getRuntime().maxMemory())
         val extraction = RerunMarchingCubes.extractWhole(tsdf, minWeight, maxTriangles) { progress(base + (MESH_SHARE - base) * it) }
-        val release = source is RerunModelSource.Live
+        // Only a big live volume is let go here, so a retry with another method still meshes a small
+        // one; the owning demo releases the rest on Save, Discard and exit (RerunLiveModels.Owner).
+        val release = source is RerunModelSource.Live && reconstructed == null && tsdf.bytes >= tsdf.maxBytes / 2
+        if (release) (source as RerunModelSource.Live).release()
         return Meshed(
             surface = RawSurface(extraction.mesh),
             extractedTriangles = extraction.rawTriangles,
@@ -597,9 +601,6 @@ private fun mesh(
             droppedBlocks = tsdf.droppedBlocks,
             released = release,
         )
-    } finally {
-        // Small volumes, reconstructed models, extraction failures and cancellation all detach.
-        (source as? RerunModelSource.Live)?.release()
     }
 }
 
@@ -825,9 +826,8 @@ internal fun RerunModelScreen(
     /** The grid [surfels] were kept on, in metres, when the scan says it. */
     surfelsVoxelM: Float? = null,
 ) {
-    DisposableEffect(source) {
-        onDispose { (source as? RerunModelSource.Live)?.release() }
-    }
+    // The demo owns this source across Model -> Replay / Plan / AR navigation. Meshing releases
+    // it in mesh's finally (also on cancellation); leaving this screen must not release it early.
     remember(engine) { io.github.sceneview.demo.demos.internal.model.TextureBudget.readGpuLimit(engine) }
     // The scan's own surfels, drawn at once as its Photo layer while the model is built behind
     // them (photoFirstCloud): the result is never a bare stage for as long as the model takes.

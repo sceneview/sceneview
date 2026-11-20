@@ -61,7 +61,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -242,9 +241,6 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import io.github.sceneview.demo.theme.themedStageChrome
-import io.github.sceneview.demo.theme.LocalStageChrome
-import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
 import kotlinx.coroutines.Job
@@ -376,6 +372,9 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             },
         )
     }
+    // Save hands the live TSDF to this demo, not to one result tab. mesh releases it after
+    // extraction, clearScanResult releases it on leaving the result, and this effect covers
+    // source replacement and demo exit. Capture Discard uses dropCapture/ScanCapture.close(false).
     DisposableEffect(modelSource) {
         val live = modelSource as? RerunModelSource.Live
         onDispose { live?.release() }
@@ -1035,30 +1034,15 @@ private enum class RerunMode { Scene, Map, Camera }
  * light stage in light theme, the dark one in dark theme.
  */
 @Composable
-private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, actions: RerunLandingActions) {
-    val chrome = themedStageChrome()
-    RequestLightStatusBarIcons(active = chrome.lightStatusIcons)
-    CompositionLocalProvider(LocalStageChrome provides chrome) {
-        Box(Modifier.fillMaxSize()) {
-            RerunLanding(state, actions)
-            Row(
-                modifier = Modifier
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    .padding(horizontal = Space.md, vertical = Space.md),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.sm),
-            ) {
-                GlassIconButton(
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    onClick = onBack,
-                    ground = chrome.scrimDock,
-                )
-                GlassPill(ground = chrome.scrimDock) {
-                    Text(stringResource(R.string.demo_ar_rerun_title), style = Type.card, color = chrome.onGlass)
-                }
-            }
-        }
+internal fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, actions: RerunLandingActions) {
+    DemoScaffold(
+        title = stringResource(R.string.demo_ar_rerun_title),
+        onBack = onBack,
+        controls = { RerunSheet() },
+        dock = emptyList(),
+        themedStage = true,
+    ) {
+        RerunLanding(state, actions)
     }
 }
 
@@ -1934,7 +1918,9 @@ private fun RerunLiveScreen(
                         .getOrNull()
                 }
             } else null
-            dropCapture(keepModel = attached.get() && next == SaveNext.Open && opened != null)
+            // The demo's one-slot owner keeps the last room (also after a detached save) for
+            // opening in this process; the next room replaces it and demo exit closes its owner.
+            dropCapture(keepModel = true)
             if (!attached.get()) {
                 // The screen was left while it saved: the scan is kept and listed, nothing opens.
                 onSavedAway(opened, title, savedId, homeOf)
