@@ -42,6 +42,8 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.demos.internal.PortraitSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.postprocessing.ARDepthOfFieldOptions
 import io.github.sceneview.ar.postprocessing.arDepthOfField
@@ -120,7 +122,8 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     val appliedFocus = PortraitFocus.focusDistance(target, subjectDistance) ?: DEFAULT_FOCUS_METRES
 
     // Latest Frame for tap-to-focus. The depth API requires the Frame from the same update tick.
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    val sessionState = remember { PortraitSessionState<Frame>() }
+    var latestFrame by sessionState::latestFrame
     // Where the focus ring is drawn, and a counter that restarts its fade on every tap.
     var ringAt by remember { mutableStateOf<Offset?>(null) }
     var ringTap by remember { mutableIntStateOf(0) }
@@ -206,7 +209,14 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { arSessionFailed = true },
+                onSessionFailure = { failure ->
+                    arSessionFailed = true
+                    if (sessionState.onFailure(failure)) {
+                        subjectDistance = null
+                        ringAt = null
+                    }
+                },
+                onSessionResumed = { arSessionFailed = false },
                 onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,

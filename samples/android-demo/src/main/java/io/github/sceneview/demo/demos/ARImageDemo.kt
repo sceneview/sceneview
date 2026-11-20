@@ -25,7 +25,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,6 +43,8 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.demos.internal.ImageSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.common.QaCameraBackdrop
@@ -73,6 +74,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -117,7 +119,10 @@ fun ARImageDemo(onBack: () -> Unit) {
     // image the user captures on-device via the "Capture this view" button (#1553).
     val runtimeDatabase = rememberRuntimeAugmentedImageDatabase()
 
-    val detectedImages = remember { mutableStateListOf<AugmentedImage>() }
+    val sessionState = remember { ImageSessionState<AugmentedImage>() }
+    val detectedImages = sessionState.detectedImages
+    var captureJob by remember { mutableStateOf<Job?>(null) }
+    var registrationJob by remember { mutableStateOf<Job?>(null) }
     var isTracking by remember { mutableStateOf(false) }
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
@@ -322,7 +327,21 @@ fun ARImageDemo(onBack: () -> Unit) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-image")
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
-                onSessionFailure = { arSessionFailed = true },
+                onSessionFailure = { failure ->
+                    arSessionFailed = true
+                    if (sessionState.onFailure(failure)) {
+                        imageCount = 0
+                        cameraReady = false
+                        isTracking = false
+                        captureRequested = false
+                        isCapturing = false
+                        captureStatus = null
+                        runtimeDatabase.unbind()
+                        captureJob?.cancel()
+                        registrationJob?.cancel()
+                    }
+                },
+                onSessionResumed = { arSessionFailed = false },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -344,7 +363,7 @@ fun ARImageDemo(onBack: () -> Unit) {
                     // Bind the live session so RuntimeAugmentedImageDatabase.addImage can
                     // rebuild + reconfigure on its own. Seed the pre-bundled reference image.
                     runtimeDatabase.bind(session)
-                    scope.launch {
+                    registrationJob = scope.launch {
                         runtimeDatabase.addImage("reference", referenceBitmap, 0.15f)
                     }
                 },
@@ -361,11 +380,16 @@ fun ARImageDemo(onBack: () -> Unit) {
                         // withContext). `null` (warm-up, image pool full) lands on the "try
                         // again" message.
                         val image = frame.cameraImage()
-                        scope.launch(start = CoroutineStart.ATOMIC) {
+                        val generation = sessionState.generation
+                        captureJob = scope.launch(start = CoroutineStart.ATOMIC) {
                             val photo = image?.use { img ->
                                 withContext(Dispatchers.Default) {
                                     img.toArgbBitmap(rotationDegrees = 0)
                                 }
+                            }
+                            if (sessionState.generation != generation) {
+                                photo?.recycle()
+                                return@launch
                             }
                             val (message, tone) = if (photo == null) {
                                 "Camera image not ready yet — try again" to

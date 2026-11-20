@@ -39,6 +39,9 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.ARSessionFailure
+import io.github.sceneview.demo.demos.internal.RecordingSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.ar.recording.ARRecordInterpretation
 import io.github.sceneview.ar.recording.ARRecordInterpreter
 import io.github.sceneview.ar.recording.ARRecorder
@@ -209,6 +212,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     }
 
     fun startRecording() {
+        if (take.arSession == null) return
         take.placementTrack = take.recorder.addTrack(PlacementTrack.TRACK_ID, PlacementTrack.MIME_TYPE)
         take.interpreter.reset()
         take.writeSchedule.reset()
@@ -550,7 +554,7 @@ private fun TakeScene(
         if (qaBackdrop) QaCameraBackdrop(seed = QA_SEED)
         ARSceneView(
             lifecycle = rememberHostLifecycle(),
-            onSessionFailure = { take.sessionFailed = true },
+            onSessionFailure = { take.onSessionFailure(it) },
             onSessionResumed = { take.sessionFailed = false },
             modifier = Modifier.fillMaxSize(),
             engine = engine,
@@ -626,9 +630,10 @@ private class TakeState(
     var trackingFailureReason by mutableStateOf<TrackingFailureReason?>(null)
 
     /** Published for `rememberARPlaybackStatus`, which has no other handle on the session. */
-    var arSession by mutableStateOf<Session?>(null)
+    private val sessionState = RecordingSessionState<Session, Frame, Anchor>()
+    var arSession by sessionState::arSession
 
-    val anchors = mutableStateListOf<Anchor>()
+    val anchors = sessionState.anchors
     var restoredCount by mutableIntStateOf(0)
     var replayElapsedMillis by mutableLongStateOf(0L)
 
@@ -638,7 +643,7 @@ private class TakeState(
     var placementTrack: ARRecorder.TrackHandle? = null
     val writeSchedule = PlacementWriteSchedule()
 
-    private var latestFrame: Frame? = null
+    private var latestFrame by sessionState::latestFrame
     private var firstFrameNanos = 0L
     private val frameGate = NewFrameGate()
     private val replayQueue = PlacementReplayQueue()
@@ -646,6 +651,25 @@ private class TakeState(
     /** ARCore copies the packet synchronously, so one direct buffer serves every write. */
     private val packet: ByteBuffer =
         ByteBuffer.allocateDirect(PlacementTrack.PACKET_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+
+    fun onSessionFailure(failure: ARSessionFailure) {
+        sessionFailed = true
+        if (sessionState.onFailure(failure)) {
+            // Detach first: stop then resets the recorder without touching the closed session.
+            recorder.detach()
+            recorder.stop()
+            interpreter.reset()
+            placementTrack = null
+            writeSchedule.reset()
+            replayQueue.reset()
+            frameGate.reset()
+            firstFrameNanos = 0L
+            replayElapsedMillis = 0L
+            restoredCount = 0
+            cameraReady = false
+            isTracking = false
+        }
+    }
 
     /** `onSessionUpdated` — runs on the thread that owns [frame]. */
     fun onFrame(session: Session, frame: Frame, replaying: Boolean) {

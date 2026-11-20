@@ -1,0 +1,121 @@
+package io.github.sceneview.demo.demos.internal
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import io.github.sceneview.ar.ARSessionFailure
+
+/** Drop references only: native cleanup is unsafe once the owning session has closed. */
+internal abstract class DemoSessionState {
+    fun onFailure(fatal: Boolean): Boolean {
+        if (fatal) clear()
+        return fatal
+    }
+
+    protected abstract fun clear()
+}
+
+/** The SDK recreates fatal sessions; a camera resume failure keeps its anchors valid. */
+internal fun DemoSessionState.onFailure(failure: ARSessionFailure): Boolean =
+    onFailure(failure is ARSessionFailure.Fatal)
+
+internal class ImageSessionState<I> : DemoSessionState() {
+    var generation: Int = 0
+        private set
+    val detectedImages = mutableStateListOf<I>()
+    override fun clear() {
+        generation++
+        detectedImages.clear()
+    }
+}
+
+internal class OrbitalSessionState<A> : DemoSessionState() {
+    var userAnchor by mutableStateOf<A?>(null)
+    override fun clear() { userAnchor = null }
+}
+
+internal class PortraitSessionState<F> : DemoSessionState() {
+    var latestFrame by mutableStateOf<F?>(null)
+    override fun clear() { latestFrame = null }
+}
+
+internal class SurfaceSessionState<F, N, A> : DemoSessionState() {
+    var latestFrame: F? = null
+    var anchorNode: N? = null
+    var placedAnchor by mutableStateOf<A?>(null)
+    override fun clear() {
+        latestFrame = null
+        anchorNode = null
+        placedAnchor = null
+    }
+}
+
+internal class CloudAnchorSessionState<S, P, A, H, R> : DemoSessionState() {
+    var arSession by mutableStateOf<S?>(null)
+    var localPlacement by mutableStateOf<P?>(null)
+    var resolvedAnchor by mutableStateOf<A?>(null)
+    var hostAnchor by mutableStateOf<A?>(null)
+    var hostFuture by mutableStateOf<H?>(null)
+    var resolveFuture by mutableStateOf<R?>(null)
+    val requests = CloudRequestGeneration()
+    override fun clear() {
+        requests.closeSession()
+        arSession = null
+        localPlacement = null
+        resolvedAnchor = null
+        hostAnchor = null
+        hostFuture = null
+        resolveFuture = null
+    }
+}
+
+internal class GeospatialSessionState<S, P, D> : DemoSessionState() {
+    var arSession by mutableStateOf<S?>(null)
+    var cameraPose: P? = null
+    val drops = mutableStateListOf<D>()
+    val requests = CloudRequestGeneration()
+    override fun clear() {
+        requests.closeSession()
+        arSession = null
+        cameraPose = null
+        drops.clear()
+    }
+}
+
+internal class RecordingSessionState<S, F, A> : DemoSessionState() {
+    var arSession by mutableStateOf<S?>(null)
+    var latestFrame: F? = null
+    val anchors = mutableStateListOf<A>()
+    override fun clear() {
+        arSession = null
+        latestFrame = null
+        anchors.clear()
+    }
+}
+
+internal class AskSessionState<F, P, A> : DemoSessionState() {
+    var generation: Int = 0
+        private set
+    var latestFrame by mutableStateOf<F?>(null)
+    var pendingPanel by mutableStateOf<P?>(null)
+    val panels = mutableStateListOf<P>()
+    val placedProps = mutableStateListOf<A>()
+    override fun clear() {
+        latestFrame = null
+        pendingPanel = null
+        generation++
+        panels.clear()
+        placedProps.clear()
+    }
+}
+
+/** Feature demos must also forget the placement adapter's anchor and cached planes. */
+internal class FeaturePlacementSessionState<P, T> : DemoSessionState() {
+    var placement by mutableStateOf<P?>(null)
+    var planes by mutableStateOf<List<T>>(emptyList())
+    override fun clear() {
+        placement = null
+        planes = emptyList()
+    }
+}
