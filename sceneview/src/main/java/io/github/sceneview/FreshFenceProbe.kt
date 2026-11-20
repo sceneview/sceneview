@@ -6,13 +6,22 @@ package io.github.sceneview
  * in these 48 ms still costs its full price when a native destructor waits for it.
  *
  * Keep this window fixed: widening it with the observed poll gap accepts the very backlog a long
- * main-thread pass just queued. Steady polls more than 48 ms apart cannot satisfy it; an engine
- * retiring after its producers stop instead accepts any reached fence, regardless of its age.
+ * main-thread pass just queued. Steady polls more than 48 ms apart cannot satisfy it unless a
+ * replacement fence is already reached in the same poll. A retiring engine, after its producers
+ * stop, instead accepts any reached fence for pending releases regardless of age.
  */
 internal const val FRESH_FENCE_MAX_AGE_MS = 3 * BACKEND_IDLE_POLL_MS
 
 /** Diagnostic threshold only: elapsed time never makes a stale fence safe. */
 internal const val FRESH_FENCE_WARN_AFTER_MS = 5_000L
+
+/** Elapsed waiting time never grants readiness; retirement after producers stop drops freshness. */
+internal fun fenceAllowsTeardown(
+    reached: Boolean?,
+    ageMs: Long,
+    maxFreshAgeMs: Long,
+    requireFresh: Boolean = true,
+): Boolean = reached == true && (!requireFresh || ageMs in 0..maxFreshAgeMs)
 
 /**
  * Polls the backend backlog on the engine's thread, without waiting for a fence.
@@ -66,15 +75,15 @@ internal class FreshFenceProbe<F : Any>(
             onStillBusy()
         }
         val current = fence ?: arm(at) ?: return true
-        when (isReached(current)) {
-            false -> return true
-            true -> if (!requireFresh || at - armedAt <= maxFreshAgeMs) return false
-            null -> Unit // ERROR is not a pending fence: retry with a new one.
-        }
+        val reached = isReached(current)
+        if (fenceAllowsTeardown(reached, now() - armedAt, maxFreshAgeMs, requireFresh)) return false
+        if (reached == false) return true
         // A stale or errored fence cannot establish readiness. Measure again from here.
         release()
-        arm(at)
-        return true
+        val replacement = arm(now()) ?: return true
+        // A reached replacement covers everything queued right now, even on a slow looper.
+        // This is another zero-timeout check, never a wait for it to become reached.
+        return isReached(replacement) != true
     }
 
     /** Destroys the fence still held, if any. Call once the probe is no longer polled. */

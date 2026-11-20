@@ -8,8 +8,9 @@ internal const val BACKEND_IDLE_BACKOFF_MS = 1_000L
  *
  * A shared engine requires a fresh fence because another screen can keep submitting work.
  * Registering its own destruction ([defer] with `runsLast`) marks it RETIRING: producers must
- * have stopped, so any reached fence suffices, even on a slow looper. Other readiness conditions
- * (in particular model decoders) still apply, and the engine always runs last.
+ * have stopped, so any reached fence suffices for pending releases, even on a slow looper.
+ * Pending renderers are instead left to Engine.destroy. Other readiness conditions (in particular
+ * model decoders) still apply, and the engine always runs last.
  *
  * A release can enqueue more commands. Its fence is invalidated before it runs, and the next
  * backend check waits for the next poll; a later release must cover those commands too.
@@ -24,6 +25,7 @@ internal class BackendIdleTeardowns(
 ) {
     private inner class Teardown(
         val runsLast: Boolean,
+        val reclaimWithEngine: Boolean,
         val isEngineAlive: () -> Boolean,
         val isBusy: () -> Boolean,
         val onEngineGone: () -> Unit,
@@ -80,7 +82,8 @@ internal class BackendIdleTeardowns(
 
     /**
      * Runs a ready [teardown] synchronously, otherwise retains it for the engine's single poll.
-     * `runsLast` retires the engine and waits for all other entries, including non-fence gates.
+     * `runsLast` retires the engine and waits for all entries except pending renderers, including
+     * non-fence gates. `reclaimWithEngine` leaves renderers to Engine.destroy at retirement.
      * A refused [schedule] retains the entries for an explicit [runPending] or a later deferral.
      */
     fun defer(
@@ -91,17 +94,24 @@ internal class BackendIdleTeardowns(
         onEngineGone: () -> Unit = {},
         intervalMs: Long = BACKEND_IDLE_POLL_MS,
         runsLast: Boolean = false,
+        reclaimWithEngine: Boolean = false,
     ) {
         if (!isEngineAlive()) {
             onEngineGone()
             if (pending.isEmpty()) finishWait()
             return
         }
-        if (runsLast) retiring = true
+        if (runsLast) {
+            retiring = true
+            // Pending renderers no longer need individual teardown callbacks. Engine.destroy
+            // still calls FRenderer::terminate on them, including its unbounded native waits.
+            pending.filter { it.reclaimWithEngine }.forEach { it.drop() }
+        }
+        if (retiring && reclaimWithEngine) return
         // Include commands queued before this registration, especially the last disposal pass.
         invalidateProbe()
         if (!polling) backendBusy = null
-        val entry = Teardown(runsLast, isEngineAlive, isBackendBusy, onEngineGone, teardown)
+        val entry = Teardown(runsLast, reclaimWithEngine, isEngineAlive, isBackendBusy, onEngineGone, teardown)
         pending.addLast(entry)
 
         fun othersPending(entry: Teardown) = entry.runsLast && pending.any { !it.runsLast }
@@ -147,7 +157,8 @@ internal class BackendIdleTeardowns(
     /** Explicit cleanup, bypassing readiness. May block; never used as a polling deadline. */
     fun runPending() {
         while (pending.isNotEmpty()) {
-            (pending.firstOrNull { !it.runsLast } ?: pending.first()).run()
+            val next = pending.firstOrNull { !it.runsLast } ?: pending.first()
+            if (next.reclaimWithEngine) next.drop() else next.run()
         }
         finishWait()
     }

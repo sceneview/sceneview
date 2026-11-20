@@ -133,8 +133,9 @@ class FreshFenceTeardownTest {
     /**
      * A renderer and then its engine (`runsLast`, as `destroyWhenBackendIdle` passes it) deferred
      * at t = 0 after rendering stops, sharing the production registry's probe and retirement policy.
+     * Models backend command backlog only; native renderer and thread joins are not simulated.
      */
-    private fun replayRendererThenEngine(pollEveryMs: Long): Pair<Result, Result> {
+    private fun replayRendererThenEngine(pollEveryMs: Long): Pair<Result?, Result> {
         val backend = SimBackend()
         backend.pollGaps = listOf(pollEveryMs)
         val teardowns = BackendIdleTeardowns(probe = newProbe(backend))
@@ -144,6 +145,7 @@ class FreshFenceTeardownTest {
             isEngineAlive = { true },
             schedule = backend.schedule,
             teardown = { deferred -> renderer = Result(backend.now, backend.drainWaitMs(), deferred) },
+            reclaimWithEngine = true,
         )
         teardowns.defer(
             isEngineAlive = { true },
@@ -152,7 +154,7 @@ class FreshFenceTeardownTest {
             runsLast = true,
         )
         backend.runUntil(20_000)
-        return checkNotNull(renderer) { "the renderer never ran" } to
+        return renderer to
             checkNotNull(engine) { "the engine never ran" }
     }
 
@@ -442,13 +444,11 @@ class FreshFenceTeardownTest {
     }
 
     @Test
-    fun `a retiring engine releases after its renderer without waiting for polling recovery`() {
+    fun `a retiring engine reclaims its renderer without an individual native destroy`() {
         for (gap in listOf(66L, 300L)) {
             val (renderer, engine) = replayRendererThenEngine(pollEveryMs = gap)
-            assertEquals(gap, renderer.ranAtMs)
-            assertTrue(engine.ranAtMs > renderer.ranAtMs)
-            assertTrue(engine.ranAtMs <= 3 * gap)
-            assertEquals(0L, renderer.blockedMs)
+            assertEquals(null, renderer)
+            assertEquals(gap, engine.ranAtMs)
             assertEquals(0L, engine.blockedMs)
         }
     }
@@ -472,10 +472,11 @@ class FreshFenceTeardownTest {
         var clock = 0L
         var next = 0
         val armed = mutableListOf<Int>()
+        val armedAt = mutableMapOf<Int, Long>()
         val destroyed = mutableListOf<Int>()
         val probe = FreshFenceProbe(
-            createFence = { next++.also { armed += it } },
-            isReached = { clock >= 1 },
+            createFence = { next++.also { armed += it; armedAt[it] = clock } },
+            isReached = { clock > armedAt.getValue(it) },
             destroyFence = { destroyed += it },
             now = { clock },
         )

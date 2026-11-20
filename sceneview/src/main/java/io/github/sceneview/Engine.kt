@@ -110,8 +110,9 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
  * an emulator (#3799). Instead the engine is destroyed through [whenBackendIdle], on the calling
  * thread (Filament requires it). When the backend is already idle — the usual case — the destroy
  * happens after a fence has made the round trip to the backend. This marks the engine RETIRING:
- * its producers must have stopped, and all pending releases accept a reached fence regardless of
+ * its producers must have stopped, and pending releases accept a reached fence regardless of
  * its age. Slow main-thread polling therefore cannot retain the engine and its EGL context.
+ * Pending renderers are left to Engine.destroy, whose native waits still have no timeout.
  *
  * @param onDestroyed runs right after the engine is destroyed — release whatever must outlive
  * it (its shared EGL context, say) here.
@@ -134,7 +135,7 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  *
  * [Engine.destroyRenderer] is not a plain handle release: `FRenderer::terminate` first waits for
  * "all pending commands" to execute (`Fence::waitAndDestroy(engine.createFence())`, Filament
- * v1.72.1 `Renderer.cpp`). A scene disposed while its shader programs are still being linked — an
+ * v1.77.3 `details/Renderer.cpp`). A scene disposed while its shaders are still being linked — an
  * activity destroyed right after a demo opened — parks the main thread on that whole backlog, an
  * ANR on an emulator (#3799). The inner wait covers what is queued when the destroy *runs*, not
  * when it was deferred: on a shared engine, the next screen's shader compilations queued in
@@ -145,16 +146,23 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * without ruling it out.
  * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
  * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
- * On a shared engine, polling less often than every 48 ms keeps the destroy pending. Once the
- * engine is retiring, a reached fence suffices. Five seconds triggers a warning and slower polls,
+ * On a shared engine, polling less often than every 48 ms keeps the destroy pending unless a
+ * replacement fence is already reached in the same poll. Once the engine is retiring,
+ * Engine.destroy reclaims the renderer. Five seconds triggers a warning and slower polls,
  * never permission to destroy behind a busy fence.
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
+ * Filament v1.77.3's [FEngine::shutdown](https://github.com/google/filament/blob/v1.77.3/filament/src/details/Engine.cpp#L614)
+ * calls `cleanupResourceList(mRenderers)`, which calls `FRenderer::terminate` on every surviving
+ * renderer. Leaving a renderer to Engine.destroy therefore moves the same backend fence wait and
+ * frame-info thread join into Engine.destroy; it does not eliminate or bound them. The deferred
+ * engine destroy first observes a reached backend fence, but shutdown can enqueue more commands
+ * before terminating renderers. Explicit [safeDestroy] bypasses that readiness check.
  */
 fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
     val startedAt = SystemClock.uptimeMillis()
-    whenBackendIdle { deferred ->
+    whenBackendIdle(reclaimWithEngine = true) { deferred ->
         safeDestroyRenderer(renderer)
         if (deferred) logDeferredTeardown("Renderer", startedAt)
     }
@@ -184,7 +192,8 @@ internal fun Engine.isBackendBusy(): Boolean = teardowns().isBackendBusy()
  * Runs [onIdle] on the engine's calling thread after its backend fence is reached. Shared engines
  * also require freshness: subsequent screens may have queued more work. `runsLast` marks the
  * engine RETIRING (producers must have stopped), dropping freshness for all its pending releases
- * while preserving other conditions such as decoder completion. See [BackendIdleTeardowns].
+ * while preserving other conditions such as decoder completion. Pending renderers marked
+ * `reclaimWithEngine` are left to Engine.destroy. See [BackendIdleTeardowns].
  *
  * One poll and probe are shared per engine. After five seconds polling backs off, with occasional
  * short confirmation polls for freshness. There is no timeout-triggered destruction. Neither a
@@ -200,11 +209,13 @@ internal fun Engine.isBackendBusy(): Boolean = teardowns().isBackendBusy()
 internal fun Engine.whenBackendIdle(
     onEngineGone: () -> Unit = {},
     runsLast: Boolean = false,
+    reclaimWithEngine: Boolean = false,
     onIdle: (deferred: Boolean) -> Unit,
 ) = whenIdle(
     isBusy = { isBackendBusy() },
     onEngineGone = onEngineGone,
     runsLast = runsLast,
+    reclaimWithEngine = reclaimWithEngine,
     onIdle = onIdle,
 )
 
@@ -233,6 +244,7 @@ internal fun Engine.whenIdle(
     isBusy: () -> Boolean,
     onEngineGone: () -> Unit = {},
     runsLast: Boolean = false,
+    reclaimWithEngine: Boolean = false,
     onIdle: (deferred: Boolean) -> Unit,
 ) {
     if (!isValid) {
@@ -256,6 +268,7 @@ internal fun Engine.whenIdle(
         teardown = onIdle,
         onEngineGone = onEngineGone,
         runsLast = runsLast,
+        reclaimWithEngine = reclaimWithEngine,
     )
 }
 
@@ -282,8 +295,8 @@ fun AssetLoader.safeDestroyModel(model: Model) {
 
 fun Engine.safeDestroy() = runCatching {
     if (!isValid) return@runCatching
-    // Teardowns still waiting for the backend (a renderer, an IBL prefilter context) run first:
-    // the engine must outlive what it owns, and they would read freed memory after it (#3885).
+    // Run cleanup that needs a live engine (e.g. gltfio/IBL contexts) first (#3885). Pending
+    // renderers are left to Engine.destroy, which still performs their native waits (#4969).
     runCatching { backendIdleTeardowns.remove(this)?.runPending() }
     // One of those pending teardowns can be this engine's own deferred destroy
     // (destroyWhenBackendIdle), which has just called safeDestroy() re-entrantly and freed it.
