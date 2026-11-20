@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
@@ -16,15 +17,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.CheckCircle
@@ -37,7 +42,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,7 +53,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +65,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
@@ -104,14 +108,10 @@ fun SupportSheet(
         SupportBilling.clearOutcome()
         onDismiss()
     }
-    val thanking by rememberUpdatedState(SupportBilling.outcome == SupportBilling.Outcome.Thanks)
     DemoModalBottomSheet(
-        onDismissRequest = { if (!thanking) dismiss(null) },
-        sheetState = rememberModalBottomSheetState(
-            skipPartiallyExpanded = true,
-            confirmValueChange = { it != SheetValue.Hidden || !thanking },
-        ),
-        sheetGesturesEnabled = !thanking,
+        onDismissRequest = { dismiss(null) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = SupportBilling.outcome != SupportBilling.Outcome.Thanks,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         SupportSheetContent(
@@ -171,8 +171,8 @@ fun SupportSheetContent(
             // The last row clears the gesture pill and a 3-button bar alike.
             .padding(bottom = navigationBars.calculateBottomPadding() + SceneViewTokens.Space.md),
     ) {
-        AnimatedContent(targetState = state.action, label = "support-sheet") { shown ->
-            when (shown) {
+        AnimatedContent(targetState = state, contentKey = { it.action }, label = "support-sheet") { shown ->
+            when (shown.action) {
                 SupportSheetAction.Thanks -> SupportOutcome(
                     icon = Icons.Filled.Favorite,
                     title = stringResource(R.string.support_thanks_title),
@@ -187,7 +187,7 @@ fun SupportSheetContent(
                 )
                 else -> SupportAsk(
                     mode = mode,
-                    state = state,
+                    state = shown,
                     arPlacement = arPlacement,
                     inFlight = inFlight,
                     failed = outcome == SupportBilling.Outcome.Failed,
@@ -233,7 +233,7 @@ private fun SupportAsk(
                     }
                 }
                 Row(
-                    modifier = Modifier.fillMaxWidth().selectableGroup(),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
                     horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
                 ) {
                     state.offers.forEach { offer ->
@@ -242,7 +242,7 @@ private fun SupportAsk(
                             selected = offer == state.selected,
                             enabled = inFlight == null,
                             onClick = { onSelectTier(offer.tier) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
                 }
@@ -264,12 +264,6 @@ private fun SupportAsk(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextButton(
-                    onClick = onOpenCollectiveClick,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = SceneViewTokens.Layout.touchTarget),
-                ) {
-                    Text(stringResource(R.string.support_team_sponsor), textAlign = TextAlign.Center)
-                }
             }
             SupportSheetAction.OpenCollective -> Button(
                 onClick = onOpenCollectiveClick,
@@ -354,7 +348,7 @@ private fun SupportTierTile(
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(
-            SceneViewTokens.Elevation.sm,
+            SceneViewTokens.Layout.hairlineWidth,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
         ),
     ) {
@@ -371,7 +365,16 @@ private fun SupportTierTile(
                 contentDescription = null,
                 modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
             )
-            Text(offer.price, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+            Text(
+                offer.price,
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 10.sp,
+                    maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
+                ),
+            )
             Text(stringResource(offer.tier.labelRes), style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
         }
     }
@@ -404,6 +407,12 @@ private fun openOpenCollective(context: Context) {
     logOutboundLink(SUPPORT_OPEN_COLLECTIVE_URL)
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SUPPORT_OPEN_COLLECTIVE_URL)))
+    }.onFailure {
+        Toast.makeText(
+            context,
+            context.getString(R.string.about_no_browser, SUPPORT_OPEN_COLLECTIVE_URL),
+            Toast.LENGTH_LONG,
+        ).show()
     }
 }
 

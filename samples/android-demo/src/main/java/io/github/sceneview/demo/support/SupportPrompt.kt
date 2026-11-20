@@ -93,6 +93,11 @@ object SupportPrompt {
         return true
     }
 
+    /** A manual support sheet replaces the automatic ask for this moment of value. */
+    internal fun clearValueMoment() {
+        valueMoment = false
+    }
+
     /** "Not now", a swipe, the scrim, Back: the next window is [MIN_INTERVAL_MILLIS] away. */
     fun dismiss() {
         isShown = false

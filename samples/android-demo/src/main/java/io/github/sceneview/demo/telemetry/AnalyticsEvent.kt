@@ -2,8 +2,11 @@ package io.github.sceneview.demo.telemetry
 
 /**
  * The demo app's analytics taxonomy — every event the app may log, with its exact name and
- * parameters. **Shared word for word with the iOS demo**: rename nothing here without renaming
- * it there, or the two platforms stop being comparable in one dashboard.
+ * parameters. The shared events match the iOS demo; coordinate changes to those names there.
+ * Android only: support `entry_source`, `home`/`menu` shown sources, purchase launched/pending
+ * events, and the `tier_tiny`,
+ * `purchase_cancelled`, `purchase_failed`, `purchase_already_owned`, `purchase_pending` and
+ * `open_collective` support results.
  *
  * Event and parameter names are snake_case and at most [MAX_NAME] characters, user-property
  * names at most [MAX_USER_PROPERTY_NAME] (GA4's limits); string values are cut to [MAX_VALUE]
@@ -111,19 +114,19 @@ sealed class AnalyticsEvent(val name: String) {
 
     data class SupportPurchaseLaunched(val productId: String, val source: SupportPromptSource) :
         AnalyticsEvent("support_prompt_purchase_launched") {
-        override fun rawParams() = mapOf("product_id" to productId, "source" to source.entrySource)
+        override fun rawParams() = mapOf("product_id" to productId, "entry_source" to source.entrySource)
     }
 
     data class SupportPurchasePending(val productId: String, val source: SupportPromptSource) :
         AnalyticsEvent("support_prompt_purchase_pending") {
-        override fun rawParams() = mapOf("product_id" to productId, "source" to source.entrySource)
+        override fun rawParams() = mapOf("product_id" to productId, "entry_source" to source.entrySource)
     }
 
     data class SupportPromptResult(val result: SupportResult, val source: SupportPromptSource? = null) :
         AnalyticsEvent("support_prompt_result") {
         override fun rawParams() = buildMap {
             put("result", result.value)
-            source?.let { put("source", it.entrySource) }
+            source?.let { put("entry_source", it.entrySource) }
         }
     }
 

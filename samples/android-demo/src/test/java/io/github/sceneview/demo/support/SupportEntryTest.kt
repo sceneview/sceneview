@@ -26,7 +26,6 @@ import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.ui.home.HomeScreen
 import io.github.sceneview.demo.ui.home.HomeTestTags
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -103,7 +102,7 @@ class SupportEntryTest {
                 .assertIsDisplayed()
                 .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             assertTrue("$text has a text layout", layouts.isNotEmpty())
-            assertFalse("$text is clipped at $fontScale", layouts.single().hasVisualOverflow)
+            assertSupportTextFits(text, layouts.single(), fontScale)
         }
         val image = rule.onRoot().captureToImage().asAndroidBitmap()
         val file = File("build/support-entry-renders/home-${if (dark) "dark" else "light"}-$fontScale.png")

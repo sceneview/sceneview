@@ -124,7 +124,7 @@ object SupportBilling : PurchasesUpdatedListener {
         return false
     }
 
-    private suspend fun refresh(billing: BillingClient) {
+    private suspend fun refresh(billing: BillingClient, silent: Boolean = true) {
         val products = SupportTier.entries.map {
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(it.productId)
@@ -145,7 +145,11 @@ object SupportBilling : PurchasesUpdatedListener {
         val owned = billing.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build(),
         )
-        if (owned.billingResult.responseCode == BillingResponseCode.OK) handle(owned.purchasesList, silent = true)
+        if (owned.billingResult.responseCode == BillingResponseCode.OK) {
+            handle(owned.purchasesList, silent = silent)
+        } else if (!silent) {
+            report(Outcome.Failed)
+        }
     }
 
     /** The primary tip button opens Google's purchase sheet for the selected amount. */
@@ -165,13 +169,14 @@ object SupportBilling : PurchasesUpdatedListener {
         if (result.responseCode != BillingResponseCode.OK) {
             Log.w(TAG, "launchBillingFlow: ${result.responseCode} ${result.debugMessage}")
             inFlight = null
-            analyticsSessions.remove(tier.productId)?.purchaseResult(
-                supportBillingFailure(result.responseCode),
-            )
+            analyticsSessions[tier.productId]?.purchaseResult(supportBillingFailure(result.responseCode))
+            if (result.responseCode != BillingResponseCode.ITEM_ALREADY_OWNED) {
+                analyticsSessions.remove(tier.productId)
+            }
             if (supportBillingUnavailable(result.responseCode)) {
                 availability = Availability.Unavailable
             } else if (result.responseCode == BillingResponseCode.ITEM_ALREADY_OWNED) {
-                scope.launch { refresh(billing) }
+                scope.launch { refresh(billing, silent = false) }
             } else if (result.responseCode != BillingResponseCode.USER_CANCELED) {
                 report(Outcome.Failed)
             }
@@ -187,14 +192,17 @@ object SupportBilling : PurchasesUpdatedListener {
                 BillingResponseCode.OK -> handle(list, silent = false)
                 else -> {
                     attemptedProduct?.let { productId ->
-                        analyticsSessions.remove(productId)?.purchaseResult(supportBillingFailure(result.responseCode))
+                        analyticsSessions[productId]?.purchaseResult(supportBillingFailure(result.responseCode))
+                        if (result.responseCode != BillingResponseCode.ITEM_ALREADY_OWNED) {
+                            analyticsSessions.remove(productId)
+                        }
                     }
                     when (result.responseCode) {
                         BillingResponseCode.BILLING_UNAVAILABLE, BillingResponseCode.FEATURE_NOT_SUPPORTED -> {
                             availability = Availability.Unavailable
                         }
-                        // Play still holds an unconsumed one: consume it, then the next tap works.
-                        BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it) }
+                        // Recover the owned payment in this sheet, including pending payments.
+                        BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it, silent = false) }
                         BillingResponseCode.USER_CANCELED -> Unit
                         else -> report(Outcome.Failed)
                     }
@@ -237,6 +245,7 @@ object SupportBilling : PurchasesUpdatedListener {
                     )
                 }
             }
+            report(Outcome.Failed)
             Log.w(TAG, "consume: ${result.billingResult.responseCode} ${result.billingResult.debugMessage}")
         }
     }

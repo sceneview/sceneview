@@ -217,7 +217,6 @@
     <string name="support_sheet_body">Your tip pays for the test phones and build machines behind every release: Filament upgrades, AR fixes, documentation and new samples like this one.</string>
     <string name="support_sheet_note">One-time payment through Google Play. Nothing to unlock: everything stays free.</string>
     <string name="support_tip">Tip %1$s</string>
-    <string name="support_team_sponsor">Building an app with SceneView? Sponsor as a team →</string>
     <string name="support_tier_tiny">Small thanks</string>
     <string name="support_tier_small">Thanks</string>
     <string name="support_tier_medium">Big thanks</string>

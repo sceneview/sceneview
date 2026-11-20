@@ -2,6 +2,7 @@ package io.github.sceneview.demo.support
 
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +24,14 @@ class SupportPromptMomentTest {
         SupportPrompt.onSampleUsed(SupportPrompt.VALUE_MOMENT_MIN_SECONDS)
         SupportPrompt.maybeShow(canShow = true)
         assertEquals(SupportMoment.ArPlacement, SupportPrompt.moment)
+    }
+
+    @Test
+    fun `manual support consumes the moment before the automatic prompt settles`() {
+        SupportPrompt.onArPlacement()
+        SupportPrompt.clearValueMoment()
+        assertFalse(SupportPrompt.valueMoment)
+        assertFalse(SupportPrompt.maybeShow(canShow = true))
     }
 
     @Test

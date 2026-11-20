@@ -10,7 +10,7 @@ import org.junit.Test
 class SupportPromptAnalyticsTest {
 
     @Test
-    fun `shown sources use the shared event name and values`() {
+    fun `shown sources preserve the historical event name and values`() {
         assertEquals(
             listOf("auto", "settings", "home", "menu"),
             SupportPromptSource.entries.map {
@@ -22,7 +22,7 @@ class SupportPromptAnalyticsTest {
     }
 
     @Test
-    fun `every result uses the shared event name and value`() {
+    fun `every result keeps its support event name and value`() {
         val expected = listOf(
             "tier_tiny", "tier_small", "tier_medium", "tier_large", "purchase_cancelled",
             "purchase_failed", "purchase_already_owned", "purchase_pending", "open_collective", "not_now", "never", "dismissed",
@@ -90,7 +90,17 @@ class SupportPromptAnalyticsTest {
         )
         expected.forEach { (mode, entry) ->
             val source = mode.analyticsSource
-            assertEquals(entry, AnalyticsEvent.SupportPromptShown(source).params()["entry_source"])
+            val shown = AnalyticsEvent.SupportPromptShown(source).params()
+            assertEquals(entry, shown["entry_source"])
+            assertEquals(source.value, shown["source"])
+            assertEquals(
+                mapOf("result" to "dismissed", "entry_source" to entry),
+                AnalyticsEvent.SupportPromptResult(SupportResult.Dismissed, source).params(),
+            )
+            assertEquals(
+                mapOf("product_id" to SupportTier.Tiny.productId, "entry_source" to entry),
+                AnalyticsEvent.SupportPurchasePending(SupportTier.Tiny.productId, source).params(),
+            )
             val events = mutableListOf<AnalyticsEvent>()
             val session = SupportPromptAnalyticsSession(source, events::add)
             session.shown()
@@ -99,7 +109,7 @@ class SupportPromptAnalyticsTest {
             assertEquals(SupportTier.entries.size, launches.size)
             launches.zip(SupportTier.entries).forEach { (event, tier) ->
                 assertEquals("support_prompt_purchase_launched", event.name)
-                assertEquals(mapOf("product_id" to tier.productId, "source" to entry), event.params())
+                assertEquals(mapOf("product_id" to tier.productId, "entry_source" to entry), event.params())
             }
         }
     }
@@ -139,7 +149,7 @@ class SupportPromptAnalyticsTest {
         )
         val pending = events.filterIsInstance<AnalyticsEvent.SupportPurchasePending>().single()
         assertEquals("support_prompt_purchase_pending", pending.name)
-        assertEquals(mapOf("product_id" to product, "source" to "menu"), pending.params())
+        assertEquals(mapOf("product_id" to product, "entry_source" to "menu"), pending.params())
     }
 
     @Test
@@ -207,7 +217,7 @@ class SupportPromptAnalyticsTest {
             session.openCollective()
             session.close()
             val result = events.filterIsInstance<AnalyticsEvent.SupportPromptResult>().single()
-            assertEquals(mapOf("result" to "open_collective", "source" to source.entrySource), result.params())
+            assertEquals(mapOf("result" to "open_collective", "entry_source" to source.entrySource), result.params())
         }
     }
 

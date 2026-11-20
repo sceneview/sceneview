@@ -163,6 +163,7 @@ fun RootScreen(
     var galleryOpen by rememberSaveable { mutableStateOf(false) }
     var supportEntry by rememberSaveable { mutableStateOf<SupportSheetMode?>(null) }
     supportEntry?.let { mode ->
+        LaunchedEffect(mode) { SupportPrompt.clearValueMoment() }
         SupportSheet(mode = mode, onDismiss = { supportEntry = null })
     }
 

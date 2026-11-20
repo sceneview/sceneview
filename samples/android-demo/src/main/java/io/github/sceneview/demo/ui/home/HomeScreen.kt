@@ -1047,7 +1047,7 @@ private fun TitleRow(
                 if (whatsNewBadged) BadgedBox(badge = { Badge() }) { icon() } else icon()
             }
         }
-        IconButton(onClick = onSearchClick) {
+        IconButton(onClick = onSearchClick, modifier = Modifier.offset(x = 12.dp)) {
             Icon(
                 imageVector = Icons.Filled.Search,
                 contentDescription = stringResource(R.string.home_search),
