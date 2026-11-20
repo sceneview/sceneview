@@ -43,7 +43,7 @@ final class AssetSourceProbeTests: XCTestCase {
             AssetSourceProbe.of(resolvedURL: fallback("car"), hasAPIKey: true, loaded: true),
             .bundled,
             "a configured key says nothing about whether the download succeeded — "
-            + "the resolved file came out of fallback/, so the pill must say Offline model"
+            + "the resolved file came out of fallback/, so the pill must say Built-in model"
         )
     }
 
@@ -101,7 +101,7 @@ final class AssetSourceProbeTests: XCTestCase {
 
     func testAResolvedFallbackReportsBundledBeforeTheParseFinishes() {
         // The origin is settled the moment the file is known, so the pill does
-        // not wait for the parse to say so: "Offline model" claims an origin,
+        // not wait for the parse to say so: "Built-in model" claims an origin,
         // not a finished download.
         XCTAssertEqual(
             AssetSourceProbe.of(resolvedURL: fallback("car"), hasAPIKey: true, loaded: false),

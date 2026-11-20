@@ -32,7 +32,7 @@ import Foundation
 ///     `[0.05 m, 5 m]`.
 ///  4. Pick an existing bundled fallback that IS the same kind of thing as the
 ///     streamed model, or declare `fallbackRole: .placeholder` so the pill says
-///     "Offline placeholder" instead of pretending (#2960). Every
+///     "Built-in placeholder" instead of pretending (#2960). Every
 ///     `.subjectMatch` must be added to the reviewed allowlist in
 ///     `BundledAssetPrimBudgetTests.testEveryFallbackIsASubjectMatchOrADeclaredPlaceholder`.
 enum SampleAssets {
@@ -95,7 +95,7 @@ enum SampleAssets {
             author: "rigsters",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
-            // Offline placeholder (#2960): no statue is bundled; another scanned
+            // Built-in placeholder (#2960): no statue is bundled; another scanned
             // artefact (CC-BY 4.0) keeps the gallery picker working.
             fallbackRole: .placeholder,
             scaleToUnits: 0.85,
@@ -143,7 +143,7 @@ enum SampleAssets {
             author: "MartijnVaes",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/game_boy_classic.usdz",
-            // Offline placeholder (#2960): a Game Boy is a retro gadget, not a camera.
+            // Built-in placeholder (#2960): a Game Boy is a retro gadget, not a camera.
             fallbackRole: .placeholder,
             scaleToUnits: 0.20,
             hasBakedAnimation: false,
@@ -232,7 +232,7 @@ enum SampleAssets {
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             // No bench is bundled; the CC-BY fantasy book keeps a prop in the slot.
             fallbackBundledPath: "Models/fantasy_book.usdz",
-            // Offline placeholder (#2960): a book is not a bench.
+            // Built-in placeholder (#2960): a book is not a bench.
             fallbackRole: .placeholder,
             scaleToUnits: 0.70,
             hasBakedAnimation: false,
@@ -258,7 +258,7 @@ enum SampleAssets {
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             // No plant is bundled apart from the tree island the oaks already fall back to.
             fallbackBundledPath: "Models/shiba.usdz",
-            // Offline placeholder (#2960): a dog in the park, not a fern.
+            // Built-in placeholder (#2960): a dog in the park, not a fern.
             fallbackRole: .placeholder,
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
@@ -273,7 +273,7 @@ enum SampleAssets {
             author: "FrenchBaguette",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
-            // Offline placeholder (#2960): no mug is bundled; the amber only keeps something placeable.
+            // Built-in placeholder (#2960): no mug is bundled; the amber only keeps something placeable.
             fallbackRole: .placeholder,
             scaleToUnits: 0.10,
             hasBakedAnimation: false,
@@ -289,7 +289,7 @@ enum SampleAssets {
             // stands in (the tree_scene read as an actual potted plant, #2940;
             // the helmet after it was CC-BY-NC).
             fallbackBundledPath: "Models/fantasy_book.usdz",
-            // Offline placeholder (#2960): no plant is bundled.
+            // Built-in placeholder (#2960): no plant is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
@@ -302,7 +302,7 @@ enum SampleAssets {
             author: "jeandiz",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/game_boy_classic.usdz",
-            // Offline placeholder (#2960): no crate is bundled.
+            // Built-in placeholder (#2960): no crate is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.60,
             hasBakedAnimation: false,
@@ -321,7 +321,7 @@ enum SampleAssets {
             // NB: both placement demos place at a hardcoded `scaleToUnits(0.3)`
             // and never read the value below, so pick for silhouette, not size.
             fallbackBundledPath: "Models/khronos_toy_car.usdz",
-            // Offline placeholder (#2960): no table is bundled.
+            // Built-in placeholder (#2960): no table is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.60,
             hasBakedAnimation: false,
@@ -355,7 +355,7 @@ enum SampleAssets {
             // bundled, so the last unclaimed Khronos reference object stands in
             // rather than a mislabelled real object (#2355).
             fallbackBundledPath: "Models/khronos_fox.usdz",
-            // Offline placeholder (#2960): no frame is bundled.
+            // Built-in placeholder (#2960): no frame is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.40,
             hasBakedAnimation: false,
@@ -370,7 +370,7 @@ enum SampleAssets {
             author: "apariciosilva3D",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
-            // Offline placeholder (#2960): no pottery is bundled; the book keeps a rigid body to drop.
+            // Built-in placeholder (#2960): no pottery is bundled; the book keeps a rigid body to drop.
             fallbackRole: .placeholder,
             scaleToUnits: 0.30,
             hasBakedAnimation: false,
@@ -383,7 +383,7 @@ enum SampleAssets {
             author: "niver_mk",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
-            // Offline placeholder (#2960): no barrel is bundled.
+            // Built-in placeholder (#2960): no barrel is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.50,
             hasBakedAnimation: false,
@@ -396,7 +396,7 @@ enum SampleAssets {
             author: "local.yany",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
-            // Offline placeholder (#2960): no pottery is bundled.
+            // Built-in placeholder (#2960): no pottery is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
@@ -409,7 +409,7 @@ enum SampleAssets {
             author: "skodvirr",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
-            // Offline placeholder (#2960): no pottery is bundled.
+            // Built-in placeholder (#2960): no pottery is bundled.
             fallbackRole: .placeholder,
             scaleToUnits: 0.35,
             hasBakedAnimation: false,
@@ -435,7 +435,7 @@ enum SampleAssets {
             author: "Antrea",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
-            // Offline placeholder (#2960): amber is translucent, but it is not a decanter.
+            // Built-in placeholder (#2960): amber is translucent, but it is not a decanter.
             fallbackRole: .placeholder,
             scaleToUnits: 0.35,
             hasBakedAnimation: false,
@@ -448,7 +448,7 @@ enum SampleAssets {
             author: "klava88",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
-            // Offline placeholder (#2960): no furniture is bundled; a mosquito in amber is not a sofa.
+            // Built-in placeholder (#2960): no furniture is bundled; a mosquito in amber is not a sofa.
             fallbackRole: .placeholder,
             scaleToUnits: 0.90,
             hasBakedAnimation: false,

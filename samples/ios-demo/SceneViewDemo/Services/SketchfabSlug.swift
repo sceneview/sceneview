@@ -31,7 +31,7 @@ struct SketchfabSlug: Hashable, Sendable {
     /// mug, crate, table, sofa or statue, so most of those cannot be re-pointed
     /// without shipping a new binary. Until then the demo must *say* it is
     /// showing a placeholder rather than pretend: the asset-source pill reads
-    /// "Offline placeholder" instead of "Offline model" for a ``placeholder``
+    /// "Built-in placeholder" instead of "Built-in model" for a ``placeholder``
     /// slug. `BundledAssetPrimBudgetTests` pins every ``subjectMatch`` claim to
     /// a reviewed allowlist, so a new slug cannot claim a match by default.
     enum FallbackRole: Hashable, Sendable {

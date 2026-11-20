@@ -18,7 +18,7 @@ English caption.
 > | 2 | `01-ar.png` | Real size, your room | the **generated** AR visual (see below) — no simulator has a camera |
 > | 3 | `02-demos.png` | Nearly forty demos | the Showcase home (36 `@sceneId` scenes ship today); the iPhone frame is the current dark Home with Cosmos featured, re-captured 2026-09-30 by `preview.yml` run 36779477754 — the iPad frame is still the older Home |
 > | 4 | `03-dynamic-sky.png` | HDR lighting, real sky | `-demo dynamic-sky -qa_mode 1` |
-> | 5 | `04-materials.png` | Materials that catch the light | `-demo materials -qa_mode 1` — the keyless offline stand-in, i.e. what a store visitor actually gets |
+> | 5 | `04-materials.png` | Materials that catch the light | `-demo materials -qa_mode 1` — the keyless built-in stand-in, i.e. what a store visitor actually gets |
 > | 6 | `05-swiftui.png` | A few lines of SwiftUI | a SwiftUI snippet over the `reflection-probes` frame |
 >
 > **iPhone refresh, 2026-10-31.** Every `iphone-6.9/` frame except `01-ar.png` was

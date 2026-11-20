@@ -63,7 +63,7 @@ final class BundledAssetCreditsTests: XCTestCase {
     /// credited and the streamed author is nowhere in the caption.
     func testBundledCaptionCreditsTheFallbackNotTheStreamedAuthor() throws {
         let text = try XCTUnwrap(AssetCreditLine.text(slug: monstera, source: .bundled))
-        XCTAssertTrue(text.hasPrefix("Offline stand-in:"), text)
+        XCTAssertTrue(text.hasPrefix("Built-in stand-in:"), text)
         XCTAssertTrue(text.contains("Medieval Fantasy Book"), text)
         XCTAssertTrue(text.contains("Pixel"), text)
         XCTAssertFalse(text.contains("ChubbyPanda"), "streamed author leaked into the fallback caption: \(text)")

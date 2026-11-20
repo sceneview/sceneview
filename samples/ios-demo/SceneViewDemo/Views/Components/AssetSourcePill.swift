@@ -8,12 +8,14 @@ import SwiftUI
 /// build — every App Store build, since no Sketchfab key ships — 14 of the 29
 /// curated slugs resolve to a bundled USDZ whose subject does not match the
 /// label printed next to it, and nothing on screen said a substitution had
-/// happened. A visible "Offline model" is what turns a confident wrong scene
+/// happened. A visible "Built-in model" is what turns a confident wrong scene
 /// into an honest stand-in (#2913).
 ///
-/// Copy is kept **identical to Android's** (`strings.xml`
-/// `demo_chip_streamed` / `demo_chip_streaming` / `demo_chip_bundled`) so the
-/// two demo apps read the same in screenshots and QA transcripts.
+/// The bundled wording matches Android's `strings.xml` `demo_source_bundled`
+/// ("Built-in model", #4521 / #4524) so the two demo apps read the same in
+/// screenshots and QA transcripts. It names where the model comes from, never
+/// the network: "Offline model" read as "your phone has no connection" with
+/// Wi-Fi up, so nothing here may say "Offline".
 struct AssetSourcePill: View {
     let state: AssetSourceState
     /// `true` when the slug on screen declares `fallbackRole == .placeholder`
@@ -27,7 +29,7 @@ struct AssetSourcePill: View {
         switch state {
         case .streamed: return "Streamed (cached)"
         case .streaming: return "Streaming…"
-        case .bundled: return isPlaceholder ? "Offline placeholder" : "Offline model"
+        case .bundled: return isPlaceholder ? "Built-in placeholder" : "Built-in model"
         }
     }
 
