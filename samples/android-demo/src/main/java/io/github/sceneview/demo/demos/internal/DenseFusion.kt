@@ -3,6 +3,11 @@ package io.github.sceneview.demo.demos.internal
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.sqrt
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.createCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 /**
  * What one [DenseFusion.add] did: voxels created, samples merged into voxels, voxels in all, and
@@ -98,14 +103,19 @@ class DenseFusion(
 
     /** [liveCloud]'s working arrays, kept from one live snapshot to the next. */
     private val scratch = LiveScratch()
+    private val liveIndex = LiveIndex()
 
     /** Retained primitive-array storage, including indices and live-cloud scratch; no heap walk. */
     internal val storageBytes: Long
         get() = px.size * 69L + keys.size * 12L + chunkLevel.size * 9L +
-            chunkIndex.storageBytes + scratch.storageBytes + ARRAY_OVERHEAD_BYTES
+            chunkIndex.storageBytes + scratch.storageBytes + liveIndex.storageBytes + ARRAY_OVERHEAD_BYTES
 
     /** The current [add] call, numbered from 1: a voxel's views grow once per call. */
     private var view = 0
+
+    /** Invalidates a live build whose voxel indices a compaction may have moved. */
+    internal var topologyVersion = 0
+        private set
 
     /** Merges [samples] into the map. */
     @Suppress("LoopWithTooManyJumpStatements", "CyclomaticComplexMethod") // one skip per rejected sample
@@ -304,8 +314,18 @@ class DenseFusion(
      * parts weighted by the surface each stands for, in the order the map found them. Reads the
      * map only: [cloud] and a saved scan are left as they were.
      */
-    @Suppress("LongMethod", "CyclomaticComplexMethod") // two passes over the map, one merge
-    fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud {
+    fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud =
+        checkNotNull(liveCloudBuild(eyeX, eyeY, eyeZ, maxPoints, minViews).advance(Long.MAX_VALUE))
+
+    /** One unfinished live view, resumed only on the fusion worker; no frame queue or extra worker. */
+    internal fun liveCloudBuild(
+        eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS,
+    ) = DenseLiveBuild { pause -> buildLiveCloud(eyeX, eyeY, eyeZ, maxPoints, minViews, pause) }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList") // two passes, yielding in bounded batches
+    private suspend fun buildLiveCloud(
+        eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int, pause: suspend () -> Unit,
+    ): DenseCloud {
         val n = count
         if (n == 0 || maxPoints <= 0) return DenseCloud.Empty
         var first = LIVE_FIRST_LEVEL_M
@@ -323,13 +343,15 @@ class DenseFusion(
         val outOf = scratch.outOf
         val outLevel = scratch.outLevel
         val near = scratch.near
-        val index = LongIntMap(Integer.highestOneBit(minOf(n, maxPoints).coerceAtLeast(1)) shl 2)
+        val index = liveIndex
+        index.clear()
         var out = 0
         var nearOut = 0
         // The map holds what a depth frame found together: the voxel before often merges into the same surfel.
         var lastKey = Long.MIN_VALUE
         var lastOut = -1
         for (i in 0 until n) {
+            if (i > 0 && i % LIVE_BATCH == 0) pause()
             if (views[i] < minViews) {
                 outOf[i] = -1
                 continue
@@ -368,6 +390,7 @@ class DenseFusion(
         val draw = scratch.draw
         var drawn = 0
         for (i in 0 until n) {
+            if (i > 0 && i % LIVE_BATCH == 0) pause()
             val o = outOf[i]
             if (o < 0) continue
             if (past && o == drawn) {
@@ -415,6 +438,7 @@ class DenseFusion(
         var coarse = false
         var k = -1
         for (o in 0 until out) {
+            if (o > 0 && o % LIVE_BATCH == 0) pause()
             if (!keep[o]) continue
             k++
             positions[k * 3] = sx[o] / sw[o]
@@ -634,6 +658,7 @@ class DenseFusion(
      * and in order: a merged voxel stays where its first-seen part was.
      */
     private fun rebuild() {
+        topologyVersion++
         keys.fill(EMPTY)
         chunkCount.fill(0, 0, chunks)
         var w = 0
@@ -784,6 +809,49 @@ class DenseFusion(
         chunkOf = chunkOf.copyOf(size)
     }
 
+    /** Primitive live-view index retained between snapshots; never changes voxel insertion order. */
+    private class LiveIndex {
+        private var keys = LongArray(INITIAL_SLOTS) { EMPTY }
+        private var values = IntArray(INITIAL_SLOTS)
+        private var size = 0
+
+        val storageBytes: Long get() = keys.size * 12L
+
+        fun clear() {
+            keys.fill(EMPTY)
+            size = 0
+        }
+
+        fun get(key: Long): Int {
+            val mask = keys.size - 1
+            var slot = mix(key) and mask
+            while (keys[slot] != EMPTY) {
+                if (keys[slot] == key) return values[slot]
+                slot = (slot + 1) and mask
+            }
+            return -1
+        }
+
+        fun put(key: Long, value: Int) {
+            if ((size + 1) * 2 > keys.size) grow()
+            val mask = keys.size - 1
+            var slot = mix(key) and mask
+            while (keys[slot] != EMPTY) slot = (slot + 1) and mask
+            keys[slot] = key
+            values[slot] = value
+            size++
+        }
+
+        private fun grow() {
+            val oldKeys = keys
+            val oldValues = values
+            keys = LongArray(oldKeys.size * 2) { EMPTY }
+            values = IntArray(keys.size)
+            size = 0
+            for (i in oldKeys.indices) if (oldKeys[i] != EMPTY) put(oldKeys[i], oldValues[i])
+        }
+    }
+
     companion object {
         /** Rounded allowance for the retained primitive-array headers. */
         private const val ARRAY_OVERHEAD_BYTES = 2048L
@@ -897,6 +965,8 @@ class DenseFusion(
         /** The least a sample counts, so a weight never divides by zero. */
         private const val MIN_SAMPLE_WEIGHT = 1e-4f
 
+        private const val LIVE_BATCH = 4096
+
         private const val INITIAL_SLOTS = 1 shl 14
         private const val INITIAL_POINTS = 1 shl 13
         private const val INITIAL_CHUNKS = 1 shl 8
@@ -963,11 +1033,8 @@ class DenseFusion(
         private const val DRAW_BUCKETS = 1 shl DRAW_BUCKET_BITS
         private const val DRAW_BUCKET_SHIFT = DRAW_BITS - DRAW_BUCKET_BITS
 
-        private fun mix(key: Long): Int {
-            var h = key * -0x61c8864680b583ebL
-            h = h xor (h ushr 29)
-            return h.toInt() and Int.MAX_VALUE
-        }
+        // Packed coordinates need all their bits avalanched before masking a power-of-two table.
+        private fun mix(key: Long): Int = drawOf(key)
 
         private fun channel(v: Float) = (v + 0.5f).toInt().coerceIn(0, 255)
     }
@@ -1035,5 +1102,35 @@ private class LiveScratch {
         const val HEADROOM = 4
 
         fun grown(size: Int): Int = size + size / HEADROOM
+    }
+}
+
+/**
+ * A cooperative live snapshot. A pause retains loop state, not depth frames. The fusion worker
+ * resumes it after adding the next frame; indices stay valid until the caller invalidates it
+ * on compaction. Surface values may become fresher while it builds, as a live preview can.
+ */
+internal class DenseLiveBuild(block: suspend (suspend () -> Unit) -> DenseCloud) {
+    private var next: Continuation<Unit>?
+    private var outcome: Result<DenseCloud>? = null
+
+    init {
+        val work: suspend () -> DenseCloud = { block { suspendCoroutine { next = it } } }
+        next = work.createCoroutine(object : Continuation<DenseCloud> {
+            override val context = EmptyCoroutineContext
+            override fun resumeWith(result: Result<DenseCloud>) { outcome = result }
+        })
+    }
+
+    /** Runs small batches for [budgetNanos] at most, plus the last batch's work. */
+    fun advance(budgetNanos: Long): DenseCloud? {
+        val started = System.nanoTime()
+        do {
+            val continuation = next ?: break
+            next = null
+            continuation.resume(Unit)
+            outcome?.let { return it.getOrThrow() }
+        } while (System.nanoTime() - started < budgetNanos)
+        return null
     }
 }

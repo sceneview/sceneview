@@ -164,6 +164,7 @@ class RerunScanMemoryTest {
             if (BuildConfig.DEBUG) {
                 val before = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
                 assertTrue(before, before.contains("finishedEvents=2"))
+                assertTrue(before, before.contains("depthAccepted=0 depthBusy=0 depthStale=0 tsdfDropped=0"))
             }
             val thumbnail = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
             (capture.live.thumbnails as MutableMap<String, Bitmap>)["test.jpg"] = thumbnail
@@ -181,6 +182,7 @@ class RerunScanMemoryTest {
                 val exit = logs.last { it.startsWith("exit used=") }
                 assertTrue(exit, exit.startsWith("exit used="))
                 assertTrue(exit, exit.contains(" max="))
+                assertTrue(exit, exit.contains("depthAccepted=0 depthBusy=0 depthStale=0 tsdfDropped=0"))
                 assertTrue(exit, exit.contains("journalEvents=0 journalBytes=0 finishedEvents=0 finishedBytes=0"))
                 assertTrue(logs.any { it.startsWith("close-detach ms=") })
                 assertTrue(logs.any { it.startsWith("close-cleanup ms=") && it.contains("DefaultDispatcher-worker") })

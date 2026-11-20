@@ -129,7 +129,10 @@ internal class ScanCapture(
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
-    private var model = if (rawDepth) RerunLiveModel(modelOwner, preset, budget) else null
+    private val frameCounters = ScanFrameCounters()
+    /** Cumulative intake and TSDF losses; survives releasing the dense map and live model. */
+    val frameCounts: ScanFrameCounts get() = frameCounters.snapshot()
+    private var model = if (rawDepth) RerunLiveModel(modelOwner, preset, budget, frameCounters) else null
     private val closed = AtomicBoolean(false)
     // Which depth estimate was taken last, and how long the scan has waited for one.
     private val depthWindow = DepthWindow()
@@ -307,6 +310,7 @@ internal class ScanCapture(
         if (dense == null || !depthGate.isDue(frame.timestamp)) return null
         if (fusing.get()) {
             intake.count(Outcome.Busy)
+            frameCounters.busyDepth()
             return null
         }
         val depth = runCatching { frame.acquireRawDepthImage16Bits() }
@@ -314,6 +318,7 @@ internal class ScanCapture(
             .getOrNull()
         if (depth == null) {
             intake.count(Outcome.NoDepth)
+            frameCounters.staleDepth()
             return null
         }
         // Before the gate, so a device log says what the scan sees even when it fuses nothing.
@@ -322,6 +327,7 @@ internal class ScanCapture(
         logVerdict(verdict, frame.timestamp, depth.timestamp)
         if (!depthWindow.take(verdict, frame.timestamp, depth.timestamp)) {
             intake.count(Outcome.Stale)
+            frameCounters.staleDepth()
             depth.close()
             return null
         }
@@ -389,13 +395,16 @@ internal class ScanCapture(
         val dense = dense ?: return
         if (image == null) {
             intake.count(Outcome.NoImage)
+            frameCounters.staleDepth()
             return
         }
         val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv, dense.confidence.threshold.toInt())
         if (frame == null) {
             intake.count(Outcome.Unreadable)
+            frameCounters.staleDepth()
             return
         }
+        frameCounters.acceptDepth()
         model?.offer(frame, scope)
         // The floor the live map's "to redo" cells are judged from: ARCore's, stable as the phone moves.
         dense.floorPlaneY = ArDebugGeometry.floorPlaneHeight(trace.lastPlanes())
@@ -426,7 +435,11 @@ internal class ScanCapture(
     fun recordDepthStats(nanos: Long) {
         val dense = dense ?: return
         val total = dense.count
-        intake.lineIfDue(nanos, total)?.let { Log.i(LOG_TAG, "$it; ${dense.logLine()}") }
+        intake.lineIfDue(nanos, total)?.let {
+            val counts = frameCounts
+            Log.i(LOG_TAG, "$it; ${counts.logLine()}; ${dense.logLine()}")
+            if (BuildConfig.DEBUG) Log.i(ScanBench.TAG, ScanBench.depthLine(counts))
+        }
         if (total == recordedTotal) return
         recordedTotal = total
         recordedFrames[nanos] = dense.frames
@@ -524,7 +537,8 @@ internal class ScanCapture(
                 "finishedEvents=${events?.size ?: 0} finishedBytes=$finishedBytes " +
                 "poses=${trace.poseCount} points=${trace.mapPointCount} observations=${trace.observationCount} " +
                 "densePoints=$denseCount budgetBytes=${budget.retainedBytes} " +
-                "tsdfBudget=${budget.tsdfBytes} denseBudget=${budget.denseBytes} journalBudget=${budget.journalBytes}",
+                "tsdfBudget=${budget.tsdfBytes} denseBudget=${budget.denseBytes} journalBudget=${budget.journalBytes} " +
+                frameCounts.logLine(),
         )
     }
 

@@ -5,6 +5,7 @@ import io.github.sceneview.demo.demos.internal.CoverageGrid
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFuseStats
+import io.github.sceneview.demo.demos.internal.DenseLiveBuild
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.DenseSamples
@@ -35,14 +36,16 @@ internal class ScanDenseMap(
     /** Retained primitive storage of the map and its current live snapshot, for memory tests. */
     internal val storageBytes: Long
         get() {
-            val layer = live ?: return fusion.storageBytes
+            val layer = live
+            val pendingBytes = if (liveWhole === layer?.whole) 0L else liveWhole.size * 4L
+            if (layer == null) return fusion.storageBytes + pendingBytes
             val cloud = layer.cloud
             val cloudBytes = cloud.positions.size * 4L + cloud.colors.size * 4L +
                 (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
             val mesh = layer.mesh
             val meshBytes = mesh.positions.size * 4L + mesh.indices.size * 4L + mesh.uvs.size * 4L
             val wholeBytes = if (layer.whole === cloud.positions) 0L else layer.whole.size * 4L
-            return fusion.storageBytes + cloudBytes + meshBytes + wholeBytes + layer.atlas.size +
+            return fusion.storageBytes + pendingBytes + cloudBytes + meshBytes + wholeBytes + layer.atlas.size +
                 layer.offsets.size * 4L + layer.coveredCells.size * 8L + layer.weakCells.size * 8L + SNAPSHOT_OVERHEAD_BYTES
         }
 
@@ -56,8 +59,8 @@ internal class ScanDenseMap(
     private var full = false
 
     /**
-     * The dense map as the live 3D card draws it: a snapshot taken after a fusion at most every
-     * [LIVE_INTERVAL_NS] of the surfels at least two depth frames saw — from the last [project]ed
+     * The dense map as the live 3D card draws it: a snapshot started at most every
+     * [LIVE_INTERVAL_NS], merged in bounded batches after successive fusions, of the surfels at least two depth frames saw — from the last [project]ed
      * frame's eye, [LIVE_DRAWN_SURFELS] at most, near ones whole and far ones merged
      * ([DenseFusion.liveCloud]); without one, [LIVE_MAX_SURFELS] at most — meshed and coloured off
      * the main thread, with the floor cells the map covers and its even stride
@@ -67,6 +70,9 @@ internal class ScanDenseMap(
     var live: ReplayDenseLayer? = null
         private set
     private var liveAtNanos = Long.MIN_VALUE
+    private var liveBuild: DenseLiveBuild? = null
+    private var liveVersion = 0
+    private var liveWhole = FloatArray(0)
 
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
     private var eye: DebugPose? = null
@@ -178,20 +184,29 @@ internal class ScanDenseMap(
     }
 
     private fun snapshotLive() {
+        if (liveBuild != null && liveVersion != fusion.topologyVersion) {
+            liveBuild = null
+            liveAtNanos = Long.MIN_VALUE
+        }
         val now = clock()
-        if (liveAtNanos != Long.MIN_VALUE && now - liveAtNanos < LIVE_INTERVAL_NS) return
-        liveAtNanos = now
-        // The map's even stride, its positions only: the snapshot keeps them, nothing else of it.
-        val whole = fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS)
-        if (whole.isEmpty()) return
         val at = eye
+        if (liveBuild == null) {
+            if (liveAtNanos != Long.MIN_VALUE && now - liveAtNanos < LIVE_INTERVAL_NS) return
+            liveAtNanos = now
+            liveWhole = fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS)
+            if (liveWhole.isEmpty()) return
+            liveVersion = fusion.topologyVersion
+            if (at != null) {
+                liveBuild = fusion.liveCloudBuild(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS, minViews = 1)
+            }
+        }
         val drawn = if (at == null) {
             fusion.cloud(minViews = 1, maxPoints = LIVE_MAX_SURFELS)
         } else {
-            // Over the camera a surfel one depth frame saw already shows: on a slow phone the
-            // second view lags, and the coat must follow the camera, not the saved cloud.
-            fusion.liveCloud(at.x, at.y, at.z, maxPoints = LIVE_DRAWN_SURFELS, minViews = 1)
+            liveBuild?.advance(LIVE_WORK_NS) ?: return
         }
+        liveBuild = null
+        val whole = liveWhole
         val covered = CoverageGrid.coveredKeys(whole)
         // The floor to scan again, judged on the whole map read in place: the drawn surfels are
         // merged and, past their budget, picked at random far off.
@@ -220,6 +235,9 @@ internal class ScanDenseMap(
         private const val SNAPSHOT_OVERHEAD_BYTES = 2048L
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_INTERVAL_NS = 1_000_000_000L
+
+        /** The live merge yields between small batches, leaving most of the 100 ms depth slot for fusion. */
+        private const val LIVE_WORK_NS = 8_000_000L
 
         /**
          * The map's surfels a live snapshot reads at most for the floor cells it covers, and
