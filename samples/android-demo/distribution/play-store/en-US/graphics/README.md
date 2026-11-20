@@ -72,7 +72,7 @@ retired in 4.69.0 (see below). `feature-graphic.png` has been a real capture sin
 
 | File | Source reference | Prompt | Generated |
 |---|---|---|---|
-| `feature-graphic.png` (1024×500) | a crop of the 4.69.0 10" tablet Cosmos frame (the spiral galaxy), not a generated image | `Real-time 3D, in a few lines.` / `Open-source SDK for Android and iOS.` | 2026-11-20 |
+| `feature-graphic.png` (1024×500) | a crop of the 4.69.0 10" tablet Cosmos frame (the spiral galaxy), not a generated image | `Real-time 3D, in a few lines.` / `Open-source SDK for Compose and the web.` | 2026-11-20 |
 | `phone-screenshot-2.png` (1080×2304), room layer only | `tools/demo-previews/refs/sheen_chair.webp` — a crop of the app's own picker thumbnail for the `Sheen Chair` model | `store.json` → `ar-phone-chair-room` (9:16 raw, the chair on a real oak floor at its real ~75 cm height) — then composited with the captured chrome, see above | 2026-09-09 |
 | `raw/ar-room-phone.png` (the icosahedron on a desk) | `refs/printed_icosahedron.webp` | `store.json` → `ar-phone-room`; still the source of the iOS `01-ar.png` | 2026-09-09 |
 | Former `tablet7-screenshot-1.png` · `tablet10-screenshot-1.png`, **off the listing since 4.69.0** | same | `store.json` → `ar-tablet` (3:4 raw, shared with the iOS `ipad-13/00-ar.png`) | 2026-09-05, #3461 |
