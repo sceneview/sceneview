@@ -12,12 +12,17 @@ public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionRecovery : java/lang/Enum {
+	public static final field Companion Lio/github/sceneview/ar/ARCameraPermissionRecovery$Companion;
 	public static final field Request Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public static final field RequestWithSettings Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public static final field Settings Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+	public static final field SettingsWithRequest Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ARCameraPermissionRecovery;
 	public static fun values ()[Lio/github/sceneview/ar/ARCameraPermissionRecovery;
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionRecovery$Companion {
 }
 
 public final class io/github/sceneview/ar/ARCameraPermissionRecoveryKt {

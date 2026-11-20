@@ -15,7 +15,7 @@ import io.github.sceneview.ExperimentalSceneViewApi
  * What [ARSceneView] knows about a denied camera permission (#3308).
  *
  * @property recovery The experimental recovery actions. Settings is the primary action for
- *   [ARCameraPermissionRecovery.RequestWithSettings], with [request] still available.
+ *   [ARCameraPermissionRecovery.SettingsWithRequest], with [request] still available.
  * @property permanentlyDenied Legacy conservative recommendation: `true` when settings is
  *   available, including ambiguous answers. It does not prove the dialog is blocked. Hosts
  *   that need all actions should use [recovery].
@@ -74,7 +74,7 @@ fun BoxScope.ARCameraPermissionOverlay(
         body = stringResource(
             when (state.recovery) {
                 ARCameraPermissionRecovery.Request -> R.string.sceneview_camera_permission_body
-                ARCameraPermissionRecovery.RequestWithSettings -> R.string.sceneview_camera_permission_body_fallback
+                ARCameraPermissionRecovery.SettingsWithRequest -> R.string.sceneview_camera_permission_body_fallback
                 ARCameraPermissionRecovery.Settings -> R.string.sceneview_camera_permission_body_settings
             }
         ),
@@ -87,7 +87,7 @@ fun BoxScope.ARCameraPermissionOverlay(
         actionTag = ARCameraPermissionOverlayTags.ACTION,
         modifier = modifier,
         contentPadding = contentPadding,
-        secondaryAction = if (state.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+        secondaryAction = if (state.recovery == ARCameraPermissionRecovery.SettingsWithRequest) {
             stringResource(R.string.sceneview_camera_permission_grant)
         } else null,
         onSecondaryAction = state.request,

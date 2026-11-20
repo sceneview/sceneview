@@ -91,6 +91,12 @@ class ARCameraPermissionVerdictTest {
         nowMs += ms
     }
 
+    @Suppress("DEPRECATION")
+    @Test
+    fun `the deprecated recovery name aliases settings with request`() {
+        assertTrue(ARCameraPermissionRecovery.RequestWithSettings === ARCameraPermissionRecovery.SettingsWithRequest)
+    }
+
     // ── The pure verdict ────────────────────────────────────────────────────
 
     @Test
@@ -107,7 +113,7 @@ class ARCameraPermissionVerdictTest {
     @Test
     fun `fast unexplained answers offer settings without removing the request`() {
         for (elapsedMs in listOf(0L, 289, 509, CAMERA_PROMPT_INSTANT_RETURN_MS - 1)) {
-            assertEquals(ARCameraPermissionRecovery.RequestWithSettings, resolveCameraPermissionRecovery(false, false, elapsedMs, 0))
+            assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, resolveCameraPermissionRecovery(false, false, elapsedMs, 0))
         }
     }
 
@@ -115,7 +121,7 @@ class ARCameraPermissionVerdictTest {
     fun `slow unexplained answers add settings on the second refusal`() {
         for (elapsedMs in listOf(CAMERA_PROMPT_INSTANT_RETURN_MS, 5_000L, 60_000L)) {
             assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, false, elapsedMs, 0))
-            assertEquals(ARCameraPermissionRecovery.RequestWithSettings, resolveCameraPermissionRecovery(false, false, elapsedMs, 1))
+            assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, resolveCameraPermissionRecovery(false, false, elapsedMs, 1))
         }
         assertEquals(ARCameraPermissionRecovery.Request, resolveCameraPermissionRecovery(false, true, 0, 10))
     }
@@ -149,7 +155,7 @@ class ARCameraPermissionVerdictTest {
         assertFalse(arCore.checkPermissionAndInstall(handler))
 
         assertEquals(listOf<Boolean?>(true), verdicts)
-        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
+        assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, arCore.cameraPermissionRecovery)
         assertTrue(arCore.isCameraPermissionDenied)
     }
 
@@ -174,7 +180,7 @@ class ARCameraPermissionVerdictTest {
 
         // A legacy host still gets settings; the scene recovery keeps both actions.
         assertEquals(listOf<Boolean?>(false, true), verdicts)
-        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
+        assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, arCore.cameraPermissionRecovery)
         assertEquals(2, handler.requestCount)
     }
 
@@ -285,7 +291,7 @@ class ARCameraPermissionVerdictTest {
         assertEquals(listOf(false, true, null), verdicts)
         assertEquals(listOf(
             ARCameraPermissionRecovery.Request,
-            ARCameraPermissionRecovery.RequestWithSettings,
+            ARCameraPermissionRecovery.SettingsWithRequest,
             ARCameraPermissionRecovery.Settings,
             null,
         ), recoveries)
@@ -299,7 +305,7 @@ class ARCameraPermissionVerdictTest {
         arCore.retryCameraPermission(handler)
 
         assertEquals(listOf<Boolean?>(true), verdicts)
-        assertEquals(ARCameraPermissionRecovery.RequestWithSettings, arCore.cameraPermissionRecovery)
+        assertEquals(ARCameraPermissionRecovery.SettingsWithRequest, arCore.cameraPermissionRecovery)
         assertEquals(3, handler.requestCount)
     }
 }

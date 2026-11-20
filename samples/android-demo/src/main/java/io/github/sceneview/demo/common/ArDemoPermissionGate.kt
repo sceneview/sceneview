@@ -104,7 +104,7 @@ internal fun ArCameraPermissionGate(
             // The same card stays up behind the system dialog and after it: a dialog that
             // never comes back (process death, a dismissal) still leaves a button.
             blocked(
-                if (permission.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+                if (permission.recovery == ARCameraPermissionRecovery.SettingsWithRequest) {
                     stringResource(R.string.ar_permission_fallback_subtitle)
                 } else when (arCameraAskReason(permission.shouldShowRationale)) {
                     ArCameraAskReason.NotAnswered ->
@@ -113,14 +113,14 @@ internal fun ArCameraPermissionGate(
                         stringResource(R.string.ar_permission_refused_subtitle)
                 },
                 stringResource(
-                    if (permission.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+                    if (permission.recovery == ARCameraPermissionRecovery.SettingsWithRequest) {
                         R.string.ar_permission_open_settings
                     } else R.string.ar_permission_allow,
                 ),
-                if (permission.recovery == ARCameraPermissionRecovery.RequestWithSettings) {
+                if (permission.recovery == ARCameraPermissionRecovery.SettingsWithRequest) {
                     permission.openSettings
                 } else permission.request,
-                permission.request.takeIf { permission.recovery == ARCameraPermissionRecovery.RequestWithSettings },
+                permission.request.takeIf { permission.recovery == ARCameraPermissionRecovery.SettingsWithRequest },
             )
             val autoPrompt = shouldAutoPromptForCamera(
                 granted = permission.granted,

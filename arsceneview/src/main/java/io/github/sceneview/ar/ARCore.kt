@@ -84,7 +84,7 @@ class ARCore(
      * Called on the main thread whenever [cameraPermissionRecovery] changes.
      *
      * [ARCameraPermissionRecovery.Request] offers [retryCameraPermission];
-     * [ARCameraPermissionRecovery.RequestWithSettings] keeps that action and also offers
+     * [ARCameraPermissionRecovery.SettingsWithRequest] keeps that action and also offers
      * [openAppSettings] with neutral copy; [ARCameraPermissionRecovery.Settings] offers
      * settings alone. `null` clears the denial after permission is granted, including on
      * return from settings. The property is updated before this callback runs.
