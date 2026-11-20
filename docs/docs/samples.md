@@ -51,9 +51,10 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
 ./gradlew :samples:android-demo:assembleDebug
 ```
 
-!!! info "In-app bug reports"
+!!! info "In-app feedback"
     The Android demo includes a **feedback button** that opens a lightweight
-    "Report a bug" sheet — an optional `PixelCopy` screenshot of the app, the
+    "Send feedback" sheet for bug reports, feature requests and questions — a
+    required description, an optional `PixelCopy` screenshot of the app, the
     app's own logcat tail, and device/app context. It needs **zero
     permissions** (no recording, no foreground service) and never uploads
     anything itself: the user sends the report through the Android share

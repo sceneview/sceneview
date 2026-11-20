@@ -38,9 +38,9 @@ class BugReportFormatTest {
 
     @Test
     fun `title falls back to the demo id then to a generic title`() {
-        assertEquals("[Demo app] Bug report — model-viewer", formatReportTitle(info(), " "))
+        assertEquals("[Demo app] Feedback — model-viewer", formatReportTitle(info(), " "))
         val noDemo = BugReportInfo(metadata = linkedMapOf("Device" to "x"), logcat = emptyList())
-        assertEquals("[Demo app] Bug report", formatReportTitle(noDemo, ""))
+        assertEquals("[Demo app] Feedback", formatReportTitle(noDemo, ""))
     }
 
     @Test
@@ -186,10 +186,26 @@ class BugReportFormatTest {
     }
 
     @Test
-    fun `issue url packs a usable log window, not a couple of dozen lines`() {
-        // Regression guard for #3390: the coarse fallback ladder used to snap to
-        // 30 lines — too short to see a repeating warning twice and measure its
-        // period. Realistic threadtime lines, so the budget arithmetic is real.
+    fun `issue url packs a usable log window with distinct messages`() {
+        // #3390: at least sixty realistic lines must fit without relying on repeat collapse.
+        val lines = (1..ISSUE_LOGCAT_MAX_LINES).map {
+            val millis = (it % 1000).toString().padStart(3, '0')
+            "06-01 12:00:00.$millis  6543  6560 W Filament: throttled draw call skipped $it"
+        }
+        val url = buildGitHubIssueUrl(info(logcat = lines), "Repeating warning in the AR view")
+        assertTrue("url length ${url.length}", url.length <= ISSUE_URL_MAX_LENGTH)
+
+        val body = URLDecoder.decode(url.substringAfter("&body="), "UTF-8")
+        val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
+        assertTrue("packed only $packed lines", packed >= 60)
+        assertTrue(body.contains("12:00:00.400 W Filament: throttled draw call skipped 400"))
+        assertFalse(body.contains("×"))
+        assertTrue(body.contains("| Screen | Demo · model-viewer |"))
+    }
+
+    @Test
+    fun `issue url packs a repeated warning with its count and time span`() {
+        // #4995: the whole run fits as one line, with both ends still measurable (#3390).
         val lines = (1..ISSUE_LOGCAT_MAX_LINES).map {
             val millis = (it % 1000).toString().padStart(3, '0')
             "06-01 12:00:00.$millis  6543  6560 W Filament: throttled draw call skipped"
@@ -199,7 +215,9 @@ class BugReportFormatTest {
 
         val body = URLDecoder.decode(url.substringAfter("&body="), "UTF-8")
         val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
-        assertTrue("packed only $packed lines", packed >= 60)
+        assertEquals(1, packed)
+        assertTrue(body.contains("×$ISSUE_LOGCAT_MAX_LINES (last at 12:00:00.400)"))
+        assertTrue(body.contains("12:00:00.001 W Filament: throttled draw call skipped"))
         assertTrue(body.contains("| Screen | Demo · model-viewer |"))
     }
 
@@ -382,7 +400,7 @@ class BugReportFormatTest {
     @Test
     fun `issue url keeps the AR tracking lines, compacted, under the length cap`() {
         val general = (1..ISSUE_LOGCAT_MAX_LINES).map {
-            "10-13 16:56:00.000 29383 29716 I native  : " + "x".repeat(120)
+            "10-13 16:56:00.000 29383 29716 I native  : " + "x".repeat(120) + " $it"
         }
         val info = BugReportInfo(metadata, logcat = general, arTracking = trackingLines(40))
 
@@ -395,6 +413,26 @@ class BugReportFormatTest {
         assertFalse(body.contains("29383"))
         val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
         assertTrue("packed only $packed general lines", packed >= 10)
+        assertFalse(body.contains("×"))
+    }
+
+    @Test
+    fun `issue url keeps AR tracking alongside a collapsed general log`() {
+        val general = (1..ISSUE_LOGCAT_MAX_LINES).map {
+            "10-13 16:56:00.000 29383 29716 I native  : " + "x".repeat(120)
+        }
+        val info = BugReportInfo(metadata, logcat = general, arTracking = trackingLines(40))
+
+        val url = buildGitHubIssueUrl(info, "Stuck on Getting ready")
+
+        assertTrue("url length ${url.length}", url.length <= ISSUE_URL_MAX_LENGTH)
+        val body = URLDecoder.decode(url.substringAfter("&body="), "UTF-8")
+        assertTrue(body.contains("AR tracking (last $ISSUE_AR_TRACKING_MAX_LINES lines)"))
+        assertTrue(body.contains("16:55:46.108 I SceneView: AR tracking: state=PAUSED reason=NONE for=400s"))
+        assertFalse(body.contains("29383"))
+        val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
+        assertEquals(1, packed)
+        assertTrue(body.contains("×$ISSUE_LOGCAT_MAX_LINES"))
     }
 
     @Test

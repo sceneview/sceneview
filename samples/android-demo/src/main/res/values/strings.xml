@@ -342,15 +342,20 @@
     <string name="feedback_action_cd">Send feedback</string>
     <!-- Generic close a11y label — also reused by GalleryModelViewerScreen. -->
     <string name="feedback_cd_close">Close</string>
-    <string name="feedback_report_title">Report a bug</string>
+    <string name="feedback_report_title">Send feedback</string>
     <string name="feedback_report_body">The report bundles your device info, the app\'s recent log, and an optional screenshot. Nothing leaves your device until you choose where to send it.</string>
     <string name="feedback_report_screenshot_include">Include screenshot</string>
     <string name="feedback_report_screenshot_cd">Screenshot preview</string>
     <string name="feedback_report_screenshot_unavailable">Screenshot couldn\'t be captured — the report will be text-only.</string>
     <string name="feedback_report_screenshot_may_be_black">On this device the 3D viewport may appear black in the capture.</string>
     <string name="feedback_report_screenshot_share_only">The screenshot is attached when you share — the GitHub link can\'t carry an image.</string>
-    <string name="feedback_report_note_label">Describe the issue (optional)</string>
-    <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
+    <string name="feedback_report_category">Category</string>
+    <string name="feedback_report_category_bug">Bug</string>
+    <string name="feedback_report_category_feature">Feature request</string>
+    <string name="feedback_report_category_question">Question</string>
+    <string name="feedback_report_note_label">Description</string>
+    <string name="feedback_report_note_required">Add a sentence (at least %1$d characters, excluding spaces; CJK characters count as two).</string>
+    <string name="feedback_report_note_placeholder">What would you like to share or ask?</string>
     <!--
       Names what the report carries, so "nothing leaves your device until you
       choose" above is verifiable rather than a promise: %1$s is the screen the
@@ -366,10 +371,10 @@
     <string name="feedback_report_privacy">Sent only through the app you pick — no account, no upload, no recording. File paths, links and e-mail addresses in the log are masked.</string>
     <string name="feedback_report_share">Share report</string>
     <string name="feedback_report_open_github">Send to GitHub</string>
-    <string name="feedback_report_share_chooser">Share bug report</string>
+    <string name="feedback_report_share_chooser">Share feedback</string>
     <string name="feedback_report_no_app">No app available to send the report</string>
     <string name="feedback_report_voice_cd">Dictate description</string>
-    <string name="feedback_report_voice_prompt">Describe the issue</string>
+    <string name="feedback_report_voice_prompt">Describe your feedback</string>
     <!-- Voice dictation while listening (#4618), shared by every dictating field. -->
     <string name="voice_dictation_listening">Dictating… pause any time, tap outside the dialog to finish</string>
     <string name="voice_dictation_stop_cd">Stop dictation</string>
