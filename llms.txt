@@ -17,7 +17,7 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 
 **Toolchain:** compileSdk 37, AGP 9.4+, Kotlin 2.3 or newer (the AARs are built with **Kotlin:** 2.4.21), minSdk 24, JVM target 21. On AGP 8 / compileSdk 36 / Kotlin 2.2, use `4.18.0` instead (see Setup). Compose BOM compatible.
 
-**Reading this file:** it is long (about 600 kB). For a first Android screen, everything you need is in the first 20 kB: **Setup** and **Start here** (two complete, compiled files). Look up anything else by its `##` heading.
+**Reading this file:** it is long (about 600 kB). For a first Android screen, everything you need is in the first 20 kB: **Setup** and **Start here** (complete, compiled files). Look up anything else by its `##` heading.
 
 **Which artifact for which app** (all open source, Apache 2.0):
 
@@ -39,7 +39,7 @@ to emit the 2.x API; use the 4.x names instead:
 | `Scene(childNodes = …)` | `SceneView { … }` — nodes are composables declared in the trailing block |
 | `ARScene(childNodes = …)` | `ARSceneView { … }` |
 | `rememberNodes { add(…) }`, `childNodes = listOf(…)` | declare `ModelNode(…)`, `AnchorNode(…) { … }` inside the block |
-| `ModelNode(modelInstance = modelLoader.createModelInstance(…))` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it) }` — `null` while loading |
+| `ModelNode(modelInstance = modelLoader.createModelInstance(…))` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it) }` — `null` while loading or after failure; use `rememberModelLoadState` for errors |
 | `io.github.sceneview.model.ModelNode`, `io.github.sceneview.node.ModelNode` used as a composable | `ModelNode` is a member of the `SceneView { }` scope — no import |
 
 **Used in production:** SceneView has more than 1,300 stars on GitHub and over 500 public
@@ -140,10 +140,12 @@ composables (`ModelNode`, `AnchorNode`, `CubeNode`, `LightNode`…) are members 
 `ARSceneView { }` content scope: they need **no import**. Do not write `import io.github.sceneview.ModelNode` (nor `io.github.sceneview.ar.AnchorNode`):
 no such top-level function exists, and the build fails with *Unresolved reference 'ModelNode'*.
 ```kotlin
+import io.github.sceneview.ModelLoadState
 import io.github.sceneview.SceneView
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoadState
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener   // not io.github.sceneview.gesture
 import io.github.sceneview.ar.ARSceneView
@@ -183,9 +185,9 @@ manifest; remove either with `tools:node="remove"` if the app does not want it.
 
 ---
 
-## Start here — two complete Android screens
+## Start here — complete Android screens
 
-Both files compile as they are against `io.github.sceneview:arsceneview:4.69.7` (CI builds every
+These examples compile as they are against `io.github.sceneview:arsceneview:4.69.7` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -212,6 +214,49 @@ fun ModelViewerScreen() {
         // null while the file loads, then the model appears
         rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1f)
+        }
+    }
+}
+```
+
+**Loading state and errors.**
+
+`rememberModelInstance` returns `null` while loading or after a failure; use
+`rememberModelLoadState` to tell them apart. Keep the scene visible and overlay its status.
+Incrementing `retry` changes the composition `key` and starts a fresh load of the same path;
+recomposition alone does not retry.
+
+```kotlin
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ModelLoadState
+import io.github.sceneview.SceneView
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberModelLoadState
+
+@Composable
+fun ModelViewerWithLoading() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    var retry by remember { mutableIntStateOf(0) }
+    val state = key(retry) { rememberModelLoadState(modelLoader, "models/helmet.glb") }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+            if (state is ModelLoadState.Ready) {
+                ModelNode(modelInstance = state.instance, scaleToUnits = 1f, autoAnimate = true)
+            }
+        }
+        when (state) {
+            is ModelLoadState.Loading -> CircularProgressIndicator()
+            is ModelLoadState.Failed -> Button(onClick = { retry++ }) { Text("Load failed. Retry") }
+            is ModelLoadState.Ready -> Unit
         }
     }
 }
@@ -4454,6 +4499,8 @@ fun rememberModelInstance(
 ): ModelInstance?
 ```
 Returns `null` while loading, recomposes when ready. **Always handle the null case.** All three overloads share one body: a failed load is `null` and logged (a file in no supported format under the `ModelLoader` tag, with the `UnsupportedModelFormat` message); the instance is returned before its textures finish decoding.
+For a UI that distinguishes loading from failure and offers retry, use `rememberModelLoadState`
+as in **Start here** above.
 
 **Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
 
@@ -4489,7 +4536,9 @@ sealed interface ModelLoadState {
     data class Failed(val error: Throwable) : ModelLoadState
 }
 ```
-For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+Use this for loading and error UI for any model, including large or generated ones. It exposes
+the failure cause instead of leaving an empty scene. The **Loading state and errors** variant in
+**Start here** also shows retry: wrap the call in `key(retry)` and increment it from a button.
 ```kotlin
 when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
     is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })

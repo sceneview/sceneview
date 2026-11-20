@@ -1460,8 +1460,9 @@ fun SceneView(
 /**
  * Asynchronously loads a glTF/GLB [ModelInstance] from [assetFileLocation].
  *
- * Returns `null` while loading is in progress, then triggers recomposition once the model is
- * ready. This makes it easy to use with conditional node declarations:
+ * Returns `null` while loading is in progress or after a failure (logged), then triggers
+ * recomposition once the model is ready. Use [rememberModelLoadState] to distinguish loading
+ * from failure, show the error and offer a retry. For conditional node declarations:
  * ```kotlin
  * SceneView {
  *     rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
@@ -1495,7 +1496,7 @@ fun SceneView(
  * @param assetFileLocation Path to the GLB/glTF file relative to the `assets` folder. A location
  *                          with a scheme (`https://…`, `file://…`, `content://…`) is loaded
  *                          from there instead, exactly as the `fileLocation` overload does.
- * @return                  `null` while the first load is in progress; the loaded
+ * @return                  `null` while the first load is in progress or after a failure; the loaded
  *                         [ModelInstance] once ready. When [assetFileLocation] changes,
  *                         the previous value is kept until the new one is ready —
  *                         `produceState` retains its last value across key changes and
@@ -1531,6 +1532,8 @@ fun rememberModelInstance(
  *
  * For asset paths (no scheme), delegates to the asset-path overload.
  * For URLs, downloads the file on IO and creates the model on Main.
+ * Returns `null` while loading or after a failure (logged). Use [rememberModelLoadState] to
+ * distinguish loading from failure, show the error and offer a retry.
  *
  * **Lifecycle & ownership.** Like the asset overload, this composable owns the produced
  * [ModelInstance] and its backing [Model]: the previous model is destroyed when [fileLocation]
@@ -1541,7 +1544,7 @@ fun rememberModelInstance(
  *
  * @param modelLoader  The [ModelLoader] to use.
  * @param fileLocation Path, URI, or URL to the GLB/glTF file.
- * @return             `null` while the first load is in progress; the loaded
+ * @return             `null` while the first load is in progress or after a failure; the loaded
  *                    [ModelInstance] once ready. When [fileLocation] changes, the previous
  *                    value is kept until the new one is ready (see the asset-path overload:
  *                    `produceState` retains its last value across key changes), so callers
