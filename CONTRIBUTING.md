@@ -440,6 +440,19 @@ as a breaking change: it needs a deprecation cycle and a matching update to
 > public API is documented via the hand-written `sceneview-web.d.ts` — there is
 > no automated JS ABI gate yet (a `.d.ts` drift gate is shortlist #2642 item 12).
 
+### Dependency resolution failures on CI
+
+On GitHub-hosted runners, failed Gradle dependency resolution adds a
+`dependency-resolution diagnostics` group to the failing Gradle step's log.
+It records live HEAD responses (and a one-byte ranged GET after HTTP 200)
+from the reported Central / Google Maven URLs, module-cache filenames with
+sizes and modification times, JVM network properties, and the offline / refresh flags.
+Live 200 responses alongside a matching cached missing-resource record point
+to a poisoned cache; live 404 / 5xx responses or timeouts point to the network
+or CDN. Binary metadata matches identify candidate files, not decoded miss
+records, so file presence alone does not prove a poisoned cache. These checks
+only run after failure and do not change dependency resolution or caching.
+
 ### CI on docs-only PRs
 
 **Docs-only PRs** — changes confined to `*.md`, `docs/**`, `website-static/**`,

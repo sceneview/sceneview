@@ -60,6 +60,18 @@ runs:
         cache-provider: basic
         cache-read-only: ${{ github.ref != 'refs/heads/main' || runner.environment == 'self-hosted' }}
 
+    # Capture evidence for intermittent Maven failures without changing cache behavior.
+    - name: Install dependency resolution diagnostics
+      if: runner.environment != 'self-hosted'
+      shell: bash
+      env:
+        DIAGNOSTICS_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        mkdir -p "$gradle_home/init.d"
+        cp "$DIAGNOSTICS_ACTION_PATH/dependency-resolution.init.gradle" \
+          "$gradle_home/init.d/sceneview-dependency-resolution.gradle"
+
     # Verify the checked-in gradle-wrapper.jar matches the SHA of a known-good
     # Gradle distribution. A malicious PR can otherwise sneak a tampered
     # wrapper jar into the repo and have it executed by every downstream
