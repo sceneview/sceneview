@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /*
@@ -60,6 +61,10 @@ data class MeshExtraction(
     val droppedComponents: Int,
     /** `true` when the triangle cap cut the extraction short. */
     val capped: Boolean,
+    /** Size in voxels of the cells used by this extraction. */
+    val stride: Int = 1,
+    /** Traversal position of the first cell the triangle cap turned away. */
+    internal val cappedAt: Long = Long.MAX_VALUE,
 )
 
 /**
@@ -92,15 +97,18 @@ object RerunMarchingCubes {
      * triangles are dropped; extraction stops at [maxTriangles]. [stride] meshes cells of that
      * many voxels a side (1, 2 or 4, a divisor of the block), sampling the field every [stride]
      * voxels: about a quarter of the triangles per doubling, the same surface. [progress] gets
-     * the share done.
+     * the share done. With [weakestCorner] under [minWeight], a cell is meshed when one corner
+     * reaches [minWeight] and the others at least [weakestCorner]: a surface's edge, seen by fewer
+     * views, closes instead of fraying.
      */
-    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements", "LongParameterList")
     fun extract(
         tsdf: RerunTsdf,
         minWeight: Float = DEFAULT_MIN_WEIGHT,
         minComponentTriangles: Int = MIN_COMPONENT_TRIANGLES,
         maxTriangles: Int = MAX_TRIANGLES,
         stride: Int = 1,
+        weakestCorner: Float = minWeight,
         progress: (Float) -> Unit = {},
     ): MeshExtraction {
         require(stride > 0 && RerunTsdf.BLOCK % stride == 0) { "stride $stride" }
@@ -112,7 +120,7 @@ object RerunMarchingCubes {
         val cornerY = IntArray(8)
         val cornerZ = IntArray(8)
         val edgeVertex = IntArray(12)
-        var capped = false
+        var cappedAt = Long.MAX_VALUE
         val blocks = tsdf.blockCount
         blocks@ for (block in 0 until blocks) {
             if (block % PROGRESS_BLOCKS == 0) progress(PROGRESS_MC * block / blocks.coerceAtLeast(1))
@@ -122,11 +130,14 @@ object RerunMarchingCubes {
                 for (ly in 0 until RerunTsdf.BLOCK step stride) {
                     cells@ for (lx in 0 until RerunTsdf.BLOCK step stride) {
                         var cube = 0
+                        var sure = false
                         for (c in 0 until 8) {
                             val x = lx + CORNER_X[c] * stride
                             val y = ly + CORNER_Y[c] * stride
                             val z = lz + CORNER_Z[c] * stride
-                            if (cache.weight(x, y, z) < minWeight) continue@cells
+                            val w = cache.weight(x, y, z)
+                            if (w < weakestCorner) continue@cells
+                            if (w >= minWeight) sure = true
                             val v = cache.sdf(x, y, z)
                             value[c] = v
                             cornerX[c] = x
@@ -135,9 +146,9 @@ object RerunMarchingCubes {
                             if (v < 0f) cube = cube or (1 shl c)
                         }
                         val row = TRIANGLES[cube]
-                        if (row.isEmpty()) continue
+                        if (row.isEmpty() || !sure) continue
                         if (out.triangles + row.size / 3 > maxTriangles) {
-                            capped = true
+                            cappedAt = cellOrder(block, lx, ly, lz)
                             break@blocks
                         }
                         val edges = EDGES[cube]
@@ -166,7 +177,7 @@ object RerunMarchingCubes {
         val raw = out.triangles
         val (mesh, dropped) = out.build(minComponentTriangles)
         progress(1f)
-        return MeshExtraction(mesh, raw, dropped, capped)
+        return MeshExtraction(mesh, raw, dropped, cappedAt != Long.MAX_VALUE, stride, cappedAt)
     }
 
     /**
@@ -174,11 +185,14 @@ object RerunMarchingCubes {
      * [maxTriangles] cut an extraction short it was the walls scanned last that went missing,
      * and a noisy room's rough surfaces reach the cap. Cut short, it meshes again with cells
      * twice as coarse, up to [MAX_STRIDE] voxels: the whole room a little smoother, never half of it.
+     * Pieces under [minComponentTriangles] are dropped, and [weakestCorner] read, as [extract] does.
      */
     fun extractWhole(
         tsdf: RerunTsdf,
         minWeight: Float = DEFAULT_MIN_WEIGHT,
         maxTriangles: Int = MAX_TRIANGLES,
+        minComponentTriangles: Int = MIN_COMPONENT_TRIANGLES,
+        weakestCorner: Float = minWeight,
         progress: (Float) -> Unit = {},
     ): MeshExtraction {
         var done = 0f
@@ -190,13 +204,150 @@ object RerunMarchingCubes {
             }
         }
         var stride = 1
-        var extraction = extract(tsdf, minWeight, maxTriangles = maxTriangles, stride = stride, progress = monotone)
+        var extraction = extract(tsdf, minWeight, minComponentTriangles, maxTriangles, stride, weakestCorner, monotone)
         while (extraction.capped && stride < MAX_STRIDE) {
             stride *= 2
-            extraction = extract(tsdf, minWeight, maxTriangles = maxTriangles, stride = stride, progress = monotone)
+            extraction = extract(tsdf, minWeight, minComponentTriangles, maxTriangles, stride, weakestCorner, monotone)
         }
         return extraction
     }
+
+    internal data class FloorCells(
+        val observedM2: Float,
+        val weakestCornerM2: Float,
+        val weightM2: Float,
+        val meshedM2: Float,
+        val unobservedCornerCells: Int,
+        val weakestCornerCells: Int,
+        val minWeightCells: Int,
+    )
+
+    internal fun interface TriangleArea {
+        fun of(positions: FloatArray, a: Int, b: Int, c: Int): Float
+    }
+
+    /**
+     * Read-only diagnostic sweep of cells intersecting the floor band. Uses the same cases and
+     * edge positions as [extract], with no mesh allocation or component filter. [cappedAt] also
+     * measures the subset of weighted cells that actually made it into the builder. Relaxing a
+     * weight threshold still requires all eight corners to have real samples. Rejections count
+     * only cells centred in the band with both signs among their observed corners.
+     */
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements", "LongParameterList")
+    internal fun measureFloorCells(
+        tsdf: RerunTsdf,
+        stride: Int,
+        floorY: Float,
+        bandM: Float,
+        minWeight: Float,
+        weakestCorner: Float,
+        cappedAt: Long,
+        floorArea: TriangleArea,
+    ): FloorCells {
+        val cache = BlockCache(tsdf)
+        val coord = IntArray(3)
+        val values = FloatArray(8)
+        val positions = FloatArray(12 * 3)
+        var observedArea = 0.0
+        var weakestArea = 0.0
+        var weightedArea = 0.0
+        var meshedArea = 0.0
+        var unobserved = 0
+        var weak = 0
+        var light = 0
+        val voxel = tsdf.voxelM
+        for (block in 0 until tsdf.blockCount) {
+            tsdf.blockCoord(block, coord)
+            val baseY = coord[1] * RerunTsdf.BLOCK
+            if ((baseY + RerunTsdf.BLOCK) * voxel < floorY - bandM || baseY * voxel > floorY + bandM) continue
+            cache.load(coord[0], coord[1], coord[2])
+            for (ly in 0 until RerunTsdf.BLOCK step stride) {
+                val gy = baseY + ly
+                if ((gy + stride) * voxel < floorY - bandM || gy * voxel > floorY + bandM) continue
+                val centred = abs((gy + stride * 0.5f) * voxel - floorY) <= bandM
+                for (lz in 0 until RerunTsdf.BLOCK step stride) {
+                    for (lx in 0 until RerunTsdf.BLOCK step stride) {
+                        var cube = 0
+                        var observed = 0
+                        var low = Float.POSITIVE_INFINITY
+                        var high = 0f
+                        for (c in 0 until 8) {
+                            val x = lx + CORNER_X[c] * stride
+                            val y = ly + CORNER_Y[c] * stride
+                            val z = lz + CORNER_Z[c] * stride
+                            val w = cache.weight(x, y, z)
+                            if (w <= 0f) continue
+                            observed++
+                            low = minOf(low, w)
+                            high = maxOf(high, w)
+                            val v = cache.sdf(x, y, z)
+                            values[c] = v
+                            if (v < 0f) cube = cube or (1 shl c)
+                        }
+                        if (cube == 0 || cube.countOneBits() == observed) continue
+                        if (observed < 8) {
+                            if (centred) unobserved++
+                            continue
+                        }
+                        val area = floorCellArea(cube, values, positions, coord, lx, ly, lz, stride, voxel, floorArea)
+                        observedArea += area
+                        if (low < weakestCorner) {
+                            if (centred) weak++
+                            continue
+                        }
+                        weakestArea += area
+                        if (high < minWeight) {
+                            if (centred) light++
+                            continue
+                        }
+                        weightedArea += area
+                        if (cellOrder(block, lx, ly, lz) < cappedAt) meshedArea += area
+                    }
+                }
+            }
+        }
+        return FloorCells(
+            observedArea.toFloat(), weakestArea.toFloat(), weightedArea.toFloat(), meshedArea.toFloat(), unobserved, weak, light,
+        )
+    }
+
+    private fun cellOrder(block: Int, x: Int, y: Int, z: Int): Long =
+        block.toLong() * RerunTsdf.VOXELS + (z * RerunTsdf.BLOCK + y) * RerunTsdf.BLOCK + x
+
+    @Suppress("LongParameterList")
+    private fun floorCellArea(
+        cube: Int,
+        values: FloatArray,
+        positions: FloatArray,
+        block: IntArray,
+        lx: Int,
+        ly: Int,
+        lz: Int,
+        stride: Int,
+        voxel: Float,
+        floorArea: TriangleArea,
+    ): Double {
+        val edges = EDGES[cube]
+        for (e in 0 until 12) {
+            if (edges and (1 shl e) == 0) continue
+            val a = EDGE_A[e]
+            val b = EDGE_B[e]
+            val swap = CORNER_X[a] > CORNER_X[b] || CORNER_Y[a] > CORNER_Y[b] || CORNER_Z[a] > CORNER_Z[b]
+            val lo = if (swap) b else a
+            val hi = if (swap) a else b
+            val t = edgeFraction(values[lo], values[hi])
+            positions[e * 3] = (block[0] * RerunTsdf.BLOCK + lx + CORNER_X[lo] * stride + t * (CORNER_X[hi] - CORNER_X[lo]) * stride) * voxel
+            positions[e * 3 + 1] = (block[1] * RerunTsdf.BLOCK + ly + CORNER_Y[lo] * stride + t * (CORNER_Y[hi] - CORNER_Y[lo]) * stride) * voxel
+            positions[e * 3 + 2] = (block[2] * RerunTsdf.BLOCK + lz + CORNER_Z[lo] * stride + t * (CORNER_Z[hi] - CORNER_Z[lo]) * stride) * voxel
+        }
+        val row = TRIANGLES[cube]
+        var area = 0.0
+        for (t in row.indices step 3) area += floorArea.of(positions, row[t], row[t + 2], row[t + 1])
+        return area
+    }
+
+    private fun edgeFraction(low: Float, high: Float): Float =
+        (low / (low - high)).takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0.5f
 
     /** The field around one block: its 8³ voxels and a one-voxel rim of its neighbours'. */
     private class BlockCache(private val tsdf: RerunTsdf) {
@@ -308,7 +459,7 @@ object RerunMarchingCubes {
             if (known >= 0) return known
             // Interpolated from the lower corner, so both cells around an edge agree.
             val (lowV, highV) = if (swap) vb to va else va to vb
-            val t = (lowV / (lowV - highV)).takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: HALF
+            val t = edgeFraction(lowV, highV)
             val (fx, fy, fz) = if (swap) Triple(bx, by, bz) else Triple(ax, ay, az)
             val (gx, gy, gz) = if (swap) Triple(ax, ay, az) else Triple(bx, by, bz)
             grow()

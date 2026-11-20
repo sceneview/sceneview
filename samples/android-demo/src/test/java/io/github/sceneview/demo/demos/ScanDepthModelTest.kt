@@ -1,0 +1,363 @@
+package io.github.sceneview.demo.demos
+
+import io.github.sceneview.demo.demos.internal.DebugPose
+import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.DenseFusion
+import io.github.sceneview.demo.demos.internal.DepthBackProjection
+import io.github.sceneview.demo.demos.internal.DepthFrame
+import io.github.sceneview.demo.demos.internal.PoseStep
+import io.github.sceneview.demo.demos.internal.RecordedDepthFrame
+import io.github.sceneview.demo.demos.internal.RerunGlbMesh
+import io.github.sceneview.demo.demos.internal.RerunMesh
+import io.github.sceneview.demo.demos.internal.ScanBox
+import io.github.sceneview.demo.demos.internal.RerunSessionStore
+import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
+import io.github.sceneview.demo.demos.internal.RerunTsdf
+import io.github.sceneview.demo.demos.internal.ScanDepthFormat
+import io.github.sceneview.demo.demos.internal.ScanDepthHeader
+import io.github.sceneview.demo.demos.internal.ScanPreset
+import io.github.sceneview.demo.demos.internal.ScanScope
+import io.github.sceneview.demo.demos.internal.SyntheticScene
+import io.github.sceneview.demo.demos.internal.SyntheticShape
+import io.github.sceneview.demo.demos.internal.Vec3
+import io.github.sceneview.demo.demos.internal.room.RoomBox
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+
+/**
+ * What a scan's result opens on ([resultKindOf], [depthModelOf]): a room that stands as one, its
+ * shell; a scan with a depth recording that does not, its whole fused surface — built, kept and
+ * read back; without a recording, the model as before. And the live TSDF let go for a recording
+ * still leaves the model as before something to build from ([usable]).
+ */
+class ScanDepthModelTest {
+    @get:Rule
+    val folder = TemporaryFolder()
+
+    @Test
+    fun `displayed progress starts at zero and clamps retries and invalid reports`() {
+        var state = ScanModelProgress()
+        assertEquals(0f, state.fraction, 0f)
+        for (value in listOf(0.2f, 0.1f, Float.NaN, Float.POSITIVE_INFINITY, -1f)) {
+            state = state.advance(value)
+            assertEquals(0.2f, state.fraction, 0f)
+        }
+        assertEquals(1f, state.advance(2f).fraction, 0f)
+    }
+
+    @Test
+    fun `depth build reports advancing fusion meshing and finishing progress`() {
+        val reports = ArrayList<Float>()
+        assertNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null, progress = reports::add))
+        assertEquals(0f, reports.first(), 0f)
+        assertEquals(1f, reports.last(), 0f)
+        assertTrue(reports.zipWithNext().all { (a, b) -> b >= a })
+        assertTrue("per frame fusion", reports.count { it > 0f && it < 0.55f } >= frames.size - 1)
+        assertTrue("meshing", reports.any { it in 0.56f..0.74f })
+        assertTrue("hole closing", reports.any { it in 0.75f..0.84f })
+    }
+
+    @Test
+    fun `a room that stands as one opens on its shell, with or without a recording`() {
+        assertEquals(ResultKind.Shell, resultKindOf(ScanScope.Room, hasRecording = true, standsAsRoom = true))
+        assertEquals(ResultKind.Shell, resultKindOf(ScanScope.Room, hasRecording = false, standsAsRoom = true))
+    }
+
+    @Test
+    fun `a recording without a room opens on the fused surface, whatever the scope`() {
+        for (scope in ScanScope.entries) {
+            assertEquals(scope.name, ResultKind.DepthModel, resultKindOf(scope, hasRecording = true, standsAsRoom = false))
+        }
+        // Only a room scan's box makes a shell: an object scan of a room's corner is still its surface.
+        assertEquals(ResultKind.DepthModel, resultKindOf(ScanScope.Object, hasRecording = true, standsAsRoom = true))
+    }
+
+    @Test
+    fun `no recording and no room is the model as before`() {
+        for (scope in ScanScope.entries) {
+            assertEquals(scope.name, ResultKind.Model, resultKindOf(scope, hasRecording = false, standsAsRoom = false))
+        }
+    }
+
+    @Test
+    fun `an object scan with a recording gets its fused surface, kept and read back`() {
+        val store = store(recording = true)
+        var released = 0
+        val built = checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null, onRecording = { released++ }))
+        assertEquals(1, released)
+        assertTrue("${built.triangles} triangles", built.triangles > MIN_TRIANGLES)
+        assertTrue(built.triangles <= DEPTH_MODEL_MAX_TRIANGLES)
+        // The floor is kept: no shell gives it here.
+        val mesh = checkNotNull(RerunGlbMesh.read(built.glb))
+        assertTrue("no floor", (0 until mesh.vertexCount).any { mesh.positions[it * 3 + 1] < FLOOR_M })
+        assertTrue(store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        // Reopened: read back as it was, nothing fused again.
+        val back = checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null, onRecording = { released++ }))
+        assertEquals(1, released)
+        assertTrue(back.glb.contentEquals(built.glb))
+        // A kept surface of another version is built again.
+        assertNull(store.depthModel(ID, DEPTH_MODEL_VERSION + 1))
+    }
+
+    @Test
+    fun `a room scan with a recording and a room box is left to its shell`() {
+        val store = store(recording = true)
+        assertNotNull("the synthetic room stands as a room", RoomBox.of(cloud, 0f))
+        assertNull(depthModelOf(store, ID, ScanScope.Room, cloud, 0f))
+        // Its cloud not read yet: unknown, left to the shell too.
+        assertNull(depthModelOf(store, ID, ScanScope.Room, null, null))
+        assertTrue(!store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+    }
+
+    @Test
+    fun `a room scan with a recording and no room box gets its fused surface`() {
+        val store = store(recording = true)
+        // A cloud with no walls: a patch of floor, as a garden's.
+        val ground = DenseCloud(
+            FloatArray(GROUND_POINTS * 3) { i -> if (i % 3 == 1) 0f else (i / 3 % 40) * 0.05f },
+            IntArray(GROUND_POINTS) { GREY },
+            FloatArray(GROUND_POINTS * 3) { if (it % 3 == 1) 1f else 0f },
+        )
+        assertNull(RoomBox.of(ground, 0f))
+        assertNotNull(depthModelOf(store, ID, ScanScope.Room, ground, 0f))
+    }
+
+    @Test
+    fun `without a recording, or one that does not read, nothing is fused and the live TSDF stays`() {
+        var released = 0
+        assertNull(depthModelOf(store(recording = false), ID, ScanScope.Object, null, null, onRecording = { released++ }))
+        val garbled = store(recording = false).also { File(it.directoryOf(ID), ScanDepthFormat.FILE).writeText("not a recording") }
+        assertNull(depthModelOf(garbled, ID, ScanScope.Object, null, null, onRecording = { released++ }))
+        assertEquals(0, released)
+        assertNull(depthModelOf(null, ID, ScanScope.Object, null, null))
+        assertNull(depthModelOf(store(recording = true), null, ScanScope.Object, null, null))
+    }
+
+    @Test
+    fun `a live TSDF let go gives way to its surfels, kept otherwise`() {
+        val live = RerunModelSource.Live(RerunTsdf(), cloud)
+        assertSame(live, live.usable())
+        live.release()
+        assertTrue(live.usable() is RerunModelSource.Surfels)
+        assertNull(RerunModelSource.Live(RerunTsdf(), null).apply { release() }.usable())
+    }
+
+    @Test
+    fun `a surface over the cap is simplified to it, one under it is left alone`() {
+        val small = RerunMesh(FloatArray(9), FloatArray(9), IntArray(3), intArrayOf(0, 1, 2))
+        assertSame(small, capped(small))
+    }
+
+    @Test
+    fun `close replays respect the recorded range while rooms keep their sure range`() {
+        val pose = DebugPose(0f, 0f, 0f, 0f, 0f, 0f, 1f)
+        val planes = listOf(1_000, 2_000).flatMap { depth ->
+            List(3) {
+                DepthFrame(
+                    32, 32, ShortArray(32 * 32) { depth.toShort() },
+                    ByteArray(32 * 32) { -1 }, IntArray(32 * 32) { GREY },
+                    32f, 32f, 15.5f, 15.5f, pose,
+                )
+            }
+        }
+        val empty = DenseCloud(FloatArray(0), IntArray(0))
+        for (farM in listOf(ScanPreset.OBJECT.farM, 2.5f)) {
+            val header = HEADER.copy(farM = farM)
+            for (scope in listOf(ScanScope.Object, ScanScope.Space, ScanScope.Room)) {
+                val store = store(recording = true, header = header, recordedFrames = planes)
+                val model = checkNotNull(depthModelOf(store, ID, scope, empty, null))
+                val mesh = checkNotNull(RerunGlbMesh.read(model.glb))
+                assertTrue("near surface missing", mesh.positions.indices.any { it % 3 == 2 && mesh.positions[it] in -1.05f..-0.95f })
+                val hasFar = mesh.positions.indices.any { it % 3 == 2 && mesh.positions[it] < -1.9f }
+                assertEquals("$scope with recorded farM=$farM", scope.preset != ScanPreset.OBJECT || farM > 2f, hasFar)
+            }
+        }
+    }
+
+    @Test
+    fun `an object big enough to be filled keeps its model, not the fused surface`() {
+        assertEquals(ResultKind.Model, resultKindOf(ScanScope.Object, hasRecording = true, standsAsRoom = false, objectFilled = true))
+        assertEquals(ResultKind.DepthModel, resultKindOf(ScanScope.Object, hasRecording = true, standsAsRoom = false, objectFilled = false))
+        // Only an object: a filled verdict says nothing of another scope.
+        assertEquals(ResultKind.DepthModel, resultKindOf(ScanScope.Space, hasRecording = true, standsAsRoom = false, objectFilled = true))
+        val store = store(recording = true)
+        assertNull(depthModelOf(store, ID, ScanScope.Object, null, null, objectFilled = true))
+        assertFalse("nothing fused for it", store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        // A surface kept before for it is not what it opens on either.
+        checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null))
+        assertNull(depthModelOf(store, ID, ScanScope.Object, null, null, objectFilled = true))
+    }
+
+    @Test
+    fun `a surface or a shell kept by an earlier version is built again, not read back`() {
+        val store = store(recording = true)
+        val older = checkNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null)).glb
+        // What the version before this one kept: never opened on, fused again and kept anew.
+        store.saveDepthModel(ID, older, DEPTH_MODEL_VERSION - 1)
+        assertFalse(store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        var fusedAgain = 0
+        checkNotNull(depthModelOf(store, ID, ScanScope.Object, null, null, onRecording = { fusedAgain++ }))
+        assertEquals("fused again", 1, fusedAgain)
+        assertTrue(store.hasDepthModel(ID, DEPTH_MODEL_VERSION))
+        // A shell kept by an earlier version is not what a room opens on either.
+        store.saveRoomShell(ID, older, DenseCloud(FloatArray(0), IntArray(0)), ROOM_SHELL_VERSION - 1)
+        assertNull(runBlocking { roomShellOf(store, ID, input = null) {} })
+    }
+
+    @Test
+    fun `an object's surface is cropped to its box, what it stands on left out`() {
+        // The fixture's box, as ScanSubject finds it: 60 cm a side on the floor.
+        val box = ScanBox(centerX = 0.5f, centerZ = 0f, baseY = 0f, yaw = 0f, length = 0.6f, depth = 0.6f, height = 0.6f)
+        val whole = checkNotNull(RerunGlbMesh.read(checkNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null)).glb))
+        val model = checkNotNull(depthModelOf(store(recording = true), ID, ScanScope.Object, null, null, subject = box))
+        val mesh = checkNotNull(RerunGlbMesh.read(model.glb))
+        assertTrue("${mesh.triangleCount} of ${whole.triangleCount} triangles", mesh.triangleCount in 1 until whole.triangleCount)
+        val p = mesh.positions
+        for (v in 0 until mesh.vertexCount) {
+            val x = p[v * 3]
+            val y = p[v * 3 + 1]
+            val z = p[v * 3 + 2]
+            assertTrue("($x, $y, $z) is not the box's", x in 0.1f..0.9f && z in -0.4f..0.4f && y in -0.05f..0.7f)
+        }
+        // The floor it stands on is gone: no triangle lies flat on it.
+        val onFloor = (0 until mesh.triangleCount).count { t -> (0 until 3).all { p[mesh.indices[t * 3 + it] * 3 + 1] < 0.01f } }
+        assertEquals("floor triangles kept", 0, onFloor)
+    }
+
+    @Test
+    fun `an object's crop drops the plane it stands on, never its own low parts`() {
+        val positions = ArrayList<Float>()
+        val normals = ArrayList<Float>()
+        val indices = ArrayList<Int>()
+        fun sheet(o: FloatArray, u: FloatArray, v: FloatArray, nu: Int, nv: Int, n: FloatArray) {
+            val base = positions.size / 3
+            for (j in 0..nv) for (i in 0..nu) {
+                for (k in 0 until 3) positions += o[k] + u[k] * i + v[k] * j
+                normals += n.toList()
+            }
+            for (j in 0 until nv) for (i in 0 until nu) {
+                val a = base + j * (nu + 1) + i
+                indices += listOf(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2)
+            }
+        }
+        val step = 0.01f
+        val up = floatArrayOf(0f, 1f, 0f)
+        // The floor it stands on, and a noisy patch of it 2 cm up, beside the shoe.
+        sheet(floatArrayOf(-0.5f, 0f, -0.5f), floatArrayOf(0.05f, 0f, 0f), floatArrayOf(0f, 0f, 0.05f), 20, 20, up)
+        sheet(floatArrayOf(-0.19f, 0.02f, 0.06f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 6, 2, up)
+        // A shoe, 30 × 10 × 12 cm: its sides down to the floor, its sole facing down 5 mm over it.
+        sheet(floatArrayOf(-0.15f, 0f, -0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 30, 12, floatArrayOf(0f, 0f, -1f))
+        sheet(floatArrayOf(-0.15f, 0f, 0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 30, 12, floatArrayOf(0f, 0f, 1f))
+        sheet(floatArrayOf(-0.15f, 0.12f, -0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 30, 10, up)
+        sheet(floatArrayOf(-0.15f, 0.005f, -0.05f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 30, 10, floatArrayOf(0f, -1f, 0f))
+        val count = positions.size / 3
+        val mesh = RerunMesh(positions.toFloatArray(), normals.toFloatArray(), IntArray(count) { GREY }, indices.toIntArray())
+        val box = ScanBox(centerX = 0f, centerZ = 0f, baseY = 0f, yaw = 0f, length = 0.3f, depth = 0.1f, height = 0.12f)
+        val cropped = checkNotNull(cropToSubject(mesh, box))
+        val p = cropped.positions
+        val n = cropped.normals
+        var lowSide = 0
+        var sole = 0
+        var support = 0
+        for (t in 0 until cropped.triangleCount) {
+            val v = IntArray(3) { cropped.indices[t * 3 + it] }
+            val y = v.sumOf { p[it * 3 + 1].toDouble() } / 3
+            val ny = v.sumOf { n[it * 3 + 1].toDouble() } / 3
+            when {
+                ny > 0.9 && y < 0.05 -> support++
+                ny < -0.9 -> sole++
+                kotlin.math.abs(ny) < 0.1 && y < 0.02 -> lowSide++
+            }
+        }
+        assertEquals("support faces kept", 0, support)
+        assertTrue("the sole is gone: $sole", sole > 0)
+        assertTrue("the sides' foot is gone: $lowSide", lowSide > 0)
+    }
+
+    @Test
+    fun `a low object with no support seen round it is cut nowhere`() {
+        val positions = ArrayList<Float>()
+        val normals = ArrayList<Float>()
+        val indices = ArrayList<Int>()
+        fun sheet(o: FloatArray, u: FloatArray, v: FloatArray, nu: Int, nv: Int, n: FloatArray) {
+            val base = positions.size / 3
+            for (j in 0..nv) for (i in 0..nu) {
+                for (k in 0 until 3) positions += o[k] + u[k] * i + v[k] * j
+                normals += n.toList()
+            }
+            for (j in 0 until nv) for (i in 0 until nu) {
+                val a = base + j * (nu + 1) + i
+                indices += listOf(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2)
+            }
+        }
+        val step = 0.01f
+        // A box 6 cm high, its floor never meshed: only its top and sides.
+        sheet(floatArrayOf(-0.1f, 0.06f, -0.1f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, 0f, step), 20, 20, floatArrayOf(0f, 1f, 0f))
+        sheet(floatArrayOf(-0.1f, 0f, -0.1f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 20, 6, floatArrayOf(0f, 0f, -1f))
+        sheet(floatArrayOf(-0.1f, 0f, 0.1f), floatArrayOf(step, 0f, 0f), floatArrayOf(0f, step, 0f), 20, 6, floatArrayOf(0f, 0f, 1f))
+        val count = positions.size / 3
+        val mesh = RerunMesh(positions.toFloatArray(), normals.toFloatArray(), IntArray(count) { GREY }, indices.toIntArray())
+        val box = ScanBox(centerX = 0f, centerZ = 0f, baseY = 0f, yaw = 0f, length = 0.2f, depth = 0.2f, height = 0.06f)
+        val cropped = checkNotNull(cropToSubject(mesh, box))
+        assertEquals("top and sides kept whole", mesh.triangleCount, cropped.triangleCount)
+    }
+
+    /** A store holding session [ID], with the synthetic room's depth recording when [recording]. */
+    private fun store(recording: Boolean, header: ScanDepthHeader = HEADER, recordedFrames: List<DepthFrame> = frames): RerunSessionStore {
+        val store = RerunSessionStore(folder.newFolder())
+        val dir = store.directoryOf(ID).apply { mkdirs() }
+        File(dir, RerunSessionStore.INFO).writeText("{}")
+        if (recording) {
+            File(dir, ScanDepthFormat.FILE).outputStream().buffered().use { out ->
+                out.write(ScanDepthFormat.header(header))
+                recordedFrames.forEachIndexed { i, f ->
+                    // A second apart: the guard the fused surface runs again reads a turn between stops, not a slip.
+                    val nanos = i * FRAME_NANOS
+                    out.write(ScanDepthFormat.encode(RecordedDepthFrame(nanos, nanos, PoseStep.Continuous, 128, f, f.pose, 0f, null)))
+                }
+            }
+        }
+        return store
+    }
+
+    private companion object {
+        const val ID = "scan"
+        const val FRAME_NANOS = 1_000_000_000L
+        const val MIN_TRIANGLES = 5_000
+        const val FLOOR_M = 0.05f
+        const val GROUND_POINTS = 1_600
+        const val GREY = 0xFF808080.toInt()
+        const val WALL = 0xFFE8E2D6.toInt()
+        const val BOX = 0xFF4F6D8A.toInt()
+        val HEADER = ScanDepthHeader(maxPoints = 200_000, maxLevel = DenseFusion.MAX_LEVEL, farM = 5f, voxelM = DenseFusion.VOXEL_M)
+
+        val scene = SyntheticScene(
+            listOf(
+                SyntheticShape.Room(RerunSyntheticRoom.MIN, RerunSyntheticRoom.MAX) { _, _, _ -> WALL },
+                SyntheticShape.Box(Vec3(0.2f, 0f, -0.3f), Vec3(0.8f, 0.6f, 0.3f)) { _, _, _ -> BOX },
+            ),
+        )
+
+        /** One stop's turn: enough of the room for a surface, quick to fuse. */
+        val frames: List<DepthFrame> by lazy {
+            RerunSyntheticRoom.poses(yawSteps = 12).map { pose: DebugPose ->
+                val f = scene.render(pose)
+                DepthFrame(f.width, f.height, f.depthMm, ByteArray(f.width * f.height) { -1 }, f.colors, f.fx, f.fy, f.cx, f.cy, f.pose)
+            }
+        }
+        val cloud: DenseCloud by lazy {
+            val fusion = DenseFusion()
+            frames.forEach { fusion.add(DepthBackProjection.project(it)) }
+            fusion.cloud(minViews = DenseFusion.MIN_VIEWS)
+        }
+    }
+}

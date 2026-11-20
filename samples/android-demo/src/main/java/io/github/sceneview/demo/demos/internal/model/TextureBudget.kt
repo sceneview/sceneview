@@ -13,9 +13,9 @@ import com.google.android.filament.Texture
  *   comes down to [BASE]'s, so the photos' bytes stay bounded whatever the recording holds.
  * - [atlasSize]: the atlas's longest side at most.
  *
- * The recorder keeps a handful of sharp photos at 960 pixels on their long side and the rest at
- * 320 ([io.github.sceneview.demo.demos.internal.ScanPhotoPolicy]). Under [BASE], the sharp ones
- * come down to the others' size; under [LARGE], they are kept whole.
+ * The recorder keeps photos at up to 640 pixels on their long side
+ * ([io.github.sceneview.demo.demos.internal.ScanPhotoPolicy]). Under [BASE], they come down to
+ * 100k pixels for small heaps; under [LARGE], they stay whole while the total fits 15M pixels.
  */
 internal data class TextureBudget(
     val photoPixels: Long,

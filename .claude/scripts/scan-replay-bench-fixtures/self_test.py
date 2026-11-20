@@ -69,6 +69,9 @@ def run_tests(bench, out):
             self.assertEqual(result["outside_elements"], 7)
             self.assertEqual(result["ar_seconds"], 3)
             self.assertEqual((result["fatals"], result["anrs"]), (1, 2))
+            self.assertEqual((result["depth_model"]["segments"], result["depth_model"]["segment_chosen"]), (2, 1))
+            self.assertEqual(result["depth_model"]["slab"]["pieces_before"], 3)
+            self.assertIsNone(bench.parse_logcat("", 100)["depth_model"])
             self.assertIsNone(bench.parse_logcat("", None)["fatals"])
             self.assertIsNone(bench.parse_logcat("", 100)["ar_fps_mean"])
             null_last = '1794500110.900 1 1 I ScanBench: {"schema":2,"outside_elements":null}\n'

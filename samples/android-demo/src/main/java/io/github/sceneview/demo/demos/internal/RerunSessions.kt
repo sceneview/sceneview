@@ -27,8 +27,17 @@ import java.util.zip.CRC32
 /**
  * A capture as the recorder writes it: its manifest, its log in the Rerun bridge's wire format,
  * and its photos packed in one archive the manifest indexes. Byte for byte what is on disk.
+ *
+ * A scan just recorded may also carry its raw depth, recorded to a temp file ([depth],
+ * [ScanDepthFormat]): the store moves it into the session as `capture-depth.bin`. It is not part
+ * of the pack's bytes — never read into memory, never in a `.svscan`, ignored by [equals].
  */
-class RerunCapturePack(val manifest: ByteArray, val log: ByteArray, val media: ByteArray) {
+class RerunCapturePack(
+    val manifest: ByteArray,
+    val log: ByteArray,
+    val media: ByteArray,
+    val depth: File? = null,
+) {
     override fun equals(other: Any?): Boolean = other is RerunCapturePack &&
         manifest.contentEquals(other.manifest) && log.contentEquals(other.log) && media.contentEquals(other.media)
 
@@ -295,6 +304,7 @@ class RerunSessionStore(val root: File) {
         val dir = directoryOf(session.id)
         dir.mkdirs()
         for ((name, bytes) in capture.files()) writeAtomically(File(dir, name), bytes)
+        capture.depth?.let { keepDepth(it, File(dir, ScanDepthFormat.FILE)) }
         opened.firstPhoto()?.let { runCatching { writeAtomically(File(dir, THUMBNAIL), it) } }
         model?.let { writeModel(dir, it) }
         writeAtomically(File(dir, INFO), session.toJson().toByteArray())
@@ -325,6 +335,70 @@ class RerunSessionStore(val root: File) {
             RerunScanModel.parse(info, glb)
         }.getOrNull()
     }
+
+    /**
+     * Keeps a room's shell as session [id]'s, next to its capture: `room.glb`, its object points
+     * (`room-objects.svpc`, [SvpcCodec]; none when its furniture is a mesh in the `.glb`), then
+     * `room.json`, so a shell only reads back whole.
+     *
+     * @throws IllegalStateException when the session is gone, or a file does not write.
+     */
+    fun saveRoomShell(id: String, glb: ByteArray, objects: DenseCloud, version: Int) {
+        val dir = directoryOf(id)
+        check(File(dir, INFO).isFile) { "No session $id" }
+        File(dir, ROOM_INFO).delete()
+        writeAtomically(File(dir, ROOM_GLB), glb)
+        writeAtomically(File(dir, ROOM_OBJECTS), SvpcCodec.encode(objects))
+        writeAtomically(File(dir, ROOM_INFO), "{\"version\":$version}".toByteArray())
+    }
+
+    /**
+     * Session [id]'s room shell — its `.glb` and its object points — when one of [version] is kept;
+     * `null` otherwise, and the result builds it again.
+     */
+    fun roomShell(id: String, version: Int): Pair<ByteArray, DenseCloud>? {
+        val dir = directoryOf(id)
+        return runCatching {
+            val info = File(dir, ROOM_INFO).takeIf { it.isFile }?.readText() ?: return null
+            val kept = (Json.parseToJsonElement(info) as? JsonObject)?.get("version")?.let { (it as? JsonPrimitive)?.intOrNull }
+            if (kept != version) return null
+            val glb = File(dir, ROOM_GLB).takeIf { it.isFile }?.readBytes() ?: return null
+            val objects = File(dir, ROOM_OBJECTS).takeIf { it.isFile }?.readBytes()?.let { SvpcCodec.decode(it) } ?: return null
+            glb to objects
+        }.getOrNull()
+    }
+
+    /**
+     * Keeps the surface fused from session [id]'s depth recording (`depth-model.glb`), then
+     * `depth-model.json` with its [version], so it only reads back whole.
+     *
+     * @throws IllegalStateException when the session is gone, or a file does not write.
+     */
+    fun saveDepthModel(id: String, glb: ByteArray, version: Int) {
+        val dir = directoryOf(id)
+        check(File(dir, INFO).isFile) { "No session $id" }
+        File(dir, DEPTH_MODEL_INFO).delete()
+        writeAtomically(File(dir, DEPTH_MODEL_GLB), glb)
+        writeAtomically(File(dir, DEPTH_MODEL_INFO), "{\"version\":$version}".toByteArray())
+    }
+
+    /** Session [id]'s surface fused from its depth when one of [version] is kept; `null` otherwise. */
+    fun depthModel(id: String, version: Int): ByteArray? = runCatching {
+        if (!hasDepthModel(id, version)) return null
+        File(directoryOf(id), DEPTH_MODEL_GLB).takeIf { it.isFile }?.readBytes()
+    }.getOrNull()
+
+    /** Whether session [id] keeps a surface fused from its depth, of [version]: its result opens on it at once. */
+    fun hasDepthModel(id: String, version: Int): Boolean = runCatching {
+        val info = File(directoryOf(id), DEPTH_MODEL_INFO).takeIf { it.isFile }?.readText() ?: return false
+        (Json.parseToJsonElement(info) as? JsonObject)?.get("version")?.let { (it as? JsonPrimitive)?.intOrNull } == version
+    }.getOrDefault(false)
+
+    /** Whether session [id] keeps a room shell of [version]: its result opens on it at once. */
+    fun hasRoomShell(id: String, version: Int): Boolean = runCatching {
+        val info = File(directoryOf(id), ROOM_INFO).takeIf { it.isFile }?.readText() ?: return false
+        (Json.parseToJsonElement(info) as? JsonObject)?.get("version")?.let { (it as? JsonPrimitive)?.intOrNull } == version
+    }.getOrDefault(false)
 
     /** Renames session [id] to [title] (trimmed); `null` when it is gone or [title] is blank. */
     fun rename(id: String, title: String): RerunStoredSession? {
@@ -428,6 +502,22 @@ class RerunSessionStore(val root: File) {
         }
     }
 
+    /**
+     * Moves a scan's depth recording ([ScanDepthFormat]) into its session: a rename on the same
+     * storage, a copy otherwise. Its raw depth is for replaying the fusion off the phone, never
+     * what the scan needs to open: one that does not move is left out, and the save goes on.
+     */
+    private fun keepDepth(recording: File, target: File) {
+        if (!recording.isFile) return
+        runCatching {
+            if (!recording.renameTo(target)) {
+                val partial = File(target.parentFile, target.name + PARTIAL)
+                recording.copyTo(partial, overwrite = true)
+                if (partial.renameTo(target)) recording.delete() else partial.delete()
+            }
+        }
+    }
+
     private fun writeAtomically(target: File, bytes: ByteArray) {
         val partial = File(target.parentFile, target.name + PARTIAL)
         partial.writeBytes(bytes)
@@ -444,6 +534,13 @@ class RerunSessionStore(val root: File) {
         /** The scan's result, [RerunScanModel]: its `.glb`, and what it is (written last). */
         const val MODEL_GLB = "model.glb"
         const val MODEL_INFO = "model.json"
+
+        /** A room's shell ([io.github.sceneview.demo.demos.internal.room.RoomShell]): its `.glb`, its object points, and its version (written last). */
+        const val ROOM_GLB = "room.glb"
+        const val ROOM_OBJECTS = "room-objects.svpc"
+        const val ROOM_INFO = "room.json"
+        const val DEPTH_MODEL_GLB = "depth-model.glb"
+        const val DEPTH_MODEL_INFO = "depth-model.json"
 
         /** An imported session's source file: the lowercase hex SHA-256 of its bytes. */
         const val SOURCE_HASH = "source.sha256"
