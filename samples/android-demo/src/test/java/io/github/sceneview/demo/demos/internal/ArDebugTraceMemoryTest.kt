@@ -55,7 +55,7 @@ class ArDebugTraceMemoryTest {
     }
 
     @Test
-    fun `many large observations bound their actual indices and clear releases the trace`() {
+    fun `many large observations bound their actual indices`() {
         val trace = ArDebugTrace().apply { journal = emptyList() }
         val points = FloatArray(ArDebugTrace.MAX_MAP_POINTS * 3) { (it / 3) * 0.04f }
         repeat(300) {
@@ -66,12 +66,6 @@ class ArDebugTraceMemoryTest {
         }
         assertTrue(observationBytes(trace) <= ArDebugTrace.MAX_OBSERVATION_BYTES)
         assertTrue(trace.observationCount <= ArDebugTrace.MAX_OBSERVATIONS)
-        trace.clear()
-        assertTrue(trace.isEmpty)
-        assertEquals(0, trace.mapPointCount)
-        assertEquals(0, trace.observationCount)
-        assertEquals(0L, trace.journalBytes)
-        assertEquals(0, trace.frameAt(0f).mapPoints.size)
     }
 
     private fun observationBytes(trace: ArDebugTrace): Long =

@@ -140,7 +140,10 @@ class ArDebugFrame(
  * are merged into a [POINT_VOXEL_M] voxel map capped at [MAX_MAP_POINTS]; planes and anchors keep
  * one snapshot per change.
  */
-class ArDebugTrace(private val onJournalCap: () -> Unit = {}) {
+class ArDebugTrace(
+    private val journalMaxBytes: Long = ArDebugJournal.MAX_BYTES,
+    private val onJournalCap: () -> Unit = {},
+) {
     private var originNanos = Long.MIN_VALUE
 
     private var poseTimes = FloatArray(256)
@@ -183,7 +186,7 @@ class ArDebugTrace(private val onJournalCap: () -> Unit = {}) {
         get() = eventJournal
         set(value) {
             eventJournal = value?.let { events ->
-                ArDebugJournal(onJournalCap).also { bounded -> events.forEach(bounded::append) }
+                ArDebugJournal(journalMaxBytes, onJournalCap).also { bounded -> events.forEach(bounded::append) }
             }
         }
     private var eventJournal: ArDebugJournal? = null
@@ -400,38 +403,6 @@ class ArDebugTrace(private val onJournalCap: () -> Unit = {}) {
         }
         observations.subList(out, observations.size).clear()
         observationTimes.subList(out, observationTimes.size).clear()
-    }
-
-    /** Releases a closed capture's arrays even if a former live-media reader still holds it. */
-    fun clear() {
-        journal = null
-        originNanos = Long.MIN_VALUE
-        poses.clear()
-        poseTimes = FloatArray(256)
-        pointXyz = FloatArray(3 * 1024)
-        pointFirstSeen = FloatArray(1024)
-        pointColors = IntArray(1024)
-        pointCount = 0
-        hasPointColors = false
-        voxelIndex.clear()
-        observations.clear()
-        observationTimes.clear()
-        observationBytes = 0L
-        planeHistory.clear()
-        anchorHistory.clear()
-        imageTimes = FloatArray(64)
-        imagePaths.clear()
-        depthTimes = FloatArray(64)
-        depthTotals = IntArray(64)
-        depthCount = 0
-        floorCellTimes = FloatArray(64)
-        floorCellKeys = LongArray(64)
-        floorCellCount = 0
-        floorCellSet.clear()
-        cutoff = null
-        pointConfidence = null
-        duration = 0f
-        version++
     }
 
     /** Adds a snapshot of plane [id]. An empty [polygon] records that the plane went away. */

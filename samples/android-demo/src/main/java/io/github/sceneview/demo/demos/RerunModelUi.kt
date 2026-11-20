@@ -135,6 +135,7 @@ import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanGround
 import io.github.sceneview.demo.demos.internal.ScanGroundMeshes
 import io.github.sceneview.demo.demos.internal.ScanPreset
+import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import io.github.sceneview.demo.demos.internal.ScanResultCamera
 import io.github.sceneview.demo.demos.internal.ScanResultCut
 import io.github.sceneview.demo.demos.internal.ScanResultFrame
@@ -277,10 +278,11 @@ internal sealed interface RerunModelSource {
 internal class RerunLiveModel(
     private val owner: RerunLiveModels.Owner,
     private val preset: ScanPreset = ScanPreset.ROOM,
+    budget: ScanMemoryBudget = ScanMemoryBudget(Runtime.getRuntime().maxMemory()),
 ) {
     /** The TSDF while it records; `null` once [keepFor] has handed it on, so only its slot holds it. */
     @Volatile
-    private var tsdf: RerunTsdf? = RerunTsdf(voxelM = preset.modelVoxelM)
+    private var tsdf: RerunTsdf? = RerunTsdf(voxelM = budget.modelVoxelM(preset), maxBytes = budget.tsdfBytes)
     private var transferred: java.lang.ref.WeakReference<RerunTsdf>? = null
     private val busy = AtomicBoolean(false)
 
@@ -394,14 +396,7 @@ internal object RerunLiveModels {
 internal fun rememberRerunLiveModels(): RerunLiveModels.Owner {
     val owner = remember { RerunLiveModels.Owner() }
     DisposableEffect(owner) {
-        onDispose {
-            owner.close()
-            if (BuildConfig.DEBUG) {
-                val heap = Runtime.getRuntime()
-                Log.d("SceneView/ScanMem", "demo-exit used=${heap.totalMemory() - heap.freeMemory()} " +
-                    "max=${heap.maxMemory()} liveTsdfBytes=0")
-            }
-        }
+        onDispose { owner.close() }
     }
     return owner
 }

@@ -1,11 +1,12 @@
 package io.github.sceneview.demo.demos.internal
 
 /**
- * A scan's replay journal, capped at 4 MiB including conservative object/array overhead.
+ * A scan's replay journal, capped at [maxBytes] (at most 4 MiB in live capture), including
+ * conservative object/array overhead. [ScanMemoryBudget] accounts for it beside both maps.
  * A coloured observation of 1,000 points costs about 16 KiB (xyz floats + ARGB ints); at
  * the recorder's 5 Hz a 406-second scan would otherwise retain about 31 MiB, beside a
- * 48 MiB TSDF and the dense map. A pose costs about 112 bytes including its seven-float
- * [DebugPose]: another 1.3 MiB at 30 Hz. The journal therefore gets only 4 MiB on a 256 MiB heap.
+ * TSDF and the dense map. A pose costs about 112 bytes including its seven-float
+ * [DebugPose]: another 1.3 MiB at 30 Hz. The journal gets only 4 MiB on a 256 MiB heap.
  *
  * At the cap, halve camera/point observations across the timeline, keeping the first/last of
  * each and the camera poses used by photos. Photos, planes, depth counts and floor cells
@@ -15,7 +16,13 @@ package io.github.sceneview.demo.demos.internal
  * detail), rather than stopping recording or keeping only its last seconds. [onCap] fires
  * once per journal. No Android dependencies: live capture supplies the log callback.
  */
-class ArDebugJournal(private val onCap: () -> Unit = {}) : AbstractList<ArDebugEvent>() {
+class ArDebugJournal(
+    val maxBytes: Long = MAX_BYTES,
+    private val onCap: () -> Unit = {},
+) : AbstractList<ArDebugEvent>() {
+    init {
+        require(maxBytes > 0) { "maxBytes $maxBytes" }
+    }
     private val events = ArrayList<ArDebugEvent>()
     var bytes: Long = 0L
         private set
@@ -27,13 +34,13 @@ class ArDebugJournal(private val onCap: () -> Unit = {}) : AbstractList<ArDebugE
 
     fun append(event: ArDebugEvent) {
         val cost = bytesOf(event)
-        if (bytes + cost > MAX_BYTES) {
+        if (bytes + cost > maxBytes) {
             if (!capped) {
                 capped = true
                 onCap()
             }
-            if (cost > MAX_BYTES) return
-            while (bytes + cost > MAX_BYTES && events.isNotEmpty()) {
+            if (cost > maxBytes) return
+            while (bytes + cost > maxBytes && events.isNotEmpty()) {
                 val before = bytes
                 thin(observationsOnly = true)
                 if (bytes == before) thin(observationsOnly = false)

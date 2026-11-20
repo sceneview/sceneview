@@ -11,7 +11,6 @@ import com.google.ar.core.Pose
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
-import io.github.sceneview.demo.demos.internal.ArDebugJournal
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
@@ -40,6 +39,7 @@ import io.github.sceneview.demo.demos.internal.ScanCutoff
 import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
 import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.ScanPreset
+import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import io.github.sceneview.demo.demos.internal.ScanProjection
 import io.github.sceneview.demo.demos.internal.ScanSharpPicker
 import io.github.sceneview.demo.demos.internal.YuvFrame
@@ -89,10 +89,11 @@ internal class ScanCapture(
     val rawDepth: Boolean,
     /** What is scanned decides the photo spacing, the depth kept and the model's voxel (#4647). */
     val preset: ScanPreset = ScanPreset.ROOM,
+    private val budget: ScanMemoryBudget = ScanMemoryBudget(Runtime.getRuntime().maxMemory()),
 ) : AutoCloseable {
     /** The scan's trace; its journal is what [finish] saves. */
-    val trace = ArDebugTrace {
-        Log.w(MEMORY_TAG, "journal cap ${ArDebugJournal.MAX_BYTES} bytes reached; decimating scan observations")
+    val trace = ArDebugTrace(journalMaxBytes = budget.journalBytes) {
+        Log.w(MEMORY_TAG, "journal cap ${budget.journalBytes} bytes reached; decimating scan observations")
     }.apply {
         keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M
         journal = ArrayList()
@@ -120,11 +121,11 @@ internal class ScanCapture(
     // one runs is skipped, never queued, so a slow phone thins the depth instead of lagging.
     // The map keeps a whole flat or house within this phone's budget: past it, it coarsens the
     // regions the camera has left instead of dropping what is new (#4629).
-    private var dense = if (rawDepth) ScanDenseMap() else null
+    private var dense = if (rawDepth) ScanDenseMap(maxPoints = budget.densePoints) else null
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
-    private var model = if (rawDepth) RerunLiveModel(modelOwner, preset) else null
+    private var model = if (rawDepth) RerunLiveModel(modelOwner, preset, budget) else null
     private val closed = AtomicBoolean(false)
     // Which depth estimate was taken last, and how long the scan has waited for one.
     private val depthWindow = DepthWindow()
@@ -156,6 +157,11 @@ internal class ScanCapture(
 
     /** The journal [finish] took, kept so Try again rebuilds from it after a build that threw. */
     private var finishedEvents: List<ArDebugEvent>? = null
+    private var finishedBytes = 0L
+
+    /** Cleanup outlives the capture scope, which the screen cancels before calling [close]. */
+    internal var releaseJob: Job? = null
+        private set
 
     /**
      * Points the saved scan keeps so far: the HUD's count, the same figure the saved scan shows.
@@ -213,6 +219,7 @@ internal class ScanCapture(
 
     /** Whether the camera at [display] should take a photo now. */
     fun wantsPhoto(nanos: Long, display: DebugPose): Boolean {
+        if (closed.get()) return false
         // Measured on every tracked frame, so the motion between two consecutive frames is always
         // known. It only decides whether the photo is a sharp one: the cadence is the gate's alone.
         calm = photoMotion.isCalm(nanos, display)
@@ -237,6 +244,7 @@ internal class ScanCapture(
      * thumbnailed off the main thread.
      */
     fun takePhoto(nanos: Long, image: ScanImage, display: DebugPose) {
+        if (closed.get()) return
         val path = ScanArchive.photoPath(gate.count)
         val sharp = sharpPicker.nextIsSharp(calm)
         sharpPicker.accept(sharp)
@@ -288,6 +296,7 @@ internal class ScanCapture(
      * running; `null` otherwise, or without [rawDepth]. Close it this frame.
      */
     fun acquireDepth(frame: Frame): ScanDepth? {
+        if (closed.get()) return null
         depthWindow.frame(frame.timestamp)
         if (dense == null || !depthGate.isDue(frame.timestamp)) return null
         if (fusing.get()) {
@@ -370,6 +379,7 @@ internal class ScanCapture(
      * depth is let go, and counted as such.
      */
     fun fuseDepth(depth: ScanDepth, image: ScanImage?) {
+        if (closed.get()) return
         val dense = dense ?: return
         if (image == null) {
             intake.count(Outcome.NoImage)
@@ -424,6 +434,7 @@ internal class ScanCapture(
      * behind a busy fusion, so a capture resumed meanwhile never writes under the read.
      */
     suspend fun reviewCloud(): DenseCloud? {
+        if (closed.get()) return null
         val map = dense ?: return null
         while (!fusing.compareAndSet(false, true)) fuseJob?.join() ?: return null
         return try {
@@ -439,6 +450,7 @@ internal class ScanCapture(
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
      */
     suspend fun finish(): RerunCapturePack? {
+        if (closed.get()) return null
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
         model?.join()
@@ -451,7 +463,10 @@ internal class ScanCapture(
                 // the result's m² reads the cells journaled, so they go in with the rest.
                 dense?.live?.coveredCells?.takeIf { it.isNotEmpty() }?.let { trace.addFloorCells(last.nanos, it) }
             }
-            trace.journal?.toList().orEmpty().also { finishedEvents = it }
+            // The journal is already a read-only, bounded list. Transfer it without copying
+            // or walking its events; keep its running byte total for O(1) debug snapshots.
+            finishedBytes = trace.journalBytes
+            trace.journal.orEmpty().also { finishedEvents = it }
         }
         trace.journal = null
         jobs.toList().joinAll()
@@ -500,15 +515,18 @@ internal class ScanCapture(
             MEMORY_TAG,
             "$stage used=${heap.totalMemory() - heap.freeMemory()} max=${heap.maxMemory()} " +
                 "journalEvents=${trace.journal?.size ?: 0} journalBytes=${trace.journalBytes} " +
-                "finishedEvents=${events?.size ?: 0} finishedBytes=${events?.sumOf { ArDebugJournal.bytesOf(it) } ?: 0L} " +
+                "finishedEvents=${events?.size ?: 0} finishedBytes=$finishedBytes " +
                 "poses=${trace.poseCount} points=${trace.mapPointCount} observations=${trace.observationCount} " +
-                "densePoints=$denseCount",
+                "densePoints=$denseCount budgetBytes=${budget.retainedBytes} " +
+                "tsdfBudget=${budget.tsdfBytes} denseBudget=${budget.denseBytes} journalBudget=${budget.journalBytes}",
         )
     }
 
     /**
      * After discard, successful save, or detached save completion: no retry needs the journal.
-     * Call on the main thread. Workers may finish their current CPU work, but cannot refill media.
+     * Call on the main thread. Detach the large stores in O(1); media cleanup runs on Default
+     * only after the photo workers stop. Cancellation alone does not stop their CPU work.
+     * Do not clear the trace under its former live-media readers: it dies with the screen.
      * The transferred TSDF belongs to the demo's [modelOwner], through its result screen.
      */
     override fun close() = close(keepModel = false)
@@ -516,23 +534,39 @@ internal class ScanCapture(
     /** [keepModel] is true only when a successful save hands the live TSDF to its result. */
     fun close(keepModel: Boolean) {
         if (!closed.compareAndSet(false, true)) return
+        val started = System.nanoTime()
         logMemory("exit-before-release")
-        jobs.forEach { it.cancel() }
-        jobs.clear()
-        fuseJob?.cancel()
+        val depthJob = fuseJob
         fuseJob = null
         model?.close(keepTransferred = keepModel)
         model = null
         dense = null
         finishedEvents = null
-        trace.clear()
-        recordedFrames.clear()
-        poses.clear()
-        jpegs.clear()
-        thumbnails.values.forEach(Bitmap::recycle)
-        thumbnails.clear()
+        finishedBytes = 0L
+        trace.journal = null
+        // No new producers may start after closed was set. An in-flight fusion owns its local
+        // dense map until it returns; no thread mutates that map to try to free it early.
+        releaseJob = releaseScanCapture(jobs + listOfNotNull(depthJob)) {
+            val cleanupStarted = System.nanoTime()
+            jobs.clear()
+            recordedFrames.clear()
+            poses.clear()
+            jpegs.clear()
+            thumbnails.values.forEach(Bitmap::recycle)
+            thumbnails.clear()
+            logCloseTiming("close-cleanup", cleanupStarted)
+        }
+        logCloseTiming("close-detach", started)
         logMemory("exit")
     }
+
+    private fun logCloseTiming(stage: String, started: Long) {
+        if (BuildConfig.DEBUG) {
+            Log.d(MEMORY_TAG, "$stage ms=${elapsedMs(started)} thread=${Thread.currentThread().name}")
+        }
+    }
+
+    private fun elapsedMs(started: Long): Double = (System.nanoTime() - started) / NANOS_PER_MS.toDouble()
 
     private fun manifest(spans: Map<String, MediaSpan>) = ReplayManifest(
         lens = lens,
@@ -581,6 +615,19 @@ internal class ScanCapture(
         private const val MAX_IN_FLIGHT = 3
     }
 }
+
+/** Cancellation does not interrupt CPU codecs/fusion. Join before releasing their shared media. */
+internal fun releaseScanCapture(workers: List<Job>, cleanup: () -> Unit): Job =
+    CoroutineScope(Dispatchers.Default).launch {
+        val started = System.nanoTime()
+        workers.forEach { it.cancel() }
+        workers.joinAll()
+        if (BuildConfig.DEBUG) {
+            Log.d("SceneView/ScanMem", "close-workers ms=${(System.nanoTime() - started) / 1_000_000.0} " +
+                "thread=${Thread.currentThread().name}")
+        }
+        cleanup()
+    }
 
 /**
  * ARCore's camera image for one frame, read in place, with the pose of the camera that took it.

@@ -107,7 +107,7 @@ class RerunScanMemoryTest {
     }
 
     @Test
-    fun `exit releases the retry journal trace and live dense reader and logs empty retained data`() = runBlocking {
+    fun `exit releases the retry journal and dense reader without clearing the trace under readers`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val owner = RerunLiveModels.Owner()
         val capture = ScanCapture(
@@ -121,6 +121,7 @@ class RerunScanMemoryTest {
         try {
             capture.trace.addPose(0L, DebugPose(0f, 0f, 0f))
             capture.trace.addPoints(0L, floatArrayOf(0f, 0f, -1f))
+            val reader = capture.trace
             capture.logMemory("start")
             assertTrue(capture.finish() != null)
             capture.logMemory("periodic")
@@ -131,15 +132,19 @@ class RerunScanMemoryTest {
             }
             capture.close()
             capture.close()
-            assertTrue(capture.trace.isEmpty)
-            assertEquals(0, capture.trace.observationCount)
+            capture.releaseJob?.join()
+            assertEquals(1, reader.mapPointCount)
+            assertEquals(1, reader.observationCount)
             assertNull(capture.trace.journal)
             assertNull(capture.live.liveDense?.invoke())
             if (BuildConfig.DEBUG) {
-                val exit = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
+                val logs = ShadowLog.getLogsForTag("SceneView/ScanMem").map { it.msg }
+                val exit = logs.last { it.startsWith("exit used=") }
                 assertTrue(exit, exit.startsWith("exit used="))
                 assertTrue(exit, exit.contains(" max="))
                 assertTrue(exit, exit.contains("journalEvents=0 journalBytes=0 finishedEvents=0 finishedBytes=0"))
+                assertTrue(logs.any { it.startsWith("close-detach ms=") })
+                assertTrue(logs.any { it.startsWith("close-cleanup ms=") && it.contains("DefaultDispatcher-worker") })
             }
         } finally {
             capture.close()

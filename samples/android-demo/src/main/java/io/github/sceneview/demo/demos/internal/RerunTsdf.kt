@@ -62,6 +62,8 @@ class RerunTsdf(
         private set
 
     val bytes: Long get() = blockCount.toLong() * BYTES_PER_BLOCK
+    /** Retained blocks and indexing, including conservative array/list overhead. */
+    internal val storageBytes: Long get() = bytes + keys.size * 8L + index.storageBytes + blockCount * 32L + 1024L
     val budgetReached: Boolean get() = droppedBlocks > 0
 
     // The last block [update] wrote into: neighbouring updates mostly land in the same one.
@@ -419,6 +421,8 @@ class RerunTsdf(
 class LongIntMap(initialSlots: Int = 1 shl 12) {
     private var keys = LongArray(initialSlots) { EMPTY }
     private var values = IntArray(initialSlots)
+
+    internal val storageBytes: Long get() = keys.size * 12L + 48L
 
     var size: Int = 0
         private set
