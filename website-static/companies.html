@@ -274,6 +274,11 @@
       background: rgba(22, 163, 74, 0.1);
     }
 
+    .companies-status--eol {
+      color: var(--color-on-surface-variant);
+      background: var(--color-surface-container-highest);
+    }
+
     .companies-status--alpha {
       color: var(--color-status-alpha);
       background: rgba(124, 58, 237, 0.1);
@@ -436,7 +441,7 @@
       <div class="companies-glance__item" role="listitem">
         <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">devices</span>
         <span class="companies-glance__value">Android stable</span>
-        <span class="companies-glance__label">iOS, web and the cross-platform bridges are alpha.</span>
+        <span class="companies-glance__label">Web and desktop are Alpha. SwiftUI, Flutter and React Native are end of life at 4.68.0.</span>
       </div>
       <div class="companies-glance__item" role="listitem">
         <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">update</span>
@@ -491,7 +496,7 @@
 
       <section id="platforms" aria-labelledby="platforms-title">
         <h2 id="platforms-title"><span class="material-symbols-outlined" aria-hidden="true">devices</span>Platforms and maturity</h2>
-        <p>Only Android is marked stable today. Alpha platforms ship and are usable, with fewer guarantees: their APIs may still change between 4.x releases.</p>
+        <p>Android (Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. SwiftUI (iOS, macOS, visionOS), Flutter and React Native are end of life. 4.68.0 (November 2026) is the last release. No new releases. <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">DEPRECATION.md</a>.</p>
         <div class="companies-table-wrap">
           <table class="companies-table">
             <thead>
@@ -500,11 +505,11 @@
             <tbody>
               <tr><td>Android</td><td><span class="companies-status companies-status--stable">Stable</span></td><td>Jetpack Compose, Filament, ARCore. API 24+, OpenGL ES 3.0.</td></tr>
               <tr><td>Android TV</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose TV, Filament.</td></tr>
-              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
+              <tr><td>iOS, macOS, visionOS</td><td><span class="companies-status companies-status--eol">End of life at 4.68.0</span></td><td>SwiftUI, RealityKit. iOS 18, macOS 15, visionOS 2.</td></tr>
               <tr><td>Web</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Filament.js on WebGL2 / WASM.</td></tr>
               <tr><td>Compose Multiplatform</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Viewer subset, no AR.</td></tr>
               <tr><td>Desktop (JVM)</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Compose Desktop, Filament.</td></tr>
-              <tr><td>Flutter, React Native</td><td><span class="companies-status companies-status--alpha">Alpha</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
+              <tr><td>Flutter, React Native</td><td><span class="companies-status companies-status--eol">End of life at 4.68.0</span></td><td>Native bridges to the Android and Apple SDKs.</td></tr>
             </tbody>
           </table>
         </div>
@@ -513,7 +518,7 @@
 
       <section id="releases" aria-labelledby="releases-title">
         <h2 id="releases-title"><span class="material-symbols-outlined" aria-hidden="true">update</span>Release cadence</h2>
-        <p><strong>SceneView ships every week.</strong> Android artifacts are published on Maven Central, the web and React Native packages on npm, the Flutter plugin on pub.dev and the Apple package through Swift Package Manager.</p>
+        <p><strong>SceneView ships every week.</strong> Android and Compose Multiplatform artifacts are published on Maven Central, and the web package on npm. SwiftUI, Flutter and React Native have no new releases after 4.68.0.</p>
         <p class="companies-source">Full history: <a href="https://github.com/sceneview/sceneview/releases" target="_blank" rel="noopener">GitHub releases</a> and the <a href="https://github.com/sceneview/sceneview/blob/main/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.</p>
       </section>
 

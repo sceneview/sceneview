@@ -332,6 +332,7 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.claude/scripts/sync-versions.sh'
               - '.claude/scripts/test-sync-versions-agent-rules.sh'
+              - '.claude/scripts/test-sync-versions-eol.sh'
               - 'gradle.properties'
               - '.cursorrules'
               - '.windsurfrules'
@@ -511,6 +512,9 @@ jobs:
 
       - name: Check agent-rule Maven pins and self-test version sync
         run: bash .claude/scripts/test-sync-versions-agent-rules.sh
+
+      - name: Check retired package pins and exact SwiftPM rules
+        run: bash .claude/scripts/test-sync-versions-eol.sh
 
   # Offline tests for the notes users see on Google Play, with no Gradle setup.
   play-store-scripts:

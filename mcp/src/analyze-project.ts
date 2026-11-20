@@ -2,7 +2,7 @@
  * analyze-project — local filesystem scan of a SceneView project.
  *
  * Because the SceneView MCP server runs on the user's machine, we can read
- * their project files directly: detect the platform (Android / iOS / Web),
+ * their project files directly: detect Android, Apple, Web, Flutter or React Native,
  * extract the SceneView dependency version, compare against the latest known
  * release, and scan source files for well-known anti-patterns (threading
  * violations, LightNode trailing-lambda bug, deprecated 2.x APIs, …).
@@ -34,6 +34,7 @@ import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
  * LLM that "4.0.0" was current even when the real SDK was at 4.0.9.
  */
 export const LATEST_SCENEVIEW_VERSION = LATEST_SCENEVIEW_RELEASE;
+const LAST_RETIRED_PLATFORM_VERSION = "4.68.0";
 
 /** Hard cap on the number of source files inspected per call. */
 export const MAX_FILES_SCANNED = 30;
@@ -66,7 +67,7 @@ const SOURCE_EXTENSIONS = new Set<string>([".kt", ".kts", ".swift", ".js", ".mjs
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
-export type ProjectType = "android" | "ios" | "web" | "unknown";
+export type ProjectType = "android" | "ios" | "web" | "flutter" | "react-native" | "unknown";
 
 export interface AnalysisWarning {
   /** Absolute file path the warning was found in, or a sentinel like `<scan>`. */
@@ -91,7 +92,7 @@ export interface AnalysisResult {
   projectType: ProjectType;
   /** The extracted SceneView dependency version, or `null` if none found. */
   sceneViewVersion: string | null;
-  /** Latest version this MCP build is aware of. */
+  /** Latest version for the detected platform; retired platforms stop at 4.68.0. */
   latestVersion: string;
   /** True when {@link sceneViewVersion} is strictly older than {@link latestVersion}. */
   isOutdated: boolean;
@@ -330,8 +331,11 @@ function extractSwiftVersion(contents: string): string | null {
   return null;
 }
 
-/** Extract the `sceneview-web` version from a `package.json`. */
-function extractNpmVersion(contents: string): string | null {
+/** Extract a supported dependency version from a `package.json`. */
+function extractNpmVersion(
+  contents: string,
+  packageNames = ["sceneview-web", "@sceneview/sceneview-web"]
+): string | null {
   try {
     const pkg = JSON.parse(contents) as {
       dependencies?: Record<string, string>;
@@ -339,7 +343,7 @@ function extractNpmVersion(contents: string): string | null {
     };
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const [name, spec] of Object.entries(deps)) {
-      if (name === "sceneview-web" || name === "@sceneview/sceneview-web") {
+      if (packageNames.includes(name)) {
         // Strip leading ^ / ~ / >= etc.
         const cleaned = spec.replace(/^[^\d]*/, "");
         const match = cleaned.match(/\d+\.\d+\.\d+(?:-[\w.]+)?/);
@@ -353,6 +357,30 @@ function extractNpmVersion(contents: string): string | null {
 }
 
 async function detectProject(rootDir: string): Promise<ProjectDetection> {
+  // Detect bridges before their native host projects so their package release
+  // remains independent of the maintained Android SDK.
+  const pubspec = await tryRead(rootDir, "pubspec.yaml");
+  const flutterDependency = pubspec?.contents.match(
+    /^([ \t]+)flutter_sceneview:[ \t]*([^\n]*)(?:\n((?:\1[ \t]+[^\n]*(?:\n|$))*))?/m
+  );
+  if (pubspec && flutterDependency) {
+    const inline = flutterDependency[2].match(/^["']?[\^~>= \t]*(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
+    const nested = flutterDependency[3]?.match(/\b(?:ref|version):[ \t]*["']?v?(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
+    return {
+      projectType: "flutter",
+      sceneViewVersion: inline?.[1] ?? nested?.[1] ?? null,
+      sourceFile: pubspec.path,
+    };
+  }
+  const packageJson = await tryRead(rootDir, "package.json");
+  if (packageJson && /"@sceneview-sdk\/react-native"\s*:/.test(packageJson.contents)) {
+    return {
+      projectType: "react-native",
+      sceneViewVersion: extractNpmVersion(packageJson.contents, ["@sceneview-sdk/react-native"]),
+      sourceFile: packageJson.path,
+    };
+  }
+
   // Android: build.gradle or build.gradle.kts anywhere reachable from root.
   // We first check the root for speed, then one level down for typical module layouts.
   const androidCandidates = [
@@ -388,7 +416,6 @@ async function detectProject(rootDir: string): Promise<ProjectDetection> {
   }
 
   // Web: package.json referencing sceneview-web.
-  const packageJson = await tryRead(rootDir, "package.json");
   if (packageJson && /"(?:@sceneview\/)?sceneview-web"/.test(packageJson.contents)) {
     return {
       projectType: "web",
@@ -403,11 +430,11 @@ async function detectProject(rootDir: string): Promise<ProjectDetection> {
 // ─── Semver comparison (simple X.Y.Z) ────────────────────────────────────────
 
 /**
- * Returns `true` when `version` is strictly older than `LATEST_SCENEVIEW_VERSION`.
+ * Returns `true` when `version` is strictly older than the platform's last release.
  * Falls back to `false` (don't flag) if either side fails to parse cleanly —
  * we'd rather underreport than harass a user with a pre-release build.
  */
-function isVersionOutdated(version: string | null): boolean {
+function isVersionOutdated(version: string | null, latestVersion: string): boolean {
   if (!version) return false;
   const parse = (v: string): [number, number, number] | null => {
     const m = v.match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -415,7 +442,7 @@ function isVersionOutdated(version: string | null): boolean {
     return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
   };
   const a = parse(version);
-  const b = parse(LATEST_SCENEVIEW_VERSION);
+  const b = parse(latestVersion);
   if (!a || !b) return false;
   for (let i = 0; i < 3; i++) {
     if (a[i] < b[i]) return true;
@@ -476,7 +503,9 @@ export async function analyzeProject(input: AnalyzeProjectInput = {}): Promise<A
   const detection = await detectProject(scannedPath);
   result.projectType = detection.projectType;
   result.sceneViewVersion = detection.sceneViewVersion;
-  result.isOutdated = isVersionOutdated(detection.sceneViewVersion);
+  const retired = ["ios", "flutter", "react-native"].includes(detection.projectType);
+  result.latestVersion = retired ? LAST_RETIRED_PLATFORM_VERSION : LATEST_SCENEVIEW_VERSION;
+  result.isOutdated = isVersionOutdated(detection.sceneViewVersion, result.latestVersion);
 
   if (detection.projectType === "unknown") {
     result.warnings.push({
@@ -484,7 +513,8 @@ export async function analyzeProject(input: AnalyzeProjectInput = {}): Promise<A
       type: "scan/no-sceneview-dependency",
       message:
         "No SceneView dependency was detected. Looked for `io.github.sceneview:sceneview` in " +
-        "Gradle files, `SceneViewSwift` in `Package.swift`, and `sceneview-web` in `package.json`.",
+        "Gradle files, `SceneViewSwift` in `Package.swift`, `flutter_sceneview` in `pubspec.yaml`, " +
+        "and `sceneview-web` or `@sceneview-sdk/react-native` in `package.json`.",
     });
   } else if (!detection.sceneViewVersion) {
     result.warnings.push({
@@ -501,9 +531,13 @@ export async function analyzeProject(input: AnalyzeProjectInput = {}): Promise<A
     result.suggestions.push({
       type: "suggestion/upgrade-sceneview",
       message:
-        `You are on SceneView ${detection.sceneViewVersion}. The latest known release is ` +
-        `${LATEST_SCENEVIEW_VERSION}. Consider upgrading — run \`get_migration_guide\` for ` +
-        "the 2.x → 3.x migration notes, or `migrate_code` for automatic Kotlin rewrites.",
+        retired
+          ? `You are on SceneView ${detection.sceneViewVersion}. The last release for this ` +
+            `platform is ${result.latestVersion} (end of life; no new releases). ` +
+            "Published versions remain available for existing projects."
+          : `You are on SceneView ${detection.sceneViewVersion}. The latest known release is ` +
+            `${result.latestVersion}. Consider upgrading — run \`get_migration_guide\` for ` +
+            "the 2.x → 3.x migration notes, or `migrate_code` for automatic Kotlin rewrites.",
     });
   }
 

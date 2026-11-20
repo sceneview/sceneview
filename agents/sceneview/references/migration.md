@@ -123,7 +123,9 @@ APIs are `@ExperimentalSceneViewApi`.
    `AugmentedImageNode`, `AugmentedFaceNode`, or
    `AnchorNode(anchor = hit.createAnchor())` from a plane hit-test.
 
-## Apple parity
+## Apple parity — end of life at 4.68.0
+
+**End of life:** SceneViewSwift, Flutter and React Native: **4.68.0 (November 2026)** is the last release. No new releases. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 `SceneViewSwift` mirrors the entrypoints (`SceneView { }`, `ARSceneView { }`)
 but uses SwiftUI's `@NodeBuilder` result-builder and modifier-style

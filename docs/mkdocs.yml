@@ -1,5 +1,5 @@
 site_name: SceneView
-site_description: "SceneView: open-source 3D and AR SDK for Jetpack Compose and Android (Filament, ARCore), Kotlin and Compose Multiplatform, SwiftUI on iOS, macOS and visionOS (RealityKit, ARKit), and the web (Filament.js, WebXR). The maintained successor to Google Sceneform."
+site_description: "SceneView: open-source 3D and AR for Android (Jetpack Compose, Filament, ARCore), web, and Compose Multiplatform desktop. SwiftUI, Flutter and React Native are end of life at 4.68.0. The maintained successor to Google Sceneform."
 # The docs are deployed under /docs/ (docs.yml builds into site/docs). site_url must say so,
 # or every canonical link and docs/sitemap.xml entry points to a 404 at the site root.
 site_url: https://sceneview.github.io/docs/
@@ -60,11 +60,11 @@ nav:
   - Get Started:
     - Which 3D & AR library: 3d-ar-library.md
     - Quickstart: quickstart.md
-    - Quickstart (Apple): quickstart-ios.md
+    - Quickstart (Apple — end of life): quickstart-ios.md
     - Quickstart (Web): quickstart-web.md
     - Quickstart (TV): quickstart-tv.md
-    - Quickstart (Flutter): quickstart-flutter.md
-    - Quickstart (React Native): quickstart-react-native.md
+    - Quickstart (Flutter — end of life): quickstart-flutter.md
+    - Quickstart (React Native — end of life): quickstart-react-native.md
     - Sceneform replacement: sceneform-replacement.md
     - Platforms: platforms.md
     - API Cheatsheet: cheatsheet.md
@@ -99,8 +99,8 @@ nav:
     - codelabs/index.md
     - 3D with Compose: codelabs/codelab-3d-compose.md
     - AR with Compose: codelabs/codelab-ar-compose.md
-    - 3D with SwiftUI: codelabs/codelab-3d-swiftui.md
-    - AR with SwiftUI: codelabs/codelab-ar-swiftui.md
+    - 3D with SwiftUI (end of life): codelabs/codelab-3d-swiftui.md
+    - AR with SwiftUI (end of life): codelabs/codelab-ar-swiftui.md
     - Dynamic Sky: codelabs/guide-dynamic-sky.md
     - Lines & Text: codelabs/guide-lines-text.md
     - Physics: codelabs/guide-physics.md

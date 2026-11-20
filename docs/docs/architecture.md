@@ -1,5 +1,9 @@
 # Architecture
 
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 How SceneView turns declarative UI composables into real-time 3D and AR experiences,
 from your Kotlin/Swift code all the way down to the GPU.
 

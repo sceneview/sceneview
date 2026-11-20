@@ -42,6 +42,11 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # ─── Source of truth ───────────────────────────────────────────────────────
+# SceneViewSwift, Flutter and React Native ended at this release (DEPRECATION.md).
+# Their install snippets must never follow the Android release version.
+EOL_VERSION="4.68.0"
+# The iOS/macOS demo app got one more App Store build after the packages ended.
+IOS_DEMO_LAST_VERSION="4.69.7"
 SOURCE_VERSION=$(grep '^VERSION_NAME=' "$REPO_ROOT/gradle.properties" | cut -d= -f2)
 if [ -z "$SOURCE_VERSION" ]; then
     echo -e "${RED}FATAL: Cannot read VERSION_NAME from gradle.properties${NC}"
@@ -111,11 +116,12 @@ add_check() {
     local location="$1"
     local version="$2"
     local critical="${3:-true}" # true = MISMATCH is error, false = WARN only
+    local expected="${4:-$SOURCE_VERSION}"
 
     LOCATIONS+=("$location")
     VERSIONS+=("$version")
 
-    if [ "$version" = "$SOURCE_VERSION" ]; then
+    if [ "$version" = "$expected" ]; then
         STATUSES+=("OK")
     elif [ "$version" = "MISSING" ] || [ "$version" = "NOT FOUND" ] || [ "$version" = "" ]; then
         STATUSES+=("SKIP")
@@ -176,7 +182,9 @@ for pkg in sceneview-web react-native/react-native-sceneview; do
     PKG_JSON="$REPO_ROOT/$pkg/package.json"
     if [ -f "$PKG_JSON" ]; then
         V=$(python3 -c "import json; print(json.load(open('$PKG_JSON'))['version'])" 2>/dev/null || echo "MISSING")
-        add_check "$pkg/package.json" "$V"
+        EXPECTED="$SOURCE_VERSION"
+        [ "$pkg" != "react-native/react-native-sceneview" ] || EXPECTED="$EOL_VERSION"
+        add_check "$pkg/package.json" "$V" "true" "$EXPECTED"
     fi
 done
 
@@ -188,7 +196,7 @@ done
 RN_LIB_LOCK="$REPO_ROOT/react-native/react-native-sceneview/package-lock.json"
 if [ -f "$RN_LIB_LOCK" ]; then
     while IFS= read -r V; do
-        [ -n "$V" ] && add_check "react-native/.../package-lock.json" "$V"
+        [ -n "$V" ] && add_check "react-native/.../package-lock.json" "$V" "true" "$EOL_VERSION"
     done < <(python3 -c "
 import json
 d = json.load(open('$RN_LIB_LOCK'))
@@ -223,7 +231,7 @@ if [ -f "$RN_LIB_README" ]; then
     # the drift it exists to catch.
     V=$(grep -m1 -oE '^- Version: `[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`' "$RN_LIB_README" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "react-native/.../README.md (SwiftPM version)" "${V:-NOT FOUND}"
+    add_check "react-native/.../README.md (SwiftPM version)" "${V:-NOT FOUND}" "true" "$EOL_VERSION"
 fi
 
 # ─── 3. Flutter ──────────────────────────────────────────────────────────
@@ -232,14 +240,14 @@ echo -e "${CYAN}--- Flutter ---${NC}"
 PUBSPEC="$REPO_ROOT/flutter/sceneview_flutter/pubspec.yaml"
 if [ -f "$PUBSPEC" ]; then
     V=$(grep '^version:' "$PUBSPEC" | awk '{print $2}' || echo "MISSING")
-    add_check "flutter/sceneview_flutter/pubspec.yaml" "$V"
+    add_check "flutter/sceneview_flutter/pubspec.yaml" "$V" "true" "$EOL_VERSION"
 fi
 
 # Flutter Android build.gradle
 FLUTTER_ANDROID_GRADLE="$REPO_ROOT/flutter/sceneview_flutter/android/build.gradle"
 if [ -f "$FLUTTER_ANDROID_GRADLE" ]; then
     V=$(grep "^version " "$FLUTTER_ANDROID_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "flutter/.../android/build.gradle" "$V"
+    add_check "flutter/.../android/build.gradle" "$V" "true" "$EOL_VERSION"
 fi
 
 # Flutter plugin's CONSUMED SceneView dependency coordinate — see
@@ -251,7 +259,7 @@ check_plugin_sdk_dep "flutter/.../android/build.gradle" \
 PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/flutter_sceneview.podspec"
 if [ -f "$PODSPEC" ]; then
     V=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "flutter/.../ios/flutter_sceneview.podspec" "$V"
+    add_check "flutter/.../ios/flutter_sceneview.podspec" "$V" "true" "$EOL_VERSION"
 
     # The podspec's DEPENDENCY floor on SceneViewSwift, not its own version.
     # Registered because only `s.version` was watched: the floor sat at
@@ -259,15 +267,15 @@ if [ -f "$PODSPEC" ]; then
     # unlike the pub.dev caret this one is genuinely observable and is safe to
     # autofix. Compared on MAJOR.MINOR — a `~>` floor carries no patch.
     FLOOR=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
-    # Rebuild the full version by swapping SOURCE_VERSION's own MAJOR.MINOR for
-    # the floor, so a correct floor reproduces SOURCE_VERSION character for
+    # Rebuild the full version by swapping EOL_VERSION's own MAJOR.MINOR for
+    # the floor, so a correct floor reproduces EOL_VERSION character for
     # character whatever its shape. The first cut of this used
-    # `$FLOOR.${SOURCE_VERSION##*.}`, which on a pre-release like `4.27.0-rc.1`
+    # `$FLOOR.${EOL_VERSION##*.}`, which on a pre-release like `4.27.0-rc.1`
     # takes the LAST dot-segment (`1`) as the patch and reports `4.27.1` — a
     # blocking MISMATCH on a floor that was right all along.
-    SV_MM="${SOURCE_VERSION%%-*}"; SV_MM="${SV_MM%.*}"
+    SV_MM="${EOL_VERSION%%-*}"; SV_MM="${SV_MM%.*}"
     add_check "flutter/.../ios/... SceneViewSwift floor" \
-        "${FLOOR:+$FLOOR${SOURCE_VERSION#"$SV_MM"}}"
+        "${FLOOR:+$FLOOR${EOL_VERSION#"$SV_MM"}}" "true" "$EOL_VERSION"
 fi
 
 # React Native module podspec's DEPENDENCY floor on SceneViewSwift.
@@ -282,9 +290,9 @@ fi
 PODSPEC_RN="$REPO_ROOT/react-native/react-native-sceneview/react-native-sceneview.podspec"
 if [ -f "$PODSPEC_RN" ]; then
     FLOOR_RN=$(grep 's\.dependency "SceneViewSwift"' "$PODSPEC_RN" | grep -oE '[0-9]+\.[0-9]+' | head -1 || true)
-    SV_MM_RN="${SOURCE_VERSION%%-*}"; SV_MM_RN="${SV_MM_RN%.*}"
+    SV_MM_RN="${EOL_VERSION%%-*}"; SV_MM_RN="${SV_MM_RN%.*}"
     add_check "react-native/.../react-native-sceneview.podspec SceneViewSwift floor" \
-        "${FLOOR_RN:+$FLOOR_RN${SOURCE_VERSION#"$SV_MM_RN"}}"
+        "${FLOOR_RN:+$FLOOR_RN${EOL_VERSION#"$SV_MM_RN"}}" "true" "$EOL_VERSION"
 fi
 
 # SceneViewSwift podspec (repo root)
@@ -306,7 +314,7 @@ if [ -f "$PODSPEC_SWIFT" ]; then
     # Absent is not clean: the file is here, so failing to read its version is
     # an anomaly, and `UNPARSEABLE` lands as a MISMATCH that stops the release.
     V=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || true)
-    add_check "SceneViewSwift.podspec" "${V:-UNPARSEABLE}"
+    add_check "SceneViewSwift.podspec" "${V:-UNPARSEABLE}" "true" "$EOL_VERSION"
 fi
 
 # Flutter demo About tab — hardcoded display string, WARN-only.
@@ -326,40 +334,33 @@ if [ -f "$ABOUT_PAGE" ]; then
     if [ "$(printf '%s' "$V" | grep -c . || true)" -gt 1 ]; then
         V="INCONSISTENT ($(printf '%s' "$V" | paste -sd, -))"
     fi
-    add_check "samples/flutter-demo/lib/pages/about_page.dart" "${V:-UNPARSEABLE}" "false"
+    add_check "samples/flutter-demo/lib/pages/about_page.dart" "${V:-UNPARSEABLE}" "false" "$EOL_VERSION"
 fi
 
 # Flutter example pubspec
 FLUTTER_EXAMPLE="$REPO_ROOT/samples/flutter-demo/pubspec.yaml"
 if [ -f "$FLUTTER_EXAMPLE" ]; then
     V=$(grep '^version:' "$FLUTTER_EXAMPLE" | awk '{print $2}' || echo "NOT FOUND")
-    add_check "samples/flutter-demo/pubspec.yaml" "$V" "false"
+    add_check "samples/flutter-demo/pubspec.yaml" "$V" "false" "$EOL_VERSION"
 fi
 
-# flutter/sceneview_flutter/README.md — the pub.dev install snippet
-# (`flutter_sceneview: ^X.Y.Z`). REPORT-ONLY (WARN), never bumped — same rule
-# as `check_plugin_sdk_dep` above, for the same reason: this is a caret range
-# against a version that must already EXIST on pub.dev, not the in-flight
-# VERSION_NAME. pub.dev lags whenever `pub-publish` has not shipped the newest
-# release (measured 2026-08-07: pub.dev latest 4.24.0 vs VERSION_NAME 4.26.0),
-# and `^4.26.0` against a registry whose newest is 4.24.0 resolves to NOTHING
-# and fails `flutter pub get`. A `--fix` sweep here would convert a working
-# install line into a broken one at every release, so there deliberately is no
-# `--fix` handler for this slot — the WARN is the whole feature.
+# Flutter's retained install snippet names the last release, not VERSION_NAME.
+# Report-only, with no --fix handler: registry install coordinates are never
+# advanced automatically. Both exact pins and the historical caret form parse.
 FLUTTER_README="$REPO_ROOT/flutter/sceneview_flutter/README.md"
 if [ -f "$FLUTTER_README" ]; then
     # Same rule as the RN check above: `NOT FOUND` goes through to add_check so
     # a reworded anchor surfaces as a SKIP row, never as silence.
-    V=$(grep -m1 -oE 'flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$FLUTTER_README" \
+    V=$(grep -m1 -oE 'flutter_sceneview: \^?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$FLUTTER_README" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "flutter/.../README.md (pub snippet — lags pub.dev, not bumped)" "${V:-NOT FOUND}" "false"
+    add_check "flutter/.../README.md (last release snippet)" "${V:-NOT FOUND}" "false" "$EOL_VERSION"
 fi
 
 # Flutter CHANGELOG
 FLUTTER_CL="$REPO_ROOT/flutter/sceneview_flutter/CHANGELOG.md"
 if [ -f "$FLUTTER_CL" ]; then
     V=$(grep -m1 '^## ' "$FLUTTER_CL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "flutter/.../CHANGELOG.md" "$V" "false"
+    add_check "flutter/.../CHANGELOG.md" "$V" "false" "$EOL_VERSION"
 fi
 
 # ─── 4. Documentation ───────────────────────────────────────────────────
@@ -518,20 +519,19 @@ if [ -f "$DOCS_FAQ" ]; then
     V=$(grep -m1 -oE 'SceneViewSwift \(v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$DOCS_FAQ" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "docs/docs/faq.md (SceneViewSwift prose)" "$V"
+        add_check "docs/docs/faq.md (SceneViewSwift prose)" "$V" "true" "$EOL_VERSION"
     fi
 fi
-# iOS codelabs — the SPM "version rule … from `X.Y.Z`" instruction sits on a
-# prose-backtick line separate from the package URL, so the section-10b SPM
-# `from:` scan (which requires `sceneview/sceneview` on the same line) misses
-# it. Match the backtick-quoted version after a `from` keyword instead (#1693).
-for codelab in docs/docs/codelabs/codelab-3d-swiftui.md docs/docs/codelabs/codelab-ar-swiftui.md; do
+# Xcode's prose version rules must select Exact Version at the last release.
+SPM_RULE_FILES=(docs/docs/quickstart-ios.md docs/docs/codelabs/codelab-3d-swiftui.md docs/docs/codelabs/codelab-ar-swiftui.md)
+for codelab in "${SPM_RULE_FILES[@]}"; do
     F="$REPO_ROOT/$codelab"
     if [ -f "$F" ]; then
-        V=$(grep -m1 -E 'from .?`[0-9]+\.[0-9]+\.[0-9]+' "$F" \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-        if [ "$V" != "NOT FOUND" ]; then
-            add_check "$codelab (SPM version rule)" "$V"
+        RULE=$(grep -m1 -E '(version rule|Version:).*`[0-9]+\.[0-9]+\.[0-9]+' "$F" || true)
+        V=$(printf '%s' "$RULE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || true)
+        if [ -n "$V" ]; then
+            [[ "$RULE" == *'**Exact Version**'* ]] || V="range: $V"
+            add_check "$codelab (SPM version rule)" "$V" "true" "$EOL_VERSION"
         fi
     fi
 done
@@ -553,28 +553,15 @@ README_FLUTTER_SNIPPET="$REPO_ROOT/README.md"
 if [ -f "$README_FLUTTER_SNIPPET" ]; then
     V=$(grep -m1 -oE '// pubspec\.yaml.*flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$README_FLUTTER_SNIPPET" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "README.md (Flutter usage-snippet comment)" "${V:-NOT FOUND}"
+    add_check "README.md (Flutter usage-snippet comment)" "${V:-NOT FOUND}" "true" "$EOL_VERSION"
 fi
 
-# Flutter snippet inside llms.txt (`flutter_sceneview: ^X.Y.Z`) — separate
-# from the maven `sceneview:` line, so the existing -m1 check misses it.
-# REPORT-ONLY (WARN), never bumped: this is the same pub.dev caret coordinate
-# the Flutter README carries, and it must name a version that already EXISTS on
-# pub.dev. It was `critical` with a matching `--fix` until 2026-08-09, which is
-# precisely how it reached `^4.26.0` while pub.dev's newest was 4.24.0 — a line
-# `flutter pub get` cannot resolve, in the file an AI reads to write that line.
-# Read the row for what it is: it PRINTS the coordinate, it does not police it.
-# A hand-edit back to VERSION_NAME reads as OK here, because this script has no
-# view of the pub.dev registry. What prevents the drift is the absence of the
-# `--fix` handler below, not this row.
-# NOTE (#2735 rename): must grep the pub-form `flutter_sceneview:` line —
-# the legacy `sceneview_flutter:` string still appears in llms.txt as the
-# git-pin dependency key (versionless line), which would silently skip
-# this check.
+# Flutter's retained llms.txt install snippet follows the same last-release,
+# report-only rule as the Flutter README above (no automatic registry bumps).
 if [ -f "$LLMS" ]; then
-    V=$(grep -m1 'flutter_sceneview:' "$LLMS" | grep -oE '\^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
+    V=$(grep -m1 'flutter_sceneview:' "$LLMS" | grep -oE '\^?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "llms.txt (flutter snippet — lags pub.dev, not bumped)" "$V" "false"
+        add_check "llms.txt (Flutter last release snippet)" "$V" "false" "$EOL_VERSION"
     fi
 fi
 
@@ -631,7 +618,7 @@ IOS_ABOUT="$REPO_ROOT/SceneViewSwift/Examples/SceneViewDemo/SceneViewDemo/Views/
 if [ -f "$IOS_ABOUT" ]; then
     V=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$IOS_ABOUT" | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "SceneViewSwift/.../AboutView.swift" "$V" "false"
+        add_check "SceneViewSwift/.../AboutView.swift" "$V" "false" "$EOL_VERSION"
     fi
 fi
 
@@ -640,8 +627,8 @@ fi
 # SceneViewDemo target ships to both — SUPPORTED_PLATFORMS includes macosx). It was a
 # release blind spot: the pipeline only bumped CURRENT_PROJECT_VERSION (the build
 # number), so every build since v4.9.0 reported marketing version 4.9.0 to the App
-# Store (issue #2085, surfaced by an App Store Connect audit). Bump this in lockstep
-# with the Android demo versionName + AboutView.swift.
+# Store (issue #2085). Keep this at the last App Store build, 4.69.7
+# (DEPRECATION.md), independently of the Android demo version.
 #
 # The 3-component `[0-9]+\.[0-9]+\.[0-9]+` regex deliberately skips the test target's
 # `MARKETING_VERSION = 1.0` (2 components) — test bundles are not shipped, so their
@@ -651,7 +638,7 @@ fi
 IOS_DEMO_PBXPROJ="$REPO_ROOT/samples/ios-demo/SceneViewDemo.xcodeproj/project.pbxproj"
 if [ -f "$IOS_DEMO_PBXPROJ" ]; then
     while IFS= read -r V; do
-        [ -n "$V" ] && add_check "samples/ios-demo MARKETING_VERSION" "$V" "false"
+        [ -n "$V" ] && add_check "samples/ios-demo MARKETING_VERSION" "$V" "false" "$IOS_DEMO_LAST_VERSION"
     done < <(grep -oE 'MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+' "$IOS_DEMO_PBXPROJ" \
         | awk '{print $NF}' | sort -u)
 fi
@@ -703,7 +690,7 @@ fi
 # iOS install-snippet comment on the homepage (`// Version: X.Y.Z`).
 if [ -f "$WEBSITE_INDEX" ]; then
     V=$(grep -oE '// Version: [0-9]+\.[0-9]+\.[0-9]+' "$WEBSITE_INDEX" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
-    add_check "website-static/index.html (iOS snippet // Version:)" "$V"
+    add_check "website-static/index.html (iOS snippet // Version:)" "$V" "true" "$EOL_VERSION"
 fi
 # web.html JSON-LD softwareVersion (SEO structured data).
 WEBSITE_WEB="$REPO_ROOT/website-static/web.html"
@@ -751,14 +738,14 @@ RN_DEMO_PKG="$REPO_ROOT/samples/react-native-demo/package.json"
 if [ -f "$RN_DEMO_PKG" ]; then
     V=$(python3 -c "import json; print(json.load(open('$RN_DEMO_PKG'))['version'])" 2>/dev/null || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "samples/react-native-demo/package.json" "$V"
+        add_check "samples/react-native-demo/package.json" "$V" "true" "$EOL_VERSION"
     fi
 fi
 RN_DEMO_APP="$REPO_ROOT/samples/react-native-demo/src/App.tsx"
 if [ -f "$RN_DEMO_APP" ]; then
     V=$(grep -E "const VERSION = '" "$RN_DEMO_APP" | grep -oE "'[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'" | tr -d "'" | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "samples/react-native-demo App.tsx VERSION" "$V"
+        add_check "samples/react-native-demo App.tsx VERSION" "$V" "true" "$EOL_VERSION"
     fi
 fi
 
@@ -789,18 +776,16 @@ if [ -d "$WEBSITE_DIR" ]; then
     fi
 fi
 
-# ─── 10b. SwiftPM `from:` install snippets (#990) ───────────────────────
-# Catches stale `.package(url: "…/sceneview-swift", from: "X.Y.Z")` clauses
-# scattered across docs / READMEs / marketing surfaces. The release-time
-# manual sweep that bumped 11 of these for v4.1.0 (#989) showed the cost
-# of keeping these out of band; this section closes the gap so future
-# bumps catch them via `--fix`.
+# ─── 10b. SwiftPM install snippets — frozen at the last release ──────────
+# DEPRECATION.md: 4.68.0 (November 2026) is the last release; no new releases.
+# Keep the existing drift check and --fix coverage, but never use VERSION_NAME.
 echo -e "${CYAN}--- SwiftPM Install Snippets ---${NC}"
 SPM_FILES=(
     llms.txt
     README.md
     CLAUDE.md
     .cursorrules
+    .windsurfrules
     Package.swift
     SceneViewSwift/README.md
     docs/docs/cheatsheet-ios.md
@@ -810,6 +795,7 @@ SPM_FILES=(
     docs/docs/quickstart-ios.md
     docs/docs/3d-ar-library.md
     docs/docs/faq.md
+    docs/docs/migration.md
     # iOS codelabs ship an SPM "version rule … from `X.Y.Z`" instruction in
     # prose-backtick form; #1693 found them 6 minors stale after v4.10.0.
     docs/docs/codelabs/codelab-3d-swiftui.md
@@ -822,6 +808,11 @@ SPM_FILES=(
     # docs.yml has never deployed, and it was deleted rather than swept.
     .github/copilot-instructions.md
     gpt/system-prompt.md
+    # MCP setup and sample templates retain the same exact Apple release.
+    mcp/src/guides.ts
+    mcp/src/platform-setup.ts
+    mcp/src/samples.ts
+    mcp/src/tools/handler.ts
     # AI-assistant prompt surfaces in .gitignore'd dirs — tracked files
     # that the release sweep kept missing (drift fixed by hand in #1217
     # and again in #1262). Listed explicitly so `--fix` keeps them in sync.
@@ -830,28 +821,25 @@ SPM_FILES=(
     # Agent skills under agents/* — installed into `~/.android/cli/skills/xr/`
     # by `bash .claude/scripts/install-sceneview-*-skill.sh`. The Android skill
     # SPM tag prose is checked explicitly in section 14; the iOS skill ships a
-    # canonical `.package(... from: "X.Y.Z")` snippet that fits cleanly into
+    # canonical `.package(... exact: "X.Y.Z")` snippet that fits cleanly into
     # this sweep (#1848).
     agents/sceneview-ios/SKILL.md
     agents/sceneview-ios/references/migration.md
 )
+SPM_CONTEXT_RE='sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency|Set version rule to'
+SPM_PIN_RE='(from|exact):? "?([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?|\$\{LATEST_SCENEVIEW_RELEASE\})"?|Exact Version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'
 for spm_file in "${SPM_FILES[@]}"; do
     F="$REPO_ROOT/$spm_file"
     [ -f "$F" ] || continue
-    # Looser match: any line mentioning the canonical SPM URL (sceneview/sceneview
-    # monorepo OR sceneview/sceneview-swift legacy mirror) AND a `from` version.
-    # Covers the canonical quoted form `.package(url: "…/sceneview", from: "X.Y.Z")`
-    # AND the comment-style `// SPM: …/sceneview-swift.git from: "X.Y.Z"` AND the
-    # prose form in README.md — `(from: X.Y.Z)` / `(SPM, from X.Y.Z)` — which has
-    # NO quotes and an optional colon, so the strict `from: "…"` regex missed it
-    # entirely (issue #1544: README SPM snippets sat 4 minors stale).
-    V=$(grep -E 'sceneview/sceneview(-swift)?' "$F" 2>/dev/null \
-        | grep -oE 'from:? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?' \
-        | head -1 \
-        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' || true)
-    if [ -n "$V" ]; then
-        add_check "$spm_file (SPM from:)" "$V"
-    fi
+    # Check the requirement as well as its version: `from:` admits newer
+    # monorepo tags even when its lower bound is the last Apple release.
+    while IFS= read -r RULE; do
+        [ -n "$RULE" ] && add_check "$spm_file (SPM exact:)" "$RULE" "true" "exact: \"$EOL_VERSION\""
+    done < <(grep -E "$SPM_CONTEXT_RE" "$F" 2>/dev/null \
+        | grep -v '^- \.package(' \
+        | grep -oE "$SPM_PIN_RE" \
+        | sed -E 's/^Exact Version (.*)$/exact: "\1"/' \
+        | sort -u || true)
 done
 
 # ─── 11. Bug report template ────────────────────────────────────────────
@@ -1150,8 +1138,8 @@ if [ -f "$DOCS_STRUCTURED" ]; then
 fi
 
 # agents/sceneview/* — Android skill: Maven artifact coordinates, SPM tag
-# prose, npm sceneview-web prose, and @sceneview-sdk/react-native prose. All
-# checked against VERSION_NAME.
+# prose, npm sceneview-web prose, and @sceneview-sdk/react-native prose.
+# Maven/web refs track VERSION_NAME; retired-package refs track EOL_VERSION.
 for agentf in agents/sceneview/SKILL.md agents/sceneview/references/cheatsheet.md agents/sceneview/references/migration.md; do
     F="$REPO_ROOT/$agentf"
     if [ -f "$F" ]; then
@@ -1172,22 +1160,22 @@ if [ -f "$AGENT_ANDROID_SKILL" ]; then
     fi
     V=$(grep -m1 '@sceneview-sdk/react-native@' "$AGENT_ANDROID_SKILL" | grep -oE '@sceneview-sdk/react-native@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "agents/sceneview/SKILL.md (@sceneview-sdk/react-native@)" "$V"
+        add_check "agents/sceneview/SKILL.md (@sceneview-sdk/react-native@)" "$V" "true" "$EOL_VERSION"
     fi
     V=$(grep -m1 -E 'tag `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_ANDROID_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "agents/sceneview/SKILL.md (SPM tag prose)" "$V"
+        add_check "agents/sceneview/SKILL.md (SPM tag prose)" "$V" "true" "$EOL_VERSION"
     fi
 fi
 
 # agents/sceneview-ios/* — Apple skill: SPM `from:` is already covered by the
-# section-10b SPM_FILES sweep IF we add the files there. Add them, plus a
-# direct ERROR-level check on the prose "version tag (currently `X.Y.Z`)" line.
+# section-10b SPM_FILES check against EOL_VERSION. The prose version tag is
+# checked against that same last release, independently of Android VERSION_NAME.
 AGENT_IOS_SKILL="$REPO_ROOT/agents/sceneview-ios/SKILL.md"
 if [ -f "$AGENT_IOS_SKILL" ]; then
     V=$(grep -m1 -E 'version tag \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_IOS_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "agents/sceneview-ios/SKILL.md (SPM tag prose)" "$V"
+        add_check "agents/sceneview-ios/SKILL.md (SPM tag prose)" "$V" "true" "$EOL_VERSION"
     fi
 fi
 
@@ -1284,20 +1272,22 @@ if [ "$FIX_MODE" = "--fix" ] && [ "$ERRORS" -gt 0 ]; then
 
     # Fix npm package.json files (skip mcp — it has its own version cycle)
     for pkg in sceneview-web react-native/react-native-sceneview; do
+        EXPECTED="$SOURCE_VERSION"
+        [ "$pkg" != "react-native/react-native-sceneview" ] || EXPECTED="$EOL_VERSION"
         PKG_JSON="$REPO_ROOT/$pkg/package.json"
         if [ -f "$PKG_JSON" ]; then
             CURRENT=$(python3 -c "import json; print(json.load(open('$PKG_JSON'))['version'])" 2>/dev/null)
-            if [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            if [ "$CURRENT" != "$EXPECTED" ]; then
                 python3 -c "
 import json
 with open('$PKG_JSON', 'r') as f:
     data = json.load(f)
-data['version'] = '$SOURCE_VERSION'
+data['version'] = '$EXPECTED'
 with open('$PKG_JSON', 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
 "
-                echo -e "  Fixed: $pkg/package.json ($CURRENT -> $SOURCE_VERSION)"
+                echo -e "  Fixed: $pkg/package.json ($CURRENT -> $EXPECTED)"
             fi
         fi
     done
@@ -1327,7 +1317,7 @@ with open('$CODEX_PLUGIN_JSON', 'w') as f:
         CHANGED=$(python3 -c "
 import json
 p = '$RN_LIB_LOCK'
-src = '$SOURCE_VERSION'
+src = '$EOL_VERSION'
 with open(p) as f:
     data = json.load(f)
 old = ''
@@ -1344,7 +1334,7 @@ if changed:
         f.write('\n')
     print(old)
 " 2>/dev/null || echo "")
-        [ -n "$CHANGED" ] && echo -e "  Fixed: react-native/.../package-lock.json ($CHANGED -> $SOURCE_VERSION)"
+        [ -n "$CHANGED" ] && echo -e "  Fixed: react-native/.../package-lock.json ($CHANGED -> $EOL_VERSION)"
     fi
 
     # Fix react-native/.../README.md — SwiftPM setup prose. Anchored on the
@@ -1353,9 +1343,9 @@ if changed:
     if [ -f "$RN_LIB_README" ]; then
         CURRENT=$(grep -m1 -oE '^- Version: `[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`' "$RN_LIB_README" \
             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/^- Version: \`$CURRENT\`/- Version: \`$SOURCE_VERSION\`/" "$RN_LIB_README"
-            echo -e "  Fixed: react-native/.../README.md (SwiftPM version $CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/^- Version: \`$CURRENT\`/- Version: \`$EOL_VERSION\`/" "$RN_LIB_README"
+            echo -e "  Fixed: react-native/.../README.md (SwiftPM version $CURRENT -> $EOL_VERSION)"
         fi
     fi
 
@@ -1368,33 +1358,33 @@ if changed:
     PUBSPEC="$REPO_ROOT/flutter/sceneview_flutter/pubspec.yaml"
     if [ -f "$PUBSPEC" ]; then
         CURRENT=$(grep '^version:' "$PUBSPEC" | awk '{print $2}')
-        if [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/^version: .*/version: $SOURCE_VERSION/" "$PUBSPEC"
-            echo -e "  Fixed: flutter/sceneview_flutter/pubspec.yaml ($CURRENT -> $SOURCE_VERSION)"
+        if [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/^version: .*/version: $EOL_VERSION/" "$PUBSPEC"
+            echo -e "  Fixed: flutter/sceneview_flutter/pubspec.yaml ($CURRENT -> $EOL_VERSION)"
         fi
     fi
 
     # Fix Flutter Android build.gradle
     if [ -f "$FLUTTER_ANDROID_GRADLE" ]; then
         CURRENT=$(grep "^version " "$FLUTTER_ANDROID_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/^version '$CURRENT'/version '$SOURCE_VERSION'/" "$FLUTTER_ANDROID_GRADLE"
-            echo -e "  Fixed: flutter/.../android/build.gradle ($CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/^version '$CURRENT'/version '$EOL_VERSION'/" "$FLUTTER_ANDROID_GRADLE"
+            echo -e "  Fixed: flutter/.../android/build.gradle ($CURRENT -> $EOL_VERSION)"
         fi
     fi
 
     # Fix Flutter iOS podspec
     if [ -f "$PODSPEC" ]; then
         CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
-            echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$EOL_VERSION'/" "$PODSPEC"
+            echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $EOL_VERSION)"
         fi
         CURRENT=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
-        # Same pre-release trap as the check above: `${SOURCE_VERSION%.*}` on
+        # Same pre-release trap as the check above: `${EOL_VERSION%.*}` on
         # `4.27.0-rc.1` yields `4.27.0-rc`, which this would then WRITE into the
         # podspec as the floor. Strip the pre-release suffix first.
-        WANT="${SOURCE_VERSION%%-*}"; WANT="${WANT%.*}"
+        WANT="${EOL_VERSION%%-*}"; WANT="${WANT%.*}"
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$WANT" ]; then
             _sed_inplace "s/s\.dependency 'SceneViewSwift', '~> $CURRENT'/s.dependency 'SceneViewSwift', '~> $WANT'/" "$PODSPEC"
             echo -e "  Fixed: flutter/.../ios/... SceneViewSwift floor (~> $CURRENT -> ~> $WANT)"
@@ -1411,7 +1401,7 @@ if changed:
     # reach it. Same pre-release strip, same reason.
     if [ -f "$PODSPEC_RN" ]; then
         CURRENT=$(grep 's\.dependency "SceneViewSwift"' "$PODSPEC_RN" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
-        WANT="${SOURCE_VERSION%%-*}"; WANT="${WANT%.*}"
+        WANT="${EOL_VERSION%%-*}"; WANT="${WANT%.*}"
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$WANT" ]; then
             _sed_inplace "s/s\.dependency \"SceneViewSwift\", \"~> $CURRENT\"/s.dependency \"SceneViewSwift\", \"~> $WANT\"/" "$PODSPEC_RN"
             echo -e "  Fixed: react-native/.../react-native-sceneview.podspec SceneViewSwift floor (~> $CURRENT -> ~> $WANT)"
@@ -1432,9 +1422,9 @@ if changed:
         # --fix sweep before the `[ -n "$CURRENT" ]` guard below can absorb it,
         # silently skipping every later autofix.
         CURRENT=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC_SWIFT"
-            echo -e "  Fixed: SceneViewSwift.podspec ($CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$EOL_VERSION'/" "$PODSPEC_SWIFT"
+            echo -e "  Fixed: SceneViewSwift.podspec ($CURRENT -> $EOL_VERSION)"
         fi
     fi
 
@@ -1455,9 +1445,9 @@ if changed:
     if [ -f "$IOS_DEMO_PBXPROJ" ]; then
         for CURRENT in $(grep -oE 'MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+' "$IOS_DEMO_PBXPROJ" \
             | awk '{print $NF}' | sort -u); do
-            if [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-                _sed_inplace "s/MARKETING_VERSION = $CURRENT;/MARKETING_VERSION = $SOURCE_VERSION;/g" "$IOS_DEMO_PBXPROJ"
-                echo -e "  Fixed: samples/ios-demo MARKETING_VERSION ($CURRENT -> $SOURCE_VERSION)"
+            if [ "$CURRENT" != "$IOS_DEMO_LAST_VERSION" ]; then
+                _sed_inplace "s/MARKETING_VERSION = $CURRENT;/MARKETING_VERSION = $IOS_DEMO_LAST_VERSION;/g" "$IOS_DEMO_PBXPROJ"
+                echo -e "  Fixed: samples/ios-demo MARKETING_VERSION ($CURRENT -> $IOS_DEMO_LAST_VERSION)"
             fi
         done
     fi
@@ -1505,32 +1495,27 @@ if changed:
     if [ -f "$DOCS_FAQ" ]; then
         CURRENT=$(grep -m1 -oE 'SceneViewSwift \(v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$DOCS_FAQ" \
             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/SceneViewSwift (v$CURRENT/SceneViewSwift (v$SOURCE_VERSION/g" "$DOCS_FAQ"
-            echo -e "  Fixed: docs/docs/faq.md (SceneViewSwift prose $CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/SceneViewSwift (v$CURRENT/SceneViewSwift (v$EOL_VERSION/g" "$DOCS_FAQ"
+            echo -e "  Fixed: docs/docs/faq.md (SceneViewSwift prose $CURRENT -> $EOL_VERSION)"
         fi
     fi
-    #   iOS codelabs — the SPM "version rule … from `X.Y.Z`" backtick instruction
-    for codelab in docs/docs/codelabs/codelab-3d-swiftui.md docs/docs/codelabs/codelab-ar-swiftui.md; do
+    # Xcode prose rules must remain exact even after an Android version bump.
+    for codelab in "${SPM_RULE_FILES[@]}"; do
         F="$REPO_ROOT/$codelab"
         [ -f "$F" ] || continue
-        CURRENT=$(grep -m1 -E 'from .?`[0-9]+\.[0-9]+\.[0-9]+' "$F" \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/from \`$CURRENT\`/from \`$SOURCE_VERSION\`/g" "$F"
-            echo -e "  Fixed: $codelab (SPM version rule $CURRENT -> $SOURCE_VERSION)"
-        fi
+        perl -i -pe 'if (/(version rule|Version:)/) { s/\*\*Up to Next Major\*\* from|from(?= `)/\*\*Exact Version\*\*/g; s/`[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`/`'"$EOL_VERSION"'`/g }' "$F"
     done
     #   README.md — the isolated Flutter usage-snippet comment. Unlike the
     #   Flutter README's own pub-install snippet, this one is illustrative
-    #   boilerplate meant to track VERSION_NAME like the rest of the file, so
+    #   retained boilerplate pinned to the last release, so
     #   (unlike that carve-out) it IS auto-fixed here.
     if [ -f "$README_FLUTTER_SNIPPET" ]; then
         CURRENT=$(grep -m1 -oE '// pubspec\.yaml.*flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$README_FLUTTER_SNIPPET" \
             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/flutter_sceneview: \^$CURRENT/flutter_sceneview: ^$SOURCE_VERSION/" "$README_FLUTTER_SNIPPET"
-            echo -e "  Fixed: README.md (Flutter usage-snippet comment $CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/flutter_sceneview: \^$CURRENT/flutter_sceneview: ^$EOL_VERSION/" "$README_FLUTTER_SNIPPET"
+            echo -e "  Fixed: README.md (Flutter usage-snippet comment $CURRENT -> $EOL_VERSION)"
         fi
     fi
 
@@ -1555,11 +1540,16 @@ if changed:
         for OLD_V in $OLD_VERSIONS; do
             [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
             OLD_V_RE="${OLD_V//./\\.}"
-            if grep -qE "(\"softwareVersion\": \"$OLD_V_RE\"|// Version: $OLD_V_RE|sceneview-web@$OLD_V_RE|sceneview/sceneview@v$OLD_V_RE)" "$WEBSITE_INDEX" 2>/dev/null; then
-                _sed_inplace "s/\"softwareVersion\": \"$OLD_V_RE\"/\"softwareVersion\": \"$SOURCE_VERSION\"/g; s|// Version: $OLD_V_RE|// Version: $SOURCE_VERSION|g; s|sceneview-web@$OLD_V_RE|sceneview-web@$SOURCE_VERSION|g; s|sceneview/sceneview@v$OLD_V_RE|sceneview/sceneview@v$SOURCE_VERSION|g" "$WEBSITE_INDEX"
-                echo -e "  Fixed: website-static/index.html (softwareVersion / iOS snippet / CDN pin $OLD_V -> $SOURCE_VERSION)"
+            if grep -qE "(\"softwareVersion\": \"$OLD_V_RE\"|sceneview-web@$OLD_V_RE|sceneview/sceneview@v$OLD_V_RE)" "$WEBSITE_INDEX" 2>/dev/null; then
+                _sed_inplace "s/\"softwareVersion\": \"$OLD_V_RE\"/\"softwareVersion\": \"$SOURCE_VERSION\"/g; s|sceneview-web@$OLD_V_RE|sceneview-web@$SOURCE_VERSION|g; s|sceneview/sceneview@v$OLD_V_RE|sceneview/sceneview@v$SOURCE_VERSION|g" "$WEBSITE_INDEX"
+                echo -e "  Fixed: website-static/index.html (softwareVersion / CDN pin $OLD_V -> $SOURCE_VERSION)"
             fi
         done
+    fi
+
+    # The Apple install panel is retained for existing users at its last release.
+    if [ -f "$WEBSITE_INDEX" ]; then
+        _sed_inplace "s|// Version: [0-9]*\.[0-9]*\.[0-9]*|// Version: $EOL_VERSION|g" "$WEBSITE_INDEX"
     fi
 
     # Fix website-static/version.json — the file served at
@@ -1599,46 +1589,36 @@ with open('$VERSION_JSON', 'w') as f:
     # Fix samples/react-native-demo package.json + App.tsx VERSION literal.
     if [ -f "$RN_DEMO_PKG" ]; then
         CURRENT=$(python3 -c "import json; print(json.load(open('$RN_DEMO_PKG'))['version'])" 2>/dev/null || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
             python3 -c "
 import json
 with open('$RN_DEMO_PKG', 'r') as f:
     data = json.load(f)
-data['version'] = '$SOURCE_VERSION'
+data['version'] = '$EOL_VERSION'
 with open('$RN_DEMO_PKG', 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
 "
-            echo -e "  Fixed: samples/react-native-demo/package.json ($CURRENT -> $SOURCE_VERSION)"
+            echo -e "  Fixed: samples/react-native-demo/package.json ($CURRENT -> $EOL_VERSION)"
         fi
     fi
     if [ -f "$RN_DEMO_APP" ]; then
         CURRENT=$(grep -E "const VERSION = '" "$RN_DEMO_APP" | grep -oE "'[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'" | tr -d "'" | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/const VERSION = '$CURRENT'/const VERSION = '$SOURCE_VERSION'/" "$RN_DEMO_APP"
-            echo -e "  Fixed: samples/react-native-demo App.tsx VERSION ($CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/const VERSION = '$CURRENT'/const VERSION = '$EOL_VERSION'/" "$RN_DEMO_APP"
+            echo -e "  Fixed: samples/react-native-demo App.tsx VERSION ($CURRENT -> $EOL_VERSION)"
         fi
     fi
 
-    # Fix SwiftPM `from:` clauses (#990) — rewrites every stale snippet to
-    # match $SOURCE_VERSION, scoped to lines that mention the canonical SPM
-    # URL (monorepo or legacy mirror) so we never touch unrelated `from: "..."`
-    # clauses (e.g. third-party deps).
+    # Pin retained SwiftPM examples exactly; a range can resolve newer Android tags.
     for spm_file in "${SPM_FILES[@]}"; do
         F="$REPO_ROOT/$spm_file"
         [ -f "$F" ] || continue
-        # Use perl (not sed) for the in-line substitution: BSD sed is awkward
-        # at constraining the replacement to lines matching a pattern. The
-        # regex matches BOTH the quoted Package.swift form `from: "X.Y.Z"` and
-        # the unquoted README prose form `from: X.Y.Z` / `from X.Y.Z` (#1544),
-        # preserving whatever colon/quotes the original line used.
-        if grep -qE 'sceneview/sceneview(-swift)?.*from:? "?[0-9]+\.[0-9]+\.[0-9]+' "$F" 2>/dev/null; then
-            BEFORE=$(grep -E 'sceneview/sceneview(-swift)?.*from' "$F" | grep -oE 'from:? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?' | sort -u)
-            perl -i -pe 'if (m{sceneview/sceneview(-swift)?}) { s/(from:? "?)[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?("?)/${1}'"$SOURCE_VERSION"'${3}/g }' "$F"
-            AFTER=$(grep -E 'sceneview/sceneview(-swift)?.*from' "$F" | grep -oE 'from:? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?' | sort -u)
-            if [ "$BEFORE" != "$AFTER" ]; then
-                echo -e "  Fixed: $spm_file (SPM from: -> $SOURCE_VERSION)"
-            fi
+        BEFORE=$(grep -E "$SPM_CONTEXT_RE" "$F" | grep -E "$SPM_PIN_RE" || true)
+        perl -i -pe 'if (/Set version rule to/) { s/((from|exact):\s*([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?|\$\{LATEST_SCENEVIEW_RELEASE\})|Exact Version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)/Exact Version '"$EOL_VERSION"'/g } elsif (m{sceneview/sceneview(-swift)?|SceneViewSwift SPM|sample\.spmDependency} && !/^- \.package\(/) { s/(from|exact):? "?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"?/exact: "'"$EOL_VERSION"'"/g }' "$F"
+        AFTER=$(grep -E "$SPM_CONTEXT_RE" "$F" | grep -E "$SPM_PIN_RE" || true)
+        if [ "$BEFORE" != "$AFTER" ]; then
+            echo -e "  Fixed: $spm_file (SPM exact: -> $EOL_VERSION)"
         fi
     done
 
@@ -1868,23 +1848,23 @@ if changed:
             echo -e "  Fixed: agents/sceneview/SKILL.md (sceneview-web@ $CURRENT -> $SOURCE_VERSION)"
         fi
         CURRENT=$(grep -m1 '@sceneview-sdk/react-native@' "$AGENT_ANDROID_SKILL" | grep -oE '@sceneview-sdk/react-native@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/@sceneview-sdk\/react-native@$CURRENT/@sceneview-sdk\/react-native@$SOURCE_VERSION/g" "$AGENT_ANDROID_SKILL"
-            echo -e "  Fixed: agents/sceneview/SKILL.md (@sceneview-sdk/react-native@ $CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/@sceneview-sdk\/react-native@$CURRENT/@sceneview-sdk\/react-native@$EOL_VERSION/g" "$AGENT_ANDROID_SKILL"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (@sceneview-sdk/react-native@ $CURRENT -> $EOL_VERSION)"
         fi
         CURRENT=$(grep -m1 -E 'tag `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_ANDROID_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/tag \`$CURRENT\`/tag \`$SOURCE_VERSION\`/" "$AGENT_ANDROID_SKILL"
-            echo -e "  Fixed: agents/sceneview/SKILL.md (SPM tag prose $CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/tag \`$CURRENT\`/tag \`$EOL_VERSION\`/" "$AGENT_ANDROID_SKILL"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (SPM tag prose $CURRENT -> $EOL_VERSION)"
         fi
     fi
 
     # agents/sceneview-ios/SKILL.md — "version tag (currently `X.Y.Z`)" prose.
     if [ -f "$AGENT_IOS_SKILL" ]; then
         CURRENT=$(grep -m1 -E 'version tag \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_IOS_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/version tag (currently \`$CURRENT\`)/version tag (currently \`$SOURCE_VERSION\`)/" "$AGENT_IOS_SKILL"
-            echo -e "  Fixed: agents/sceneview-ios/SKILL.md (SPM tag prose $CURRENT -> $SOURCE_VERSION)"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$EOL_VERSION" ]; then
+            _sed_inplace "s/version tag (currently \`$CURRENT\`)/version tag (currently \`$EOL_VERSION\`)/" "$AGENT_IOS_SKILL"
+            echo -e "  Fixed: agents/sceneview-ios/SKILL.md (SPM tag prose $CURRENT -> $EOL_VERSION)"
         fi
     fi
 
@@ -2043,39 +2023,11 @@ if changed:
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
 fi
 
-# ─── Flutter CHANGELOG stub (--fix; deliberately OUTSIDE the ERRORS gate) ──
-# The pub.dev publish preflight (`flutter pub publish --dry-run`, #2735 —
-# ci.yml → "Flutter plugin + demo APK") requires the plugin CHANGELOG to mention
-# the current pubspec version. A bump that updates the pubspec without adding
-# the entry therefore turns that job red on EVERY non-path-gated PR and
-# nightly until someone backfills it by hand — this bit twice, for 4.23.0 AND
-# 4.24.0 (#2775; backfilled by #2766). The CHANGELOG top-entry check above is
-# WARN-only (prose content can't be verified mechanically), so a lagging
-# CHANGELOG never raises ERRORS — which is exactly why this handler must NOT
-# live inside the `$ERRORS -gt 0` fix block: with every numeric version
-# already aligned, that block never runs. Prepends a stub in the file's
-# established "version alignment" style; enrich the bullet by hand when the
-# release notes are written. Idempotent: skips when `## $SOURCE_VERSION`
-# already exists anywhere in the file.
-if [ "$FIX_MODE" = "--fix" ]; then
-    FLUTTER_CL="$REPO_ROOT/flutter/sceneview_flutter/CHANGELOG.md"
-    if [ -f "$FLUTTER_CL" ] && ! grep -qE "^## ${SOURCE_VERSION}($| )" "$FLUTTER_CL"; then
-        TMP_CL=$(mktemp)
-        {
-            printf '## %s\n\n' "$SOURCE_VERSION"
-            printf -- '- Version alignment with SceneView v%s; see the [v%s release notes](https://github.com/sceneview/sceneview/releases/tag/v%s). No breaking Flutter API change.\n\n' \
-                "$SOURCE_VERSION" "$SOURCE_VERSION" "$SOURCE_VERSION"
-            cat "$FLUTTER_CL"
-        } > "$TMP_CL"
-        mv "$TMP_CL" "$FLUTTER_CL"
-        echo -e "  Fixed: flutter/.../CHANGELOG.md — prepended '## $SOURCE_VERSION' stub (pub.dev preflight requires it, #2775)"
-        echo ""
-    fi
-fi
+# Flutter CHANGELOG is frozen at EOL_VERSION; --fix never appends release stubs.
 
 # ─── Regenerate gpt/knowledge-*.md (--fix; also outside the ERRORS gate) ───
-# Same shape as the Flutter stub above, different generator (#3234): these four
-# files are GENERATED from llms.txt, which `--fix` has just rewritten, so a bump
+# These four files are GENERATED from llms.txt (#3234), which `--fix`
+# has just rewritten, so a bump
 # leaves them drifted by construction. `check-gpt-knowledge-drift.sh` then fails
 # the pre-push gate of every single release — a rouge that is real, expected,
 # and pure friction, since the only correct answer is always "run the

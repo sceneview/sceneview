@@ -16,9 +16,9 @@
   <!-- Site analytics: GA4 loader shared by every static page. Synchronous on purpose. -->
   <script src="/assets/analytics.js"></script>
   <script src="/assets/support.js" defer></script>
-  <title>SceneView — 3D and AR for Compose, SwiftUI and the web</title>
-  <meta name="description" content="SceneView is an open-source SDK that makes 3D and AR declarative: Jetpack Compose and Filament on Android, SwiftUI and RealityKit on Apple, Filament on the web.">
-  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, augmented reality, Jetpack Compose, SwiftUI, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, GLB, USDZ, Sceneform, visionOS, Compose Multiplatform, Flutter, React Native, MCP server, llms.txt">
+  <title>SceneView — 3D and AR for Android, web and desktop</title>
+  <meta name="description" content="SceneView maintains declarative 3D and AR for Android (Compose), web and Compose Multiplatform desktop. SwiftUI, Flutter and React Native are end of life at 4.68.0.">
+  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, augmented reality, Jetpack Compose, ARCore, Filament, Android 3D, model viewer, glTF, GLB, Sceneform, Compose Multiplatform, MCP server, llms.txt">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#11131A" media="(prefers-color-scheme: dark)">
@@ -39,17 +39,17 @@
   <meta property="og:site_name" content="SceneView">
   <meta property="og:locale" content="en_US">
   <meta property="og:title" content="SceneView — 3D and AR, written like UI">
-  <meta property="og:description" content="Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. Open source, Apache 2.0.">
+  <meta property="og:description" content="Declarative 3D and AR for Android (Compose), web and Compose Multiplatform desktop. Open source, Apache 2.0.">
   <meta property="og:url" content="https://sceneview.github.io/">
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
-  <meta property="og:image:alt" content="SceneView — 3D and AR SDK for every platform">
+  <meta property="og:image:alt" content="SceneView — 3D and AR for Android, web and desktop">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="SceneView — 3D and AR, written like UI">
-  <meta name="twitter:description" content="Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. Open source, Apache 2.0.">
+  <meta name="twitter:description" content="Declarative 3D and AR for Android (Compose), web and Compose Multiplatform desktop. Open source, Apache 2.0.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
-  <meta name="twitter:image:alt" content="SceneView — 3D and AR SDK for every platform">
+  <meta name="twitter:image:alt" content="SceneView — 3D and AR for Android, web and desktop">
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -68,10 +68,10 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "SceneView",
-    "description": "Open-source SDK for declarative 3D and AR with Jetpack Compose, SwiftUI and the web, plus Flutter and React Native bridges.",
+    "description": "Open-source SDK for declarative 3D and AR with Jetpack Compose, SwiftUI and the web, plus Flutter and React Native bridges. SwiftUI, Flutter and React Native are end of life at 4.68.0.",
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Android, iOS, macOS, visionOS, Web, Windows, Linux",
+    "operatingSystem": "Android, Web, Desktop (Compose Multiplatform)",
     "softwareVersion": "4.69.7",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -92,9 +92,9 @@
       { "@type": "Question", "name": "Is SceneView the successor of Sceneform?",
         "acceptedAnswer": { "@type": "Answer", "text": "Yes. When Google archived Sceneform, the community kept it going as com.gorisse.thomas.sceneform, and SceneView grew out of that line with a Compose-first API on Filament. The migration guide covers the move from Sceneform." } },
       { "@type": "Question", "name": "How is SceneView different from Unity or a game engine?",
-        "acceptedAnswer": { "@type": "Answer", "text": "SceneView is a UI library, not an engine you embed. A 3D scene is a composable or a SwiftUI view inside your existing app, with the same state, navigation and build. A game engine fits full games and editor-driven content; SceneView fits product viewers, AR placement and 3D inside an app's own UI." } },
+        "acceptedAnswer": { "@type": "Answer", "text": "SceneView is a UI library, not an engine you embed. A 3D scene is a Compose component or web canvas inside your existing app, with the same state, navigation and build. A game engine fits full games and editor-driven content; SceneView fits product viewers, AR placement and 3D inside an app's own UI." } },
       { "@type": "Question", "name": "Which 3D formats does SceneView support?",
-        "acceptedAnswer": { "@type": "Answer", "text": "glTF and GLB, rendered by Filament on Android, desktop and the web. USDZ, rendered by RealityKit on Apple platforms. STL, OBJ, PLY and 3MF files are converted on load." } },
+        "acceptedAnswer": { "@type": "Answer", "text": "glTF and GLB, rendered by Filament on Android, desktop and the web. USDZ remains available through the end-of-life SceneViewSwift 4.68.0 package. STL, OBJ, PLY and 3MF files are converted on load." } },
       { "@type": "Question", "name": "Can AI coding assistants use SceneView?",
         "acceptedAnswer": { "@type": "Answer", "text": "Yes. SceneView publishes an MCP server (sceneview-mcp) and an llms.txt file, so any assistant that supports the Model Context Protocol can read the current API instead of guessing it. The docs give the setup for each client." } },
       { "@type": "Question", "name": "What is SceneView's license?",
@@ -199,8 +199,8 @@
 
       <div class="container hero__inner">
         <div class="hero__copy">
-          <h1 class="display" id="hero-title">Declarative 3D and AR for Compose, SwiftUI and the web</h1>
-          <p class="lead">SceneView renders 3D models and AR scenes inside Jetpack Compose, SwiftUI and web apps. Scenes are declared in code, like the rest of the UI.</p>
+          <h1 class="display" id="hero-title">Declarative 3D and AR for Android, web and desktop</h1>
+          <p class="lead">SceneView renders 3D models and AR scenes in Android apps with Jetpack Compose, plus 3D on the web and Compose Multiplatform desktop. Scenes are declared in code, like the rest of the UI.</p>
           <div class="hero__ctas">
             <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
             <a class="btn btn--outlined btn--lg" href="/web-demo/">Try in browser</a>
@@ -209,21 +209,22 @@
             <li>Open source under Apache 2.0</li>
             <li hidden><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
           </ul>
+          <p class="plat-note hero__eol-note">SwiftUI (iOS, macOS, visionOS), Flutter and React Native are end of life. 4.68.0 (November 2026) is the last release. No new releases. <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">DEPRECATION.md</a>.</p>
           <div class="install">
             <div class="seg" role="tablist" aria-label="Install for" data-install>
               <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
-              <button type="button" role="tab" id="it-apple" aria-controls="ins-apple" aria-selected="false" tabindex="-1" data-key="apple" data-label="Apple" data-href="/docs/quickstart-ios/">Apple</button>
               <button type="button" role="tab" id="it-web" aria-controls="ins-web" aria-selected="false" tabindex="-1" data-key="web" data-label="Web" data-href="/docs/quickstart-web/">Web</button>
-              <button type="button" role="tab" id="it-flutter" aria-controls="ins-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-label="Flutter" data-href="/docs/quickstart-flutter/">Flutter</button>
-              <button type="button" role="tab" id="it-rn" aria-controls="ins-rn" aria-selected="false" tabindex="-1" data-key="rn" data-label="React Native" data-href="/docs/quickstart-react-native/">React Native</button>
               <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
+              <button type="button" role="tab" id="it-apple" aria-controls="ins-apple" aria-selected="false" tabindex="-1" data-key="apple" data-label="Apple (end of life)" data-href="/docs/quickstart-ios/">Apple (end of life)</button>
+              <button type="button" role="tab" id="it-flutter" aria-controls="ins-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-label="Flutter (end of life)" data-href="/docs/quickstart-flutter/">Flutter (end of life)</button>
+              <button type="button" role="tab" id="it-rn" aria-controls="ins-rn" aria-selected="false" tabindex="-1" data-key="rn" data-label="React Native (end of life)" data-href="/docs/quickstart-react-native/">React Native (end of life)</button>
             </div>
             <div class="install__panels">
             <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.69.7"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.69.7")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode: File, Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.69.7</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode: File, Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.68.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code class="cmd__tags"><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.69.7/<wbr>website-static/<wbr>js/<wbr>filament</span><span class="tagline__tail"><span class="str">/<wbr>filament.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span><br><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.69.7/<wbr>website-static/<wbr>js</span><span class="tagline__tail"><span class="str">/<wbr>sceneview.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.7/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.69.7/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-flutter" aria-labelledby="it-flutter" hidden><code><span class="pfx">$ </span>flutter pub add <span class="str">flutter_sceneview</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='flutter pub add flutter_sceneview'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-rn" aria-labelledby="it-rn" hidden><code><span class="pfx">$ </span>npm install <span class="str">@sceneview-sdk/react-native</span><br><span class="pfx">$ </span>npx pod-install</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='npm install @sceneview-sdk/react-native&#10;npx pod-install'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-flutter" aria-labelledby="it-flutter" hidden><code><span class="pfx">$ </span>flutter pub add <span class="str">flutter_sceneview:4.68.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='flutter pub add flutter_sceneview:4.68.0'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-rn" aria-labelledby="it-rn" hidden><code><span class="pfx">$ </span>npm install <span class="str">@sceneview-sdk/react-native@4.68.0</span><br><span class="pfx">$ </span>npx pod-install</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='npm install @sceneview-sdk/react-native@4.68.0&#10;npx pod-install'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview-compose:4.69.7"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.69.7")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             </div>
             <a class="install__next link" href="/docs/quickstart/" data-start><span data-start-label>Android quickstart</span></a>
@@ -251,10 +252,10 @@
         <div class="codecard reveal">
           <div class="tabs" role="tablist" aria-label="Code for" data-sync="platform">
             <button class="tab" role="tab" id="t-compose" aria-controls="p-compose" aria-selected="true" data-key="compose" data-status="stable" data-status-label="Stable on Android" data-href="/docs/quickstart/">Compose</button>
-            <button class="tab" role="tab" id="t-swift" aria-controls="p-swift" aria-selected="false" tabindex="-1" data-key="swiftui" data-status="alpha" data-status-label="Alpha on iOS, macOS and visionOS" data-href="/docs/quickstart-ios/">SwiftUI</button>
             <button class="tab" role="tab" id="t-web" aria-controls="p-web" aria-selected="false" tabindex="-1" data-key="web" data-status="alpha" data-status-label="Alpha on the web" data-href="/docs/quickstart-web/">Web</button>
-            <button class="tab" role="tab" id="t-flutter" aria-controls="p-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-status="alpha" data-status-label="Alpha on Flutter" data-href="/docs/quickstart-flutter/">Flutter</button>
-            <button class="tab" role="tab" id="t-rn" aria-controls="p-rn" aria-selected="false" tabindex="-1" data-key="rn" data-status="alpha" data-status-label="Alpha on React Native" data-href="/docs/quickstart-react-native/">React Native</button>
+            <button class="tab" role="tab" id="t-swift" aria-controls="p-swift" aria-selected="false" tabindex="-1" data-key="swiftui" data-status="eol" data-status-label="End of life at 4.68.0; no new releases" data-href="/docs/quickstart-ios/">SwiftUI (end of life)</button>
+            <button class="tab" role="tab" id="t-flutter" aria-controls="p-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-status="eol" data-status-label="End of life at 4.68.0; no new releases" data-href="/docs/quickstart-flutter/">Flutter (end of life)</button>
+            <button class="tab" role="tab" id="t-rn" aria-controls="p-rn" aria-selected="false" tabindex="-1" data-key="rn" data-status="eol" data-status-label="End of life at 4.68.0; no new releases" data-href="/docs/quickstart-react-native/">React Native (end of life)</button>
           </div>
 <div role="tabpanel" id="p-compose" aria-labelledby="t-compose"><pre data-tab="4"><code><span class="cl"><span class="c">// Android, Jetpack Compose</span></span>
 <span class="cl"><span class="k">@Composable</span></span>
@@ -456,19 +457,19 @@
     <div class="container">
       <div class="section__head">
         <h2 class="h2 reveal" id="platforms-title">Platform support</h2>
-        <p class="lead reveal">Native renderers underneath: Filament on Android, desktop and the web, RealityKit on Apple.</p>
+        <p class="lead reveal">Android (Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.</p>
       </div>
       <ul class="plat reveal">
         <li><b>Android</b><small>Jetpack Compose, Filament, ARCore</small><span class="status status--stable">Stable</span></li>
-        <li><b>Apple</b><small>iOS, macOS and visionOS in one SwiftUI package on RealityKit. AR on iOS. USDZ, no glTF</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Apple</b><small>iOS, macOS and visionOS in one SwiftUI package on RealityKit. AR on iOS. USDZ, no glTF · <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">4.68.0 is the last release</a></small><span class="status">End of life</span></li>
         <li><b>Web</b><small>Filament WASM, WebGL2, glTF</small><span class="status status--alpha">Alpha</span></li>
         <li><b>Desktop</b><small>Compose Desktop, Filament, JDK 21+</small><span class="status status--alpha">Alpha</span></li>
         <li><b>Android TV</b><small>Same artifact as Android, D-pad input</small><span class="status status--alpha">Alpha</span></li>
-        <li><b>Flutter</b><small>Platform view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
-        <li><b>React Native</b><small>Fabric view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Flutter</b><small>Platform view over the native SDKs · <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">4.68.0 is the last release</a></small><span class="status">End of life</span></li>
+        <li><b>React Native</b><small>Fabric view over the native SDKs · <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">4.68.0 is the last release</a></small><span class="status">End of life</span></li>
         <li><b>Android XR</b><small>Jetpack XR SceneCore</small><span class="status status--planned">Planned</span></li>
       </ul>
-      <p class="plat-note reveal">Compose Multiplatform: one <code>SceneViewer</code> for Android, iOS and desktop, a viewer subset without AR. <a href="/docs/platforms/">Feature matrix per platform</a></p>
+      <p class="plat-note reveal">Compose Multiplatform: one <code>SceneViewer</code> for Android and desktop, a viewer subset without AR. The retained iOS host depends on end-of-life SceneViewSwift 4.68.0. <a href="/docs/platforms/">Feature matrix per platform</a></p>
     </div>
   </section>
 
@@ -592,19 +593,19 @@
           <caption class="sr-only">SceneView compared with Unity, Filament used directly, Three.js and RealityKit</caption>
           <thead><tr><th scope="col"></th><th scope="col">SceneView</th><th scope="col">Unity</th><th scope="col">Filament, direct</th><th scope="col">Three.js</th><th scope="col">RealityKit</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Declarative UI</th><td>Compose, SwiftUI</td><td>No, editor and C#</td><td>No, imperative</td><td>No, imperative</td><td>SwiftUI</td></tr>
-            <tr><th scope="row">Setup</th><td>One Gradle or SwiftPM dependency</td><td>Separate engine, embedded as a library</td><td>Engine, materials and loaders wired by hand</td><td>One npm package</td><td>Part of the Apple SDKs</td></tr>
-            <tr><th scope="row">Platforms</th><td>Android stable; Apple, web, desktop, Flutter, React Native alpha</td><td>Most platforms</td><td>Android, Apple, desktop, web</td><td>Web</td><td>Apple only</td></tr>
-            <tr><th scope="row">AR</th><td>ARCore, ARKit</td><td>AR Foundation</td><td>Bring your own</td><td>WebXR</td><td>ARKit</td></tr>
-            <tr><th scope="row">Renderer</th><td>Filament, RealityKit</td><td>Unity</td><td>Filament</td><td>WebGL, WebGPU</td><td>RealityKit</td></tr>
+            <tr><th scope="row">Declarative UI</th><td>Jetpack Compose, Compose Multiplatform, Kotlin/JS DSL</td><td>No, editor and C#</td><td>No, imperative</td><td>No, imperative</td><td>SwiftUI</td></tr>
+            <tr><th scope="row">Setup</th><td>One Gradle dependency or web scripts</td><td>Separate engine, embedded as a library</td><td>Engine, materials and loaders wired by hand</td><td>One npm package</td><td>Part of the Apple SDKs</td></tr>
+            <tr><th scope="row">Platforms</th><td>Android Stable; web and desktop Alpha; SwiftUI, Flutter and React Native end of life at 4.68.0</td><td>Most platforms</td><td>Android, Apple, desktop, web</td><td>Web</td><td>Apple only</td></tr>
+            <tr><th scope="row">AR</th><td>ARCore, WebXR; ARKit end of life at 4.68.0</td><td>AR Foundation</td><td>Bring your own</td><td>WebXR</td><td>ARKit</td></tr>
+            <tr><th scope="row">Renderer</th><td>Filament; RealityKit end of life at 4.68.0</td><td>Unity</td><td>Filament</td><td>WebGL, WebGPU</td><td>RealityKit</td></tr>
           </tbody>
         </table>
         </div>
       </div>
       <div class="faq reveal">
         <details><summary>Is SceneView the successor of Sceneform?</summary><p>Yes. When Google archived Sceneform, the community kept it going as <code>com.gorisse.thomas.sceneform</code>, and SceneView grew out of that line with a Compose-first API on Filament. The <a href="/docs/migration/">migration guide</a> covers the move from Sceneform.</p></details>
-        <details><summary>How is SceneView different from Unity or a game engine?</summary><p>SceneView is a UI library, not an engine you embed. A 3D scene is a composable or a SwiftUI view inside your existing app, with the same state, navigation and build. A game engine fits full games and editor-driven content; SceneView fits product viewers, AR placement and 3D inside an app’s own UI.</p></details>
-        <details><summary>Which 3D formats does SceneView support?</summary><p>glTF and GLB, rendered by Filament on Android, desktop and the web. USDZ, rendered by RealityKit on Apple platforms. STL, OBJ, PLY and 3MF files are converted on load.</p></details>
+        <details><summary>How is SceneView different from Unity or a game engine?</summary><p>SceneView is a UI library, not an engine you embed. A 3D scene is a Compose component or web canvas inside your existing app, with the same state, navigation and build. A game engine fits full games and editor-driven content; SceneView fits product viewers, AR placement and 3D inside an app’s own UI.</p></details>
+        <details><summary>Which 3D formats does SceneView support?</summary><p>glTF and GLB, rendered by Filament on Android, desktop and the web. USDZ remains available through the end-of-life SceneViewSwift 4.68.0 package. STL, OBJ, PLY and 3MF files are converted on load.</p></details>
         <details><summary>Can AI coding assistants use SceneView?</summary><p>Yes. SceneView publishes an MCP server (<code>sceneview-mcp</code>) and an <code>llms.txt</code> file, so any assistant that supports the Model Context Protocol can read the current API instead of guessing it. The <a href="/docs/ai-context/">docs</a> give the setup for each client.</p></details>
         <details><summary>What is SceneView’s license?</summary><p>Apache 2.0. The sample 3D models keep their own licenses, listed on the <a href="/credits.html">credits page</a>.</p></details>
       </div>
@@ -633,7 +634,7 @@
     <div class="footer__grid">
       <div class="footer__brand">
         <a class="brand" href="/"><svg class="brand__mark"><use href="#i-logo"/></svg>SceneView</a>
-        <p>3D and AR for Jetpack Compose, SwiftUI and the web. Open source under Apache 2.0.</p>
+        <p>3D and AR for Android (Compose), web and Compose Multiplatform desktop. Open source under Apache 2.0.</p>
       </div>
       <div><h2 class="footer__h">Product</h2><ul>
         <li><a href="/docs/">Docs</a></li><li><a href="/docs/samples/">Samples</a></li>
@@ -641,9 +642,9 @@
         <li><a href="/use-cases.html">3D scan use cases</a></li>
         <li><a href="/api/sceneview/latest/sceneview/">API reference</a></li></ul></div>
       <div><h2 class="footer__h">Platforms</h2><ul>
-        <li><a href="/docs/quickstart/">Android</a></li><li><a href="/docs/quickstart-ios/">Apple</a></li>
-        <li><a href="/docs/quickstart-web/">Web</a></li><li><a href="/docs/quickstart-flutter/">Flutter</a></li>
-        <li><a href="/docs/quickstart-react-native/">React Native</a></li><li><a href="/docs/compose-multiplatform/">Desktop</a></li></ul></div>
+        <li><a href="/docs/quickstart/">Android</a></li><li><a href="/docs/quickstart-ios/">Apple (end of life)</a></li>
+        <li><a href="/docs/quickstart-web/">Web</a></li><li><a href="/docs/quickstart-flutter/">Flutter (end of life)</a></li>
+        <li><a href="/docs/quickstart-react-native/">React Native (end of life)</a></li><li><a href="/docs/compose-multiplatform/">Desktop</a></li></ul></div>
       <div><h2 class="footer__h">Resources</h2><ul>
         <li><a href="/docs/changelog/">Changelog</a></li><li><a href="/docs/migration/">Migration guide</a></li>
         <li><a href="/llms.txt">llms.txt</a></li><li><a href="/credits.html">Credits</a></li></ul></div>

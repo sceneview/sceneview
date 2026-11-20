@@ -1,5 +1,7 @@
 # SceneViewSwift recipes — pointers to verified demos
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 **Do not improvise.** Every pattern below has a matching SwiftUI demo file in
 `samples/ios-demo/SceneViewDemo/Views/Demos/`. Read that file before writing
 code — the demo is the authoritative recipe.

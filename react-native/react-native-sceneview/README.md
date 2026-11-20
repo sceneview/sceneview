@@ -1,6 +1,6 @@
 # @sceneview-sdk/react-native
 
-> **Deprecated.** `@sceneview-sdk/react-native`: 4.68.0 is the last release. Published versions stay installable and this source stays available under Apache 2.0 — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+> **End of life:** SceneViewSwift, Flutter and React Native: **4.68.0 (November 2026)** is the last release. No new releases. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 [![npm version](https://img.shields.io/npm/v/@sceneview-sdk/react-native.svg)](https://www.npmjs.com/package/@sceneview-sdk/react-native)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -8,7 +8,7 @@
 
 React Native bindings for [SceneView](https://sceneview.github.io) — 3D and AR scenes powered by Filament (Android) and RealityKit (iOS).
 
-> **Status:** Alpha — 3D model loading works on both platforms. AR scene is
+> **Status:** End of life at 4.68.0; no new releases. Historical validation — 3D model loading works on both platforms. AR scene is
 > functional on Android. The iOS native bridge is CI-verified against the real
 > `SceneViewSwift` API **and the real React Native API**
 > (`.github/workflows/rn-ios-compile.yml`): both modules come from an actual
@@ -30,12 +30,11 @@ React Native bindings for [SceneView](https://sceneview.github.io) — 3D and AR
 ## Installation
 
 ```sh
-npm install @sceneview-sdk/react-native
+npm install @sceneview-sdk/react-native@4.68.0
 ```
 
-The `publish-rn` job is meant to publish this bridge on every `vX.Y.Z` tag
-(#924, #962), but the npm `latest` can lag the SceneView release — the npm
-badge above shows the version actually published.
+4.68.0 (November 2026) is the last release. No new releases; the package
+will be marked deprecated on npm in December 2026. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 There is no GitHub-install fallback: this is a monorepo with no root
 `package.json`, so `npm install github:sceneview/sceneview` cannot resolve the
@@ -55,7 +54,7 @@ Requires iOS 18+ and Xcode 16+ — `SceneViewSwift`'s own floor is iOS 18.0
 
 **`SceneViewSwift` must arrive as a pod, and your `Podfile` must give it a
 coordinate.** This module's podspec declares `s.dependency "SceneViewSwift",
-"~> 4.27"`, but `SceneViewSwift` is **not published on the CocoaPods trunk**,
+"~> 4.68"`, but `SceneViewSwift` is **not published on the CocoaPods trunk**,
 so CocoaPods cannot resolve that name on its own. Add one of these lines to
 your `Podfile`:
 

@@ -1,6 +1,6 @@
 # flutter_sceneview
 
-> **Deprecated.** `flutter_sceneview`: 4.68.0 is the last release. Published versions stay installable and this source stays available under Apache 2.0 — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+> **End of life:** SceneViewSwift, Flutter and React Native: **4.68.0 (November 2026)** is the last release. No new releases. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub](https://img.shields.io/badge/GitHub-sceneview%2Fsceneview-black)](https://github.com/sceneview/sceneview)
@@ -9,8 +9,8 @@ Flutter plugin for [SceneView](https://sceneview.github.io) — 3D and AR scenes
 
 | Platform | Renderer                          | Status                          |
 |----------|-----------------------------------|---------------------------------|
-| Android  | Filament (via Jetpack Compose)    | Alpha — 3D model loading works  |
-| iOS      | RealityKit (via SceneViewSwift)   | Alpha — 3D model loading works  |
+| Android  | Filament (via Jetpack Compose)    | End of life at 4.68.0  |
+| iOS      | RealityKit (via SceneViewSwift)   | End of life at 4.68.0  |
 
 ## Features
 
@@ -42,7 +42,7 @@ In your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_sceneview: ^4.63.0
+  flutter_sceneview: ^4.68.0
 ```
 
 This tracks the latest version **published to pub.dev**, which lags the SDK's

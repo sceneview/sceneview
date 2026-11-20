@@ -146,7 +146,9 @@ functions on Android in v4.2. Those are iOS-only via SceneViewSwift.
 Filament JNI is main-thread-only. Use the `remember*` helpers (they handle
 this). For imperative code, use `modelLoader.loadModelInstanceAsync`.
 
-## Apple parity
+## Apple parity — end of life at 4.68.0
+
+**End of life:** SceneViewSwift, Flutter and React Native: **4.68.0 (November 2026)** is the last release. No new releases. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 iOS / macOS / visionOS export `SceneView { }` and `ARSceneView { }` from
 the `SceneViewSwift` package with SwiftUI semantics (`@NodeBuilder`,

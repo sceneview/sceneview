@@ -13,12 +13,12 @@
 | What | Status |
 |---|---|
 | Android SDK (Filament + Compose) | **Stable** |
-| iOS / macOS / visionOS (RealityKit + SwiftUI) | Alpha |
+| iOS / macOS / visionOS (RealityKit + SwiftUI) | End of life at 4.68.0 |
 | Web (Filament.js + WebXR) | Alpha |
 | Desktop (Compose Desktop) | Alpha — `SceneViewer` renders through Filament via filament-kmp (JDK 21+) |
 | Android TV | Alpha |
-| Flutter bridge | Alpha ([`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev) |
-| React Native bridge | Alpha ([`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm) |
+| Flutter bridge | End of life at 4.68.0 ([`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev) |
+| React Native bridge | End of life at 4.68.0 ([`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm) |
 | MCP on npm | **Live** ([`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) — independent version track) |
 | Claude Code plugin marketplace | **Live** ([`sceneview/claude-marketplace`](https://github.com/sceneview/claude-marketplace)) |
 | Telemetry Worker | **Live** |
@@ -54,7 +54,7 @@
 
 - [ ] Android XR module (Jetpack XR SceneCore)
 - [ ] sceneview-core WASM target (when kotlin-math supports wasmJs)
-- [ ] Promote iOS / Web / Flutter / React Native from Alpha toward Stable
+- [ ] Promote Web from Alpha toward Stable
 
 ### Quality
 

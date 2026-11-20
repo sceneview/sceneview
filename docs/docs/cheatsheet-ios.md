@@ -1,11 +1,11 @@
 ---
-title: API Cheatsheet — SceneView for iOS, macOS, visionOS
-description: "Complete API reference for SceneViewSwift node types, views, materials, physics, and AR features on Apple platforms."
+title: API Cheatsheet — SceneView for iOS, macOS, visionOS — end of life at 4.68.0
+description: "End of life at 4.68.0. Complete API reference for SceneViewSwift node types, views, materials, physics, and AR features on Apple platforms."
 ---
 # API Cheatsheet — Apple Platforms
 
-!!! warning "Deprecated"
-    SceneView for SwiftUI is deprecated: 4.68.0 is the last release. Published versions stay installable and the source stays available — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). For Android, start with the [quickstart](quickstart.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 
 A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it next to your keyboard.
 
@@ -18,7 +18,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+.package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 ```swift

@@ -1,11 +1,11 @@
 ---
 name: sceneview
-description: Build 3D and AR apps with the SceneView SDK in Jetpack Compose, SwiftUI (iOS/macOS/visionOS via SceneViewSwift), Web (Filament.js), Flutter and React Native. Use whenever the user asks for "3D in Compose", "AR with ARCore in Compose", a model viewer, or any cross-platform 3D/AR app where the dependency is `io.github.sceneview:sceneview` / `io.github.sceneview:arsceneview` / `SceneViewSwift` / `sceneview-web` / `flutter_sceneview` / `@sceneview-sdk/react-native`. Skip for plain ARCore-SDK / Sceneform / Unity / Unreal / RealityKit-without-SceneViewSwift work.
+description: Build 3D and AR with SceneView for Android (Jetpack Compose, Filament, ARCore), web and Compose Multiplatform desktop. SwiftUI, Flutter and React Native are end of life at 4.68.0; their retained references are for existing users only. Skip Unity, Unreal and raw rendering API work.
 license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-11-15'
+  last-updated: '2026-11-19'
   keywords:
   - sceneview
   - 3d
@@ -25,6 +25,10 @@ metadata:
   - visionos
 ---
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha. Do not recommend the retired packages for new code.
+
 ## What SceneView is
 
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
@@ -32,18 +36,17 @@ SceneView is a declarative 3D and AR SDK. One mental model across every platform
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
   Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.69.7` and
   `io.github.sceneview:arsceneview:4.69.7`.
-- **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
+- **Apple (iOS / macOS / visionOS), end of life at 4.68.0** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.69.7`). RealityKit renderer.
-- **Compose Multiplatform** — `SceneViewer(…)`, one composable from `commonMain`
-  (`io.github.sceneview:sceneview-compose`, **unreleased**). *Viewer subset only* — model,
-  orbit camera, key light, environment, tap. **No AR, no custom materials, no
-  post-processing.** Android delegates to the Filament `SceneView { }` below; iOS needs a
-  one-time renderer registration; Desktop draws a placeholder. Reach for it only when the
-  ask is genuinely shared-source; for anything platform-specific, use the native API.
+  via Swift Package Manager (tag `4.68.0`). RealityKit renderer.
+- **Compose Multiplatform** — `SceneViewer(…)` in `commonMain`
+  (`io.github.sceneview:sceneview-compose`). Android and desktop use Filament.
+  *Viewer subset only* — model, orbit camera, key light, environment, tap.
+  **No AR, no custom materials, no post-processing.** The retained iOS host
+  requires end-of-life SceneViewSwift 4.68.0 and app-side renderer registration.
 - **Web** — `sceneview-web@4` on npm (Filament.js + WebXR).
-- **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
-- **React Native** — `@sceneview-sdk/react-native@4` (Fabric bridge).
+- **Flutter, end of life at 4.68.0** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
+- **React Native, end of life at 4.68.0** — `@sceneview-sdk/react-native@4.68.0` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's

@@ -1,5 +1,7 @@
 # CodeLab: Your first 3D scene with SceneViewSwift
 
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 **Time:** ~15 minutes
 **Level:** Beginner (requires Swift + SwiftUI basics)
 **What you'll build:** A 3D model viewer with orbit camera, environment lighting, and tap interaction
@@ -40,7 +42,7 @@ This mirrors the Android [3D with Compose codelab](codelab-3d-compose.md), built
 https://github.com/sceneview/sceneview.git
 ```
 
-3. Set the version rule to **Up to Next Major** from `4.69.7`.
+3. Set the version rule to **Exact Version** `4.68.0`.
 4. Click **Add Package** and add `SceneViewSwift` to your app target.
 
 ---

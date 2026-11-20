@@ -214,6 +214,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
   .hero__stage .stage__box { aspect-ratio: 16 / 10; }
   .hero__inner, .hero__copy { display: contents; }
   .hero__copy > * { margin-inline: var(--gutter); }
+  .hero__copy > .hero__eol-note { margin-inline: var(--gutter); }
   .hero .display { order: 1; margin-top: var(--s-4); }
   .hero__stage { order: 2; margin-top: var(--s-5); }
   .hero__copy > :not(.display) { order: 3; }

@@ -9,7 +9,7 @@ description: "Frequently asked questions about SceneView: setup, model formats, 
 
 ### What is SceneView?
 
-SceneView is a declarative 3D and AR SDK for Android and Apple platforms. On Android, it wraps Google Filament (rendering) and ARCore (augmented reality) in Jetpack Compose composables — the same way you write `Column { }` or `Row { }`. On iOS, macOS, and visionOS, SceneViewSwift provides the same declarative experience using SwiftUI and RealityKit.
+SceneView is a declarative 3D and AR SDK for Android and Apple platforms. On Android, it wraps Google Filament (rendering) and ARCore (augmented reality) in Jetpack Compose composables — the same way you write `Column { }` or `Row { }`. On iOS, macOS, and visionOS, SceneViewSwift provides the same declarative experience using SwiftUI and RealityKit. SwiftUI, Flutter and React Native are end of life at 4.68.0 and are not recommended for new code.
 
 ### Is it free?
 
@@ -191,7 +191,7 @@ Yes — create the engine at a higher scope (e.g., ViewModel or CompositionLocal
 
 ### Does SceneView support iOS?
 
-Yes. SceneViewSwift (v4.69.7) provides a native SwiftUI library powered by RealityKit and ARKit. It supports iOS 18+, macOS 15+, and visionOS 2+. Install via Swift Package Manager. See the [Apple Quickstart](quickstart-ios.md).
+SceneViewSwift (v4.68.0) is end of life; no new releases. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). The retained package provides a native SwiftUI library powered by RealityKit and ARKit. It supports iOS 18+, macOS 15+, and visionOS 2+. Install via Swift Package Manager. See the [Apple Quickstart](quickstart-ios.md).
 
 ### What model formats work on iOS?
 
@@ -199,7 +199,7 @@ RealityKit natively supports **USDZ** and **Reality** files. If you have a `.glb
 
 ### Can I use SceneViewSwift from Flutter or React Native?
 
-Yes. `SceneView` and `ARSceneView` are standard SwiftUI views backed by `UIView`. Flutter can wrap them via `PlatformView`, React Native via a Fabric component, and KMP Compose via `UIKitView`. See the [Architecture page](architecture.md) for details.
+The end-of-life 4.68.0 packages remain available. `SceneView` and `ARSceneView` are standard SwiftUI views backed by `UIView`. Flutter can wrap them via `PlatformView`, React Native via a Fabric component, and KMP Compose via `UIKitView`. See the [Architecture page](architecture.md) for details.
 
 ### Is AR available on macOS and visionOS?
 

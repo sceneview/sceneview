@@ -1,7 +1,7 @@
 # Flutter Quickstart
 
-!!! warning "Deprecated"
-    `flutter_sceneview` is deprecated: 4.68.0 is the last release. Published versions stay installable and the source stays available — see [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md). For Android, start with the [quickstart](quickstart.md).
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 
 SceneView provides a Flutter plugin that bridges to native SceneView rendering on both Android (Filament) and iOS (RealityKit).
 
@@ -15,7 +15,7 @@ SceneView provides a Flutter plugin that bridges to native SceneView rendering o
 ```yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^4.63.0
+  flutter_sceneview: 4.68.0
 ```
 
 ### iOS setup — one required Podfile line

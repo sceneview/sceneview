@@ -66,6 +66,22 @@ describe("tools library — dispatchTool", () => {
     expect(result.content[0]?.text).toContain("sceneview");
   });
 
+  it("keeps the legacy Xcode setup on the exact last Apple release", async () => {
+    const result = await dispatchTool("get_ios_setup", { type: "3d" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0]?.text).toContain("Exact Version 4.68.0");
+    expect(result.content[0]?.text).toContain('exact: "4.68.0"');
+    expect(result.content[0]?.text).not.toContain("from:");
+  });
+
+  it("lists retired platforms at their last release", async () => {
+    const result = await dispatchTool("list_platforms", {});
+    for (const platform of ["iOS", "macOS", "visionOS", "Flutter", "React Native"]) {
+      const row = result.content[0]?.text.split("\n").find((line) => line.startsWith(`| ${platform} |`));
+      expect(row).toContain("| End of life at 4.68.0 | 4.68.0 |");
+    }
+  });
+
   it("returns an error result for unknown tools", async () => {
     const result = await dispatchTool("does_not_exist", {});
     expect(result.isError).toBe(true);

@@ -13,7 +13,7 @@
       "height": 192
     },
     "image": "https://sceneview.github.io/assets/images/hero-banner.svg",
-    "description": "Open-source 3D & AR SDK for Android and iOS — Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform.",
+    "description": "Open-source 3D & AR SDK for Android and iOS — Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform. SwiftUI, Flutter and React Native are end of life at 4.68.0.",
     "foundingDate": "2021",
     "founder": {
       "@type": "Person",
@@ -59,16 +59,16 @@
       "USDZ",
       "PBR Rendering"
     ],
-    "slogan": "The #1 3D & AR SDK for Android, iOS, macOS, and visionOS"
+    "slogan": "Declarative 3D and AR for Android, web and Compose Multiplatform desktop"
   },
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
     "@id": "https://sceneview.github.io/#website",
-    "name": "SceneView — 3D & AR SDK for Android and iOS",
+    "name": "SceneView — 3D & AR SDK for Android, web and desktop",
     "alternateName": ["SceneView SDK", "SceneView Android", "SceneView iOS", "SceneView 3D", "SceneView AR", "SceneView Compose", "SceneView SwiftUI"],
     "url": "https://sceneview.github.io",
-    "description": "The modern, cross-platform 3D and AR SDK for Android and iOS. Build immersive 3D scenes and augmented reality experiences with Jetpack Compose on Android and SwiftUI on iOS.",
+    "description": "The modern, cross-platform 3D and AR SDK for Android and iOS. Build immersive 3D scenes and augmented reality experiences with Jetpack Compose on Android and SwiftUI on iOS. SwiftUI, Flutter and React Native are end of life at 4.68.0.",
     "inLanguage": "en",
     "publisher": {
       "@id": "https://sceneview.github.io/#organization"
@@ -88,7 +88,7 @@
     "@id": "https://sceneview.github.io/#software",
     "name": "SceneView SDK",
     "alternateName": ["SceneView", "SceneView Android", "SceneView iOS", "sceneview", "SceneViewSwift"],
-    "description": "Open-source 3D & AR SDK for Android and iOS — Jetpack Compose on Android, SwiftUI on iOS, shared core via Kotlin Multiplatform. Drop-in SceneView{}/ARSceneView{} on Android and SceneView/ARSceneView on iOS for model viewing, AR placement, physics, and immersive experiences.",
+    "description": "Open-source 3D & AR SDK for Android and iOS — Jetpack Compose on Android, SwiftUI on iOS, shared core via Kotlin Multiplatform. Drop-in SceneView{}/ARSceneView{} on Android and SceneView/ARSceneView on iOS for model viewing, AR placement, physics, and immersive experiences. SwiftUI, Flutter and React Native are end of life at 4.68.0.",
     "url": "https://sceneview.github.io",
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "3D Rendering & Augmented Reality SDK",
@@ -173,18 +173,14 @@
       "@id": "https://sceneview.github.io/#organization"
     },
     "isAccessibleForFree": true,
-    "programmingLanguage": ["Kotlin", "Swift", "Java"],
-    "runtimePlatform": ["Android", "iOS", "macOS", "visionOS"],
+    "programmingLanguage": ["Kotlin", "JavaScript", "Java"],
+    "runtimePlatform": ["Android", "Web", "Compose Multiplatform desktop"],
     "softwareRequirements": [
       "Android SDK API 24+ (Android)",
-      "iOS 18+ (iOS)",
       "Kotlin 2.4.21",
       "Jetpack Compose (Android)",
-      "SwiftUI (iOS)",
       "Google Filament 1.77.3 (Android)",
-      "RealityKit (iOS)",
-      "ARCore 1.57.0 (Android AR)",
-      "ARKit (iOS AR)"
+      "ARCore 1.57.0 (Android AR)"
     ],
     "keywords": [
       "3D", "AR", "Android", "iOS", "Jetpack Compose", "SwiftUI", "Filament", "RealityKit",
@@ -201,12 +197,12 @@
     "@type": "SoftwareSourceCode",
     "@id": "https://sceneview.github.io/#sourcecode",
     "name": "SceneView",
-    "description": "Open-source 3D & AR SDK for Android and iOS — Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform.",
+    "description": "Open-source 3D & AR SDK for Android and iOS — Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform. SwiftUI, Flutter and React Native are end of life at 4.68.0.",
     "url": "https://github.com/sceneview/sceneview",
     "codeRepository": "https://github.com/sceneview/sceneview",
     "codeSampleType": "full solution",
-    "programmingLanguage": ["Kotlin", "Swift", "Java"],
-    "runtimePlatform": ["Android", "iOS", "macOS", "visionOS"],
+    "programmingLanguage": ["Kotlin", "JavaScript", "Java"],
+    "runtimePlatform": ["Android", "Web", "Compose Multiplatform desktop"],
     "targetProduct": {
       "@id": "https://sceneview.github.io/#software"
     },
@@ -232,7 +228,7 @@
         "name": "What is SceneView?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView is an open-source 3D and AR SDK for Android and iOS. On Android, it provides Compose-native declarative APIs (SceneView{} and ARSceneView{}) powered by Google Filament and ARCore. On iOS, it provides SwiftUI views (SceneView and ARSceneView) powered by RealityKit and ARKit. A shared Kotlin Multiplatform core handles math, collision, animation, and geometry across platforms. It is the official successor to the deprecated Google Sceneform."
+          "text": "SceneView is an open-source 3D and AR SDK for Android and iOS. On Android, it provides Compose-native declarative APIs (SceneView{} and ARSceneView{}) powered by Google Filament and ARCore. On iOS, it provides SwiftUI views (SceneView and ARSceneView) powered by RealityKit and ARKit. A shared Kotlin Multiplatform core handles math, collision, animation, and geometry across platforms. It is the official successor to the deprecated Google Sceneform. SwiftUI, Flutter and React Native are end of life at 4.68.0 and are not recommended for new code."
         }
       },
       {
@@ -272,7 +268,7 @@
         "name": "What platforms does SceneView support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView supports Android (API 24+) with Jetpack Compose, Filament, and ARCore, and iOS (18+) with SwiftUI, RealityKit, and ARKit. A shared Kotlin Multiplatform core (sceneview-core) provides cross-platform math, collision, animation, and geometry. SceneView also provides an MCP server for AI assistant integration."
+          "text": "SceneView supports Android (API 24+) with Jetpack Compose, Filament, and ARCore, and iOS (18+) with SwiftUI, RealityKit, and ARKit. A shared Kotlin Multiplatform core (sceneview-core) provides cross-platform math, collision, animation, and geometry. SceneView also provides an MCP server for AI assistant integration. SwiftUI, Flutter and React Native are end of life at 4.68.0 and are not recommended for new code."
         }
       },
       {
@@ -280,7 +276,7 @@
         "name": "How does SceneView compare to Unity or Unreal for Android 3D?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView adds only ~5MB to APK size compared to ~50MB for Unity and ~100MB for Unreal. SceneView is Compose-native on Android and SwiftUI-native on iOS, meaning it integrates naturally with each platform's native UI framework, while Unity and Unreal require bridge layers. SceneView has a much lower learning curve, making it the best choice for non-game 3D and AR apps."
+          "text": "SceneView adds only ~5MB to APK size compared to ~50MB for Unity and ~100MB for Unreal. SceneView is Compose-native on Android and SwiftUI-native on iOS, meaning it integrates naturally with each platform's native UI framework, while Unity and Unreal require bridge layers. SceneView has a much lower learning curve, making it the best choice for non-game 3D and AR apps. SwiftUI, Flutter and React Native are end of life at 4.68.0 and are not recommended for new code."
         }
       },
       {
@@ -288,7 +284,7 @@
         "name": "What 3D file formats does SceneView support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView natively supports glTF 2.0 and GLB (binary glTF) on Android, and USDZ on iOS. glTF supports PBR materials, animations, morph targets, and skinned meshes. Models can be loaded from local assets, URLs, or platform-specific content URIs."
+          "text": "SceneView natively supports glTF 2.0 and GLB (binary glTF) on Android, and USDZ on iOS. glTF supports PBR materials, animations, morph targets, and skinned meshes. Models can be loaded from local assets, URLs, or platform-specific content URIs. SwiftUI, Flutter and React Native are end of life at 4.68.0 and are not recommended for new code."
         }
       },
       {

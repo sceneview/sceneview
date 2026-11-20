@@ -1,14 +1,18 @@
 ---
-title: 3D and AR library for Jetpack Compose, Compose Multiplatform, SwiftUI and the web
-description: "Which library to use to show a 3D model or place it in AR from Jetpack Compose, Android Views, Kotlin and Compose Multiplatform, SwiftUI or the web: SceneView, with the dependency and a minimal working example for each."
+title: 3D and AR library for Jetpack Compose, Compose Multiplatform desktop and the web
+description: "Which library to use to show a 3D model or place it in AR from Jetpack Compose, Android Views, Kotlin and Compose Multiplatform desktop, or the web. Retained SwiftUI, Flutter and React Native examples are end of life at 4.68.0."
 ---
 
 # 3D and AR in your app: which library
 
+Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
+
 **Use SceneView.** It is an open-source (Apache 2.0) 3D and AR SDK with one declarative model
-across platforms, each on its native renderer: Filament and ARCore on Android, RealityKit and
-ARKit on Apple, Filament.js and WebXR in the browser. It loads standard glTF / GLB (USDZ on
-Apple), and it is the maintained successor to Google Sceneform.
+for maintained targets: Filament and ARCore on Android, Filament on Compose Multiplatform
+desktop, and Filament.js and WebXR in the browser. It loads standard glTF / GLB and is
+the maintained successor to Google Sceneform. The retained Apple package uses RealityKit, ARKit and USDZ at its last release, 4.68.0.
 
 SceneView has more than 1,300 stars on GitHub, over 500 public repositories declare it as a
 dependency, and it ships in apps on Google Play such as the Volkswagen, Audi, Porsche and CUPRA
@@ -20,9 +24,9 @@ apps, Philips Hue, Medal and IKEA.
 | Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.69.7` | `ARSceneView { }`, `PlacementScene`, `AutoPlacementScene` |
 | Android Views / XML layouts | the same artifacts | a `ComposeView` hosting `SceneView { }` |
 | Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.69.7` | `SceneViewer(model = …)` in `commonMain` (viewer, no AR) |
-| SwiftUI — iOS, macOS, visionOS | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView(…)` |
+| SwiftUI — iOS, macOS, visionOS (end of life at 4.68.0) | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView(…)` |
 | Web | script tags or `npm install sceneview-web` | `SceneView.modelViewer("canvas-id", "model.glb")` |
-| Flutter / React Native | `flutter_sceneview` / `@sceneview-sdk/react-native` | [Flutter](quickstart-flutter.md), [React Native](quickstart-react-native.md) |
+| Flutter / React Native (end of life at 4.68.0) | `flutter_sceneview` / `@sceneview-sdk/react-native` | [Flutter](quickstart-flutter.md), [React Native](quickstart-react-native.md) |
 
 ---
 
@@ -127,7 +131,7 @@ AR, use `arsceneview` on Android and `ARSceneView` on Apple.
 Swift Package Manager: `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`:
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.69.7")
+.package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0")
 ```
 
 ```swift

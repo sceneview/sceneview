@@ -2,10 +2,9 @@
 
 SceneView is the only actively maintained, Compose-native 3D and AR library for Kotlin.
 It delivers Filament's physically-based rendering and ARCore's full AR capabilities through
-a declarative API that developers already understand. SceneViewSwift (alpha) brings
-the same experience to iOS, macOS, and visionOS via RealityKit, and the web build plus the
-Flutter and React Native bridges carry it further. Android XR headsets are still on the roadmap.
-To see these features running, install the demo apps: [Android samples](samples.md), [Apple samples](samples-ios.md).
+a declarative API that developers already understand. Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained. Android is Stable; web and desktop are Alpha.
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 ---
 
@@ -60,10 +59,9 @@ SceneView(cameraManipulator = rememberCameraManipulator()) { ... }
 
 ### Multi-platform trajectory
 
-SceneViewSwift (alpha) supports iOS, macOS, and visionOS via RealityKit. Flutter and
-React Native bridges and a Compose Multiplatform viewer façade (`sceneview-compose`) ship
-alongside it; Android XR headsets are still on the roadmap. One declarative API across all
-target platforms.
+Android, web and the Compose Multiplatform desktop viewer (`sceneview-compose`) are
+maintained; Android XR headsets are still on the roadmap. SceneViewSwift (iOS, macOS,
+visionOS), Flutter and React Native are end of life at 4.68.0, with no new releases.
 
 ### AI-assisted development
 
@@ -181,7 +179,7 @@ attach 3D objects to landmarks. Front-camera AR.
 | **Node types** | 46+ composable nodes |
 | **Rendering** | Google Filament — PBR, 60fps mobile |
 | **AR backend** | ARCore — latest features |
-| **Platforms** | Android (stable) + iOS/macOS/visionOS (alpha) |
+| **Platforms** | Android (stable), web and desktop (alpha); iOS/macOS/visionOS, Flutter and React Native end of life at 4.68.0 |
 | **Setup** | 1 Gradle line, 0 XML |
 | **Model viewer** | ~5 lines of Kotlin |
 | **AR placement** | ~15 lines of Kotlin |

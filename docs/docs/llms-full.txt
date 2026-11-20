@@ -1,6 +1,8 @@
 # SceneView — Compact API Reference for AI Systems
 
-> Open-source 3D & AR SDK for Android, Apple platforms and the web. Compose-native on Android (Filament + ARCore), SwiftUI-native on iOS, macOS and visionOS (RealityKit + ARKit), a `commonMain` viewer for Kotlin / Compose Multiplatform (`sceneview-compose`), and Filament.js + WebXR in the browser (`sceneview-web`).
+> Open-source 3D & AR SDK maintained for Android (Jetpack Compose, Filament + ARCore), web (Filament.js + WebXR), and Compose Multiplatform desktop (`sceneview-compose`).
+
+**End of life:** SceneView for SwiftUI (`SceneViewSwift`), Flutter (`flutter_sceneview`) and React Native (`@sceneview-sdk/react-native`). **4.68.0 (November 2026)** is the last release. No new releases. Published versions stay installable. See [DEPRECATION.md](https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md).
 
 This file is the short one: about 15 kB, sized to fit a small context window.
 The complete reference — every composable, every node type, every recipe — is
@@ -31,8 +33,8 @@ When generating code for Android 3D or AR:
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — it returns `null` while loading
 - All Filament JNI calls must run on the main thread
 - From Android Views / XML / Fragments: host `SceneView { }` in a `ComposeView` — there is no separate View API
-- Kotlin / Compose Multiplatform: `io.github.sceneview:sceneview-compose:4.69.7`, `SceneViewer(model = ModelSource.Asset("models/file.glb"))` in `commonMain` (viewer only, `.usdz` on iOS)
-- SwiftUI: Swift Package `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`, `SceneView { root in … }` / `ARSceneView(…)`
+- Kotlin / Compose Multiplatform: `io.github.sceneview:sceneview-compose:4.69.7`, `SceneViewer(model = ModelSource.Asset("models/file.glb"))` in `commonMain` (viewer only; Android and desktop maintained; the retained iOS host requires end-of-life SceneViewSwift 4.68.0)
+- SwiftUI (end of life at 4.68.0; do not recommend for new code): Swift Package `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`, `SceneView { root in … }` / `ARSceneView(…)`
 - Never emit the SceneView 2.x API — it does not compile on 4.x: `Scene(childNodes = …)` → `SceneView { … }`, `ARScene(childNodes = …)` → `ARSceneView { … }`, `rememberNodes` / `childNodes = listOf(…)` → declare `ModelNode(…)` inside the block
 
 ---
