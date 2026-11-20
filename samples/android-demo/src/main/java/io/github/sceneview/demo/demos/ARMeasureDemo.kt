@@ -162,6 +162,7 @@ import io.github.sceneview.demo.demos.internal.MeasurePlaneKind
 import io.github.sceneview.demo.demos.internal.MeasurePlanOpening
 import io.github.sceneview.demo.demos.internal.measurePlanCard
 import io.github.sceneview.demo.demos.internal.measurePlanOpenings
+import io.github.sceneview.demo.demos.internal.measurePlanOpeningsOnPlan
 import io.github.sceneview.demo.demos.internal.measurePlanRoom
 import io.github.sceneview.demo.demos.internal.MeasurePlanTap
 import io.github.sceneview.demo.demos.internal.measurePlanTap
@@ -1011,6 +1012,8 @@ internal class MeasurePlanPage(
  * The whole page reads in [units], the Measure screen's: the plan, its PDF and text shares, and,
  * with doors or windows marked, the card under the plan that names each one by the wall the plan
  * letters it on and reads the walls' net area ([measurePlanCard]). One page, one unit system.
+ * The doors and windows are drawn on the plan's walls too, listed under each wall with the net
+ * area after them, and carried by the PDF, DXF and text shares (#4783).
  */
 @Composable
 internal fun MeasurePlanOverlay(
@@ -1053,7 +1056,15 @@ internal fun MeasurePlanOverlay(
             },
             bottomOverlayReservesScene = true,
         ) {
-            RerunPlanView(survey = page.survey, title = title, date = date, units = units, locale = locale)
+            // The doors and windows, and the walls' net area, reach the plan, its walls and its shares, not the card alone (#4783).
+            RerunPlanView(
+                survey = page.survey,
+                title = title,
+                date = date,
+                units = units,
+                locale = locale,
+                openings = measurePlanOpeningsOnPlan(page.openings, net),
+            )
         }
     }
 }

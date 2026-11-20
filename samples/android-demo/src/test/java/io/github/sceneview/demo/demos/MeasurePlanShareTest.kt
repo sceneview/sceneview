@@ -32,7 +32,8 @@ import java.util.Locale
 /**
  * Measure's plan page in French, from its share button to the text the share sheet receives:
  * the text the page hands over, not one rebuilt beside it, writes every figure with the decimal
- * comma and sets its walls apart with a semicolon. The PDF is drawn from the same words, but onto a canvas no test reads back.
+ * comma, sets its walls apart with a semicolon and names the door marked on wall B. The PDF is
+ * drawn from the same words; MeasurePlanOpeningsTest reads its first page back.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "fr-rFR-w411dp-h891dp-xhdpi")
@@ -112,5 +113,12 @@ class MeasurePlanShareTest {
         val parted = Regex("^" + Regex.escape(walls) + ": A [^;]+; B [^;]+; C [^;]+; D [^;]+$")
         assertTrue(line, parted.matches(line))
         assertFalse(line, ", " in line)
+    }
+
+    @Test
+    fun `French plan's shared text names its door on its wall and the net wall area (#4783)`() {
+        val lines = sharedText().lines()
+        assertTrue(lines.toString(), "Door · Wall B: 0,90 m × 2,10 m" in lines)
+        assertTrue(lines.toString(), "Net wall area: 33,1 m²" in lines)
     }
 }

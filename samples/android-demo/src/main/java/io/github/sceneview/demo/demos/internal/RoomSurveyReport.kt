@@ -95,10 +95,52 @@ class SurveyWording(
      * English when none is given; the Plan view, 3D Scan's and Measure's alike, passes the phone's.
      */
     val locale: Locale = Locale.US,
+    /** A door, then a window, as the walls' table names an opening on a wall (#4783). */
+    val door: String = "",
+    val window: String = "",
+    /** The walls' area once their doors and windows are taken off. */
+    val netWallArea: String = "",
 )
 
 /** One line of the survey's table. [muted] ones say a figure is missing. */
 class SurveyRow(val label: String, val value: String, val muted: Boolean = false)
+
+/**
+ * A door or a window on a plan's wall (#4783), in the plan's frame: on the survey's wall number
+ * [wall] (its index in [RoomSurvey.walls]), [from]..[to] metres along it from its start
+ * ([SurveyWall.ax], [SurveyWall.ay]), [bottom]..[top] metres above the floor.
+ */
+data class PlanOpening(val wall: Int, val from: Float, val to: Float, val bottom: Float, val top: Float) {
+    val width: Float get() = to - from
+    val height: Float get() = top - bottom
+
+    /**
+     * A door stands on the floor: its bottom is within [DOOR_SILL_MAX_M] of it. A window's sill
+     * is higher. Measure marks both the same way, two opposite corners, so nothing else tells
+     * them apart.
+     */
+    val door: Boolean get() = bottom <= DOOR_SILL_MAX_M
+
+    companion object {
+        /** The highest bottom a door is read with: a tap at a door's foot lands a few centimetres off the floor. */
+        const val DOOR_SILL_MAX_M = 0.15f
+    }
+}
+
+/**
+ * What a plan shows besides its survey (#4783): the doors and windows marked on its walls, in the
+ * plan's wall order then along each wall, and [netWallArea], the walls' area without them (m²),
+ * `null` when none was worked out. A room traced in Measure has them; a 3D Scan has none
+ * ([None]), and its plan, its PDF and its text read as they always have.
+ */
+class PlanOpenings(val openings: List<PlanOpening>, val netWallArea: Float?) {
+    /** `true` when there is nothing to add to the survey: no opening and no net wall area. */
+    val isEmpty: Boolean get() = openings.isEmpty() && netWallArea == null
+
+    companion object {
+        val None = PlanOpenings(emptyList(), null)
+    }
+}
 
 object SurveyReport {
     private const val SEPARATOR = " · "
@@ -276,10 +318,41 @@ object SurveyReport {
             muted = area == null,
         )
 
-    /** One row per wall: its letter, its length, and whether it was seen. */
-    fun wallRows(survey: RoomSurvey, wording: SurveyWording): List<SurveyRow> = survey.walls.map { wall ->
+    /**
+     * One row per wall: its letter, its length, and whether it was seen. With [openings] (#4783),
+     * each wall's row is followed by one per door or window on it ([openingRow]), and the walls'
+     * net area comes last ([netWallAreaRow]); without, the rows a 3D Scan has always had.
+     */
+    fun wallRows(survey: RoomSurvey, wording: SurveyWording, openings: PlanOpenings = PlanOpenings.None): List<SurveyRow> {
+        val walls = survey.walls.map { wallRow(it, wording) }
+        if (openings.isEmpty) return walls
+        val rows = ArrayList<SurveyRow>()
+        walls.forEachIndexed { i, row ->
+            rows += row
+            openings.openings.filter { it.wall == i }.forEach { rows += openingRow(it, wording) }
+        }
+        openings.netWallArea?.let { rows += netWallAreaRow(it, wording) }
+        return rows
+    }
+
+    /**
+     * A door or a window as the walls' table lists it under its wall: `Door` · `0.93 m × 2.04 m`,
+     * as wide by as high as it was marked. Written as the card under Measure's plan writes it
+     * ([measurePlanLength]): to the centimetre in metres, so the page says one size for it.
+     */
+    fun openingRow(opening: PlanOpening, wording: SurveyWording): SurveyRow = SurveyRow(
+        label = if (opening.door) wording.door else wording.window,
+        value = measurePlanLength(opening.width, wording.units, wording.locale) + " × " +
+            measurePlanLength(opening.height, wording.units, wording.locale),
+    )
+
+    /** The walls' area net of their doors and windows, [squareMetres], as the card under Measure's plan writes it. */
+    fun netWallAreaRow(squareMetres: Float, wording: SurveyWording): SurveyRow =
+        SurveyRow(wording.netWallArea, formatMeasureArea(squareMetres, wording.units, wording.locale))
+
+    private fun wallRow(wall: SurveyWall, wording: SurveyWording): SurveyRow {
         val label = wording.wall.format(wall.tag)
-        when {
+        return when {
             !wall.sized ->
                 SurveyRow(label, wording.notMeasured + (if (wall.seen) "" else SEPARATOR + wording.notSeen), muted = true)
             !wall.seen -> SurveyRow(label, wallFigure(wall, wording) + SEPARATOR + wording.notSeen, muted = true)
@@ -338,8 +411,16 @@ object SurveyReport {
      * The survey as a few plain lines, ready to paste: the figures, the walls, what to scan for
      * what is missing, what the marks mean, and the notice that this is no certified measurement.
      * The figures and the walls are the table's own rows: the same marks as on the screen and the PDF.
+     * With [openings] (#4783), a line per door or window follows the walls, `Door · Wall B: 0.90 m ×
+     * 2.10 m`, then the walls' net area.
      */
-    fun text(survey: RoomSurvey, wording: SurveyWording, title: String, date: String?): String {
+    fun text(
+        survey: RoomSurvey,
+        wording: SurveyWording,
+        title: String,
+        date: String?,
+        openings: PlanOpenings = PlanOpenings.None,
+    ): String {
         val lines = ArrayList<String>()
         lines += heading(wording, title, date)
         val rows = rows(survey, wording)
@@ -355,6 +436,15 @@ object SurveyReport {
             val walls = wallRows(survey, wording)
             lines += wording.walls + ": " +
                 survey.walls.indices.joinToString(LIST_SEPARATOR) { survey.walls[it].tag + " " + walls[it].value }
+        }
+        for (opening in openings.openings) {
+            val wall = survey.walls.getOrNull(opening.wall) ?: continue
+            val row = openingRow(opening, wording)
+            lines += row.label + SEPARATOR + wording.wall.format(wall.tag) + ": " + row.value
+        }
+        openings.netWallArea?.let {
+            val row = netWallAreaRow(it, wording)
+            lines += row.label + ": " + row.value
         }
         hints(survey, wording).takeIf { it.isNotEmpty() }?.let { lines += it.joinToString(" ") }
         lines += notes(survey, wording)

@@ -3,10 +3,12 @@ package io.github.sceneview.demo.demos.internal
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /*
  * A room survey as a dimensioned floor plan (#4540): the outline to scale, each wall's length on
@@ -123,8 +125,11 @@ object SurveyFormat {
     private const val EPSILON = 1e-3f
 }
 
-/** What a line of the plan is, so each surface paints it its own way. */
-enum class PlanStroke { Wall, WallUnseen, Dimension, Extension, Tick, Scale }
+/**
+ * What a line of the plan is, so each surface paints it its own way. [Opening] is a door's or a
+ * window's jambs, a window's frame and a door's leaf; [Swing] the arc a door sweeps (#4783).
+ */
+enum class PlanStroke { Wall, WallUnseen, Dimension, Extension, Tick, Scale, Opening, Swing }
 
 /** What a text of the plan is. */
 enum class PlanTextRole { Dimension, Area, AreaNote, Tag, Scale }
@@ -198,6 +203,9 @@ object RoomPlanLayout {
     private const val SCALE_MIN = 56f
     private const val TAG_INSET = 11f
     private const val TAG_MIN_WALL = 26f
+    private const val JAMB = 3.5f
+    private const val FRAME = 1.75f
+    private const val SWING_STEPS = 12
     private const val TOP = 0
     private const val RIGHT = 1
     private const val BOTTOM = 2
@@ -207,6 +215,8 @@ object RoomPlanLayout {
     private const val POLE_STEPS = 40
     private const val ALIGNED = 0.01f
 
+    private const val HALF_PI = (Math.PI / 2).toFloat()
+
     /** The round lengths a scale bar is drawn at, metres. */
     private val SCALE_BARS = floatArrayOf(0.5f, 1f, 2f, 5f, 10f)
 
@@ -214,7 +224,13 @@ object RoomPlanLayout {
      * Lays [survey] out in a [width] × [height] box. With [scales] (pixels per metre, any
      * order) the plan is drawn at the largest of them that fits — a paper plan is at 1:50, not
      * at 1:43; without, it fills the box.
+     *
+     * Each of [openings] (#4783) is drawn on its wall, to scale, where it was marked along it: the
+     * wall broken between its two jambs, a window's frame across the gap, a door's leaf open
+     * square into the room and the quarter circle it sweeps. A plan without any is drawn as
+     * it always was.
      */
+    @Suppress("LongParameterList") // a box, its ruler and the scales and openings it may be drawn with
     fun layout(
         survey: RoomSurvey,
         texts: PlanTexts,
@@ -222,6 +238,7 @@ object RoomPlanLayout {
         height: Float,
         metrics: PlanMetrics,
         scales: List<Float>? = null,
+        openings: List<PlanOpening> = emptyList(),
     ): RoomPlanDrawing {
         if (!survey.hasPlan) return RoomPlanDrawing(width, height, 0f, FloatArray(0), emptyList(), emptyList())
         var rows = IntArray(SIDES)
@@ -230,7 +247,7 @@ object RoomPlanLayout {
         repeat(MAX_PASSES) {
             if (drawing != null && rows.all { it == 0 }) return@repeat
             val needed = IntArray(SIDES)
-            val pass = Pass(survey, texts, width, height, metrics, scales, rows.copyOf(), needed)
+            val pass = Pass(survey, texts, width, height, metrics, scales, rows.copyOf(), needed, openings)
             val settled = drawing != null && (0 until SIDES).all { needed[it] <= rows[it] }
             drawing = pass.drawing
             if (settled || needed.all { it == 0 }) return drawing!!
@@ -277,6 +294,7 @@ object RoomPlanLayout {
         scales: List<Float>?,
         private val rows: IntArray,
         private val needed: IntArray,
+        private val openings: List<PlanOpening>,
     ) {
         private val u = metrics.unit
         private val lines = ArrayList<PlanLine>()
@@ -347,13 +365,18 @@ object RoomPlanLayout {
         }
 
         private fun walls() {
-            for (wall in survey.walls) {
+            survey.walls.forEachIndexed { index, wall ->
                 val length = wall.length.value
-                if (length <= 0f) continue
+                if (length <= 0f) return@forEachIndexed
                 val dx = (wall.bx - wall.ax) / length
                 val dy = (wall.by - wall.ay) / length
+                // The doors and windows on this wall, each kept on it: the wall is not drawn across them.
+                val cuts = openings.filter { it.wall == index }
+                    .map { Cut(it.from.coerceIn(0f, length), it.to.coerceIn(0f, length), it.door) }
+                    .filter { it.to > it.from }
+                    .sortedBy { it.from }
                 var at = 0f
-                fun run(from: Float, to: Float, stroke: PlanStroke) {
+                fun segment(from: Float, to: Float, stroke: PlanStroke) {
                     if (to - from <= 0f) return
                     lines += PlanLine(
                         x(wall.ax + dx * from),
@@ -363,12 +386,63 @@ object RoomPlanLayout {
                         stroke,
                     )
                 }
+                fun run(from: Float, to: Float, stroke: PlanStroke) {
+                    var start = from
+                    for (cut in cuts) {
+                        if (cut.to <= start || cut.from >= to) continue
+                        segment(start, cut.from, stroke)
+                        start = max(start, cut.to)
+                    }
+                    segment(start, to, stroke)
+                }
                 for (gap in wall.unseen) {
                     run(at, gap.start, PlanStroke.Wall)
                     run(gap.start, gap.endInclusive, PlanStroke.WallUnseen)
                     at = gap.endInclusive
                 }
                 run(at, length, PlanStroke.Wall)
+                for (cut in cuts) opening(wall, dx, dy, cut.from, cut.to, cut.door)
+            }
+        }
+
+        /**
+         * A door or a window [from]..[to] metres along [wall] (its direction [dx], [dy]): a jamb
+         * across the wall at each end; a window's frame, two lines along the gap; a door's leaf,
+         * hinged at its start and open square into the room, and the quarter circle it sweeps to
+         * its other jamb.
+         */
+        @Suppress("LongParameterList") // a wall, its direction, and the span and kind of the opening on it
+        private fun opening(wall: SurveyWall, dx: Float, dy: Float, from: Float, to: Float, door: Boolean) {
+            val (ox, oy) = outward(wall)
+            val sx = x(wall.ax + dx * from)
+            val sy = y(wall.ay + dy * from)
+            val ex = x(wall.ax + dx * to)
+            val ey = y(wall.ay + dy * to)
+            val jamb = JAMB * u
+            for ((px, py) in listOf(sx to sy, ex to ey)) {
+                lines += PlanLine(px + ox * jamb, py + oy * jamb, px - ox * jamb, py - oy * jamb, PlanStroke.Opening)
+            }
+            if (!door) {
+                val frame = FRAME * u
+                for (side in floatArrayOf(frame, -frame)) {
+                    lines += PlanLine(sx + ox * side, sy + oy * side, ex + ox * side, ey + oy * side, PlanStroke.Opening)
+                }
+                return
+            }
+            // Into the room: against the outward normal. The leaf is as long as the door is wide.
+            val radius = (to - from) * scale
+            lines += PlanLine(sx, sy, sx - ox * radius, sy - oy * radius, PlanStroke.Opening)
+            var px = sx - ox * radius
+            var py = sy - oy * radius
+            for (step in 1..SWING_STEPS) {
+                val angle = HALF_PI * step / SWING_STEPS
+                val c = cos(angle)
+                val s = sin(angle)
+                val nx = sx + radius * (-ox * c + dx * s)
+                val ny = sy + radius * (-oy * c + dy * s)
+                lines += PlanLine(px, py, nx, ny, PlanStroke.Swing)
+                px = nx
+                py = ny
             }
         }
 
@@ -588,6 +662,9 @@ object RoomPlanLayout {
         }
 
         private fun drawingLeft() = x(0f)
+
+        /** A door or a window on a wall, [from]..[to] metres along it. */
+        private class Cut(val from: Float, val to: Float, val door: Boolean)
 
         private companion object {
             const val OVERLAP = 0.01f

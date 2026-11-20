@@ -11,11 +11,17 @@ import io.github.sceneview.demo.demos.internal.RoomSurvey
  * handed to the share sheet alone, typed [DXF_MIME_TYPE]; `false` when the survey has no plan to
  * draw or the drawing could not be written. The drawing is named after the PDF of the same plan.
  */
-internal suspend fun sharePlanDxf(context: Context, survey: RoomSurvey, words: PlanWords, title: String): Boolean {
+internal suspend fun sharePlanDxf(
+    context: Context,
+    survey: RoomSurvey,
+    words: PlanWords,
+    title: String,
+    openings: List<RoomPlanDxf.Opening> = emptyList(),
+): Boolean {
     if (!survey.hasPlan) return false
     val drawing = planDxfWords(context, survey, words, title)
     val name = words.pdfFile.format(title).substringBeforeLast('.') + DXF_EXTENSION
-    val uri = writePlanShare(context, name) { RoomPlanDxf.write(it, survey, words.survey, drawing) } ?: return false
+    val uri = writePlanShare(context, name) { RoomPlanDxf.write(it, survey, words.survey, drawing, openings) } ?: return false
     sharePlanFile(context, uri, DXF_MIME_TYPE, title)
     return true
 }
