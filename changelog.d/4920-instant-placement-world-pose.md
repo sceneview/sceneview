@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Stable instant placement ([#4920](https://github.com/sceneview/sceneview/issues/4920)).** `AnchorNode` content placed by `PlacementScene` retains its physical drop location through an independent world anchor while ARCore estimates depth, then blends between current-frame anchor poses over 300 ms instead of following the camera. World-coordinate corrections preserve the held location throughout placement and refinement.
