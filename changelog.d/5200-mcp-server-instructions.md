@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- MCP: the server now sends its instructions in the `initialize` result, so hosts that read server instructions put them in the agent's context at connect time: read `sceneview://api` first, start from `get_sample`, run `validate_code`, and load models with `rememberModelInstance` on the main thread. A test checks that every tool and resource the instructions name is really served.

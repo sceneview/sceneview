@@ -30,6 +30,7 @@ import {
   DiscoverRequestSchema,
   SERVER_CAPABILITIES,
   SERVER_INFO,
+  SERVER_INSTRUCTIONS,
 } from "./discover.js";
 import { DEMO_WITH_SETTINGS_EXAMPLE, SKETCHFAB_STREAMING_EXAMPLE } from "./examples.js";
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
@@ -99,7 +100,10 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
   // `SERVER_INFO` / `SERVER_CAPABILITIES` live in `./discover.ts` so the
   // handshake and `server/discover` answer the identity/capability question the
   // same way, from one source.
-  const server = new Server({ ...SERVER_INFO }, { capabilities: { ...SERVER_CAPABILITIES } });
+  const server = new Server(
+    { ...SERVER_INFO },
+    { capabilities: { ...SERVER_CAPABILITIES }, instructions: SERVER_INSTRUCTIONS }
+  );
 
   // ─── server/discover (MCP 2026-07-28) ──────────────────────────────────────
   //

@@ -83,10 +83,24 @@ export const DISCOVER_TTL_MS = 3_600_000;
  * Natural-language guidance, mirrored from the package description. Kept short
  * on purpose: per the spec it should not duplicate tool descriptions.
  */
-const DISCOVER_INSTRUCTIONS =
-  "SceneView MCP — the full SceneView SDK (Android/Compose + Filament, iOS/SwiftUI + RealityKit, AR via ARCore/ARKit) " +
-  "as tools and resources, so an AI writes correct, compilable SceneView code. Read the `sceneview://api` resource " +
-  "before writing any SceneView code.";
+/**
+ * What an agent should know before its first tool call. Sent in two places from
+ * this one string: the `initialize` result (`server.ts`, which most hosts put in
+ * the model's context at connect time) and `server/discover` below. Before this
+ * was wired into `initialize`, hosts that read server instructions got nothing.
+ * Keep it short: hosts place it in every conversation.
+ */
+export const SERVER_INSTRUCTIONS = [
+  "SceneView MCP: the SceneView 3D & AR SDK (Android Jetpack Compose + Filament + ARCore, and the web) as tools and resources, so you write SceneView code that compiles on the first try.",
+  "Before writing SceneView code:",
+  "1. Read the `sceneview://api` resource. Use the 4.x names it lists; never emit a 2.x or Sceneform name from memory (`migrate_code` rewrites old code).",
+  "2. Start from `get_sample` or `get_setup` rather than from scratch.",
+  "3. Run `validate_code` on any Kotlin you show, and fix what it reports before answering.",
+  "Rules that break apps when missed: load models with `rememberModelInstance(modelLoader, path)` inside composables. Filament calls (`modelLoader.createModel*`, `materialLoader.*`) must run on the main thread, never from a background coroutine.",
+  "For a runtime error or a blank scene, call `debug_issue` or `get_troubleshooting`, and read `sceneview://known-issues`.",
+].join("\n");
+
+const DISCOVER_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 
 export interface DiscoverResult {
   // The SDK types a request handler's return as an open JSON-RPC result, so the
