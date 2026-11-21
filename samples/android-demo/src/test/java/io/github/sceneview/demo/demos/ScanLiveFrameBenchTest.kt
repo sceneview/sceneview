@@ -47,7 +47,7 @@ class ScanLiveFrameBenchTest {
 
     private fun replay(walk: ScanWalkthrough, frames: Int): Session {
         var now = 0L
-        val dense = ScanDenseMap(maxPoints = PHONE_BUDGET, clock = { now })
+        val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = PHONE_BUDGET, clock = { now })
         val preset = ScanPreset.ROOM
         val tsdf = RerunTsdf(voxelM = preset.modelVoxelM)
         val steps = Steps()

@@ -14,7 +14,7 @@ class RerunScanBudgetTest {
         assertEquals(0.0125f, budget.modelVoxelM(ScanPreset.OBJECT), 0f)
         val tsdf = RerunTsdf(voxelM = budget.modelVoxelM(ScanPreset.ROOM), maxBytes = budget.tsdfBytes)
         var now = 0L
-        val dense = ScanDenseMap(maxPoints = budget.densePoints, clock = { now })
+        val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = budget.densePoints, clock = { now })
         val journal = ArDebugJournal(maxBytes = budget.journalBytes)
         var peakStorage = 0L
         repeat(4_201) { tick ->
@@ -60,6 +60,33 @@ class RerunScanBudgetTest {
                 assertEquals(preset.modelVoxelM, budget.modelVoxelM(preset), 0f)
             }
             assertTrue(budget.retainedBytes <= budget.totalBytes)
+        }
+    }
+
+    @Test
+    fun `256 MiB keeps mains TSDF allowance and reduces only dense capacity`() {
+        val heap = 256 * MIB
+        val budget = ScanMemoryBudget(heap)
+        val reserve = budget.journalBytes + budget.observationBytes + ScanMemoryBudget.TSDF_INDEX_BYTES
+        val mainScale = (heap * 35 / 100 - reserve).toDouble() /
+            (RerunTsdf.MAX_BYTES + DenseFusion.budgetFor(heap) * 192L)
+        assertEquals((RerunTsdf.MAX_BYTES * mainScale).toLong(), budget.tsdfBytes)
+        assertEquals(27_822_216L, budget.tsdfBytes)
+        // Dense gets the remaining 35% envelope, paying 352 bytes instead of main's 192.
+        assertEquals(158_080, budget.densePoints)
+        assertTrue("The shared scan envelope intentionally overrides the standalone minimum",
+            budget.densePoints < DenseFusion.MIN_BUDGET)
+        assertTrue(budget.retainedBytes <= heap * 35 / 100)
+    }
+
+    @Test
+    fun `384 and 512 MiB planned fractions stay well under the heap`() {
+        for ((mib, fraction) in listOf(384 to 0.69, 512 to 0.53)) {
+            val budget = ScanMemoryBudget(mib * MIB)
+            assertEquals(600_000, budget.densePoints)
+            assertEquals(48 * MIB, budget.tsdfBytes)
+            assertTrue("$mib MiB: ${budget.retainedBytes}", budget.retainedBytes < mib * MIB * fraction)
+            println("$mib MiB planned fraction: ${budget.retainedBytes.toDouble() / (mib * MIB)}")
         }
     }
 

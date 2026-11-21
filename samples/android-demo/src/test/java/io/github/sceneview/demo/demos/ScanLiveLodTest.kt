@@ -120,7 +120,7 @@ class ScanLiveLodTest {
             val walk = ScanWalkthrough(yawSteps = YAW_STEPS, revisit = false)
             var now = 0L
             var mapNow = 0L
-            val dense = ScanDenseMap(maxPoints = DenseFusion.budgetFor(256L shl 20), clock = { mapNow })
+            val dense = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = DenseFusion.budgetFor(256L shl 20), clock = { mapNow })
             val farM = ScanPreset.ROOM.farM
             val snapshots = ArrayList<Snapshot>()
             val loads = ArrayList<LiveDrawLoad>()

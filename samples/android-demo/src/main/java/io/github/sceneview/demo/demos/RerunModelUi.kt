@@ -279,6 +279,7 @@ internal class RerunLiveModel(
     private val owner: RerunLiveModels.Owner,
     private val preset: ScanPreset = ScanPreset.ROOM,
     budget: ScanMemoryBudget = ScanMemoryBudget(Runtime.getRuntime().maxMemory()),
+    private val frameCounters: ScanFrameCounters = ScanFrameCounters(),
 ) {
     /** The TSDF while it records; `null` once [keepFor] has handed it on, so only its slot holds it. */
     @Volatile
@@ -292,7 +293,10 @@ internal class RerunLiveModel(
     /** Integrates [frame] on [scope]'s Default dispatcher, unless an integration is under way. */
     fun offer(frame: DepthFrame, scope: CoroutineScope) {
         val tsdf = tsdf ?: return
-        if (!busy.compareAndSet(false, true)) return
+        if (!busy.compareAndSet(false, true)) {
+            frameCounters.dropTsdf()
+            return
+        }
         job = scope.launch(Dispatchers.Default) {
             try {
                 val step = tsdf.integrate(frame, farM = preset.farM)

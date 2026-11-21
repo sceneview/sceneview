@@ -498,7 +498,8 @@ object DenseSurfels {
             val bx = (nyv * tz - nzv * ty)
             val by = (nzv * tx - nxv * tz)
             val bz = (nxv * ty - nyv * tx)
-            val (u, v) = uvOf(i)
+            val u = ((i % ATLAS_SIZE) + 0.5f) / ATLAS_SIZE
+            val v = 1f - ((i / ATLAS_SIZE) + 0.5f) / ATLAS_SIZE
             val a = mesh.vertex(x - tx - bx, y - ty - by, z - tz - bz, u, v)
             val b = mesh.vertex(x + tx - bx, y + ty - by, z + tz - bz, u, v)
             val c = mesh.vertex(x + tx + bx, y + ty + by, z + tz + bz, u, v)

@@ -33,11 +33,18 @@ data class DenseFuseStats(val added: Int, val kept: Int, val total: Int, val con
  * Single-threaded: one fusion at a time, off the main thread.
  */
 @Suppress("TooManyFunctions") // one small step of the voxel bookkeeping each
-class DenseFusion(
-    val voxelM: Float = VOXEL_M,
-    val maxPoints: Int = MAX_POINTS,
-    val maxLevel: Int = MAX_LEVEL,
+class DenseFusion private constructor(
+    val voxelM: Float,
+    val maxPoints: Int,
+    val maxLevel: Int,
+    snapshotOnly: Boolean,
 ) {
+    constructor(voxelM: Float = VOXEL_M, maxPoints: Int = MAX_POINTS, maxLevel: Int = MAX_LEVEL) :
+        this(voxelM, maxPoints, maxLevel, false)
+
+    private val initialPoints = if (snapshotOnly) 0 else INITIAL_POINTS
+    private val initialSlots = if (snapshotOnly) 0 else INITIAL_SLOTS
+
     init {
         require(maxPoints > 0) { "maxPoints $maxPoints" }
         require(maxLevel in 0..LEVEL_LIMIT) { "maxLevel $maxLevel, 0..$LEVEL_LIMIT" }
@@ -67,27 +74,27 @@ class DenseFusion(
     /** The count at which the next compaction runs: a little past the last one's result. */
     private var nextCompactAt = compactAt
 
-    private var keys = LongArray(INITIAL_SLOTS) { EMPTY }
-    private var slots = IntArray(INITIAL_SLOTS)
-    private var px = FloatArray(INITIAL_POINTS)
-    private var py = FloatArray(INITIAL_POINTS)
-    private var pz = FloatArray(INITIAL_POINTS)
-    private var nx = FloatArray(INITIAL_POINTS)
-    private var ny = FloatArray(INITIAL_POINTS)
-    private var nz = FloatArray(INITIAL_POINTS)
-    private var r = FloatArray(INITIAL_POINTS)
-    private var g = FloatArray(INITIAL_POINTS)
-    private var b = FloatArray(INITIAL_POINTS)
-    private var weight = FloatArray(INITIAL_POINTS)
-    private var colorWeight = FloatArray(INITIAL_POINTS)
-    private var confidence = ByteArray(INITIAL_POINTS)
-    private var views = IntArray(INITIAL_POINTS)
-    private var lastView = IntArray(INITIAL_POINTS)
-    private var firstView = IntArray(INITIAL_POINTS)
+    private var keys = LongArray(initialSlots) { EMPTY }
+    private var slots = IntArray(initialSlots)
+    private var px = FloatArray(initialPoints)
+    private var py = FloatArray(initialPoints)
+    private var pz = FloatArray(initialPoints)
+    private var nx = FloatArray(initialPoints)
+    private var ny = FloatArray(initialPoints)
+    private var nz = FloatArray(initialPoints)
+    private var r = FloatArray(initialPoints)
+    private var g = FloatArray(initialPoints)
+    private var b = FloatArray(initialPoints)
+    private var weight = FloatArray(initialPoints)
+    private var colorWeight = FloatArray(initialPoints)
+    private var confidence = ByteArray(initialPoints)
+    private var views = IntArray(initialPoints)
+    private var lastView = IntArray(initialPoints)
+    private var firstView = IntArray(initialPoints)
 
     /** Each voxel's key ([levelKey]): its cell and its level, what a compaction re-keys. */
-    private var voxelKeys = LongArray(INITIAL_POINTS)
-    private var chunkOf = IntArray(INITIAL_POINTS)
+    private var voxelKeys = LongArray(initialPoints)
+    private var chunkOf = IntArray(initialPoints)
 
     // The chunks: their detail level, the last frame that saw them, the voxels they hold.
     private val chunkIndex = LongIntMap()
@@ -98,14 +105,81 @@ class DenseFusion(
 
     /** [liveCloud]'s working arrays, kept from one live snapshot to the next. */
     private val scratch = LiveScratch()
-
-    /** Retained primitive-array storage, including indices and live-cloud scratch; no heap walk. */
+    private val liveIndex = LiveIndex()
+    /** Retained arrays, including the reusable live-build workspace. */
     internal val storageBytes: Long
-        get() = px.size * 69L + keys.size * 12L + chunkLevel.size * 9L +
-            chunkIndex.storageBytes + scratch.storageBytes + ARRAY_OVERHEAD_BYTES
+        get() = readStorageBytes + weight.size * 4L + lastView.size * 4L + firstView.size * 4L +
+            chunkOf.size * 4L + keys.size * 12L + chunkLevel.size * 9L + chunkIndex.storageBytes +
+            scratch.storageBytes + liveIndex.storageBytes + ARRAY_OVERHEAD_BYTES
 
-    /** The current [add] call, numbered from 1: a voxel's views grow once per call. */
+    private val readStorageBytes: Long get() = px.size * 53L
+
+    /** The current depth frame, numbered from one. */
     private var view = 0
+
+    /**
+     * An owned copy of exactly the arrays read by a preview. Neither its reader nor its
+     * workspace ever aliases the source fusion or a returned cloud. The caller copies only
+     * after the previous build has stopped reading this single reusable snapshot.
+     */
+    internal class LiveSnapshot(source: DenseFusion, private val beforeAllocation: () -> Unit = {}) {
+        private val read = DenseFusion(source.voxelM, source.maxPoints, source.maxLevel, true)
+        val voxelM: Float get() = read.voxelM
+        val storageBytes: Long get() = read.storageBytes - workspaceBytes
+        val workspaceBytes: Long get() = read.scratch.storageBytes + read.liveIndex.storageBytes
+        val capacity: Int get() = read.px.size
+        fun cloud(maxPoints: Int): DenseCloud = read.cloud(minViews = 1, maxPoints = maxPoints)
+        fun cloudPositions(minViews: Int, maxPoints: Int): FloatArray = read.cloudPositions(minViews, maxPoints)
+        fun liveCloud(x: Float, y: Float, z: Float, maxPoints: Int): DenseCloud =
+            read.liveCloud(x, y, z, maxPoints, minViews = 1)
+        fun surfels(): LiveCoverageGround.Surfels = read.surfels()
+
+        /** Called under the dense gate, never while this buffer is being built. */
+        fun copyFrom(source: DenseFusion) {
+            val n = source.count
+            // voxelKeys is allocated last: it stays short until a growth has fully succeeded, so a
+            // retry after a failed growth reallocates every array, not only the ones still short.
+            if (read.voxelKeys.size < n) {
+                val size = minOf(source.maxPoints, maxOf(n, read.px.size + read.px.size / 2, INITIAL_POINTS))
+                // Drop the old arrays before growing: a failed allocation drops this whole snapshot
+                // (ScanDenseMap.dropPreview), so keeping old and new together would only raise the peak.
+                read.px = FloatArray(0)
+                read.py = FloatArray(0)
+                read.pz = FloatArray(0)
+                read.nx = FloatArray(0)
+                read.ny = FloatArray(0)
+                read.nz = FloatArray(0)
+                read.r = FloatArray(0)
+                read.g = FloatArray(0)
+                read.b = FloatArray(0)
+                read.colorWeight = FloatArray(0)
+                read.confidence = ByteArray(0)
+                read.views = IntArray(0)
+                read.voxelKeys = LongArray(0)
+                read.px = FloatArray(size).also { beforeAllocation() }
+                read.py = FloatArray(size).also { beforeAllocation() }
+                read.pz = FloatArray(size).also { beforeAllocation() }
+                read.nx = FloatArray(size).also { beforeAllocation() }
+                read.ny = FloatArray(size).also { beforeAllocation() }
+                read.nz = FloatArray(size).also { beforeAllocation() }
+                read.r = FloatArray(size).also { beforeAllocation() }
+                read.g = FloatArray(size).also { beforeAllocation() }
+                read.b = FloatArray(size).also { beforeAllocation() }
+                read.colorWeight = FloatArray(size).also { beforeAllocation() }
+                read.confidence = ByteArray(size).also { beforeAllocation() }
+                read.views = IntArray(size).also { beforeAllocation() }
+                read.voxelKeys = LongArray(size).also { beforeAllocation() }
+            }
+            source.px.copyInto(read.px, endIndex = n); source.py.copyInto(read.py, endIndex = n)
+            source.pz.copyInto(read.pz, endIndex = n); source.nx.copyInto(read.nx, endIndex = n)
+            source.ny.copyInto(read.ny, endIndex = n); source.nz.copyInto(read.nz, endIndex = n)
+            source.r.copyInto(read.r, endIndex = n); source.g.copyInto(read.g, endIndex = n)
+            source.b.copyInto(read.b, endIndex = n); source.colorWeight.copyInto(read.colorWeight, endIndex = n)
+            source.confidence.copyInto(read.confidence, endIndex = n); source.views.copyInto(read.views, endIndex = n)
+            source.voxelKeys.copyInto(read.voxelKeys, endIndex = n)
+            read.count = n
+        }
+    }
 
     /** Merges [samples] into the map. */
     @Suppress("LoopWithTooManyJumpStatements", "CyclomaticComplexMethod") // one skip per rejected sample
@@ -254,6 +328,7 @@ class DenseFusion(
         var n = 0
         var i = 0
         while (i < count && n < cap) {
+
             if (views[i] >= minViews) n++
             i += stride
         }
@@ -261,6 +336,7 @@ class DenseFusion(
         var o = 0
         i = 0
         while (o < n) {
+
             if (views[i] >= minViews) {
                 positions[o * 3] = px[i]
                 positions[o * 3 + 1] = py[i]
@@ -274,8 +350,8 @@ class DenseFusion(
 
     /**
      * The map's surfels [minViews] depth frames saw, read in place: what the live map's "to redo"
-     * cells are judged on ([LiveCoverageGround.weakCells]), every snapshot, without copying the
-     * map. Valid until the next [add]; on the thread that adds.
+     * cells are judged on ([LiveCoverageGround.weakCells]). On fusion this is valid until
+     * the next [add]; on a [LiveSnapshot] it reads the owned copy throughout a build.
      */
     internal fun surfels(minViews: Int = MIN_VIEWS): LiveCoverageGround.Surfels = object : LiveCoverageGround.Surfels {
         override val count get() = this@DenseFusion.count
@@ -304,8 +380,20 @@ class DenseFusion(
      * parts weighted by the surface each stands for, in the order the map found them. Reads the
      * map only: [cloud] and a saved scan are left as they were.
      */
-    @Suppress("LongMethod", "CyclomaticComplexMethod") // two passes over the map, one merge
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList")
     fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud {
+        scratch.beginBuild()
+        liveIndex.clear()
+        return try {
+            buildLiveCloud(eyeX, eyeY, eyeZ, maxPoints, minViews)
+        } finally {
+            scratch.trim()
+            liveIndex.trim()
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList")
+    private fun buildLiveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int): DenseCloud {
         val n = count
         if (n == 0 || maxPoints <= 0) return DenseCloud.Empty
         var first = LIVE_FIRST_LEVEL_M
@@ -323,7 +411,7 @@ class DenseFusion(
         val outOf = scratch.outOf
         val outLevel = scratch.outLevel
         val near = scratch.near
-        val index = LongIntMap(Integer.highestOneBit(minOf(n, maxPoints).coerceAtLeast(1)) shl 2)
+        val index = liveIndex
         var out = 0
         var nearOut = 0
         // The map holds what a depth frame found together: the voxel before often merges into the same surfel.
@@ -455,20 +543,22 @@ class DenseFusion(
         val buckets = scratch.buckets.takeIf { it.size == DRAW_BUCKETS } ?: IntArray(DRAW_BUCKETS)
         scratch.buckets = buckets
         buckets.fill(0)
-        for (o in 0 until out) if (!(keepNear && near[o])) buckets[draw[o] ushr DRAW_BUCKET_SHIFT]++
+        for (o in 0 until out) {
+            if (!(keepNear && near[o])) buckets[draw[o] ushr DRAW_BUCKET_SHIFT]++
+        }
         var edge = 0
         var left = room
         while (buckets[edge] < left) {
             left -= buckets[edge]
             edge++
         }
-        val inEdge = IntArray(buckets[edge])
+        val inEdge = scratch.forDraws(buckets[edge])
         var e = 0
         for (o in 0 until out) {
             if (keepNear && near[o]) continue
             if (draw[o] ushr DRAW_BUCKET_SHIFT == edge) inEdge[e++] = draw[o]
         }
-        inEdge.sort()
+        inEdge.sort(0, buckets[edge])
         val cut = inEdge[left - 1]
         var atCut = 0
         for (k in 0 until left) if (inEdge[k] == cut) atCut++
@@ -784,6 +874,69 @@ class DenseFusion(
         chunkOf = chunkOf.copyOf(size)
     }
 
+    /** Primitive live-view index retained between snapshots; never changes voxel insertion order. */
+    private class LiveIndex {
+        private var keys = LongArray(INITIAL_SLOTS)
+        private var values = IntArray(INITIAL_SLOTS)
+        private var stamps = IntArray(INITIAL_SLOTS)
+        private var epoch = 1
+        private var size = 0
+        val storageBytes: Long get() = keys.size * 16L
+
+        /** Constant time between builds; stale entries never participate in probing. */
+        fun clear() {
+            if (epoch == Int.MAX_VALUE) { stamps.fill(0); epoch = 0 }
+            epoch++
+            size = 0
+        }
+
+        fun get(key: Long): Int {
+            val mask = keys.size - 1
+            var slot = mix(key) and mask
+            while (stamps[slot] == epoch) {
+                if (keys[slot] == key) return values[slot]
+                slot = (slot + 1) and mask
+            }
+            return -1
+        }
+
+        fun put(key: Long, value: Int) {
+            if ((size + 1) * 2 > keys.size) grow()
+            val mask = keys.size - 1
+            var slot = mix(key) and mask
+            while (stamps[slot] == epoch) slot = (slot + 1) and mask
+            keys[slot] = key
+            values[slot] = value
+            stamps[slot] = epoch
+            size++
+        }
+
+        fun trim() {
+            var needed = INITIAL_SLOTS
+            while (needed < size * 2) needed *= 2
+            if (keys.size > needed * 2) {
+                keys = LongArray(needed)
+                values = IntArray(needed)
+                stamps = IntArray(needed)
+                epoch = 1
+                size = 0
+            }
+        }
+
+        private fun grow() {
+            val oldKeys = keys
+            val oldValues = values
+            val oldStamps = stamps
+            val oldEpoch = epoch
+            keys = LongArray(oldKeys.size * 2)
+            values = IntArray(keys.size)
+            stamps = IntArray(keys.size)
+            epoch = 1
+            size = 0
+            for (i in oldKeys.indices) if (oldStamps[i] == oldEpoch) put(oldKeys[i], oldValues[i])
+        }
+    }
+
     companion object {
         /** Rounded allowance for the retained primitive-array headers. */
         private const val ARRAY_OVERHEAD_BYTES = 2048L
@@ -897,6 +1050,7 @@ class DenseFusion(
         /** The least a sample counts, so a weight never divides by zero. */
         private const val MIN_SAMPLE_WEIGHT = 1e-4f
 
+
         private const val INITIAL_SLOTS = 1 shl 14
         private const val INITIAL_POINTS = 1 shl 13
         private const val INITIAL_CHUNKS = 1 shl 8
@@ -963,11 +1117,8 @@ class DenseFusion(
         private const val DRAW_BUCKETS = 1 shl DRAW_BUCKET_BITS
         private const val DRAW_BUCKET_SHIFT = DRAW_BITS - DRAW_BUCKET_BITS
 
-        private fun mix(key: Long): Int {
-            var h = key * -0x61c8864680b583ebL
-            h = h xor (h ushr 29)
-            return h.toInt() and Int.MAX_VALUE
-        }
+        // Packed coordinates need all their bits avalanched before masking a power-of-two table.
+        private fun mix(key: Long): Int = drawOf(key)
 
         private fun channel(v: Float) = (v + 0.5f).toInt().coerceIn(0, 255)
     }
@@ -980,7 +1131,7 @@ class DenseFusion(
  */
 private class LiveScratch {
     val storageBytes: Long
-        get() = outOf.size * 6L + weight.size * 51L + buckets.size * 4L
+        get() = outOf.size * 6L + weight.size * 51L + buckets.size * 4L + edgeDraws.size * 4L
     /** Per voxel of the map: the merged surfel it goes to. */
     var outOf = IntArray(0)
 
@@ -1001,8 +1152,44 @@ private class LiveScratch {
     var draw = IntArray(0)
     var buckets = IntArray(0)
 
+    private var edgeDraws = IntArray(0)
+    private var neededVoxels = 0
+    private var neededSurfels = 0
+    private var neededDraws = 0
+
+    fun beginBuild() { neededVoxels = 0; neededSurfels = 0; neededDraws = 0 }
+
+    /** Outputs own their arrays: old sums and indices need not survive between builds. */
+    fun trim() {
+        if (outOf.size > neededVoxels * 2) {
+            outOf = IntArray(grown(neededVoxels))
+            outLevel = ByteArray(outOf.size)
+            near = BooleanArray(outOf.size)
+        }
+        if (weight.size > neededSurfels * 2) {
+            position = Array(AXES) { FloatArray(0) }
+            normal = Array(AXES) { FloatArray(0) }
+            color = Array(AXES) { FloatArray(0) }
+            weight = FloatArray(0)
+            colorWeight = FloatArray(0)
+            conf = ByteArray(0)
+            keep = BooleanArray(0)
+            draw = IntArray(0)
+            forSurfels(neededSurfels)
+        }
+        if (edgeDraws.size > neededDraws * 2) edgeDraws = IntArray(grown(neededDraws))
+        if (neededDraws == 0 && buckets.isNotEmpty()) buckets = IntArray(0)
+    }
+
+    fun forDraws(count: Int): IntArray {
+        neededDraws = count
+        if (edgeDraws.size < count) edgeDraws = IntArray(grown(count))
+        return edgeDraws
+    }
+
     /** Room for [voxels] voxels, and as many merged surfels. */
     fun forVoxels(voxels: Int) {
+        neededVoxels = voxels
         if (outOf.size >= voxels) return
         val size = grown(voxels)
         outOf = IntArray(size)
@@ -1012,6 +1199,7 @@ private class LiveScratch {
 
     /** Room for [surfels] merged surfels, their sums at zero. */
     fun forSurfels(surfels: Int) {
+        neededSurfels = surfels
         if (weight.size < surfels) {
             val size = grown(surfels)
             position = Array(AXES) { FloatArray(size) }
@@ -1024,7 +1212,9 @@ private class LiveScratch {
             draw = IntArray(size)
             return
         }
-        for (sums in arrayOf(position, normal, color)) for (s in sums) s.fill(0f, 0, surfels)
+        for (s in position) s.fill(0f, 0, surfels)
+        for (s in normal) s.fill(0f, 0, surfels)
+        for (s in color) s.fill(0f, 0, surfels)
         weight.fill(0f, 0, surfels)
         colorWeight.fill(0f, 0, surfels)
         conf.fill(0, 0, surfels)

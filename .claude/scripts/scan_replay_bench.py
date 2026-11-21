@@ -167,6 +167,9 @@ def parse_logcat(text, launch_epoch, live_end_epoch=None):
             continue
         if live_end_epoch is not None and epoch > live_end_epoch:
             continue
+        # Depth loss totals do not prove that cadence or floor coverage was observed.
+        if data.get("event") == "depth":
+            continue
         observed = True
         if first is None and data.get("surface_ready") is True:
             first = epoch - launch_epoch

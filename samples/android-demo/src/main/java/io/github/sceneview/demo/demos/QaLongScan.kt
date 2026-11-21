@@ -88,6 +88,8 @@ internal class QaLongScan(fixed: Boolean, origin: Vec3, private val plainFrames:
             val spent = (System.nanoTime() - started) / NANOS_PER_MS
             delay((ScanCapture.DEPTH_INTERVAL_NS / NANOS_PER_MS - spent).coerceAtLeast(0L))
         }
+        dense.flushLive()
+        dense.finishPendingLive()
         val rooms = walk.pointsPerRoom(dense.savedCloud()).joinToString("/")
         Log.i(LOG_TAG, "done: saved ${dense.count} points, per room $rooms")
         // The walk is over; "Adjusting detail" still has to time out on screen.

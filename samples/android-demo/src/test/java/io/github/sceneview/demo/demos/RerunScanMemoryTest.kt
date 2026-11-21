@@ -164,12 +164,19 @@ class RerunScanMemoryTest {
             if (BuildConfig.DEBUG) {
                 val before = ShadowLog.getLogsForTag("SceneView/ScanMem").last().msg
                 assertTrue(before, before.contains("finishedEvents=2"))
+                assertTrue(before, before.contains("depthAccepted=0 depthBusy=0 depthStale=0 tsdfDropped=0 depthUnavailable=0"))
             }
             val thumbnail = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
             (capture.live.thumbnails as MutableMap<String, Bitmap>)["test.jpg"] = thumbnail
+            val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = Dispatchers.Unconfined)
+            map.add(ScanLiveFreshnessTest.patch(8_000))
+            assertTrue(map.snapshotStorageBytes > 0)
+            ScanCapture::class.java.getDeclaredField("dense").apply { isAccessible = true }.set(capture, map)
             capture.close()
             capture.close()
             capture.releaseJob?.join()
+            assertEquals(0L, map.snapshotStorageBytes)
+            assertNull(map.live)
             assertEquals(1, reader.mapPointCount)
             assertEquals(1, reader.observationCount)
             assertNull(capture.trace.journal)
@@ -181,12 +188,49 @@ class RerunScanMemoryTest {
                 val exit = logs.last { it.startsWith("exit used=") }
                 assertTrue(exit, exit.startsWith("exit used="))
                 assertTrue(exit, exit.contains(" max="))
+                assertTrue(exit, exit.contains("depthAccepted=0 depthBusy=0 depthStale=0 tsdfDropped=0 depthUnavailable=0"))
                 assertTrue(exit, exit.contains("journalEvents=0 journalBytes=0 finishedEvents=0 finishedBytes=0"))
                 assertTrue(logs.any { it.startsWith("close-detach ms=") })
                 assertTrue(logs.any { it.startsWith("close-cleanup ms=") && it.contains("DefaultDispatcher-worker") })
             }
         } finally {
             capture.close()
+            owner.close()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `Save returns before an uninterruptible preview and close releases its buffers afterward`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val owner = RerunLiveModels.Owner()
+        val blocked = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = Dispatchers.Unconfined,
+            beforeBuild = { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { blocked.await() } })
+        val capture = ScanCapture(
+            intrinsics = ScanIntrinsics(100f, 100f, 50f, 50f, 100, 100), textureIntrinsics = null,
+            lens = ReplayLens(0.5f, 0.5f), scope = scope, modelOwner = owner, rawDepth = true,
+        )
+        try {
+            capture.trace.addPose(0L, DebugPose(0f, 0f, 0f))
+            capture.trace.addPoints(0L, floatArrayOf(0f, 0f, -1f))
+            map.add(ScanLiveFreshnessTest.patch(800))
+            map.add(ScanLiveFreshnessTest.patch(800))
+            ScanCapture::class.java.getDeclaredField("dense").apply { isAccessible = true }.set(capture, map)
+            val pack = kotlinx.coroutines.withTimeout(5_000) { capture.finish() }
+            assertTrue(pack != null)
+            assertTrue(map.hasPendingLive)
+            assertTrue(map.snapshotStorageBytes > 0L)
+            capture.close()
+            assertTrue(capture.releaseJob?.isCompleted == false)
+            blocked.complete(Unit)
+            capture.releaseJob?.join()
+            assertEquals(0L, map.snapshotStorageBytes)
+            assertNull(map.live)
+        } finally {
+            blocked.complete(Unit)
+            capture.close()
+            capture.releaseJob?.join()
             owner.close()
             scope.cancel()
         }

@@ -25,7 +25,7 @@ import kotlin.math.sqrt
 class ScanDenseMapTest {
     private var now = 0L
     private fun map(maxPoints: Int, maxLevel: Int = DenseFusion.MAX_LEVEL) =
-        ScanDenseMap(maxPoints = maxPoints, maxLevel = maxLevel, clock = { now })
+        ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = maxPoints, maxLevel = maxLevel, clock = { now })
 
     @Test
     fun `a whole flat on the smallest budget never shows a limit, and the count is the saved one`() {

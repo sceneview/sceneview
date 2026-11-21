@@ -24,6 +24,16 @@ internal class CoverageGrid(
     val cellMetres: Float = CELL_METRES,
     private val minPoints: Int = MIN_POINTS,
 ) {
+    class KeyScratch {
+        private var keys = LongArray(0)
+        val storageBytes: Long get() = keys.size * 8L
+        fun forPoints(count: Int): LongArray {
+            if (keys.size < count) keys = LongArray(maxOf(count, keys.size + keys.size / 2))
+            return keys
+        }
+        fun release() { keys = LongArray(0) }
+    }
+
     private val counts = HashMap<Long, Int>()
     private var consumed = 0
     private var cellsConsumed = 0
@@ -258,22 +268,23 @@ internal class CoverageGrid(
             count: Int = points.size / 3,
             cellMetres: Float = CELL_METRES,
             minPoints: Int = MIN_POINTS,
+            scratch: KeyScratch? = null,
         ): LongArray {
             val total = count.coerceIn(0, points.size / 3)
-            val keys = LongArray(total) { i ->
-                key(floor(points[i * 3] / cellMetres).toInt(), floor(points[i * 3 + 2] / cellMetres).toInt())
+            val keys = scratch?.forPoints(total) ?: LongArray(total)
+            for (i in 0 until total) {
+                keys[i] = key(floor(points[i * 3] / cellMetres).toInt(), floor(points[i * 3 + 2] / cellMetres).toInt())
             }
-            keys.sort()
-            val covered = LongArray(total)
+            keys.sort(0, total)
             var n = 0
             var i = 0
             while (i < total) {
                 var j = i
                 while (j < total && keys[j] == keys[i]) j++
-                if (j - i >= minPoints) covered[n++] = keys[i]
+                if (j - i >= minPoints) keys[n++] = keys[i]
                 i = j
             }
-            return covered.copyOf(n)
+            return keys.copyOf(n)
         }
 
         @PublishedApi
