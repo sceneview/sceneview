@@ -122,8 +122,6 @@ class ScanLiveFreshnessTest {
         }
         runCurrent()
         val expected = checkNotNull(synchronous.live)
-        // Fusion keeps changing and compacting while the first snapshot stays blocked.
-        repeat(50) { parallel.add(patch(800, (it + 1) * 3f)) }
         blocked.complete(Unit)
         parallel.finishPendingLive()
         val actual = checkNotNull(parallel.live)
@@ -183,8 +181,35 @@ class ScanLiveFreshnessTest {
     }
 
     @Test
-    fun `both snapshot buffers and retained work fit the dense memory allowance`() {
-        val cap = 250_000
+    fun `600k fusion snapshot and workspace arrays fit the measured allowance`() {
+        val cap = 600_000
+        // A compact near field prevents distance merging: all 600k surfels need workspace,
+        // even though only 50k are drawn. This exercises the worst merge/index capacity.
+        val fusion = DenseFusion(voxelM = 0.005f, maxPoints = cap, maxLevel = 0)
+        val samples = patch(cap)
+        for (i in samples.positions.indices) samples.positions[i] *= 0.25f
+        fusion.add(samples)
+        fusion.add(samples)
+        assertEquals(cap, fusion.count)
+        val snapshot = DenseFusion.LiveSnapshot(fusion)
+        snapshot.copyFrom(fusion)
+        val drawn = snapshot.liveCloud(0.25f, 0.6f, 0.25f, ScanDenseMap.LIVE_DRAWN_SURFELS)
+        assertEquals(50_000, drawn.count)
+        val fusionArrays = primitiveArrayBytes(fusion)
+        val snapshotArrays = primitiveArrayBytes(snapshot)
+        val measured = fusionArrays + snapshotArrays
+        val bytesPerPoint = measured.toDouble() / cap
+        // Independent reflection counts real arrays, including hash tables and geometric growth.
+        assertTrue("$bytesPerPoint bytes/point", bytesPerPoint in 290.0..320.0)
+        assertTrue(snapshot.storageBytes >= cap * 53L)
+        assertTrue(snapshot.storageBytes < cap * 54L)
+        println("600k fusion + one snapshot + workspace arrays: $measured bytes ($bytesPerPoint bytes/point); " +
+            "fusion=$fusionArrays snapshotAndWorkspace=$snapshotArrays workspace=${snapshot.workspaceBytes}")
+    }
+
+    @Test
+    fun `retained layer and one snapshot fit the dense memory allowance`() {
+        val cap = 600_000
         var now = 0L
         val map = ScanDenseMap(maxPoints = cap, maxLevel = 0, clock = { now }, liveDispatcher = Dispatchers.Unconfined)
         map.project(eye(), now)
@@ -194,10 +219,149 @@ class ScanLiveFreshnessTest {
             now += ScanDenseMap.LIVE_INTERVAL_NS
         }
         assertTrue(checkNotNull(map.live).cloud.count > 0)
-        assertTrue(map.fusion.count > 200_000)
-        assertTrue(map.snapshotStorageBytes >= map.fusion.count * 53L * 2)
+        assertEquals(cap, map.fusion.count)
         assertTrue("${map.storageBytes} bytes for $cap points", map.storageBytes <= cap * ScanMemoryBudget.DENSE_BYTES_PER_POINT)
-        println("Near field retained ${map.storageBytes} / ${cap * ScanMemoryBudget.DENSE_BYTES_PER_POINT} bytes, snapshots=${map.snapshotStorageBytes}")
+        println("Near field retained ${map.storageBytes} / ${cap * ScanMemoryBudget.DENSE_BYTES_PER_POINT} bytes, snapshot=${map.snapshotStorageBytes}")
+    }
+
+    @Test
+    fun `completion takes one trailing snapshot after adds stop even before the interval`() = runTest {
+        var builds = 0
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+            liveDispatcher = StandardTestDispatcher(testScheduler), beforeBuild = { builds++; delay(100) })
+        map.add(patch(800))
+        runCurrent()
+        advanceTimeBy(50)
+        map.add(patch(800, 3f))
+        map.add(patch(800, 3f))
+        map.finishPendingLive()
+        assertEquals(200, testScheduler.currentTime)
+        assertEquals(2, builds)
+        assertArrayEquals(map.fusion.cloudPositions(DenseFusion.MIN_VIEWS), checkNotNull(map.live).whole, 0f)
+        advanceUntilIdle()
+        assertEquals(2, builds)
+        map.discardPendingLive()
+    }
+
+    @Test
+    fun `QA flush publishes depth left below the interval after an idle build`() = runTest {
+        var builds = 0
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+            liveDispatcher = StandardTestDispatcher(testScheduler), beforeBuild = { builds++ })
+        map.add(patch(800))
+        map.finishPendingLive()
+        map.add(patch(800, 3f))
+        map.add(patch(800, 3f))
+        assertEquals(1, builds)
+        map.flushLive()
+        map.finishPendingLive()
+        assertEquals(2, builds)
+        assertArrayEquals(map.fusion.cloudPositions(DenseFusion.MIN_VIEWS), checkNotNull(map.live).whole, 0f)
+        map.discardPendingLive()
+    }
+
+    @Test
+    fun `published layer survives reuse of the single snapshot and merge workspace`() = runTest {
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+            liveDispatcher = StandardTestDispatcher(testScheduler))
+        map.project(eye(), 0L)
+        map.add(patch(8_000))
+        map.add(patch(8_000))
+        map.finishPendingLive()
+        val layer = checkNotNull(map.live)
+        val before = layerArrays(layer)
+        map.add(patch(8_000, 3f))
+        map.add(patch(8_000, 3f))
+        map.flushLive() // overwrites the snapshot before the next build reads it
+        assertEquals(before, layerArrays(layer))
+        map.finishPendingLive() // overwrites the merge scratch too
+        assertNotSame(layer, map.live)
+        assertEquals(before, layerArrays(layer))
+        map.discardPendingLive()
+    }
+
+    @Test
+    fun `exception and OOM drop a preview and the next build succeeds`() = runTest {
+        for (failure in listOf(IllegalStateException("test"), OutOfMemoryError("test"))) {
+            var attempts = 0
+            val logs = mutableListOf<String>()
+            val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+                liveDispatcher = StandardTestDispatcher(testScheduler), previewLog = { logs += it },
+                beforeBuild = { if (++attempts == 1) throw failure })
+            map.add(patch(800))
+            map.finishPendingLive()
+            assertNull(map.live)
+            assertFalse(map.hasPendingLive)
+            assertEquals(listOf("preview dropped: ${failure.javaClass.simpleName}"), logs)
+            map.add(patch(800))
+            map.finishPendingLive()
+            assertNotNull(map.live)
+            assertEquals(2, attempts)
+            assertEquals(1, logs.size)
+            map.discardPendingLive()
+        }
+    }
+
+    @Test
+    fun `save cancellation returns while an uninterruptible preview still owns its buffers`() = runTest {
+        val blocked = CompletableDeferred<Unit>()
+        val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = StandardTestDispatcher(testScheduler),
+            beforeBuild = { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { blocked.await() } })
+        map.add(patch(800))
+        runCurrent()
+        val pending = map.close() // finish cancels only; close cleanup joins later
+        assertFalse(pending.isCompleted)
+        assertTrue(map.snapshotStorageBytes > 0L)
+        blocked.complete(Unit)
+        pending.join()
+        map.releaseLiveBuffers()
+        assertEquals(0L, map.snapshotStorageBytes)
+        assertNull(map.live)
+    }
+
+    @Test
+    fun `preview thread keeps Java normal priority and sets nice once inside the thread`() = runTest {
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val logged = CompletableDeferred<String>()
+        val map = ScanDenseMap(maxPoints = 20_000, previewPriority = {
+            assertEquals("SceneView-ScanPreview", Thread.currentThread().name)
+            assertEquals(Thread.NORM_PRIORITY, Thread.currentThread().priority)
+            calls.incrementAndGet()
+            2
+        }, previewLog = { logged.complete(it) })
+        map.add(patch(800))
+        map.finishPendingLive()
+        assertTrue(logged.isCompleted)
+        assertEquals("preview thread nice 2", logged.await())
+        assertEquals(1, calls.get())
+        map.discardPendingLive()
+    }
+
+    private fun layerArrays(layer: ReplayDenseLayer): List<Any?> = listOf(
+        layer.cloud.positions.toList(), layer.cloud.normals?.toList(), layer.cloud.colors.toList(),
+        layer.cloud.confidences?.toList(), layer.cloud.levels?.toList(), layer.whole.toList(),
+        layer.coveredCells.toList(), layer.weakCells.toList(), layer.mesh.positions.toList(),
+        layer.mesh.indices.toList(), layer.mesh.uvs.toList(), layer.atlas.toList(), layer.offsets.toList(),
+    )
+
+    private fun primitiveArrayBytes(root: Any?): Long {
+        val seen = java.util.IdentityHashMap<Any, Boolean>()
+        fun bytes(value: Any?): Long {
+            if (value == null || seen.put(value, true) != null) return 0L
+            return when (value) {
+                is FloatArray -> value.size * 4L
+                is IntArray -> value.size * 4L
+                is LongArray -> value.size * 8L
+                is ByteArray -> value.size.toLong()
+                is BooleanArray -> value.size.toLong()
+                is Array<*> -> value.sumOf { bytes(it) }
+                else -> if (value.javaClass.name.startsWith("io.github.sceneview.demo.demos.internal.")) {
+                    value.javaClass.declaredFields.filterNot { java.lang.reflect.Modifier.isStatic(it.modifiers) }
+                        .sumOf { it.isAccessible = true; bytes(it.get(value)) }
+                } else 0L
+            }
+        }
+        return bytes(root)
     }
 
     @Test

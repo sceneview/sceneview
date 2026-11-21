@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
@@ -45,16 +47,21 @@ internal class ScanDenseMap(
     liveDispatcher: CoroutineDispatcher? = null,
     /** Test seam: virtual build cost or a suspended build, before reading the owned snapshot. */
     private val beforeBuild: suspend () -> Unit = {},
+    private val previewPriority: () -> Int = {
+        android.os.Process.setThreadPriority(2)
+        android.os.Process.getThreadPriority(android.os.Process.myTid())
+    },
+    private val previewLog: (String) -> Unit = { android.util.Log.i("SceneView-ScanPreview", it); Unit },
     private val fuse: (DenseFusion, DenseSamples) -> DenseFuseStats = { map, samples -> map.add(samples) },
 ) {
     val fusion = DenseFusion(maxPoints = maxPoints, maxLevel = maxLevel)
 
-    /** Includes both copied buffers, their shared workspace, and the published layer. */
+    /** Includes the owned snapshot, its workspace, and the published layer. */
     internal val storageBytes: Long
         get() = fusion.storageBytes + snapshotStorageBytes + (live?.let { snapshotBytes(it) } ?: 0L)
 
     internal val snapshotStorageBytes: Long
-        get() = (snapshots?.sumOf { it.storageBytes } ?: 0L) + (snapshots?.first()?.workspaceBytes ?: 0L) +
+        get() = (snapshot?.let { it.storageBytes + it.workspaceBytes } ?: 0L) +
             coverageScratch.storageBytes
 
     private val points = AtomicInteger(0)
@@ -75,13 +82,16 @@ internal class ScanDenseMap(
     private val buildRoot = SupervisorJob()
     private val ownedDispatcher: ExecutorCoroutineDispatcher? = if (liveDispatcher == null) {
         Executors.newSingleThreadExecutor { task ->
-            Thread(task, "SceneView-ScanPreview").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 }
+            Thread({
+                // Android's Java priorities below NORM switch scheduling groups. Set only nice.
+                runCatching { previewLog("preview thread nice ${previewPriority()}") }
+                task.run()
+            }, "SceneView-ScanPreview").apply { isDaemon = true; priority = Thread.NORM_PRIORITY }
         }.asCoroutineDispatcher()
     } else null
     private val buildScope = CoroutineScope(buildRoot + (liveDispatcher ?: checkNotNull(ownedDispatcher)))
     @Volatile private var buildJob: Job? = null
-    @Volatile private var snapshots: Array<DenseFusion.LiveSnapshot>? = null
-    private var nextSnapshot = 0
+    @Volatile private var snapshot: DenseFusion.LiveSnapshot? = null
     private var buildAtNanos = Long.MIN_VALUE
     private val coverageScratch = CoverageGrid.KeyScratch()
     private val ageSinceLogNs = AtomicLong()
@@ -153,7 +163,7 @@ internal class ScanDenseMap(
     val frames: Int get() = frame.get()
 
     /** Merges one depth frame's [samples], then takes [live] when it is due. On the worker. */
-    fun add(samples: DenseSamples): DenseFuseStats {
+    fun add(samples: DenseSamples): DenseFuseStats = synchronized(publicationGate) {
         val started = clock()
         val compactions = fusion.compactions
         val stats = work.measure(ScanDenseWork.FUSE) { fuse(fusion, samples) }
@@ -169,7 +179,7 @@ internal class ScanDenseMap(
         timings.add(elapsed)
         lastAddMs = ms
         if (ms > maxAddMs) maxAddMs = ms
-        return stats
+        stats
     }
 
     /** What the coaching line says of the map at [nowNanos] ([clock]'s time). */
@@ -212,8 +222,16 @@ internal class ScanDenseMap(
 
     internal fun takeSnapshotAgePeakNs(): Long = maxOf(ageSinceLogNs.getAndSet(0L), snapshotAgeNs)
 
-    /** QA and explicit end states await the last snapshot; capture adds never call this. */
-    suspend fun finishPendingLive() { buildJob?.join() }
+    /** QA and explicit end states await the last snapshot and any completion-triggered build. */
+    suspend fun finishPendingLive() {
+        do {
+            val pending = synchronized(publicationGate) { buildJob } ?: return
+            pending.join()
+        } while (synchronized(publicationGate) { buildJob } !== pending)
+    }
+
+    /** QA end state: bypass the interval even when the last add did not start a build. */
+    fun flushLive() = synchronized(publicationGate) { snapshotLive(force = true) }
 
     /** Stop publication immediately; callers join this alongside the fusion job before release. */
     fun close(): Job {
@@ -236,7 +254,7 @@ internal class ScanDenseMap(
 
     private fun releaseBuffers(clearLayer: Boolean) {
         check(buildRoot.isCompleted)
-        snapshots = null
+        snapshot = null
         coverageScratch.release()
         if (clearLayer) published = null
         buildJob = null
@@ -247,39 +265,61 @@ internal class ScanDenseMap(
         fusion.cloudPositions(minViews = DenseFusion.MIN_VIEWS, maxPoints = LIVE_MAX_SURFELS),
     )
 
-    /** On the fusion worker, under capture's dense gate: the only copy shared with preview. */
-    private fun snapshotLive() {
+    /** Called under publicationGate, which also protects fusion while completion takes a copy. */
+    private fun snapshotLive(force: Boolean = false) {
         val now = clock()
-        if (closed.get() || hasPendingLive || buildAtNanos != Long.MIN_VALUE && now - buildAtNanos < LIVE_INTERVAL_NS) return
-        val buffers = snapshots ?: run {
-            val first = DenseFusion.LiveSnapshot(fusion)
-            arrayOf(first, DenseFusion.LiveSnapshot(fusion, first)).also { snapshots = it }
-        }
-        val read = buffers[nextSnapshot]
-        nextSnapshot = 1 - nextSnapshot
+        if (closed.get() || hasPendingLive || !force &&
+            buildAtNanos != Long.MIN_VALUE && now - buildAtNanos < LIVE_INTERVAL_NS) return
+        startLive(now)
+    }
+
+    /** Holds publicationGate; the previous build has finished reading before reusing this copy. */
+    private fun startLive(now: Long) {
+        val read = snapshot ?: DenseFusion.LiveSnapshot(fusion).also { snapshot = it }
         val copyAt = clock()
         read.copyFrom(fusion)
         timings.copy((clock() - copyAt).coerceAtLeast(0L))
         val at = eye
         val floor = LiveCoverageGround.floorHint(floorPlaneY, firstEyeY)
         buildAtNanos = now
-        buildJob = buildScope.launch {
-            beforeBuild()
-            coroutineContext.ensureActive()
-            val context = coroutineContext
-            val layer = assembleLive(read, at, floor) { context.ensureActive() }
-            val ended = clock()
-            timings.build((ended - now).coerceAtLeast(0L))
-            lastBuildSpanNs = ended - now
-            synchronized(publicationGate) {
-                context.ensureActive()
-                if (!closed.get() && layer.whole.isNotEmpty()) {
-                    recordLiveAge()
-                    published = Published(layer, now)
-                    recordLiveAge()
+        val sourceFrame = fusion.frames
+        val job = buildScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                beforeBuild()
+                coroutineContext.ensureActive()
+                val context = coroutineContext
+                val layer = assembleLive(read, at, floor) { context.ensureActive() }
+                val ended = clock()
+                timings.build((ended - now).coerceAtLeast(0L))
+                lastBuildSpanNs = ended - now
+                synchronized(publicationGate) {
+                    context.ensureActive()
+                    if (!closed.get()) {
+                        if (layer.whole.isNotEmpty()) {
+                            recordLiveAge()
+                            published = Published(layer, now)
+                            recordLiveAge()
+                        }
+                        // No polling: completion catches up exactly once to the latest fused frame.
+                        // Relinquish ownership under the gate, before coroutine completion: an
+                        // add arriving just after this check can start its own snapshot safely.
+                        buildJob = null
+                        if (fusion.frames != sourceFrame) startLive(clock())
+                    }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                // Preview is optional. Even OOM must not kill capture or poison the next build.
+                synchronized(publicationGate) {
+                    buildJob = null
+                    buildAtNanos = Long.MIN_VALUE
+                }
+                runCatching { previewLog("preview dropped: ${failure.javaClass.simpleName}") }
             }
         }
+        buildJob = job
+        job.start()
     }
 
     /** All inputs belong to the copied buffer; no fusion arrays or dense gate are read here. */

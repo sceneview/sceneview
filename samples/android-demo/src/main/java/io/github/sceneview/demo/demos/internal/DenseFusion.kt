@@ -104,8 +104,8 @@ class DenseFusion private constructor(
     private var chunkCount = IntArray(INITIAL_CHUNKS)
 
     /** [liveCloud]'s working arrays, kept from one live snapshot to the next. */
-    private var scratch = LiveScratch()
-    private var liveIndex = LiveIndex()
+    private val scratch = LiveScratch()
+    private val liveIndex = LiveIndex()
     /** Retained arrays, including the reusable live-build workspace. */
     internal val storageBytes: Long
         get() = readStorageBytes + weight.size * 4L + lastView.size * 4L + firstView.size * 4L +
@@ -119,16 +119,11 @@ class DenseFusion private constructor(
 
     /**
      * An owned copy of exactly the arrays read by a preview. Neither its reader nor its
-     * workspace ever aliases the source fusion. The two buffers share one build workspace;
-     * the caller must run only one build at a time and copy only into an idle buffer.
+     * workspace ever aliases the source fusion or a returned cloud. The caller copies only
+     * after the previous build has stopped reading this single reusable snapshot.
      */
-    internal class LiveSnapshot(source: DenseFusion, workspace: LiveSnapshot? = null) {
-        private val read: DenseFusion = DenseFusion(source.voxelM, source.maxPoints, source.maxLevel, true).also {
-            if (workspace != null) {
-                it.scratch = workspace.read.scratch
-                it.liveIndex = workspace.read.liveIndex
-            }
-        }
+    internal class LiveSnapshot(source: DenseFusion) {
+        private val read = DenseFusion(source.voxelM, source.maxPoints, source.maxLevel, true)
         val voxelM: Float get() = read.voxelM
         val storageBytes: Long get() = read.storageBytes - workspaceBytes
         val workspaceBytes: Long get() = read.scratch.storageBytes + read.liveIndex.storageBytes
@@ -362,6 +357,18 @@ class DenseFusion private constructor(
      */
     @Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList")
     fun liveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int = MIN_VIEWS): DenseCloud {
+        scratch.beginBuild()
+        liveIndex.clear()
+        return try {
+            buildLiveCloud(eyeX, eyeY, eyeZ, maxPoints, minViews)
+        } finally {
+            scratch.trim()
+            liveIndex.trim()
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList")
+    private fun buildLiveCloud(eyeX: Float, eyeY: Float, eyeZ: Float, maxPoints: Int, minViews: Int): DenseCloud {
         val n = count
         if (n == 0 || maxPoints <= 0) return DenseCloud.Empty
         var first = LIVE_FIRST_LEVEL_M
@@ -380,7 +387,6 @@ class DenseFusion private constructor(
         val outLevel = scratch.outLevel
         val near = scratch.near
         val index = liveIndex
-        index.clear()
         var out = 0
         var nearOut = 0
         // The map holds what a depth frame found together: the voxel before often merges into the same surfel.
@@ -880,6 +886,18 @@ class DenseFusion private constructor(
             size++
         }
 
+        fun trim() {
+            var needed = INITIAL_SLOTS
+            while (needed < size * 2) needed *= 2
+            if (keys.size > needed * 2) {
+                keys = LongArray(needed)
+                values = IntArray(needed)
+                stamps = IntArray(needed)
+                epoch = 1
+                size = 0
+            }
+        }
+
         private fun grow() {
             val oldKeys = keys
             val oldValues = values
@@ -1110,13 +1128,43 @@ private class LiveScratch {
     var buckets = IntArray(0)
 
     private var edgeDraws = IntArray(0)
+    private var neededVoxels = 0
+    private var neededSurfels = 0
+    private var neededDraws = 0
+
+    fun beginBuild() { neededVoxels = 0; neededSurfels = 0; neededDraws = 0 }
+
+    /** Outputs own their arrays: old sums and indices need not survive between builds. */
+    fun trim() {
+        if (outOf.size > neededVoxels * 2) {
+            outOf = IntArray(grown(neededVoxels))
+            outLevel = ByteArray(outOf.size)
+            near = BooleanArray(outOf.size)
+        }
+        if (weight.size > neededSurfels * 2) {
+            position = Array(AXES) { FloatArray(0) }
+            normal = Array(AXES) { FloatArray(0) }
+            color = Array(AXES) { FloatArray(0) }
+            weight = FloatArray(0)
+            colorWeight = FloatArray(0)
+            conf = ByteArray(0)
+            keep = BooleanArray(0)
+            draw = IntArray(0)
+            forSurfels(neededSurfels)
+        }
+        if (edgeDraws.size > neededDraws * 2) edgeDraws = IntArray(grown(neededDraws))
+        if (neededDraws == 0 && buckets.isNotEmpty()) buckets = IntArray(0)
+    }
+
     fun forDraws(count: Int): IntArray {
+        neededDraws = count
         if (edgeDraws.size < count) edgeDraws = IntArray(grown(count))
         return edgeDraws
     }
 
     /** Room for [voxels] voxels, and as many merged surfels. */
     fun forVoxels(voxels: Int) {
+        neededVoxels = voxels
         if (outOf.size >= voxels) return
         val size = grown(voxels)
         outOf = IntArray(size)
@@ -1126,6 +1174,7 @@ private class LiveScratch {
 
     /** Room for [surfels] merged surfels, their sums at zero. */
     fun forSurfels(surfels: Int) {
+        neededSurfels = surfels
         if (weight.size < surfels) {
             val size = grown(surfels)
             position = Array(AXES) { FloatArray(size) }

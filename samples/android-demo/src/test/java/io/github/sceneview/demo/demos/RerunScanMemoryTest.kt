@@ -201,6 +201,42 @@ class RerunScanMemoryTest {
     }
 
     @Test
+    fun `Save returns before an uninterruptible preview and close releases its buffers afterward`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val owner = RerunLiveModels.Owner()
+        val blocked = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = Dispatchers.Unconfined,
+            beforeBuild = { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { blocked.await() } })
+        val capture = ScanCapture(
+            intrinsics = ScanIntrinsics(100f, 100f, 50f, 50f, 100, 100), textureIntrinsics = null,
+            lens = ReplayLens(0.5f, 0.5f), scope = scope, modelOwner = owner, rawDepth = true,
+        )
+        try {
+            capture.trace.addPose(0L, DebugPose(0f, 0f, 0f))
+            capture.trace.addPoints(0L, floatArrayOf(0f, 0f, -1f))
+            map.add(ScanLiveFreshnessTest.patch(800))
+            map.add(ScanLiveFreshnessTest.patch(800))
+            ScanCapture::class.java.getDeclaredField("dense").apply { isAccessible = true }.set(capture, map)
+            val pack = kotlinx.coroutines.withTimeout(5_000) { capture.finish() }
+            assertTrue(pack != null)
+            assertTrue(map.hasPendingLive)
+            assertTrue(map.snapshotStorageBytes > 0L)
+            capture.close()
+            assertTrue(capture.releaseJob?.isCompleted == false)
+            blocked.complete(Unit)
+            capture.releaseJob?.join()
+            assertEquals(0L, map.snapshotStorageBytes)
+            assertNull(map.live)
+        } finally {
+            blocked.complete(Unit)
+            capture.close()
+            capture.releaseJob?.join()
+            owner.close()
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `demo opts into a large heap`() {
         val flags = RuntimeEnvironment.getApplication().applicationInfo.flags
         assertTrue(flags and ApplicationInfo.FLAG_LARGE_HEAP != 0)

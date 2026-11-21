@@ -15,6 +15,8 @@ internal class ScanMemoryBudget(val maxHeapBytes: Long) {
     val journalBytes: Long = scaledTimelineBytes(ArDebugJournal.MAX_BYTES)
     val observationBytes: Long = scaledTimelineBytes(ArDebugTrace.MAX_OBSERVATION_BYTES)
     private val standardDensePoints = DenseFusion.budgetFor(maxHeapBytes)
+    // Preserve main's TSDF scale. Only dense points pay for the larger preview allowance.
+    private val mainStandardBytes = RerunTsdf.MAX_BYTES + standardDensePoints * 192L
     private val standardBytes = RerunTsdf.MAX_BYTES + standardDensePoints * DENSE_BYTES_PER_POINT
     private val reserve = journalBytes + observationBytes + TSDF_INDEX_BYTES
     val totalBytes: Long = if (maxHeapBytes < FULL_QUALITY_HEAP_BYTES) {
@@ -23,10 +25,11 @@ internal class ScanMemoryBudget(val maxHeapBytes: Long) {
         maxOf(maxHeapBytes * SHARE_PERCENT / 100, standardBytes + reserve)
     }
     private val available = (totalBytes - reserve).coerceAtLeast(0)
-    private val scale = minOf(1.0, available.toDouble() / standardBytes)
+    private val scale = minOf(1.0, available.toDouble() / mainStandardBytes)
 
     val tsdfBytes: Long = (RerunTsdf.MAX_BYTES * scale).toLong()
-    val densePoints: Int = (standardDensePoints * scale).toInt().coerceAtLeast(1)
+    val densePoints: Int = minOf(standardDensePoints.toLong(),
+        ((available - tsdfBytes).coerceAtLeast(0) / DENSE_BYTES_PER_POINT)).toInt().coerceAtLeast(1)
     val denseBytes: Long get() = densePoints * DENSE_BYTES_PER_POINT
     val retainedBytes: Long get() = tsdfBytes + denseBytes + reserve
 
@@ -42,9 +45,11 @@ internal class ScanMemoryBudget(val maxHeapBytes: Long) {
 
     companion object {
         const val SHARE_PERCENT = 35
-        /** Fusion, two 53-byte snapshots with geometric headroom, retained merge/index work,
-         * and the live layer. The larger allowance matters only below the full-quality heap. */
-        const val DENSE_BYTES_PER_POINT = 512L
+        /** The 600k near-field arrays measure 290.50 bytes/point (174,302,344 bytes):
+         * fusion/hash + one 53-byte snapshot + full merge workspace. Round to 320 for growth
+         * and headers, then reserve 32 more for the bounded live layer and coverage scratch.
+         * ScanLiveFreshnessTest measures the arrays independently of this allowance. */
+        const val DENSE_BYTES_PER_POINT = 352L
         const val TSDF_INDEX_BYTES = 2L * 1024 * 1024
         const val FULL_QUALITY_HEAP_BYTES = 384L * 1024 * 1024
         private const val TIMELINE_REFERENCE_HEAP_BYTES = 256L * 1024 * 1024
