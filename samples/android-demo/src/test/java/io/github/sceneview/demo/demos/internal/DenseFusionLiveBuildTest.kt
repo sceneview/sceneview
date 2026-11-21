@@ -6,7 +6,9 @@ import org.junit.Test
 
 class DenseFusionLiveBuildTest {
     @Test
-    fun `failed growth preserves the old snapshot and can retry the same buffer`() {
+    fun `failed growth leaves a buffer that recovers exactly on retry`() {
+        // Growth drops the old arrays before allocating (a peak-memory property storageBytes, computed
+        // from capacity, cannot show); the map then drops the failed snapshot (ScanDenseMap.dropPreview).
         val fusion = DenseFusion(maxPoints = 20_000)
         fusion.add(ScanLiveFreshnessTest.patch(20))
         var allocations = 0
@@ -15,17 +17,9 @@ class DenseFusionLiveBuildTest {
             if (shouldFail && ++allocations == 3) throw OutOfMemoryError("injected")
         }
         snapshot.copyFrom(fusion)
-        val before = snapshot.cloud(20_000)
-        val capacity = snapshot.capacity
         fusion.add(ScanLiveFreshnessTest.patch(12_000))
         shouldFail = true
-        try {
-            snapshot.copyFrom(fusion)
-            fail("allocation should fail")
-        } catch (_: OutOfMemoryError) {
-            assertEquals(capacity, snapshot.capacity)
-            assertArrayEquals(before.positions, snapshot.cloud(20_000).positions, 0f)
-        }
+        assertThrows(OutOfMemoryError::class.java) { snapshot.copyFrom(fusion) }
         shouldFail = false
         snapshot.copyFrom(fusion)
         assertArrayEquals(fusion.cloud(minViews = 1).positions, snapshot.cloud(20_000).positions, 0f)

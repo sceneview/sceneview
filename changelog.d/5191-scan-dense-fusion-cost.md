@@ -1,4 +1,2 @@
 <!-- category: Fixed -->
-- **Demo app: 3D Scan keeps up with the camera on long room scans.** The live preview is now built apart from depth fusion, so new depth keeps merging while the preview updates and fewer depth frames are skipped as the scan grows. The preview catches up when scanning pauses, uses one reusable copy, and no longer delays Save or reduces small-heap model detail beyond the existing budget.
-
-- **Demo app: Keep scan previews paced during capture.** Preview builds respect the one-second interval and catch the final depth frame. Saving releases preview workspace as soon as its reader stops, and preview allocation failures leave capture running.
+- **Demo app: 3D Scan keeps up with the camera on long room scans.** The live preview is now built on its own thread from a copy of the depth fusion, at most once a second, so new depth keeps merging while the preview updates and fewer depth frames are skipped as the scan grows. The preview catches up with the last depth frame when scanning pauses, Save no longer waits for it, and a preview that runs out of memory is dropped without stopping the scan.

@@ -137,34 +137,38 @@ class DenseFusion private constructor(
         /** Called under the dense gate, never while this buffer is being built. */
         fun copyFrom(source: DenseFusion) {
             val n = source.count
-            if (read.px.size < n) {
+            // voxelKeys is allocated last: it stays short until a growth has fully succeeded, so a
+            // retry after a failed growth reallocates every array, not only the ones still short.
+            if (read.voxelKeys.size < n) {
                 val size = minOf(source.maxPoints, maxOf(n, read.px.size + read.px.size / 2, INITIAL_POINTS))
-                val px = FloatArray(size).also { beforeAllocation() }
-                val py = FloatArray(size).also { beforeAllocation() }
-                val pz = FloatArray(size).also { beforeAllocation() }
-                val nx = FloatArray(size).also { beforeAllocation() }
-                val ny = FloatArray(size).also { beforeAllocation() }
-                val nz = FloatArray(size).also { beforeAllocation() }
-                val r = FloatArray(size).also { beforeAllocation() }
-                val g = FloatArray(size).also { beforeAllocation() }
-                val b = FloatArray(size).also { beforeAllocation() }
-                val colorWeight = FloatArray(size).also { beforeAllocation() }
-                val confidence = ByteArray(size).also { beforeAllocation() }
-                val views = IntArray(size).also { beforeAllocation() }
-                val voxelKeys = LongArray(size).also { beforeAllocation() }
-                read.px = px
-                read.py = py
-                read.pz = pz
-                read.nx = nx
-                read.ny = ny
-                read.nz = nz
-                read.r = r
-                read.g = g
-                read.b = b
-                read.colorWeight = colorWeight
-                read.confidence = confidence
-                read.views = views
-                read.voxelKeys = voxelKeys
+                // Drop the old arrays before growing: a failed allocation drops this whole snapshot
+                // (ScanDenseMap.dropPreview), so keeping old and new together would only raise the peak.
+                read.px = FloatArray(0)
+                read.py = FloatArray(0)
+                read.pz = FloatArray(0)
+                read.nx = FloatArray(0)
+                read.ny = FloatArray(0)
+                read.nz = FloatArray(0)
+                read.r = FloatArray(0)
+                read.g = FloatArray(0)
+                read.b = FloatArray(0)
+                read.colorWeight = FloatArray(0)
+                read.confidence = ByteArray(0)
+                read.views = IntArray(0)
+                read.voxelKeys = LongArray(0)
+                read.px = FloatArray(size).also { beforeAllocation() }
+                read.py = FloatArray(size).also { beforeAllocation() }
+                read.pz = FloatArray(size).also { beforeAllocation() }
+                read.nx = FloatArray(size).also { beforeAllocation() }
+                read.ny = FloatArray(size).also { beforeAllocation() }
+                read.nz = FloatArray(size).also { beforeAllocation() }
+                read.r = FloatArray(size).also { beforeAllocation() }
+                read.g = FloatArray(size).also { beforeAllocation() }
+                read.b = FloatArray(size).also { beforeAllocation() }
+                read.colorWeight = FloatArray(size).also { beforeAllocation() }
+                read.confidence = ByteArray(size).also { beforeAllocation() }
+                read.views = IntArray(size).also { beforeAllocation() }
+                read.voxelKeys = LongArray(size).also { beforeAllocation() }
             }
             source.px.copyInto(read.px, endIndex = n); source.py.copyInto(read.py, endIndex = n)
             source.pz.copyInto(read.pz, endIndex = n); source.nx.copyInto(read.nx, endIndex = n)

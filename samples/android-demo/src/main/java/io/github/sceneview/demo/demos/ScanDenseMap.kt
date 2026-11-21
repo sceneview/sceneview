@@ -309,10 +309,16 @@ internal class ScanDenseMap(
             if (remaining > 0L) {
                 withTimeoutOrNull((remaining + 999_999L) / 1_000_000L) { wake.await() }
             }
-            synchronized(publicationGate) {
-                coroutineContext.ensureActive()
-                buildJob = null
-                if (fusion.frames != snapshotFrame) snapshotLive(force = true)
+            try {
+                synchronized(publicationGate) {
+                    coroutineContext.ensureActive()
+                    buildJob = null
+                    if (fusion.frames != snapshotFrame) snapshotLive(force = true)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                synchronized(publicationGate) { dropPreview(failure) }
             }
         }
         buildJob = job
@@ -366,7 +372,9 @@ internal class ScanDenseMap(
     private fun dropPreview(failure: Throwable) {
         snapshot = null
         buildJob = null
-        buildAtNanos = Long.MIN_VALUE
+        // Back off one interval: under memory pressure, retrying the allocation on every depth
+        // frame would stall fusion under the gate.
+        buildAtNanos = clock()
         runCatching { previewLog("preview dropped: ${failure.javaClass.simpleName}") }
     }
 
