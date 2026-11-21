@@ -68,6 +68,8 @@ serves a ~15 kB compact overview for a small context window.
 
 ## Docs
 
+Every page below is also served as Markdown: replace the trailing `/` with `.md` (`https://sceneview.github.io/docs/nodes.md`). Fetch the one page you need instead of this whole file.
+
 - [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
 - [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): retained documentation for end-of-life SceneViewSwift 4.68.0
 - [Quickstart (Web)](https://sceneview.github.io/docs/quickstart-web/): Kotlin/JS and Filament.js — Alpha

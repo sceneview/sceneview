@@ -158,6 +158,9 @@ extra:
   version:
     provider: mike
 
+hooks:
+  - hooks/markdown_pages.py
+
 plugins:
   - search
   - social
