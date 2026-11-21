@@ -365,7 +365,9 @@ async function detectProject(rootDir: string): Promise<ProjectDetection> {
   );
   if (pubspec && flutterDependency) {
     const inline = flutterDependency[2].match(/^["']?[\^~>= \t]*(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
-    const nested = flutterDependency[3]?.match(/\b(?:ref|version):[ \t]*["']?v?(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
+    const nested = flutterDependency[3]?.match(
+      /\b(?:ref|version):[ \t]*["']?v?(\d+\.\d+\.\d+(?:-[\w.]+)?)/
+    );
     return {
       projectType: "flutter",
       sceneViewVersion: inline?.[1] ?? nested?.[1] ?? null,
@@ -530,14 +532,13 @@ export async function analyzeProject(input: AnalyzeProjectInput = {}): Promise<A
   if (result.isOutdated && detection.sceneViewVersion) {
     result.suggestions.push({
       type: "suggestion/upgrade-sceneview",
-      message:
-        retired
-          ? `You are on SceneView ${detection.sceneViewVersion}. The last release for this ` +
-            `platform is ${result.latestVersion} (end of life; no new releases). ` +
-            "Published versions remain available for existing projects."
-          : `You are on SceneView ${detection.sceneViewVersion}. The latest known release is ` +
-            `${result.latestVersion}. Consider upgrading — run \`get_migration_guide\` for ` +
-            "the 2.x → 3.x migration notes, or `migrate_code` for automatic Kotlin rewrites.",
+      message: retired
+        ? `You are on SceneView ${detection.sceneViewVersion}. The last release for this ` +
+          `platform is ${result.latestVersion} (end of life; no new releases). ` +
+          "Published versions remain available for existing projects."
+        : `You are on SceneView ${detection.sceneViewVersion}. The latest known release is ` +
+          `${result.latestVersion}. Consider upgrading — run \`get_migration_guide\` for ` +
+          "the 2.x → 3.x migration notes, or `migrate_code` for automatic Kotlin rewrites.",
     });
   }
 

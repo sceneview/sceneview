@@ -287,10 +287,13 @@ describe("version interpolation (#3054)", () => {
     expect(getPlatformSetup("android", "3d")).toContain(`Stable (v${LATEST_SCENEVIEW_RELEASE})`);
   });
 
-  it.each(["ios", "flutter", "react-native"] as const)("%s stays at its last release", (platform) => {
-    for (const type of ["3d", "ar"] as const) {
-      expect(getPlatformSetup(platform, type)).toContain("End of life at 4.68.0");
+  it.each(["ios", "flutter", "react-native"] as const)(
+    "%s stays at its last release",
+    (platform) => {
+      for (const type of ["3d", "ar"] as const) {
+        expect(getPlatformSetup(platform, type)).toContain("End of life at 4.68.0");
+      }
+      expect(listPlatforms()).toContain("End of life at 4.68.0");
     }
-    expect(listPlatforms()).toContain("End of life at 4.68.0");
-  });
+  );
 });

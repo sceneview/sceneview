@@ -77,7 +77,9 @@ describe("tools library — dispatchTool", () => {
   it("lists retired platforms at their last release", async () => {
     const result = await dispatchTool("list_platforms", {});
     for (const platform of ["iOS", "macOS", "visionOS", "Flutter", "React Native"]) {
-      const row = result.content[0]?.text.split("\n").find((line) => line.startsWith(`| ${platform} |`));
+      const row = result.content[0]?.text
+        .split("\n")
+        .find((line) => line.startsWith(`| ${platform} |`));
       expect(row).toContain("| End of life at 4.68.0 | 4.68.0 |");
     }
   });

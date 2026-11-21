@@ -91,10 +91,27 @@ describe("analyzeProject — version extraction", () => {
 
 describe("analyzeProject — retired platform releases", () => {
   const projects = [
-    ["ios", "Package.swift", (v: string) => `.package(url: "https://github.com/sceneview/sceneview", exact: "${v}")`],
-    ["flutter", "pubspec.yaml", (v: string) => `dependencies:\n  flutter_sceneview: ^${v}\n  other_package: ^99.0.0\n`],
-    ["flutter", "pubspec.yaml", (v: string) => `dependencies:\n  flutter_sceneview:\n    git:\n      url: https://github.com/sceneview/sceneview.git\n      ref: ${v}\n  other_package: ^99.0.0\n`],
-    ["react-native", "package.json", (v: string) => JSON.stringify({ dependencies: { "@sceneview-sdk/react-native": `~${v}` } })],
+    [
+      "ios",
+      "Package.swift",
+      (v: string) => `.package(url: "https://github.com/sceneview/sceneview", exact: "${v}")`,
+    ],
+    [
+      "flutter",
+      "pubspec.yaml",
+      (v: string) => `dependencies:\n  flutter_sceneview: ^${v}\n  other_package: ^99.0.0\n`,
+    ],
+    [
+      "flutter",
+      "pubspec.yaml",
+      (v: string) =>
+        `dependencies:\n  flutter_sceneview:\n    git:\n      url: https://github.com/sceneview/sceneview.git\n      ref: ${v}\n  other_package: ^99.0.0\n`,
+    ],
+    [
+      "react-native",
+      "package.json",
+      (v: string) => JSON.stringify({ dependencies: { "@sceneview-sdk/react-native": `~${v}` } }),
+    ],
   ] as const;
 
   it.each(projects)("compares %s in %s against 4.68.0", async (platform, file, contents) => {
@@ -124,7 +141,10 @@ describe("analyzeProject — retired platform releases", () => {
   it("keeps Web projects on the maintained release", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sv-analyze-web-"));
     try {
-      await fs.writeFile(path.join(tmp, "package.json"), JSON.stringify({ dependencies: { "sceneview-web": "4.68.0" } }));
+      await fs.writeFile(
+        path.join(tmp, "package.json"),
+        JSON.stringify({ dependencies: { "sceneview-web": "4.68.0" } })
+      );
       const result = await analyzeProject({ path: tmp });
       expect(result.projectType).toBe("web");
       expect(result.latestVersion).toBe(LATEST_SCENEVIEW_VERSION);
