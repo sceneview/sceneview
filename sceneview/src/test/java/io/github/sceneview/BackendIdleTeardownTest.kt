@@ -162,6 +162,46 @@ class BackendIdleTeardownTest {
     }
 
     @Test
+    fun aRendererOnTheNextLiveEngineIsNotLeftToAFinishedEngineTeardown() {
+        // #4969 review: once an engine's retiring wait drains, `retiring` must reset. Otherwise
+        // the next renderer released with reclaimWithEngine on a live engine would be dropped
+        // on registration, never destroyed, and leak with its swap chain.
+        val teardowns = BackendIdleTeardowns()
+        val scheduler = RecordingScheduler()
+        var busy = true
+        var engineRuns = 0
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { busy },
+            schedule = scheduler.schedule,
+            teardown = { engineRuns++ },
+            runsLast = true,
+        )
+        busy = false
+        scheduler.runAll()
+        assertEquals(1, engineRuns)
+        assertEquals(0, teardowns.size)
+
+        busy = true
+        var rendererRuns = 0
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { busy },
+            schedule = scheduler.schedule,
+            teardown = { rendererRuns++ },
+            reclaimWithEngine = true,
+        )
+        assertEquals("a live engine's renderer stays pending", 1, teardowns.size)
+        scheduler.runNext()
+        assertEquals(0, rendererRuns)
+        assertEquals(1, teardowns.size)
+        busy = false
+        scheduler.runAll()
+        assertEquals("destroyed by its own wait, not left to an engine teardown", 1, rendererRuns)
+        assertEquals(0, teardowns.size)
+    }
+
+    @Test
     fun explicitCleanupAlsoKeepsTheEngineAfterLateRegisteredChildren() {
         val teardowns = BackendIdleTeardowns()
         val scheduler = RecordingScheduler()

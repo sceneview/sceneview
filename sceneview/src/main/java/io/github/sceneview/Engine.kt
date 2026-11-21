@@ -153,7 +153,7 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
- * Filament v1.77.3's [FEngine::shutdown](https://github.com/google/filament/blob/v1.77.3/filament/src/details/Engine.cpp#L614)
+ * Filament v1.77.3's [FEngine::shutdown](https://github.com/google/filament/blob/v1.77.3/filament/src/details/Engine.cpp#L667)
  * calls `cleanupResourceList(mRenderers)`, which calls `FRenderer::terminate` on every surviving
  * renderer. Leaving a renderer to Engine.destroy therefore moves the same backend fence wait and
  * frame-info thread join into Engine.destroy; it does not eliminate or bound them. The deferred
