@@ -13,6 +13,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { ClientCapabilities } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
+import { buildDiscoverResult, SERVER_INSTRUCTIONS } from "./discover.js";
 import { createSceneViewServer } from "./server.js";
 import { MCP_APP_MIME_TYPE, UI_EXTENSION_ID, WIDGET_3D_VIEWER_URI } from "./widgets.js";
 
@@ -94,5 +95,28 @@ describe("stdio server: MCP Apps mime negotiation (#3485)", () => {
     for (const name of widgetless) {
       expect(b.find((t) => t.name === name)).toEqual(a.find((t) => t.name === name));
     }
+  });
+});
+
+describe("stdio server: instructions at connect time", () => {
+  it("sends the server instructions in the initialize result", async () => {
+    const client = await connect({});
+    expect(client.getInstructions()).toBe(SERVER_INSTRUCTIONS);
+    expect(buildDiscoverResult().instructions).toBe(SERVER_INSTRUCTIONS);
+  });
+
+  it("names only tools and resources this server really serves", async () => {
+    const client = await connect({});
+    const { tools } = (await client.listTools()) as { tools: ListedTool[] };
+    const { resources } = await client.listResources();
+    const toolNames = new Set(tools.map((t) => t.name));
+    const uris = new Set(resources.map((r) => r.uri));
+
+    const quoted = [...SERVER_INSTRUCTIONS.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+    const referencedTools = quoted.filter((q) => /^[a-z]+(_[a-z0-9]+)+$/.test(q));
+    const referencedUris = quoted.filter((q) => q.includes("://"));
+    expect(referencedTools.length).toBeGreaterThanOrEqual(5);
+    for (const name of referencedTools) expect(toolNames, name).toContain(name);
+    for (const uri of referencedUris) expect(uris, uri).toContain(uri);
   });
 });
