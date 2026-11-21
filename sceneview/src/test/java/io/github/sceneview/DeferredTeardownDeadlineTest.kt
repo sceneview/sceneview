@@ -77,7 +77,7 @@ class DeferredTeardownDeadlineTest {
     }
 
     @Test
-    fun retiringEngineReleasesRendererThenEngineAndEglDespitePermanentlySlowPolls() {
+    fun retiringEngineReclaimsRendererAndReleasesEglDespitePermanentlySlowPolls() {
         for (gap in listOf(66L, 100L, 300L)) {
             if (!engine.isValid) engine = FilamentWithoutJni.engine()
             order.clear()
@@ -86,14 +86,14 @@ class DeferredTeardownDeadlineTest {
             engine.destroyWhenBackendIdle { order += "egl" }
             repeat(6) { latePoll(gap) }
 
-            assertEquals("poll gap $gap", listOf("renderer", "engine", "egl"), order)
+            assertEquals("poll gap $gap", listOf("engine", "egl"), order)
             assertFalse(engine.isValid)
             val finalPolls = polls
             val finalReleases = releases
             latePoll(6_000)
             assertEquals(finalPolls, polls)
             assertEquals(finalReleases, releases)
-            assertEquals(3, order.size)
+            assertEquals(2, order.size)
         }
     }
 
@@ -107,15 +107,15 @@ class DeferredTeardownDeadlineTest {
         }
         engine.destroyWhenBackendIdle { order += "egl" }
         repeat(3) { latePoll(66) }
-        assertEquals(listOf("renderer"), order)
+        assertTrue(order.isEmpty())
         assertTrue(engine.isValid)
 
         decoding = false
         repeat(4) { latePoll(66) }
-        assertEquals(listOf("renderer", "model-loader"), order)
+        assertEquals(listOf("model-loader"), order)
         assertTrue("the model release queued more backend work", engine.isValid)
         repeat(10) { latePoll(66) }
-        assertEquals(listOf("renderer", "model-loader", "engine", "egl"), order)
+        assertEquals(listOf("model-loader", "engine", "egl"), order)
     }
 
     @Test
@@ -140,7 +140,25 @@ class DeferredTeardownDeadlineTest {
         assertEquals(1, warnCount())
         engine.destroyWhenBackendIdle { order += "egl" }
         repeat(40) { latePoll(300) }
-        assertEquals(listOf("renderer", "engine", "egl"), order)
+        assertEquals(listOf("engine", "egl"), order)
+    }
+
+    @Test
+    fun explicitEngineDestroySkipsPendingRendererAndDrainsTheDestroyQueueFirst() {
+        reachesFence = false
+        engine.destroyRendererWhenBackendIdle(engine.createRenderer())
+        val queue = EngineDestroyQueue.of(engine)
+        queue.enqueueAction {
+            assertTrue("the destroy queue drains while the engine is alive", engine.isValid)
+            order += "surface"
+        }
+        engine.safeDestroy().getOrThrow()
+        assertEquals(listOf("surface", "engine"), order)
+        assertEquals(0, queue.size)
+        val finalPolls = polls
+        advance(12_000)
+        assertEquals(finalPolls, polls)
+        assertEquals(listOf("surface", "engine"), order)
     }
 
     @Test
@@ -197,7 +215,7 @@ class DeferredTeardownDeadlineTest {
             busyEngines -= second.nativeObject
             // Each release invalidates the probe: allow an arm/check pair for all three.
             advance(6_000)
-            assertEquals(listOf("renderer", "second-resource", "engine", "second-egl"), order)
+            assertEquals(listOf("second-resource", "engine", "second-egl"), order)
             assertFalse(second.isValid)
             assertTrue(engine.isValid)
             assertEquals("destroying the second engine preserves the first's fence", 1, armed.size)
@@ -205,8 +223,8 @@ class DeferredTeardownDeadlineTest {
             busyEngines -= engine.nativeObject
             advance(6_000)
             assertEquals(
-                listOf("renderer", "second-resource", "engine", "second-egl",
-                    "renderer", "first-resource", "engine", "first-egl"),
+                listOf("second-resource", "engine", "second-egl",
+                    "first-resource", "engine", "first-egl"),
                 order,
             )
             assertFalse(engine.isValid)
