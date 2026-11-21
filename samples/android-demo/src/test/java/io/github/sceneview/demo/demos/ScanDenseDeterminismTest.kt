@@ -3,6 +3,11 @@ package io.github.sceneview.demo.demos
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.ReconstructionBench
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,20 +45,25 @@ class ScanDenseDeterminismTest {
         @JvmStatic
         fun main(args: Array<String>) { fingerprints().forEach(::println) }
 
+        @OptIn(ExperimentalCoroutinesApi::class)
         private fun fingerprints(): List<String> = buildList {
-            for (budget in listOf(600_000, 2_000)) {
-                var now = 0L
-                val map = ScanDenseMap(liveDispatcher = kotlinx.coroutines.Dispatchers.Unconfined, maxPoints = budget, clock = { now })
-                ReconstructionBench.QUICK.frames().forEachIndexed { i, frame ->
-                    now += 100_000_000L
-                    map.add(map.project(frame, now))
-                    if ((i + 1) % 12 == 0) {
-                        add("$budget/${i + 1}/all ${digest(map.fusion.cloud())}")
-                        add("$budget/${i + 1}/saved ${digest(map.savedCloud())}")
-                        add("$budget/${i + 1}/live ${digest(checkNotNull(map.live).cloud)}")
+            runTest {
+                for (budget in listOf(600_000, 2_000)) {
+                    val map = ScanDenseMap(liveDispatcher = StandardTestDispatcher(testScheduler),
+                        maxPoints = budget, clock = { testScheduler.currentTime * 1_000_000L })
+                    ReconstructionBench.QUICK.frames().forEachIndexed { i, frame ->
+                        advanceTimeBy(100)
+                        map.add(map.project(frame, testScheduler.currentTime * 1_000_000L))
+                        runCurrent()
+                        if ((i + 1) % 12 == 0) {
+                            add("$budget/${i + 1}/all ${digest(map.fusion.cloud())}")
+                            add("$budget/${i + 1}/saved ${digest(map.savedCloud())}")
+                            add("$budget/${i + 1}/live ${digest(checkNotNull(map.live).cloud)}")
+                        }
                     }
+                    if (budget == 2_000) assertTrue(map.fusion.compactions > 0)
+                    map.discardPendingLive()
                 }
-                if (budget == 2_000) assertTrue(map.fusion.compactions > 0)
             }
         }
 

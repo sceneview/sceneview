@@ -74,6 +74,8 @@ class RerunScanBudgetTest {
         assertEquals(27_822_216L, budget.tsdfBytes)
         // Dense gets the remaining 35% envelope, paying 352 bytes instead of main's 192.
         assertEquals(158_080, budget.densePoints)
+        assertTrue("The shared scan envelope intentionally overrides the standalone minimum",
+            budget.densePoints < DenseFusion.MIN_BUDGET)
         assertTrue(budget.retainedBytes <= heap * 35 / 100)
     }
 

@@ -17,9 +17,12 @@ import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanMemoryBudget
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineDispatcher
@@ -48,10 +51,11 @@ internal class ScanDenseMap(
     /** Test seam: virtual build cost or a suspended build, before reading the owned snapshot. */
     private val beforeBuild: suspend () -> Unit = {},
     private val previewPriority: () -> Int = {
-        android.os.Process.setThreadPriority(2)
+        android.os.Process.setThreadPriority(PREVIEW_NICE)
         android.os.Process.getThreadPriority(android.os.Process.myTid())
     },
     private val previewLog: (String) -> Unit = { android.util.Log.i("SceneView-ScanPreview", it); Unit },
+    private val snapshotAllocation: () -> Unit = {},
     private val fuse: (DenseFusion, DenseSamples) -> DenseFuseStats = { map, samples -> map.add(samples) },
 ) {
     val fusion = DenseFusion(maxPoints = maxPoints, maxLevel = maxLevel)
@@ -73,10 +77,10 @@ internal class ScanDenseMap(
     @Volatile
     private var full = false
 
-    /** One volatile hand-off publishes the layer and its source timestamp together. */
-    private data class Published(val layer: ReplayDenseLayer, val nanos: Long)
-    @Volatile private var published: Published? = null
-    val live: ReplayDenseLayer? get() = published?.layer
+    /** One atomic hand-off publishes layer/time and seals publication without taking the gate. */
+    private data class Published(val layer: ReplayDenseLayer? = null, val nanos: Long = 0L, val closed: Boolean = false)
+    private val published = AtomicReference(Published())
+    val live: ReplayDenseLayer? get() = published.get().layer
     private val publicationGate = Any()
     private val closed = AtomicBoolean(false)
     private val buildRoot = SupervisorJob()
@@ -92,22 +96,25 @@ internal class ScanDenseMap(
     private val buildScope = CoroutineScope(buildRoot + (liveDispatcher ?: checkNotNull(ownedDispatcher)))
     @Volatile private var buildJob: Job? = null
     @Volatile private var snapshot: DenseFusion.LiveSnapshot? = null
+    private var forceTrailing = false
+    private var flushSignal = CompletableDeferred<Unit>()
     private var buildAtNanos = Long.MIN_VALUE
+    private var snapshotFrame = 0
     private val coverageScratch = CoverageGrid.KeyScratch()
     private val ageSinceLogNs = AtomicLong()
     private val timings = ScanDenseTimings()
     internal val hasPendingLive: Boolean get() = buildJob?.isCompleted == false
     internal val snapshotAgeNs: Long
-        get() = published?.let { (clock() - it.nanos).coerceAtLeast(0L) } ?: 0L
+        get() = published.get().let { if (it.layer == null) 0L else (clock() - it.nanos).coerceAtLeast(0L) }
     @Volatile internal var lastBuildSpanNs = 0L
         private set
     internal val work = ScanDenseWork(clock)
 
     /** Where the last [project]ed depth frame was taken: the live view's eye. On the worker. */
-    private var eye: DebugPose? = null
+    @Volatile private var eye: DebugPose? = null
 
     /** The first projected frame's height: the floor's guess without a floor plane. On the worker. */
-    private var firstEyeY = Float.NaN
+    @Volatile private var firstEyeY = Float.NaN
 
     /** ARCore's floor plane height, set from the main thread as planes come; `null` before one. */
     @Volatile
@@ -231,15 +238,23 @@ internal class ScanDenseMap(
     }
 
     /** QA end state: bypass the interval even when the last add did not start a build. */
-    fun flushLive() = synchronized(publicationGate) { snapshotLive(force = true) }
+    fun flushLive() = synchronized(publicationGate) {
+        forceTrailing = true
+        flushSignal.complete(Unit)
+        snapshotLive(force = true)
+    }
 
     /** Stop publication immediately; callers join this alongside the fusion job before release. */
     fun close(): Job {
-        synchronized(publicationGate) {
-            closed.set(true)
-            buildRoot.cancel()
-        }
+        closed.set(true)
+        published.updateAndGet { it.copy(closed = true) }
+        buildRoot.cancel()
         return buildRoot
+    }
+
+    /** Save never joins an uninterruptible build; release as soon as its reader exits. */
+    fun closeForSave() {
+        close().invokeOnCompletion { releaseBuffers(clearLayer = false) }
     }
 
     /** No buffer is released under a CPU reader, even when cancellation cannot interrupt it. */
@@ -252,11 +267,11 @@ internal class ScanDenseMap(
     /** Called only after both fusion and preview workers have joined. */
     internal fun releaseLiveBuffers() = releaseBuffers(clearLayer = true)
 
-    private fun releaseBuffers(clearLayer: Boolean) {
+    private fun releaseBuffers(clearLayer: Boolean) = synchronized(publicationGate) {
         check(buildRoot.isCompleted)
         snapshot = null
         coverageScratch.release()
-        if (clearLayer) published = null
+        if (clearLayer) published.updateAndGet { it.copy(layer = null) }
         buildJob = null
         ownedDispatcher?.close()
     }
@@ -268,14 +283,45 @@ internal class ScanDenseMap(
     /** Called under publicationGate, which also protects fusion while completion takes a copy. */
     private fun snapshotLive(force: Boolean = false) {
         val now = clock()
-        if (closed.get() || hasPendingLive || !force &&
-            buildAtNanos != Long.MIN_VALUE && now - buildAtNanos < LIVE_INTERVAL_NS) return
-        startLive(now)
+        if (closed.get()) return
+        if (hasPendingLive) {
+            if (now - buildAtNanos >= LIVE_INTERVAL_NS) flushSignal.complete(Unit)
+            return
+        }
+        if (!force && buildAtNanos != Long.MIN_VALUE && now - buildAtNanos < LIVE_INTERVAL_NS) {
+            scheduleTrailing()
+        } else {
+            try {
+                startLive(now)
+            } catch (failure: Throwable) {
+                dropPreview(failure)
+            }
+        }
+    }
+
+    /** Holds the build slot until the next interval, without holding the fusion gate. */
+    private fun scheduleTrailing() {
+        val due = buildAtNanos + LIVE_INTERVAL_NS
+        val wake = CompletableDeferred<Unit>()
+        flushSignal = wake
+        val job = buildScope.launch(start = CoroutineStart.LAZY) {
+            val remaining = due - clock()
+            if (remaining > 0L) {
+                withTimeoutOrNull((remaining + 999_999L) / 1_000_000L) { wake.await() }
+            }
+            synchronized(publicationGate) {
+                coroutineContext.ensureActive()
+                buildJob = null
+                if (fusion.frames != snapshotFrame) snapshotLive(force = true)
+            }
+        }
+        buildJob = job
+        job.start()
     }
 
     /** Holds publicationGate; the previous build has finished reading before reusing this copy. */
     private fun startLive(now: Long) {
-        val read = snapshot ?: DenseFusion.LiveSnapshot(fusion).also { snapshot = it }
+        val read = snapshot ?: DenseFusion.LiveSnapshot(fusion, snapshotAllocation).also { snapshot = it }
         val copyAt = clock()
         read.copyFrom(fusion)
         timings.copy((clock() - copyAt).coerceAtLeast(0L))
@@ -283,6 +329,8 @@ internal class ScanDenseMap(
         val floor = LiveCoverageGround.floorHint(floorPlaneY, firstEyeY)
         buildAtNanos = now
         val sourceFrame = fusion.frames
+        snapshotFrame = sourceFrame
+        forceTrailing = false
         val job = buildScope.launch(start = CoroutineStart.LAZY) {
             try {
                 beforeBuild()
@@ -297,29 +345,29 @@ internal class ScanDenseMap(
                     if (!closed.get()) {
                         if (layer.whole.isNotEmpty()) {
                             recordLiveAge()
-                            published = Published(layer, now)
+                            published.updateAndGet { if (it.closed) it else Published(layer, now) }
                             recordLiveAge()
                         }
-                        // No polling: completion catches up exactly once to the latest fused frame.
-                        // Relinquish ownership under the gate, before coroutine completion: an
-                        // add arriving just after this check can start its own snapshot safely.
-                        buildJob = null
-                        if (fusion.frames != sourceFrame) startLive(clock())
                     }
+                    buildJob = null
+                    if (!closed.get() && fusion.frames != sourceFrame) snapshotLive(force = forceTrailing)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
-                // Preview is optional. Even OOM must not kill capture or poison the next build.
-                synchronized(publicationGate) {
-                    buildJob = null
-                    buildAtNanos = Long.MIN_VALUE
-                }
-                runCatching { previewLog("preview dropped: ${failure.javaClass.simpleName}") }
+                synchronized(publicationGate) { dropPreview(failure) }
             }
         }
         buildJob = job
         job.start()
+    }
+
+    /** Holds publicationGate. A partial copy is never reused after allocation failure. */
+    private fun dropPreview(failure: Throwable) {
+        snapshot = null
+        buildJob = null
+        buildAtNanos = Long.MIN_VALUE
+        runCatching { previewLog("preview dropped: ${failure.javaClass.simpleName}") }
     }
 
     /** All inputs belong to the copied buffer; no fusion arrays or dense gate are read here. */
@@ -362,6 +410,8 @@ internal class ScanDenseMap(
         (cloud.normals?.size ?: 0) * 4L + (cloud.confidences?.size ?: 0) + (cloud.levels?.size ?: 0)
 
     companion object {
+        /** Device A/B seam: keep Java priority normal and change only Linux nice. */
+        const val PREVIEW_NICE = 2
         private const val SNAPSHOT_OVERHEAD_BYTES = 2048L
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_INTERVAL_NS = 1_000_000_000L

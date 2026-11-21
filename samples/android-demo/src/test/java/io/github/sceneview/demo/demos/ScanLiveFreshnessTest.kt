@@ -225,7 +225,7 @@ class ScanLiveFreshnessTest {
     }
 
     @Test
-    fun `completion takes one trailing snapshot after adds stop even before the interval`() = runTest {
+    fun `completion waits for the interval then takes exactly one trailing snapshot`() = runTest {
         var builds = 0
         val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
             liveDispatcher = StandardTestDispatcher(testScheduler), beforeBuild = { builds++; delay(100) })
@@ -235,7 +235,7 @@ class ScanLiveFreshnessTest {
         map.add(patch(800, 3f))
         map.add(patch(800, 3f))
         map.finishPendingLive()
-        assertEquals(200, testScheduler.currentTime)
+        assertEquals(1_100, testScheduler.currentTime)
         assertEquals(2, builds)
         assertArrayEquals(map.fusion.cloudPositions(DenseFusion.MIN_VIEWS), checkNotNull(map.live).whole, 0f)
         advanceUntilIdle()
@@ -255,6 +255,23 @@ class ScanLiveFreshnessTest {
         assertEquals(1, builds)
         map.flushLive()
         map.finishPendingLive()
+        assertEquals(2, builds)
+        assertArrayEquals(map.fusion.cloudPositions(DenseFusion.MIN_VIEWS), checkNotNull(map.live).whole, 0f)
+        map.discardPendingLive()
+    }
+
+    @Test
+    fun `QA flush during a build forces its trailing snapshot before the interval`() = runTest {
+        var builds = 0
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+            liveDispatcher = StandardTestDispatcher(testScheduler), beforeBuild = { builds++; delay(300) })
+        map.add(patch(800))
+        runCurrent()
+        advanceTimeBy(100)
+        map.add(patch(800))
+        map.flushLive()
+        map.finishPendingLive()
+        assertEquals(600, testScheduler.currentTime)
         assertEquals(2, builds)
         assertArrayEquals(map.fusion.cloudPositions(DenseFusion.MIN_VIEWS), checkNotNull(map.live).whole, 0f)
         map.discardPendingLive()
@@ -303,17 +320,35 @@ class ScanLiveFreshnessTest {
     }
 
     @Test
+    fun `save releases an idle snapshot before assembling the saved cloud`() = runTest {
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { 0L }, liveDispatcher = Dispatchers.Unconfined)
+        val samples = patch(800)
+        map.fusion.add(samples)
+        map.add(samples)
+        val layer = checkNotNull(map.live)
+        assertTrue(map.snapshotStorageBytes > 0L)
+        map.closeForSave()
+        assertEquals("workspace must be released before savedCloud", 0L, map.snapshotStorageBytes)
+        assertSame(layer, map.live)
+        assertTrue(map.savedCloud().count > 0)
+        map.releaseLiveBuffers()
+    }
+
+    @Test
     fun `save cancellation returns while an uninterruptible preview still owns its buffers`() = runTest {
         val blocked = CompletableDeferred<Unit>()
         val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = StandardTestDispatcher(testScheduler),
             beforeBuild = { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { blocked.await() } })
         map.add(patch(800))
         runCurrent()
-        val pending = map.close() // finish cancels only; close cleanup joins later
+        map.closeForSave() // Save returns while the reader still owns its buffers
+        val pending = map.close()
         assertFalse(pending.isCompleted)
         assertTrue(map.snapshotStorageBytes > 0L)
         blocked.complete(Unit)
         pending.join()
+        assertEquals("completion releases before saved cloud assembly", 0L, map.snapshotStorageBytes)
+        assertTrue(map.savedCloud().count > 0)
         map.releaseLiveBuffers()
         assertEquals(0L, map.snapshotStorageBytes)
         assertNull(map.live)
@@ -335,6 +370,82 @@ class ScanLiveFreshnessTest {
         assertEquals("preview thread nice 2", logged.await())
         assertEquals(1, calls.get())
         map.discardPendingLive()
+    }
+
+    @Test
+    fun `sixty seconds of ten Hz adds builds at most once a second and trails the last frame`() = runTest {
+        val starts = mutableListOf<Long>()
+        var active = 0
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+            liveDispatcher = StandardTestDispatcher(testScheduler), beforeBuild = {
+                assertEquals(0, active++)
+                starts += testScheduler.currentTime
+                delay(300)
+                active--
+            })
+        repeat(600) { i ->
+            map.add(patch(20, i * 0.001f))
+            advanceTimeBy(100)
+            runCurrent()
+        }
+        val atStop = starts.size
+        map.finishPendingLive()
+        assertTrue("${starts.size} builds", starts.size <= 61)
+        assertTrue(starts.zipWithNext().all { (a, b) -> b - a >= 1_000 })
+        assertEquals(61, starts.size)
+        assertTrue(starts.size - atStop <= 1)
+        assertEquals(600, map.frames)
+        assertArrayEquals(map.fusion.cloudPositions(DenseFusion.MIN_VIEWS), checkNotNull(map.live).whole, 0f)
+        advanceUntilIdle()
+        assertEquals(61, starts.size)
+        map.discardPendingLive()
+    }
+
+    @Test
+    fun `allocation failure midway through snapshot growth drops preview and capture recovers`() = runTest {
+        var allocations = 0
+        var fail = true
+        val map = ScanDenseMap(maxPoints = 20_000, clock = { testScheduler.currentTime * NS_PER_MS },
+            liveDispatcher = StandardTestDispatcher(testScheduler), previewLog = {},
+            snapshotAllocation = { if (fail && ++allocations == 3) throw OutOfMemoryError("injected") })
+        map.add(patch(8_000))
+        assertEquals(1, map.frames)
+        assertNull(map.live)
+        assertEquals(0L, map.snapshotStorageBytes)
+        fail = false
+        map.add(patch(8_000))
+        map.finishPendingLive()
+        assertEquals(2, map.frames)
+        assertNotNull(map.live)
+        map.discardPendingLive()
+    }
+
+    @Test
+    fun `close returns while fusion holds the gate and forbids a late preview`() = runTest {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val unblock = java.util.concurrent.CountDownLatch(1)
+        val map = ScanDenseMap(maxPoints = 20_000, liveDispatcher = StandardTestDispatcher(testScheduler),
+            fuse = { fusion, samples ->
+                entered.countDown()
+                check(unblock.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                fusion.add(samples)
+            })
+        val worker = Thread { map.add(patch(800)) }
+        worker.start()
+        try {
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            // Would deadlock until the fuse timeout if close acquired publicationGate.
+            map.close()
+            assertTrue(worker.isAlive)
+        } finally {
+            unblock.countDown()
+            worker.join(5_000)
+        }
+        assertFalse(worker.isAlive)
+        advanceUntilIdle()
+        map.releaseLiveBuffers()
+        assertNull(map.live)
+        assertEquals(0L, map.snapshotStorageBytes)
     }
 
     private fun layerArrays(layer: ReplayDenseLayer): List<Any?> = listOf(

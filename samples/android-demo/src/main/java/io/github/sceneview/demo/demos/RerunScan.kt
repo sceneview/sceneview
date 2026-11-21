@@ -478,7 +478,7 @@ internal class ScanCapture(
         if (closed.get()) return null
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
-        dense?.close()
+        dense?.closeForSave()
         model?.join()
         val finalCells = if (finishedEvents == null) {
             withContext(Dispatchers.Default) { dense?.coveredCells() }

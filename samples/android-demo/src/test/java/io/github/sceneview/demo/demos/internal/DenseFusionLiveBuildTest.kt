@@ -6,6 +6,32 @@ import org.junit.Test
 
 class DenseFusionLiveBuildTest {
     @Test
+    fun `failed growth preserves the old snapshot and can retry the same buffer`() {
+        val fusion = DenseFusion(maxPoints = 20_000)
+        fusion.add(ScanLiveFreshnessTest.patch(20))
+        var allocations = 0
+        var shouldFail = false
+        val snapshot = DenseFusion.LiveSnapshot(fusion) {
+            if (shouldFail && ++allocations == 3) throw OutOfMemoryError("injected")
+        }
+        snapshot.copyFrom(fusion)
+        val before = snapshot.cloud(20_000)
+        val capacity = snapshot.capacity
+        fusion.add(ScanLiveFreshnessTest.patch(12_000))
+        shouldFail = true
+        try {
+            snapshot.copyFrom(fusion)
+            fail("allocation should fail")
+        } catch (_: OutOfMemoryError) {
+            assertEquals(capacity, snapshot.capacity)
+            assertArrayEquals(before.positions, snapshot.cloud(20_000).positions, 0f)
+        }
+        shouldFail = false
+        snapshot.copyFrom(fusion)
+        assertArrayEquals(fusion.cloud(minViews = 1).positions, snapshot.cloud(20_000).positions, 0f)
+    }
+
+    @Test
     fun `workspace shrinks after a large near field becomes far without changing output`() {
         val fusion = DenseFusion(maxPoints = 200_000, maxLevel = 0)
         fusion.add(ScanLiveFreshnessTest.patch(200_000))

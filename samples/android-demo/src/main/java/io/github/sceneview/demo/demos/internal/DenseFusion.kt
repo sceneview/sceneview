@@ -122,7 +122,7 @@ class DenseFusion private constructor(
      * workspace ever aliases the source fusion or a returned cloud. The caller copies only
      * after the previous build has stopped reading this single reusable snapshot.
      */
-    internal class LiveSnapshot(source: DenseFusion) {
+    internal class LiveSnapshot(source: DenseFusion, private val beforeAllocation: () -> Unit = {}) {
         private val read = DenseFusion(source.voxelM, source.maxPoints, source.maxLevel, true)
         val voxelM: Float get() = read.voxelM
         val storageBytes: Long get() = read.storageBytes - workspaceBytes
@@ -139,11 +139,32 @@ class DenseFusion private constructor(
             val n = source.count
             if (read.px.size < n) {
                 val size = minOf(source.maxPoints, maxOf(n, read.px.size + read.px.size / 2, INITIAL_POINTS))
-                read.px = FloatArray(size); read.py = FloatArray(size); read.pz = FloatArray(size)
-                read.nx = FloatArray(size); read.ny = FloatArray(size); read.nz = FloatArray(size)
-                read.r = FloatArray(size); read.g = FloatArray(size); read.b = FloatArray(size)
-                read.colorWeight = FloatArray(size); read.confidence = ByteArray(size)
-                read.views = IntArray(size); read.voxelKeys = LongArray(size)
+                val px = FloatArray(size).also { beforeAllocation() }
+                val py = FloatArray(size).also { beforeAllocation() }
+                val pz = FloatArray(size).also { beforeAllocation() }
+                val nx = FloatArray(size).also { beforeAllocation() }
+                val ny = FloatArray(size).also { beforeAllocation() }
+                val nz = FloatArray(size).also { beforeAllocation() }
+                val r = FloatArray(size).also { beforeAllocation() }
+                val g = FloatArray(size).also { beforeAllocation() }
+                val b = FloatArray(size).also { beforeAllocation() }
+                val colorWeight = FloatArray(size).also { beforeAllocation() }
+                val confidence = ByteArray(size).also { beforeAllocation() }
+                val views = IntArray(size).also { beforeAllocation() }
+                val voxelKeys = LongArray(size).also { beforeAllocation() }
+                read.px = px
+                read.py = py
+                read.pz = pz
+                read.nx = nx
+                read.ny = ny
+                read.nz = nz
+                read.r = r
+                read.g = g
+                read.b = b
+                read.colorWeight = colorWeight
+                read.confidence = confidence
+                read.views = views
+                read.voxelKeys = voxelKeys
             }
             source.px.copyInto(read.px, endIndex = n); source.py.copyInto(read.py, endIndex = n)
             source.pz.copyInto(read.pz, endIndex = n); source.nx.copyInto(read.nx, endIndex = n)

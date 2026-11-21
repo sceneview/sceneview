@@ -9,6 +9,8 @@ import kotlin.math.sqrt
  * dense cap reaches [DenseFusion.MAX_BUDGET]. Full model detail is kept; replay history is still thinned.
  * Journal and observation allowances grow with the heap (4 MiB each at 256 MiB, 8 MiB at
  * 512 MiB); 4.69.7 had no journal byte bound.
+ * At 256 MiB, intentionally allow 158,080 dense points, below the standalone fusion
+ * minimum of 250k: preserve main's 27,822,216-byte TSDF share within the 35% total.
  * Replay-critical journal metadata is never discarded, even if it alone exceeds its allowance.
  */
 internal class ScanMemoryBudget(val maxHeapBytes: Long) {
@@ -16,7 +18,7 @@ internal class ScanMemoryBudget(val maxHeapBytes: Long) {
     val observationBytes: Long = scaledTimelineBytes(ArDebugTrace.MAX_OBSERVATION_BYTES)
     private val standardDensePoints = DenseFusion.budgetFor(maxHeapBytes)
     // Preserve main's TSDF scale. Only dense points pay for the larger preview allowance.
-    private val mainStandardBytes = RerunTsdf.MAX_BYTES + standardDensePoints * 192L
+    private val mainStandardBytes = RerunTsdf.MAX_BYTES + standardDensePoints * MAIN_DENSE_BYTES_PER_POINT
     private val standardBytes = RerunTsdf.MAX_BYTES + standardDensePoints * DENSE_BYTES_PER_POINT
     private val reserve = journalBytes + observationBytes + TSDF_INDEX_BYTES
     val totalBytes: Long = if (maxHeapBytes < FULL_QUALITY_HEAP_BYTES) {
@@ -44,6 +46,7 @@ internal class ScanMemoryBudget(val maxHeapBytes: Long) {
             .coerceAtLeast(ArDebugTrace.MAX_MAP_POINTS * 4L)
 
     companion object {
+        private const val MAIN_DENSE_BYTES_PER_POINT = 192L
         const val SHARE_PERCENT = 35
         /** The 600k near-field arrays measure 290.50 bytes/point (174,302,344 bytes):
          * fusion/hash + one 53-byte snapshot + full merge workspace. Round to 320 for growth
