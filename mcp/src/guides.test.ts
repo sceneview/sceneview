@@ -120,7 +120,13 @@ describe("PLATFORM_ROADMAP", () => {
   });
 
   it("marks retired platforms as end of life without promising stabilization", () => {
-    for (const platform of ["iOS (SwiftUI)", "macOS (SwiftUI)", "visionOS (SwiftUI)", "Flutter", "React Native"]) {
+    for (const platform of [
+      "iOS (SwiftUI)",
+      "macOS (SwiftUI)",
+      "visionOS (SwiftUI)",
+      "Flutter",
+      "React Native",
+    ]) {
       expect(PLATFORM_ROADMAP).toContain(`| **${platform}** | End of life at 4.68.0 |`);
     }
     expect(PLATFORM_ROADMAP).not.toContain("SceneViewSwift stabilization");
