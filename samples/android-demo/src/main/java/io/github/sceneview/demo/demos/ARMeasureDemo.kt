@@ -135,6 +135,7 @@ import io.github.sceneview.demo.demos.internal.measureAddPoint
 import io.github.sceneview.demo.demos.internal.measureAimHapticEvent
 import io.github.sceneview.demo.demos.internal.MeasureBoard
 import io.github.sceneview.demo.demos.internal.MeasureCandidateControl
+import io.github.sceneview.demo.demos.internal.MeasureSessionState
 import io.github.sceneview.demo.demos.internal.measureClosesOutline
 import io.github.sceneview.demo.demos.internal.measureDistanceMeters
 import io.github.sceneview.demo.demos.internal.MeasureFigure
@@ -330,18 +331,18 @@ fun MeasureScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val locale: Locale = LocalLocale.current.platformLocale
 
-    var board by remember { mutableStateOf(MeasureBoard<Anchor>()) }
-    var objectMeasure by remember { mutableStateOf(ObjectMeasure<Anchor>()) }
+    // Everything that holds the session's anchors, forgotten together when it fails (#5132).
+    val sessionState = remember { MeasureSessionState<Anchor, Session>() }
+    var board by sessionState::board
+    var objectMeasure by sessionState::objectMeasure
     val objectMode = board.mode == MeasureMode.Object
     val objectCandidate = remember { ObjectMeasureCandidate<MeasureHit>() }
     var objectMessage by remember { mutableStateOf<String?>(null) }
-    var objectPositions by remember { mutableStateOf<Map<Anchor, Position>>(emptyMap()) }
+    var objectPositions by sessionState::objectPositions
     val shareScope = rememberCoroutineScope()
     var objectSharing by remember { mutableStateOf(false) }
-    val latestObject = remember { arrayOf(objectMeasure) }
-    SideEffect { latestObject[0] = objectMeasure }
     DisposableEffect(Unit) {
-        onDispose { latestObject[0].endpoints.distinct().forEach { it.detach() } }
+        onDispose { sessionState.objectMeasure.endpoints.distinct().forEach { it.detach() } }
     }
     fun changeObject(next: ObjectMeasure<Anchor>) {
         val kept = next.endpoints.toSet()
@@ -353,10 +354,10 @@ fun MeasureScreen(onBack: () -> Unit) {
     }
     // World positions of every anchor on the board, refreshed only when one actually moves
     // (anchors drift as ARCore refines its map; pushing every frame would recompose at 60 Hz).
-    var positions by remember { mutableStateOf<Map<Anchor, Position>>(emptyMap()) }
+    var positions by sessionState::positions
     var units by remember { mutableStateOf(MeasureUnitSystem.forLocale(locale)) }
 
-    var session by remember { mutableStateOf<Session?>(null) }
+    var session by sessionState::session
     val aimControl = remember { MeasureCandidateControl<MeasureAim>() }
     var aim by remember { mutableStateOf<MeasureAimView?>(null) }
     // Height the walls follow while raising; `null` until the aim crosses a wall.
@@ -394,11 +395,9 @@ fun MeasureScreen(onBack: () -> Unit) {
     }
 
     // Anchors are native ARCore handles: detach every one the board drops (undo, clear) and
-    // all of them when the screen goes.
-    val latestBoard = remember { arrayOf(board) }
-    SideEffect { latestBoard[0] = board }
+    // all of them when the screen goes. A failed session's anchors were forgotten, not detached.
     DisposableEffect(Unit) {
-        onDispose { latestBoard[0].allPoints.distinct().forEach { it.detach() } }
+        onDispose { sessionState.board.allPoints.distinct().forEach { it.detach() } }
     }
     // Debug-only accuracy log (MeasureQaRecorder): what each point was committed from, and the
     // last camera tracking state. Release builds never create the recorder.
@@ -763,7 +762,23 @@ fun MeasureScreen(onBack: () -> Unit) {
                     if (qaBackdrop) QaCameraBackdrop(seed = "ar-measure")
                     ARSceneView(
                         lifecycle = rememberHostLifecycle(),
-                        onSessionFailure = { arSessionFailed = true },
+                        onSessionFailure = {
+                            arSessionFailed = true
+                            // The scaffold removes the scene and closes the session on every
+                            // failure: its anchors, hits and planes are freed native objects that
+                            // Undo, Clear, Share or leaving the screen would read (#5132).
+                            sessionState.onFailure(fatal = true)
+                            qaPoints.clear()
+                            aimControl.update(null)
+                            objectCandidate.update(null, SystemClock.elapsedRealtime())
+                            aim = null
+                            wallAim = null
+                            liveHeight = null
+                            shownHeight = null
+                            liveWalls.reset()
+                            cameraReady = false
+                            isTracking = false
+                        },
                         modifier = Modifier.fillMaxSize().onSizeChanged {
                             viewport = it
                             aimControl.update(null)

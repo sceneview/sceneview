@@ -174,6 +174,9 @@ internal class ArDebugRecorder {
     private val planeIds = HashMap<Plane, Int>()
     private val livePlanes = HashSet<Plane>()
     private val anchorIds = HashMap<Anchor, Int>()
+    // Counted apart from the maps: a closed session's planes and anchors leave them, not their ids.
+    private var lastPlaneId = 0
+    private var lastAnchorId = 0
     private var recordedFor: ArDebugTrace? = null
 
     /**
@@ -236,7 +239,7 @@ internal class ArDebugRecorder {
 
         for (anchor in anchors) {
             if (anchor in anchorIds || anchor.trackingState != TrackingState.TRACKING) continue
-            val id = anchorIds.size + 1
+            val id = ++lastAnchorId
             anchorIds[anchor] = id
             trace.addAnchor(nanos, id, anchor.pose.toDebugPose())
         }
@@ -286,7 +289,7 @@ internal class ArDebugRecorder {
                 world[i * 3 + 1] = w[1]
                 world[i * 3 + 2] = w[2]
             }
-            val id = planeIds.getOrPut(plane) { planeIds.size + 1 }
+            val id = planeIds.getOrPut(plane) { ++lastPlaneId }
             trace.addPlane(nanos, id, plane.type.toDebugKind(), world)
             seen += plane
         }
@@ -302,6 +305,18 @@ internal class ArDebugRecorder {
     /** Detaches a closed capture even when no subsequent AR frame arrives. */
     fun clear() = reset(null)
 
+    /**
+     * Forgets the planes and anchors of a session a fatal failure closed (#5132): reading one is
+     * a native crash. The trace keeps what they drew, and the next session's get new ids. The
+     * capture is held as after a slip: the new session's world does not line up with the old one.
+     */
+    fun forgetSession() {
+        planeIds.clear()
+        livePlanes.clear()
+        anchorIds.clear()
+        continuity.holdForNewWorld()
+    }
+
     private fun reset(trace: ArDebugTrace?) {
         recordedFor = trace
         pointsGate.reset()
@@ -309,6 +324,8 @@ internal class ArDebugRecorder {
         planeIds.clear()
         livePlanes.clear()
         anchorIds.clear()
+        lastPlaneId = 0
+        lastAnchorId = 0
         continuity.reset()
     }
 

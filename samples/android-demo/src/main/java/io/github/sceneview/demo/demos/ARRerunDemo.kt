@@ -186,6 +186,8 @@ import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.RoomDone
 import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanActivity
+import io.github.sceneview.demo.demos.internal.ScanSessionState
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.demo.demos.internal.ScanBack
 import io.github.sceneview.demo.demos.internal.ScanClock
 import io.github.sceneview.demo.demos.internal.ScanCoach
@@ -1671,7 +1673,9 @@ private fun RerunLiveScreen(
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var eventsPerSec by remember { mutableStateOf(0f) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // The frame a capture starts on. A fatal failure closes its session (#5132): forgotten then.
+    val sessionState = remember { ScanSessionState<Frame>() }
+    var latestFrame by sessionState::latestFrame
     val anchors = remember { mutableStateListOf<Anchor>() }
 
     var sharing by remember { mutableStateOf(false) }
@@ -2237,6 +2241,13 @@ private fun RerunLiveScreen(
                 }
                 ARSceneView(
                     lifecycle = rememberHostLifecycle(),
+                    onSessionFailure = { failure ->
+                        // No frame comes until the camera is back: the auto-start must not fire
+                        // on the last one. A fatal failure closed the session, so its frame and
+                        // the planes the recorder read from it are forgotten; Retry makes a new one.
+                        isTracking = false
+                        if (sessionState.onFailure(failure)) debugRecorder.forgetSession()
+                    },
                     modifier = Modifier.fillMaxSize(),
                     engine = engine,
                     modelLoader = modelLoader,
