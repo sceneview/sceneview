@@ -42,9 +42,11 @@ import io.github.sceneview.demo.demos.internal.AnchorSpot
 import io.github.sceneview.demo.demos.internal.ArDrawingStage
 import io.github.sceneview.demo.demos.internal.ArDrawingStatus
 import io.github.sceneview.demo.demos.internal.Drawing
+import io.github.sceneview.demo.demos.internal.DrawingSessionState
 import io.github.sceneview.demo.demos.internal.FingerDrawing
 import io.github.sceneview.demo.demos.internal.FingerDrawingPlacement
 import io.github.sceneview.demo.demos.internal.SteadyPen
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -108,11 +110,14 @@ fun FingerDrawingArDemo(onBack: () -> Unit, brush: FingerBrush = rememberFingerB
 
 @Composable
 private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
-    var drawing by remember { mutableStateOf(Drawing()) }
+    // The strokes and the anchors they hang on, forgotten together when a fatal failure closes
+    // the session (#5208).
+    val sessionState = remember { DrawingSessionState<Anchor>() }
+    var drawing by sessionState::drawing
     // Which anchor each stroke hangs on, by stroke id.
-    var anchorOf by remember { mutableStateOf(emptyMap<Int, Anchor>()) }
+    var anchorOf by sessionState::anchorOf
     // What ARCore said of each of those anchors on the last camera frame.
-    var healthOf by remember { mutableStateOf(emptyMap<Anchor, AnchorHealth>()) }
+    var healthOf by sessionState::healthOf
 
     var isTracking by remember { mutableStateOf(false) }
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera frame.
@@ -318,6 +323,18 @@ private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 lifecycle = rememberHostLifecycle(),
+                onSessionFailure = { failure ->
+                    // A fatal failure closed the session: its anchors are freed native objects
+                    // the next frame would read. "Try again" opens an empty room (#5208).
+                    if (sessionState.onFailure(failure)) {
+                        pen.anchor = null
+                        pen.steady = null
+                        pen.pendingDown = false
+                        pen.pendingUp = false
+                        // Not `cameraReady`: the init scrim would cover the SDK's retry card.
+                        isTracking = false
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 materialLoader = materialLoader,

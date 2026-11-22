@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android demo: Finger Drawing and Streetscape no longer read a closed AR session ([#5208](https://github.com/sceneview/sceneview/issues/5208)).** After a fatal session failure, Finger Drawing forgets its strokes and the anchors they hang on, and Streetscape forgets its geometries and the session its coverage check used. "Try again" then starts from an empty scene instead of reading the closed session's objects on the first frame. A camera resume failure keeps everything.

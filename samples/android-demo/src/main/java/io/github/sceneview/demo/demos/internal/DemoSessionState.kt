@@ -138,6 +138,36 @@ internal class ScanSessionState<F> : DemoSessionState() {
     override fun clear() { latestFrame = null }
 }
 
+/**
+ * Finger Drawing's strokes and the anchors they hang on (#5208). A stroke is drawn in its
+ * anchor's space: once a fatal failure closed the session, the strokes are dropped with their
+ * anchors, which are forgotten, never detached. Stroke ids keep counting, so a new stroke never
+ * takes the key of one that left.
+ */
+internal class DrawingSessionState<A> : DemoSessionState() {
+    var drawing by mutableStateOf(Drawing())
+    var anchorOf by mutableStateOf(emptyMap<Int, A>())
+    var healthOf by mutableStateOf(emptyMap<A, AnchorHealth>())
+    override fun clear() {
+        drawing = Drawing(nextId = drawing.nextId)
+        anchorOf = emptyMap()
+        healthOf = emptyMap()
+    }
+}
+
+/**
+ * Streetscape's geometries and the session that made them (#5208): the scene reads each one's
+ * tracking state every frame, and the coverage check calls the session.
+ */
+internal class StreetscapeSessionState<S, G> : DemoSessionState() {
+    var session by mutableStateOf<S?>(null)
+    val geometries = mutableStateListOf<G>()
+    override fun clear() {
+        session = null
+        geometries.clear()
+    }
+}
+
 /** Feature demos must also forget the placement adapter's anchor and cached planes. */
 internal class FeaturePlacementSessionState<P, T> : DemoSessionState() {
     var placement by mutableStateOf<P?>(null)
