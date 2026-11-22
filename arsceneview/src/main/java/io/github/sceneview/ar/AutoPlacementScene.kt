@@ -427,91 +427,94 @@ fun AutoPlacementScene(
         }
     }
     PlacementGuideClock(state)
+    // The surfaces are a guide here, never a shadow catcher: the contact shadow grounds the
+    // object, and `groundShadows` alone decides on the real one (#5209).
     Box(modifier = modifier) {
-        ARSceneView(
-            modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            playbackDataset = playbackDataset,
-            // The surfaces show while the object looks for one and while it moves (#5209).
-            planeRenderer = state.showsPlaneGuide && state.guide.planes,
-            planeFindingMode = autoPlacementPlaneFindingMode(surface),
-            depthMode = autoPlacementDepthMode(surface),
-            instantPlacementMode = Config.InstantPlacementMode.DISABLED,
-            cameraPermissionOverlay = {
-                ARCameraPermissionOverlay(
-                    state = it,
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-                    contentPadding = coachingContentPadding,
-                )
-            },
-            arCoreAvailabilityOverlay = {
-                ARCoreAvailabilityOverlay(
-                    state = it,
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-                    contentPadding = coachingContentPadding,
-                )
-            },
-            onGestureListener = rememberOnGestureListener(
-                // Tap the object to select it (the selection ring appears), tap empty space
-                // to deselect — Scene Viewer's selection model.
-                onSingleTapConfirmed = { _, node ->
-                    if (node == null) state.deselectPlacement() else state.selectPlacement()
+        CompositionLocalProvider(LocalPlaneShadowReceiver provides false) {
+            ARSceneView(
+                modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                playbackDataset = playbackDataset,
+                // The surfaces show while the object looks for one and while it moves (#5209).
+                planeRenderer = state.showsPlaneGuide && state.guide.planes,
+                planeFindingMode = autoPlacementPlaneFindingMode(surface),
+                depthMode = autoPlacementDepthMode(surface),
+                instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+                cameraPermissionOverlay = {
+                    ARCameraPermissionOverlay(
+                        state = it,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                        contentPadding = coachingContentPadding,
+                    )
                 },
-                // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
-                onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
-            ),
-            onARCoreAvailability = {
-                availability = it
-                onARCoreAvailability?.invoke(it)
-            },
-            onCameraPermissionStateChanged = {
-                cameraDenied = it != null
-                onCameraPermissionStateChanged?.invoke(it)
-            },
-            onTrackingFailureChanged = {
-                trackingFailure = it
-                onTrackingFailureChanged?.invoke(it)
-            },
-            onSessionResumed = { state.cameraResumed() },
-            onSessionCreated = { created ->
-                (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
-                    val previous = placement
-                    placement = null
-                    planes = emptyList()
-                    state.resetPlacement(SystemClock.uptimeMillis())
-                    previous?.releaseAnchor()
-                }
-            },
-            onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
-            onSessionUpdated = { session, frame ->
-                val tracked = session.getAllTrackables(Plane::class.java)
-                    .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
-                if (tracked != planes) planes = tracked
-                state.onFloor(trackedFloorY(tracked))
-                if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
-                val candidate = if (ready && state.wantsSurface) {
-                    findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
-                } else null
-                val effect = state.onFrame(
-                    FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
-                        candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
-                    commit = {
-                        candidate?.createAnchor()?.let { placement = it; true } ?: false
+                arCoreAvailabilityOverlay = {
+                    ARCoreAvailabilityOverlay(
+                        state = it,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                        contentPadding = coachingContentPadding,
+                    )
+                },
+                onGestureListener = rememberOnGestureListener(
+                    // Tap the object to select it (the selection ring appears), tap empty space
+                    // to deselect — Scene Viewer's selection model.
+                    onSingleTapConfirmed = { _, node ->
+                        if (node == null) state.deselectPlacement() else state.selectPlacement()
                     },
-                )
-                if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
-            },
-        ) {
-            placement?.let { result -> key(result) { content(result) } }
-            // Never while the plane renderer shows: it catches shadows on the same planes, and two
-            // coplanar receivers darken the shadow twice and z-fight (#2657, #5209).
-            val planesShown = state.showsPlaneGuide && state.guide.planes
-            if (groundShadows && !planesShown &&
-                (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)
+                    // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
+                    onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+                ),
+                onARCoreAvailability = {
+                    availability = it
+                    onARCoreAvailability?.invoke(it)
+                },
+                onCameraPermissionStateChanged = {
+                    cameraDenied = it != null
+                    onCameraPermissionStateChanged?.invoke(it)
+                },
+                onTrackingFailureChanged = {
+                    trackingFailure = it
+                    onTrackingFailureChanged?.invoke(it)
+                },
+                onSessionResumed = { state.cameraResumed() },
+                onSessionCreated = { created ->
+                    (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
+                        val previous = placement
+                        placement = null
+                        planes = emptyList()
+                        state.resetPlacement(SystemClock.uptimeMillis())
+                        previous?.releaseAnchor()
+                    }
+                },
+                onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
+                onSessionUpdated = { session, frame ->
+                    val tracked = session.getAllTrackables(Plane::class.java)
+                        .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
+                    if (tracked != planes) planes = tracked
+                    state.onFloor(trackedFloorY(tracked))
+                    if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
+                    val candidate = if (ready && state.wantsSurface) {
+                        findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
+                    } else null
+                    val effect = state.onFrame(
+                        FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
+                            candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
+                        commit = {
+                            candidate?.createAnchor()?.let { placement = it; true } ?: false
+                        },
+                    )
+                    if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+                },
             ) {
-                planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
+                placement?.let { result -> key(result) { content(result) } }
+                // The plane renderer catches no shadow here, so these are the only receivers on the
+                // planes even while the surfaces show: no double darkening (#2657).
+                if (groundShadows &&
+                    (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)
+                ) {
+                    planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
+                }
             }
         }
         if (coaching) {
