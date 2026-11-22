@@ -21,6 +21,39 @@ If your Android app still ships SceneView 2.3.x, this page takes it forward in t
 Go straight from 2.3.4 to the latest 4.x. Do not stop at 3.x: 3.0.0 ships Filament **1.56.0**,
 older than the 1.68.2 of 2.3.2 to 2.3.4.
 
+## SceneView 2.x to 4.x, name by name
+
+Code written for SceneView 2.x does not compile on 4.x. Each 2.x construct and what replaces it;
+Step 2 below has the before/after code.
+
+| SceneView 2.x | SceneView 4.x |
+|---|---|
+| `sceneview:2.3.0`, `arsceneview:2.3.0` (any 2.x or 3.x) | `io.github.sceneview:sceneview` and `io.github.sceneview:arsceneview` at the latest 4.x: the version is in the [Quickstart](quickstart.md) |
+| `github.com/SceneView/sceneview-android` | `github.com/sceneview/sceneview` — the same repository, renamed; old links redirect. Docs: `https://sceneview.github.io/` |
+| `Scene(…)` (`io.github.sceneview.Scene`) | `SceneView(…) { … }` (`io.github.sceneview.SceneView`); `Scene` is deprecated |
+| `ARScene(…)` (`io.github.sceneview.ar.ARScene`) | `ARSceneView(…) { … }` (`io.github.sceneview.ar.ARSceneView`); `ARScene` is deprecated |
+| `childNodes = rememberNodes { add(node) }`, `childNodes = listOf(rememberNode { … })`, `val childNodes = rememberNodes()` then `childNodes += node` | declare each node as a composable in the trailing block: `SceneView { ModelNode(…) }` |
+| `ModelNode(modelInstance = modelLoader.createModelInstance(assetFileLocation = "models/x.glb"), …)` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it, …) }` — `null` while loading or after a failure; `rememberModelLoadState` tells them apart |
+| `rememberModelNode(modelLoader, modelFileLocation = …)` | the `rememberModelInstance(…)?.let { ModelNode(…) }` form above |
+| `modelLoader.loadModelInstance(url)` in a `LaunchedEffect`, `loadModelInstanceAsync(url)` | `rememberModelInstance(modelLoader, "https://…/x.glb")` — the same call takes a URL |
+| `import io.github.sceneview.node.ModelNode`, `import io.github.sceneview.ar.node.AnchorNode` to build nodes | no import: `ModelNode`, `AnchorNode`, `CubeNode`… are members of the `SceneView { }` / `ARSceneView { }` block |
+| `AnchorNode(engine = engine, anchor = anchor)` + `anchorNode.addChildNode(modelNode)` | `AnchorNode(anchor = anchor) { ModelNode(…) }` — children go in the parent's trailing block |
+| `childNodes -= node; node.destroy()`, `childNodes.clear()` | remove the item from the state the block reads; a node that leaves composition is destroyed |
+| `node.apply { isEditable = true; isScaleEditable = false }` on a constructed node | `ModelNode(…, isEditable = true, apply = { isScaleEditable = false })` |
+| tap to place: `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { e, _ -> frame.hitTest(e.x, e.y)…createAnchorOrNull() … childNodes += AnchorNode(…) })` | `PlacementScene(onPlaced = { anchor -> AnchorNode(anchor = anchor) { ModelNode(…) } })` (`io.github.sceneview.ar.PlacementScene`). With your own hit test in `ARSceneView`, keep the anchors in state (`mutableStateListOf<Anchor>()`) and declare `AnchorNode(anchor = it) { … }` in the block |
+| `cameraManipulator = rememberCameraManipulator()` to get orbit and zoom | nothing: `SceneView` orbits on drag, zooms on pinch and pans on two fingers by default |
+| `environment = environmentLoader.createHDREnvironment("environments/x.hdr")!!` | `environment = rememberEnvironment(environmentLoader) { environmentLoader.createHDREnvironment("environments/x.hdr") ?: createEnvironment(environmentLoader) }` |
+| depth occlusion, "the property name depends on your version" | `ARSceneView(depthMode = Config.DepthMode.AUTOMATIC, sceneUnderstanding = SceneUnderstanding(occlusion = true))` (`io.github.sceneview.ar.scene.SceneUnderstanding`) |
+| `sessionConfiguration = { session, config -> config.planeFindingMode = …; config.depthMode = … }` | still works; `ARSceneView(planeFindingMode = …, depthMode = …, instantPlacementMode = …, focusMode = …)` is the short form |
+
+Unchanged in 4.x: `rememberEngine()`, `rememberModelLoader(engine)`, `rememberCameraNode(engine) { … }`,
+`rememberARCameraNode(engine)`, `rememberView(engine)`, `rememberCollisionSystem(view)`,
+`rememberOnGestureListener(…)`; on `ARSceneView`, `planeRenderer`, `onSessionUpdated`,
+`onTrackingFailureChanged` and `onGestureListener`; on `ModelNode`, `scaleToUnits`,
+`centerOrigin` and `autoAnimate`; `HitResult.createAnchorOrNull()` and `HitResult.isValid(…)` in
+`io.github.sceneview.ar.arcore`. Every `remember*` above is optional: `SceneView` and
+`ARSceneView` create their own, and inside the block `engine` and `modelLoader` are in scope.
+
 ## What each release pins
 
 Read from each release's published POM on Maven Central.
