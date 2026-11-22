@@ -318,7 +318,10 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 Defaults to `LocalLifecycleOwner`. For an AR screen inside a
  *                                 `NavHost` with transitions, pass [rememberHostLifecycle] so the
  *                                 camera stays live while the screen animates out instead of
- *                                 freezing on its last image.
+ *                                 freezing on its last image. Once this lifecycle pauses, the
+ *                                 last presented image stays on screen. While another
+ *                                 `ARSceneView` holds the camera, nodes keep ticking but nothing
+ *                                 is drawn until the camera is back.
  * @param content                  Declare AR scene content using the [ARSceneScope] composable DSL.
  */
 /**
@@ -355,6 +358,54 @@ internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
  * [ARSession.updateOrNull] independently gates native frame updates on resume.
  */
 internal fun canTickARScene(sessionIsClosed: Boolean?): Boolean = sessionIsClosed == false
+
+/**
+ * Whether this view's camera is live for [shouldPresentARFrame] (#5137): the host lifecycle is
+ * resumed and no other `ARSceneView` holds the camera ([CameraArbiter]).
+ *
+ * Deliberately not `session.isResumed`: a non-fatal resume failure or a `session.pause()` made by
+ * the app keeps the host resumed, and those states keep drawing their nodes as before.
+ */
+internal fun isARCameraLive(hostIsResumed: Boolean, cameraInUseByAnotherSession: Boolean): Boolean =
+    hostIsResumed && !cameraInUseByAnotherSession
+
+/**
+ * Whether this tick's frame is submitted to the surface (#3108, #5137).
+ *
+ * A view whose camera stopped keeps the picture it last presented. ARCore stops the camera when
+ * the host pauses the session, and a frame drawn after that samples an external texture ARCore no
+ * longer feeds, which is driver-defined (#3373) and would explain the black reported on Back.
+ * Inside a `NavHost` the default lifecycle pauses the session as the exit transition *starts*, and
+ * the next vsync could still present such a frame, since the virtual content settle window (#3108)
+ * is open during any live AR session. The same applies to a view whose camera another
+ * `ARSceneView` took ([CameraArbiter]).
+ *
+ * Before the first camera image there is no picture worth keeping, so a view that has not shown the
+ * camera yet still presents virtual content as before. A new swap chain is owed a frame whatever
+ * the camera state: it holds no pixels at all, so a resize while the camera is stopped presents one
+ * frame over the stale camera texture rather than leave the surface empty.
+ *
+ * @param sessionIsClosed `null` without a session, see [canTickARScene].
+ * @param cameraIsLive see [isARCameraLive].
+ * @param hasCameraImage whether the camera stream has bound a camera image since it was built.
+ * @param hasNewArFrame whether this tick's `session.update()` returned a new camera image.
+ * @param sceneChanged whether virtual content changed (the settle window is open).
+ * @param framesOwed frames owed to a surface that holds no pixels yet.
+ */
+@Suppress("LongParameterList")
+internal fun shouldPresentARFrame(
+    sessionIsClosed: Boolean?,
+    cameraIsLive: Boolean,
+    hasCameraImage: Boolean,
+    hasNewArFrame: Boolean,
+    sceneChanged: Boolean,
+    framesOwed: Int,
+): Boolean = when {
+    !canTickARScene(sessionIsClosed) -> false
+    framesOwed > 0 -> true
+    !cameraIsLive && hasCameraImage -> false
+    else -> hasNewArFrame || sceneChanged
+}
 
 /**
  * Tracks whether a `remember`ed value has genuinely changed since the last call, so a reactive
@@ -1795,8 +1846,18 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        canTickARScene(arCore.session?.isClosed) &&
-                            (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
+                        val session = arCore.session
+                        shouldPresentARFrame(
+                            sessionIsClosed = session?.isClosed,
+                            cameraIsLive = isARCameraLive(
+                                hostIsResumed = isResumed.get(),
+                                cameraInUseByAnotherSession = arCore.isCameraInUseByAnotherSession,
+                            ),
+                            hasCameraImage = cameraStreamRef.get()?.hasCameraFrame == true,
+                            hasNewArFrame = hasNewArFrame,
+                            sceneChanged = sceneChanged,
+                            framesOwed = arFramesOwed.get(),
+                        )
                     }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
