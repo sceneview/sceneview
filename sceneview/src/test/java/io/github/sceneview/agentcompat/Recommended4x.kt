@@ -1,6 +1,6 @@
 // The 4.x code that the deprecation messages of Compat2x.kt tell an agent to write instead of
-// answers 1 and 3 (issue #5216). It must compile without a deprecation warning: if an API it
-// uses is renamed, update the messages in Compat2x.kt with it.
+// answers 1 and 3 (issue #5216). It must keep compiling: if an API it uses is renamed, update
+// the messages in Compat2x.kt with it.
 // Compile-only: nothing here runs.
 package io.github.sceneview.agentcompat
 

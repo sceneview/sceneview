@@ -86,14 +86,15 @@ fun rememberNodes(creator: MutableList<Node>.() -> Unit = {}): SnapshotStateList
  * owner ([rememberNodes], [rememberNode] or the caller) does.
  *
  * Reading [nodes] during composition subscribes to a [SnapshotStateList], so `nodes += node`
- * and `nodes -= node` from a gesture callback update the scene, as they did in 2.x.
+ * and `nodes -= node` from a gesture callback update the scene, as they did in 2.x. A node
+ * listed twice is attached once.
  *
  * Public for the `ARScene` shim of `arsceneview` only; not for application code.
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
 @Composable
 fun SceneScope.Compat2xChildNodes(nodes: List<Node>) {
-    nodes.toList().forEach { node ->
+    nodes.distinct().forEach { node ->
         key(node) {
             DisposableEffect(node) {
                 attach(node)

@@ -1,6 +1,6 @@
 // The 4.x code that the deprecation message of ARCompat2x.kt tells an agent to write instead of
-// answer 2 (issue #5216). It must compile without a deprecation warning: if an API it uses is
-// renamed, update the message in ARCompat2x.kt with it.
+// answer 2 (issue #5216). It must keep compiling: if an API it uses is renamed, update the
+// message in ARCompat2x.kt with it.
 // Compile-only: nothing here runs.
 package io.github.sceneview.agentcompat
 

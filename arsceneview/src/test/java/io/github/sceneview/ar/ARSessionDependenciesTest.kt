@@ -596,6 +596,64 @@ class ARSessionDependenciesTest {
         rule.apply(body, Description.createTestDescription(javaClass, "closed geospatial state")).evaluate()
     }
 
+    /**
+     * The 2.x `ARScene(childNodes = rememberNodes())` shim (#5216): the node list outlives the
+     * scene, so its owner destroys a placed `AnchorNode` only after `ARSceneView` closed the
+     * session. Leaving the screen must release the anchor while the session is open, or that
+     * destroy() detaches it through a closed session (the native crash of #4026).
+     */
+    @Test
+    fun `a 2x childNodes anchor is released before the session closes when the scene leaves`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val placed = anchorNode(session)
+        val scopeNodes = mutableStateListOf<Node>()
+        val scope = ARSceneScope(
+            engine = engine,
+            modelLoader = allocateWithoutJni(io.github.sceneview.loaders.ModelLoader::class.java),
+            materialLoader = allocateWithoutJni(io.github.sceneview.loaders.MaterialLoader::class.java),
+            environmentLoader = allocateWithoutJni(io.github.sceneview.loaders.EnvironmentLoader::class.java),
+            _nodes = scopeNodes,
+        )
+        // As in ARSceneView: the session close releases the scene's root nodes only.
+        arCore.onSessionClosing = { releaseSessionNodes(scopeNodes.toList()) }
+        // The caller's 2.x node list, owned outside the scene.
+        val childNodes = mutableStateListOf<Node>(placed)
+        var sceneShown by mutableStateOf(true)
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).addActivityIfNotPresent(
+            ComponentName(app.packageName, ComponentActivity::class.java.name)
+        )
+        val rule = createComposeRule()
+        val body = object : Statement() {
+            override fun evaluate() {
+                rule.setContent {
+                    if (sceneShown) scope.Compat2xARChildNodes(childNodes)
+                }
+                rule.runOnIdle {
+                    assertSame(placed, scopeNodes.single())
+                    assertTrue(detached.isEmpty())
+                    sceneShown = false
+                }
+                rule.runOnIdle {
+                    assertTrue(scopeNodes.isEmpty())
+                    assertFalse(session.isClosed)
+                    assertEquals(listOf(placed.anchor), detached)
+                    assertEquals(TrackingState.STOPPED, placed.trackingState)
+                }
+            }
+        }
+        rule.apply(body, Description.createTestDescription(javaClass, "2.x childNodes exit")).evaluate()
+
+        // ARSceneView's own disposal, then the list owner's (rememberNodes) — in that order.
+        arCore.destroy()
+        assertTrue(session.isClosed)
+        placed.destroy()
+
+        assertTrue(placed.isDestroyed)
+        assertEquals(listOf(placed.anchor), detached)
+    }
+
     private fun anchorNode(session: ARSession, automatic: Boolean = false): AnchorNode {
         val anchor = nativeObject(Anchor::class.java, session)
         val node = if (automatic) {

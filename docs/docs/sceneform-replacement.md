@@ -100,7 +100,7 @@ container.addView(
 
 ## Code written for SceneView 2.x
 
-SceneView 2.x had a different Compose API. Code in that shape does not compile on 4.x:
+SceneView 2.x had a different Compose API. 2.x code may still compile, with deprecation warnings, but always write the 4.x form:
 
 | SceneView 2.x | SceneView 4.x |
 |---|---|

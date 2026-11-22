@@ -12,6 +12,9 @@ package io.github.sceneview.ar
 
 import android.view.MotionEvent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -147,6 +150,26 @@ fun ARScene(
     permissionHandler = permissionHandler,
     lifecycle = lifecycle,
 ) {
-    Compat2xChildNodes(childNodes)
+    Compat2xARChildNodes(childNodes)
     content?.invoke(this)
+}
+
+/**
+ * [Compat2xChildNodes] for an AR scene: the listed nodes also give their session objects back
+ * while the session is still open.
+ *
+ * The 2.x node list outlives the scene: its owner ([io.github.sceneview.rememberNodes]) destroys
+ * its `AnchorNode`s only after `ARSceneView` has left. By then the nodes have left the scene's
+ * root list, so the session close released nothing, and `AnchorNode.destroy()` would call
+ * `Anchor.detach()` on a closed session — the native crash of #4026. Leaving the composition
+ * comes before the session close, so the nodes still listed are released here first; their later
+ * destroy() then skips the native call.
+ */
+@Composable
+internal fun ARSceneScope.Compat2xARChildNodes(nodes: List<Node>) {
+    val current by rememberUpdatedState(nodes)
+    DisposableEffect(Unit) {
+        onDispose { releaseSessionNodes(current.toList()) }
+    }
+    Compat2xChildNodes(nodes)
 }

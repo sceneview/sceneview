@@ -35,7 +35,7 @@ helmet?.let { ModelNode(modelInstance = it, scaleToUnits = 0.3f) }
 | Old | New |
 | --- | --- |
 | Imperative `scene.addChild(node)` | Children are declared inside the parent's trailing lambda |
-| `rememberNodes()` / `rememberChildNodes()` | Removed |
+| `rememberNodes()` / `rememberChildNodes()` | `rememberNodes` is deprecated and compiles with a warning (2.x compatibility only, with `Scene(childNodes = …)` / `ARScene(childNodes = …)`); `rememberChildNodes` is removed. Write the 4.x form: declare the nodes in the `SceneView { }` / `ARSceneView { }` block |
 | Manual collision wiring | `rememberCollisionSystem(view)` — already the default `collisionSystem` parameter of `SceneView` / `ARSceneView`; use `collisionSystem.hitTest(...)` |
 
 ## AR
