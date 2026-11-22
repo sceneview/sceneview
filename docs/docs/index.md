@@ -187,16 +187,16 @@ The Filament engine, model loaders, environment, camera -- all are `remember`-ed
 
 ### Native renderers per platform
 
-Android uses Filament (high-performance C++ via JNI). Apple platforms use RealityKit (native Metal). Web uses Filament.js (WebAssembly). Each platform gets native performance and native tooling.
+Android uses Filament (high-performance C++ via JNI). Web uses Filament.js (WebAssembly). The end-of-life Apple package (4.68.0) used RealityKit.
 
 ---
 
 ## Samples & Showcase
 
-The demo apps ship with 41 interactive demos on Android and 35 on Apple platforms, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
+The Android demo app ships with 41 interactive demos, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
 
 [Android samples](samples.md){ .md-button }
-[Apple samples](samples-ios.md){ .md-button }
+[Apple samples (end of life)](samples-ios.md){ .md-button }
 
 ---
 
