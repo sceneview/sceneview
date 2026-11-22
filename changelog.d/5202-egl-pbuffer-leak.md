@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Android: destroying an engine's EGL context now also destroys the 1×1 pbuffer it was made current on. Each engine used to leak one EGL surface for the life of the process; on a Pixel 4a, about 100 engines in one process (fast open and close of a 3D screen) ran the GPU driver out of contexts and crashed with "Couldn't create Engine" (#5202). That exception now says how many SceneView EGL contexts are alive.

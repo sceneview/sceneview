@@ -122,10 +122,19 @@ internal const val DISABLE_GPU_COMPLETE_METRIC = "engine.frame_info.disable_gpu_
  * Built with the `engine.frame_info.disable_gpu_complete_metric` feature flag: a constant flag,
  * only settable at creation.
  */
-fun createEngine(eglContext: EGLContext): Engine = Engine.Builder()
-    .sharedContext(eglContext)
-    .feature(DISABLE_GPU_COMPLETE_METRIC, true)
-    .build()
+fun createEngine(eglContext: EGLContext): Engine = try {
+    Engine.Builder()
+        .sharedContext(eglContext)
+        .feature(DISABLE_GPU_COMPLETE_METRIC, true)
+        .build()
+} catch (e: IllegalStateException) {
+    // Filament only says "Couldn't create Engine". How many contexts SceneView still holds tells
+    // a leak or a backlog of engines waiting for their teardown from a driver refusal (#5202).
+    throw IllegalStateException(
+        "Couldn't create Engine with ${OpenGL.liveContextCount} SceneView EGL context(s) alive (#5202)",
+        e,
+    )
+}
 
 fun createScene(engine: Engine): com.google.android.filament.Scene = engine.createScene()
 

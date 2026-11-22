@@ -15,13 +15,32 @@ object OpenGL {
 
     private const val EGL_OPENGL_ES3_BIT = 0x40
 
+    /**
+     * The 1×1 pbuffer each context handed to an engine was made current on, destroyed with that
+     * context by [destroyEglContext]. [createEglContext] used to return the context alone and drop
+     * its pbuffer, so every engine leaked one EGL surface for the life of the process (#5202).
+     */
+    private val pbuffers = ContextSurfaces<EGLContext, EGLSurface>()
+
+    /** How many contexts made by SceneView are still waiting for [destroyEglContext]. */
+    internal val liveContextCount: Int get() = pbuffers.size
+
     fun createEglContext(): EGLContext {
         return createEglContext(EGL14.EGL_NO_CONTEXT)
             ?: error("EGL context creation failed")
     }
 
     fun createEglContext(shareContext: EGLContext?): EGLContext? =
-        createPbufferContext(shareContext).context
+        adopt(createPbufferContext(shareContext))
+
+    /**
+     * Hands [pbufferContext]'s context to a caller that only keeps the [EGLContext], keeping its
+     * pbuffer so that [destroyEglContext] releases both.
+     */
+    internal fun adopt(pbufferContext: PbufferContext): EGLContext {
+        pbuffers.adopt(pbufferContext.context, pbufferContext.surface)
+        return pbufferContext.context
+    }
 
     /**
      * [createEglContext], keeping the display and the 1×1 pbuffer the context was made current on,
@@ -48,14 +67,13 @@ object OpenGL {
             display,
             configs[0], surfaceAttribs, 0
         )
-        check(
-            EGL14.eglMakeCurrent(
-                display,
-                surface,
-                surface,
-                context
-            )
-        ) { "Error making GL context." }
+        if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
+            val error = EGL14.eglGetError()
+            // Nothing owns them yet: release both rather than leak them with the exception.
+            if (surface != null && surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)
+            if (context != null && context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
+            error("Error making GL context current: EGL error 0x%x".format(error))
+        }
         return PbufferContext(display, context, surface)
     }
 
@@ -170,8 +188,14 @@ object OpenGL {
         return result
     }
 
+    /**
+     * Destroys [context] and, when SceneView created it, the pbuffer it was made current on. A
+     * context or surface still current on a thread is only freed once that thread makes another
+     * one current, as EGL specifies: the next engine's [createEglContext] does.
+     */
     fun destroyEglContext(context: EGLContext?) {
         val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        context?.let(pbuffers::release)?.let { EGL14.eglDestroySurface(display, it) }
         check(EGL14.eglDestroyContext(display, context)) { "Error destroying GL context." }
     }
 }

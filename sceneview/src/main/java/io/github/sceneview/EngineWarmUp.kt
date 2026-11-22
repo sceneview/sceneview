@@ -117,7 +117,8 @@ object EngineWarmUp {
             prepared.destroy()
             return null
         }
-        return prepared.context
+        // Adopted, not unwrapped: the pbuffer must be destroyed with the context (#5202).
+        return OpenGL.adopt(prepared)
     }
 
     /** Whether a prepared context is waiting to be taken. */
