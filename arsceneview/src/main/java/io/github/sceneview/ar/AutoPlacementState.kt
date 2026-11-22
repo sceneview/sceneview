@@ -163,6 +163,21 @@ class AutoPlacementState {
     var showsContactShadow: Boolean by mutableStateOf(true)
 
     /**
+     * Draw the detected surfaces while the object looks for one and while it moves, then fade them
+     * once it stands still (#5209): the rule [guide] describes. On by default; set `false` for a
+     * scene that should never show the surfaces.
+     */
+    var showsPlaneGuide: Boolean by mutableStateOf(true)
+
+    /**
+     * What the placement shows right now: the surfaces, the footprint ring, and whether dimension
+     * marks should be drawn. [AutoPlacementScene] keeps it current; read [PlacementGuide.dimensions]
+     * to show marks of your own at the same moments.
+     */
+    var guide: PlacementGuide by mutableStateOf(PlacementGuide.Nothing)
+        internal set
+
+    /**
      * Let the user resize the placed object with a pinch, [scaleTo] or the double-tap.
      *
      * Set `false` for anything that must stay at real size (furniture, a pool, a shed): the

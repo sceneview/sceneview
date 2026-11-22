@@ -14,7 +14,8 @@ import io.github.sceneview.node.ContactShadowNode
 import io.github.sceneview.node.ModelNode
 
 /**
- * The soft dark pool under an [AutoPlacementModel] standing on a floor or a table — what makes it
+ * The soft dark pool under an [AutoPlacementModel], or a sized [AutoPlacementNode], standing on a
+ * floor or a table — what makes it
  * look *on* the surface rather than floating a few millimetres above it, as Scene Viewer and AR
  * Quick Look both draw under a placed object.
  *
@@ -30,10 +31,10 @@ import io.github.sceneview.node.ModelNode
 @Composable
 internal fun NodeScope.PlacementContactShadowNode(
     state: AutoPlacementState,
-    model: ModelNode,
+    corners: List<Position>,
 ) {
     if (!state.showsContactShadow) return
-    val quad = remember(model) { PlacementContactShadow.quad(model.groundedCorners()) } ?: return
+    val quad = remember(corners) { PlacementContactShadow.quad(corners) } ?: return
     val shadow = remember(engine, materialLoader, quad) {
         ContactShadowNode(
             engine = engine,
@@ -119,12 +120,13 @@ internal object PlacementContactShadow {
 internal object PlacementGroundContact {
 
     /**
-     * Disc radius in the surface frame, metres: the outer edge of the selection ring, or the
+     * Disc radius in the surface frame, metres: the outer edge of the selection ring's edging, or the
      * contact shadow's quad when that reaches farther.
      */
     fun radius(footprint: SelectionRing.Footprint, quad: PlacementContactShadow.Quad?): Float {
+        // The outer edging of the held (widest) ring.
         val ring = if (footprint.radius > 0f) {
-            footprint.radius + SelectionRing.tubeRadius(footprint.radius)
+            SelectionRing.bands(footprint, held = true).maxOf { it.radius + it.tube }
         } else 0f
         val shadow = quad?.let { maxOf(it.sizeX, it.sizeZ) / 2f } ?: 0f
         return maxOf(ring, shadow)
