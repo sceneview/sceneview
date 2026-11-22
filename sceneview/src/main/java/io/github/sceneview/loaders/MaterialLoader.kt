@@ -470,6 +470,16 @@ class MaterialLoader(
      * overlay.setSemanticsOpacity(blendSlider)
      * ```
      *
+     * **Colours.** Each class displays in the sRGB colour documented for it (`SKY` `#66B0F5`,
+     * `WATER` `#00BDD4`…), so a legend built from those colours matches the overlay (#5102). The
+     * material pre-distorts its palette by the inverse of the view's tone mapper: PBR Neutral
+     * ([io.github.sceneview.createView], the default here) or Filmic
+     * ([io.github.sceneview.createARView]). A node carrying the instance picks the right one when
+     * it is added to a `Scene` or `ARScene`; an instance drawn some other way keeps PBR Neutral.
+     * Read back, every channel lands within 6 8-bit steps of its documented colour, and a
+     * channel darker than `0x30` within 16 (in an AR view `VEHICLE`'s and `WATER`'s red would
+     * need a negative value the colour buffer cannot hold).
+     *
      * Android / ARCore only — the on-device Scene Semantics ML model has no iOS / Web
      * equivalent. Outdoor scenes only (the model has no indoor training data). See the
      * `ARSceneSemanticsDemo` sample for the full per-frame upload + blend wiring.
@@ -487,6 +497,8 @@ class MaterialLoader(
     ): MaterialInstance = createInstance(semanticsOverlayMaterial).apply {
         setSemanticsTexture(semanticTexture)
         setSemanticsOpacity(opacity)
+        // createView's PBR Neutral; the node drawing it flips it for a Filmic (AR) view.
+        setParameter("inverseFilmic", false)
     }
 
     /**

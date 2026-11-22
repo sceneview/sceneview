@@ -2,17 +2,22 @@ package io.github.sceneview.render
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.filament.Camera
+import com.google.android.filament.ColorGrading
 import com.google.android.filament.EntityManager
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Skybox
 import com.google.android.filament.Texture
+import com.google.android.filament.ToneMapper
+import io.github.sceneview.filmicViews
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
+import io.github.sceneview.matchToneMapInverse
 import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.render.RenderTestHarness.Companion.colorsMatch
 import org.junit.AfterClass
@@ -23,6 +28,7 @@ import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.nio.ByteBuffer
+import kotlin.math.abs
 
 /**
  * Loads the compiled Scene Semantics overlay material and draws it.
@@ -39,12 +45,37 @@ import java.nio.ByteBuffer
  *   (`UNLABELED`, transparent), `1` (`SKY`), `11` (`WATER`) and `12` (past the last class,
  *   transparent). One place off, as the table was, `0` is tinted sky blue, `1` comes out
  *   terracotta and `11` is left transparent: all three fail here.
+ * - `eachClass_isDrawnInItsLegendColour_*` need readback too: each of the 11 classes, drawn full
+ *   frame in a [io.github.sceneview.createView] view (PBR Neutral) and in a Filmic view like
+ *   [io.github.sceneview.createARView]'s, reads back as the colour the demo's legend paints for
+ *   it. The palette used to be taken as linear: SKY `#66B0F5` came out (157, 204, 237) (#5102).
  */
 @RunWith(AndroidJUnit4::class)
 class SemanticsOverlayRenderTest {
 
     companion object {
         private const val SIZE = 64
+
+        /**
+         * The colours the demo's legend paints for classes 1..11 (`SemanticsOverlay.PALETTE_ARGB`,
+         * held equal to the material's table by `SemanticsOverlayTest`, #5101), sRGB bytes.
+         */
+        private val LEGEND_RGB = intArrayOf(
+            0x66B0F5, 0xD95F57, 0x4CB050, 0x757575, 0xBDBD8C, 0xCC9E6B,
+            0x9E75BD, 0xFFC207, 0x2196F2, 0xF5428C, 0x00BDD4,
+        )
+
+        /** 8-bit steps per channel left to the grading LUT, the colour buffer's precision and dithering. */
+        private const val LEGEND_TOLERANCE = 6
+
+        /**
+         * A channel darker than [DARK_CHANNEL] may land up to [DARK_TOLERANCE] steps above its legend.
+         * Under Filmic, VEHICLE's and WATER's red would need a negative scene value, which the colour
+         * buffer cannot hold; and near black the sRGB curve is steep enough that 16 steps are 0.5 %
+         * of white in linear light.
+         */
+        private const val DARK_CHANNEL = 0x30
+        private const val DARK_TOLERANCE = 16
 
         private lateinit var harness: RenderTestHarness
         private lateinit var materialLoader: MaterialLoader
@@ -135,6 +166,8 @@ class SemanticsOverlayRenderTest {
                 val row = labelTexture(*labels).also { texture = it }
                 val overlay = materialLoader.createSemanticsOverlayInstance(row, opacity = 1f)
                     .also { instance = it }
+                // What a Scene or ARScene does when the node carrying it is added (#5102).
+                overlay.matchToneMapInverse(harness.view)
                 val node = fullFrameQuad(overlay).also { quad = it }
                 harness.scene.addEntity(node.entity)
                 harness.renderFrames(5)
@@ -214,6 +247,64 @@ class SemanticsOverlayRenderTest {
             "WATER (11) is cyan — green and blue with no red: $said",
             Color.red(water) <= 40 && Color.green(water) >= 150 && Color.blue(water) >= 150
         )
+    }
+
+    /** Each class drawn full frame, read at the centre, against the colour its legend paints. */
+    private fun assertEachClassShowsItsLegend(view: String) {
+        harness.resetScene()
+        harness.runOnMain { lookAtTheOriginOverRed() }
+        val centre = SIZE / 2
+        fun channels(rgb: Int) = IntArray(3) { (rgb shr (16 - 8 * it)) and 0xFF }
+        val drawn = (1..11).associateWith { label -> frameOf(label).getPixel(centre, centre) and 0xFFFFFF }
+        val said = drawn.entries.joinToString("; ") { (label, rgb) ->
+            val off = channels(rgb).zip(channels(LEGEND_RGB[label - 1])).maxOf { (a, b) -> abs(a - b) }
+            "class $label legend #%06X drawn #%06X (%d off)".format(LEGEND_RGB[label - 1], rgb, off)
+        }
+        Log.i("SemanticsOverlayRenderTest", "$view: $said")
+        drawn.forEach { (label, rgb) ->
+            val legend = channels(LEGEND_RGB[label - 1])
+            channels(rgb).forEachIndexed { c, value ->
+                val tolerance = if (legend[c] < DARK_CHANNEL) DARK_TOLERANCE else LEGEND_TOLERANCE
+                assertTrue(
+                    "$view, class $label channel $c: ${abs(value - legend[c])} steps off (tolerance $tolerance): $said",
+                    abs(value - legend[c]) <= tolerance
+                )
+            }
+        }
+    }
+
+    @Test
+    fun eachClass_isDrawnInItsLegendColour_inA3dView() {
+        RenderTestCapabilities.assumeGpuReadbackAvailable()
+        // createView's grading: PBR Neutral.
+        assertEachClassShowsItsLegend("PBR Neutral (createView)")
+    }
+
+    @Test
+    fun eachClass_isDrawnInItsLegendColour_inAnArView() {
+        RenderTestCapabilities.assumeGpuReadbackAvailable()
+        // createARView's grading: Filmic, and the view listed among the Filmic ones.
+        var filmic: ColorGrading? = null
+        var neutral: ColorGrading? = null
+        harness.runOnMain {
+            neutral = harness.view.colorGrading
+            filmic = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(harness.engine)
+            harness.view.colorGrading = filmic
+            filmicViews += harness.view
+        }
+        try {
+            assertEachClassShowsItsLegend("Filmic (createARView)")
+        } finally {
+            harness.runOnMain {
+                filmicViews -= harness.view
+                harness.view.colorGrading = neutral
+                // A frame graded with the view's own grading again, and the GPU done with the
+                // last Filmic one, before the Filmic grading goes.
+                harness.renderFrames(2)
+                harness.engine.flushAndWait()
+                filmic?.let { harness.engine.destroyColorGrading(it) }
+            }
+        }
     }
 
     @Test
