@@ -357,6 +357,43 @@ internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
 internal fun canTickARScene(sessionIsClosed: Boolean?): Boolean = sessionIsClosed == false
 
 /**
+ * Whether this tick's frame is submitted to the surface (#3108, #5137).
+ *
+ * A paused session keeps the picture it last presented. ARCore stops the camera when the session
+ * pauses, and a frame drawn after that samples external textures it no longer feeds — driver-defined
+ * (#3373), and black on a Pixel 4a. Inside a `NavHost` the default lifecycle
+ * pauses the session as the exit transition *starts*, and the next vsync used to present such a
+ * frame — the virtual content settle window (#3108) is open during any live AR session — so the
+ * camera turned black for the whole transition instead of keeping its last image. The same
+ * happened to a view whose camera another `ARSceneView` took ([CameraArbiter]).
+ *
+ * Before the first camera image there is no picture worth keeping, so a session that has not run
+ * yet still presents virtual content as before. A new swap chain is owed a frame whatever the
+ * session state: it holds no pixels at all.
+ *
+ * @param sessionIsClosed `null` without a session, see [canTickARScene].
+ * @param sessionIsRunning whether the session is resumed — it delivers camera images.
+ * @param hasCameraImage whether the camera stream has bound a camera image since it was built.
+ * @param hasNewArFrame whether this tick's `session.update()` returned a new camera image.
+ * @param sceneChanged whether virtual content changed (the settle window is open).
+ * @param framesOwed frames owed to a surface that holds no pixels yet.
+ */
+@Suppress("LongParameterList")
+internal fun shouldPresentARFrame(
+    sessionIsClosed: Boolean?,
+    sessionIsRunning: Boolean,
+    hasCameraImage: Boolean,
+    hasNewArFrame: Boolean,
+    sceneChanged: Boolean,
+    framesOwed: Int,
+): Boolean = when {
+    !canTickARScene(sessionIsClosed) -> false
+    framesOwed > 0 -> true
+    !sessionIsRunning && hasCameraImage -> false
+    else -> hasNewArFrame || sceneChanged
+}
+
+/**
  * Tracks whether a `remember`ed value has genuinely changed since the last call, so a reactive
  * `LaunchedEffect(value) { ... }` can tell "the caller changed this parameter" apart from its own
  * mount-time execution (#2573).
@@ -1795,8 +1832,15 @@ fun ARSceneView(
                     // `sceneChanged` reflect the `session.update()` and the node ticks that
                     // just ran. Gates the GPU submit only — the loop itself never parks.
                     shouldPresent = {
-                        canTickARScene(arCore.session?.isClosed) &&
-                            (hasNewArFrame || sceneChanged || arFramesOwed.get() > 0)
+                        val session = arCore.session
+                        shouldPresentARFrame(
+                            sessionIsClosed = session?.isClosed,
+                            sessionIsRunning = session?.isResumed == true,
+                            hasCameraImage = cameraStreamRef.get()?.hasCameraFrame == true,
+                            hasNewArFrame = hasNewArFrame,
+                            sceneChanged = sceneChanged,
+                            framesOwed = arFramesOwed.get(),
+                        )
                     }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
