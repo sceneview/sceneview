@@ -15,13 +15,32 @@ object OpenGL {
 
     private const val EGL_OPENGL_ES3_BIT = 0x40
 
+    /**
+     * The 1×1 pbuffer each context handed to an engine was made current on, destroyed with that
+     * context by [destroyEglContext]. [createEglContext] used to return the context alone and drop
+     * its pbuffer, so every engine leaked one EGL surface for the life of the process (#5202).
+     */
+    private val pbuffers = ContextSurfaces<EGLContext, EGLSurface>()
+
+    /** How many contexts made by SceneView are still waiting for [destroyEglContext]. */
+    internal val liveContextCount: Int get() = pbuffers.size
+
     fun createEglContext(): EGLContext {
         return createEglContext(EGL14.EGL_NO_CONTEXT)
             ?: error("EGL context creation failed")
     }
 
     fun createEglContext(shareContext: EGLContext?): EGLContext? =
-        createPbufferContext(shareContext).context
+        adopt(createPbufferContext(shareContext))
+
+    /**
+     * Hands [pbufferContext]'s context to a caller that only keeps the [EGLContext], keeping its
+     * pbuffer so that [destroyEglContext] releases both.
+     */
+    internal fun adopt(pbufferContext: PbufferContext): EGLContext {
+        pbuffers.adopt(pbufferContext.context, pbufferContext.surface)
+        return pbufferContext.context
+    }
 
     /**
      * [createEglContext], keeping the display and the 1×1 pbuffer the context was made current on,
@@ -39,6 +58,9 @@ object OpenGL {
             display,
             configs[0], shareContext, contextAttribs, 0
         )
+        if (context == null || context == EGL14.EGL_NO_CONTEXT) {
+            failEgl("eglCreateContext", EGL14.eglGetError())
+        }
         val surfaceAttribs = intArrayOf(
             EGL14.EGL_WIDTH, 1,
             EGL14.EGL_HEIGHT, 1,
@@ -48,16 +70,29 @@ object OpenGL {
             display,
             configs[0], surfaceAttribs, 0
         )
-        check(
-            EGL14.eglMakeCurrent(
-                display,
-                surface,
-                surface,
-                context
-            )
-        ) { "Error making GL context." }
+        if (surface == null || surface == EGL14.EGL_NO_SURFACE) {
+            val eglError = EGL14.eglGetError()
+            EGL14.eglDestroyContext(display, context)
+            failEgl("eglCreatePbufferSurface", eglError)
+        }
+        if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
+            val eglError = EGL14.eglGetError()
+            // Nothing owns them yet: release both rather than leak them with the exception.
+            EGL14.eglDestroySurface(display, surface)
+            EGL14.eglDestroyContext(display, context)
+            failEgl("eglMakeCurrent", eglError)
+        }
         return PbufferContext(display, context, surface)
     }
+
+    /**
+     * Throws for an EGL call that failed with [eglError], read right after the call: a later EGL
+     * call would overwrite it. Counts the contexts SceneView still holds, which tells a leak or a
+     * backlog of engines waiting for their teardown from a device that refuses any context.
+     */
+    private fun failEgl(call: String, eglError: Int): Nothing = error(
+        "$call failed: EGL error 0x%x, %d SceneView EGL context(s) alive".format(eglError, liveContextCount)
+    )
 
     /** An EGL context and the 1×1 pbuffer it is made current on, see [createPbufferContext]. */
     internal class PbufferContext(
@@ -170,8 +205,14 @@ object OpenGL {
         return result
     }
 
+    /**
+     * Destroys [context] and, when SceneView created it, the pbuffer it was made current on. A
+     * context or surface still current on a thread is only freed once that thread makes another
+     * one current, as EGL specifies: the next engine's [createEglContext] does.
+     */
     fun destroyEglContext(context: EGLContext?) {
         val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        context?.let(pbuffers::release)?.let { EGL14.eglDestroySurface(display, it) }
         check(EGL14.eglDestroyContext(display, context)) { "Error destroying GL context." }
     }
 }
