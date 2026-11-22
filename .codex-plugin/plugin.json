@@ -1,6 +1,6 @@
 {
   "name": "sceneview",
-  "version": "4.70.0",
+  "version": "4.71.0",
   "description": "Build 3D and AR with SceneView for Android (Jetpack Compose, Filament, ARCore), web and Compose Multiplatform desktop. Includes retained references for end-of-life SwiftUI, Flutter and React Native 4.68.0.",
   "author": {
     "name": "SceneView",

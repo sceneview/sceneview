@@ -46,7 +46,7 @@ The primary platform. SceneView wraps Google Filament (PBR rendering) and ARCore
 - **3D**: `SceneView { }` composable with 48+ node types
 - **AR**: `ARSceneView { }` with plane detection, image tracking, face mesh, cloud anchors, geospatial
 - **Min SDK**: 24 (Android 7.0)
-- **Install**: `implementation("io.github.sceneview:sceneview:4.70.0")`
+- **Install**: `implementation("io.github.sceneview:sceneview:4.71.0")`
 
 [:octicons-arrow-right-24: Android Quickstart](quickstart.md)
 
@@ -90,7 +90,7 @@ offscreen render, pipelined `readPixels`, then a Skia image in the Compose tree.
 - **Framework**: Compose Desktop
 - **Requirements**: JDK 21+, no JVM flag (filament-kmp's JNI binding needs 17; the
   `kotlin-math` dependency ships JDK 21 bytecode)
-- **Install**: `implementation("io.github.sceneview:sceneview-compose:4.70.0")`
+- **Install**: `implementation("io.github.sceneview:sceneview-compose:4.71.0")`
 - **Sample**: `samples/desktop-demo/` — run it with `./gradlew :samples:desktop-demo:run`
 
 [:octicons-arrow-right-24: Compose Multiplatform](compose-multiplatform.md) ·

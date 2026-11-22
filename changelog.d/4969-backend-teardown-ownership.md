@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Android: leave pending renderers to engine teardown ([#4969](https://github.com/sceneview/sceneview/issues/4969)).** Retiring engines still accept reached fences regardless of age for other pending releases, so slow main-thread polling cannot retain the engine and its EGL context. Shared engines retain the freshness check. Filament still terminates surviving renderers inside `Engine.destroy`; native waits remain unbounded.
