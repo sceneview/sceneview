@@ -122,6 +122,12 @@ public final class io/github/sceneview/CinematicHeroKt {
 	public static final fun CinematicHero-Uww-Ezs (Landroidx/compose/foundation/lazy/grid/LazyGridState;FLandroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Brush;Lio/github/sceneview/CinematicCameraProfile;FFLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 }
 
+public final class io/github/sceneview/Compat2xKt {
+	public static final fun Compat2xChildNodes (Lio/github/sceneview/SceneScope;Ljava/util/List;Landroidx/compose/runtime/Composer;I)V
+	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZLio/github/sceneview/FrameRatePolicy;Lio/github/sceneview/RenderQuality;ZZFLio/github/sceneview/FitMode;Lio/github/sceneview/model/AnimationEnvelope;Landroidx/compose/foundation/layout/PaddingValues;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Ljava/util/List;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+	public static final fun rememberNodes (Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Landroidx/compose/runtime/snapshots/SnapshotStateList;
+}
+
 public final class io/github/sceneview/DefaultCameraNode : io/github/sceneview/node/CameraNode {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/DefaultCameraNode$Companion;
