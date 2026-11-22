@@ -4,6 +4,7 @@ import io.github.sceneview.ar.ARSessionFailure
 import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.demo.demos.internal.*
+import io.github.sceneview.math.Position
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -130,6 +131,56 @@ class DemoClosedSessionPointAndAskTest {
     }
 }
 
+class DemoClosedSessionARMeasureTest {
+    @Test fun `undo clear share and leaving cannot reach the closed session's anchors`() {
+        assertSessionLifecycle(MeasureSessionState<SessionHandle, SessionHandle>(),
+            { handle ->
+                session = handle
+                board = MeasureBoard<SessionHandle>().tap(handle, closesOutline = false)
+                objectMeasure = ObjectMeasure<SessionHandle>().start().capture(handle) { Position() }
+                positions = mapOf(handle to Position())
+                objectPositions = mapOf(handle to Position())
+            },
+            { listOfNotNull(session) + board.allPoints + objectMeasure.endpoints +
+                positions.keys + objectPositions.keys })
+        assertWired("ARMeasureDemo", "MeasureSessionState")
+    }
+
+    @Test fun `a failed session's board keeps its mode but no anchor to detach`() {
+        val state = MeasureSessionState<SessionHandle, SessionHandle>()
+        state.board = MeasureBoard<SessionHandle>(mode = MeasureMode.Room).tap(SessionHandle(), closesOutline = false)
+        assertTrue(state.onFailure(fatal = true))
+        assertEquals(MeasureMode.Room, state.board.mode)
+        assertTrue(state.board.allPoints.isEmpty())
+        // Leaving the screen detaches what the holder still has, read at dispose, not a stale copy.
+        val source = demoSource("ARMeasureDemo")
+        assertTrue(source.contains("onDispose { sessionState.board.allPoints.distinct().forEach { it.detach() } }"))
+        assertTrue(source.contains("onDispose { sessionState.objectMeasure.endpoints.distinct().forEach { it.detach() } }"))
+        assertFalse(source.contains("latestBoard"))
+    }
+}
+
+class DemoClosedSessionScanTest {
+    @Test fun `auto start after retry cannot start a capture on the closed session's frame`() {
+        assertSessionLifecycle(ScanSessionState<SessionHandle>(),
+            { latestFrame = it }, { listOfNotNull(latestFrame) })
+        assertWired("ARRerunDemo", "ScanSessionState")
+        val failure = demoSource("ARRerunDemo").substringAfter("onSessionFailure = { failure ->")
+            .substringBefore("},")
+        assertTrue(failure.contains("isTracking = false"))
+        assertTrue(failure.contains("if (sessionState.onFailure(failure)) debugRecorder.forgetSession()"))
+    }
+
+    @Test fun `the scan recorder forgets the closed session's planes but keeps their ids unique`() {
+        val source = demoSource("ArDebugView").substringAfter("fun forgetSession()").substringBefore("}")
+        listOf("planeIds.clear()", "livePlanes.clear()", "anchorIds.clear()").forEach {
+            assertTrue(it, source.contains(it))
+        }
+        assertFalse(source.contains("lastPlaneId"))
+        assertFalse(demoSource("ArDebugView").contains("planeIds.size + 1"))
+    }
+}
+
 class DemoClosedSessionFeaturePlacementTest {
     @Test fun `feature adapter forgets native planes and placement before retry`() {
         assertSessionLifecycle(FeaturePlacementSessionState<SessionHandle, SessionHandle>(),
@@ -231,7 +282,7 @@ class DemoClosedSessionWiringTest {
 }
 
 private val scaffoldClosingDemos = setOf(
-    "ARImageDemo", "ARDepthOfFieldDemo", "OrbitalARDemo", "ARRecordPlaybackDemo",
+    "ARImageDemo", "ARDepthOfFieldDemo", "OrbitalARDemo", "ARRecordPlaybackDemo", "ARMeasureDemo",
 )
 
 private fun demoSource(name: String) =

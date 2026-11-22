@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.sceneview.ar.ARSessionFailure
+import io.github.sceneview.math.Position
 
 /** Drop references only: native cleanup is unsafe once the owning session has closed. */
 internal abstract class DemoSessionState {
@@ -108,6 +109,33 @@ internal class AskSessionState<F, P, A> : DemoSessionState() {
         panels.clear()
         placedProps.clear()
     }
+}
+
+/**
+ * AR Measure's anchors on the board and the object dimensions, their last world positions and the
+ * session that made them. The scaffold replaces the scene on any failure, which closes the session:
+ * the anchors are then forgotten, never detached, and the screen's dispose has nothing left to free.
+ * The board keeps its mode, so the dock under the failure card stays the one the user was on.
+ */
+internal class MeasureSessionState<A, S> : DemoSessionState() {
+    var session by mutableStateOf<S?>(null)
+    var board by mutableStateOf(MeasureBoard<A>())
+    var objectMeasure by mutableStateOf(ObjectMeasure<A>())
+    var positions by mutableStateOf<Map<A, Position>>(emptyMap())
+    var objectPositions by mutableStateOf<Map<A, Position>>(emptyMap())
+    override fun clear() {
+        session = null
+        board = MeasureBoard(mode = board.mode)
+        objectMeasure = ObjectMeasure()
+        positions = emptyMap()
+        objectPositions = emptyMap()
+    }
+}
+
+/** 3D Scan's last frame, read when a capture starts. */
+internal class ScanSessionState<F> : DemoSessionState() {
+    var latestFrame by mutableStateOf<F?>(null)
+    override fun clear() { latestFrame = null }
 }
 
 /** Feature demos must also forget the placement adapter's anchor and cached planes. */
