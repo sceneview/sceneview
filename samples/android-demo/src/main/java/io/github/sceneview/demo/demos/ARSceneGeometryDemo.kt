@@ -2,6 +2,8 @@ package io.github.sceneview.demo.demos
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,7 +50,7 @@ import com.google.ar.core.VpsAvailability
 import com.google.ar.core.exceptions.ResourceExhaustedException
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.arcore.awaitVpsAvailability
+import io.github.sceneview.ar.ARSessionFailure
 import io.github.sceneview.ar.node.MeshClassification
 import io.github.sceneview.ar.node.toMeshClassification
 import io.github.sceneview.ar.rememberHostLifecycle
@@ -71,9 +72,11 @@ import io.github.sceneview.demo.common.rememberIsNetworkAvailable
 import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.demos.internal.SceneGeometryWait
+import io.github.sceneview.demo.demos.internal.StreetscapeSessionState
 import io.github.sceneview.demo.demos.internal.VpsCoverage
 import io.github.sceneview.demo.demos.internal.earthErrorMessage
 import io.github.sceneview.demo.demos.internal.friendlyArSessionError
+import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.demo.demos.internal.sceneGeometryWait
 import io.github.sceneview.demo.demos.internal.vpsCell
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -237,7 +240,12 @@ fun ARStreetscapeDemo(onBack: () -> Unit) = GeospatialPermissionGate(
                     // "FatalException" class name to the user.
                     state.sessionError = friendlyArSessionError(exception)
                 },
-                onARCoreAvailability = { state.arCoreAvailability = it },
+                onSessionFailure = { failure -> state.onSessionFailure(failure) },
+                onARCoreAvailability = {
+                    state.arCoreAvailability = it
+                    // A successful "Try again": the failure text must not outlive it.
+                    if (it == null) state.sessionError = null
+                },
                 onSessionUpdated = { session, frame -> state.onFrame(session, frame) },
                 onTrackingFailureChanged = { reason -> state.trackingFailureReason = reason },
             ) {
@@ -278,7 +286,9 @@ fun ARStreetscapeDemo(onBack: () -> Unit) = GeospatialPermissionGate(
  * the mode drops the whole thing along with its `ARSceneView` and engine.
  */
 private class SceneGeometryState {
-    val geometries = mutableStateListOf<StreetscapeGeometry>()
+    /** What belongs to the running session, forgotten when a fatal failure closes it (#5208). */
+    val sessionState = StreetscapeSessionState<Session, StreetscapeGeometry>()
+    val geometries get() = sessionState.geometries
     var isTracking by mutableStateOf(false)
 
     /**
@@ -327,7 +337,7 @@ private class SceneGeometryState {
     var earthTracking by mutableStateOf(false)
 
     /** The running session, for the one call made outside a frame: the coverage check. */
-    var session by mutableStateOf<Session?>(null)
+    var session by sessionState::session
 
     /**
      * The ~100 m cell Earth's position falls in, `null` until Earth tracks. The coverage
@@ -347,6 +357,19 @@ private class SceneGeometryState {
      * a rejected key can show up here while [earthState] still reads `ENABLED`.
      */
     var vpsCloudStatus by mutableStateOf<CloudServiceStatus?>(null)
+
+    /**
+     * A fatal failure closed the session: its geometries are freed native objects the scene
+     * and [onFrame] would read, and its coverage check is dropped with it. "Try again" starts
+     * from an empty street; a camera resume failure keeps everything.
+     */
+    fun onSessionFailure(failure: ARSessionFailure) {
+        if (sessionState.onFailure(failure)) {
+            geometryCount = 0
+            isTracking = false
+            earthTracking = false
+        }
+    }
 
     /** The per-frame trackable bookkeeping. */
     fun onFrame(session: Session, frame: Frame) {
@@ -412,6 +435,7 @@ private fun rememberCloudStatus(state: SceneGeometryState): CloudServiceStatus {
  */
 @Composable
 private fun VpsCoverageEffect(tag: String, state: SceneGeometryState) {
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     LaunchedEffect(state.session, state.coverageCell) {
         val session = state.session ?: return@LaunchedEffect
         if (state.coverageCell == null) return@LaunchedEffect
@@ -419,7 +443,14 @@ private fun VpsCoverageEffect(tag: String, state: SceneGeometryState) {
         state.vps = VpsCoverage.Checking
         while (true) {
             val answer = try {
-                session.awaitVpsAvailability(state.latitude, state.longitude)
+                // A fatal failure cancels this check with its session: the closed
+                // session's future must not be cancelled then.
+                session.awaitDemoVpsAvailability(
+                    state.latitude,
+                    state.longitude,
+                    state.sessionState.requests,
+                    mainHandler,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ResourceExhaustedException) {

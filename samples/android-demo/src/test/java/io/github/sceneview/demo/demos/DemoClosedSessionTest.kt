@@ -4,6 +4,7 @@ import io.github.sceneview.ar.ARSessionFailure
 import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.demo.demos.internal.*
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import org.junit.Assert.*
 import org.junit.Test
@@ -181,6 +182,58 @@ class DemoClosedSessionScanTest {
     }
 }
 
+class DemoClosedSessionFingerDrawingTest {
+    @Test fun `a new session never reads the closed session's stroke anchors`() {
+        assertSessionLifecycle(DrawingSessionState<SessionHandle>(),
+            { handle ->
+                anchorOf = mapOf(0 to handle, 1 to handle)
+                healthOf = mapOf(handle to AnchorHealth.Tracking)
+            },
+            { anchorOf.values.distinct() + healthOf.keys })
+        assertWired("FingerDrawingArDemo", "DrawingSessionState")
+    }
+
+    @Test fun `strokes leave with their anchors but stroke ids keep counting`() {
+        val state = DrawingSessionState<SessionHandle>()
+        state.drawing = Drawing()
+            .penDown(Position(), radius = 0.01f, colorIndex = 0, frameHint = Direction(y = 1f), spacing = 0.01f)
+            .penUp()
+        val nextId = state.drawing.nextId
+        state.anchorOf = mapOf(0 to SessionHandle())
+        assertFalse(state.onFailure(fatal = false))
+        assertFalse(state.drawing.isEmpty)
+        assertTrue(state.onFailure(fatal = true))
+        assertTrue(state.drawing.isEmpty)
+        assertEquals(nextId, state.drawing.nextId)
+        // The pen is not Compose state: the failure handler must drop its anchor too.
+        val failure = demoSource("FingerDrawingArDemo").substringAfter("onSessionFailure = { failure ->")
+            .substringBefore("},")
+        assertTrue(failure.contains("pen.anchor = null"))
+        listOf("pen.steady = null", "pen.pendingDown = false", "pen.pendingUp = false", "isTracking = false")
+            .forEach { assertTrue(it, failure.contains(it)) }
+        assertFalse("the init scrim would cover the retry card", failure.contains("cameraReady = false"))
+    }
+}
+
+class DemoClosedSessionStreetscapeTest {
+    @Test fun `the scene and the coverage check never read the closed session's geometry`() {
+        assertSessionLifecycle(StreetscapeSessionState<SessionHandle, SessionHandle>(),
+            { session = it; geometries += it }, { listOfNotNull(session) + geometries })
+        assertWired("ARSceneGeometryDemo", "StreetscapeSessionState")
+        val source = demoSource("ARSceneGeometryDemo")
+        assertTrue(source.contains("onSessionFailure = { failure -> state.onSessionFailure(failure) }"))
+        assertTrue(source.contains("var session by sessionState::session"))
+        val failure = source.substringAfter("fun onSessionFailure(failure: ARSessionFailure)").substringBefore("\n    }")
+        listOf("geometryCount = 0", "isTracking = false", "earthTracking = false")
+            .forEach { assertTrue(it, failure.contains(it)) }
+        // Closing the request generation keeps the cancelled coverage check off the closed future.
+        assertTrue(source.contains("session.awaitDemoVpsAvailability("))
+        assertFalse(source.contains("session.awaitVpsAvailability("))
+        assertTrue(demoSource("internal/DemoSessionState").substringAfter("class StreetscapeSessionState")
+            .substringBefore("session = null").contains("requests.closeSession()"))
+    }
+}
+
 class DemoClosedSessionFeaturePlacementTest {
     @Test fun `feature adapter forgets native planes and placement before retry`() {
         assertSessionLifecycle(FeaturePlacementSessionState<SessionHandle, SessionHandle>(),
@@ -252,6 +305,7 @@ class DemoClosedSessionWiringTest {
         val flags = mapOf(
             "ARSurfacesDemo" to "arSessionFailed", "ARGeospatialAnchorsDemo" to "sessionError",
             "PointAndAskDemo" to "arSessionFailed",
+            "ARSceneGeometryDemo" to "state.sessionError",
         )
         flags.forEach { (name, flag) ->
             val source = demoSource(name)
