@@ -200,6 +200,32 @@ class ToneMapInverseContractTest {
         doubleArrayOf(-0.0181508, -0.1005789, 1.1187297),
     )
 
+    /** A `const mat3 <name> = mat3(...)` of `semantics_overlay.mat`, as the rows it multiplies by. */
+    private fun shaderMatrix(name: String): Array<DoubleArray> {
+        val body = Regex("const mat3 $name = mat3\\(([^)]*)\\);").find(source("semantics_overlay"))
+            ?.groupValues?.get(1) ?: error("semantics_overlay.mat declares no mat3 $name")
+        val columnMajor = body.split(',').map { it.trim().toDouble() }
+        assertEquals("$name has 9 entries", 9, columnMajor.size)
+        return Array(3) { row -> DoubleArray(3) { col -> columnMajor[col * 3 + row] } }
+    }
+
+    @Test
+    fun `semantics overlay converts with the matrices this model grades with`() {
+        for ((name, rows) in listOf(
+            "SEMANTICS_REC709_TO_REC2020" to rec709ToRec2020,
+            "SEMANTICS_REC2020_TO_REC709" to rec2020ToRec709,
+        )) {
+            val shader = shaderMatrix(name)
+            for (r in 0..2) for (c in 0..2) assertEquals("$name[$r][$c]", rows[r][c], shader[r][c], 0.0)
+        }
+        // And the two undo each other, so a typo copied into both tables cannot pass either.
+        for (c in 0..2) {
+            val unit = DoubleArray(3) { if (it == c) 1.0 else 0.0 }
+            val back = rec2020ToRec709.times(rec709ToRec2020.times(unit))
+            for (r in 0..2) assertEquals("round trip [$r][$c]", unit[r], back[r], 1e-5)
+        }
+    }
+
     private fun Array<DoubleArray>.times(v: DoubleArray) =
         DoubleArray(3) { r -> (0..2).sumOf { this[r][it] * v[it] } }
 

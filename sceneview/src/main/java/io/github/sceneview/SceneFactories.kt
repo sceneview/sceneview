@@ -25,6 +25,7 @@ import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toColor
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.node.ModelNode
 import io.github.sceneview.material.materialOrNull
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.RenderableNode
@@ -233,13 +234,18 @@ internal val filmicViews: MutableSet<View> =
 /**
  * Matches the materials of a node to [view]'s tone mapper: a [VideoNode] or [ViewNode], and any
  * other renderable whose material has an `inverseFilmic` parameter, such as a quad drawn with
- * [io.github.sceneview.loaders.MaterialLoader.createSemanticsOverlayInstance] (#5102). Every
- * other material is left as is.
+ * [io.github.sceneview.loaders.MaterialLoader.createSemanticsOverlayInstance] (#5102). A client
+ * material that declares a bool `inverseFilmic` parameter gets it set too: `true` in a
+ * [createARView] view, `false` in any other. The sub-nodes of a glTF model
+ * ([ModelNode.RenderableNode]) are skipped, their materials have no such parameter. Every other
+ * material is left as is. [RenderableNode.setMaterialInstanceAt] does the same for an instance set
+ * after the node was added.
  */
 internal fun Node.matchToneMapInverse(view: View?) {
     when (this) {
         is VideoNode -> materialInstance.matchToneMapInverse(view)
         is ViewNode -> materialInstance.matchToneMapInverse(view)
+        is ModelNode.RenderableNode -> Unit
         is RenderableNode -> {
             // A destroyed renderable has no instance left to read a material from.
             if (view == null || renderableInstance == 0) return

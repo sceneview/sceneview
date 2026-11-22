@@ -12,12 +12,13 @@ import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Skybox
 import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
+import io.github.sceneview.SceneNodeManager
+import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.filmicViews
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
-import io.github.sceneview.matchToneMapInverse
 import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.render.RenderTestHarness.Companion.colorsMatch
 import org.junit.AfterClass
@@ -80,6 +81,9 @@ class SemanticsOverlayRenderTest {
         private lateinit var harness: RenderTestHarness
         private lateinit var materialLoader: MaterialLoader
 
+        /** Adds a quad as a Scene or ARScene adds a node, on the harness's view. */
+        private lateinit var nodeManager: SceneNodeManager
+
         /** The camera of the one test that renders; it lives as long as the view that uses it. */
         private var cameraEntity: Int? = null
 
@@ -90,6 +94,7 @@ class SemanticsOverlayRenderTest {
             harness.runOnMain {
                 val context = InstrumentationRegistry.getInstrumentation().targetContext
                 materialLoader = MaterialLoader(harness.engine, context)
+                nodeManager = SceneNodeManager(harness.scene, CollisionSystem(harness.view))
             }
         }
 
@@ -157,29 +162,36 @@ class SemanticsOverlayRenderTest {
      * Left in the scene by a readback that timed out, they are still in use when the class's
      * teardown destroys the material loader: that second failure would be the one reported.
      */
-    private fun frameOf(vararg labels: Int): Bitmap {
+    private fun frameOf(vararg labels: Int): Bitmap = frameOf(labels, setAfterAdding = false)
+
+    /**
+     * The quad is added the way a `Scene` or `ARScene` adds a node, through a [SceneNodeManager]
+     * on the harness's view: that is where the overlay is matched to the view's tone mapper
+     * (#5102). With [setAfterAdding] the quad is added with a placeholder instance and the
+     * overlay is created and set on it afterwards, as a composable does once its texture exists.
+     */
+    private fun frameOf(labels: IntArray, setAfterAdding: Boolean): Bitmap {
         var texture: Texture? = null
-        var instance: MaterialInstance? = null
+        val instances = mutableListOf<MaterialInstance>()
         var quad: PlaneNode? = null
         try {
             harness.runOnMain {
                 val row = labelTexture(*labels).also { texture = it }
-                val overlay = materialLoader.createSemanticsOverlayInstance(row, opacity = 1f)
-                    .also { instance = it }
-                // What a Scene or ARScene does when the node carrying it is added (#5102).
-                overlay.matchToneMapInverse(harness.view)
-                val node = fullFrameQuad(overlay).also { quad = it }
-                harness.scene.addEntity(node.entity)
+                fun overlay() = materialLoader.createSemanticsOverlayInstance(row, opacity = 1f)
+                    .also { instances += it }
+                val node = fullFrameQuad(overlay()).also { quad = it }
+                nodeManager.addNode(node)
+                if (setAfterAdding) node.setMaterialInstanceAt(0, overlay())
                 harness.renderFrames(5)
             }
             return harness.capturePixels()
         } finally {
             harness.runOnMain {
                 quad?.let {
-                    harness.scene.remove(it.entity)
+                    nodeManager.removeNode(it)
                     it.destroy()
                 }
-                instance?.let { materialLoader.destroyMaterialInstance(it) }
+                instances.forEach { materialLoader.destroyMaterialInstance(it) }
                 texture?.let { harness.engine.destroyTexture(it) }
             }
         }
@@ -250,12 +262,12 @@ class SemanticsOverlayRenderTest {
     }
 
     /** Each class drawn full frame, read at the centre, against the colour its legend paints. */
-    private fun assertEachClassShowsItsLegend(view: String) {
+    private fun assertEachClassShowsItsLegend(view: String, setAfterAdding: Boolean = false) {
         harness.resetScene()
         harness.runOnMain { lookAtTheOriginOverRed() }
         val centre = SIZE / 2
         fun channels(rgb: Int) = IntArray(3) { (rgb shr (16 - 8 * it)) and 0xFF }
-        val drawn = (1..11).associateWith { label -> frameOf(label).getPixel(centre, centre) and 0xFFFFFF }
+        val drawn = (1..11).associateWith { label -> frameOf(intArrayOf(label), setAfterAdding).getPixel(centre, centre) and 0xFFFFFF }
         val said = drawn.entries.joinToString("; ") { (label, rgb) ->
             val off = channels(rgb).zip(channels(LEGEND_RGB[label - 1])).maxOf { (a, b) -> abs(a - b) }
             "class $label legend #%06X drawn #%06X (%d off)".format(LEGEND_RGB[label - 1], rgb, off)
@@ -293,7 +305,8 @@ class SemanticsOverlayRenderTest {
             filmicViews += harness.view
         }
         try {
-            assertEachClassShowsItsLegend("Filmic (createARView)")
+            assertEachClassShowsItsLegend("Filmic (createARView), added with the node")
+            assertEachClassShowsItsLegend("Filmic (createARView), set after the node", setAfterAdding = true)
         } finally {
             harness.runOnMain {
                 filmicViews -= harness.view
