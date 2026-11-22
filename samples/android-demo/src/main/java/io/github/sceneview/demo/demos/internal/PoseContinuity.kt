@@ -92,6 +92,21 @@ class PoseContinuity(
         slips = 0
     }
 
+    /**
+     * Holds the capture off every pose that follows, as a slip would (#5132): a session that a
+     * fatal failure closed leaves its world behind, and the next session's poses share nothing
+     * with it. A first pose that happens to land on the old trajectory recovers; otherwise the
+     * scan offers to finish or restart after [stuckAfterNanos]. Nothing to hold before any pose.
+     */
+    fun holdForNewWorld() {
+        val previous = last ?: return
+        if (anchor != null) return
+        anchor = previous
+        offset = Offset.IDENTITY
+        slipNanos = lastNow
+        slips++
+    }
+
     /** Reads the pose of the frame taken at [nanos]: whether it may be integrated, and why. */
     fun step(nanos: Long, pose: DebugPose): PoseStep {
         val previous = last

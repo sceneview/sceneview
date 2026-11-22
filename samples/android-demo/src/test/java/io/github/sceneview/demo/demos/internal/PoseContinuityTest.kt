@@ -152,6 +152,35 @@ class PoseContinuityTest {
         assertFalse("never held long enough to offer a restart", stuck)
     }
 
+    @Test
+    fun `a new session's world is held until it offers a restart`() {
+        val guard = PoseContinuity()
+        var t = 0L
+        repeat(30) { i ->
+            guard.step(t, pose(x = 2f + 0.03f * i))
+            t += FRAME
+        }
+        guard.holdForNewWorld()
+        assertTrue(guard.isSlipped)
+        // "Try again" a few seconds later: the new world starts at its own origin.
+        t += 3_000_000_000L
+        assertEquals(PoseStep.Held, guard.step(t, pose()))
+        repeat(150) { i ->
+            t += FRAME
+            assertEquals(PoseStep.Held, guard.step(t, pose(z = 0.01f * i)))
+        }
+        assertTrue("held 8 s offers to finish or restart", guard.isStuck)
+        assertEquals(1, guard.slips)
+    }
+
+    @Test
+    fun `holding a new world before any pose holds nothing`() {
+        val guard = PoseContinuity()
+        guard.holdForNewWorld()
+        assertFalse(guard.isSlipped)
+        assertEquals(PoseStep.Continuous, guard.step(0L, pose()))
+    }
+
     /** A pose: position, and a yaw about the vertical. */
     private data class Pose(val x: Float = 0f, val y: Float = 0f, val z: Float = 0f, val yawDegrees: Float = 0f) {
         fun debug(): DebugPose {

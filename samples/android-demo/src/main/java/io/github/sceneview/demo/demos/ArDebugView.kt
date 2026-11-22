@@ -307,12 +307,14 @@ internal class ArDebugRecorder {
 
     /**
      * Forgets the planes and anchors of a session a fatal failure closed (#5132): reading one is
-     * a native crash. The trace keeps what they drew, and the next session's get new ids.
+     * a native crash. The trace keeps what they drew, and the next session's get new ids. The
+     * capture is held as after a slip: the new session's world does not line up with the old one.
      */
     fun forgetSession() {
         planeIds.clear()
         livePlanes.clear()
         anchorIds.clear()
+        continuity.holdForNewWorld()
     }
 
     private fun reset(trace: ArDebugTrace?) {
