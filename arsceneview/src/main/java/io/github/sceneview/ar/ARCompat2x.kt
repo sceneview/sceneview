@@ -13,8 +13,8 @@ package io.github.sceneview.ar
 import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -53,6 +53,8 @@ import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberScene
 import java.io.File
+import java.util.Collections
+import java.util.IdentityHashMap
 
 /**
  * SceneView 2.x signature of `ARScene`, with its `childNodes` node list. The nodes — typically
@@ -155,21 +157,36 @@ fun ARScene(
 }
 
 /**
- * [Compat2xChildNodes] for an AR scene: the listed nodes also give their session objects back
- * while the session is still open.
+ * [Compat2xChildNodes] for an AR scene: every node it ever attached also gives its session objects
+ * back while the session is still open.
  *
- * The 2.x node list outlives the scene: its owner ([io.github.sceneview.rememberNodes]) destroys
- * its `AnchorNode`s only after `ARSceneView` has left. By then the nodes have left the scene's
- * root list, so the session close released nothing, and `AnchorNode.destroy()` would call
- * `Anchor.detach()` on a closed session — the native crash of #4026. Leaving the composition
- * comes before the session close, so the nodes still listed are released here first; their later
- * destroy() then skips the native call.
+ * The 2.x node list outlives the scene: its owner ([io.github.sceneview.rememberNodes], or the
+ * caller) destroys its `AnchorNode`s only after `ARSceneView` has left. By then the nodes have
+ * left the scene's root list, so the session close released nothing, and `AnchorNode.destroy()`
+ * would call `Anchor.detach()` on a closed session — the native crash of #4026. The same holds for
+ * a node the caller took out of the list without destroying it (`childNodes.clear()` before
+ * placing the next one). So the shim remembers every node it attached, and releases them all when
+ * it leaves the composition. That comes before the session close: `ARSceneView` composes its
+ * content after the effect that closes the session, and Compose forgets effects in reverse order.
+ * Their later destroy() then skips the native call.
+ *
+ * A node taken out of the list stays attached to its anchor until then: it may be listed again.
  */
 @Composable
 internal fun ARSceneScope.Compat2xARChildNodes(nodes: List<Node>) {
-    val current by rememberUpdatedState(nodes)
+    // Identity set: the nodes this shim attached and whose session objects it must give back.
+    val attached = remember { Collections.newSetFromMap(IdentityHashMap<Node, Boolean>()) }
+    val listed = nodes.distinct()
+    SideEffect {
+        // A destroyed node already gave its anchor back; dropping it keeps the set bounded.
+        attached.removeAll { it.isDestroyed }
+        attached += listed
+    }
     DisposableEffect(Unit) {
-        onDispose { releaseSessionNodes(current.toList()) }
+        onDispose {
+            releaseSessionNodes(attached.toList())
+            attached.clear()
+        }
     }
     Compat2xChildNodes(nodes)
 }

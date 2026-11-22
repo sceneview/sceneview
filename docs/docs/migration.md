@@ -879,7 +879,7 @@ implementation("io.github.sceneview:arsceneview:4.71.0")
 
 ## 2. `SceneView` — nodes move into the content block
 
-The `childNodes` parameter is gone. Declare nodes directly inside the `SceneView { }` trailing lambda.
+The `childNodes` parameter is gone (`Scene(childNodes = …)` remains as a deprecated 2.x shim). Declare nodes directly inside the `SceneView { }` trailing lambda.
 
 ```kotlin
 // Before — nodes passed as a list

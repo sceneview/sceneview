@@ -1,15 +1,16 @@
 // SceneView 2.x code that an AI coding agent writes from memory — it must keep compiling.
 //
-// Source: the 2026-11-23 measurement of 130 agent answers, Claude Opus without tools, question 9:
-// "Je veux afficher un modèle 3D animé (.glb) dans mon app Android en Compose, avec de la lumière
-// et une ombre au sol. Comment faire ?" ("show an animated .glb in my Compose app, with light and
-// a ground shadow"). It recommended `io.github.sceneview:sceneview:2.3.0` and wrote the code below
-// (`PlaneNode` as the shadow-receiving floor is the most frequent shape for this question). The
-// 4.x shims are in Compat2x.kt; issue #5216.
+// Source: the 2026-11-23 measurement of 130 agent answers, Claude Opus without tools, question 9,
+// asked in French: "I want to show an animated 3D model (.glb) in my Android app in Compose, with
+// light and a ground shadow. How do I do it?" It recommended `io.github.sceneview:sceneview:2.3.0`
+// and wrote the code below (`PlaneNode` as the shadow-receiving floor is the most frequent shape
+// for this question). The 4.x shims are in Compat2x.kt; issue #5216.
 //
-// The code is verbatim. Additions, none of them SceneView API:
+// The code is verbatim: every call, argument and value shape is the answer's. Changes, none of them
+// SceneView API:
+// - the answer's comments and its asset name were in French: they are translated to English;
 // - the `package` line and every import: the answer gave none;
-// - the answer's animation snippet ("Contrôler les animations") is top-level statements around a
+// - the answer's animation snippet ("controlling the animations") is top-level statements around a
 //   `modelInstance = ...` placeholder: it is wrapped in `AnimationControl(modelInstance)` below,
 //   the placeholder becoming the parameter. Its two commented alternatives (`playAnimation(0)`,
 //   `stopAnimation(0)`) are kept as comments and also written out once, so they are checked too.
@@ -50,38 +51,38 @@ fun ModelViewer() {
         engine = engine,
         modelLoader = modelLoader,
 
-        // Caméra et gestes (rotation, zoom)
+        // Camera and gestures (rotate, zoom)
         cameraNode = rememberCameraNode(engine) {
             position = Position(x = 0f, y = 1f, z = 3f)
             lookAt(Position(0f, 0.4f, 0f))
         },
         cameraManipulator = rememberCameraManipulator(),
 
-        // Éclairage d'ambiance (IBL) à partir d'un HDR
+        // Ambient lighting (IBL) from an HDR
         environment = rememberEnvironment(environmentLoader) {
             environmentLoader.createHDREnvironment("environments/studio.hdr")!!
         },
 
-        // Lumière principale directionnelle (soleil), qui projette les ombres
+        // Main directional light (the sun), which casts the shadows
         mainLightNode = rememberMainLightNode(engine) {
             intensity = 100_000f
             isShadowCaster = true
         },
 
         childNodes = rememberNodes {
-            // Le modèle animé
+            // The animated model
             add(
                 ModelNode(
-                    modelInstance = modelLoader.createModelInstance("models/personnage.glb"),
-                    scaleToUnits = 1f,          // normalise la taille à 1 m
-                    centerOrigin = Position(y = -1f), // pose les pieds sur y = 0
-                    autoAnimate = true           // joue les animations du glTF
+                    modelInstance = modelLoader.createModelInstance("models/character.glb"),
+                    scaleToUnits = 1f,          // normalizes the size to 1 m
+                    centerOrigin = Position(y = -1f), // puts the feet on y = 0
+                    autoAnimate = true           // plays the glTF animations
                 ).apply {
                     isShadowCaster = true
                 }
             )
 
-            // Le sol, qui reçoit l'ombre
+            // The floor, which receives the shadow
             add(
                 PlaneNode(
                     engine = engine,
@@ -99,7 +100,7 @@ fun ModelViewer() {
 fun AnimationControl(modelInstance: ModelInstance) {
     val modelNode = ModelNode(modelInstance = modelInstance, autoAnimate = false)
     modelNode.playAnimation(animationName = "Walk", loop = true)
-    // ou par index : modelNode.playAnimation(0)
+    // or by index: modelNode.playAnimation(0)
     // modelNode.stopAnimation(0)
     modelNode.playAnimation(0)
     modelNode.stopAnimation(0)

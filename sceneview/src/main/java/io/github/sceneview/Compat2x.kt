@@ -89,6 +89,13 @@ fun rememberNodes(creator: MutableList<Node>.() -> Unit = {}): SnapshotStateList
  * and `nodes -= node` from a gesture callback update the scene, as they did in 2.x. A node
  * listed twice is attached once.
  *
+ * With `autoCenterContent = true` (the default), `SceneView` parents each attached node to its
+ * internal content root. A node removed while the scene is shown gets that parent cleared, but
+ * when the whole scene leaves, a caller-owned node keeps the departed scene's content root as
+ * its parent: the scope cannot tell that root from a parent the caller set. It does no harm in
+ * the 2.x pattern. Listing the node in a new scene re-parents it to that scene's root, and
+ * destroying it clears the parent.
+ *
  * Public for the `ARScene` shim of `arsceneview` only; not for application code.
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)

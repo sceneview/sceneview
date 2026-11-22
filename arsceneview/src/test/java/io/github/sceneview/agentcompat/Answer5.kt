@@ -1,17 +1,18 @@
 // SceneView 2.x code that an AI coding agent writes from memory — it must keep compiling.
 //
 // Source: the 2026-11-23 measurement of 130 agent answers, Claude Opus without tools, run 3 of
-// question 5: "Ajoute de la 3D et de l'AR à mon app Android : je veux qu'on puisse voir un objet
-// en 3D puis le poser chez soi en réalité augmentée. Quelle bibliothèque, et quel code ?" ("add
-// 3D and AR to my Android app: view an object in 3D, then place it at home in AR"). It
-// recommended `sceneview:2.3.0` + `arsceneview:2.3.0` and wrote the two screens below. The 4.x
+// question 5, asked in French: "Add 3D and AR to my Android app: users should be able to view an
+// object in 3D, then place it in their home in augmented reality. Which library, and what code?"
+// It recommended `sceneview:2.3.0` + `arsceneview:2.3.0` and wrote the two screens below. The 4.x
 // shims are in Compat2x.kt and ar/ARCompat2x.kt; issue #5216.
 //
 // `rememberArAvailable()` and `createAnchorNode(...)` are not SceneView API: the answer defines
 // both itself, on top of ARCore's `ArCoreApk` and SceneView's `AnchorNode`.
 //
-// The code of sections 3 and 4 of the answer is verbatim, its imports included. Additions, none
-// of them SceneView API:
+// The code of sections 3 and 4 of the answer is verbatim, its imports included: every call,
+// argument and value shape is the answer's. Changes, none of them SceneView API:
+// - the answer's comments, UI strings and asset name were in French: they are translated to
+//   English;
 // - the `package` line; the two sections' imports merged into one list;
 // - the Compose and ARCore imports the answer left out (layout, material3, runtime, `ArCoreApk`);
 // - section 5 (a `NavHost` snippet, not inside a function, needing navigation-compose) is left
@@ -53,7 +54,7 @@ import io.github.sceneview.loaders.ModelLoader
 import com.google.android.filament.Engine
 
 @Composable
-fun ModelViewerScreen(modelPath: String = "models/objet.glb", onOpenAR: () -> Unit) {
+fun ModelViewerScreen(modelPath: String = "models/object.glb", onOpenAR: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -80,7 +81,7 @@ fun ModelViewerScreen(modelPath: String = "models/objet.glb", onOpenAR: () -> Un
                 rememberNode {
                     ModelNode(
                         modelInstance = modelLoader.createModelInstance(modelPath),
-                        scaleToUnits = 0.5f,   // ramène le modèle à 50 cm pour l'affichage
+                        scaleToUnits = 0.5f,   // brings the model down to 50 cm for display
                         centerOrigin = Position(y = 0f)
                     )
                 }
@@ -92,7 +93,7 @@ fun ModelViewerScreen(modelPath: String = "models/objet.glb", onOpenAR: () -> Un
             Button(
                 onClick = onOpenAR,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
-            ) { Text("Voir chez moi") }
+            ) { Text("View in my room") }
         }
     }
 }
@@ -106,7 +107,7 @@ fun rememberArAvailable(): Boolean {
 }
 
 @Composable
-fun ARPlacementScreen(modelPath: String = "models/objet.glb") {
+fun ARPlacementScreen(modelPath: String = "models/object.glb") {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val view = rememberView(engine)
@@ -129,7 +130,7 @@ fun ARPlacementScreen(modelPath: String = "models/objet.glb") {
             sessionConfiguration = { session, config ->
                 config.depthMode =
                     if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
-                        Config.DepthMode.AUTOMATIC          // occlusion par les vrais objets
+                        Config.DepthMode.AUTOMATIC          // occlusion by real objects
                     else Config.DepthMode.DISABLED
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -137,12 +138,12 @@ fun ARPlacementScreen(modelPath: String = "models/objet.glb") {
             onSessionUpdated = { _, updatedFrame -> frame = updatedFrame },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { motionEvent, node ->
-                    if (node != null) return@rememberOnGestureListener // tap sur l'objet existant
+                    if (node != null) return@rememberOnGestureListener // tap on the existing object
                     frame?.hitTest(motionEvent.x, motionEvent.y)
                         ?.firstOrNull { it.isValid(depthPoint = false, point = false) }
                         ?.createAnchorOrNull()
                         ?.let { anchor ->
-                            childNodes.clear()                 // un seul objet à la fois
+                            childNodes.clear()                 // one object at a time
                             childNodes += createAnchorNode(engine, modelLoader, anchor, modelPath)
                             showPlanes = false
                         }
@@ -151,8 +152,8 @@ fun ARPlacementScreen(modelPath: String = "models/objet.glb") {
         )
 
         Text(
-            text = if (showPlanes) "Bougez le téléphone puis touchez le sol"
-                   else "Pincez pour redimensionner, glissez pour déplacer",
+            text = if (showPlanes) "Move the phone, then tap the floor"
+                   else "Pinch to resize, drag to move",
             modifier = Modifier.align(Alignment.TopCenter).padding(32.dp),
             color = Color.White
         )
@@ -168,9 +169,9 @@ private fun createAnchorNode(
     addChildNode(
         ModelNode(
             modelInstance = modelLoader.createModelInstance(modelPath),
-            // Taille réelle : ne mets PAS scaleToUnits si ton .glb est déjà en mètres
+            // Real size: do NOT set scaleToUnits if your .glb is already in meters
         ).apply {
-            isEditable = true          // déplacer, tourner et redimensionner au doigt
+            isEditable = true          // move, rotate and resize with a finger
             editableScaleRange = 0.2f..3f
         }
     )
