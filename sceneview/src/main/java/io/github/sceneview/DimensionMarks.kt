@@ -51,6 +51,9 @@ object DimensionMarksDefaults {
  * `AutoPlacementState.guide`, show them when `guide.dimensions` is true; an app whose answer *is*
  * the size (a furniture fit) may keep them on.
  *
+ * Declared inside an `AutoPlacementNode`'s content, the marks follow the object and scale with a
+ * pinch, so pair them with `allowsScaling = false` (real-size furniture), as here.
+ *
  * ```kotlin
  * AutoPlacementNode(placement, state, size = Size(0.9f, 0.85f, 0.6f)) { opacity ->
  *     Sofa(opacity)
@@ -135,8 +138,10 @@ fun SceneScope.DimensionMarks(
     val fg = labelText.toArgb(); val bg = labelBackground.toArgb()
     val s = Scale(labelScale)
     val half = lh * labelScale / 2f
+    // Each tag is declared inside its slot's NodeScope, so it hangs off the slot: its position,
+    // its rotation and its clearance hiding apply to it.
     @Composable
-    fun Tag(metres: Float) = TextNode(
+    fun NodeScope.Tag(metres: Float) = TextNode(
         text = format(metres), fontSize = g.FONT_SIZE, textColor = fg, backgroundColor = bg,
         widthMeters = lw, heightMeters = lh, scale = s, cameraPositionProvider = facing, apply = tag,
     )

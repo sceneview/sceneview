@@ -1,6 +1,7 @@
 package io.github.sceneview.ar
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.sceneview.math.Size
@@ -258,6 +259,7 @@ class AutoPlacementState {
     fun toggleBaseScale() {
         if (!hasPlacement || (phase != PlacementPhase.PLACED && phase != PlacementPhase.ADJUSTING)) return
         isSelected = true
+        isSelectionShown = true
         if (allowsScaling) scaleToggleAction?.invoke()
     }
 
@@ -281,7 +283,19 @@ class AutoPlacementState {
         private set
 
     /** Total anchors ever created by this controller — the number the tests count. */
-    var placementsCreated: Int = 0
+    var placementsCreated: Int by mutableIntStateOf(0)
+        private set
+
+    /** Gestures that ended back in [PlacementPhase.PLACED]; the guide's clock dates them (#5209). */
+    internal var adjustmentsEnded: Int by mutableIntStateOf(0)
+        private set
+
+    /**
+     * The object was selected by the user — a tap, a gesture, the double-tap — rather than by
+     * [place], which selects it so it can be dragged at once. Only then does [guide] keep the ring
+     * and the dimensions on (#5209).
+     */
+    internal var isSelectionShown: Boolean by mutableStateOf(false)
         private set
 
     /** `nowMillis` of the last [FrameEffect.PLACE], `0` when nothing was placed. */
@@ -344,8 +358,16 @@ class AutoPlacementState {
     var isSelected: Boolean by mutableStateOf(false)
         private set
 
-    fun selectPlacement() { if (hasPlacement) isSelected = true }
-    fun deselectPlacement() { isSelected = false }
+    fun selectPlacement() {
+        if (hasPlacement) {
+            isSelected = true
+            isSelectionShown = true
+        }
+    }
+    fun deselectPlacement() {
+        isSelected = false
+        isSelectionShown = false
+    }
 
     private var adjustmentCount = 0
 
@@ -355,6 +377,7 @@ class AutoPlacementState {
     fun beginAdjustment(): Boolean {
         if (phase != PlacementPhase.PLACED && phase != PlacementPhase.ADJUSTING) return false
         isSelected = true
+        isSelectionShown = true
         adjustmentCount++
         isAdjusting = true
         phase = PlacementPhase.ADJUSTING
@@ -364,7 +387,10 @@ class AutoPlacementState {
     fun endAdjustment() {
         adjustmentCount = (adjustmentCount - 1).coerceAtLeast(0)
         isAdjusting = adjustmentCount > 0
-        if (!isAdjusting && phase == PlacementPhase.ADJUSTING) phase = PlacementPhase.PLACED
+        if (!isAdjusting && phase == PlacementPhase.ADJUSTING) {
+            phase = PlacementPhase.PLACED
+            adjustmentsEnded++
+        }
     }
 
     /** Whether the session should bother running the surface search this frame. */
@@ -423,6 +449,7 @@ class AutoPlacementState {
         adjustmentCount = 0
         isAdjusting = false
         isSelected = false
+        isSelectionShown = false
         scaleFactor = 1f
         cameraHeight = null
         moveAction = null
@@ -451,6 +478,7 @@ class AutoPlacementState {
         adjustmentCount = 0
         isAdjusting = false
         isSelected = false
+        isSelectionShown = false
         scaleFactor = 1f
         hasPlacement = false
         placementRequested = true
@@ -555,6 +583,7 @@ class AutoPlacementState {
         placementRequested = false
         hasPlacement = true
         isSelected = true
+        isSelectionShown = false
         placementsCreated++
         placedAtMillis = now
         searchStartedAt = null

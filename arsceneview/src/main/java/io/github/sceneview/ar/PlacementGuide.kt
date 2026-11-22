@@ -16,8 +16,9 @@ import kotlinx.coroutines.delay
  * | Moment | [planes] | [ring] | [dimensions] |
  * |---|---|---|---|
  * | Looking for a surface | every surface | — | — |
+ * | Tracking lost, object placed | — | — | — |
  * | The object lands | for [PlacementGuidePolicy.LAND_MS] | for [PlacementGuidePolicy.RING_MS] | for [PlacementGuidePolicy.DIMENSIONS_MS] |
- * | Placed, left alone | — | while selected | while selected, or always with [AutoPlacementState.alwaysShowsDimensions] |
+ * | Placed, left alone | — | once tapped | once tapped, or always with [AutoPlacementState.alwaysShowsDimensions] |
  * | Dragged or turned | yes, and [PlacementGuidePolicy.RELEASE_MS] after release | yes, wider | yes |
  *
  * The surfaces say where the object can go, so they show while it is looking for one and while
@@ -76,11 +77,14 @@ internal object PlacementGuidePolicy {
         sincePlacedMs: Long?,
         sinceReleaseMs: Long?,
         alwaysShowsDimensions: Boolean = false,
+        hasPlacement: Boolean = phase == PlacementPhase.PLACED || phase == PlacementPhase.ADJUSTING,
     ): PlacementGuide {
         fun within(since: Long?, ms: Long) = since != null && since in 0 until ms
         return when (phase) {
-            PlacementPhase.SCANNING, PlacementPhase.NO_SURFACE, PlacementPhase.RECOVERING,
-            PlacementPhase.TRACKING_LOST -> PlacementGuide.Searching
+            PlacementPhase.SCANNING, PlacementPhase.NO_SURFACE -> PlacementGuide.Searching
+            // A placed object waiting for tracking keeps still: no surface flashes back on.
+            PlacementPhase.RECOVERING, PlacementPhase.TRACKING_LOST ->
+                if (hasPlacement) PlacementGuide.Nothing else PlacementGuide.Searching
             PlacementPhase.ADJUSTING -> PlacementGuide(planes = true, ring = true, dimensions = true, held = true)
             PlacementPhase.PLACED -> PlacementGuide(
                 planes = within(sincePlacedMs, LAND_MS) || within(sinceReleaseMs, RELEASE_MS),
@@ -103,37 +107,33 @@ internal object PlacementGuidePolicy {
 }
 
 /**
- * Keeps [AutoPlacementState.guide] current: records when the object lands and when a gesture
- * ends, and wakes at each moment the guide changes on its own. Composed once by
- * [AutoPlacementScene].
+ * Keeps [AutoPlacementState.guide] current: dates each new placement and each gesture that ends
+ * from the state's own counters (a re-placement between two compositions still counts), and
+ * wakes at each moment the guide changes on its own. Composed once by [AutoPlacementScene].
  */
 @Composable
 internal fun PlacementGuideClock(state: AutoPlacementState) {
     var placedAt by remember(state) { mutableStateOf<Long?>(null) }
     var releasedAt by remember(state) { mutableStateOf<Long?>(null) }
-    var previous by remember(state) { mutableStateOf(state.phase) }
-    val phase = state.phase
-    val selected = state.isSelected
-    val always = state.alwaysShowsDimensions
-    LaunchedEffect(state, phase, selected, always) {
-        val now = SystemClock.uptimeMillis()
-        when (phase) {
-            PlacementPhase.INITIALIZING, PlacementPhase.SCANNING, PlacementPhase.NO_SURFACE -> {
-                placedAt = null
-                releasedAt = null
-            }
-            PlacementPhase.PLACED -> when {
-                previous == PlacementPhase.ADJUSTING -> releasedAt = now
-                placedAt == null -> placedAt = now
-            }
-            else -> Unit
+    val placements = state.placementsCreated
+    val releases = state.adjustmentsEnded
+    LaunchedEffect(state, placements) {
+        if (placements > 0) {
+            placedAt = SystemClock.uptimeMillis()
+            releasedAt = null
         }
-        previous = phase
+    }
+    LaunchedEffect(state, releases) { if (releases > 0) releasedAt = SystemClock.uptimeMillis() }
+    val phase = state.phase
+    val selected = state.isSelectionShown
+    val always = state.alwaysShowsDimensions
+    val hasPlacement = state.hasPlacement
+    LaunchedEffect(state, phase, selected, always, hasPlacement, placedAt, releasedAt) {
         while (true) {
             val t = SystemClock.uptimeMillis()
             val sincePlaced = placedAt?.let { t - it }
             val sinceRelease = releasedAt?.let { t - it }
-            state.guide = PlacementGuidePolicy.guide(phase, selected, sincePlaced, sinceRelease, always)
+            state.guide = PlacementGuidePolicy.guide(phase, selected, sincePlaced, sinceRelease, always, hasPlacement)
             val wait = PlacementGuidePolicy.nextChangeMs(sincePlaced, sinceRelease) ?: break
             delay(wait)
         }

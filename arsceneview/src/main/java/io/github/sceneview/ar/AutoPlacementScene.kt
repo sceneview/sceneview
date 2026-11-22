@@ -505,7 +505,12 @@ fun AutoPlacementScene(
             },
         ) {
             placement?.let { result -> key(result) { content(result) } }
-            if (groundShadows && (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)) {
+            // Never while the plane renderer shows: it catches shadows on the same planes, and two
+            // coplanar receivers darken the shadow twice and z-fight (#2657, #5209).
+            val planesShown = state.showsPlaneGuide && state.guide.planes
+            if (groundShadows && !planesShown &&
+                (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)
+            ) {
                 planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
             }
         }
@@ -867,8 +872,8 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
         }
     }
     val held = state.guide.held
-    val rings = remember(engine, footprint, held) {
-        SelectionRing.bands(footprint, held).map { band ->
+    val rings = remember(engine, footprint) {
+        SelectionRing.bands(footprint, held = false).map { band ->
             io.github.sceneview.node.TorusNode(
                 engine = engine,
                 majorRadius = band.radius,
@@ -896,6 +901,17 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
     // Every animation frame goes straight to the materials, without recomposing: a read of
     // `opacity` inside a `SideEffect` is not tracked, so the fade would stop at its first frame
     // and a deselected ring would stay drawn.
+    // Widen in place under the fingers: rebuilding the nodes would hide them for a frame.
+    LaunchedEffect(rings, held) {
+        SelectionRing.bands(footprint, held).zip(rings).forEach { (band, ring) ->
+            ring.updateGeometry(
+                majorRadius = band.radius,
+                minorRadius = band.tube,
+                center = Position(footprint.centerX, band.tube + SelectionRing.LIFT, footprint.centerZ),
+            )
+        }
+        rings.firstOrNull()?.requestRender()
+    }
     LaunchedEffect(rings, stroke, edging) {
         snapshotFlow { opacity.value }.collect { value ->
             rings.forEach { it.isVisible = value > 0f }
