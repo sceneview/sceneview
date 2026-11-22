@@ -1838,7 +1838,12 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 `AutoPlacementScene` is additive: one usable detected plane consumes one placement
 request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
 or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
-centers, and a 0.25–3 m interaction range. It renders no plane grid or reticle.
+centers, and a 0.25–3 m interaction range. No reticle: the detected surfaces show
+while the object looks for one and while it is dragged or turned, and fade 0.8 s after it
+lands (1 s after a gesture ends). The footprint ring shows 1.5 s after landing and while
+selected; `state.guide.dimensions` says when to draw dimension marks (3 s after landing,
+while selected, while moved; always with `state.alwaysShowsDimensions = true`).
+`state.showsPlaneGuide = false` never shows the surfaces (#5209).
 
 ```kotlin
 import io.github.sceneview.ar.*
@@ -2023,6 +2028,16 @@ that same gesture hierarchy. Supply content already sized (demo: 0.3 m longest d
 with bottom at y=0 and back at z=0. Mark selectable children editable, but disable their
 individual position/rotation/scale editing so gestures reach the contact pivot. Apply
 `opacity` to transparent materials for the 300 ms placement/tracking fade.
+Pass its box, `AutoPlacementNode(result, state, size = Size(w, h, d)) { opacity -> … }`
+(metres, bottom at y=0, centred on X and Z), and SceneView draws the contact shadow and the
+footprint ring it draws under `AutoPlacementModel` — draw neither yourself (#5209).
+
+**Dimension marks.** `SceneScope.DimensionMarks(size, format = { m -> "${(m * 100).roundToInt()} cm" })`
+(`io.github.sceneview`, 3D and AR) draws width (front), depth (right) and height (corner) lines,
+floor lines on a dark edging, with tags on an 88 % dark background. Pass `facing = { cameraPosition }`
+so tags turn to the camera, and `clearance = DimensionTagClearance(screenY, bottomLimit, topLimit)`
+so a tag hides under your own chrome. In AR show them while `state.guide.dimensions`; set
+`state.alwaysShowsDimensions = true` when the size is the answer (a furniture fit).
 
 Selected-object accessibility alternatives share the gesture constraints:
 `placement.moveBy(x, y)` moves in metres right/up on a wall, `rotateBy(degrees)` twists

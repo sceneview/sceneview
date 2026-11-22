@@ -29,6 +29,7 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
@@ -425,85 +426,95 @@ fun AutoPlacementScene(
             state.dismiss()
         }
     }
+    PlacementGuideClock(state)
+    // The surfaces are a guide here, never a shadow catcher: the contact shadow grounds the
+    // object, and `groundShadows` alone decides on the real one (#5209).
     Box(modifier = modifier) {
-        ARSceneView(
-            modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            playbackDataset = playbackDataset,
-            planeRenderer = false,
-            planeFindingMode = autoPlacementPlaneFindingMode(surface),
-            depthMode = autoPlacementDepthMode(surface),
-            instantPlacementMode = Config.InstantPlacementMode.DISABLED,
-            cameraPermissionOverlay = {
-                ARCameraPermissionOverlay(
-                    state = it,
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-                    contentPadding = coachingContentPadding,
-                )
-            },
-            arCoreAvailabilityOverlay = {
-                ARCoreAvailabilityOverlay(
-                    state = it,
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-                    contentPadding = coachingContentPadding,
-                )
-            },
-            onGestureListener = rememberOnGestureListener(
-                // Tap the object to select it (the selection ring appears), tap empty space
-                // to deselect — Scene Viewer's selection model.
-                onSingleTapConfirmed = { _, node ->
-                    if (node == null) state.deselectPlacement() else state.selectPlacement()
+        CompositionLocalProvider(LocalPlaneShadowReceiver provides false) {
+            ARSceneView(
+                modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                playbackDataset = playbackDataset,
+                // The surfaces show while the object looks for one and while it moves (#5209).
+                planeRenderer = state.showsPlaneGuide && state.guide.planes,
+                planeFindingMode = autoPlacementPlaneFindingMode(surface),
+                depthMode = autoPlacementDepthMode(surface),
+                instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+                cameraPermissionOverlay = {
+                    ARCameraPermissionOverlay(
+                        state = it,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                        contentPadding = coachingContentPadding,
+                    )
                 },
-                // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
-                onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
-            ),
-            onARCoreAvailability = {
-                availability = it
-                onARCoreAvailability?.invoke(it)
-            },
-            onCameraPermissionStateChanged = {
-                cameraDenied = it != null
-                onCameraPermissionStateChanged?.invoke(it)
-            },
-            onTrackingFailureChanged = {
-                trackingFailure = it
-                onTrackingFailureChanged?.invoke(it)
-            },
-            onSessionResumed = { state.cameraResumed() },
-            onSessionCreated = { created ->
-                (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
-                    val previous = placement
-                    placement = null
-                    planes = emptyList()
-                    state.resetPlacement(SystemClock.uptimeMillis())
-                    previous?.releaseAnchor()
-                }
-            },
-            onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
-            onSessionUpdated = { session, frame ->
-                val tracked = session.getAllTrackables(Plane::class.java)
-                    .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
-                if (tracked != planes) planes = tracked
-                state.onFloor(trackedFloorY(tracked))
-                if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
-                val candidate = if (ready && state.wantsSurface) {
-                    findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
-                } else null
-                val effect = state.onFrame(
-                    FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
-                        candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
-                    commit = {
-                        candidate?.createAnchor()?.let { placement = it; true } ?: false
+                arCoreAvailabilityOverlay = {
+                    ARCoreAvailabilityOverlay(
+                        state = it,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                        contentPadding = coachingContentPadding,
+                    )
+                },
+                onGestureListener = rememberOnGestureListener(
+                    // Tap the object to select it (the selection ring appears), tap empty space
+                    // to deselect — Scene Viewer's selection model.
+                    onSingleTapConfirmed = { _, node ->
+                        if (node == null) state.deselectPlacement() else state.selectPlacement()
                     },
-                )
-                if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
-            },
-        ) {
-            placement?.let { result -> key(result) { content(result) } }
-            if (groundShadows && (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)) {
-                planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
+                    // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
+                    onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+                ),
+                onARCoreAvailability = {
+                    availability = it
+                    onARCoreAvailability?.invoke(it)
+                },
+                onCameraPermissionStateChanged = {
+                    cameraDenied = it != null
+                    onCameraPermissionStateChanged?.invoke(it)
+                },
+                onTrackingFailureChanged = {
+                    trackingFailure = it
+                    onTrackingFailureChanged?.invoke(it)
+                },
+                onSessionResumed = { state.cameraResumed() },
+                onSessionCreated = { created ->
+                    (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
+                        val previous = placement
+                        placement = null
+                        planes = emptyList()
+                        state.resetPlacement(SystemClock.uptimeMillis())
+                        previous?.releaseAnchor()
+                    }
+                },
+                onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
+                onSessionUpdated = { session, frame ->
+                    val tracked = session.getAllTrackables(Plane::class.java)
+                        .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
+                    if (tracked != planes) planes = tracked
+                    state.onFloor(trackedFloorY(tracked))
+                    if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
+                    val candidate = if (ready && state.wantsSurface) {
+                        findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
+                    } else null
+                    val effect = state.onFrame(
+                        FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
+                            candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
+                        commit = {
+                            candidate?.createAnchor()?.let { placement = it; true } ?: false
+                        },
+                    )
+                    if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+                },
+            ) {
+                placement?.let { result -> key(result) { content(result) } }
+                // The plane renderer catches no shadow here, so these are the only receivers on the
+                // planes even while the surfaces show: no double darkening (#2657).
+                if (groundShadows &&
+                    (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING)
+                ) {
+                    planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
+                }
             }
         }
         if (coaching) {
@@ -518,8 +529,9 @@ fun AutoPlacementScene(
 }
 
 /**
- * Places once on the first usable detected plane after [assetReady]. No tap, reticle or
- * plane visualization. Load the asset before setting [assetReady]; keep the old asset
+ * Places once on the first usable detected plane after [assetReady]. No tap and no reticle:
+ * the detected surfaces show while the object looks for one and while it moves, then fade once
+ * it stands still ([AutoPlacementState.guide], #5209). Load the asset before setting [assetReady]; keep the old asset
  * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
  *
  * [state] exposes recovery, reset and explicit request actions. Camera/capability events
@@ -785,48 +797,51 @@ private fun ARSceneScope.PlacedModelContent(
             )
             onDispose { state.clearBaseSize(model) }
         }
-        val footprint = remember(model) {
-            // The model's own bounds, already rotated and grounded — the ring hugs the object.
-            val grounded = buildList<Position> {
-                for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
-                    val corner = model.center +
-                        Position(x * model.halfExtent.x, y * model.halfExtent.y, z * model.halfExtent.z)
-                    add(model.quaternion * (corner * model.scale) + model.position)
-                }
-            }
-            SelectionRing.footprint(grounded)
-        }
-        // The shadow and the ring lie on the surface: register the disc they cover so the depth
-        // occlusion never cuts them on the floor's own depth noise, while a real object in front
-        // still hides them (rule 4 in camera_stream_depth.mat). Read every frame, in world space.
-        val groundRadius = remember(model, footprint) {
-            PlacementGroundContact.radius(
-                footprint,
-                PlacementContactShadow.quad(model.groundedCorners()),
-            )
-        }
+        // The model's own bounds, already rotated and grounded — the ring hugs the object.
+        val corners = remember(model) { model.groundedCorners() }
         val groundContacts = this@PlacedModelContent.groundContacts
-        DisposableEffect(model, footprint, groundRadius, groundContacts) {
-            val unregister = groundContacts.register {
-                val placed = state.phase == PlacementPhase.PLACED ||
-                    state.phase == PlacementPhase.ADJUSTING
-                val surface = model.parent?.takeIf { placed && !model.isDestroyed }
-                surface?.let {
-                    PlacementGroundContact.world(
-                        it.worldTransform, footprint.centerX, footprint.centerZ, groundRadius,
-                    )
-                }
-            }
-            onDispose { unregister() }
-        }
         // Opaque glTF materials cannot fade, so the model grows into place and shrinks away
         // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
         Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
             NodeLifecycle(model, null)
-            if (!placement.isWall) PlacementContactShadowNode(state, model)
-            SelectionRingNode(state, footprint)
+            PlacementFootprint(state, corners, placement.isWall, groundContacts) {
+                model.parent?.takeIf { !model.isDestroyed }
+            }
         }
     }
+}
+
+/**
+ * What lies on the surface under a placed object whose bounds corners, in [surface]'s frame
+ * (+Y the surface normal), are [corners]: the contact shadow (not on a wall), the selection ring,
+ * and the ground contact that keeps the depth occlusion from cutting them on the floor's own depth
+ * noise while a real object in front still hides them (rule 4 in camera_stream_depth.mat).
+ * Shared by [AutoPlacementModel] and a sized [AutoPlacementNode] (#5209).
+ */
+@Composable
+private fun io.github.sceneview.NodeScope.PlacementFootprint(
+    state: AutoPlacementState,
+    corners: List<Position>,
+    isWall: Boolean,
+    groundContacts: io.github.sceneview.ar.depth.GroundContacts,
+    surface: () -> io.github.sceneview.node.Node?,
+) {
+    val footprint = remember(corners) { SelectionRing.footprint(corners) }
+    val groundRadius = remember(corners, footprint) {
+        PlacementGroundContact.radius(footprint, PlacementContactShadow.quad(corners))
+    }
+    val currentSurface by rememberUpdatedState(surface)
+    DisposableEffect(corners, footprint, groundRadius, groundContacts) {
+        val unregister = groundContacts.register {
+            val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+            currentSurface().takeIf { placed }?.let {
+                PlacementGroundContact.world(it.worldTransform, footprint.centerX, footprint.centerZ, groundRadius)
+            }
+        }
+        onDispose { unregister() }
+    }
+    if (!isWall) PlacementContactShadowNode(state, corners)
+    SelectionRingNode(state, footprint)
 }
 
 /**
@@ -843,56 +858,75 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
     footprint: SelectionRing.Footprint,
 ) {
     if (footprint.radius <= 0f) return
-    val material = remember(materialLoader) {
-        materialLoader.createUnlitColorInstance(
-            io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA),
-        )
+    val stroke = remember(materialLoader) {
+        materialLoader.createUnlitColorInstance(io.github.sceneview.math.colorOf(1f, 1f, 1f, 0f))
     }
-    // Declared before the ring's own lifecycle below: Compose disposes in reverse order, so
-    // the renderable is gone before its material instance is.
-    DisposableEffect(material) {
-        onDispose { materialLoader.destroyMaterialInstance(material) }
+    // ARMV's ring look (#5209): a light stroke between two dark edgings, so the ring reads on a
+    // pale parquet in the sun as well as on a dark carpet at night.
+    val edging = remember(materialLoader) {
+        materialLoader.createUnlitColorInstance(io.github.sceneview.math.colorOf(0f, 0f, 0f, 0f))
     }
-    val ring = remember(engine, footprint) {
-        val tube = SelectionRing.tubeRadius(footprint.radius)
-        io.github.sceneview.node.TorusNode(
-            engine = engine,
-            majorRadius = footprint.radius,
-            minorRadius = tube,
-            // Lifted by its own thickness so it lies ON the surface instead of z-fighting the
-            // shadow catcher that shares y = 0.
-            center = Position(footprint.centerX, tube + SelectionRing.LIFT, footprint.centerZ),
-            majorSegments = SelectionRing.MAJOR_SEGMENTS,
-            minorSegments = SelectionRing.MINOR_SEGMENTS,
-            materialInstance = material,
-        ).apply {
-            // Hidden until the fade below has run once: no one-frame flash when unselected.
-            isVisible = false
-            isTouchable = false
-            isShadowCaster = false
-            isShadowReceiver = false
+    // Declared before the rings' own lifecycles below: Compose disposes in reverse order, so
+    // the renderables are gone before their material instances are.
+    DisposableEffect(stroke, edging) {
+        onDispose {
+            materialLoader.destroyMaterialInstance(stroke)
+            materialLoader.destroyMaterialInstance(edging)
         }
     }
-    val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+    val held = state.guide.held
+    val rings = remember(engine, footprint) {
+        SelectionRing.bands(footprint, held = false).map { band ->
+            io.github.sceneview.node.TorusNode(
+                engine = engine,
+                majorRadius = band.radius,
+                minorRadius = band.tube,
+                // Lifted by its own thickness so it lies ON the surface instead of z-fighting the
+                // shadow catcher that shares y = 0.
+                center = Position(footprint.centerX, band.tube + SelectionRing.LIFT, footprint.centerZ),
+                majorSegments = SelectionRing.MAJOR_SEGMENTS,
+                minorSegments = SelectionRing.MINOR_SEGMENTS,
+                materialInstance = if (band.isStroke) stroke else edging,
+            ).apply {
+                // Hidden until the fade below has run once: no one-frame flash when unselected.
+                isVisible = false
+                isTouchable = false
+                isShadowCaster = false
+                isShadowReceiver = false
+            }
+        }
+    }
     val opacity = animateFloatAsState(
-        targetValue = if (state.showsSelectionRing && state.isSelected && placed) 1f else 0f,
+        targetValue = if (state.showsSelectionRing && state.guide.ring) 1f else 0f,
         animationSpec = tween(SelectionRing.FADE_MS),
         label = "selectionRing",
     )
-    // Every animation frame goes straight to the material, without recomposing: a read of
+    // Every animation frame goes straight to the materials, without recomposing: a read of
     // `opacity` inside a `SideEffect` is not tracked, so the fade would stop at its first frame
     // and a deselected ring would stay drawn.
-    LaunchedEffect(ring, material) {
+    // Widen in place under the fingers: rebuilding the nodes would hide them for a frame.
+    LaunchedEffect(rings, held) {
+        SelectionRing.bands(footprint, held).zip(rings).forEach { (band, ring) ->
+            ring.updateGeometry(
+                majorRadius = band.radius,
+                minorRadius = band.tube,
+                center = Position(footprint.centerX, band.tube + SelectionRing.LIFT, footprint.centerZ),
+            )
+        }
+        rings.firstOrNull()?.requestRender()
+    }
+    LaunchedEffect(rings, stroke, edging) {
         snapshotFlow { opacity.value }.collect { value ->
-            ring.isVisible = value > 0f
-            material.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
+            rings.forEach { it.isVisible = value > 0f }
+            stroke.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
+            edging.setColor(io.github.sceneview.math.colorOf(0f, 0f, 0f, SelectionRing.EDGING_ALPHA * value))
             // A material parameter is invisible to the frame gate: ask for the frame that shows
             // the fade, or a scene with no new camera frame (a finished playback, a paused
             // session) keeps drawing the old ring.
-            ring.requestRender()
+            rings.firstOrNull()?.requestRender()
         }
     }
-    NodeLifecycle(ring, null)
+    rings.forEach { key(it) { NodeLifecycle(it, null) } }
 }
 
 /** Geometry of the selection ring — pure, pinned in `ScaleSnapTest`. */
@@ -930,6 +964,30 @@ internal object SelectionRing {
 
     /** Tube radius: a hairline that stays visible on a mug and slim under a sofa. */
     fun tubeRadius(radius: Float): Float = (radius * 0.012f).coerceIn(0.0018f, 0.006f)
+
+    /** Peak opacity of the dark edging on each side of the stroke, the same in every state. */
+    const val EDGING_ALPHA = 0.45f
+
+    /** The stroke under the fingers is this much wider (ARMV's held ring). */
+    const val HELD_WIDTH = 1.4f
+
+    /** One torus of the ring: the light stroke, or a dark edging beside it. */
+    data class Band(val radius: Float, val tube: Float, val isStroke: Boolean)
+
+    /**
+     * The ring's three tori: the stroke on [Footprint.radius], and a thinner dark edging just
+     * inside and just outside it. [held] widens the stroke and moves the edgings out with it.
+     */
+    fun bands(footprint: Footprint, held: Boolean): List<Band> {
+        val tube = tubeRadius(footprint.radius) * if (held) HELD_WIDTH else 1f
+        val edge = tube * 0.6f
+        val gap = tube + edge
+        return listOf(
+            Band(footprint.radius - gap, edge, isStroke = false),
+            Band(footprint.radius + gap, edge, isStroke = false),
+            Band(footprint.radius, tube, isStroke = true),
+        )
+    }
 }
 
 /**
@@ -950,6 +1008,34 @@ fun ARSceneScope.AutoPlacementNode(
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (Int, Boolean, Boolean) -> Unit = { _, _, _ -> },
     content: @Composable io.github.sceneview.NodeScope.(opacity: Float) -> Unit,
+) = PlacedNodeContent(placement, state, size = null, onInvalidMove, onScaleChanged, content)
+
+/**
+ * [AutoPlacementNode] for content of a known [size], in metres: width along X, height along Y,
+ * depth along Z, the bottom at y = 0 and centred on X and Z (for a wall, the back at z = 0).
+ * SceneView then draws what it draws under an [AutoPlacementModel] (#5209): the soft contact
+ * shadow that stands it on the floor ([AutoPlacementState.showsContactShadow]) and the selection
+ * ring ([AutoPlacementState.showsSelectionRing], shown when [AutoPlacementState.guide] says so).
+ * Draw neither yourself.
+ */
+@Composable
+fun ARSceneScope.AutoPlacementNode(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+    size: Size,
+    onInvalidMove: (Boolean) -> Unit = {},
+    onScaleChanged: (Int, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    content: @Composable io.github.sceneview.NodeScope.(opacity: Float) -> Unit,
+) = PlacedNodeContent(placement, state, size, onInvalidMove, onScaleChanged, content)
+
+@Composable
+private fun ARSceneScope.PlacedNodeContent(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+    size: Size?,
+    onInvalidMove: (Boolean) -> Unit,
+    onScaleChanged: (Int, Boolean, Boolean) -> Unit,
+    content: @Composable io.github.sceneview.NodeScope.(opacity: Float) -> Unit,
 ) {
     val opacity = remember(placement) { Animatable(0f) }
     val visible = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
@@ -957,11 +1043,33 @@ fun ARSceneScope.AutoPlacementNode(
     val entrance = rememberPlacementEntrance(placement, state)
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
         visibleDuringFade = opacity.value > 0f || entrance.value > 0f) {
+        val rotation = if (placement.isWall) Rotation(x = -90f) else Rotation()
         Node(
-            rotation = if (placement.isWall) Rotation(x = -90f) else Rotation(),
+            rotation = rotation,
             scale = Scale(PlacementEntrance.scaleFraction(entrance.value)),
         ) {
             content(opacity.value)
+        }
+        if (size != null) {
+            val corners = remember(size, placement.isWall) { sizedContentCorners(size, rotation) }
+            val groundContacts = this@PlacedNodeContent.groundContacts
+            Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
+                val surface = parentNode
+                PlacementFootprint(state, corners, placement.isWall, groundContacts) { surface }
+            }
+        }
+    }
+}
+
+/**
+ * The eight corners of content of [size] (bottom at y = 0, centred on X and Z) turned by
+ * [rotation], in the pivot's frame: the surface frame, +Y its normal.
+ */
+internal fun sizedContentCorners(size: Size, rotation: Rotation): List<Position> {
+    val q = rotation.toQuaternion()
+    return buildList {
+        for (x in listOf(-0.5f, 0.5f)) for (y in listOf(0f, 1f)) for (z in listOf(-0.5f, 0.5f)) {
+            add(q * Position(x * size.x, y * size.y, z * size.z))
         }
     }
 }

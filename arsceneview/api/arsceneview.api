@@ -745,6 +745,7 @@ public final class io/github/sceneview/ar/AutoPlacementResult {
 public final class io/github/sceneview/ar/AutoPlacementSceneKt {
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Lio/github/sceneview/ar/PlacementSize;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLandroidx/compose/foundation/layout/PaddingValues;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
@@ -769,9 +770,11 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun dismiss ()V
 	public final fun endAdjustment ()V
 	public final fun getAllowsScaling ()Z
+	public final fun getAlwaysShowsDimensions ()Z
 	public final fun getBaseSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getCameraHeight ()Ljava/lang/Float;
 	public final fun getFloorHeight ()Ljava/lang/Float;
+	public final fun getGuide ()Lio/github/sceneview/ar/PlacementGuide;
 	public final fun getHasCameraFrame ()Z
 	public final fun getHasPlacement ()Z
 	public final fun getPhase ()Lio/github/sceneview/ar/PlacementPhase;
@@ -784,6 +787,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getSelectionGeneration ()I
 	public final fun getSessionGeneration ()I
 	public final fun getShowsContactShadow ()Z
+	public final fun getShowsPlaneGuide ()Z
 	public final fun getShowsSelectionRing ()Z
 	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun getWantsSurface ()Z
@@ -802,8 +806,10 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun selectModel ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun selectPlacement ()V
 	public final fun setAllowsScaling (Z)V
+	public final fun setAlwaysShowsDimensions (Z)V
 	public final fun setScaleRange (Lkotlin/ranges/ClosedFloatingPointRange;)V
 	public final fun setShowsContactShadow (Z)V
+	public final fun setShowsPlaneGuide (Z)V
 	public final fun setShowsSelectionRing (Z)V
 	public final fun toggleBaseScale ()V
 	public final fun withdrawRequest ()V
@@ -972,6 +978,17 @@ public final class io/github/sceneview/ar/PlacementController {
 	public final fun clear ()V
 	public final fun getAnchors ()Ljava/util/List;
 	public final fun getCount ()I
+}
+
+public final class io/github/sceneview/ar/PlacementGuide {
+	public static final field $stable I
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDimensions ()Z
+	public final fun getHeld ()Z
+	public final fun getPlanes ()Z
+	public final fun getRing ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/sceneview/ar/PlacementHitSource : java/lang/Enum {

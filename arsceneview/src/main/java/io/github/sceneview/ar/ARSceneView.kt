@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -1599,8 +1600,10 @@ fun ARSceneView(
     // `sceneUnderstanding.planeVisualization` agree. Two separate writes used to let the
     // grouped one silently turn planes back on over `planeRenderer = false`, and refreshed
     // every plane renderable twice per recomposition when they disagreed.
+    val planeShadows = LocalPlaneShadowReceiver.current
     SideEffect {
         arPlaneRenderer.isEnabled = resolvePlaneVisibility(planeRenderer, sceneUnderstanding)
+        arPlaneRenderer.isShadowReceiver = planeShadows
     }
 
     // ── Grouped scene-understanding flags (#1767) ────────────────────────────────────────────────
@@ -2862,3 +2865,10 @@ fun ARSceneView(
     onCameraPermissionStateChanged = null,
     content = content,
 )
+
+/**
+ * Whether the plane renderer catches the scene's cast shadows on the ARCore polygons. A scene
+ * that shows its planes only as a guide ([AutoPlacementScene]) turns it off: a shadow clipped
+ * by a polygon's hard edge reads as a dark patch, not as the object's shadow (#5209).
+ */
+internal val LocalPlaneShadowReceiver = staticCompositionLocalOf { true }

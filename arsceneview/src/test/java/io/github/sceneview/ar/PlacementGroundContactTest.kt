@@ -10,11 +10,13 @@ import org.junit.Test
 class PlacementGroundContactTest {
 
     @Test
-    fun `the disc covers the ring's outer edge`() {
+    fun `the disc covers the held ring's outer edging`() {
         val footprint = SelectionRing.Footprint(0f, 0f, 0.3f)
         val quad = PlacementContactShadow.Quad(0f, 0f, sizeX = 0.2f, sizeZ = 0.2f)
         val radius = PlacementGroundContact.radius(footprint, quad)
-        assertEquals(0.3f + SelectionRing.tubeRadius(0.3f), radius, 1e-6f)
+        // Held stroke 1.4 tubes wide, then a gap of stroke + edging and the edging (0.6 stroke).
+        val stroke = SelectionRing.tubeRadius(0.3f) * SelectionRing.HELD_WIDTH
+        assertEquals(0.3f + stroke + 2f * 0.6f * stroke, radius, 1e-6f)
     }
 
     @Test
