@@ -196,7 +196,7 @@ Android uses Filament (high-performance C++ via JNI). Web uses Filament.js (WebA
 The Android demo app ships with 41 interactive demos, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
 
 [Android samples](samples.md){ .md-button }
-[Apple samples](samples-ios.md){ .md-button }
+[Apple samples (end of life)](samples-ios.md){ .md-button }
 
 ---
 
