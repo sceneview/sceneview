@@ -2,8 +2,8 @@ package io.github.sceneview.utils
 
 /**
  * The surface each live context was made current on, so that the code that destroys a context it
- * only holds as a context can destroy that surface too (#5202). Thread-safe: contexts are created
- * on the main thread and by the engine warm-up thread.
+ * only holds as a context can destroy that surface too (#5202). Thread-safe: contexts are adopted
+ * and released on the thread that creates or destroys an engine, not necessarily the same one.
  *
  * EGL-free for JVM tests.
  */

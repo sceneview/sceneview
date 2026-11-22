@@ -58,6 +58,9 @@ object OpenGL {
             display,
             configs[0], shareContext, contextAttribs, 0
         )
+        if (context == null || context == EGL14.EGL_NO_CONTEXT) {
+            failEgl("eglCreateContext", EGL14.eglGetError())
+        }
         val surfaceAttribs = intArrayOf(
             EGL14.EGL_WIDTH, 1,
             EGL14.EGL_HEIGHT, 1,
@@ -67,15 +70,29 @@ object OpenGL {
             display,
             configs[0], surfaceAttribs, 0
         )
+        if (surface == null || surface == EGL14.EGL_NO_SURFACE) {
+            val eglError = EGL14.eglGetError()
+            EGL14.eglDestroyContext(display, context)
+            failEgl("eglCreatePbufferSurface", eglError)
+        }
         if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
-            val error = EGL14.eglGetError()
+            val eglError = EGL14.eglGetError()
             // Nothing owns them yet: release both rather than leak them with the exception.
-            if (surface != null && surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)
-            if (context != null && context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
-            error("Error making GL context current: EGL error 0x%x".format(error))
+            EGL14.eglDestroySurface(display, surface)
+            EGL14.eglDestroyContext(display, context)
+            failEgl("eglMakeCurrent", eglError)
         }
         return PbufferContext(display, context, surface)
     }
+
+    /**
+     * Throws for an EGL call that failed with [eglError], read right after the call: a later EGL
+     * call would overwrite it. Counts the contexts SceneView still holds, which tells a leak or a
+     * backlog of engines waiting for their teardown from a device that refuses any context.
+     */
+    private fun failEgl(call: String, eglError: Int): Nothing = error(
+        "$call failed: EGL error 0x%x, %d SceneView EGL context(s) alive".format(eglError, liveContextCount)
+    )
 
     /** An EGL context and the 1×1 pbuffer it is made current on, see [createPbufferContext]. */
     internal class PbufferContext(

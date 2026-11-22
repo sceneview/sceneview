@@ -131,7 +131,8 @@ fun createEngine(eglContext: EGLContext): Engine = try {
     // Filament only says "Couldn't create Engine". How many contexts SceneView still holds tells
     // a leak or a backlog of engines waiting for their teardown from a driver refusal (#5202).
     throw IllegalStateException(
-        "Couldn't create Engine with ${OpenGL.liveContextCount} SceneView EGL context(s) alive (#5202)",
+        "Couldn't create Engine with ${OpenGL.liveContextCount} SceneView EGL context(s) alive, " +
+            "this engine's own included",
         e,
     )
 }
