@@ -611,10 +611,12 @@ the previous value back when it leaves the composition. Nothing to add in app co
 **Note — AR screen inside a `NavHost`: pass `lifecycle = rememberHostLifecycle()`.** By default
 `ARSceneView` follows `LocalLifecycleOwner`, which inside a `NavHost` is the destination: it leaves
 `RESUMED` when the exit transition *starts*, so the camera stops and its last image stays frozen on
-screen for the whole transition. `rememberHostLifecycle()` (opt-in, `io.github.sceneview.ar`)
-returns the host ACTIVITY's lifecycle: the session runs while the composable is in the
-composition and the activity is resumed, pauses when the activity pauses, and is closed on
-disposal. Do not add your own `session.pause()` on navigation.
+screen for the whole transition. A view whose camera stopped presents nothing more: while another
+`ARSceneView` holds the camera, its nodes keep ticking but are not drawn.
+`rememberHostLifecycle()` (opt-in, `io.github.sceneview.ar`) returns the host ACTIVITY's
+lifecycle: the session runs while the composable is in the composition and the activity is
+resumed, pauses when the activity pauses, and is closed on disposal. Do not add your own
+`session.pause()` on navigation.
 
 ```kotlin
 @Composable
