@@ -23,8 +23,8 @@ older than the 1.68.2 of 2.3.2 to 2.3.4.
 
 ## SceneView 2.x to 4.x, name by name
 
-Code written for SceneView 2.x does not compile on 4.x. Each 2.x construct and what replaces it;
-Step 2 below has the before/after code.
+2.x code may still compile, with deprecation warnings, but always write the 4.x form below. Each
+2.x construct and what replaces it; Step 2 below has the before/after code for the main changes.
 
 | SceneView 2.x | SceneView 4.x |
 |---|---|
@@ -41,13 +41,15 @@ Step 2 below has the before/after code.
 | `childNodes -= node; node.destroy()`, `childNodes.clear()` | remove the item from the state the block reads; a node that leaves composition is destroyed |
 | `node.apply { isEditable = true; isScaleEditable = false }` on a constructed node | `ModelNode(…, isEditable = true, apply = { isScaleEditable = false })` |
 | tap to place: `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { e, _ -> frame.hitTest(e.x, e.y)…createAnchorOrNull() … childNodes += AnchorNode(…) })` | `PlacementScene(onPlaced = { anchor -> AnchorNode(anchor = anchor) { ModelNode(…) } })` (`io.github.sceneview.ar.PlacementScene`). With your own hit test in `ARSceneView`, keep the anchors in state (`mutableStateListOf<Anchor>()`) and declare `AnchorNode(anchor = it) { … }` in the block |
+| `ARSceneView(view = rememberView(engine))`, `ARScene(view = rememberView(engine))` | omit `view =`, or pass `rememberARView(engine)` (`io.github.sceneview.rememberARView`): `rememberView` gives the 3D look (PBR Neutral, SSAO, bloom) and oversaturates the camera feed |
 | `cameraManipulator = rememberCameraManipulator()` to get orbit and zoom | nothing: `SceneView` orbits on drag, zooms on pinch and pans on two fingers by default |
 | `environment = environmentLoader.createHDREnvironment("environments/x.hdr")!!` | `environment = rememberEnvironment(environmentLoader) { environmentLoader.createHDREnvironment("environments/x.hdr") ?: createEnvironment(environmentLoader) }` |
 | depth occlusion, "the property name depends on your version" | `ARSceneView(depthMode = Config.DepthMode.AUTOMATIC, sceneUnderstanding = SceneUnderstanding(occlusion = true))` (`io.github.sceneview.ar.scene.SceneUnderstanding`) |
 | `sessionConfiguration = { session, config -> config.planeFindingMode = …; config.depthMode = … }` | still works; `ARSceneView(planeFindingMode = …, depthMode = …, instantPlacementMode = …, focusMode = …)` is the short form |
 
 Unchanged in 4.x: `rememberEngine()`, `rememberModelLoader(engine)`, `rememberCameraNode(engine) { … }`,
-`rememberARCameraNode(engine)`, `rememberView(engine)`, `rememberCollisionSystem(view)`,
+`rememberARCameraNode(engine)`, `rememberView(engine)` for `SceneView` (in `ARSceneView`, omit
+`view =` or pass `rememberARView(engine)`), `rememberCollisionSystem(view)`,
 `rememberOnGestureListener(…)`; on `ARSceneView`, `planeRenderer`, `onSessionUpdated`,
 `onTrackingFailureChanged` and `onGestureListener`; on `ModelNode`, `scaleToUnits`,
 `centerOrigin` and `autoAnimate`; `HitResult.createAnchorOrNull()` and `HitResult.isValid(…)` in

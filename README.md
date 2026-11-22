@@ -233,8 +233,9 @@ with `tools:replace="android:value"`. Both snippets are in the
 
 ### Coming from SceneView 2.x
 
-Code written for SceneView 2.x (up to 2.3.4) does not compile on 4.x. Use the dependency lines
-at the top of this page, then:
+2.x code may still compile, with deprecation warnings, but always write the 4.x form below. Use
+the dependency lines at the top of this page; 4.x needs `compileSdk = 37`, AGP 9.4.0+, Kotlin 2.3+
+and JVM target 21 (see [Android](#android)), and a project stuck on AGP 8 uses `4.18.0`. Then:
 
 | SceneView 2.x | SceneView 4.x |
 |---|---|

@@ -196,7 +196,7 @@ More: [Web quickstart](quickstart-web.md).
 
 The complete API reference, in one file written for assistants, is
 [`llms.txt`](https://sceneview.github.io/llms.txt). Code written for SceneView 2.x
-(`Scene(childNodes = …)`, `ARScene`, `rememberNodes`) does not compile on 4.x: the
-[Sceneform and 2.x mapping](sceneform-replacement.md#code-written-for-sceneview-2x) lists the
-current names. To give an assistant the API and a code validator as tools, install the
+(`Scene(childNodes = …)`, `ARScene`, `rememberNodes`) is outdated: the
+[2.x to 4.x table](upgrading-from-2-3.md#sceneview-2x-to-4x-name-by-name) lists the current names.
+To give an assistant the API and a code validator as tools, install the
 [MCP server or the skills](ai-context.md).

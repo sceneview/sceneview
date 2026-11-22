@@ -49,7 +49,7 @@ container.addView(
 )
 ```
 
-Do not use SceneView 2.x for this: it is no longer maintained, and code written for its API (`Scene(childNodes = …)`, `ARScene`, `rememberNodes`) does not compile on 4.x. See [Code written for SceneView 2.x](sceneform-replacement.md#code-written-for-sceneview-2x).
+Do not use SceneView 2.x for this: it is no longer maintained, and 4.x replaced its API (`Scene(childNodes = …)`, `ARScene`, `rememberNodes`). See [SceneView 2.x to 4.x, name by name](upgrading-from-2-3.md#sceneview-2x-to-4x-name-by-name).
 
 ### Does it work with Kotlin Multiplatform / Compose Multiplatform?
 
