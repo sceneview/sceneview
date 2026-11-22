@@ -16,6 +16,7 @@ import io.github.sceneview.geometries.geometry
 import io.github.sceneview.safeDestroyGeometry
 import io.github.sceneview.math.toVector3Box
 import io.github.sceneview.bumpRenderableGeneration
+import io.github.sceneview.matchToneMapInverse
 import io.github.sceneview.renderableGeneration
 import io.github.sceneview.safeDestroyMaterialInstance
 import io.github.sceneview.safeDestroyRenderable
@@ -342,9 +343,15 @@ open class RenderableNode(
      * Editing the *parameters* of a material instance you already hold (`setParameter`) still goes
      * straight to Filament and cannot be seen from here: call [requestRender] yourself after it,
      * as [requestRender]'s documentation says.
+     *
+     * A material with an `inverseFilmic` parameter (the Scene Semantics overlay, say) is pointed at
+     * the inverse of the tone mapper of the view this node is drawn in, as when the node was added
+     * to the scene: an instance set afterwards would otherwise keep PBR Neutral's inverse in an AR
+     * (Filmic) view (#5102).
      */
     override fun setMaterialInstanceAt(primitiveIndex: Int, materialInstance: MaterialInstance) {
         super.setMaterialInstanceAt(primitiveIndex, materialInstance)
+        if (this !is ModelNode.RenderableNode) materialInstance.matchToneMapInverse(collisionSystem?.view)
         requestRender()
     }
 

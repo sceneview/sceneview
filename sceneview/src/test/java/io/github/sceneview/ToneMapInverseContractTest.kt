@@ -13,7 +13,8 @@ import kotlin.math.sqrt
 
 /**
  * Colour-chain contract for the materials that cancel the View's tone mapper so their source
- * colour displays as authored: splat, video and view-texture materials (#4595).
+ * colour displays as authored: splat, video, view-texture (#4595) and Scene Semantics overlay
+ * (#5102) materials.
  *
  * `createView` grades with PBR Neutral and `createARView` with Filmic. The video and view-texture
  * materials used to call Filament's `inverseTonemapSRGB()` unconditionally, which only inverts
@@ -28,6 +29,7 @@ class ToneMapInverseContractTest {
         "video_texture_chroma_key",
         "view_texture_lit",
         "view_texture_unlit",
+        "semantics_overlay",
     )
 
     private fun source(name: String) = File("src/main/materials/$name.mat").readText()
@@ -101,7 +103,7 @@ class ToneMapInverseContractTest {
     }
 
     @Test
-    fun `all five materials share one PBR Neutral inverse`() {
+    fun `all six materials share one PBR Neutral inverse`() {
         val block = Regex(
             "    // ---- Inverse of ToneMapper.PBRNeutralToneMapper[\\s\\S]*?" +
                 "\\n    vec3 inversePbrNeutral\\(vec3 o\\) \\{[\\s\\S]*?\\n    }\\n"
@@ -164,5 +166,129 @@ class ToneMapInverseContractTest {
     fun `white stays bounded at Filmic's white scene value`() {
         val scene = inversePbrNeutral(doubleArrayOf(1.0, 1.0, 1.0))
         assertTrue("scene white ${scene.toList()} must stay near 7.24", scene.all { it in 7.0..7.5 })
+    }
+
+    // ---- Scene Semantics overlay palette (#5102) ----
+
+    // Filament's ToneMapper.Filmic (Narkowicz ACES fit) and its exact analytic inverse,
+    // Inverse_Tonemap_Filmic, which semantics_overlay.mat calls for an AR view.
+    private fun filmic(x: Double) = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)
+    private fun inverseFilmic(x: Double) =
+        (0.03 - 0.59 * x - sqrt(0.0009 + 1.3702 * x - 1.0127 * x * x)) / (-5.02 + 4.86 * x)
+
+    /** The 11 drawn classes of `semantics_overlay.mat`, as the 8-bit sRGB bytes a legend paints. */
+    private fun semanticsLegend(): List<IntArray> {
+        val table = Regex("SEMANTIC_PALETTE\\[12] = vec3\\[12]\\(([\\s\\S]*?)\\);")
+            .find(source("semantics_overlay"))!!.groupValues[1]
+        val colours = Regex("vec3\\(([0-9.]+), ([0-9.]+), ([0-9.]+)\\)").findAll(table)
+            .map { m -> IntArray(3) { Math.round(m.groupValues[it + 1].toDouble() * 255).toInt() } }
+            .toList()
+        assertEquals("12 classes, UNLABELED first", 12, colours.size)
+        return colours.drop(1)
+    }
+
+    // Filament's ColorGrading tone-maps in Rec.2020: scene Rec.709 -> Rec.2020, the curve per
+    // channel there, back to Rec.709. Row-major here; the material has them column-major.
+    private val rec709ToRec2020 = arrayOf(
+        doubleArrayOf(0.6274040, 0.3292820, 0.0433136),
+        doubleArrayOf(0.0690970, 0.9195400, 0.0113612),
+        doubleArrayOf(0.0163916, 0.0880132, 0.8955950),
+    )
+    private val rec2020ToRec709 = arrayOf(
+        doubleArrayOf(1.6604910, -0.5876411, -0.0728499),
+        doubleArrayOf(-0.1245505, 1.1328999, -0.0083494),
+        doubleArrayOf(-0.0181508, -0.1005789, 1.1187297),
+    )
+
+    /** A `const mat3 <name> = mat3(...)` of `semantics_overlay.mat`, as the rows it multiplies by. */
+    private fun shaderMatrix(name: String): Array<DoubleArray> {
+        val body = Regex("const mat3 $name = mat3\\(([^)]*)\\);").find(source("semantics_overlay"))
+            ?.groupValues?.get(1) ?: error("semantics_overlay.mat declares no mat3 $name")
+        val columnMajor = body.split(',').map { it.trim().toDouble() }
+        assertEquals("$name has 9 entries", 9, columnMajor.size)
+        return Array(3) { row -> DoubleArray(3) { col -> columnMajor[col * 3 + row] } }
+    }
+
+    @Test
+    fun `semantics overlay converts with the matrices this model grades with`() {
+        for ((name, rows) in listOf(
+            "SEMANTICS_REC709_TO_REC2020" to rec709ToRec2020,
+            "SEMANTICS_REC2020_TO_REC709" to rec2020ToRec709,
+        )) {
+            val shader = shaderMatrix(name)
+            for (r in 0..2) for (c in 0..2) assertEquals("$name[$r][$c]", rows[r][c], shader[r][c], 0.0)
+        }
+        // And the two undo each other, so a typo copied into both tables cannot pass either.
+        for (c in 0..2) {
+            val unit = DoubleArray(3) { if (it == c) 1.0 else 0.0 }
+            val back = rec2020ToRec709.times(rec709ToRec2020.times(unit))
+            for (r in 0..2) assertEquals("round trip [$r][$c]", unit[r], back[r], 1e-5)
+        }
+    }
+
+    private fun Array<DoubleArray>.times(v: DoubleArray) =
+        DoubleArray(3) { r -> (0..2).sumOf { this[r][it] * v[it] } }
+
+    /** What the View shows for a scene colour, graded by [curve] in Rec.2020. */
+    private fun graded(scene: DoubleArray, curve: (DoubleArray) -> DoubleArray) =
+        bytes(rec2020ToRec709.times(curve(rec709ToRec2020.times(scene))))
+
+    /** `inverseViewTonemapSRGB` of `semantics_overlay.mat`, line for line. */
+    private fun overlayScene(legend: IntArray, inverse: (DoubleArray) -> DoubleArray): DoubleArray {
+        val working = rec709ToRec2020.times(DoubleArray(3) { srgbToLinear(legend[it] / 255.0) })
+        return rec2020ToRec709.times(inverse(working)).map { max(it, 0.0) }.toDoubleArray()
+    }
+
+    private fun filmicCurve(c: DoubleArray) = c.map { filmic(it) }.toDoubleArray()
+    private fun inverseFilmicCurve(c: DoubleArray) = c.map { inverseFilmic(it) }.toDoubleArray()
+
+    /**
+     * Each class shows its legend byte to the rounding, but a channel darker than 0x30 may land up
+     * to 16 steps above it: VEHICLE's and WATER's red would need a negative scene value under
+     * Filmic, which the colour buffer cannot hold (the material clips it at zero).
+     */
+    private fun assertShownAsLegend(view: String, shown: (IntArray) -> List<Int>) {
+        semanticsLegend().forEachIndexed { i, legend ->
+            val got = shown(legend)
+            for (c in 0..2) {
+                val tolerance = if (legend[c] < 0x30) 16 else 1
+                assertTrue(
+                    "$view, class ${i + 1}: legend ${legend.toList()}, shown $got (tolerance $tolerance)",
+                    abs(got[c] - legend[c]) <= tolerance
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `semantics overlay shows its legend colours in an AR view`() {
+        assertShownAsLegend("Filmic (createARView)") { legend ->
+            graded(overlayScene(legend) { inverseFilmicCurve(it) }) { filmicCurve(it) }
+        }
+    }
+
+    @Test
+    fun `semantics overlay shows its legend colours in a 3D view`() {
+        assertShownAsLegend("PBR Neutral (createView)") { legend ->
+            graded(overlayScene(legend) { inversePbrNeutral(it) }) { pbrNeutral(it) }
+        }
+    }
+
+    @Test
+    fun `inverted channel by channel in Rec 709, a saturated class is still off`() {
+        // The first cut of #5102 inverted Filmic in Rec.709: SKY read back as #95B2FB on the
+        // emulator. The model of the Rec.2020 grading gives that colour, within the LUT's steps.
+        val sky = semanticsLegend()[0]
+        val per709 = DoubleArray(3) { inverseFilmic(srgbToLinear(sky[it] / 255.0)) }
+        val shown = graded(per709) { filmicCurve(it) }
+        assertTrue("SKY inverted in Rec.709 shows $shown", abs(shown[0] - 0x95) <= 3 && abs(shown[2] - 0xFB) <= 3)
+    }
+
+    @Test
+    fun `read as linear, the palette was drawn lighter than its legend`() {
+        // What #5102 measured on a Pixel 4a: SKY #66B0F5 drawn as (157, 204, 237) by PBR Neutral.
+        val sky = semanticsLegend()[0]
+        val asLinear = graded(DoubleArray(3) { sky[it] / 255.0 }) { pbrNeutral(it) }
+        assertTrue("SKY read as linear shows $asLinear", abs(asLinear[0] - 157) <= 3 && abs(asLinear[1] - 204) <= 3)
     }
 }
