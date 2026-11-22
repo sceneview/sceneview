@@ -64,12 +64,13 @@ The iOS and macOS demo has no new builds after 4.69.7 — see [DEPRECATION.md](D
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
 `https://sceneview.github.io/open?demo=<id>`. Start with
 [Cosmos](https://sceneview.github.io/open?demo=cosmos), the galaxy the catalogue opens on, or
-[3D Scan](https://sceneview.github.io/open?demo=ar-rerun), a space scanned with ARCore and rebuilt in 3D.
+[Materials](https://sceneview.github.io/open?demo=materials), nine physically based materials
+you can turn around.
 
 <p align="center">
-  <a href="https://sceneview.github.io/open?demo=ar-rerun"><img src="website-static/assets/demos/scan-room.webp" alt="3D Scan on a Pixel 9: a living room is scanned wall by wall, then rebuilt as a 3D model you can turn" width="300"></a>
+  <a href="https://sceneview.github.io/open?demo=materials"><img src="website-static/assets/demos/materials.webp" alt="Materials demo in the Android app: nine spheres, from polished chrome and gold to crystal and neon, seen as the camera turns around them" width="300"></a>
   <br>
-  <sub>A living room scanned in 3D Scan on a Pixel 9, then rebuilt as a model (sped up).</sub>
+  <sub>The Materials demo, screen-recorded in the Android app.</sub>
 </p>
 
 ### Help test the demos
