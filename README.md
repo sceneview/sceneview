@@ -2,6 +2,15 @@
 
 > **The AI-first 3D & AR SDK for Jetpack Compose — and the web.**
 
+```kotlin
+// build.gradle.kts — the current release
+implementation("io.github.sceneview:sceneview:4.71.0")    // 3D
+implementation("io.github.sceneview:arsceneview:4.71.0")  // AR, includes the 3D module
+```
+
+SceneView 2.x and 3.x are outdated; if you learned the 2.x API, here is the 4.x equivalent:
+[Coming from SceneView 2.x](#coming-from-sceneview-2x).
+
 Declarative 3D and AR for app developers who want a model on screen, or in the room, without a
 game engine: Filament + ARCore on Android, Filament.js + WebXR in the browser, and a Compose
 Multiplatform viewer. It is the
@@ -15,7 +24,7 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 | Kotlin / Compose Multiplatform (Android, desktop) | `io.github.sceneview:sceneview-compose:4.71.0` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
-Moving from Sceneform, or from SceneView 2.x code (`Scene(childNodes = …)`, `ARScene`)?
+Moving from Sceneform?
 [The mapping](https://sceneview.github.io/docs/sceneform-replacement/). Which artifact fits your app:
 [3D and AR library, per platform](https://sceneview.github.io/docs/3d-ar-library/).
 
@@ -221,6 +230,28 @@ Optional app declares `android.hardware.camera.ar` and `android.hardware.camera`
 `<uses-feature … android:required="false" />`; an AR Required app overrides the ARCore value
 with `tools:replace="android:value"`. Both snippets are in the
 [AR manifest](docs/docs/quickstart.md#ar-manifest) section.
+
+### Coming from SceneView 2.x
+
+2.x code may still compile, with deprecation warnings, but always write the 4.x form below. Use
+the dependency lines at the top of this page; 4.x needs `compileSdk = 37`, AGP 9.4.0+, Kotlin 2.3+
+and JVM target 21 (see [Android](#android)), and a project stuck on AGP 8 uses `4.18.0`. Then:
+
+| SceneView 2.x | SceneView 4.x |
+|---|---|
+| `github.com/SceneView/sceneview-android` | `github.com/sceneview/sceneview` (the same repository, renamed; old links redirect) |
+| `Scene(…)`, `ARScene(…)` | `SceneView(…) { }`, `ARSceneView(…) { }` |
+| `childNodes = rememberNodes { add(ModelNode(…)) }` | declare the nodes in the trailing block: `SceneView { ModelNode(…) }` |
+| `ModelNode(modelInstance = modelLoader.createModelInstance("models/x.glb"))` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it) }` |
+| `import io.github.sceneview.node.ModelNode` | no import: `ModelNode`, `AnchorNode` and the other nodes are members of the block |
+| `AnchorNode(engine, anchor).apply { addChildNode(modelNode) }` | `AnchorNode(anchor = anchor) { ModelNode(…) }` |
+| tap listener, `frame.hitTest(…)`, `childNodes += AnchorNode(…)` | `PlacementScene(onPlaced = { anchor -> AnchorNode(anchor = anchor) { … } })` |
+
+`rememberEngine()`, `rememberModelLoader(engine)`, `planeRenderer`, `sessionConfiguration` and
+`onSessionUpdated` keep their names. Every other construct is in
+[the full 2.x → 4.x table](https://sceneview.github.io/docs/upgrading-from-2-3/#sceneview-2x-to-4x-name-by-name),
+and [Upgrading from 2.3.x](https://sceneview.github.io/docs/upgrading-from-2-3/) walks through
+the move with before/after code.
 
 ### Web
 
