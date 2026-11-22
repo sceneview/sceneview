@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## v4.71.0 — 2026-11-22
+
+### Added
+
+- MCP: the server now sends its instructions in the `initialize` result, so hosts that read server instructions put them in the agent's context at connect time: read `sceneview://api` first, start from `get_sample`, run `validate_code`, and load models with `rememberModelInstance` on the main thread. A test checks that every tool and resource the instructions name is really served.
+- Docs: every page of sceneview.github.io/docs is also served as Markdown (`/docs/nodes/` → `/docs/nodes.md`), linked from the page's `<head>` as `rel="alternate" type="text/markdown"` and announced in `llms.txt`, so an AI agent can fetch the one section it needs instead of the whole reference.
+- **AR placement: one rule for what shows around the object.** `AutoPlacementScene` now draws the detected surfaces while the object looks for one and while it is dragged or turned, and fades them 0.8 s after it lands (1 s after a gesture). The footprint ring closes around a new placement for 1.5 s and shows while selected, wider under the fingers, with a dark edging on each side so it reads on a pale floor. `AutoPlacementState.guide` exposes the rule, including when to draw dimension marks (`alwaysShowsDimensions = true` keeps them on); `showsPlaneGuide = false` never shows the surfaces. `AutoPlacementNode(placement, state, size = …)` gets the same contact shadow and ring as `AutoPlacementModel`, and the new `DimensionMarks` composable draws width, depth and height lines with tags that turn to the camera and keep out from under the app's chrome The surfaces are a guide only: under `AutoPlacementScene` they catch no cast shadow, so no hard-edged dark patch shows on them, and `groundShadows = false` now holds while they show (#5209).
+
+### Changed
+
+- README: the "Try it" section shows a screen recording of the Materials demo instead of a sped-up 3D Scan clip, and points to Cosmos and Materials. `/open?demo=materials` is now an allowed link.
+
+### Fixed
+
+- **Android: leave pending renderers to engine teardown ([#4969](https://github.com/sceneview/sceneview/issues/4969)).** Retiring engines still accept reached fences regardless of age for other pending releases, so slow main-thread polling cannot retain the engine and its EGL context. Shared engines retain the freshness check. Filament still terminates surviving renderers inside `Engine.destroy`; native waits remain unbounded.
+- **Android demo: AR Measure and 3D Scan no longer read a closed AR session ([#5132](https://github.com/sceneview/sceneview/issues/5132)).** When the AR session fails, AR Measure forgets its anchors, hits and planes instead of detaching them later. Undo, Clear, Share and leaving the screen then have nothing from the closed session left to read. 3D Scan stops auto-starting a capture on the last frame of a failed session. After a fatal failure it drops that frame and the scan recorder forgets the closed session's planes and anchors. Plane ids stay unique across the new session.
+- **AR: the camera should no longer turn black on Back with the default `lifecycle`.** Inside a `NavHost`, `ARSceneView` pauses its session when the exit transition starts, and the next frame could still be drawn over a camera texture ARCore no longer fed. A paused view now keeps its last presented camera image (the documented behaviour), and so does a view whose camera another `ARSceneView` took; nodes in that second view keep ticking but are not drawn until the camera is back. A non-fatal resume failure or an app's own `session.pause()` draws as before. The camera is still released on Back, Home and screen off. Pass `lifecycle = rememberHostLifecycle()` to keep the camera live during the transition (#5137).
+- **Demo app: 3D Scan keeps up with the camera on long room scans.** The live preview is now built on its own thread from a copy of the depth fusion, at most once a second, so new depth keeps merging while the preview updates and fewer depth frames are skipped as the scan grows. The preview catches up with the last depth frame when scanning pauses, Save no longer waits for it, and a preview that runs out of memory is dropped without stopping the scan.
+- MCP: the Biome lint is green again on `main`. `biome.json` is migrated to the 2.6.7 schema, five files are reformatted, and the Biome version is pinned exactly so a new CLI cannot turn the check red on its own (#5198).
+- Android: destroying an engine's EGL context now also destroys the 1×1 pbuffer it was made current on. Each engine used to leak one EGL surface for the life of the process; on a Pixel 4a, a process now creates about twice as many engines (fast open and close of a 3D screen) before the GPU driver runs out of contexts and "Couldn't create Engine" is thrown (#5202, still open). That exception now says how many SceneView EGL contexts are alive.
+- Website and docs home: the last present-tense Apple mentions now read as end of life (JSON-LD description, AR tile, renderer note, demo count), and the galaxy tile opens the Android Cosmos demo (`/open?demo=cosmos`, now an allowed id) instead of the Apple samples page.
+
 ## v4.70.0 — 2026-11-20
 
 ### Added

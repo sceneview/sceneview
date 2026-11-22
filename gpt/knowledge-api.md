@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.70.0)
+  Source of truth: /llms.txt  (SceneView 4.71.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,9 +9,11 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.70.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.71.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
+
+Every page below is also served as Markdown: replace the trailing `/` with `.md` (`https://sceneview.github.io/docs/nodes.md`). Fetch the one page you need instead of this whole file.
 
 - [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
 - [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): retained documentation for end-of-life SceneViewSwift 4.68.0
@@ -55,7 +57,7 @@
 
 ## Start here — complete Android screens
 
-These examples compile as they are against `io.github.sceneview:arsceneview:4.70.0` (CI builds every
+These examples compile as they are against `io.github.sceneview:arsceneview:4.71.0` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -476,10 +478,12 @@ the previous value back when it leaves the composition. Nothing to add in app co
 **Note — AR screen inside a `NavHost`: pass `lifecycle = rememberHostLifecycle()`.** By default
 `ARSceneView` follows `LocalLifecycleOwner`, which inside a `NavHost` is the destination: it leaves
 `RESUMED` when the exit transition *starts*, so the camera stops and its last image stays frozen on
-screen for the whole transition. `rememberHostLifecycle()` (opt-in, `io.github.sceneview.ar`)
-returns the host ACTIVITY's lifecycle: the session runs while the composable is in the
-composition and the activity is resumed, pauses when the activity pauses, and is closed on
-disposal. Do not add your own `session.pause()` on navigation.
+screen for the whole transition. A view whose camera stopped presents nothing more: while another
+`ARSceneView` holds the camera, its nodes keep ticking but are not drawn.
+`rememberHostLifecycle()` (opt-in, `io.github.sceneview.ar`) returns the host ACTIVITY's
+lifecycle: the session runs while the composable is in the composition and the activity is
+resumed, pauses when the activity pauses, and is closed on disposal. Do not add your own
+`session.pause()` on navigation.
 
 ```kotlin
 @Composable
@@ -1701,7 +1705,12 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 `AutoPlacementScene` is additive: one usable detected plane consumes one placement
 request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
 or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
-centers, and a 0.25–3 m interaction range. It renders no plane grid or reticle.
+centers, and a 0.25–3 m interaction range. No reticle: the detected surfaces show
+while the object looks for one and while it is dragged or turned, and fade 0.8 s after it
+lands (1 s after a gesture ends). The footprint ring shows 1.5 s after landing and while
+selected; `state.guide.dimensions` says when to draw dimension marks (3 s after landing,
+while selected, while moved; always with `state.alwaysShowsDimensions = true`).
+`state.showsPlaneGuide = false` never shows the surfaces (#5209).
 
 ```kotlin
 import io.github.sceneview.ar.*
@@ -1885,6 +1894,16 @@ that same gesture hierarchy. Supply content already sized (demo: 0.3 m longest d
 with bottom at y=0 and back at z=0. Mark selectable children editable, but disable their
 individual position/rotation/scale editing so gestures reach the contact pivot. Apply
 `opacity` to transparent materials for the 300 ms placement/tracking fade.
+Pass its box, `AutoPlacementNode(result, state, size = Size(w, h, d)) { opacity -> … }`
+(metres, bottom at y=0, centred on X and Z), and SceneView draws the contact shadow and the
+footprint ring it draws under `AutoPlacementModel` — draw neither yourself (#5209).
+
+**Dimension marks.** `SceneScope.DimensionMarks(size, format = { m -> "${(m * 100).roundToInt()} cm" })`
+(`io.github.sceneview`, 3D and AR) draws width (front), depth (right) and height (corner) lines,
+floor lines on a dark edging, with tags on an 88 % dark background. Pass `facing = { cameraPosition }`
+so tags turn to the camera, and `clearance = DimensionTagClearance(screenY, bottomLimit, topLimit)`
+so a tag hides under your own chrome. In AR show them while `state.guide.dimensions`; set
+`state.alwaysShowsDimensions = true` when the size is the answer (a furniture fit).
 
 Selected-object accessibility alternatives share the gesture constraints:
 `placement.moveBy(x, y)` moves in metres right/up on a wall, `rotateBy(degrees)` twists
@@ -5796,7 +5815,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.70.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.71.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -6001,7 +6020,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.70.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.71.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 

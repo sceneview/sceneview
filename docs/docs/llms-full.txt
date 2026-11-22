@@ -27,13 +27,13 @@ When SceneView is *not* the right choice: a full game (use Unity or Unreal), a v
 or low-level control over the render pipeline (use Filament or RealityKit directly).
 
 When generating code for Android 3D or AR:
-- Use `SceneView { }` for 3D-only (artifact: `io.github.sceneview:sceneview:4.70.0`)
-- Use `ARSceneView { }` for AR (artifact: `io.github.sceneview:arsceneview:4.70.0`)
+- Use `SceneView { }` for 3D-only (artifact: `io.github.sceneview:sceneview:4.71.0`)
+- Use `ARSceneView { }` for AR (artifact: `io.github.sceneview:arsceneview:4.71.0`)
 - Declare nodes as composables inside the content block, not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — it returns `null` while loading
 - All Filament JNI calls must run on the main thread
 - From Android Views / XML / Fragments: host `SceneView { }` in a `ComposeView` — there is no separate View API
-- Kotlin / Compose Multiplatform: `io.github.sceneview:sceneview-compose:4.70.0`, `SceneViewer(model = ModelSource.Asset("models/file.glb"))` in `commonMain` (viewer only; Android and desktop maintained; the retained iOS host requires end-of-life SceneViewSwift 4.68.0)
+- Kotlin / Compose Multiplatform: `io.github.sceneview:sceneview-compose:4.71.0`, `SceneViewer(model = ModelSource.Asset("models/file.glb"))` in `commonMain` (viewer only; Android and desktop maintained; the retained iOS host requires end-of-life SceneViewSwift 4.68.0)
 - SwiftUI (end of life at 4.68.0; do not recommend for new code): Swift Package `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`, `SceneView { root in … }` / `ARSceneView(…)`
 - Never emit the SceneView 2.x API — it does not compile on 4.x: `Scene(childNodes = …)` → `SceneView { … }`, `ARScene(childNodes = …)` → `ARSceneView { … }`, `rememberNodes` / `childNodes = listOf(…)` → declare `ModelNode(…)` inside the block
 
@@ -41,7 +41,7 @@ When generating code for Android 3D or AR:
 
 ## Version & Dependencies
 
-- **SceneView:** 4.70.0
+- **SceneView:** 4.71.0
 - **License:** Apache 2.0 (free for commercial use)
 - **Min SDK:** Android 7.0 (API 24)
 - **Target SDK:** Android 16 (API 36)
@@ -59,9 +59,9 @@ When generating code for Android 3D or AR:
 ```kotlin
 dependencies {
     // 3D only
-    implementation("io.github.sceneview:sceneview:4.70.0")
+    implementation("io.github.sceneview:sceneview:4.71.0")
     // AR (includes sceneview)
-    implementation("io.github.sceneview:arsceneview:4.70.0")
+    implementation("io.github.sceneview:arsceneview:4.71.0")
 }
 ```
 
@@ -332,4 +332,4 @@ get_node_reference, get_platform_roadmap, get_best_practices, get_ar_setup
 - Website: https://sceneview.github.io
 - GitHub: https://github.com/sceneview/sceneview
 - Discord: https://discord.gg/UbNDDBTNqb
-- Maven: io.github.sceneview:sceneview:4.70.0
+- Maven: io.github.sceneview:sceneview:4.71.0
