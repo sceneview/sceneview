@@ -20,6 +20,10 @@ import java.io.File
 
 /** App adapter for feature sessions that need configuration hooks unavailable on AutoPlacementScene.
  * The SDK still owns candidate validation, state transitions and manipulation; no tap places content.
+ *
+ * [groundShadows] mounts a [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane] on every
+ * tracked plane once the object stands, as `AutoPlacementScene`'s flag of the same name does. Off,
+ * the object's contact shadow alone grounds it (#4957).
  */
 @Composable
 internal fun FeaturePlacementScene(
@@ -42,6 +46,7 @@ internal fun FeaturePlacementScene(
         { ARCoreAvailabilityOverlay(it) },
     onTrackingFailureChanged: (TrackingFailureReason?) -> Unit = {},
     onPlaced: (AutoPlacementResult) -> Unit = {},
+    groundShadows: Boolean = true,
     content: @Composable ARSceneScope.(AutoPlacementResult?) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -116,8 +121,16 @@ internal fun FeaturePlacementScene(
         // Reset may replace an anchor in a single frame; recreate the whole node subtree
         // so remembered model nodes attach to the new pivot, as in AutoPlacementScene.
         key(placement) { content(placement) }
-        if (state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING) {
+        if (catchesGroundShadows(groundShadows, state.phase)) {
             planes.forEach { plane -> key(plane) { ShadowReceiverPlane(plane = plane) } }
         }
     }
 }
+
+/**
+ * Whether [FeaturePlacementScene] mounts its plane-wide shadow catchers: only with [groundShadows]
+ * on, and only while the object stands or is being moved. Pure, pinned in
+ * `FeaturePlacementGroundShadowsTest`.
+ */
+internal fun catchesGroundShadows(groundShadows: Boolean, phase: PlacementPhase): Boolean =
+    groundShadows && (phase == PlacementPhase.PLACED || phase == PlacementPhase.ADJUSTING)

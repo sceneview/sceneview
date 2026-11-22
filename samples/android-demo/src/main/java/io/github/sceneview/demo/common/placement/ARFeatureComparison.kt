@@ -290,6 +290,12 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                 },
                 onARCoreAvailability = { availability = it },
                 onTrackingFailureChanged = { trackingFailure = it },
+                // No plane-wide catchers (#4957): the estimated light is often low indoors, and
+                // its hard cast shadow spread over each plane's whole rectangle as a jagged dark
+                // patch, cut further by the floor's depth noise once occlusion is on. The
+                // helmet's soft contact shadow grounds it; the occlusion's ground contact keeps
+                // that one whole.
+                groundShadows = false,
             ) { placement ->
                 placement?.let { result -> model?.let { instance ->
                     AutoPlacementModel(result, state, instance,
