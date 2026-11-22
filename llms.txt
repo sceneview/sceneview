@@ -1840,7 +1840,8 @@ centers, and a 0.25–3 m interaction range. No reticle: the detected surfaces s
 while the object looks for one and while it is dragged or turned, and fade 0.8 s after it
 lands (1 s after a gesture ends). The footprint ring shows 1.5 s after landing and while
 selected; `state.guide.dimensions` says when to draw dimension marks (3 s after landing,
-while selected, while moved). `state.showsPlaneGuide = false` never shows the surfaces (#5209).
+while selected, while moved; always with `state.alwaysShowsDimensions = true`).
+`state.showsPlaneGuide = false` never shows the surfaces (#5209).
 
 ```kotlin
 import io.github.sceneview.ar.*

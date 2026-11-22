@@ -57,6 +57,16 @@ class PlacementGuideTest {
     }
 
     @Test
+    fun `an app whose answer is the size keeps the dimensions on`() {
+        val g = PlacementGuidePolicy.guide(PlacementPhase.PLACED, false, 60_000, null, alwaysShowsDimensions = true)
+        assertTrue(g.dimensions)
+        assertFalse(g.planes)
+        assertFalse(g.ring)
+        val searching = PlacementGuidePolicy.guide(PlacementPhase.SCANNING, false, null, null, alwaysShowsDimensions = true)
+        assertFalse(searching.dimensions)
+    }
+
+    @Test
     fun `selection shows the ring and the dimensions, not the surfaces`() {
         val g = guide(PlacementPhase.PLACED, selected = true, sincePlaced = 60_000)
         assertFalse(g.planes)

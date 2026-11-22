@@ -178,6 +178,13 @@ class AutoPlacementState {
         internal set
 
     /**
+     * Keep [PlacementGuide.dimensions] on for as long as the object is placed, instead of only
+     * after it lands and while it is selected or moved (#5209). For an app whose answer is the
+     * size itself, such as a furniture fit; off by default.
+     */
+    var alwaysShowsDimensions: Boolean by mutableStateOf(false)
+
+    /**
      * Let the user resize the placed object with a pinch, [scaleTo] or the double-tap.
      *
      * Set `false` for anything that must stay at real size (furniture, a pool, a shed): the

@@ -10,8 +10,11 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Size
+import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.node.Node as NodeImpl
+import io.github.sceneview.node.TextNode as TextNodeImpl
 
 /**
  * Where an app's own chrome sits on screen, so [DimensionMarks] keep their tags out from under it.
@@ -97,16 +100,17 @@ fun SceneScope.DimensionMarks(
             materialLoader.destroyMaterialInstance(edging)
         }
     }
-    val fixed: NodeImpl.() -> Unit = {
+    val selectableNode: NodeImpl.() -> Unit = {
         if (selectable) {
             isEditable = true
             isPositionEditable = false
             isRotationEditable = false
             isScaleEditable = false
         }
-        isShadowCaster = false
-        isShadowReceiver = false
     }
+    // Marks are read, not lit: no shadow from the lines or the tags.
+    val fixed: CubeNodeImpl.() -> Unit = { selectableNode(); isShadowCaster = false; isShadowReceiver = false }
+    val tag: TextNodeImpl.() -> Unit = { selectableNode(); isShadowCaster = false; isShadowReceiver = false }
     val front = d / 2f + g.OFFSET
     val right = w / 2f + g.OFFSET
     val t = g.THICKNESS
@@ -134,7 +138,7 @@ fun SceneScope.DimensionMarks(
     @Composable
     fun Tag(metres: Float) = TextNode(
         text = format(metres), fontSize = g.FONT_SIZE, textColor = fg, backgroundColor = bg,
-        widthMeters = lw, heightMeters = lh, scale = s, cameraPositionProvider = facing, apply = fixed,
+        widthMeters = lw, heightMeters = lh, scale = s, cameraPositionProvider = facing, apply = tag,
     )
     TagSlot(clearance, half, Position(0f, half + 0.03f, front + 0.02f)) { Tag(labels.x) }
     // Outside the depth line by half a tag, so the object never hides it.

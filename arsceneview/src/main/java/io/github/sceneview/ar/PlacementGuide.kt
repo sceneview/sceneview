@@ -17,7 +17,7 @@ import kotlinx.coroutines.delay
  * |---|---|---|---|
  * | Looking for a surface | every surface | — | — |
  * | The object lands | for [PlacementGuidePolicy.LAND_MS] | for [PlacementGuidePolicy.RING_MS] | for [PlacementGuidePolicy.DIMENSIONS_MS] |
- * | Placed, left alone | — | while selected | while selected |
+ * | Placed, left alone | — | while selected | while selected, or always with [AutoPlacementState.alwaysShowsDimensions] |
  * | Dragged or turned | yes, and [PlacementGuidePolicy.RELEASE_MS] after release | yes, wider | yes |
  *
  * The surfaces say where the object can go, so they show while it is looking for one and while
@@ -75,6 +75,7 @@ internal object PlacementGuidePolicy {
         selected: Boolean,
         sincePlacedMs: Long?,
         sinceReleaseMs: Long?,
+        alwaysShowsDimensions: Boolean = false,
     ): PlacementGuide {
         fun within(since: Long?, ms: Long) = since != null && since in 0 until ms
         return when (phase) {
@@ -84,7 +85,7 @@ internal object PlacementGuidePolicy {
             PlacementPhase.PLACED -> PlacementGuide(
                 planes = within(sincePlacedMs, LAND_MS) || within(sinceReleaseMs, RELEASE_MS),
                 ring = selected || within(sincePlacedMs, RING_MS) || within(sinceReleaseMs, RELEASE_MS),
-                dimensions = selected || within(sincePlacedMs, DIMENSIONS_MS),
+                dimensions = alwaysShowsDimensions || selected || within(sincePlacedMs, DIMENSIONS_MS),
             )
             PlacementPhase.INITIALIZING, PlacementPhase.RECOVERY_FAILED,
             PlacementPhase.CAMERA_ERROR -> PlacementGuide.Nothing
@@ -113,7 +114,8 @@ internal fun PlacementGuideClock(state: AutoPlacementState) {
     var previous by remember(state) { mutableStateOf(state.phase) }
     val phase = state.phase
     val selected = state.isSelected
-    LaunchedEffect(state, phase, selected) {
+    val always = state.alwaysShowsDimensions
+    LaunchedEffect(state, phase, selected, always) {
         val now = SystemClock.uptimeMillis()
         when (phase) {
             PlacementPhase.INITIALIZING, PlacementPhase.SCANNING, PlacementPhase.NO_SURFACE -> {
@@ -131,7 +133,7 @@ internal fun PlacementGuideClock(state: AutoPlacementState) {
             val t = SystemClock.uptimeMillis()
             val sincePlaced = placedAt?.let { t - it }
             val sinceRelease = releasedAt?.let { t - it }
-            state.guide = PlacementGuidePolicy.guide(phase, selected, sincePlaced, sinceRelease)
+            state.guide = PlacementGuidePolicy.guide(phase, selected, sincePlaced, sinceRelease, always)
             val wait = PlacementGuidePolicy.nextChangeMs(sincePlaced, sinceRelease) ?: break
             delay(wait)
         }
