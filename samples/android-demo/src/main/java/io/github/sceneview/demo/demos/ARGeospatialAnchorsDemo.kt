@@ -927,8 +927,11 @@ private fun DropOutcome.isFailure(): Boolean =
 
 private fun Double.roundTo(step: Double): Double = Math.round(this / step) * step
 
-/** Cancelling a VPS lookup after fatal close must not call its freed native future. */
-private suspend fun Session.awaitDemoVpsAvailability(
+/**
+ * Cancelling a VPS lookup after fatal close must not call its freed native future. Shared with
+ * the Streetscape mode, whose coverage check is cancelled by the same failure.
+ */
+internal suspend fun Session.awaitDemoVpsAvailability(
     latitude: Double,
     longitude: Double,
     requests: CloudRequestGeneration,

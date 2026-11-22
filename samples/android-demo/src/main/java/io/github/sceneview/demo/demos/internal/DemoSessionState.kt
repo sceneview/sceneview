@@ -157,12 +157,15 @@ internal class DrawingSessionState<A> : DemoSessionState() {
 
 /**
  * Streetscape's geometries and the session that made them (#5208): the scene reads each one's
- * tracking state every frame, and the coverage check calls the session.
+ * tracking state every frame, and the coverage check calls the session. [requests] is closed
+ * first, so the coverage check that [session] leaving cancels keeps off the closed future.
  */
 internal class StreetscapeSessionState<S, G> : DemoSessionState() {
     var session by mutableStateOf<S?>(null)
     val geometries = mutableStateListOf<G>()
+    val requests = CloudRequestGeneration()
     override fun clear() {
+        requests.closeSession()
         session = null
         geometries.clear()
     }

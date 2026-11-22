@@ -2,6 +2,8 @@ package io.github.sceneview.demo.demos
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,7 +51,6 @@ import com.google.ar.core.exceptions.ResourceExhaustedException
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.ARSessionFailure
-import io.github.sceneview.ar.arcore.awaitVpsAvailability
 import io.github.sceneview.ar.node.MeshClassification
 import io.github.sceneview.ar.node.toMeshClassification
 import io.github.sceneview.ar.rememberHostLifecycle
@@ -240,7 +241,11 @@ fun ARStreetscapeDemo(onBack: () -> Unit) = GeospatialPermissionGate(
                     state.sessionError = friendlyArSessionError(exception)
                 },
                 onSessionFailure = { failure -> state.onSessionFailure(failure) },
-                onARCoreAvailability = { state.arCoreAvailability = it },
+                onARCoreAvailability = {
+                    state.arCoreAvailability = it
+                    // A successful "Try again": the failure text must not outlive it.
+                    if (it == null) state.sessionError = null
+                },
                 onSessionUpdated = { session, frame -> state.onFrame(session, frame) },
                 onTrackingFailureChanged = { reason -> state.trackingFailureReason = reason },
             ) {
@@ -430,6 +435,7 @@ private fun rememberCloudStatus(state: SceneGeometryState): CloudServiceStatus {
  */
 @Composable
 private fun VpsCoverageEffect(tag: String, state: SceneGeometryState) {
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     LaunchedEffect(state.session, state.coverageCell) {
         val session = state.session ?: return@LaunchedEffect
         if (state.coverageCell == null) return@LaunchedEffect
@@ -437,7 +443,14 @@ private fun VpsCoverageEffect(tag: String, state: SceneGeometryState) {
         state.vps = VpsCoverage.Checking
         while (true) {
             val answer = try {
-                session.awaitVpsAvailability(state.latitude, state.longitude)
+                // A fatal failure cancels this check with its session: the closed
+                // session's future must not be cancelled then.
+                session.awaitDemoVpsAvailability(
+                    state.latitude,
+                    state.longitude,
+                    state.sessionState.requests,
+                    mainHandler,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ResourceExhaustedException) {

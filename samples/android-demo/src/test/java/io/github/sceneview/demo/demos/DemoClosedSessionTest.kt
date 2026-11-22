@@ -209,6 +209,8 @@ class DemoClosedSessionFingerDrawingTest {
         val failure = demoSource("FingerDrawingArDemo").substringAfter("onSessionFailure = { failure ->")
             .substringBefore("},")
         assertTrue(failure.contains("pen.anchor = null"))
+        listOf("pen.steady = null", "pen.pendingDown = false", "pen.pendingUp = false", "isTracking = false")
+            .forEach { assertTrue(it, failure.contains(it)) }
         assertFalse("the init scrim would cover the retry card", failure.contains("cameraReady = false"))
     }
 }
@@ -221,6 +223,14 @@ class DemoClosedSessionStreetscapeTest {
         val source = demoSource("ARSceneGeometryDemo")
         assertTrue(source.contains("onSessionFailure = { failure -> state.onSessionFailure(failure) }"))
         assertTrue(source.contains("var session by sessionState::session"))
+        val failure = source.substringAfter("fun onSessionFailure(failure: ARSessionFailure)").substringBefore("\n    }")
+        listOf("geometryCount = 0", "isTracking = false", "earthTracking = false")
+            .forEach { assertTrue(it, failure.contains(it)) }
+        // Closing the request generation keeps the cancelled coverage check off the closed future.
+        assertTrue(source.contains("session.awaitDemoVpsAvailability("))
+        assertFalse(source.contains("session.awaitVpsAvailability("))
+        assertTrue(demoSource("internal/DemoSessionState").substringAfter("class StreetscapeSessionState")
+            .substringBefore("session = null").contains("requests.closeSession()"))
     }
 }
 
@@ -295,6 +305,7 @@ class DemoClosedSessionWiringTest {
         val flags = mapOf(
             "ARSurfacesDemo" to "arSessionFailed", "ARGeospatialAnchorsDemo" to "sessionError",
             "PointAndAskDemo" to "arSessionFailed",
+            "ARSceneGeometryDemo" to "state.sessionError",
         )
         flags.forEach { (name, flag) ->
             val source = demoSource(name)
