@@ -21,7 +21,7 @@ apps, Philips Hue, Medal and IKEA.
 | You are building with | Dependency | Entry point |
 |---|---|---|
 | Jetpack Compose, 3D | `io.github.sceneview:sceneview:4.72.0` | `SceneView { }` |
-| Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.72.0` | `ARSceneView { }`, `PlacementScene`, `AutoPlacementScene` |
+| Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.72.0` | `AutoPlacementScene` for model placement, `ARSceneView { }` for custom AR |
 | Android Views / XML layouts | the same artifacts | a `ComposeView` hosting `SceneView { }` |
 | Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.72.0` | `SceneViewer(model = …)` in `commonMain` (viewer, no AR) |
 | SwiftUI — iOS, macOS, visionOS (end of life at 4.68.0) | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView(…)` |
@@ -53,7 +53,7 @@ touch. `rememberModelInstance` returns `null` until the model is loaded,
 and keeps Filament on the main thread, which it requires.
 Requirements and the step-by-step: [Android quickstart](quickstart.md).
 
-## Jetpack Compose: AR, tap a plane to place a model
+## Jetpack Compose AR model placement
 
 ```kotlin
 // app/build.gradle.kts
@@ -61,27 +61,37 @@ implementation("io.github.sceneview:arsceneview:4.72.0")   // includes the 3D mo
 ```
 
 ```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
 @Composable
-fun ArScreen() {
+fun ARPlacementScreen() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    PlacementScene(
+    val instance = rememberModelInstance(modelLoader, "models/chair.glb")
+    val state = rememberAutoPlacementState()
+
+    AutoPlacementScene(
+        assetReady = instance != null,
         modifier = Modifier.fillMaxSize(),
+        state = state,
         engine = engine,
         modelLoader = modelLoader,
-        onPlaced = { anchor ->               // called once per tap-created Anchor
-            AnchorNode(anchor = anchor) {
-                val instance = rememberModelInstance(modelLoader, "models/chair.glb")
-                instance?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
-            }
-        },
-    )
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
+    }
 }
 ```
 
-`PlacementScene` is in `io.github.sceneview.ar`. It brings the plane renderer, a reticle and
-tap-to-place; `AutoPlacementScene` places without a tap, and `ARSceneView { }` gives full control.
-See the [AR codelab](codelabs/codelab-ar-compose.md).
+Put `models/chair.glb` in `src/main/assets/`. It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+See [automatic placement](cheatsheet.md#automatic-placement-recommended).
 
 ## Android Views
 

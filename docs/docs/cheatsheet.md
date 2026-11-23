@@ -108,40 +108,53 @@ Android options.
 
 ## Automatic placement (recommended)
 
-`AutoPlacementScene` is additive: one usable detected plane consumes one placement
-request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
-or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
-centers, and a 0.25–3 m interaction range. No reticle: the detected surfaces show while the
-object looks for one and while it is moved, then fade once it stands (`state.guide`, #5209).
+`AutoPlacementScene` places one object per request once the asset and camera tracking are ready.
+It looks for upward-facing floors or tables (`SURFACE`) by default. After 600 ms of tracked
+search without a usable surface, it tries an estimated floor and eases to the refined pose.
+Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()`
+to move a placed object in front of the camera on a tracked or estimated floor.
+
+`AutoPlacementModel` accepts gestures anywhere on screen. Floor drags can continue beyond
+detected plane edges, at the object's height and up to 5 m away. Table drags stop at the
+table edge. The surface guide shows during search and manipulation, then fades after placement
+or a gesture. The footprint ring shows briefly after landing and while selected.
 
 ```kotlin
-import io.github.sceneview.ar.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 
-val engine = rememberEngine()
-val modelLoader = rememberModelLoader(engine)
-val model = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
-val placement = rememberAutoPlacementState()
-AutoPlacementScene(
-    assetReady = model != null,
-    state = placement,
-    engine = engine,
-    modelLoader = modelLoader,
-    surface = PlacementSurface.SURFACE, // WALL accepts vertical planes directly
-    onPlaced = { result -> /* result.anchor, result.plane, result.pose */ },
-) { result ->
-    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
+@Composable
+fun ARPlacementScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/chair.glb")
+    val state = rememberAutoPlacementState()
+
+    AutoPlacementScene(
+        assetReady = instance != null,
+        modifier = Modifier.fillMaxSize(),
+        state = state,
+        engine = engine,
+        modelLoader = modelLoader,
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
+    }
 }
-// Explicit reset retains the asset and the camera session:
-// placement.resetPlacement(android.os.SystemClock.uptimeMillis())
 ```
 
-`AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
-while rotating/scaling, and constrains dragging to supported plane geometry. Its
-0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
-trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base by default;
-set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
-1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
-tracked camera's world height in metres (`null` until it tracks).
+`AutoPlacementModel` grounds the model bounds and preserves the contact pivot while
+rotating and scaling. By default `scaleToUnits` is `null`, so the model keeps its authored
+metres (**Actual size**), as in AR Quick Look and Scene Viewer. Use
+`size = PlacementSize.FitInto(0.3f)` for a 30 cm preview. Scale limits are 25–400% of the base size by default;
+set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them. `state.cameraHeight`
+is the tracked camera's world height in metres, or `null` until it tracks.
 
 To name the choice, pass `size = PlacementSize.RealWorld` (authored metres, never rescaled:
 a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest authored axis, before
@@ -176,19 +189,16 @@ The no-surface and recovery deadlines are both ten seconds. A controller manages
 object; repeated requests while placed are ignored. Multi-object hosts explicitly own
 separate requests/controllers; tapping empty space never places.
 
-**Manual-placement compatibility:** `PlacementScene`, `WallPlacementScene`
-(`WallPlacement`), `onTapOnPlane`, `ReticleNode` and the placement-reticle options remain
-manual-placement APIs. Their published defaults and tap behavior are unchanged. Use
-them for deliberate manual interactions or diagnostics; new placement flows should
-use `AutoPlacementScene`.
-
+**Manual placement.** `PlacementScene` and `WallPlacementScene` are deprecated with a
+warning. Existing flows that need multiple objects placed by tap can keep using them.
+See [From PlacementScene to AutoPlacementScene](migration.md#from-placementscene-to-autoplacementscene).
 
 ### Direct wall placement
 
-Use `surface = PlacementSurface.WALL`: detection is vertical-only, with no floor,
-seam alignment or placement tap. The first usable wall creates one real plane anchor.
-New plane detections never move a standing object; drag to a valid alternative wall or
-reset explicitly. Tracking loss retains that placement and enters recovery.
+Pass `surface = PlacementSurface.WALL` to place on a wall. The scene looks for a usable
+vertical plane and can use depth or a floor edge to infer a wall. The 600 ms estimated-floor
+fallback and `recenter()` apply to horizontal placement. Drag to a valid alternative wall or
+reset explicitly. Tracking loss retains the placement for recovery.
 
 Author wall models with **+Y up and +Z front** (or supply `assetRotation`).
 `AutoPlacementModel` puts the bounding box's back and bottom at the contact pivot and
@@ -261,7 +271,7 @@ ARSceneView(
         }
     },
     // Return true only to consume the event: it then never reaches the nodes' gestures nor
-    // onGestureListener. Place models from onGestureListener's onSingleTapConfirmed instead.
+    // onGestureListener. For a custom tap-driven flow, use onSingleTapConfirmed.
     onTouchEvent = { event, hitResult -> false }
 ) {
     // ARSceneScope — declare AR nodes here

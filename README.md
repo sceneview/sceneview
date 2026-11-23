@@ -19,7 +19,7 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 | Building with | Add | Then write |
 |---|---|---|
 | Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.72.0` | `SceneView { }` |
-| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.72.0` | `ARSceneView { }` or `PlacementScene` |
+| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.72.0` | `AutoPlacementScene` for model placement, `ARSceneView { }` for custom AR |
 | Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
 | Kotlin / Compose Multiplatform (Android, desktop) | `io.github.sceneview:sceneview-compose:4.72.0` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
@@ -189,43 +189,36 @@ implementation("io.github.sceneview:arsceneview:4.72.0")   // includes the 3D mo
 
 ```kotlin
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.google.ar.core.Anchor
-import com.google.ar.core.Plane
-import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.arcore.createAnchorOrNull
-import io.github.sceneview.ar.arcore.getUpdatedPlanes
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 
 @Composable
-fun ARScreen() {
-    var anchor by remember { mutableStateOf<Anchor?>(null) }
+fun ARPlacementScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/toy_car.glb")
+    val state = rememberAutoPlacementState()
 
-    ARSceneView(
+    AutoPlacementScene(
+        assetReady = instance != null,
         modifier = Modifier.fillMaxSize(),
-        planeRenderer = true,
-        onSessionUpdated = { _, frame ->
-            if (anchor == null) {
-                anchor = frame.getUpdatedPlanes()
-                    .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                    ?.let { it.createAnchorOrNull(it.centerPose) }
-            }
-        }
-    ) {
-        val toyCar = rememberModelInstance(modelLoader, "models/toy_car.glb")
-        anchor?.let { a ->
-            AnchorNode(anchor = a) {
-                toyCar?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
-            }
-        }
+        state = state,
+        engine = engine,
+        modelLoader = modelLoader,
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
     }
 }
 ```
 
-Plane detected → `anchor` set → Compose recomposes → the model appears. **AR state is just Kotlin
-state.** For placement without a tap, grounded and gesture-ready, start from
-`AutoPlacementScene` (see [`llms.txt`](./llms.txt)).
+It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen.
+See [automatic placement](docs/docs/cheatsheet.md#automatic-placement-recommended).
 
 `arsceneview` already declares the `CAMERA` permission and marks ARCore as optional. An AR
 Optional app declares `android.hardware.camera.ar` and `android.hardware.camera` as
@@ -247,7 +240,7 @@ and JVM target 21 (see [Android](#android)), and a project stuck on AGP 8 uses `
 | `ModelNode(modelInstance = modelLoader.createModelInstance("models/x.glb"))` | `rememberModelInstance(modelLoader, "models/x.glb")?.let { ModelNode(modelInstance = it) }` |
 | `import io.github.sceneview.node.ModelNode` | no import: `ModelNode`, `AnchorNode` and the other nodes are members of the block |
 | `AnchorNode(engine, anchor).apply { addChildNode(modelNode) }` | `AnchorNode(anchor = anchor) { ModelNode(…) }` |
-| tap listener, `frame.hitTest(…)`, `childNodes += AnchorNode(…)` | `PlacementScene(onPlaced = { anchor -> AnchorNode(anchor = anchor) { … } })` |
+| tap listener, `frame.hitTest(…)`, `childNodes += AnchorNode(…)` | `AutoPlacementScene(assetReady = instance != null, state = state) { placement -> instance?.let { AutoPlacementModel(placement, state, it) } }`. See [From PlacementScene to AutoPlacementScene](docs/docs/migration.md#from-placementscene-to-autoplacementscene). |
 
 `rememberEngine()`, `rememberModelLoader(engine)`, `planeRenderer`, `sessionConfiguration` and
 `onSessionUpdated` keep their names. Every other construct is in

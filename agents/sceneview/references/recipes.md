@@ -14,8 +14,9 @@ mirroring the same surface.
 ## 2. Camera controls (orbit / zoom / pan)
 [`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the Camera & Gestures demo: pass a custom `cameraManipulator =` to `SceneView`, or `null` to lock the camera. Its `StudioCameraManipulator` owns a spherical pose, so it can also coast on release and fly between framings — things Filament's own `Manipulator` cannot express.
 
-## 3. AR tap-to-place
-[`ARPlacementDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt) — `rememberOnGestureListener(onSingleTapConfirmed = { event, node -> frame.hitTest(event)... })` + `AnchorNode(anchor = hit.createAnchor()) { ModelNode(isEditable = true) }`.
+## 3. Automatic AR model placement
+Use `AutoPlacementScene` and `AutoPlacementModel` in the [placement recipe](#place-a-model-in-ar).
+The demo is [`ARPlacementDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt).
 
 ## 4. Augmented image tracking
 [`ARImageDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARImageDemo.kt) — `AugmentedImageNode(augmentedImage = …) { ModelNode(...) }` — one node per detected `AugmentedImage` from `frame.getUpdatedAugmentedImages()`. The reference-image database is configured via `sessionConfiguration`.
@@ -69,115 +70,47 @@ are:
 - Web: [`sceneview-web README`](https://www.npmjs.com/package/sceneview-web)
 - Flutter / RN: bridge packages; both render via the native SceneView underneath.
 
-## Recipe: complete tap-to-place UX (onboarding + reticle + grounded shadow) — #2241
+## Place a model in AR
 
-**The one-liner (preferred).** `PlacementScene` bundles the animated onboarding guide, a ring
-reticle that brightens once a surface is ready, tap-to-place, the instant-placement fallback, the
-plane grid fading after first placement, and a per-model contact shadow — all opt-in via flags:
+Use `AutoPlacementScene` with `AutoPlacementModel`. It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen.
 
 ```kotlin
-// Whatever your own bottom chrome measures — a WindowInsets read, a spacing token, a
-// Modifier.onSizeChanged. PlacementScene cannot see a bar its caller draws over it.
-val bottomBarHeight = 96.dp
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 
-PlacementScene(
-    coaching = true,        // ARCoachingOverlay card while searching for a surface
-    // The coaching card sits 16 dp above the bottom edge by default — a gutter sized for a
-    // screen whose bottom is empty. Under a dock, a nav bar or a product sheet it lands
-    // behind that chrome; name the band it must clear instead (#3735). Omit on a bare screen.
-    coachingBottomClearance = bottomBarHeight + 8.dp,
-    groundShadows = true,   // contact shadow under each placed model
-    // reticleStyle = PlacementReticleStyle.RING is the default; DISC for the legacy flat puck
-    // reticleColor defaults to RETICLE_TINT — an achromatic white ring over a faint dark
-    // contact halo, with an #a4c1ff centre dot only in the locked phase (#3570). Re-tint the
-    // dot, not the ring: a saturated reticle competes with the model it is placing.
-    onPlaced = { anchor ->
-        AnchorNode(anchor = anchor) {
-            rememberModelInstance(modelLoader, "models/model.glb")?.let {
-                ModelNode(modelInstance = it, scaleToUnits = 0.3f)
-            }
-        }
-    },
-)
-```
+@Composable
+fun ARPlacementScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/chair.glb")
+    val state = rememberAutoPlacementState()
 
-**The manual assembly (custom flow).** Only hand-wire the pieces when you need a bespoke pipeline
-`PlacementScene`'s flags don't cover — the building blocks are public:
-
-```kotlin
-var cameraReady by remember { mutableStateOf(false) }
-var isTracking by remember { mutableStateOf(false) }
-var anyPlaneTracked by remember { mutableStateOf(false) }
-var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
-var reticleHit by remember { mutableStateOf<HitResult?>(null) }
-val planes = remember { mutableStateListOf<Plane>() }
-val anchors = remember { mutableStateListOf<Anchor>() }
-
-Box {
-    ARSceneView(
-        // Grid while scanning, shadow receivers after placement — NEVER both (#2657): the plane
-        // renderer carries its own coplanar shadow receiver, so stacking ShadowReceiverPlanes on
-        // top z-fights and double-darkens the contact shadow to near-black.
-        planeRenderer = anchors.isEmpty(),
-        onSessionUpdated = { session, frame ->
-            cameraReady = true
-            isTracking = frame.camera.trackingState == TrackingState.TRACKING
-            val tracked = session.getAllTrackables(Plane::class.java)
-                .filter { it.trackingState == TrackingState.TRACKING }
-            anyPlaneTracked = tracked.isNotEmpty()
-            if (planes.toList() != tracked) { planes.clear(); planes.addAll(tracked) }
-        },
-        onTrackingFailureChanged = { failure = it },
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { _, _ -> reticleHit?.createAnchor()?.let { anchors += it } }
-        ),
-    ) {
-        PlacementReticle(xPx = viewWidth / 2f, yPx = viewHeight / 2f,
-            onHitResultChanged = { reticleHit = it })
-        if (anchors.isNotEmpty()) {  // the grid is gone — the catchers are the single receiver
-            planes.forEach { key(it) { ShadowReceiverPlane(plane = it) } }
-        }
-        anchors.forEach { key(it) { AnchorNode(anchor = it) { /* ModelNode(...) */ } } }
+    AutoPlacementScene(
+        assetReady = instance != null,
+        modifier = Modifier.fillMaxSize(),
+        state = state,
+        engine = engine,
+        modelLoader = modelLoader,
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
     }
-    PlaneDiscoveryGuide(cameraReady, isTracking, anyPlaneTracked, failure)
 }
 ```
 
-The demo-app reference implementation is
-`samples/android-demo/.../common/placement/TapToPlaceArSession.kt`, which expresses this gating as
-the mutually-exclusive `shouldRenderPlaneGrid` / `shouldCatchGroundShadows` predicates in
-`TapToPlaceState.kt` (#2657) — copy that pattern whenever you hand-wire `ShadowReceiverPlane`s
-alongside a plane renderer.
+Put the GLB in `src/main/assets/models/`. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+Set `surface = PlacementSurface.WALL` for wall placement. For a host toolbar or bottom sheet,
+pass its occupied space as `coachingContentPadding` to keep built-in cards clear of it.
 
-## Recipe: wall placement (TV, framed art, mirror) — #2740
-
-For **vertical surfaces**, do not hand-roll `ARSceneView` + raw vertical-plane hits — use
-`WallPlacementScene`, the vertical-surface sibling of `PlacementScene`. It decouples the two noisy
-axes the way Amazon "AR View" / IKEA Place do: **orientation from the wall** (object flush +
-upright, no hit-pose tilt) and **height from the floor** (`floorY + mountHeight`), so the placement
-stays put while ARCore refines the vertical plane:
-
-```kotlin
-WallPlacementScene(
-    mountHeight = 1.2f,                    // anchor height above the floor (TV centre height);
-                                           // base-on-floor: pass the object's half-height
-    onSeamChanged = { seam -> /* draw the "align to the floor↔wall edge" guide from it */ },
-    onPhaseChanged = { phase -> /* FINDING_FLOOR → FINDING_WALL → ALIGNING_EDGE → PLACED */ },
-    onPlaced = { anchor ->
-        AnchorNode(anchor = anchor) {
-            rememberModelInstance(modelLoader, "models/tv.glb")?.let {
-                ModelNode(modelInstance = it, scaleToUnits = 1.4f)
-            }
-        }
-    },
-)
-```
-
-The placement math is public for custom flows: `wallFacingRotation(wallNormal)`,
-`roomFacingNormal(wallNormal, towardViewer)` (ARCore does not guarantee a vertical plane's normal
-sign — always flip it toward the camera), `floorWallSeam(...)`, `wallAnchorPose(...)`. First
-increment of #2740: the seam/phase come back via callbacks so the app draws its own guide; an
-in-scene 3D seam line and a gizmo/D-pad fine-adjust UI are tracked follow-ups.
+**Manual placement.** `PlacementScene` and `WallPlacementScene` are deprecated with a
+warning. Existing flows that need multiple objects placed by tap can keep using them.
+See [From PlacementScene to AutoPlacementScene](https://sceneview.github.io/docs/migration/#from-placementscene-to-autoplacementscene).
 
 ## Recipe: grounding an object with a contact shadow — #2740
 

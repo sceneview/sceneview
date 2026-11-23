@@ -76,14 +76,20 @@ Box {
 Never keep `ShadowReceiverPlane`s AND `planeRenderer = true` live on the same plane — the plane
 renderer attaches its own coplanar shadow receiver, so stacking both z-fights and double-darkens
 shadows (#2657). Gate them mutually exclusively (grid while scanning, shadow receivers after
-placement), or just use `PlacementScene`, which handles this for you.
+placement). `AutoPlacementScene` provides the ground-shadow flow.
 
-`PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
-`snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).
-**Vertical surfaces (#2740):** `WallPlacementScene(mountHeight = …, onSeamChanged = …, onPlaced = …)`
-— wall-flush upright orientation + floor-relative height; exposes the floor↔wall seam for the
-"align to the edge" guide. Pure math helpers: `wallFacingRotation` / `roomFacingNormal` /
-`floorWallSeam` / `wallAnchorPose`.
+**Place a model in AR.** Use `AutoPlacementScene` with `rememberAutoPlacementState()` and
+`AutoPlacementModel`. The model places itself at authored size and takes gestures across the screen.
+The horizontal flow tries the estimated floor after 600 ms of tracked search.
+Set `state.estimatedFallbackMillis = null` to wait for a detected plane, or call
+`state.recenter()` to bring a placed model back in front of the camera. Use
+`surface = PlacementSurface.WALL` for walls.
+See the [placement recipe](recipes.md#place-a-model-in-ar).
+
+**Manual placement.** `PlacementScene` and `WallPlacementScene` are deprecated with a
+warning. Existing flows that need multiple objects placed by tap can keep using them.
+See [From PlacementScene to AutoPlacementScene](https://sceneview.github.io/docs/migration/#from-placementscene-to-autoplacementscene).
+
 **Grounding (#2740):** `ContactShadow(size, context = ContactShadowContext.Wall|Floor|TableTop,
 normal)` — procedural gradient, no shadow map, so it works on a WALL where a real shadow can't
 (ceiling light grazes it). `size` decides the quad plane and must agree with `normal`:

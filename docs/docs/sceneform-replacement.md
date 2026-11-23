@@ -1,6 +1,6 @@
 ---
 title: Sceneform replacement — move from Sceneform to SceneView
-description: "Google archived Sceneform in 2021. SceneView is its maintained, Compose-native successor on ARCore and Filament: the Gradle dependency, a minimal tap-to-place AR screen, and the Sceneform to SceneView class mapping."
+description: "SceneView is the Compose-native successor to Sceneform on ARCore and Filament. See the Gradle dependency, a minimal automatic AR placement screen, and the Sceneform to SceneView class mapping."
 ---
 
 # Sceneform replacement: SceneView
@@ -29,37 +29,42 @@ dependencies {
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, Kotlin 2.3 or newer and JVM target 21 (on AGP 8 / compileSdk 36, use 4.18.0).
 The [quickstart requirements](quickstart.md#requirements) give the full Gradle block.
 
-## Minimal AR screen: tap a plane to place a model
+## Minimal AR model placement screen
 
-This replaces an `ArFragment` with a `setOnTapArPlaneListener` that builds a `ModelRenderable`
-and attaches a `TransformableNode`.
+This replaces an `ArFragment` that uses `setOnTapArPlaneListener`, `ModelRenderable` and
+`TransformableNode`.
 
 ```kotlin
-import io.github.sceneview.ar.PlacementScene
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
 
 @Composable
-fun ArScreen() {
+fun ARPlacementScreen() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    PlacementScene(
+    val instance = rememberModelInstance(modelLoader, "models/chair.glb")
+    val state = rememberAutoPlacementState()
+
+    AutoPlacementScene(
+        assetReady = instance != null,
         modifier = Modifier.fillMaxSize(),
+        state = state,
         engine = engine,
         modelLoader = modelLoader,
-        // Named parameter: the trailing lambda is `content`, not the anchor.
-        onPlaced = { anchor ->               // called once per tap-created Anchor
-            AnchorNode(anchor = anchor) {
-                val instance = rememberModelInstance(modelLoader, "models/chair.glb")
-                instance?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
-            }
-        },
-    )
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
+    }
 }
 ```
 
-`models/chair.glb` lives in `src/main/assets/`. `PlacementScene` brings the plane renderer, a
-centre reticle, tap-to-place and an instant-placement fallback. For placement without a tap, use
-`AutoPlacementScene`; for full control, `ARSceneView { }` — both are in
-[`llms.txt`](https://sceneview.github.io/llms.txt).
+Put `models/chair.glb` in `src/main/assets/`. It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
 
 `arsceneview` already declares the `CAMERA` permission and ARCore as optional; the
 [AR manifest](quickstart.md#ar-manifest) section shows what an AR Required app adds.
@@ -68,13 +73,13 @@ centre reticle, tap-to-place and an instant-placement fallback. For placement wi
 
 | Sceneform | SceneView |
 |---|---|
-| `ArFragment` / `ArSceneView` | `ARSceneView { }` composable, or `PlacementScene` for tap-to-place |
+| `ArFragment` / `ArSceneView` | `AutoPlacementScene` for model placement, or `ARSceneView { }` for custom AR |
 | `SceneView` (non-AR) | `SceneView { }` composable |
 | `ModelRenderable.builder().setSource(…).build()` | `rememberModelInstance(modelLoader, "models/x.glb")` — `null` while loading |
 | `.sfb` / `.sfa` assets | standard glTF: `.glb` or `.gltf` |
 | `AnchorNode(anchor).setParent(scene)` | `AnchorNode(anchor = anchor) { … }` inside the scene block |
 | `TransformableNode` | `ModelNode(…, isEditable = true)` — drag, pinch and twist |
-| `setOnTapArPlaneListener` | `PlacementScene(onPlaced = …)`, or `ARSceneView(onTouchEvent = { event, hitResult -> … })` |
+| `setOnTapArPlaneListener` | `AutoPlacementScene` places the model when the asset and camera tracking are ready |
 | `node.setParent(null)` / `destroy()` | remove the node from composition (an `if`, a list) |
 | `onResume` / `onPause` / `onDestroy` forwarding | nothing to write — the Compose lifecycle handles it |
 

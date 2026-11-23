@@ -168,7 +168,7 @@ An honest comparison for developers evaluating 3D and AR options.
 
 | Sceneform | SceneView |
 |---|---|
-| `ArFragment` | `ARSceneView { }` composable, or `PlacementScene` for tap-to-place |
+| `ArFragment` | `AutoPlacementScene` places a model at authored size, with a 600 ms estimated-floor fallback. Use `ARSceneView { }` for custom AR |
 | `ModelRenderable.builder()` | `rememberModelInstance(modelLoader, path)` |
 | `AnchorNode(anchor).setParent(scene)` | `AnchorNode(anchor = a) { ... }` |
 | `TransformableNode` | `ModelNode(…, isEditable = true)` |
