@@ -1222,7 +1222,7 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      # -Xmx8g, overriding the -Xmx4g in gradle.properties. NOT a precaution:
+      # -Xmx8g, overriding the -Xmx3g in gradle.properties. NOT a precaution:
       # `linkDebugTestIosSimulatorArm64` OOM-killed the Gradle daemon twice at
       # 4g while this test was being written ("Gradle build daemon disappeared
       # unexpectedly"), and it completes at 8g. The Kotlin/Native linker runs
