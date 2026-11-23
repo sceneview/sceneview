@@ -160,3 +160,21 @@ private fun sessionHooksWithPermissionObserver(
         onSessionCreated = { _ -> },
     ) { _ -> }
 }
+
+@Composable
+private fun hostLifecycleAndPlacementFreeContent(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+) {
+    // A NavHost destination keeps the camera live through its exit transition, and a resolved
+    // cloud anchor renders before (or without) the automatic placement.
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        lifecycle = io.github.sceneview.ar.rememberHostLifecycle(),
+        sceneContent = { },
+    ) { _ -> }
+}

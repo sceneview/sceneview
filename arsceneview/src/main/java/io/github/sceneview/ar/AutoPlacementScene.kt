@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
@@ -409,6 +411,11 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   placement): an exception thrown here never stops the placement.
  * @param onSessionFailure a typed session failure; the scene has already reset its placement
  *   when the session closed.
+ * @param lifecycle the lifecycle the AR session follows, as [ARSceneView]'s parameter of the
+ *   same name. Pass [rememberHostLifecycle] for a `NavHost` destination with transitions, so
+ *   the camera stays live while the screen animates out.
+ * @param sceneContent nodes that do not wait for the placement — a resolved cloud anchor, a
+ *   host's own markers — composed in the same scene whether or not the object stands.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -436,6 +443,8 @@ fun AutoPlacementScene(
     onSessionPaused: ((session: Session) -> Unit)? = null,
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    sceneContent: (@Composable ARSceneScope.() -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -481,6 +490,7 @@ fun AutoPlacementScene(
         ) {
             ARSceneView(
                 modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
+                lifecycle = lifecycle,
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
@@ -566,6 +576,7 @@ fun AutoPlacementScene(
                     onSessionUpdated?.invoke(session, frame)
                 },
             ) {
+                sceneContent?.invoke(this)
                 placement?.let { result -> key(result) { content(result) } }
                 // The plane renderer catches no shadow here, so these are the only receivers on the
                 // planes even while the surfaces show: no double darkening (#2657).

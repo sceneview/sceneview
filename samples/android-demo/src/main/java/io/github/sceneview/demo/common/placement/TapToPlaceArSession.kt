@@ -83,6 +83,7 @@ import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.PlacementSurface
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.rememberArGuidanceState
@@ -216,6 +217,8 @@ fun TapToPlaceArSession(
             assetReady = state.spec != null && state.modelInstance != null,
             modifier = Modifier.fillMaxSize(),
             state = controller,
+            // The camera stays live while the screen animates in and out of the NavHost.
+            lifecycle = rememberHostLifecycle(),
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
