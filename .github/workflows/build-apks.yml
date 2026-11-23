@@ -24,6 +24,18 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
+    inputs:
+      demo_id_suffix:
+        # A device-proof APK for a branch, built here instead of on the Mac:
+        # `gh workflow run build-apks.yml --ref <branch> -f demo_id_suffix=.floordrag`,
+        # then `gh run download <run> -n sample-apks`. The suffix makes the demo a
+        # separate app, installed next to the Play Store one and the `.qa` one
+        # without replacing either (install it with `adb install`). Empty (the default and every tag build):
+        # the plain public demo, as before.
+        description: "Application id suffix for a side-by-side demo APK, e.g. .floordrag (empty: plain demo)"
+        required: false
+        default: ""
+        type: string
 
 # This workflow uploads GitHub Release assets via softprops/action-gh-release on
 # tag pushes. A re-pushed/moved tag must NOT cancel an in-flight asset upload, or
@@ -99,12 +111,33 @@ jobs:
           # the bundled featured models and disables search. See
           # samples/android-demo/.../sketchfab/ for the BuildConfig wiring.
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+          # Empty unless dispatched for a side-by-side proof APK (see `on:`).
+          DEMO_ID_SUFFIX: ${{ inputs.demo_id_suffix }}
         # `-PdemoPlainDebug=true`: this debug APK is the public one (GitHub
         # Release asset, tools/try-demo.sh --download, docs/docs/try.md), so it
         # keeps the plain `io.github.sceneview.demo` id, "SceneView" label and
         # store icon. Without it the android-demo debug build is the side-by-side
         # QA app (`io.github.sceneview.demo.qa`, "SV QA") — see #4138.
         run: |
+          if [ -n "$DEMO_ID_SUFFIX" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "::error::demo_id_suffix is for branch proofs; a release builds the plain demo."
+              exit 1
+            fi
+            if ! [[ "$DEMO_ID_SUFFIX" =~ ^\.[a-z][a-z0-9_]{0,30}$ ]]; then
+              echo "::error::demo_id_suffix must look like .floordrag (a dot, then lowercase letters, digits or _)."
+              exit 1
+            fi
+            if [ "$DEMO_ID_SUFFIX" = ".qa" ]; then
+              # A CI-signed .qa cannot update the locally built one on a phone.
+              echo "::error::.qa is the local QA app; pick another suffix, e.g. .floordrag."
+              exit 1
+            fi
+            # The demo alone, as its own app next to the store and .qa installs.
+            ./gradlew :samples:android-demo:assembleDebug \
+              "-PdemoApplicationIdSuffix=$DEMO_ID_SUFFIX" --console=plain
+            exit 0
+          fi
           ./gradlew \
             :samples:android-demo:assembleDebug \
             :samples:android-tv-demo:assembleDebug \
@@ -112,12 +145,17 @@ jobs:
             --console=plain
 
       - name: Collect APKs
+        env:
+          DEMO_ID_SUFFIX: ${{ inputs.demo_id_suffix }}
         run: |
           mkdir -p dist
           for sample in android-demo android-tv-demo; do
-            apk=$(find "samples/$sample/build/outputs/apk/debug" -name "*.apk" | head -1)
+            out="samples/$sample/build/outputs/apk/debug"
+            [ -d "$out" ] || continue # A suffixed proof build skips the TV demo.
+            apk=$(find "$out" -name "*.apk" | head -1)
             if [ -n "$apk" ]; then
-              cp "$apk" "dist/sceneview-${sample}.apk"
+              # A proof APK is never named like the public demo.
+              cp "$apk" "dist/sceneview-${sample}${DEMO_ID_SUFFIX}.apk"
             fi
           done
 
