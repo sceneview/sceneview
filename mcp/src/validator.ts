@@ -58,10 +58,23 @@ const RULES: Rule[] = [
       const localNames = locallyDeclaredNames(codeOnly);
       const androidImport = /\bimport\s+io\.github\.sceneview\.(?!compose(?:\.|\b))/;
       const androidNames = [
-        "Scene", "SceneView", "ARScene", "ARSceneView", "PlacementScene", "AutoPlacementScene",
-        "rememberEngine", "rememberModelLoader", "rememberModelInstance",
-        "rememberEnvironmentLoader", "rememberMaterialLoader", "rememberView", "rememberARView",
-        "ModelNode", "AnchorNode", "CubeNode", "LightNode",
+        "Scene",
+        "SceneView",
+        "ARScene",
+        "ARSceneView",
+        "PlacementScene",
+        "AutoPlacementScene",
+        "rememberEngine",
+        "rememberModelLoader",
+        "rememberModelInstance",
+        "rememberEnvironmentLoader",
+        "rememberMaterialLoader",
+        "rememberView",
+        "rememberARView",
+        "ModelNode",
+        "AnchorNode",
+        "CubeNode",
+        "LightNode",
       ];
       // A call (`Name(` or `Name {`) to an Android name the snippet does not declare itself.
       const calledAndroidNames = androidNames.filter(
@@ -69,7 +82,14 @@ const RULES: Rule[] = [
       );
       if (!androidImport.test(codeOnly) && calledAndroidNames.length === 0) return [];
 
-      const arNames = new Set(["ARScene", "ARSceneView", "PlacementScene", "AutoPlacementScene", "rememberARView", "AnchorNode"]);
+      const arNames = new Set([
+        "ARScene",
+        "ARSceneView",
+        "PlacementScene",
+        "AutoPlacementScene",
+        "rememberARView",
+        "AnchorNode",
+      ]);
       const isAr =
         /\bimport\s+io\.github\.sceneview\.ar(?:\.|\b)/.test(codeOnly) ||
         calledAndroidNames.some((name) => arNames.has(name));
