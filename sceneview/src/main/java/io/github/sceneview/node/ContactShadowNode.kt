@@ -83,6 +83,48 @@ enum class ContactShadowContext(
 }
 
 /**
+ * A rounded-rectangle shape for a [ContactShadowNode], set through
+ * [ContactShadowNode.footprint] in place of its context's ellipse.
+ *
+ * The pool is the node's full [ContactShadowNode.intensity] inside the rectangle and fades to
+ * nothing across [fade] beyond its outline. The fade is the same width on every side: a 2.2 m
+ * sofa gets the same band on its short sides as on its long ones, and the rectangle's corners
+ * are covered, which an ellipse fitted to the same footprint leaves bare. Set the rectangle to
+ * the object's footprint: the object hides the inside, and the band around it is the shadow a
+ * viewer sees. A [cornerRadius] up to the smaller half-extent rounds it towards a disc, for
+ * objects whose footprint is not a box.
+ *
+ * All four values are in the node's own units — metres at scale 1 — so they scale with the node
+ * like its [size][ContactShadowNode]. The rectangle is centred on the quad (the context's centre
+ * offset does not apply) and its half-extents run along the quad's `u` and `v` axes (see
+ * [ContactShadowNode]'s UV table): X and Z for a floor quad, X and Y for a wall quad. `u` always
+ * runs along X, so there is no YZ quad: a `size` with `x = 0` builds a degenerate plane. Make the
+ * quad at least `2 × (half-extent + fade)` on each axis, or the band is cut at its border.
+ *
+ * @property halfU        Half-extent of the rectangle along `u`.
+ * @property halfV        Half-extent of the rectangle along `v`.
+ * @property fade         Width of the fade beyond the outline. Must be > 0, or the node keeps
+ *                        the ellipse.
+ * @property cornerRadius Corner radius of the rectangle, clamped to the smaller half-extent.
+ */
+class ContactShadowFootprint(
+    val halfU: Float,
+    val halfV: Float,
+    val fade: Float,
+    val cornerRadius: Float = 0.0f,
+) {
+    override fun equals(other: Any?): Boolean = this === other || other is ContactShadowFootprint &&
+        halfU == other.halfU && halfV == other.halfV && fade == other.fade &&
+        cornerRadius == other.cornerRadius
+
+    override fun hashCode(): Int =
+        ((halfU.hashCode() * 31 + halfV.hashCode()) * 31 + fade.hashCode()) * 31 + cornerRadius.hashCode()
+
+    override fun toString(): String =
+        "ContactShadowFootprint(halfU=$halfU, halfV=$halfV, fade=$fade, cornerRadius=$cornerRadius)"
+}
+
+/**
  * A procedural contact shadow — the soft dark pool that makes an object read as *touching* a
  * surface instead of floating above it (#2740 sub-task C).
  *
@@ -95,7 +137,7 @@ enum class ContactShadowContext(
  * procedural pool serves both.
  *
  * Pick the [ContactShadowContext] that matches the surface and the node configures its gradient
- * accordingly.
+ * accordingly. To fit the pool to a rectangular object instead, set [footprint].
  *
  * ### UV axis convention
  *
@@ -185,6 +227,21 @@ open class ContactShadowNode private constructor(
             }
         }
 
+    /**
+     * A rounded-rectangle pool with an absolute fade, in place of the [context]'s ellipse, or
+     * `null` (the default) for the ellipse. The rectangle is centred on the quad; the context's
+     * centre offset does not apply to it. Updating it takes effect on the next frame, and the
+     * shader measures the quad itself, so resizing it with `updateGeometry` keeps the rectangle
+     * true.
+     */
+    var footprint: ContactShadowFootprint? = null
+        set(value) {
+            if (field != value) {
+                field = value
+                applyFootprint(value)
+            }
+        }
+
     /** The surface context driving the gradient shape. Changing it re-applies every parameter. */
     var context: ContactShadowContext = context
         set(value) {
@@ -212,6 +269,13 @@ open class ContactShadowNode private constructor(
         instance.setParameter(MATERIAL_SOFTNESS, context.softness)
         val offset = surfaceOffsetFor(geometry.normal)
         instance.setParameter(MATERIAL_SURFACE_OFFSET, offset.x, offset.y, offset.z)
+        applyFootprint(footprint)
+    }
+
+    private fun applyFootprint(footprint: ContactShadowFootprint?) {
+        val instance = shadowMaterialInstance
+        val params = footprintParameters(footprint)
+        instance.setParameter(MATERIAL_FOOTPRINT, params[0], params[1], params[2], params[3])
     }
 
     override fun destroy() {
@@ -243,6 +307,27 @@ open class ContactShadowNode private constructor(
 
         /** Name of the material's model-space lift parameter (`float3`). */
         const val MATERIAL_SURFACE_OFFSET = "surfaceOffset"
+
+        /**
+         * Name of the material's rounded-rectangle parameter (`float4`: half-extents, corner
+         * radius, fade, in the node's units). A zero fade keeps the ellipse.
+         */
+        const val MATERIAL_FOOTPRINT = "footprint"
+
+        /**
+         * The `footprint` material parameter for [footprint]: `(halfU, halfV, cornerRadius,
+         * fade)`, all zeros (the ellipse) for `null` or a fade that is not a positive finite
+         * number. Negative or non-finite extents clamp to zero.
+         */
+        internal fun footprintParameters(footprint: ContactShadowFootprint?): FloatArray {
+            val fade = footprint?.fade ?: 0.0f
+            if (footprint == null || !(fade > 0.0f) || !fade.isFinite()) return FloatArray(4)
+            fun metres(value: Float) = if (value.isFinite()) value.coerceAtLeast(0.0f) else 0.0f
+            val halfU = metres(footprint.halfU)
+            val halfV = metres(footprint.halfV)
+            val corner = metres(footprint.cornerRadius).coerceAtMost(minOf(halfU, halfV))
+            return floatArrayOf(halfU, halfV, corner, fade)
+        }
 
         /** Default quad size — 1 m², comfortably larger than a typical placed object. */
         val DEFAULT_SIZE = Size(x = 1.0f, y = 0.0f, z = 1.0f)

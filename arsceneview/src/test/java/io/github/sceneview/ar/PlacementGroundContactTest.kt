@@ -12,7 +12,9 @@ class PlacementGroundContactTest {
     @Test
     fun `the disc covers the held ring's outer edging`() {
         val footprint = SelectionRing.Footprint(0f, 0f, 0.3f)
-        val quad = PlacementContactShadow.Quad(0f, 0f, sizeX = 0.2f, sizeZ = 0.2f)
+        val quad = PlacementContactShadow.Quad(
+            0f, 0f, 0.2f, 0.2f, halfX = 0.05f, halfZ = 0.05f, fade = 0.03f, cornerRadius = 0f,
+        )
         val radius = PlacementGroundContact.radius(footprint, quad)
         // Held stroke 1.4 tubes wide, then a gap of stroke + edging and the edging (0.6 stroke).
         val stroke = SelectionRing.tubeRadius(0.3f) * SelectionRing.HELD_WIDTH
@@ -22,8 +24,12 @@ class PlacementGroundContactTest {
     @Test
     fun `the disc covers the contact shadow when it reaches farther`() {
         val footprint = SelectionRing.Footprint(0f, 0f, 0.2f)
-        val quad = PlacementContactShadow.Quad(0f, 0f, sizeX = 0.4f, sizeZ = 0.9f)
-        assertEquals(0.45f, PlacementGroundContact.radius(footprint, quad), 1e-6f)
+        val quad = PlacementContactShadow.Quad(
+            0f, 0f, 0.5f, 0.9f, halfX = 0.13f, halfZ = 0.3f, fade = 0.1f, cornerRadius = 0.03f,
+        )
+        // The rounded corner at the end of the fade: hypot(0.1, 0.27) + 0.03 + 0.1.
+        assertEquals(quad.reach, PlacementGroundContact.radius(footprint, quad), 1e-6f)
+        assertEquals(0.4179f, quad.reach, 1e-4f)
         assertEquals(0f, PlacementGroundContact.radius(SelectionRing.Footprint(0f, 0f, 0f), null), 0f)
     }
 
