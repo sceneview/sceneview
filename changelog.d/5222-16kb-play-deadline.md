@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **Migration guide: the right 16 KB page-size date.** The guide said Google Play has enforced 16 KB alignment "since January 2026". Google's page gives February 1, 2027, the date from which Play blocks updates of apps targeting API 35+ that do not support it. The section now also says what the AGP flag does (packaging) and what it cannot do (fix a prebuilt `.so` linked for 4 KB pages, such as Sceneform 1.23's).

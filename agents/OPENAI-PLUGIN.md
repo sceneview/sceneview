@@ -71,7 +71,7 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 
 | # | Prompt | Expected behaviour | Result shape |
 |---|---|---|---|
-| P1 | "Load `models/helmet.glb` in a Compose screen with SceneView" | Skill `sceneview` triggers; code uses `SceneView { }`, `rememberEngine`, `rememberModelLoader`, `rememberModelInstance`; dependency `io.github.sceneview:sceneview:4.71.0` | Kotlin snippet that compiles against the declared Maven dependency |
+| P1 | "Load `models/helmet.glb` in a Compose screen with SceneView" | Skill `sceneview` triggers; code uses `SceneView { }`, `rememberEngine`, `rememberModelLoader`, `rememberModelInstance`; dependency `io.github.sceneview:sceneview:4.72.0` | Kotlin snippet that compiles against the declared Maven dependency |
 | P2 | "Place that model on a detected plane when I tap" | `ARSceneView { }` with plane detection and a hit-test on tap; dependency `arsceneview` | Kotlin snippet |
 | P3 | "Same thing on iOS with SwiftUI" | Skill `sceneview-ios`; `SceneView { }` / `ARSceneView { }` from SceneViewSwift, SPM last release `4.68.0` (end of life) | Swift snippet |
 | P4 | "Show me `https://…/moto_helmet_v2.glb` in 3D" (MCP shape only) | Tool `view_3d_model` is called; the widget renders the model inline; text names the URL | `structuredContent.modelUrl` + widget |
