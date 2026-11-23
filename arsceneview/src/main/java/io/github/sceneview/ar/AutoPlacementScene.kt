@@ -1624,8 +1624,11 @@ private class AutomaticAnchorNode(
             ?: toRay.also { offset = floatArrayOf(it.x, it.y, it.z) }
         val tangent = wallTangentOffset(grab, normal)
         val target = contact - toRay + tangent
+        // A floor slide anchors to the plane this drag last stood on (a drag from a table onto
+        // the floor and past it belongs to the floor), not to the plane the gesture began on.
+        val surface = pending?.takeIf { offPolygonFloor && it.kind == null }?.trackable ?: placement.trackable
         return AutoPlacementCandidate(
-            placement.trackable,
+            surface,
             Pose(floatArrayOf(target.x, target.y, target.z), pose.rotationQuaternion),
             placement.kind,
             offPolygonFloor,
