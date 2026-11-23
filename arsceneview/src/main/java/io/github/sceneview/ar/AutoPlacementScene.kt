@@ -1423,11 +1423,20 @@ private fun visiblePlacementPoint(
 }
 
 /**
- * Whether an object at [objectY] stands on the floor at [floorY] (the lowest tracked
- * upward-facing plane) rather than on a table: only a floor drag may leave every polygon.
+ * Whether an object at [objectY] stands on the floor rather than on a table: only a floor drag
+ * may leave every polygon. It must sit on the lowest tracked upward-facing plane ([floorY]),
+ * and the camera ([cameraY]) must be at least [FLOOR_BELOW_CAMERA_M] above it, because the
+ * lowest plane is a table when ARCore has not seen the floor yet. In doubt, it is a table.
  */
-internal fun standsOnFloor(objectY: Float, floorY: Float?): Boolean =
-    floorY != null && objectY - floorY <= SEAM_FLOOR_TOLERANCE_M
+internal fun standsOnFloor(objectY: Float, floorY: Float?, cameraY: Float?): Boolean =
+    floorY != null && cameraY != null && objectY - floorY <= SEAM_FLOOR_TOLERANCE_M &&
+        cameraY - objectY >= FLOOR_BELOW_CAMERA_M
+
+/**
+ * A phone held by someone standing is 1.1–1.4 m above the floor and 0.4–0.9 m above a
+ * 0.75 m table (the demo's room dollhouse uses the same split).
+ */
+internal const val FLOOR_BELOW_CAMERA_M = 1.0f
 
 /**
  * How far a floor drag may carry the object: 5 m, as ARMV (model-viewer's WebXR drag allows 10).
@@ -1529,7 +1538,7 @@ private class AutomaticAnchorNode(
                 // instead of refusing the move (model-viewer's WebXR drag, ARMV). A table top
                 // ends at its edge: an object never floats past it.
                 ?: slideAlongWall(e, offPolygonFloor = true)
-                    ?.takeIf { standsOnFloor(pose.ty(), state.floorHeight) }
+                    ?.takeIf { standsOnFloor(pose.ty(), state.floorHeight, state.cameraHeight) }
         }
         if (candidate == null || !candidate.accepts(candidate.pose) ||
             !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
@@ -1650,8 +1659,9 @@ private class AutomaticAnchorNode(
 
     /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall or a table keeps the placement range. */
     private fun dragDistanceLimit(target: Pose) =
-        if (!placement.isWall && standsOnFloor(target.ty(), state.floorHeight)) MAX_DRAG_DISTANCE_M
-        else UsableSurfacePolicy.MAX_DISTANCE_M
+        if (placement.isWall || !standsOnFloor(target.ty(), state.floorHeight, state.cameraHeight)) {
+            UsableSurfacePolicy.MAX_DISTANCE_M
+        } else MAX_DRAG_DISTANCE_M
 
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
