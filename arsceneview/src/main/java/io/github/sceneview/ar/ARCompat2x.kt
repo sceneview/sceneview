@@ -14,7 +14,9 @@ import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -170,13 +172,19 @@ fun ARScene(
  * content after the effect that closes the session, and Compose forgets effects in reverse order.
  * Their later destroy() then skips the native call.
  *
- * A node taken out of the list stays attached to its anchor until then: it may be listed again.
+ * The nodes still in the caller's list are released too, even if no composition saw them: a tap
+ * can add a node in the same frame the scene leaves.
+ *
+ * A node taken out of the list stays attached to its anchor while the scene is shown: it may be
+ * listed again in the same scene. After the scene leaves, the anchor is gone with its session.
  */
 @Composable
 internal fun ARSceneScope.Compat2xARChildNodes(nodes: List<Node>) {
     // Identity set: the nodes this shim attached and whose session objects it must give back.
     val attached = remember { Collections.newSetFromMap(IdentityHashMap<Node, Boolean>()) }
     val listed = nodes.distinct()
+    // Usually the caller's live SnapshotStateList itself: read again on disposal.
+    val current by rememberUpdatedState(nodes)
     SideEffect {
         // A destroyed node already gave its anchor back; dropping it keeps the set bounded.
         attached.removeAll { it.isDestroyed }
@@ -184,7 +192,11 @@ internal fun ARSceneScope.Compat2xARChildNodes(nodes: List<Node>) {
     }
     DisposableEffect(Unit) {
         onDispose {
-            releaseSessionNodes(attached.toList())
+            // Identity union: a node added in the frame the scene left was never composed here.
+            val release = Collections.newSetFromMap(IdentityHashMap<Node, Boolean>())
+            release += attached
+            release += current
+            releaseSessionNodes(release.toList())
             attached.clear()
         }
     }

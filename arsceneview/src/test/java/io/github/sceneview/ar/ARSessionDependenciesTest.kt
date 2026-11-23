@@ -678,14 +678,49 @@ class ARSessionDependenciesTest {
     }
 
     /**
+     * Same, for a node a tap adds to the list in the very frame the scene leaves (#5216): no
+     * composition ever attached it, so only the caller's list still names it when the shim goes.
+     */
+    @Test
+    fun `a 2x childNodes anchor added in the frame the scene leaves is released before the close`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val placed = anchorNode(session)
+        val late = anchorNode(session)
+        val stoppedWithOpenSession = mutableListOf<Boolean>()
+        late.onTrackingStateChanged = {
+            if (it == TrackingState.STOPPED) stoppedWithOpenSession += !session.isClosed
+        }
+        lateinit var childNodes: MutableList<Node>
+
+        composeCompat2xScene(
+            session,
+            owner = {
+                @Suppress("DEPRECATION")
+                io.github.sceneview.rememberNodes { add(placed) }.also { childNodes = it }
+            },
+            whileShown = { scopeNodes, _ -> assertSame(placed, scopeNodes.single()) },
+            inLeavingFrame = { childNodes += late },
+        )
+
+        assertTrue(session.isClosed)
+        assertTrue(late.isDestroyed)
+        assertEquals(listOf(true), stoppedWithOpenSession)
+        assertEquals(setOf(placed.anchor, late.anchor), detached.toSet())
+        assertEquals(2, detached.size)
+    }
+
+    /**
      * Composes, in `ARSceneView`'s order, the 2.x list [owner], an effect that closes the session on
      * disposal (`ARSceneView`'s `DisposableEffect(lifecycle)`), then the shim as the content. Runs
      * [whileShown] (off the composition, outside `runOnIdle`), then takes the whole scene out.
+     * [inLeavingFrame] runs in the same snapshot as the leave, so no composition sees its changes.
      */
     private fun composeCompat2xScene(
         session: ARSession,
         owner: @Composable () -> List<Node>,
         whileShown: (scopeNodes: List<Node>, rule: ComposeContentTestRule) -> Unit,
+        inLeavingFrame: () -> Unit = {},
     ) {
         val scopeNodes = mutableStateListOf<Node>()
         val scope = ARSceneScope(
@@ -717,6 +752,7 @@ class ARSessionDependenciesTest {
                 rule.runOnIdle {
                     assertFalse(session.isClosed)
                     assertTrue(detached.isEmpty())
+                    inLeavingFrame()
                     sceneShown = false
                 }
                 rule.runOnIdle { assertTrue(scopeNodes.isEmpty()) }
