@@ -16,6 +16,87 @@ support the project on [Open Collective](https://opencollective.com/sceneview).
 
 ---
 
+## From PlacementScene to AutoPlacementScene
+
+`PlacementScene` and `WallPlacementScene` are deprecated at warning level. Existing
+binaries still link and products that require several objects placed by tap can keep using
+the legacy composables.
+
+Before, the named `onPlaced` block composed a model for each anchor created by tapping.
+
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.PlacementScene
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Suppress("DEPRECATION")
+@Composable
+fun ManualPlacementScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+
+    PlacementScene(
+        modifier = Modifier.fillMaxSize(),
+        engine = engine,
+        modelLoader = modelLoader,
+        onPlaced = { anchor ->
+            AnchorNode(anchor = anchor) {
+                rememberModelInstance(modelLoader, "models/chair.glb")?.let { instance ->
+                    ModelNode(modelInstance = instance, isEditable = true)
+                }
+            }
+        },
+    )
+}
+```
+
+With `AutoPlacementScene`, load the model before setting `assetReady`. Pass the same
+`AutoPlacementState` to the scene and model. `AutoPlacementModel` owns grounding and
+manipulation. Remove the old `AnchorNode` wrapper for this model.
+
+```kotlin
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun ARPlacementScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val instance = rememberModelInstance(modelLoader, "models/chair.glb")
+    val state = rememberAutoPlacementState()
+
+    AutoPlacementScene(
+        assetReady = instance != null,
+        modifier = Modifier.fillMaxSize(),
+        state = state,
+        engine = engine,
+        modelLoader = modelLoader,
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
+    }
+}
+```
+
+It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+
+For a wall, set `surface = PlacementSurface.WALL`. Review any manual mount height, seam
+callbacks and `PlacementController`-based actions when migrating, since automatic placement
+owns one object and chooses the wall contact point. Use `sceneContent` for other anchors
+and `onPlaced` for one-shot placement notifications. The IDE replacement carries the old
+anchor block as a starting point. Move asset loading out of it and replace the anchor/model
+pair with `AutoPlacementModel` as shown above.
+
 ## Android camera permission recovery — `SettingsWithRequest`
 
 Replace `ARCameraPermissionRecovery.RequestWithSettings` (4.69.6 and 4.69.7) with

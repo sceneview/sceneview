@@ -171,6 +171,8 @@ fun SpatialAnswer(
     }
 }
 
+// Spatial Answer moves to AutoPlacementScene with its device proof.
+@Suppress("DEPRECATION")
 @Composable
 private fun SpatialViewport(spec: SpatialAnswerSpec, modifier: Modifier, ar: Boolean, onEvent: (SpatialAnswerEvent) -> Unit) {
     val engine = rememberEngine()

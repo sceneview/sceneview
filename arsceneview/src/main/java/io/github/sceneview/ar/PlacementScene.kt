@@ -43,24 +43,21 @@ import java.io.File
 /**
  * Manual-placement API. For automatic placement use [AutoPlacementScene].
  *
- * One-line tap-to-place AR scene — the Sceneform `ArFragment` parity bundle
- * ([#1765](https://github.com/sceneview/sceneview/issues/1765)).
+ * Legacy tap-to-place AR scene for products that place several objects by tap.
+ * Use [AutoPlacementScene] for automatic placement. See the
+ * [migration guide](https://sceneview.github.io/docs/migration/#from-placementscene-to-autoplacementscene).
  *
- * Every AR placement demo re-implements the same 30-50 lines of
- * plane-find-then-tap-to-place boilerplate: a center-screen reticle, an ARCore hit-test in the tap
- * gesture, anchor creation, an instant-placement fallback when no plane has converged yet.
- * `PlacementScene` bundles all of it behind a single composable so an app — or an AI generating
- * AR code from `llms.txt` — gets correct, complete tap-to-place behaviour in one call:
+ * This composable manages the center-screen reticle, hit tests, anchors and the manual
+ * instant-placement fallback. Use the named [onPlaced] block to declare each placed object.
  *
  * ```kotlin
- * PlacementScene { anchor ->
+ * PlacementScene(onPlaced = { anchor ->
  *     AnchorNode(anchor = anchor) {
- *         ModelNode(
- *             modelInstance = rememberModelInstance(modelLoader, "models/helmet.glb"),
- *             scaleToUnits = 0.3f
- *         )
+ *         rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
+ *             ModelNode(modelInstance = instance)
+ *         }
  *     }
- * }
+ * })
  * ```
  *
  * What it wires for you:
@@ -160,6 +157,18 @@ import java.io.File
  *                              [PlacementController] so the caller can [PlacementController.clear]
  *                              all placements or read the live anchor list.
  */
+@Deprecated(
+    message = "Use AutoPlacementScene: it places the object itself, drags past the detected floor " +
+        "and takes gestures anywhere on screen. See the migration guide.",
+    replaceWith = ReplaceWith(
+        "AutoPlacementScene(assetReady = true, modifier = modifier, engine = engine, " +
+            "modelLoader = modelLoader, materialLoader = materialLoader, groundShadows = groundShadows, " +
+            "playbackDataset = playbackDataset, sessionConfiguration = sessionConfiguration) { placement -> " +
+            "onPlaced(placement.anchor) }",
+        "io.github.sceneview.ar.AutoPlacementScene",
+    ),
+    level = DeprecationLevel.WARNING,
+)
 @Composable
 fun PlacementScene(
     modifier: Modifier = Modifier,
