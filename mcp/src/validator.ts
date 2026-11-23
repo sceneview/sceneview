@@ -1,3 +1,4 @@
+import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import {
   didYouMean,
   isKnownTopLevelFunction,
@@ -37,7 +38,87 @@ function locallyDeclaredNames(code: string): Set<string> {
   return names;
 }
 
+function outdatedSceneViewVersionIssue(
+  artifact: string,
+  version: string,
+  line: number
+): ValidationIssue {
+  const coordinate = `io.github.sceneview:${artifact}`;
+  return {
+    severity: "error",
+    rule: "setup/outdated-sceneview-version",
+    message: `\`${coordinate}:${version}\` is a pre-4.x release whose API no longer exists. Use \`${coordinate}:${LATEST_SCENEVIEW_RELEASE}\`, which also ships 16 KB page-size aligned native libraries (required by Google Play from February 1, 2027); if the app cannot move to compileSdk 37 / AGP 9 yet, use \`${coordinate}:4.18.0\`, the newest release that builds on AGP 8 / compileSdk 36. See the migration guide (\`get_migration_guide\`).`,
+    line,
+  };
+}
+
 const RULES: Rule[] = [
+  // ─── Outdated SceneView dependency ──────────────────────────────────────
+  {
+    id: "setup/outdated-sceneview-version",
+    severity: "error",
+    check(_code, lines) {
+      const issues: ValidationIssue[] = [];
+      const directDependency =
+        /io\.github\.sceneview:(sceneview|arsceneview|sceneview-compose):(\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?)(?=["'])/;
+      const directDependencies = new RegExp(directDependency.source, "g");
+      findLines(lines, directDependency).forEach((lineNumber) => {
+        for (const match of lines[lineNumber - 1].matchAll(directDependencies)) {
+          if (Number.parseInt(match[2], 10) < 4) {
+            issues.push(outdatedSceneViewVersionIssue(match[1], match[2], lineNumber));
+          }
+        }
+      });
+
+      const catalogSections: string[] = [];
+      let catalogSection = "";
+      lines.forEach((line) => {
+        const sectionMatch = line.match(/^\s*\[([^\]]+)]\s*(?:#.*)?$/);
+        if (sectionMatch) {
+          catalogSection = sectionMatch[1];
+        }
+        catalogSections.push(catalogSection);
+      });
+
+      // Version catalogs: resolve each SceneView entry of [libraries] to its
+      // literal version or to the [versions] key it references.
+      const versionValue = /(\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?)/.source;
+      const catalogVersions = new Map<string, { version: string; line: number }>();
+      lines.forEach((line, index) => {
+        if (catalogSections[index] !== "versions") return;
+        const m = line.match(
+          new RegExp(`^\\s*([A-Za-z0-9_.-]+)\\s*=\\s*["']${versionValue}["']\\s*(?:#.*)?$`)
+        );
+        if (m) catalogVersions.set(m[1], { version: m[2], line: index + 1 });
+      });
+      const reported = new Set(issues.map((issue) => issue.line));
+      lines.forEach((line, index) => {
+        if (catalogSections[index] !== "libraries") return;
+        const artifactMatch =
+          line.match(
+            /\bmodule\s*=\s*["']io\.github\.sceneview:(sceneview|arsceneview|sceneview-compose)["']/
+          ) ??
+          (/\bgroup\s*=\s*["']io\.github\.sceneview["']/.test(line)
+            ? line.match(/\bname\s*=\s*["'](sceneview|arsceneview|sceneview-compose)["']/)
+            : null);
+        if (!artifactMatch) return;
+        let found: { version: string; line: number } | undefined;
+        const inline = line.match(new RegExp(`\\bversion\\s*=\\s*["']${versionValue}["']`));
+        if (inline) {
+          found = { version: inline[1], line: index + 1 };
+        } else {
+          const ref = line.match(/\bversion\.ref\s*=\s*["']([^"']+)["']/);
+          if (ref) found = catalogVersions.get(ref[1]);
+        }
+        if (!found || Number.parseInt(found.version, 10) >= 4 || reported.has(found.line)) return;
+        reported.add(found.line);
+        issues.push(outdatedSceneViewVersionIssue(artifactMatch[1], found.version, found.line));
+      });
+
+      return issues;
+    },
+  },
+
   // ─── Compose Multiplatform dependency with Android API ──────────────────
   {
     id: "setup/sceneview-compose-android-api",
