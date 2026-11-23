@@ -162,6 +162,7 @@ fun createView(engine: Engine): View = engine.createView().apply {
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.PBRNeutral())
         .build(engine)
+        .also { sdkColorGradings[this] = it }
 }
 
 /**
@@ -225,7 +226,32 @@ fun createARView(engine: Engine): View = engine.createView().apply {
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.Filmic())
         .build(engine)
+        .also { sdkColorGradings[this] = it }
     filmicViews += this
+}
+
+/**
+ * The [ColorGrading] that [createView] or [createARView] built for each view: the SDK's own, a 3D
+ * LUT that `Engine.destroyView` leaves behind (#5232). [destroyViewAndSdkGrading] frees it with its
+ * view, whether the view still holds it or the app replaced it. A grading the app set is never
+ * here: it may be shared with another view. Weak: a view nobody destroys drops out with its key.
+ */
+internal val sdkColorGradings: MutableMap<View, ColorGrading> =
+    java.util.Collections.synchronizedMap(java.util.WeakHashMap())
+
+/**
+ * Destroys [view], then the [ColorGrading] [createView] or [createARView] built for it, if any.
+ *
+ * The view goes first: a grading is never freed while a view still holds it. Only the SDK's own
+ * grading is freed, even when the app replaced it with `view.colorGrading = …`; the app's stays
+ * the app's to destroy. A view from another factory is destroyed alone.
+ */
+internal fun Engine.destroyViewAndSdkGrading(view: View) {
+    val sdkGrading = sdkColorGradings.remove(view)
+    safeDestroyView(view)
+    // Already freed through the same Java object (by an app that worked around #5232), the call
+    // throws before it reaches Filament: nothing is freed twice.
+    sdkGrading?.let { runCatching { destroyColorGrading(it) } }
 }
 
 /**
