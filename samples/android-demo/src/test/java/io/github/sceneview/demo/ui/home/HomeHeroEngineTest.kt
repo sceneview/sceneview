@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.google.android.filament.Engine
 import org.junit.Assert.assertEquals
@@ -99,5 +100,32 @@ class HomeHeroEngineTest {
         rule.waitForIdle()
         assertEquals(1, made)
         assertNotNull(engine)
+    }
+
+    @Test
+    fun `a restored activity on a demo makes no engine`() {
+        // Home ran, so the first activity made the engine; then a demo is on screen when the
+        // activity is recreated (process death, a locale or density change).
+        var home by mutableStateOf(true)
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            ProvideHomeHeroEngine(rememberHeroEngine = countingEngine) {
+                if (home) rememberHomeHeroEngine()
+            }
+        }
+        rule.waitForIdle()
+        assertEquals(1, made)
+        home = false
+        rule.waitForIdle()
+
+        restoration.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+
+        assertEquals("the first activity's engine went with it", 1, released)
+        assertEquals("none built for a hero that is not on screen", 1, made)
+
+        home = true
+        rule.waitForIdle()
+        assertEquals("Home asks for its engine again", 2, made)
     }
 }

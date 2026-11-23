@@ -8,7 +8,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.google.android.filament.Engine
 import io.github.sceneview.rememberEngine
@@ -35,6 +34,7 @@ import io.github.sceneview.rememberEngine
  * **Lazily.** No engine is made until the hero first asks for one ([rememberHomeHeroEngine]): a
  * cold start on a demo by deep link, or on a device that only shows [HomeHeroStill], creates
  * none. Once made it stays for the activity's life, idle while a demo runs on its own engine.
+ * A recreated activity starts without one again, whatever destination it restores.
  */
 @Stable
 internal class HomeHeroEngineHost(
@@ -60,8 +60,9 @@ internal fun ProvideHomeHeroEngine(
     rememberHeroEngine: @Composable () -> Engine = { rememberEngine() },
     content: @Composable () -> Unit,
 ) {
-    // Saved: a recreated activity whose hero had run brings its engine back on the first frame.
-    var wanted by rememberSaveable { mutableStateOf(false) }
+    // Not saved: a recreated activity (process death, a locale or density change) may come back
+    // on a demo, and must not build an engine for a hero that is not on screen. Home asks again.
+    var wanted by remember { mutableStateOf(false) }
     val engine = if (wanted) rememberHeroEngine() else null
     val host = remember(engine) { HomeHeroEngineHost(engine) { wanted = true } }
     CompositionLocalProvider(LocalHomeHeroEngine provides host, content = content)
