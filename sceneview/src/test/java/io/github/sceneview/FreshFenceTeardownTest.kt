@@ -495,7 +495,8 @@ class FreshFenceTeardownTest {
     fun `a main thread too slow for freshness still releases once the backend is idle`() {
         for (gap in listOf(66L, 100L, 300L)) {
             val zeroTimeout = replayOrNull(
-                backlogMs = 0, nextScreenWorkMs = 0, pollGaps = listOf(gap), busy = freshFence,
+                // Like-for-like with the run below: a registry-owned probe, so the 1 s back-off applies.
+                backlogMs = 0, nextScreenWorkMs = 0, pollGaps = listOf(gap), probe = { newProbe(it) },
             )
             assertEquals("a poll every $gap ms, zero-timeout only", null, zeroTimeout)
 

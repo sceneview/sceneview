@@ -148,10 +148,11 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
  * On a shared engine, polling less often than every 48 ms keeps the destroy pending unless a
  * replacement fence is already reached in the same poll. Five seconds triggers a warning and
- * slower polls, never permission to destroy behind a busy fence: from then on, each poll's
- * replacement fence may be waited for up to [FRESH_FENCE_CONFIRM_BUDGET_MS], and the renderer is
- * destroyed only if it is reached, the backend idle at that instant (#4969). Once the engine is
- * retiring, Engine.destroy reclaims the renderer.
+ * slower polls, never permission to destroy behind a busy fence: from then on, the fence a poll
+ * arms may be waited for [FRESH_FENCE_CONFIRM_BUDGET_MS] per wake-up (several wake-ups when earlier
+ * fences signal meanwhile), and the renderer is destroyed only if it is reached, the backend idle
+ * at that instant (#4969). Pending releases then drain one per poll, about two a second. Once the
+ * engine is retiring, Engine.destroy reclaims the renderer.
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
@@ -198,9 +199,9 @@ internal fun Engine.isBackendBusy(): Boolean = teardowns().isBackendBusy()
  * `reclaimWithEngine` are left to Engine.destroy. See [BackendIdleTeardowns].
  *
  * One poll and probe are shared per engine. After five seconds polling backs off, with occasional
- * short confirmation polls for freshness, and each poll may wait up to
- * [FRESH_FENCE_CONFIRM_BUDGET_MS] for a fence it has just created. There is no timeout-triggered
- * destruction. Neither a reached nor a fresh fence bounds native destruction or command
+ * short confirmation polls for freshness, and each poll may wait for a fence it has just created,
+ * [FRESH_FENCE_CONFIRM_BUDGET_MS] per wake-up of Filament's fence wait. There is no
+ * timeout-triggered destruction. Neither a reached nor a fresh fence bounds native destruction or command
  * submission time.
  *
  * [onIdle] receives `deferred = false` if it runs before this call returns. [onEngineGone] runs
@@ -224,8 +225,11 @@ internal fun Engine.whenBackendIdle(
 )
 
 /**
- * Zero-timeout fence polling, then after five seconds one wait of at most
- * [FRESH_FENCE_CONFIRM_BUDGET_MS] per poll. FLUSH itself can still block on a full command stream.
+ * Zero-timeout fence polling, then after five seconds one bounded wait per poll:
+ * [FRESH_FENCE_CONFIRM_BUDGET_MS] per wake-up, not wall-clock, since Filament v1.77.3's
+ * `FEngine::waitFence` restarts its `wait_for` each time an earlier fence signals. Each wait is
+ * timed and logged once above [FRESH_FENCE_CONFIRM_LOG_ABOVE_MS]. FLUSH itself can still block on
+ * a full command stream.
  */
 private fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     createFence = { runCatching { createFence() }.getOrNull() },
@@ -236,13 +240,28 @@ private fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
         Log.w(
             "Sceneview",
             "Backend teardown still pending after 5 s; backing off polls, each confirmed by a " +
-                "wait of at most $FRESH_FENCE_CONFIRM_BUDGET_MS ms (#4969)",
+                "wait of $FRESH_FENCE_CONFIRM_BUDGET_MS ms per wake-up (#4969)",
         )
     },
-    awaitReached = { fence -> fence.reachedWithin(FRESH_FENCE_CONFIRM_BUDGET_MS * NANOS_PER_MS) },
+    awaitReached = { fence ->
+        val startedAt = System.nanoTime()
+        fence.reachedWithin(FRESH_FENCE_CONFIRM_BUDGET_MS * NANOS_PER_MS).also {
+            val waitedMs = (System.nanoTime() - startedAt) / NANOS_PER_MS
+            if (waitedMs > FRESH_FENCE_CONFIRM_LOG_ABOVE_MS && !slowConfirmationLogged) {
+                slowConfirmationLogged = true
+                Log.w("Sceneview", "Bounded teardown fence wait took $waitedMs ms; logged once (#4969)")
+            }
+        }
+    },
 )
 
 private const val NANOS_PER_MS = 1_000_000L
+
+/** A bounded confirmation longer than this took several fence wake-ups: logged once. */
+private const val FRESH_FENCE_CONFIRM_LOG_ABOVE_MS = 16L
+
+/** Main thread only, like every probe call. */
+private var slowConfirmationLogged = false
 
 private fun Fence.reachedWithin(timeoutNanos: Long): Boolean? =
     when (runCatching { wait(Fence.Mode.FLUSH, timeoutNanos) }.getOrNull()) {

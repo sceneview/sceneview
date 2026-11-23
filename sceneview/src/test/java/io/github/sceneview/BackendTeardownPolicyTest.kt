@@ -105,6 +105,48 @@ class BackendTeardownPolicyTest {
         }
     }
 
+    /**
+     * The drain rate after the warning: one release per poll (each release invalidates the probe,
+     * and the next poll confirms the fence it arms), polls alternating 1 s and a short confirmation.
+     * Registrations themselves never wait.
+     */
+    @Test
+    fun pendingReleasesDrainAtAboutTwoPerSecondAndRegistrationsNeverWait() {
+        val clock = Clock()
+        var waits = 0
+        var waitsDuringRegistration = 0
+        var registering = false
+        val probe = FreshFenceProbe(
+            createFence = { clock.time },
+            isReached = { clock.time > it },
+            destroyFence = {},
+            now = { clock.time },
+            awaitReached = {
+                waits++
+                if (registering) waitsDuringRegistration++
+                true
+            },
+        )
+        val teardowns = BackendIdleTeardowns(probe)
+        val releasedAt = mutableListOf<Long>()
+        repeat(20) {
+            registering = true
+            teardowns.defer(
+                isEngineAlive = { true }, schedule = clock.schedule,
+                teardown = { releasedAt += clock.time }, reclaimWithEngine = true,
+            )
+            registering = false
+        }
+        while (clock.callbacks.isNotEmpty()) clock.poll()
+        println("20 pending at 66 ms polls: first released at ${releasedAt.first()} ms, last at ${releasedAt.last()} ms")
+        assertEquals(20, releasedAt.size)
+        assertEquals(0, waitsDuringRegistration)
+        assertTrue("first at ${releasedAt.first()} ms", releasedAt.first() >= FRESH_FENCE_WARN_AFTER_MS)
+        val span = releasedAt.last() - releasedAt.first()
+        assertTrue("20 releases over $span ms", span <= 10 * (BACKEND_IDLE_BACKOFF_MS + clock.minimumGap))
+        assertEquals("one bounded wait per release", 20, waits)
+    }
+
     @Test
     fun retirementDoesNotAccumulateCallbacksForLateEngineOwnedResources() {
         val clock = Clock()
