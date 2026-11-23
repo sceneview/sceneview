@@ -238,7 +238,10 @@ internal object SurfelSplats {
         for (c in 0 until 3) out[c] = linearToSrgb(toned[c]).coerceIn(0f, 1f)
     }
 
-    /** The exact sRGB EOTF, as `splat.mat`'s `splatSrgbToLinear`. */
+    /**
+     * The exact sRGB EOTF, as `viewInverseSrgbToLinear` in `include/view_tone_map_inverse.fs`,
+     * which `splat.mat` includes.
+     */
     fun srgbToLinear(c: Float): Float = if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
 
     /** The exact sRGB OETF, the inverse of [srgbToLinear]. */

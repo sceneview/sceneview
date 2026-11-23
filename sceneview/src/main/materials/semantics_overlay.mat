@@ -32,8 +32,9 @@
 //        as linear and then tone-mapped and sRGB-encoded by the View: SKY #66B0F5 reached the
 //        screen as (157, 204, 237). Each colour is now decoded with the exact sRGB EOTF and
 //        pre-distorted by the exact inverse of the View's tone mapper, taken in the Rec.2020
-//        space Filament tone-maps in, so a class displays in its documented colour. The PBR
-//        Neutral inverse is the one video_texture.mat, view_texture_*.mat and splat.mat share.
+//        space Filament tone-maps in, so a class displays in its documented colour. #5219: that
+//        inverse lives in include/view_tone_map_inverse.fs, shared with the video, view-texture,
+//        splat and AR camera-stream materials.
 material {
     name : semanticsOverlay,
     shadingModel : unlit,
@@ -86,95 +87,10 @@ fragment {
         vec3(0.00, 0.74, 0.83)   // WATER      — cyan
     );
 
-    // ---- Inverse of ToneMapper.PBRNeutralToneMapper (Khronos PBR Neutral, #4595) ----
-    // Shared verbatim by splat.mat, video_texture*.mat and view_texture_*.mat
-    // (ToneMapInverseContractTest checks they stay identical).
-
-    // The forward curve's highlight compression at scene peak p: (new peak, desaturation).
-    vec2 pbrNeutralCompression(float p) {
-        float np = 1.0 - 0.0576 / (p - 0.52);
-        return vec2(np, 1.0 - 1.0 / (0.15 * (p - np) + 1.0));
-    }
-
-    // Undoes the toe offset the forward curve subtracts from every channel.
-    vec3 inversePbrNeutralToe(vec3 c) {
-        float m = min(c.r, min(c.g, c.b));
-        float offset = m < 0.04 ? sqrt(max(m, 0.0) / 6.25) - m : 0.04;
-        return c + offset;
-    }
-
-    // Display-linear colour -> scene-linear colour that PBR Neutral maps back onto it.
-    // Exact for every colour the curve can produce. The peak is capped at 0.99143 (252.8/255),
-    // whose inverse is 7.24, the value Filmic's inverse gives white: PBR Neutral's inverse is
-    // unbounded as the peak nears 1. A bright saturated colour (#FF0000) has no preimage, since
-    // the curve desaturates highlights: the scene peak is then bisected so the peak shortfall
-    // equals the unavoidable desaturation lift in display (gamma) space, red -> (235, 13, 13)
-    // instead of a pink (255, 212, 212).
-    vec3 inversePbrNeutral(vec3 o) {
-        float peak = max(o.r, max(o.g, o.b));
-        if (peak < 0.76) {
-            return inversePbrNeutralToe(o);
-        }
-        float np = min(peak, 0.99143);
-        float p = 0.0576 / (1.0 - np) + 0.52;
-        vec2 ng = pbrNeutralCompression(p);
-        vec3 c = (o - ng.x * ng.y) / (1.0 - ng.y) * (p / ng.x);
-        if (min(c.r, min(c.g, c.b)) >= -1e-4) {
-            return inversePbrNeutralToe(c);
-        }
-        float omin = max(min(o.r, min(o.g, o.b)), 0.0);
-        float encPeak = pow(peak, 1.0 / 2.2);
-        float encMin = pow(omin, 1.0 / 2.2);
-        float lo = 0.76;
-        float hi = p;
-        for (int i = 0; i < 12; i++) {
-            float mid = 0.5 * (lo + hi);
-            ng = pbrNeutralCompression(mid);
-            if (encPeak - pow(ng.x, 1.0 / 2.2) > pow(omin + ng.x * ng.y, 1.0 / 2.2) - encMin) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        p = 0.5 * (lo + hi);
-        ng = pbrNeutralCompression(p);
-        vec3 ratio = clamp((o - ng.x * ng.y) / (ng.x * (1.0 - ng.y)), 0.0, 1.0);
-        return inversePbrNeutralToe(ratio * p);
-    }
-
-    // Exact sRGB EOTF (IEC 61966-2-1): the View's output stage is the exact OETF (#3338).
-    vec3 semanticsSrgbToLinear(vec3 srgb) {
-        vec3 s = clamp(srgb, 0.0, 1.0);
-        return mix(s * (1.0 / 12.92), pow((s + 0.055) * (1.0 / 1.055), vec3(2.4)),
-                step(vec3(0.04045), s));
-    }
-
-    // Filament's ColorGrading tone-maps in its Rec.2020 working space, not in Rec.709: the
-    // View converts the scene colour to Rec.2020, applies the tone mapper per channel there and
-    // converts back. Inverting the curve channel by channel in Rec.709 leaves a saturated colour
-    // off (SKY #66B0F5 read back as #95B2FB in a Filmic view), so the inverse runs in the same
-    // space. Column-major, the constants of Filament's sRGB_to_REC2020 / REC2020_to_sRGB.
-    const mat3 SEMANTICS_REC709_TO_REC2020 = mat3(
-        0.6274040, 0.0690970, 0.0163916,
-        0.3292820, 0.9195400, 0.0880132,
-        0.0433136, 0.0113612, 0.8955950
-    );
-    const mat3 SEMANTICS_REC2020_TO_REC709 = mat3(
-         1.6604910, -0.1245505, -0.0181508,
-        -0.5876411,  1.1328999, -0.1005789,
-        -0.0728499, -0.0083494,  1.1187297
-    );
-
-    // sRGB palette colour -> scene-linear Rec.709 colour that the View's tone mapper and OETF
-    // display as it. The few that would need a negative channel (VEHICLE's and WATER's red under
-    // Filmic) are clipped at zero: the colour buffer holds no negative value.
-    vec3 inverseViewTonemapSRGB(vec3 srgb) {
-        vec3 working = SEMANTICS_REC709_TO_REC2020 * semanticsSrgbToLinear(srgb);
-        vec3 scene = materialParams.inverseFilmic
-                ? Inverse_Tonemap_Filmic(working)
-                : inversePbrNeutral(working);
-        return max(SEMANTICS_REC2020_TO_REC709 * scene, vec3(0.0));
-    }
+    // The exact inverse of the View's tone mapper and OETF, in the Rec.2020 space Filament
+    // grades in, shared by every pass-through material (#5219). The few palette colours that
+    // would need a negative channel (VEHICLE's and WATER's red under Filmic) are clipped at zero.
+    #include "include/view_tone_map_inverse.fs"
 
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
@@ -188,7 +104,7 @@ fragment {
 
         // The palette is sRGB, like the legend's bytes: pre-distort it by the inverse of what the
         // View applies after this shader (#5102).
-        vec3 tint = inverseViewTonemapSRGB(SEMANTIC_PALETTE[ordinal]);
+        vec3 tint = inverseViewTonemapSRGB(SEMANTIC_PALETTE[ordinal], materialParams.inverseFilmic);
 
         // UNLABELED (ordinal 0) stays fully transparent so the live camera feed shows
         // through un-classified pixels — only confident classes get tinted. A byte past the

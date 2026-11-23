@@ -3,6 +3,7 @@ package io.github.sceneview.ar.camera
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -28,6 +29,12 @@ import kotlin.math.sqrt
  *     the exact piecewise sRGB OETF. The materials used to decode with `pow(c, 2.2)` (what
  *     Filament's `inverseTonemapSRGB()` helper does), and `sRGB_OETF(pow(c, 2.2))` is not the
  *     identity. That mismatch is the bug.
+ *
+ * A third correction came with #5219: Filament's ColorGrading applies the tone mapper in its
+ * Rec.2020 working space. Inverted channel by channel in Rec.709, the Filmic leg cancelled for
+ * greys only, and a `#66B0F5` sky showed at `#93B2FA`. The three materials now include the
+ * inverse every pass-through material shares (`sceneview/src/main/materials/include/
+ * view_tone_map_inverse.fs`), which converts to Rec.2020, inverts there and converts back.
  *
  * The shader chain is reproduced as pure Kotlin so its output can be checked directly.
  */
@@ -109,4 +116,82 @@ class CameraStreamColorContractTest {
         )
     }
 
+    // --- Rec.2020 grading (#5219) ---------------------------------------------------------
+
+    /** Filament's sRGB_to_REC2020 and REC2020_to_sRGB, row-major. */
+    private val rec709ToRec2020 = arrayOf(
+        doubleArrayOf(0.6274040, 0.3292820, 0.0433136),
+        doubleArrayOf(0.0690970, 0.9195400, 0.0113612),
+        doubleArrayOf(0.0163916, 0.0880132, 0.8955950),
+    )
+    private val rec2020ToRec709 = arrayOf(
+        doubleArrayOf(1.6604910, -0.5876411, -0.0728499),
+        doubleArrayOf(-0.1245505, 1.1328999, -0.0083494),
+        doubleArrayOf(-0.0181508, -0.1005789, 1.1187297),
+    )
+
+    private fun Array<DoubleArray>.times(v: DoubleArray) =
+        DoubleArray(3) { r -> (0..2).sumOf { this[r][it] * v[it] } }
+
+    /** What the View shows for a scene colour: Filmic per channel in Rec.2020, then the OETF. */
+    private fun shown(scene: DoubleArray): List<Int> {
+        val graded = rec2020ToRec709.times(rec709ToRec2020.times(scene).map(::filmic).toDoubleArray())
+        return graded.map { Math.round(linearToSrgbExact(it.coerceIn(0.0, 1.0)) * 255).toInt() }
+    }
+
+    /** `inverseViewTonemapSRGB(camera, true)` of the shared include. */
+    private fun cameraScene(srgb: IntArray): DoubleArray {
+        val working = rec709ToRec2020.times(DoubleArray(3) { srgbToLinearExact(srgb[it] / 255.0) })
+        return rec2020ToRec709.times(working.map(::inverseFilmic).toDoubleArray()).map { maxOf(it, 0.0) }
+            .toDoubleArray()
+    }
+
+    private fun bytes(rgb: Int) = IntArray(3) { (rgb shr (16 - 8 * it)) and 0xFF }
+
+    @Test
+    fun `a saturated camera colour displays as it came from the camera`() {
+        val chart = listOf(0x66B0F5, 0xD95F57, 0x4CB050, 0x2196F2, 0xF5428C, 0x00BDD4, 0xFFC207, 0x9E75BD, 0x808080)
+        chart.forEach { rgb ->
+            val source = bytes(rgb)
+            val got = shown(cameraScene(source))
+            for (c in 0..2) {
+                // A channel that would need a negative scene value is clipped at zero.
+                val tolerance = if (source[c] < 0x30) 16 else 1
+                assertTrue(
+                    "#%06X shows $got (tolerance $tolerance)".format(rgb),
+                    abs(got[c] - source[c]) <= tolerance,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `inverted channel by channel in Rec 709, the sky was lighter and less saturated`() {
+        val sky = bytes(0x66B0F5)
+        val per709 = DoubleArray(3) { inverseFilmic(srgbToLinearExact(sky[it] / 255.0)) }
+        assertEquals(listOf(0x93, 0xB2, 0xFA), shown(per709))
+    }
+
+    @Test
+    fun `the three camera materials include the shared inverse for a Filmic view`() {
+        val include = "../../../../sceneview/src/main/materials/include/view_tone_map_inverse.fs"
+        assertTrue(
+            "the include the materials name resolves from their directory",
+            File("src/main/materials", include).isFile,
+        )
+        for (name in listOf("flat", "depth", "person_occlusion")) {
+            val source = File("src/main/materials/camera_stream_$name.mat").readText()
+            val code = source.lines().filterNot { it.trimStart().startsWith("//") }.joinToString("\n")
+            assertTrue("$name includes the shared inverse", code.contains("#include \"$include\""))
+            assertTrue(
+                "$name pre-distorts the camera for createARView's Filmic",
+                Regex("inverseViewTonemapSRGB\\(\\s*texture\\(materialParams_cameraTexture, cameraUv\\)\\.rgb, true\\)")
+                    .containsMatchIn(code) ||
+                    code.contains("inverseViewTonemapSRGB(camera, true)"),
+            )
+            listOf("Inverse_Tonemap_Filmic(", "srgbToLinearExact(", "inverseTonemapSRGB(").forEach {
+                assertTrue("$name still calls $it", !code.contains(it))
+            }
+        }
+    }
 }

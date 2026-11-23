@@ -17,6 +17,10 @@
 #   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
 #   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
 #
+# Shared GLSL lives in sceneview/src/main/materials/include/*.fs and is pulled in by
+# matc's `#include` (resolved relative to the .mat). It is no inventory entry: editing
+# it changes every blob that includes it, so regenerate them all (#5219).
+#
 # Three toolchains because there are three runtimes, each with its own
 # MATERIAL_VERSION, and Filament refuses any package whose version is not an
 # exact match:
@@ -58,7 +62,7 @@ ONLY_MAT=""              # empty = all
 CI_TOLERANT="0"
 
 print_help() {
-    sed -n '1,30p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '1,46p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ $# -gt 0 ]; do
