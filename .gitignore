@@ -357,3 +357,6 @@ device-qa-report.json
 
 # Local web-demo viewer staged from the canonical website source (#4316).
 /samples/web-demo/site/js/sceneview.js
+
+# Wrangler local state (account cache, dev state): never committed
+.wrangler/
