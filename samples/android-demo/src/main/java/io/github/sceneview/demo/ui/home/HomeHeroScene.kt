@@ -34,6 +34,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.filament.Engine
 import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.View
@@ -60,7 +61,6 @@ import io.github.sceneview.model.renderableManager
 import io.github.sceneview.node.LightNode as LightNodeImpl
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 import io.github.sceneview.rememberCameraNode
-import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
@@ -105,6 +105,11 @@ private const val HERO_IBL = "environments/circuit_ibl.ktx"
  * the viewport the stage's own [Lifecycle] drops to CREATED and SceneView stops submitting
  * frames — the last one stays in the TextureView, the [HeroClock] stops — and coming back
  * raises it to RESUMED: the same frame, then the next one.
+ *
+ * **Across visits.** Opening a demo does take Home out of the composition, and the stage with
+ * it. Its engine is the exception: [ProvideHomeHeroEngine] keeps it above the navigation, so a
+ * return to Home builds a new stage on the same engine and EGL context — a new context per
+ * return used up the GPU driver's contexts on Adreno 618 (#5202).
  *
  * **Cold start.** Nothing here composes before Compose has presented the app's first frame
  * (`withFrameNanos` gate). `StartupMarker` `first_model_frame` / `model_textured_frame` are
@@ -162,8 +167,11 @@ internal fun HomeHeroScene(
             // tearing it down on a pause would reload everything on the way back.
             var started by remember { mutableStateOf(false) }
             if (hostResumed) started = true
-            if (started) {
+            // The engine outlives the visit (#5202): see [HomeHeroEngineHost].
+            val engine = if (started) rememberHomeHeroEngine() else null
+            if (engine != null) {
                 HomeHeroStage(
+                    engine = engine,
                     active = active,
                     loadsAllowed = hostResumed,
                     scroll = scroll,
@@ -301,6 +309,8 @@ private object NightSet {
 
 @Composable
 private fun HomeHeroStage(
+    /** Not this stage's: it outlives the visit, and everything below made with it does not. */
+    engine: Engine,
     active: Boolean,
     /** False while the screen is not the resumed destination: nothing new is loaded. */
     loadsAllowed: Boolean,
@@ -367,7 +377,6 @@ private fun HomeHeroStage(
     val scrollFollow = remember { HeroScrollFollow() }
     val stageLifecycle = rememberHeroLifecycle(active, clock, scrollFollow)
 
-    val engine = rememberEngine()
     val view = rememberFilmicView(engine)
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)

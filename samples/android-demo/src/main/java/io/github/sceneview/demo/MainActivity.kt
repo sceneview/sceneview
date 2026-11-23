@@ -61,6 +61,7 @@ import io.github.sceneview.demo.telemetry.PushPromptHost
 import io.github.sceneview.demo.telemetry.SampleTelemetry
 import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.ui.RootScreen
+import io.github.sceneview.demo.ui.home.ProvideHomeHeroEngine
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.QaAppUpdateManager
 import io.github.sceneview.sample.common.update.SharedPreferencesUpdatePromptStore
@@ -627,6 +628,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // `LocalNavAnimatedScope`.
         SharedTransitionLayout {
         CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+        // Above the NavHost: Home leaves the composition on every demo it opens, its hero's
+        // engine must not (#5202, see HomeHeroEngineHost).
+        ProvideHomeHeroEngine {
         NavHost(
             navController = navController,
             startDestination = "list",
@@ -733,6 +737,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             // caller ever navigated to "about". Deletion verified via grep:
             // 0 `navigate("about")` calls anywhere. The @Ignore'd ScreenshotTest
             // for AboutScreen stays disabled per its own comment.
+        }
         }
         }
         }

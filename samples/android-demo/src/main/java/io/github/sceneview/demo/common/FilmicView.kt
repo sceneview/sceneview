@@ -1,13 +1,14 @@
 package io.github.sceneview.demo.common
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
 import io.github.sceneview.createView
-import io.github.sceneview.rememberView
+import io.github.sceneview.safeDestroyView
 
 /**
  * A [createView] view that keeps the Filmic tone mapper the SDK used before it moved to PBR
@@ -22,13 +23,24 @@ import io.github.sceneview.rememberView
  */
 @Composable
 fun rememberFilmicView(engine: Engine): View {
-    // `rememberView` keys on the creator: hand it one stable instance, not a fresh lambda.
-    val creator = remember(engine) {
-        {
-            createView(engine).apply {
-                colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)
-            }
+    val graded = remember(engine) {
+        val view = createView(engine)
+        // The PBR Neutral grading `createView` gave the view: replaced, not freed by the swap.
+        val replaced = view.colorGrading
+        view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)
+        GradedView(view, listOfNotNull(replaced, view.colorGrading))
+    }
+    // Not `rememberView`: `destroyView` frees the view alone, and on an engine that outlives the
+    // screen (the home hero's, #5202) both gradings, a 3D LUT each, would pile up visit after
+    // visit. The view goes first: a grading must not be freed while a view still holds it.
+    DisposableEffect(graded) {
+        onDispose {
+            engine.safeDestroyView(graded.view)
+            graded.gradings.forEach { runCatching { engine.destroyColorGrading(it) } }
         }
     }
-    return rememberView(engine, creator)
+    return graded.view
 }
+
+/** A view and every [ColorGrading] made for it, freed with it. */
+private class GradedView(val view: View, val gradings: List<ColorGrading>)
