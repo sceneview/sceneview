@@ -1209,9 +1209,10 @@ internal fun RerunModelScreen(
         val environment = rememberModelEnvironment(engine, chrome.ground)
         val darkStage = chrome.ground.luminance() < HALF_LUMINANCE
         val shadowPool = remember { radialPool(LightingStage.FLOOR_COLOR) }
-        val view = rememberView(engine)
+        // Declared before the view, so disposed after it: never freed under the view holding it.
         val colorGrading = remember(engine) { ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine) }
         DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
+        val view = rememberView(engine)
         // Before the first frame, not on it: the tone mapping is part of the first picture.
         DisposableEffect(view, colorGrading) {
             view.configureForDebug(colorGrading)

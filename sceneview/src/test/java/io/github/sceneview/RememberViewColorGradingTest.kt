@@ -136,10 +136,26 @@ class RememberViewColorGradingTest {
         assertEquals(view, destroyed.last())
     }
 
+    @Test
+    fun `an engine destroyed before the view leaves throws nothing`() = runTest {
+        // The engine went first: its own teardown reclaimed the view and the grading.
+        visit(beforeExit = { destroyEngine() }) { rememberView(engine) }
+
+        assertTrue(destroyed.isEmpty())
+        assertTrue(sdkColorGradings.isEmpty())
+    }
+
+    /** What `Engine.destroy` does to the Java side of the engine. */
+    private fun destroyEngine() {
+        Engine::class.java.getDeclaredMethod("clearNativeObject")
+            .apply { isAccessible = true }
+            .invoke(engine)
+    }
+
     private fun grading() = ColorGrading.Builder().build(engine)
 
     /** Composes [content] on its own, then removes it: one visit of a screen. */
-    private fun TestScope.visit(content: @Composable () -> View): View {
+    private fun TestScope.visit(beforeExit: () -> Unit = {}, content: @Composable () -> View): View {
         val clock = BroadcastFrameClock()
         var shown by mutableStateOf(true)
         var view: View? = null
@@ -149,6 +165,7 @@ class RememberViewColorGradingTest {
         composition.setContent { if (shown) view = content() }
         settle(clock)
         assertTrue("The view is alive while shown", destroyed.none { it === view })
+        beforeExit()
         shown = false
         settle(clock)
         composition.dispose()
@@ -180,18 +197,25 @@ class RememberViewColorGradingTest {
     /** Hands out views and logs every view and grading destroyed. */
     @Implements(Engine::class)
     class RecordingEngine : ShadowFilamentEngine() {
+        @RealObject
+        private lateinit var engine: Engine
+
         @Implementation
         fun createView(): View = View::class.java.getDeclaredConstructor(Long::class.javaPrimitiveType)
             .apply { isAccessible = true }.newInstance(nextHandle++)
 
         @Implementation
         fun destroyView(view: View) {
+            // Filament reads the engine's handle first: a destroyed engine throws here.
+            engine.nativeObject
             destroyed += view
         }
 
         @Implementation
         fun destroyColorGrading(colorGrading: ColorGrading) {
-            // What Filament's own call does to the Java object: a second call throws from here.
+            // What Filament's own call does to the Java objects: a destroyed engine, or a second
+            // call on the same grading, throws from here.
+            engine.nativeObject
             colorGrading.nativeObject
             destroyed += colorGrading
             ColorGrading::class.java.getDeclaredMethod("clearNativeObject")

@@ -141,6 +141,14 @@ fun createEngine(eglContext: EGLContext): Engine = try {
 
 fun createScene(engine: Engine): com.google.android.filament.Scene = engine.createScene()
 
+/**
+ * Creates the [View] `SceneView` renders with by default: [RenderQuality.Default] and the Khronos
+ * PBR Neutral tone mapper, in a [ColorGrading] built for this view.
+ *
+ * [rememberView] destroys both. Calling this directly, destroy the view with
+ * `engine.destroyView(view)`, then its grading with `engine.destroyColorGrading(grading)`, the one
+ * read from `view.colorGrading` before you replace it: `destroyView` leaves it alive (#5232).
+ */
 fun createView(engine: Engine): View = engine.createView().apply {
     // The out-of-the-box look is [RenderQuality.Default]: FXAA, MEDIUM HDR buffer, SSAO at
     // MEDIUM quality with bilateral upsampling, bloom 0.10, soft (DPCF) shadows. `SceneView`
@@ -211,6 +219,11 @@ fun createView(engine: Engine): View = engine.createView().apply {
  * Shadows are enabled by default, soft (`ShadowType.DPCF`), because AR users commonly want 3D
  * content to cast shadows on detected planes. Disable via `View.setShadowingEnabled(false)` when
  * not needed.
+ *
+ * [rememberARView] destroys the view and its Filmic [ColorGrading]. Calling this directly, destroy
+ * the view with `engine.destroyView(view)`, then its grading with
+ * `engine.destroyColorGrading(grading)`, the one read from `view.colorGrading` before you replace
+ * it: `destroyView` leaves it alive (#5232).
  */
 fun createARView(engine: Engine): View = engine.createView().apply {
     // [RenderQuality.Default] minus SSAO and bloom (#657): FXAA, MEDIUM HDR buffer, soft (DPCF)

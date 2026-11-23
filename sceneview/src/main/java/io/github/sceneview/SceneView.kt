@@ -1756,7 +1756,9 @@ fun rememberScene(engine: Engine, creator: () -> Scene = { createScene(engine) }
  *
  * Disposal frees the view and the [com.google.android.filament.ColorGrading] that [createView]
  * built for it, even if you replaced it with `view.colorGrading = …`, so an [Engine] that outlives
- * the screen keeps nothing. A grading you set is yours to destroy, after this view.
+ * the screen keeps nothing. A grading you set is yours to destroy, after this view. The SDK's
+ * grading, read through `view.colorGrading`, is freed with this view: do not share it with a view
+ * that outlives it.
  *
  * You rarely need to call this directly — `SceneView { }` creates one by default.
  * Provide your own if you want to share the view with a [CollisionSystem] that is declared
@@ -1785,7 +1787,9 @@ fun rememberView(engine: Engine, creator: () -> View = { createView(engine) }) =
  *
  * Disposal frees the view and the [com.google.android.filament.ColorGrading] that [createARView]
  * built for it, even if you replaced it with `view.colorGrading = …`, so an [Engine] that outlives
- * the screen keeps nothing. A grading you set is yours to destroy, after this view.
+ * the screen keeps nothing. A grading you set is yours to destroy, after this view. The SDK's
+ * grading, read through `view.colorGrading`, is freed with this view: do not share it with a view
+ * that outlives it.
  *
  * @see createARView for a full explanation of the AR camera-background tone-mapping pipeline.
  */
