@@ -41,16 +41,14 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.pow
-import kotlin.math.sqrt
 
 /**
  * Debug-only visual QA of the AR mesh overlay colours (#4623), no ARCore session needed — the
  * arm64 emulator has no camera AR can start on (#2754).
  *
  * Replays the AR colour chain: a room photo goes through what the camera-stream shader does to
- * the feed (exact sRGB EOTF, then `Inverse_Tonemap_Filmic`) into an HDR texture drawn behind
- * the scene, and the View is [rememberARView]'s, Filmic tone mapper included — so an overlay
+ * the feed ([CameraChainReplay]: exact sRGB EOTF, the inverse Filmic in Rec.2020) into an HDR
+ * texture drawn behind the scene, and the View is [rememberARView]'s, Filmic tone mapper included — so an overlay
  * blends with the photo exactly as it blends with the camera image. `variant before`: the
  * materials the Scene Geometry and Plane Node demos used before (55 %-alpha lit brand blue and
  * lilac, an amber cube); the default: `ar_mesh_tint` with the `ar-mesh-*` tokens.
@@ -175,9 +173,9 @@ private fun ReplayScene(
 }
 
 /**
- * The photo as the AR camera stream lands in the HDR buffer: exact sRGB decode, then
- * `Inverse_Tonemap_Filmic` (as `camera_stream_flat.mat` does per texel), in a half-float texture
- * the stock image material draws unchanged. Filmic then maps it back to the photo on screen.
+ * The photo as the AR camera stream lands in the HDR buffer: [CameraChainReplay.cameraToBuffer],
+ * what `camera_stream_flat.mat` does per texel (#5231), in a half-float texture the stock image
+ * material draws unchanged. Filmic, graded in Rec.2020, then maps it back to the photo on screen.
  * The texture lives as long as the engine — a debug screen, freed with it.
  */
 // The ShortBuffer takes the raw half-float bits that RGBA16F expects, not widened values.
@@ -193,12 +191,14 @@ private fun rememberCameraReplayBackdrop(engine: Engine, materialLoader: Materia
         val pixels = IntArray(w * h).also { bitmap.getPixels(it, 0, w, 0, 0, w, h) }
         val buffer = ByteBuffer.allocateDirect(w * h * 4 * 2).order(ByteOrder.nativeOrder())
         val shorts = buffer.asShortBuffer()
+        val srgb = FloatArray(3)
         for (y in 0 until h) {
             for (x in 0 until w) {
                 val p = pixels[y * w + x]
-                shorts.put(Half.toHalf(cameraToBuffer((p shr 16 and 0xFF) / 255f)))
-                shorts.put(Half.toHalf(cameraToBuffer((p shr 8 and 0xFF) / 255f)))
-                shorts.put(Half.toHalf(cameraToBuffer((p and 0xFF) / 255f)))
+                srgb[0] = (p shr 16 and 0xFF) / 255f
+                srgb[1] = (p shr 8 and 0xFF) / 255f
+                srgb[2] = (p and 0xFF) / 255f
+                CameraChainReplay.cameraToBuffer(srgb).forEach { shorts.put(Half.toHalf(it)) }
                 shorts.put(Half.toHalf(1f))
             }
         }
@@ -211,18 +211,6 @@ private fun rememberCameraReplayBackdrop(engine: Engine, materialLoader: Materia
         materialLoader.createImageInstance(texture)
     }
 }
-
-/** `Inverse_Tonemap_Filmic(srgbToLinearExact(c))`, the camera shader's two legs, on one channel. */
-internal fun cameraToBuffer(srgb: Float): Float {
-    val s = srgb.coerceIn(0f, 1f)
-    val x = if (s < SRGB_KNEE) s / SRGB_LINEAR_SLOPE else ((s + SRGB_OFFSET) / (1f + SRGB_OFFSET)).pow(SRGB_GAMMA)
-    return (0.03f - 0.59f * x - sqrt(0.0009f + 1.3702f * x - 1.0127f * x * x)) / (-5.02f + 4.86f * x)
-}
-
-private const val SRGB_KNEE = 0.04045f
-private const val SRGB_LINEAR_SLOPE = 12.92f
-private const val SRGB_OFFSET = 0.055f
-private const val SRGB_GAMMA = 2.4f
 
 /** About 67° of vertical view: a phone's main camera held upright. */
 private const val FOCAL_LENGTH_MM = 18.0
