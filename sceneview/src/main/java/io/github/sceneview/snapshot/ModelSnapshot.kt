@@ -37,6 +37,7 @@ import io.github.sceneview.DefaultCameraNode
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.createView
 import io.github.sceneview.destroyRendererWhenBackendIdle
+import io.github.sceneview.destroyViewAndSdkGrading
 import io.github.sceneview.isValid
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
@@ -48,7 +49,6 @@ import io.github.sceneview.safeDestroyIndirectLight
 import io.github.sceneview.safeDestroyLight
 import io.github.sceneview.safeDestroyScene
 import io.github.sceneview.safeDestroyTexture
-import io.github.sceneview.safeDestroyView
 import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.whenBackendIdle
@@ -669,9 +669,7 @@ class ModelSnapshot @MainThread constructor(
             engine.safeDestroyLight(light)
             EntityManager.get().destroy(light)
         }
-        val colorGrading = view.colorGrading
-        engine.safeDestroyView(view)
-        colorGrading?.let { runCatching { engine.destroyColorGrading(it) } }
+        engine.destroyViewAndSdkGrading(view)
         engine.safeDestroyScene(scene)
         engine.safeDestroyCamera(camera)
         EntityManager.get().destroy(cameraEntity)
@@ -695,9 +693,7 @@ class ModelSnapshot @MainThread constructor(
             engine.safeDestroyLight(light)
             EntityManager.get().destroy(light)
         }
-        val colorGrading = view.colorGrading
-        engine.safeDestroyView(view)
-        colorGrading?.let { runCatching { engine.destroyColorGrading(it) } }
+        engine.destroyViewAndSdkGrading(view)
         engine.safeDestroyCamera(camera)
         EntityManager.get().destroy(cameraEntity)
         engine.safeDestroyScene(scene)

@@ -8,7 +8,7 @@ import com.google.android.filament.Engine
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
 import io.github.sceneview.createView
-import io.github.sceneview.safeDestroyView
+import io.github.sceneview.rememberView
 
 /**
  * A [createView] view that keeps the Filmic tone mapper the SDK used before it moved to PBR
@@ -23,24 +23,16 @@ import io.github.sceneview.safeDestroyView
  */
 @Composable
 fun rememberFilmicView(engine: Engine): View {
-    val graded = remember(engine) {
-        val view = createView(engine)
-        // The PBR Neutral grading `createView` gave the view: replaced, not freed by the swap.
-        val replaced = view.colorGrading
-        view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)
-        GradedView(view, listOfNotNull(replaced, view.colorGrading))
+    val filmic = remember(engine) {
+        ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)
     }
-    // Not `rememberView`: `destroyView` frees the view alone, and on an engine that outlives the
-    // screen (the home hero's, #5202) both gradings, a 3D LUT each, would pile up visit after
-    // visit. The view goes first: a grading must not be freed while a view still holds it.
-    DisposableEffect(graded) {
-        onDispose {
-            engine.safeDestroyView(graded.view)
-            graded.gradings.forEach { runCatching { engine.destroyColorGrading(it) } }
-        }
+    // Declared before the view, so disposed after it: a grading must not be freed while a view
+    // still holds it. On an engine that outlives the screen (the home hero's, #5202) it would
+    // otherwise pile up, a 3D LUT per visit.
+    DisposableEffect(filmic) {
+        onDispose { runCatching { engine.destroyColorGrading(filmic) } }
     }
-    return graded.view
+    // `rememberView` frees the view and the PBR Neutral grading `createView` gave it (#5232):
+    // each object is destroyed once, by whoever made it.
+    return rememberView(engine) { createView(engine).apply { colorGrading = filmic } }
 }
-
-/** A view and every [ColorGrading] made for it, freed with it. */
-private class GradedView(val view: View, val gradings: List<ColorGrading>)

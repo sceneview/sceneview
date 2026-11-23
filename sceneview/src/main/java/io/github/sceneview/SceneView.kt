@@ -1754,6 +1754,12 @@ fun rememberScene(engine: Engine, creator: () -> Scene = { createScene(engine) }
  * A `View` is a heavy object that holds all rendering state for a single viewport — anti-aliasing,
  * shadows, post-processing, etc. One per window is recommended. Destroyed on disposal.
  *
+ * Disposal frees the view and the [com.google.android.filament.ColorGrading] that [createView]
+ * built for it, even if you replaced it with `view.colorGrading = …`, so an [Engine] that outlives
+ * the screen keeps nothing. A grading you set is yours to destroy, after this view. The SDK's
+ * grading, read through `view.colorGrading`, is freed with this view: do not share it with a view
+ * that outlives it.
+ *
  * You rarely need to call this directly — `SceneView { }` creates one by default.
  * Provide your own if you want to share the view with a [CollisionSystem] that is declared
  * outside the `SceneView { }` block.
@@ -1766,7 +1772,7 @@ fun rememberView(engine: Engine, creator: () -> View = { createView(engine) }) =
     remember(engine, creator).also { view ->
         DisposableEffect(view) {
             onDispose {
-                engine.safeDestroyView(view)
+                engine.destroyViewAndSdkGrading(view)
             }
         }
     }
@@ -1779,6 +1785,12 @@ fun rememberView(engine: Engine, creator: () -> View = { createView(engine) }) =
  * camera-stream shader's `Inverse_Tonemap_Filmic` needs in order to round-trip back to the
  * original camera pixels.
  *
+ * Disposal frees the view and the [com.google.android.filament.ColorGrading] that [createARView]
+ * built for it, even if you replaced it with `view.colorGrading = …`, so an [Engine] that outlives
+ * the screen keeps nothing. A grading you set is yours to destroy, after this view. The SDK's
+ * grading, read through `view.colorGrading`, is freed with this view: do not share it with a view
+ * that outlives it.
+ *
  * @see createARView for a full explanation of the AR camera-background tone-mapping pipeline.
  */
 @Composable
@@ -1786,7 +1798,7 @@ fun rememberARView(engine: Engine, creator: () -> View = { createARView(engine) 
     remember(engine, creator).also { view ->
         DisposableEffect(view) {
             onDispose {
-                engine.safeDestroyView(view)
+                engine.destroyViewAndSdkGrading(view)
             }
         }
     }
