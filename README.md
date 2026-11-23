@@ -24,6 +24,8 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 | Kotlin / Compose Multiplatform (Android, desktop) | `io.github.sceneview:sceneview-compose:4.72.0` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
+`sceneview-compose` is the Compose Multiplatform viewer façade with its own API; Android `io.github.sceneview.*` code needs `io.github.sceneview:sceneview` for 3D or `io.github.sceneview:arsceneview` for AR.
+
 Moving from Sceneform?
 [The mapping](https://sceneview.github.io/docs/sceneform-replacement/). Which artifact fits your app:
 [3D and AR library, per platform](https://sceneview.github.io/docs/3d-ar-library/).

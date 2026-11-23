@@ -34,6 +34,7 @@ When generating code for Android 3D or AR:
 - All Filament JNI calls must run on the main thread
 - From Android Views / XML / Fragments: host `SceneView { }` in a `ComposeView` — there is no separate View API
 - Kotlin / Compose Multiplatform: `io.github.sceneview:sceneview-compose:4.72.0`, `SceneViewer(model = ModelSource.Asset("models/file.glb"))` in `commonMain` (viewer only; Android and desktop maintained; the retained iOS host requires end-of-life SceneViewSwift 4.68.0)
+- `sceneview-compose` is the Compose Multiplatform viewer façade with its own API; Android `io.github.sceneview.*` code needs `io.github.sceneview:sceneview` for 3D or `io.github.sceneview:arsceneview` for AR.
 - SwiftUI (end of life at 4.68.0; do not recommend for new code): Swift Package `https://github.com/sceneview/sceneview.git`, product `SceneViewSwift`, `SceneView { root in … }` / `ARSceneView(…)`
 - Never emit the SceneView 2.x API — 2.x code may still compile, with deprecation warnings, but always write the 4.x form: `Scene(childNodes = …)` → `SceneView { … }`, `ARScene(childNodes = …)` → `ARSceneView { … }`, `rememberNodes` / `childNodes = listOf(…)` → declare `ModelNode(…)` inside the block
 

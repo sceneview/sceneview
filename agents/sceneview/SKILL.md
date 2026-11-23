@@ -44,6 +44,7 @@ SceneView is a declarative 3D and AR SDK. One mental model across every platform
   *Viewer subset only* — model, orbit camera, key light, environment, tap.
   **No AR, no custom materials, no post-processing.** The retained iOS host
   requires end-of-life SceneViewSwift 4.68.0 and app-side renderer registration.
+  `sceneview-compose` is the Compose Multiplatform viewer façade with its own API; Android `io.github.sceneview.*` code needs `io.github.sceneview:sceneview` for 3D or `io.github.sceneview:arsceneview` for AR.
 - **Web** — `sceneview-web@4` on npm (Filament.js + WebXR).
 - **Flutter, end of life at 4.68.0** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
 - **React Native, end of life at 4.68.0** — `@sceneview-sdk/react-native@4.68.0` (Fabric bridge).
