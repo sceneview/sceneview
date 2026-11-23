@@ -348,7 +348,7 @@ fun RootScreen(
     ) { padding ->
         // Edge to edge at the top: the status-bar band is the tab's own. About draws its
         // top bar under it (transparent at rest, `surface-container` once content scrolls
-        // beneath); Home and AR View keep it as padding, as they always had. The bottom
+        // beneath); Home's full-window scene also owns its status-bar band. The bottom
         // stays the Scaffold's — the navigation bar's height, which already includes the
         // system navigation bar, so nothing below pads for it a second time.
         val layoutDirection = LocalLayoutDirection.current
@@ -359,7 +359,8 @@ fun RootScreen(
                 .padding(
                     start = padding.calculateStartPadding(layoutDirection),
                     end = padding.calculateEndPadding(layoutDirection),
-                    bottom = padding.calculateBottomPadding(),
+                    bottom = if (selectedTab == RootTab.Showcase && !galleryOpen) 0.dp
+                        else padding.calculateBottomPadding(),
                 ),
         ) {
             // AnimatedContent disposes the screen it leaves, and every `rememberSaveable`
@@ -392,7 +393,7 @@ fun RootScreen(
                 },
             ) { (tab, gallery) ->
             screenStates.SaveableStateProvider("${tab.name}-$gallery") {
-            Box(Modifier.padding(top = if (tab == RootTab.About) 0.dp else statusBand)) {
+            Box(Modifier.padding(top = if (tab == RootTab.About || (tab == RootTab.Showcase && !gallery)) 0.dp else statusBand)) {
             when (tab) {
                 RootTab.Showcase -> if (gallery) {
                     ExploreTabScreen(
@@ -406,6 +407,7 @@ fun RootScreen(
                     )
                 } else {
                     HomeScreen(
+                        bottomBarHeight = padding.calculateBottomPadding(),
                         demos = rememberListedDemos(),
                         query = query,
                         onQueryChange = {

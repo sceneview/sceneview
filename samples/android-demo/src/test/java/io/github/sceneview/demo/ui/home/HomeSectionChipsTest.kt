@@ -62,6 +62,7 @@ class HomeSectionChipsTest {
         val placeAr = HomeTestTags.sectionHeader(DemoCategory.PLACE_AR)
         rule.onNodeWithTag(placeAr).assertDoesNotExist()
 
+        rule.onNodeWithTag(HomeTestTags.SHEET_HANDLE).performClick()
         rule.onNodeWithTag(HomeTestTags.GRID)
             .performScrollToNode(hasTestTag(HomeTestTags.CATEGORY_CHIPS))
         rule.onNodeWithTag(HomeTestTags.CATEGORY_CHIPS)
@@ -70,7 +71,7 @@ class HomeSectionChipsTest {
         rule.waitForIdle()
 
         val top = rule.onNodeWithTag(placeAr).assertIsDisplayed().getUnclippedBoundsInRoot().top
-        val header = SceneViewTokens.Home.headerHeight
+        val header = rule.onNodeWithTag(HomeTestTags.GRID).getUnclippedBoundsInRoot().top
         assertTrue("section header at $top, pinned header is $header", top >= header - 1.dp)
         assertTrue("section header at $top, expected right under the pinned header", top < header + 48.dp)
     }
@@ -78,6 +79,7 @@ class HomeSectionChipsTest {
     @Test
     fun `a chip leaves every sample listed`() {
         setUpHome()
+        rule.onNodeWithTag(HomeTestTags.SHEET_HANDLE).performClick()
         rule.onNodeWithTag(HomeTestTags.GRID)
             .performScrollToNode(hasTestTag(HomeTestTags.CATEGORY_CHIPS))
         rule.onNodeWithTag(HomeTestTags.CATEGORY_CHIPS)

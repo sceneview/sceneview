@@ -9,8 +9,10 @@
     <string name="home_search_placeholder">Search demos</string>
     <string name="home_search_close">Close search</string>
     <string name="home_whats_new">What\'s new</string>
+    <string name="home_title">SceneView</string>
+    <string name="home_menu">More options</string>
 
-    <!-- Discovery actions use full-width M3 outlined cards with wrapping text. -->
+    <!-- Discovery carousel captions sit below the pictures. -->
     <string name="home_view_model">View a model</string>
     <string name="home_place_in_room">Place in your room</string>
     <string name="home_explore_scan">Explore a scan</string>
@@ -22,6 +24,8 @@
 
     <!-- Hero — routes to demo/model-viewer -->
     <string name="home_hero_open">Open</string>
+    <string name="home_hero_title">Night circuit</string>
+    <string name="home_hero_live">Rendered live by SceneView</string>
     <!-- Featured pager, "What's new" page (#3566 / #3567). The title takes a
          major.minor such as "4.35"; the subtitle takes the number of samples
          currently carrying a New/Updated marker. -->

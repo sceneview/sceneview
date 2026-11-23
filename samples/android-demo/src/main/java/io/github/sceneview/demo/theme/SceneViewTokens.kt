@@ -401,8 +401,14 @@ object SceneViewTokens {
         val searchFieldHeight = 48.dp
         val contentPadding = Space.md
         val gridGutter = 12.dp
-        /** Compact live discovery window; action labels grow outside it. */
-        val discoverySceneHeight = 192.dp
+        /** Top of the resting sheet, measured from the top of the entire window. */
+        const val sheetRestFraction = 0.58f
+        val sheetMaxWidth = 640.dp
+        val sheetCorner = 28.dp
+        const val sheetEntranceMillis = 400
+        val outcomeCardHeight = 152.dp
+        val outcomeImageHeight = 64.dp
+        val thumbnailSize = 72.dp
         val heroHeight = 320.dp
         val heroHeightExpanded = 400.dp
         val heroPadding = 24.dp
@@ -430,7 +436,7 @@ object SceneViewTokens {
         val sectionHeaderTopGap = 24.dp
         /** Space between a section header and its group of rows. */
         val sectionHeaderBottomGap = 12.dp
-        val cardRadius = 20.dp
+        val cardRadius = 12.dp
         val cardTextPaddingTop = 12.dp
         val cardTextPaddingHorizontal = 14.dp
         val cardTextPaddingBottom = 14.dp
@@ -474,7 +480,7 @@ object SceneViewTokens {
         val rowHeight = 116.dp
 
         /** `home-row-radius` — every row's four corners (`card-radius`). */
-        val rowRadius = 20.dp
+        val rowRadius = 12.dp
 
         /** `home-row-gap` — page between two rows. */
         val rowGap = Space.sm

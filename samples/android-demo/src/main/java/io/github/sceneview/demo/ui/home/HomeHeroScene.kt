@@ -10,6 +10,7 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.util.Log
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +26,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -99,11 +101,10 @@ private const val HERO_IBL = "environments/circuit_ibl.ktx"
  * SceneView: one `ModelNode`, six `LightNode`s, material parameters and view options written
  * per frame ([nightCueLevels], [nightCameraPose]). No overlay, no video.
  *
- * **Why it survives the scroll.** [HomeScreen] composes this once, as a layer *under* the
- * grid, for as long as the screen lives. The grid's hero item is transparent copy over it.
- * Neither `LazyVerticalGrid` nor the featured `HorizontalPager` can dispose the engine, the
- * TextureView, the model or the clock, because none of it is theirs. When the band leaves
- * the viewport the stage's own [Lifecycle] drops to CREATED and SceneView stops submitting
+ * **Why it survives the sheet.** [HomeScreen] composes this once, behind the sheet, for as
+ * long as the screen lives. Neither the catalogue nor the carousel owns the engine, the
+ * TextureView, the model or the clock. When the sheet covers the stage or search opens,
+ * the stage's own [Lifecycle] drops to CREATED and SceneView stops submitting
  * frames — the last one stays in the TextureView, the [HeroClock] stops — and coming back
  * raises it to RESUMED: the same frame, then the next one.
  *
@@ -114,7 +115,7 @@ private const val HERO_IBL = "environments/circuit_ibl.ktx"
  *
  * **Tiers.** [HeroTier.forDevice] picks the top rung, the bottom one on a low-RAM device,
  * or the rung this install already settled on; [HeroFrameBudget] steps down a rung within
- * seconds whenever the frames come in under 30 fps — reflections, then the shadow, then
+ * seconds whenever sustained rendering falls below the 60 Hz target — reflections, then the shadow, then
  * the venue's point lights and bloom, two at a time under 10 fps — and never climbs back. A drop is remembered, so the
  * next launch starts where this one settled. Reduced motion (animator scale 0, QA mode) holds the opening shot,
  * every lamp lit, under [FrameRatePolicy.OnDemand].
@@ -133,10 +134,10 @@ private const val HERO_IBL = "environments/circuit_ibl.ktx"
  * Home → Models stall). What has already landed stays; a load still in flight is cancelled
  * and simply starts again on resume.
  *
- * @param active The band is at least partly on screen and the screen is not searching.
+ * @param active The scene is at least partly visible and the screen is not searching.
  *               False parks the render loop and the clock; the last frame stays.
- * @param scroll How far the featured band has scrolled out, 0 → 1, read per frame.
- * @param contentPadding The parts of the stage under the header and the band's copy: the
+ * @param scroll Sheet travel from rest to expanded, 0 → 1, read per frame.
+ * @param contentPadding The parts of the stage under the header and the resting sheet: the
  *                       car is framed in what is left.
  */
 @Composable
@@ -361,7 +362,9 @@ private fun HomeHeroStage(
     val moving = active && motionEnabled
     val clock = remember { HeroClock() }
     val tilt = remember { HeroTilt() }
-    val budget = remember { HeroFrameBudget() }
+    val orbit = remember { HeroOrbit() }
+    // Judge sustained rendering against the 60 Hz target, allowing a little vsync jitter.
+    val budget = remember { HeroFrameBudget(minFps = 55f) }
     // Seeded with the film's first frame, the venue still dark: a frame drawn before the loop
     // first runs must not show the set at full power.
     val levels = remember { nightCueLevels(film = 0f, motion = motionEnabled) }
@@ -496,6 +499,7 @@ private fun HomeHeroStage(
                     nanos = nanos,
                     snap = DemoSettings.qaMode || !motionEnabled,
                 )
+                orbit.frame(nanos)
                 val pose = nightCameraPose(
                     film = film,
                     scroll = followed,
@@ -503,6 +507,8 @@ private fun HomeHeroStage(
                     tiltX = tilt.x,
                     tiltY = tilt.y,
                     motion = motionEnabled,
+                    orbitYaw = orbit.yaw,
+                    orbitLift = orbit.lift,
                 )
                 val focal = pose.focalLengthMillimetres
                 if (kotlin.math.abs(focal - lastFocal[0]) > 1e-3) {
@@ -630,6 +636,21 @@ private fun HomeHeroStage(
                 lights.garage = null
             }
         }
+        // A sibling above the TextureView gets the gesture before AndroidView interop.
+        // The sheet is above this entire layer, so dragging it never also orbits the car.
+        if (active) {
+            Box(Modifier.fillMaxSize().pointerInput(orbit) {
+                detectDragGestures(
+                    onDragStart = { orbit.begin() },
+                    onDragEnd = { orbit.release(System.nanoTime()) },
+                    onDragCancel = { orbit.release(System.nanoTime()) },
+                ) { change, delta ->
+                    change.consume()
+                    orbit.drag(delta.x / size.width.coerceAtLeast(1), delta.y / size.height.coerceAtLeast(1))
+                    renderInvalidator.requestRender()
+                }
+            })
+        }
         // Raw Filament writes on the View, declared after the SceneView so they run after
         // its own `applyRenderQuality` effect and are never undone by it (#1078). Each
         // write asks for a frame: a parked loop would otherwise keep the old look.
@@ -670,7 +691,10 @@ private fun startHeroTierTrial(context: Context, lowRam: Boolean): HeroTier {
     val onTrial = prefs.getString(TIER_ON_TRIAL_KEY, null)?.let(::heroTierNamed)
     val crashedBefore = prefs.getString(crashedTierKey(), null)?.let(::heroTierNamed)
     val crashed = listOfNotNull(onTrial, crashedBefore).minOrNull()
-    val pick = HeroTier.forDevice(lowRam, settled = settledHeroTier(context), crashed = crashed)
+    // The Adreno 618 cannot sustain this scene's shadow/SSR rungs. Start with the lit
+    // venue and bloom, with one cheaper rung available instead of stalling through both.
+    val deviceCap = if (Build.DEVICE == "sunfish") HeroTier.Standard else HeroTier.Cinematic
+    val pick = minOf(deviceCap, HeroTier.forDevice(lowRam, settled = settledHeroTier(context), crashed = crashed))
     prefs.edit()
         .apply { if (crashed != null) putString(crashedTierKey(), crashed.name) }
         .putString(TIER_ON_TRIAL_KEY, pick.name)

@@ -412,16 +412,18 @@ internal fun nightCameraPose(
     tiltX: Float = 0f,
     tiltY: Float = 0f,
     motion: Boolean = true,
+    orbitYaw: Float = 0f,
+    orbitLift: Float = 0f,
 ): NightCameraPose {
     val shot = nightShotAt(if (motion) film else 0f)
     val s = if (motion) scroll.coerceIn(0f, 1f) else 0f
     val eased = s * s * (3f - 2f * s)
     val zoom = (1.55f / aspect.coerceAtLeast(0.1f)).coerceIn(1.2f, 1.9f)
-    val angle = shot.angle + NightFilm.SCROLL_TURN * eased + tiltX * 0.08f
+    val angle = shot.angle + NightFilm.SCROLL_TURN * eased + tiltX * 0.08f + orbitYaw
     val radius = shot.radius * zoom * (1f - NightFilm.SCROLL_PUSH * eased)
     val height = max(
         NightFilm.MIN_EYE_HEIGHT,
-        shot.height - NightFilm.SCROLL_SINK * eased + tiltY * 0.08f,
+        shot.height - NightFilm.SCROLL_SINK * eased + tiltY * 0.08f + orbitLift,
     )
     return NightCameraPose(
         eyeX = NightFilm.CAR_X + sin(angle) * radius,
@@ -432,6 +434,47 @@ internal fun nightCameraPose(
         targetZ = NightFilm.CAR_Z,
         verticalFovDegrees = shot.fov,
     )
+}
+
+/** Finger orbit added to the film and tilt. Main-thread holder, no per-frame Compose state. */
+internal class HeroOrbit {
+    var yaw = 0f
+        private set
+    var lift = 0f
+        private set
+    private var dragging = false
+    private var releasedAt = Long.MIN_VALUE
+    private var previousNanos: Long? = null
+
+    fun begin() {
+        dragging = true
+        previousNanos = null
+    }
+
+    /** A screen-width drag turns half a lap; vertical travel lifts the eye by up to 2 m. */
+    fun drag(horizontalFraction: Float, verticalFraction: Float) {
+        yaw = (yaw - horizontalFraction * PI.toFloat()).coerceIn(-PI.toFloat(), PI.toFloat())
+        lift = (lift + verticalFraction * 2f).coerceIn(-0.5f, 2f)
+    }
+
+    fun release(nanos: Long) {
+        dragging = false
+        releasedAt = nanos
+        previousNanos = nanos
+    }
+
+    /** Hold for two seconds after release, then ease continuously back into the film. */
+    fun frame(nanos: Long) {
+        val previous = previousNanos
+        previousNanos = nanos
+        if (dragging || releasedAt == Long.MIN_VALUE || previous == null) return
+        val returnAt = releasedAt + 2_000_000_000L
+        if (nanos <= returnAt) return
+        val dt = ((nanos - maxOf(previous, returnAt)) / 1_000_000_000f).coerceIn(0f, 0.25f)
+        val decay = kotlin.math.exp(-dt / 0.45f)
+        yaw *= decay
+        lift *= decay
+    }
 }
 
 /**

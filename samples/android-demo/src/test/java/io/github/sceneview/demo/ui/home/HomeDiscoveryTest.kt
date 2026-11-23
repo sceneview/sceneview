@@ -7,7 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -85,19 +84,23 @@ class HomeDiscoveryTest {
     }
 
     private fun assertOutcomes() {
-        val hero = rule.onNodeWithTag(HomeTestTags.HERO).assertHeightIsEqualTo(192.dp)
+        val hero = rule.onNodeWithTag(HomeTestTags.HERO).assertIsDisplayed()
+        val root = rule.onNodeWithTag(HomeTestTags.ROOT).getUnclippedBoundsInRoot()
+        assertEquals(root, hero.getUnclippedBoundsInRoot())
         val firstChoice = rule.onNodeWithTag(HomeTestTags.outcome("model-viewer"))
         assertTrue(
-            "The first choice must sit below the live scene",
-            firstChoice.getUnclippedBoundsInRoot().top > hero.getUnclippedBoundsInRoot().bottom,
+            "The sheet must leave at least 55 percent of the full-window scene visible",
+            firstChoice.getUnclippedBoundsInRoot().top >= root.height * 0.55f,
         )
+        // Large fonts grow the captions; expand the standard sheet before checking them.
+        rule.onNodeWithTag(HomeTestTags.SHEET_HANDLE).performClick()
+        rule.waitForIdle()
         val expected = listOf(
             "model-viewer" to "View a model",
             "ar-placement" to "Place in your room",
             "ar-rerun" to "Explore a scan",
         )
         expected.forEach { (id, label) ->
-            rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.outcome(id)))
             val row = rule.onNodeWithTag(HomeTestTags.outcome(id)).assertIsDisplayed()
             val outcome = HOME_OUTCOMES.single { it.demoId == id }
             val supportingText = androidx.test.core.app.ApplicationProvider
@@ -124,7 +127,7 @@ class HomeDiscoveryTest {
         rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.row("model-viewer")))
         val catalogueRow = rule.onNodeWithTag(HomeTestTags.row("model-viewer")).assertIsDisplayed()
         assertTrue(
-            "A catalogue picture must not inflate its row beyond the live hero height",
+            "A catalogue thumbnail must leave room for its caption",
             catalogueRow.getUnclippedBoundsInRoot().height < 192.dp,
         )
     }
@@ -132,6 +135,7 @@ class HomeDiscoveryTest {
     @Test
     fun `Materials shortcut keeps its row when jumping to Materials and scenes`() {
         showHome(darkTheme = false)
+        rule.onNodeWithTag(HomeTestTags.SHEET_HANDLE).performClick()
         rule.onNodeWithTag(HomeTestTags.GRID).performScrollToNode(hasTestTag(HomeTestTags.featured("materials")))
         rule.onNodeWithTag(HomeTestTags.featured("materials")).assertIsDisplayed()
         val chip = HomeTestTags.sectionChip(DemoCategory.CREATE)

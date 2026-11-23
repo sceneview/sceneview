@@ -52,6 +52,9 @@ enum class ContainerRole { Card, Screen }
  */
 object DemoContainerTransform {
     var armedId: String? by mutableStateOf(null)
+    // A demo appears in both discovery and its permanent category. Only the tapped copy
+    // may register the shared bounds, even when both copies are composed in the sheet.
+    var armedSource: String? by mutableStateOf(null)
 
     fun key(demoId: String): String = "demo-container-$demoId"
 }
@@ -72,12 +75,17 @@ object DemoContainerTransform {
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun Modifier.demoContainerTransform(demoId: String, role: ContainerRole): Modifier {
+fun Modifier.demoContainerTransform(demoId: String, role: ContainerRole, source: String? = null): Modifier {
     val shared = LocalSharedTransitionScope.current ?: return this
     val scope = LocalNavAnimatedScope.current ?: return this
     // Read per card through derivedStateOf, so arming one card recomposes only that card
     // instead of every card on screen.
-    val armed by remember(demoId) { derivedStateOf { DemoContainerTransform.armedId == demoId } }
+    val armed by remember(demoId, role, source) {
+        derivedStateOf {
+            DemoContainerTransform.armedId == demoId &&
+                (role == ContainerRole.Screen || DemoContainerTransform.armedSource == source)
+        }
+    }
     if (!LocalMotionEnabled.current || !armed) return this
     val restRadius = SceneViewTokens.Home.rowRadius
     val radius by scope.transition.animateDp(
