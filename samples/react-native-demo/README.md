@@ -1,5 +1,7 @@
 # SceneView React Native Demo
 
+> **End of life:** `@sceneview-sdk/react-native` 4.68.0 (November 2026) is the last release. This sample is kept for existing apps and is no longer maintained. See [DEPRECATION.md](../../DEPRECATION.md).
+
 > **Status: Alpha**
 >
 > Feature showcase app for the React Native bridge to SceneView. It demonstrates
