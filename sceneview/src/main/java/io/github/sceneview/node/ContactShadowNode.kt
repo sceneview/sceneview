@@ -97,7 +97,8 @@ enum class ContactShadowContext(
  * All four values are in the node's own units — metres at scale 1 — so they scale with the node
  * like its [size][ContactShadowNode]. The rectangle is centred on the quad (the context's centre
  * offset does not apply) and its half-extents run along the quad's `u` and `v` axes (see
- * [ContactShadowNode]'s UV table): X and Z for a floor quad, X and Y for a wall quad. Make the
+ * [ContactShadowNode]'s UV table): X and Z for a floor quad, X and Y for a wall quad. `u` always
+ * runs along X, so there is no YZ quad: a `size` with `x = 0` builds a degenerate plane. Make the
  * quad at least `2 × (half-extent + fade)` on each axis, or the band is cut at its border.
  *
  * @property halfU        Half-extent of the rectangle along `u`.
