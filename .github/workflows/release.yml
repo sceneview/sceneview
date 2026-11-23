@@ -512,13 +512,20 @@ jobs:
       # OIDC token, and the npm package with `mcpName` in mcp/package.json.
       # Not gated on `check-mcp`: when npm already has the version, an
       # MCP-only dispatch still fills a registry gap. Already listed -> no-op.
+      # continue-on-error: the registry is a preview service, and by this
+      # step Maven and npm are out. A registry outage must not hold back the
+      # GitHub Release (create-release needs this job); it shows as a warning,
+      # and the next MCP-only dispatch retries it.
       - name: Publish to the MCP Registry
+        continue-on-error: true
+        timeout-minutes: 5
         working-directory: mcp
         env:
           PUBLISHER_VERSION: v1.8.8
           PUBLISHER_SHA256: 09f1fa70ee146b640584274a1a6b2b8a0310b05d4321fa9224e6df6a016d67f4
         run: |
           set -euo pipefail
+          trap 'echo "::warning::MCP Registry publish failed; re-run with gh workflow run release.yml --ref main -f mcp_only=true"' ERR
           NAME=$(node -p "require('./server.json').name")
           VERSION=$(node -p "require('./server.json').version")
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -526,15 +533,17 @@ jobs:
             echo "::error::mcp/server.json is $VERSION but mcp/package.json is $PKG_VERSION"
             exit 1
           fi
-          LISTED=$(curl -fsS --get "https://registry.modelcontextprotocol.io/v0/servers" \
-            --data-urlencode "search=$NAME" \
-            | jq -r --arg n "$NAME" --arg v "$VERSION" \
-              '[.servers[]? | select(.server.name == $n and .server.version == $v)] | length')
-          if [ "$LISTED" != "0" ]; then
-            echo "::notice::$NAME $VERSION is already in the MCP Registry"
-            exit 0
-          fi
-          curl -fsSLo "$RUNNER_TEMP/mcp-publisher.tar.gz" \
+          # One record per version: ask for this exact one (200 = listed,
+          # 404 = not yet). A search page is paginated and can miss it.
+          ENCODED=$(node -p "encodeURIComponent(require('./server.json').name)")
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --max-time 20 \
+            "https://registry.modelcontextprotocol.io/v0/servers/$ENCODED/versions/$VERSION")
+          case "$STATUS" in
+            200) echo "::notice::$NAME $VERSION is already in the MCP Registry"; exit 0 ;;
+            404) echo "Publishing $NAME $VERSION to the MCP Registry" ;;
+            *) echo "::error::MCP Registry probe returned HTTP $STATUS"; exit 1 ;;
+          esac
+          curl -fsSL --retry 3 --max-time 60 -o "$RUNNER_TEMP/mcp-publisher.tar.gz" \
             "https://github.com/modelcontextprotocol/registry/releases/download/$PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
           echo "$PUBLISHER_SHA256  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" -C "$RUNNER_TEMP" mcp-publisher
