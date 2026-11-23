@@ -1,6 +1,6 @@
 ---
 name: sceneview-web
-description: Build 3D and WebXR (AR/VR) experiences in the browser with SceneView for Web — Filament.js (WebGL2/WASM) wrapped in a Kotlin/JS DSL and a plain-JavaScript API on `window.sceneview`. Use whenever the user asks for "3D in the browser", "a web model viewer", "WebXR AR/VR", or any browser 3D/AR app where the dependency is the `sceneview-web` npm package or its CDN script. For Jetpack Compose use the `sceneview` skill; for SwiftUI use `sceneview-ios`. Skip for raw Three.js / Babylon.js / model-viewer / A-Frame work.
+description: Build 3D and WebXR (AR/VR) experiences in the browser with SceneView for Web — Filament.js (WebGL2/WASM) wrapped in a Kotlin/JS DSL and a plain-JavaScript API on `window.sceneview`. Use whenever the user asks for "3D in the browser", "a web model viewer", "WebXR AR/VR", or any browser 3D/AR app where the dependency is the `sceneview-web` npm package or its CDN script. For Jetpack Compose use the `sceneview` skill. SceneView for SwiftUI is end of life at 4.68.0. Skip for raw Three.js / Babylon.js / model-viewer / A-Frame work.
 license: Apache-2.0
 metadata:
   author: SceneView
