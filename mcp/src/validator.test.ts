@@ -42,6 +42,40 @@ describe("setup/sceneview-compose-android-api", () => {
     expect(hasRule(code, RULE)).toBe(false);
   });
 
+  it("does NOT fire when a KMP module also declares the Android artifact", () => {
+    const code = `
+      commonMain.dependencies { implementation("io.github.sceneview:sceneview-compose:4.72.0") }
+      androidMain.dependencies { implementation("io.github.sceneview:arsceneview:4.72.0") }
+      import io.github.sceneview.ar.ARSceneView
+
+      ARSceneView(engine = engine) { }
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does NOT fire on a local Scene type or a SceneView mention in a comment or string", () => {
+    const code = `
+      implementation("io.github.sceneview:sceneview-compose:4.72.0")
+      import io.github.sceneview.compose.SceneViewer
+      // Unlike the Android SceneView { } composable, the façade has its own API.
+      class Scene(val title: String)
+      val label = "SceneView"
+      val scene = Scene("Shop")
+      SceneViewer(model = ModelSource.Asset("models/chair.glb"))
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("names arsceneview when the code is AR", () => {
+    const code = `
+      implementation("io.github.sceneview:sceneview-compose:4.72.0")
+      ARSceneView(engine = rememberEngine()) { }
+    `;
+    const issues = validateCode(code).filter((issue) => issue.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("`io.github.sceneview:arsceneview`");
+  });
+
   it("does NOT fire when the Android API uses the sceneview artifact", () => {
     const code = `
       implementation("io.github.sceneview:sceneview:4.72.0")

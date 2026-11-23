@@ -45,15 +45,34 @@ const RULES: Rule[] = [
     check(code, lines) {
       const composeDependency = /io\.github\.sceneview:sceneview-compose(?::[^\s"')]+)?/;
       if (!composeDependency.test(code)) return [];
+      // A KMP module can declare the façade for commonMain AND the Android
+      // artifact for androidMain: the Android API is then on the classpath.
+      if (/io\.github\.sceneview:(?:sceneview|arsceneview)(?::|["'\s)]|$)/m.test(code)) return [];
 
-      const androidApi =
-        /(?:import\s+io\.github\.sceneview\.(?!compose(?:\.|\b))|\b(?:Scene|SceneView|ARScene|ARSceneView|PlacementScene|AutoPlacementScene|rememberEngine|rememberModelLoader|rememberModelInstance|rememberEnvironmentLoader|rememberMaterialLoader|rememberView|rememberARView|ModelNode|AnchorNode|CubeNode|LightNode)\b)/;
-      if (!androidApi.test(code)) return [];
+      // Comments and string literals are not API usage.
+      // Strings first, so a "https://…" literal is not read as a line comment.
+      const codeOnly = code
+        .replace(/"(?:\\.|[^"\\\n])*"/g, '""')
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ");
+      const localNames = locallyDeclaredNames(codeOnly);
+      const androidImport = /\bimport\s+io\.github\.sceneview\.(?!compose(?:\.|\b))/;
+      const androidNames = [
+        "Scene", "SceneView", "ARScene", "ARSceneView", "PlacementScene", "AutoPlacementScene",
+        "rememberEngine", "rememberModelLoader", "rememberModelInstance",
+        "rememberEnvironmentLoader", "rememberMaterialLoader", "rememberView", "rememberARView",
+        "ModelNode", "AnchorNode", "CubeNode", "LightNode",
+      ];
+      // A call (`Name(` or `Name {`) to an Android name the snippet does not declare itself.
+      const calledAndroidNames = androidNames.filter(
+        (name) => !localNames.has(name) && new RegExp(`\\b${name}\\s*[({]`).test(codeOnly)
+      );
+      if (!androidImport.test(codeOnly) && calledAndroidNames.length === 0) return [];
 
+      const arNames = new Set(["ARScene", "ARSceneView", "PlacementScene", "AutoPlacementScene", "rememberARView", "AnchorNode"]);
       const isAr =
-        /(?:import\s+io\.github\.sceneview\.ar(?:\.|\b)|\b(?:ARScene|ARSceneView|PlacementScene|AutoPlacementScene|rememberARView|AnchorNode)\b)/.test(
-          code
-        );
+        /\bimport\s+io\.github\.sceneview\.ar(?:\.|\b)/.test(codeOnly) ||
+        calledAndroidNames.some((name) => arNames.has(name));
       const coordinate = isAr ? "io.github.sceneview:arsceneview" : "io.github.sceneview:sceneview";
       return findLines(lines, composeDependency).map((line) => ({
         severity: "error",
