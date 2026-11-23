@@ -5,8 +5,10 @@ import io.github.sceneview.demo.telemetry.logModelLoadFailed
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
@@ -554,83 +556,84 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            AutoPlacementScene(
+                assetReady = modelInstance != null && liveState.allows(CloudAnchorAction.PlaceAnchor),
+                // The status banner and cards above coach this flow.
+                coaching = false,
+                state = placementState,
+                lifecycle = rememberHostLifecycle(),
+                modifier = Modifier.fillMaxSize(),
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                cameraStream = cameraStream,
+                playbackDataset = arPlaybackDataset,
+                sessionConfiguration = { _, config ->
+                    config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
+                },
+                onPlaced = { localPlacement = it },
+                onSessionCreated = { session -> arSession = session },
+                onSessionFailure = { failure ->
+                    if (sessionState.onFailure(failure)) {
+                        hostTask = CloudAnchorTask.Idle
+                        resolveTask = CloudAnchorTask.Idle
+                        roomQuality = RoomQuality.Insufficient
+                        cameraReady = false
+                        isTracking = false
+                    }
+                },
+                onARCoreAvailability = { arCoreAvailability = it },
+                onSessionUpdated = { session: Session, frame: Frame ->
+                    cameraReady = true
+                    isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    // Moving to a new surface replaces the native anchor. An uploaded
+                    // code (or upload in flight) belongs to the old placement, never this one.
+                    if (hostAnchor != null && localPlacement?.anchor !== hostAnchor) {
+                        clearHostedPlacement()
+                    }
+                    // Room-mapping feedback, the signal the old screen ignored entirely.
+                    // Only meaningful once there is an anchor to map *around*, and only
+                    // while tracking — ARCore throws otherwise, hence the runCatching.
+                    // The raw per-frame estimate is noisy (#3834): `advancedBy` keeps the
+                    // best reading seen since the last reset, so the meter never appears to
+                    // lose progress. `clearHostedPlacement` resets it for a new anchor.
+                    if (isTracking && localPlacement?.anchor?.trackingState == TrackingState.TRACKING &&
+                        hostTask == CloudAnchorTask.Idle) {
+                        runCatching {
+                            session.estimateFeatureMapQualityForHosting(frame.camera.pose)
+                                .toRoomQuality()
+                        }.getOrNull()?.let { roomQuality = roomQuality.advancedBy(it) }
+                    }
+                },
+                onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
+                // A resolved anchor shows whether or not this device placed one itself.
+                sceneContent = {
+                    val anchor = resolvedAnchor
+                    val instance = modelInstance
+                    if (anchor != null && instance != null) {
+                        AnchorNode(anchor = anchor) {
+                            ModelNode(modelInstance = instance,
+                                scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
+                                centerOrigin = Position(y = -1f),
+                                isVisible = isTracking)
+                        }
+                    }
+                },
+            ) { placement ->
+                val instance = modelInstance
+                if (instance != null && resolvedAnchor == null) {
+                    AutoPlacementModel(placement, placementState, instance,
+                        scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
+                        onInvalidMove = { invalidMove = it })
+                }
+            }
+
             if (forcedScenario != null) {
-                // A pinned QA state (#3421) shows its flow over a fixed room: a live session's
-                // ARCore card would cover the very state under review.
+                // A pinned QA state (#3421) shows its flow over a fixed room. The scene stays
+                // composed underneath, so clearing the pin returns to a live, armed placement.
+                Box(Modifier.fillMaxSize().background(Color.Black))
                 QaCameraBackdrop(seed = "ar-cloud-anchor")
             } else {
-                AutoPlacementScene(
-                    assetReady = modelInstance != null && liveState.allows(CloudAnchorAction.PlaceAnchor),
-                    // The status banner and cards above coach this flow.
-                    coaching = false,
-                    state = placementState,
-                    lifecycle = rememberHostLifecycle(),
-                    modifier = Modifier.fillMaxSize(),
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    materialLoader = materialLoader,
-                    cameraStream = cameraStream,
-                    playbackDataset = arPlaybackDataset,
-                    sessionConfiguration = { _, config ->
-                        config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
-                    },
-                    onPlaced = { localPlacement = it },
-                    onSessionCreated = { session -> arSession = session },
-                    onSessionFailure = { failure ->
-                        if (sessionState.onFailure(failure)) {
-                            hostTask = CloudAnchorTask.Idle
-                            resolveTask = CloudAnchorTask.Idle
-                            roomQuality = RoomQuality.Insufficient
-                            cameraReady = false
-                            isTracking = false
-                        }
-                    },
-                    onARCoreAvailability = { arCoreAvailability = it },
-                    onSessionUpdated = { session: Session, frame: Frame ->
-                        cameraReady = true
-                        isTracking = frame.camera.trackingState == TrackingState.TRACKING
-                        // Moving to a new surface replaces the native anchor. An uploaded
-                        // code (or upload in flight) belongs to the old placement, never this one.
-                        if (hostAnchor != null && localPlacement?.anchor !== hostAnchor) {
-                            clearHostedPlacement()
-                        }
-                        // Room-mapping feedback, the signal the old screen ignored entirely.
-                        // Only meaningful once there is an anchor to map *around*, and only
-                        // while tracking — ARCore throws otherwise, hence the runCatching.
-                        // The raw per-frame estimate is noisy (#3834): `advancedBy` keeps the
-                        // best reading seen since the last reset, so the meter never appears to
-                        // lose progress. `clearHostedPlacement` resets it for a new anchor.
-                        if (isTracking && localPlacement?.anchor?.trackingState == TrackingState.TRACKING &&
-                            hostTask == CloudAnchorTask.Idle) {
-                            runCatching {
-                                session.estimateFeatureMapQualityForHosting(frame.camera.pose)
-                                    .toRoomQuality()
-                            }.getOrNull()?.let { roomQuality = roomQuality.advancedBy(it) }
-                        }
-                    },
-                    onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
-                    // A resolved anchor shows whether or not this device placed one itself.
-                    sceneContent = {
-                        val anchor = resolvedAnchor
-                        val instance = modelInstance
-                        if (anchor != null && instance != null) {
-                            AnchorNode(anchor = anchor) {
-                                ModelNode(modelInstance = instance,
-                                    scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
-                                    centerOrigin = Position(y = -1f),
-                                    isVisible = isTracking)
-                            }
-                        }
-                    },
-                ) { placement ->
-                    val instance = modelInstance
-                    if (instance != null && resolvedAnchor == null) {
-                        AutoPlacementModel(placement, placementState, instance,
-                            scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
-                            onInvalidMove = { invalidMove = it })
-                    }
-                }
-
                 // Cover the still-black AR viewport until the first camera frame (#2484);
                 // reads the ARCore verdict so it never covers the SDK's own card (#3341).
                 ARCameraInitScrim(
