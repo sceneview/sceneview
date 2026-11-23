@@ -52,6 +52,48 @@ sceneview = { module = "io.github.sceneview:sceneview", version.ref = "sceneview
     expect(issues[0].message).toContain("2.3.0");
   });
 
+  it("resolves a catalog version.ref whose key does not name SceneView", () => {
+    const code = `
+[versions]
+sv = "0.10.0"
+
+[libraries]
+ar = { module = "io.github.sceneview:arsceneview", version.ref = "sv" }
+`;
+    const issues = validateCode(code).filter((issue) => issue.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].line).toBe(3);
+    expect(issues[0].message).toContain("io.github.sceneview:arsceneview:0.10.0");
+  });
+
+  it("fires for an inline catalog version, in module or group/name form", () => {
+    const code = `
+[libraries]
+a = { module = "io.github.sceneview:sceneview", version = "2.2.1" }
+b = { group = "io.github.sceneview", name = "sceneview-compose", version = "3.6.0" }
+`;
+    const issues = validateCode(code).filter((issue) => issue.rule === RULE);
+    expect(issues.map((issue) => issue.line)).toEqual([3, 4]);
+    expect(issues[1].message).toContain("sceneview-compose:3.6.0");
+  });
+
+  it("does NOT fire for a [versions] key that only mentions sceneview", () => {
+    const code = `
+[versions]
+sceneviewSamplesPlugin = "1.2.0"
+
+[libraries]
+sceneview = { module = "io.github.sceneview:sceneview", version = "4.72.0" }
+`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("names the 4.18.0 fallback for AGP 8 toolchains", () => {
+    const code = `implementation("io.github.sceneview:sceneview:2.2.1")`;
+    const [issue] = validateCode(code).filter((i) => i.rule === RULE);
+    expect(issue.message).toContain("io.github.sceneview:sceneview:4.18.0");
+  });
+
   it("does NOT fire for SceneView 4.x dependencies", () => {
     const code = `
 implementation("io.github.sceneview:sceneview:4.72.0")
