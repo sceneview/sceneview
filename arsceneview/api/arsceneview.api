@@ -47,6 +47,10 @@ public final class io/github/sceneview/ar/ARCoachingOverlayKt {
 	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
+public final class io/github/sceneview/ar/ARCompat2xKt {
+	public static final fun ARScene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/util/List;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+}
+
 public abstract class io/github/sceneview/ar/ARConfigDowngrade {
 	public static final field $stable I
 }

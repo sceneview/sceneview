@@ -7,11 +7,14 @@ import android.view.Display
 import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
@@ -594,6 +597,168 @@ class ARSessionDependenciesTest {
             }
         }
         rule.apply(body, Description.createTestDescription(javaClass, "closed geospatial state")).evaluate()
+    }
+
+    /**
+     * The 2.x `ARScene(childNodes = rememberNodes())` shim (#5216). The node list outlives the scene,
+     * so its owner destroys a placed `AnchorNode` only after `ARSceneView` closed the session.
+     * Leaving the screen must release the anchor while the session is open, or that destroy()
+     * detaches it through a closed session (the native crash of #4026).
+     *
+     * One composition, in `ARSceneView`'s order: the list owner, then the session-closing effect,
+     * then the content. Compose forgets them in reverse, which is the order this pins.
+     */
+    @Test
+    fun `a 2x childNodes anchor is released before the session closes when the scene leaves`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val placed = anchorNode(session)
+        val stoppedWithOpenSession = mutableListOf<Boolean>()
+        placed.onTrackingStateChanged = {
+            if (it == TrackingState.STOPPED) stoppedWithOpenSession += !session.isClosed
+        }
+
+        composeCompat2xScene(
+            session,
+            owner = {
+                @Suppress("DEPRECATION")
+                io.github.sceneview.rememberNodes { add(placed) }
+            },
+            whileShown = { scopeNodes, _ -> assertSame(placed, scopeNodes.single()) },
+        )
+
+        assertTrue(session.isClosed)
+        assertTrue(placed.isDestroyed)
+        assertEquals(listOf(true), stoppedWithOpenSession)
+        assertEquals(listOf(placed.anchor), detached)
+    }
+
+    /**
+     * Same, for a node the caller took out of the list without destroying it (`childNodes.clear()`
+     * before placing the next one, as agents write it). It left the scene's root list long before
+     * the close, so only the shim can give its anchor back.
+     */
+    @Test
+    fun `a 2x childNodes anchor removed without destroy is released before the session closes`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val removed = anchorNode(session)
+        val kept = anchorNode(session)
+        val childNodes = mutableStateListOf<Node>(removed)
+        val stoppedWithOpenSession = mutableListOf<Boolean>()
+        removed.onTrackingStateChanged = {
+            if (it == TrackingState.STOPPED) stoppedWithOpenSession += !session.isClosed
+        }
+
+        composeCompat2xScene(
+            session,
+            owner = {
+                // The caller destroys its nodes itself, after the scene has left.
+                DisposableEffect(Unit) { onDispose { removed.destroy(); kept.destroy() } }
+                childNodes
+            },
+            whileShown = { scopeNodes, rule ->
+                assertSame(removed, scopeNodes.single())
+                childNodes.clear()
+                childNodes += kept
+                rule.waitForIdle()
+                assertSame(kept, scopeNodes.single())
+                // Out of the list, not destroyed: still on its anchor, which may be listed again.
+                assertTrue(detached.isEmpty())
+                assertFalse(removed.isDestroyed)
+            },
+        )
+
+        assertTrue(session.isClosed)
+        assertTrue(removed.isDestroyed)
+        assertTrue(kept.isDestroyed)
+        assertEquals(listOf(true), stoppedWithOpenSession)
+        assertEquals(setOf(removed.anchor, kept.anchor), detached.toSet())
+        assertEquals(2, detached.size)
+    }
+
+    /**
+     * Same, for a node a tap adds to the list in the very frame the scene leaves (#5216): no
+     * composition ever attached it, so only the caller's list still names it when the shim goes.
+     */
+    @Test
+    fun `a 2x childNodes anchor added in the frame the scene leaves is released before the close`() {
+        arCore.resume(context, null)
+        val session = arCore.session!!
+        val placed = anchorNode(session)
+        val late = anchorNode(session)
+        val stoppedWithOpenSession = mutableListOf<Boolean>()
+        late.onTrackingStateChanged = {
+            if (it == TrackingState.STOPPED) stoppedWithOpenSession += !session.isClosed
+        }
+        lateinit var childNodes: MutableList<Node>
+
+        composeCompat2xScene(
+            session,
+            owner = {
+                @Suppress("DEPRECATION")
+                io.github.sceneview.rememberNodes { add(placed) }.also { childNodes = it }
+            },
+            whileShown = { scopeNodes, _ -> assertSame(placed, scopeNodes.single()) },
+            inLeavingFrame = { childNodes += late },
+        )
+
+        assertTrue(session.isClosed)
+        assertTrue(late.isDestroyed)
+        assertEquals(listOf(true), stoppedWithOpenSession)
+        assertEquals(setOf(placed.anchor, late.anchor), detached.toSet())
+        assertEquals(2, detached.size)
+    }
+
+    /**
+     * Composes, in `ARSceneView`'s order, the 2.x list [owner], an effect that closes the session on
+     * disposal (`ARSceneView`'s `DisposableEffect(lifecycle)`), then the shim as the content. Runs
+     * [whileShown] (off the composition, outside `runOnIdle`), then takes the whole scene out.
+     * [inLeavingFrame] runs in the same snapshot as the leave, so no composition sees its changes.
+     */
+    private fun composeCompat2xScene(
+        session: ARSession,
+        owner: @Composable () -> List<Node>,
+        whileShown: (scopeNodes: List<Node>, rule: ComposeContentTestRule) -> Unit,
+        inLeavingFrame: () -> Unit = {},
+    ) {
+        val scopeNodes = mutableStateListOf<Node>()
+        val scope = ARSceneScope(
+            engine = engine,
+            modelLoader = allocateWithoutJni(io.github.sceneview.loaders.ModelLoader::class.java),
+            materialLoader = allocateWithoutJni(io.github.sceneview.loaders.MaterialLoader::class.java),
+            environmentLoader = allocateWithoutJni(io.github.sceneview.loaders.EnvironmentLoader::class.java),
+            _nodes = scopeNodes,
+        )
+        // As in ARSceneView: the session close releases the scene's root nodes only.
+        arCore.onSessionClosing = { releaseSessionNodes(scopeNodes.toList()) }
+        var sceneShown by mutableStateOf(true)
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).addActivityIfNotPresent(
+            ComponentName(app.packageName, ComponentActivity::class.java.name)
+        )
+        val rule = createComposeRule()
+        val body = object : Statement() {
+            override fun evaluate() {
+                rule.setContent {
+                    if (sceneShown) {
+                        val childNodes = owner()
+                        DisposableEffect(Unit) { onDispose { arCore.destroy() } }
+                        scope.Compat2xARChildNodes(childNodes)
+                    }
+                }
+                rule.waitForIdle()
+                whileShown(scopeNodes, rule)
+                rule.runOnIdle {
+                    assertFalse(session.isClosed)
+                    assertTrue(detached.isEmpty())
+                    inLeavingFrame()
+                    sceneShown = false
+                }
+                rule.runOnIdle { assertTrue(scopeNodes.isEmpty()) }
+            }
+        }
+        rule.apply(body, Description.createTestDescription(javaClass, "2.x childNodes exit")).evaluate()
     }
 
     private fun anchorNode(session: ARSession, automatic: Boolean = false): AnchorNode {

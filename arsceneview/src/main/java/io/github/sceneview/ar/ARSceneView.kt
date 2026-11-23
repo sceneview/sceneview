@@ -1323,6 +1323,10 @@ fun ARSceneView(
         onARCoreAvailability?.invoke(availability)
     }
 
+    // This effect closes the session on disposal. The DSL `content` must stay composed AFTER it
+    // (see "DSL content" below): Compose forgets effects in reverse order, so the content's
+    // disposals run first, while the session is still open. `Compat2xARChildNodes` relies on this
+    // to give the 2.x `childNodes` anchors back before the close (#5216, crash class of #4026).
     DisposableEffect(lifecycle) {
         arCore.create(context, permissionHandler, sessionFeatures)
 
@@ -2069,6 +2073,10 @@ fun ARSceneView(
 
     // ── DSL content ───────────────────────────────────────────────────────────────────────────────
 
+    // Keep this after the session-closing `DisposableEffect(lifecycle)` above: Compose forgets the
+    // content first, so its disposals still see an open session. `Compat2xARChildNodes` releases
+    // the 2.x `childNodes` anchors there; composed earlier, they would be detached through a closed
+    // session (#5216, crash class of #4026).
     if (content != null) {
         val scope = remember(engine, modelLoader, materialLoader, environmentLoader, nodeManager) {
             ARSceneScope(

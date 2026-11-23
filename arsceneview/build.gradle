@@ -166,6 +166,9 @@ dependencies {
     // parents a host may give them (#4509).
     testImplementation platform(libs.androidx.compose.bom)
     testImplementation libs.androidx.compose.ui.test.junit4
+    // The verbatim 2.x agent answer in `agentcompat/Answer2.kt` draws its hint with Material 3
+    // `Text`, as an app would: it must compile unchanged (#5216).
+    testImplementation libs.androidx.compose.material3
     // `NearbyCollaborativeTransport` references `compileOnly` Nearby types, so the
     // test classpath needs them on `testCompileOnly` for the file to compile under
     // `testDebugUnitTest`. The unit tests themselves exercise only the SDK-free

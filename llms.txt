@@ -4924,6 +4924,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberARCameraStream(materialLoader)` | `ARCameraStream` | Camera feed background texture |
 | `rememberAREnvironment(engine)` | `Environment` | No-skybox environment for AR |
 
+**SceneView 2.x compatibility only (#5216):** `rememberNodes { … }`, `Scene(childNodes = …)` and `ARScene(childNodes = …)` exist as deprecated shims so that 2.x code still compiles, with a deprecation warning that names the 4.x form. Never write them: 2.x code may still compile, with deprecation warnings, but always write the 4.x form — nodes declared in the `SceneView { }` / `ARSceneView { }` block.
+
 **NOTE:** There is no `rememberMaterialInstance` in the published SceneView SDK — create materials with `materialLoader.createColorInstance(...)` inside a `remember` block. (The demos use a sample-only helper of that name from `samples/common`; in your own code copy this pattern, not the helper.)
 ```kotlin
 val mat = remember(materialLoader) {
