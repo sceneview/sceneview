@@ -436,7 +436,12 @@ fun AutoPlacementScene(
     // The surfaces are a guide here, never a shadow catcher: the contact shadow grounds the
     // object, and `groundShadows` alone decides on the real one (#5209).
     Box(modifier = modifier) {
-        CompositionLocalProvider(LocalPlaneShadowReceiver provides false) {
+        CompositionLocalProvider(
+            LocalPlaneShadowReceiver provides false,
+            // One finger drags the object, two turn and scale it, from anywhere on screen: the
+            // user never has to aim at it (AR Quick Look, model-viewer, ARMV).
+            LocalEmptySpaceEditTarget provides { state.editTarget },
+        ) {
             ARSceneView(
                 modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
                 engine = engine,
@@ -468,8 +473,8 @@ fun AutoPlacementScene(
                     onSingleTapConfirmed = { _, node ->
                         if (node == null) state.deselectPlacement() else state.selectPlacement()
                     },
-                    // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
-                    onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+                    // Double-tap anywhere: back to 100 %, or back to the user's size from 100 %.
+                    onDoubleTap = { _, _ -> if (state.hasPlacement) state.toggleBaseScale() },
                 ),
                 onARCoreAvailability = {
                     availability = it
@@ -1290,7 +1295,10 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                     scaleChanged((target * 100).roundToInt(), target == 1f, target == 1f)
                 }
             }
+            // Gestures begun on empty space edit this object (twist, pinch; a drag bubbles to the anchor).
+            state.editTarget = pivot
             onDispose {
+                if (state.editTarget === pivot) state.editTarget = null
                 state.moveAction = null
                 state.rotateAction = null
                 state.scaleAction = null

@@ -354,6 +354,9 @@ class AutoPlacementState {
     /** The scene releases its placement immediately, including while AR frames are paused. */
     internal var releasePlacement: (() -> Unit)? = null
 
+    /** The placed object's gesture node: a drag, twist or pinch begun on empty space edits it. */
+    internal var editTarget: io.github.sceneview.node.Node? = null
+
     /** Gesture permission is revoked immediately on tracking loss. */
     var isSelected: Boolean by mutableStateOf(false)
         private set

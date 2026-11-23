@@ -349,6 +349,12 @@ internal val PLAYBACK_DATASET_URI_ALLOWED_SCHEMES: Set<String> = setOf("content"
  * (no playback requested); a non-null URI must carry a [PLAYBACK_DATASET_URI_ALLOWED_SCHEMES]
  * scheme.
  */
+/**
+ * The node a gesture begun on empty space edits ([GestureDetector.emptySpaceEditTarget]);
+ * `AutoPlacementScene` provides the placed object. `null` everywhere else.
+ */
+internal val LocalEmptySpaceEditTarget = staticCompositionLocalOf<(() -> Node?)?> { null }
+
 internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
     uri == null || uri.scheme in PLAYBACK_DATASET_URI_ALLOWED_SCHEMES
 
@@ -1660,6 +1666,9 @@ fun ARSceneView(
     // mid-coast must not carry the object with the camera.
     val moveCoastSpace = remember(view) { ARMoveCoastSpace(view) }
     SideEffect { gestureDetector.moveCoastSpace = moveCoastSpace }
+    // AutoPlacementScene: a drag, twist or pinch begun on empty space edits the placed object.
+    val emptySpaceEditTarget = LocalEmptySpaceEditTarget.current
+    SideEffect { gestureDetector.emptySpaceEditTarget = emptySpaceEditTarget }
 
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }
