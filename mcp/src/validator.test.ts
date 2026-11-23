@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import { formatValidationReport, validateCode } from "./validator.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -10,6 +11,73 @@ function ruleIds(code: string) {
 function hasRule(code: string, rule: string) {
   return ruleIds(code).includes(rule);
 }
+
+// ─── setup/outdated-sceneview-version ─────────────────────────────────────
+
+describe("setup/outdated-sceneview-version", () => {
+  const RULE = "setup/outdated-sceneview-version";
+
+  it("fires for a Kotlin DSL arsceneview 0.x dependency", () => {
+    const code = `dependencies {\n  implementation("io.github.sceneview:arsceneview:0.10.0")\n}`;
+    const issues = validateCode(code).filter((issue) => issue.rule === RULE);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe("error");
+    expect(issues[0].line).toBe(2);
+    expect(issues[0].message).toContain("0.10.0");
+    expect(issues[0].message).toContain(LATEST_SCENEVIEW_RELEASE);
+  });
+
+  it("fires for a Groovy sceneview 2.x dependency", () => {
+    const code = `implementation 'io.github.sceneview:sceneview:2.2.1'`;
+    expect(validateCode(code).filter((issue) => issue.rule === RULE)).toHaveLength(1);
+  });
+
+  it("fires for a sceneview-compose 3.x dependency", () => {
+    const code = `implementation("io.github.sceneview:sceneview-compose:3.6.0")`;
+    expect(validateCode(code).filter((issue) => issue.rule === RULE)).toHaveLength(1);
+  });
+
+  it("fires for a literal SceneView version catalog entry", () => {
+    const code = `
+[versions]
+sceneview = "2.3.0"
+
+[libraries]
+sceneview = { module = "io.github.sceneview:sceneview", version.ref = "sceneview" }
+`;
+    const issues = validateCode(code).filter((issue) => issue.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].line).toBe(3);
+    expect(issues[0].message).toContain("2.3.0");
+  });
+
+  it("does NOT fire for SceneView 4.x dependencies", () => {
+    const code = `
+implementation("io.github.sceneview:sceneview:4.72.0")
+implementation("io.github.sceneview:sceneview:4.0.0")
+`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does NOT fire for interpolated or dynamic versions", () => {
+    const code = `
+implementation("io.github.sceneview:sceneview:$sceneviewVersion")
+implementation("io.github.sceneview:arsceneview:\${sceneviewVersion}")
+implementation("io.github.sceneview:sceneview:+")
+implementation("io.github.sceneview:sceneview:latest.release")
+`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does NOT fire for Sceneform coordinates", () => {
+    const code = `
+implementation("com.google.ar.sceneform:core:1.17.1")
+implementation("com.gorisse.thomas.sceneform:sceneform:1.23.0")
+`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+});
 
 // ─── setup/sceneview-compose-android-api ────────────────────────────────────
 
