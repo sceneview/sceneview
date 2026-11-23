@@ -356,6 +356,8 @@ export const AR_SETUP_GUIDE = `# SceneView AR — Complete Setup Guide (Android 
 
 # iOS AR Setup (ARKit + RealityKit)
 
+> **End of life:** SceneViewSwift 4.68.0 (November 2026) is the last release. No new releases; published versions stay installable. Do not start new code on it. See https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md
+
 ## 1. SPM Dependency
 
 \`\`\`swift
