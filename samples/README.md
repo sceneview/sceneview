@@ -1,6 +1,6 @@
 # SceneView Samples — Recipe Index
 
-This directory contains sample apps demonstrating SceneView capabilities across Android, iOS, Web, Desktop, Flutter, and React Native.
+This directory contains sample apps demonstrating SceneView capabilities across Android, Web and Desktop. The iOS, Flutter and React Native samples are kept for existing users: those SDKs reached end of life at 4.68.0 ([DEPRECATION.md](../DEPRECATION.md)).
 
 > **Sample apps are English-only — do not add localized resources.** They are technical demonstrations for developers; localization adds maintenance and test-matrix cost for zero practical value (see [#1294](https://github.com/sceneview/sceneview/issues/1294)).
 
@@ -50,7 +50,7 @@ The sample names below (except `android-demo`) are `sceneview-mcp` sample IDs �
 
 | Sample | Description |
 |---|---|
-| `android-demo` | Play Store demo app — Showcase, AR View, About tabs (51 demos in 5 catalogue sections: 20 non-AR + 31 AR, Material 3) |
+| `android-demo` | Play Store demo app — Showcase, AR View, About tabs (45 demos in 6 catalogue sections, 43 listed on a phone; Material 3) |
 
 ## Common recipes (copy-paste ready)
 
@@ -193,14 +193,17 @@ fun MultiModelScene() {
 | `android-demo/` | Android (Jetpack Compose) | `./gradlew :samples:android-demo:bundleRelease` | ✓ |
 | `android-tv-demo/` | Android TV | `./gradlew :samples:android-tv-demo:assembleDebug` | ✓ |
 | `android-auto-demo/` | Android Auto (parked app) — prototype, not verified in a car | `./gradlew :samples:android-auto-demo:assembleDebug` | |
-| `ios-demo/` | iOS (SwiftUI) | `open samples/ios-demo/SceneViewDemo.xcodeproj` | ✓ |
-| `web-demo/` | Web (static site + Filament.js) | `cd samples/web-demo && cp ../../website-static/js/sceneview.js site/js/sceneview.js && npx http-server site -p 8080` — see [`web-demo/README.md`](web-demo/README.md) | ✓ |
+| `ios-demo/` | iOS (SwiftUI) — end of life: SceneViewSwift 4.68.0 is the last SDK release and 4.69.7 the last App Store build ([DEPRECATION.md](../DEPRECATION.md)) | `open samples/ios-demo/SceneViewDemo.xcodeproj` | |
+| `web-demo/` | Web (static site + Filament.js) | `cd samples/web-demo && cp ../../website-static/js/sceneview.js site/js/sceneview.js && npx http-server site -p 8080` — see [`web-demo/README.md`](web-demo/README.md) | |
 | `desktop-demo/` | Desktop (Compose) — `SceneViewer` via filament-kmp, JDK 21+ | `./gradlew :samples:desktop-demo:run` | |
-| `flutter-demo/` | Flutter | `cd samples/flutter-demo && flutter build apk --debug` | ✓ |
-| `react-native-demo/` | React Native | See [`react-native-demo/SETUP.md`](react-native-demo/SETUP.md) — one-time bridge build + pod install required before first `run-android`/`run-ios` | scaffold only |
+| `flutter-demo/` | Flutter — end of life, 4.68.0 is the last release ([DEPRECATION.md](../DEPRECATION.md)) | `cd samples/flutter-demo && flutter build apk --debug` | |
+| `react-native-demo/` | React Native — end of life, 4.68.0 is the last release ([DEPRECATION.md](../DEPRECATION.md)) | See [`react-native-demo/SETUP.md`](react-native-demo/SETUP.md) — one-time bridge build + pod install required before first `run-android`/`run-ios` | scaffold only |
 
-"Verified" means the command above produces a successful build on a
-clean checkout of `main` (validated in session 34, 2026-04-11).
+"Verified" means the command produced a successful build on a clean
+checkout of `main` when the Android rows were last checked (2026-04-11).
+The web command changed in October 2026 (#4753) and has not been
+re-checked since. The end-of-life samples are kept as they were and are
+no longer checked.
 
 ### Platform-specific notes
 

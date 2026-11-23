@@ -1,5 +1,7 @@
 # SceneView
 
+> **End of life:** SceneViewSwift 4.68.0 (November 2026) is the last release. The App Store app's last build is 4.69.7. This sample is kept for existing apps and is no longer maintained. See [DEPRECATION.md](../../DEPRECATION.md).
+
 SwiftUI app for iOS and macOS — browse 3D models, view them in augmented reality, save favorites, and share screenshots.
 
 ## Features

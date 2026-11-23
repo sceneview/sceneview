@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **Samples docs: end-of-life platforms marked, demo count corrected.** `samples/README.md` listed the iOS, Flutter and React Native samples as verified, with no word that their SDKs ended at 4.68.0; their rows, the three sample READMEs and the index intro now say so and link to `DEPRECATION.md`. The Android demo count is 45 demos in six catalogue sections (43 listed on a phone) in the samples index, the demo README, `docs/samples.md` and `llms-full.txt`, which still said 41 or 51.

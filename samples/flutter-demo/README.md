@@ -1,5 +1,7 @@
 # SceneView Flutter Demo
 
+> **End of life:** `flutter_sceneview` 4.68.0 (November 2026) is the last release. This sample is kept for existing apps and is no longer maintained. See [DEPRECATION.md](../../DEPRECATION.md).
+
 > Feature showcase for the SceneView Flutter bridge.
 >
 > The Flutter bridge exposes a **subset** of the native SceneView SDK. This

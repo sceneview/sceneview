@@ -24,13 +24,13 @@ git clone https://github.com/sceneview/sceneview.git
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
 3-tab showcase (**Showcase / AR View / About**) backed by an
-append-only demo registry of **41 demos**, grouped into five catalogue sections:
+append-only demo registry of **45 demos** (43 listed on a phone), grouped into six catalogue sections:
 
 - **Showcase tab** (home): a featured hero, a **Featured** shelf of the flagship and
   most recently reworked demos in priority order, category filter chips and a grid of
   media cards with a generated preview image per demo, split by a full-span section
-  header into **View in 3D · Place in AR · Developer tools · Create & record ·
-  Understand the world**. The section order is `DEMO_CATEGORIES` in `DemoRegistry.kt`
+  header into **Models & cameras · Materials & scenes · Play & feel · Place in AR ·
+  Scan & understand · Developer tools**. The section order is `DEMO_CATEGORIES` in `DemoRegistry.kt`
   (priority order) and the chips filter down to one section.
   The closing "Browse online models" card opens the online gallery — multi-source
   model streaming (Sketchfab / Icosa Gallery / Poly Haven)
