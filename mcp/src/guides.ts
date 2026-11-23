@@ -5,6 +5,7 @@
  */
 
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import { SAMPLES } from "./samples.js";
 
 // ─── Platform Roadmap ─────────────────────────────────────────────────────────
 
@@ -527,7 +528,25 @@ val availability = ArCoreApk.getInstance().checkAvailability(context)
 if (availability.isSupported) { /* show AR */ }
 \`\`\`
 
-## 3. Session Configuration Options
+## 3. Place a Model Automatically
+
+Use \`AutoPlacementScene\` with \`AutoPlacementModel\`. It places the asset at its authored size
+(\`scaleToUnits = null\`), lets the object drag along the floor past detected plane edges, and
+takes gestures anywhere on screen. The horizontal flow tries the estimated floor after 600 ms
+of tracked search if a detected surface is still unavailable. Set
+\`state.estimatedFallbackMillis = null\` to wait for a detected surface, or call
+\`state.recenter()\` to bring a placed object back in front of the camera.
+Use \`surface = PlacementSurface.WALL\` for walls.
+
+\`\`\`kotlin
+${SAMPLES["ar-model-viewer"].code}
+\`\`\`
+
+## 4. Custom AR Session Configuration
+
+Use \`AutoPlacementScene\`'s \`sessionConfiguration\` and \`onSessionUpdated\` for ARCore access,
+and \`sceneContent\` for nodes independent of placement. Use \`ARSceneView\` directly for
+specialized flows like the following surface cursor and image tracking examples.
 
 \`\`\`kotlin
 ARSceneView(
@@ -576,52 +595,7 @@ ARSceneView(
 }
 \`\`\`
 
-## 4. Common AR Patterns
-
-### Tap-to-Place with Anchor
-\`\`\`kotlin
-import com.google.ar.core.Anchor
-import com.google.ar.core.Frame
-import com.google.ar.core.Plane
-import io.github.sceneview.ar.arcore.createAnchorOrNull
-import io.github.sceneview.rememberOnGestureListener
-// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
-
-var anchor by remember { mutableStateOf<Anchor?>(null) }
-var latestFrame by remember { mutableStateOf<Frame?>(null) }
-
-ARSceneView(
-    engine = engine,
-    modelLoader = modelLoader,
-    planeRenderer = true,
-    onSessionUpdated = { _, frame -> latestFrame = frame },
-    // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
-    // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
-    onGestureListener = rememberOnGestureListener(
-        onSingleTapConfirmed = { event, node ->
-            if (node == null) { // empty space, not the placed model
-                latestFrame?.hitTest(event)
-                    ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
-                    ?.createAnchorOrNull()
-                    // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
-                    ?.let { anchor = it }
-            }
-        }
-    )
-) {
-    anchor?.let { a ->
-        AnchorNode(anchor = a) {
-            modelInstance?.let { instance ->
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = 0.5f,
-                    isEditable = true  // pinch-to-scale + drag-to-rotate
-                )
-            }
-        }
-    }
-}
-\`\`\`
+## 5. Other AR Patterns
 
 ### Surface Cursor (HitResultNode)
 \`\`\`kotlin
@@ -661,7 +635,7 @@ ARSceneView(
 }
 \`\`\`
 
-## 5. Permissions
+## 6. Permissions
 
 Camera permission must be requested at runtime (Android 6.0+). SceneView does **not** handle this — you must request it before showing ARSceneView:
 

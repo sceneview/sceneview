@@ -977,6 +977,61 @@ describe("symbols/unknown-remember-helper", () => {
   });
 });
 
+describe("AR placement", () => {
+  it("accepts the automatic placement composable with all session hooks", () => {
+    const code = `
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.PlacementSurface
+import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.ar.rememberHostLifecycle
+
+val state = rememberAutoPlacementState()
+AutoPlacementScene(
+    assetReady = instance != null,
+    state = state,
+    surface = PlacementSurface.WALL,
+    cameraStream = stream,
+    sessionConfiguration = { _, config -> config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED },
+    onSessionCreated = onCreated,
+    onSessionResumed = onResumed,
+    onSessionPaused = onPaused,
+    onSessionUpdated = { _, frame -> onFrame(frame) },
+    onSessionFailure = onFailure,
+    lifecycle = rememberHostLifecycle(),
+    sceneContent = { resolvedAnchor?.let { AnchorNode(anchor = it) } },
+) { placement ->
+    instance?.let { AutoPlacementModel(placement, state, it) }
+}
+`;
+    expect(validateCode(code)).toEqual([]);
+  });
+
+  it("reports manual placement as deprecated and points wall placement to the wall variant", () => {
+    const code = `import io.github.sceneview.ar.PlacementScene
+PlacementScene(onPlaced = { anchor -> AnchorNode(anchor = anchor) })
+io.github.sceneview.ar.WallPlacementScene(onPlaced = { anchor -> AnchorNode(anchor = anchor) })`;
+    const issues = validateCode(code);
+    expect(issues).toMatchObject([
+      { severity: "warning", rule: "ar/deprecated-manual-placement", line: 2 },
+      { severity: "warning", rule: "ar/deprecated-manual-placement", line: 3 },
+    ]);
+    expect(issues[0].message).toContain("AutoPlacementScene");
+    expect(issues[1].message).toContain("PlacementSurface.WALL");
+  });
+
+  it("ignores local declarations, comments and string literals", () => {
+    const code = `
+fun PlacementScene() {}
+PlacementScene()
+// WallPlacementScene()
+val documentation = "WallPlacementScene()"
+/* WallPlacementScene() */
+`;
+    expect(validateCode(code)).toEqual([]);
+  });
+});
+
 describe("symbols/* — false-positive guard on real canonical snippets", () => {
   it("the llms.txt hello-world passes with zero symbols/* issues", () => {
     const code = `

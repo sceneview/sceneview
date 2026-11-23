@@ -130,75 +130,37 @@ fun ModelViewerScreen() {
 
   "ar-model-viewer": {
     id: "ar-model-viewer",
-    title: "AR Tap-to-Place Model Viewer",
+    title: "AR Automatic Placement Model Viewer",
     description:
-      "AR scene with plane detection. Tap a surface to place a 3D model with pinch-to-scale and drag-to-rotate gestures.",
+      "Automatically places a GLB at its authored size. Drag the model past detected floor edges and use gestures anywhere on screen.",
     tags: ["ar", "model", "anchor", "plane-detection", "placement", "gestures"],
     dependency: "io.github.sceneview:arsceneview:" + LATEST_SCENEVIEW_RELEASE + "",
-    prompt: `Create an AR screen that detects surfaces and lets the user tap to place a GLB model. Support pinch-to-scale and drag-to-rotate. Use SceneView \`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}\`.`,
+    prompt: `Place a GLB in AR with AutoPlacementScene and AutoPlacementModel at its authored size. Use the default estimated-floor fallback after 600 ms of tracked search, and use PlacementSurface.WALL if the model belongs on a wall. Use SceneView \`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}\`.`,
     code: `import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.google.ar.core.Anchor
-import com.google.ar.core.Config
-import com.google.ar.core.Frame
-import com.google.ar.core.Plane
-import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberOnGestureListener
 
 @Composable
 fun ARModelViewerScreen() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
-    var anchor by remember { mutableStateOf<Anchor?>(null) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    val instance = rememberModelInstance(modelLoader, "models/toy_car.glb")
+    val state = rememberAutoPlacementState()
 
-    ARSceneView(
+    AutoPlacementScene(
+        assetReady = instance != null,
         modifier = Modifier.fillMaxSize(),
+        state = state,
         engine = engine,
         modelLoader = modelLoader,
-        planeRenderer = true,
-        sessionConfiguration = { session, config ->
-            config.depthMode =
-                if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
-                    Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED
-            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-        },
-        onSessionUpdated = { _, frame -> latestFrame = frame },
-        // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
-        // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { event, node ->
-                if (node == null) { // empty space, not the placed model
-                    latestFrame?.hitTest(event)
-                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
-                        ?.createAnchorOrNull()
-                        // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
-                        ?.let { anchor = it }
-                }
-            }
-        )
-    ) {
-        anchor?.let { a ->
-            AnchorNode(anchor = a) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.5f,
-                        isEditable = true
-                    )
-                }
-            }
-        }
+    ) { placement ->
+        instance?.let { AutoPlacementModel(placement, state, it) }
     }
 }`,
   },

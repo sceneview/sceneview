@@ -4,6 +4,7 @@ import {
   isKnownTopLevelFunction,
   isKnownTypeName,
   knownTypeNames,
+  manualPlacementReplacement,
   membersOfClass,
   rememberHelperNames,
   resolveImport,
@@ -364,6 +365,32 @@ const RULES: Rule[] = [
     },
   },
 
+  {
+    id: "ar/deprecated-manual-placement",
+    severity: "warning",
+    check(code) {
+      const codeOnly = code
+        .replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"/g, (match) => match.replace(/[^\n]/g, " "))
+        .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (match) => match.replace(/[^\n]/g, " "));
+      const localNames = locallyDeclaredNames(codeOnly);
+      const issues: ValidationIssue[] = [];
+      codeOnly.split("\n").forEach((line, index) => {
+        for (const match of line.matchAll(/\b(\w*PlacementScene)\s*\(/g)) {
+          const name = match[1];
+          const replacement = manualPlacementReplacement(name);
+          if (!replacement || localNames.has(name)) continue;
+          issues.push({
+            severity: "warning",
+            rule: "ar/deprecated-manual-placement",
+            message: `\`${name}\` is deprecated. Use \`${replacement}\` with \`AutoPlacementModel\` for new model placement. Keep the manual scene if the product needs to place several objects by tap.`,
+            line: index + 1,
+          });
+        }
+      });
+      return issues;
+    },
+  },
+
   // ─── Empty AnchorNode() ────────────────────────────────────────────────────
   {
     id: "ar/anchor-node-missing-anchor",
@@ -375,7 +402,7 @@ const RULES: Rule[] = [
           severity: "error",
           rule: "ar/anchor-node-missing-anchor",
           message:
-            "`AnchorNode()` requires an `anchor`. Create it on a confirmed tap — `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) latestFrame?.hitTest(event)?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }?.createAnchorOrNull()?.let { anchor = it } })` — then declare `anchor?.let { AnchorNode(anchor = it) { … } }`.",
+            "`AnchorNode()` requires an `anchor`. For model placement, use `AutoPlacementScene` with `AutoPlacementModel` to manage the anchor. For an explicit tap-to-place flow, create the anchor on a confirmed tap — `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) latestFrame?.hitTest(event)?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }?.createAnchorOrNull()?.let { anchor = it } })` — then declare `anchor?.let { AnchorNode(anchor = it) { … } }`.",
           line,
         });
       });

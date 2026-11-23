@@ -17,6 +17,16 @@ import { SYMBOLS } from "./generated/symbols.js";
 
 export const SCENEVIEW_NAMESPACE = "io.github.sceneview";
 
+const manualPlacementReplacements = new Map([
+  ["PlacementScene", "AutoPlacementScene"],
+  ["WallPlacementScene", "AutoPlacementScene(surface = PlacementSurface.WALL, …)"],
+]);
+
+/** Keep legacy names in the index so a deprecation never looks like a missing symbol. */
+export function manualPlacementReplacement(name: string): string | undefined {
+  return manualPlacementReplacements.get(name);
+}
+
 // ─── Lazily-built lookup sets ────────────────────────────────────────────────
 
 let typeNamesCache: Set<string> | null = null;

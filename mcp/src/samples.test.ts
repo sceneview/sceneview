@@ -131,9 +131,9 @@ describe("AR samples", () => {
     }
   });
 
-  it("all Android AR samples contain ARScene in code", () => {
+  it("all Android AR samples use an Android AR composable", () => {
     for (const id of androidArIds) {
-      expect(SAMPLES[id].code).toContain("ARScene");
+      expect(SAMPLES[id].code).toMatch(/\b(?:ARSceneView|AutoPlacementScene)\s*\(/);
     }
   });
 
@@ -153,8 +153,9 @@ describe("AR samples", () => {
 
   // Tap-to-place on a raw ACTION_UP in onTouchEvent moved the model at the end of every drag
   // or pinch and, returning true, hid the UP from the gesture detector (#4755 follow-up).
-  for (const id of ["ar-model-viewer", "ar-surface-cursor"] as const) {
-    it(`${id}: places on a confirmed tap on empty space, not on ACTION_UP`, () => {
+  describe("ar-surface-cursor manual interaction", () => {
+    const id = "ar-surface-cursor";
+    it("places on a confirmed tap on empty space, not on ACTION_UP", () => {
       const code = SAMPLES[id].code;
       expect(code).toContain("onGestureListener = rememberOnGestureListener(");
       expect(code).toContain("onSingleTapConfirmed = {");
@@ -170,7 +171,7 @@ describe("AR samples", () => {
       expect(code).not.toContain(".detach()");
     });
 
-    it(`${id}: imports the ARCore Plane and the SceneView tap helpers`, () => {
+    it("imports the ARCore Plane and the SceneView tap helpers", () => {
       const code = SAMPLES[id].code;
       expect(code).toContain("import com.google.ar.core.Plane\n");
       expect(code).toContain("import com.google.ar.core.Frame\n");
@@ -179,7 +180,7 @@ describe("AR samples", () => {
       expect(code).toContain("import io.github.sceneview.rememberOnGestureListener\n");
       expect(code).not.toContain("import io.github.sceneview.collision.Plane");
     });
-  }
+  });
 
   it("ar-surface-cursor keeps every placed model and places at the cursor", () => {
     const code = SAMPLES["ar-surface-cursor"].code;
@@ -189,8 +190,13 @@ describe("AR samples", () => {
     expect(code).toContain("isTouchable = false");
   });
 
-  it("ar-model-viewer replaces its single anchor", () => {
-    expect(SAMPLES["ar-model-viewer"].code).toContain("?.let { anchor = it }");
+  it("ar-model-viewer places the loaded model at its authored size", () => {
+    const { code, prompt } = SAMPLES["ar-model-viewer"];
+    expect(code).toContain("AutoPlacementScene(");
+    expect(code).toContain("assetReady = instance != null");
+    expect(code).toContain("instance?.let { AutoPlacementModel(placement, state, it) }");
+    expect(code).not.toMatch(/scaleToUnits|hitTest|onSingleTapConfirmed/);
+    expect(prompt).toContain("600 ms of tracked search");
   });
 });
 
