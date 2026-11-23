@@ -1423,6 +1423,13 @@ private fun visiblePlacementPoint(
 }
 
 /**
+ * Whether an object at [objectY] stands on the floor at [floorY] (the lowest tracked
+ * upward-facing plane) rather than on a table: only a floor drag may leave every polygon.
+ */
+internal fun standsOnFloor(objectY: Float, floorY: Float?): Boolean =
+    floorY != null && objectY - floorY <= SEAM_FLOOR_TOLERANCE_M
+
+/**
  * How far a floor drag may carry the object: 5 m, as ARMV (model-viewer's WebXR drag allows 10).
  * The first automatic placement keeps [UsableSurfacePolicy.MAX_DISTANCE_M], where an error the
  * user cannot see is the risk; a drag is under the user's eye and finger.
@@ -1515,9 +1522,13 @@ private class AutomaticAnchorNode(
                     plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
                     it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..MAX_DRAG_DISTANCE_M
             }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+                // The grab offset can carry the object past the edge while the finger is still in.
+                ?.takeIf { it.accepts(it.pose) && visiblePlacementPoint(frame, it.pose, MAX_DRAG_DISTANCE_M) }
                 // Off every tracked polygon: keep sliding on the floor at the object's height
-                // instead of refusing the move (model-viewer's WebXR drag, ARMV).
+                // instead of refusing the move (model-viewer's WebXR drag, ARMV). A table top
+                // ends at its edge: an object never floats past it.
                 ?: slideAlongWall(e, offPolygonFloor = true)
+                    ?.takeIf { standsOnFloor(pose.ty(), state.floorHeight) }
         }
         if (candidate == null || !candidate.accepts(candidate.pose) ||
             !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit())

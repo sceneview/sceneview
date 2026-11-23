@@ -67,6 +67,10 @@ class WallPlacementMathTest {
         assertEquals(contact.y, target.y, eps) // Height never follows the finger.
         // Finger above the horizon: no floor under it, the move is refused.
         assertNull(wallGrabOffset(contact, up, eye, normalize(Direction(0f, 0.2f, -1f))))
+        // Only a floor object slides off its polygon; a table top ends at its edge.
+        assertTrue(standsOnFloor(objectY = -1.4f, floorY = -1.42f))
+        assertFalse(standsOnFloor(objectY = -0.7f, floorY = -1.42f))
+        assertFalse(standsOnFloor(objectY = -1.4f, floorY = null))
         // A drag reaches further than the first automatic placement, as in ARMV.
         assertTrue(MAX_DRAG_DISTANCE_M > UsableSurfacePolicy.MAX_DISTANCE_M)
     }
