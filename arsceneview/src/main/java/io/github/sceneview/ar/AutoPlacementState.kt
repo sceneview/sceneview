@@ -78,7 +78,63 @@ data class FrameInput(
     val anchorTracking: Boolean? = null,
 )
 
+internal enum class PlacementSource { SURFACE, ESTIMATED }
+
+internal enum class PlacementAttempt { UNAVAILABLE, FAILED, SETTLED, APPROXIMATE }
+
+/** One user request, served on a tracked frame and retried with progressively longer waits. */
+internal class RecenterRequest(private val surface: PlacementSurface) {
+    private var cameraTracking = false
+    private var pending = false
+    private val retry = AnchorRetryPolicy(AnchorRetryPolicy.RELOCATION_ATTEMPTS)
+
+    fun onCameraTracking(tracking: Boolean) {
+        cameraTracking = tracking
+        if (!tracking) cancel()
+    }
+
+    fun request(): Boolean {
+        if (surface == PlacementSurface.WALL || !cameraTracking) return false
+        pending = true
+        return true
+    }
+
+    fun onFrame(now: Long, ready: Boolean, relocate: () -> Boolean) {
+        if (!pending || !ready || !retry.isDue(now)) return
+        if (relocate()) {
+            cancel()
+        } else {
+            retry.failed(now)
+            if (retry.isExhausted) cancel()
+        }
+    }
+
+    fun cancel() {
+        pending = false
+        retry.reset()
+    }
+}
+
 class AutoPlacementState {
+
+    /**
+     * Tracked search time before trying the estimated floor, in milliseconds (600 by default).
+     * Set to `null` to wait for a detected surface. Wall placement always waits for a wall.
+     */
+    var estimatedFallbackMillis: Long? by mutableStateOf(PlacementFeel.ESTIMATED_FALLBACK_MS)
+
+    /** The placement stands on an instant-placement point, even after the point settles. */
+    var isEstimated: Boolean by mutableStateOf(false)
+        private set
+
+    /** A placement exists and its surface or instant-placement point has been resolved. */
+    var isSettled: Boolean by mutableStateOf(false)
+        private set
+
+    internal fun onPlacementAnchor(source: PlacementSource, settled: Boolean) {
+        isEstimated = source == PlacementSource.ESTIMATED
+        isSettled = settled
+    }
 
     /** Current multiplier of the selected preview/authored base size. */
     var scaleFactor: Float by mutableStateOf(1f)
@@ -143,6 +199,7 @@ class AutoPlacementState {
     }
 
     internal var moveAction: ((Float, Float) -> Boolean)? = null
+    internal var recenterAction: (() -> Boolean)? = null
     internal var rotateAction: ((Float) -> Unit)? = null
     internal var scaleAction: ((Float) -> Unit)? = null
     internal var scaleToggleAction: (() -> Unit)? = null
@@ -208,6 +265,15 @@ class AutoPlacementState {
     /** Accessibility alternative: metres along the surface's right and up (wall) / forward axes. */
     fun moveBy(x: Float, y: Float): Boolean = canManipulate && x.isFinite() && y.isFinite() &&
         moveAction?.invoke(x, y) == true
+
+    /**
+     * Requests a new spot in front of the camera on a tracked floor or, if necessary, on the
+     * estimated floor. Returns `true` when queued for a frame. Returns `false` for a wall, without
+     * a placement, or while tracking is unavailable.
+     */
+    fun recenter(): Boolean = hasPlacement &&
+        (phase == PlacementPhase.PLACED || phase == PlacementPhase.ADJUSTING) &&
+        recenterAction?.invoke() == true
 
     /** Accessibility alternative: degrees about the surface normal, preserving contact. */
     fun rotateBy(degrees: Float) {
@@ -347,6 +413,9 @@ class AutoPlacementState {
     }
 
     private var searchStartedAt: Long? = null
+    private var trackedSearchStartedAt: Long? = null
+    private val surfaceRetry = AnchorRetryPolicy()
+    private val estimatedRetry = AnchorRetryPolicy()
     private var recoveringSince: Long? = null
     private var phaseBeforeLoss: PlacementPhase = PlacementPhase.SCANNING
     private var dismissed = false
@@ -433,6 +502,7 @@ class AutoPlacementState {
         if (hasPlacement) return
         placementRequested = false
         searchStartedAt = null
+        restartTrackedSearch()
         if (phase == PlacementPhase.NO_SURFACE) phase = PlacementPhase.SCANNING
     }
 
@@ -463,8 +533,10 @@ class AutoPlacementState {
         sessionGeneration++
         placementRequested = false
         hasPlacement = false
+        onPlacementAnchor(PlacementSource.SURFACE, settled = false)
         placedAtMillis = 0L
         searchStartedAt = null
+        restartTrackedSearch()
         recoveringSince = null
         phaseBeforeLoss = PlacementPhase.SCANNING
         hasCameraFrame = false
@@ -484,9 +556,11 @@ class AutoPlacementState {
         isSelectionShown = false
         scaleFactor = 1f
         hasPlacement = false
+        onPlacementAnchor(PlacementSource.SURFACE, settled = false)
         placementRequested = true
         recoveringSince = null
         searchStartedAt = nowMillis
+        restartTrackedSearch()
         placedAtMillis = 0L
         if (phase != PlacementPhase.INITIALIZING && phase != PlacementPhase.TRACKING_LOST) {
             phase = PlacementPhase.SCANNING
@@ -498,6 +572,7 @@ class AutoPlacementState {
     fun keepScanning(nowMillis: Long) {
         if (phase != PlacementPhase.NO_SURFACE) return
         searchStartedAt = nowMillis
+        restartTrackedSearch()
         phase = PlacementPhase.SCANNING
     }
 
@@ -521,7 +596,18 @@ class AutoPlacementState {
     fun onBackgroundTap(): FrameEffect = FrameEffect.NONE
 
     /** The anchor factory must succeed before the request is consumed. Called on the render thread. */
-    fun onFrame(input: FrameInput, commit: () -> Boolean = { true }): FrameEffect = when {
+    fun onFrame(input: FrameInput, commit: () -> Boolean = { true }): FrameEffect =
+        onFrame(input, estimatedAvailable = false, anchorSettled = null) {
+            // Custom adapters own their anchor creation and can decline a frame for any reason.
+            if (commit()) PlacementAttempt.SETTLED else PlacementAttempt.UNAVAILABLE
+        }
+
+    internal fun onFrame(
+        input: FrameInput,
+        estimatedAvailable: Boolean,
+        anchorSettled: Boolean?,
+        commit: (PlacementSource) -> PlacementAttempt,
+    ): FrameEffect = when {
         dismissed || phase == PlacementPhase.CAMERA_ERROR -> FrameEffect.NONE
         !input.tracking -> {
             if (!hasCameraFrame) hasCameraFrame = true
@@ -531,10 +617,12 @@ class AutoPlacementState {
             if (!hasCameraFrame) hasCameraFrame = true
             if (phase == PlacementPhase.TRACKING_LOST) phase = phaseBeforeLoss
             when {
-                hasPlacement -> followAnchor(input)
+                hasPlacement -> {
+                    if (anchorSettled == true && input.anchorTracking == true) isSettled = true
+                    followAnchor(input)
+                }
                 !placementRequested -> idle()
-                input.surfaceAvailable && commit() -> place(input.nowMillis)
-                else -> search(input.nowMillis)
+                else -> tryPlacement(input, estimatedAvailable, commit)
             }
         }
     }
@@ -548,6 +636,7 @@ class AutoPlacementState {
         phaseBeforeLoss = phase
         // The search clock does not run in the dark.
         searchStartedAt = null
+        restartTrackedSearch()
         recoveringSince = null
         adjustmentCount = 0
         isAdjusting = false
@@ -582,9 +671,43 @@ class AutoPlacementState {
         return FrameEffect.NONE
     }
 
-    private fun place(now: Long): FrameEffect {
+    private fun tryPlacement(
+        input: FrameInput,
+        estimatedAvailable: Boolean,
+        commit: (PlacementSource) -> PlacementAttempt,
+    ): FrameEffect {
+        val now = input.nowMillis
+        val started = trackedSearchStartedAt ?: now.also { trackedSearchStartedAt = it }
+        val delay = estimatedFallbackMillis
+        val source = when {
+            input.surfaceAvailable -> PlacementSource.SURFACE
+            estimatedAvailable && delay != null && now - started >= delay.coerceAtLeast(0L) ->
+                PlacementSource.ESTIMATED
+            else -> return search(now)
+        }
+        val retry = if (source == PlacementSource.SURFACE) surfaceRetry else estimatedRetry
+        if (!retry.isDue(now)) return search(now)
+        return when (commit(source)) {
+            PlacementAttempt.UNAVAILABLE -> search(now)
+            PlacementAttempt.FAILED -> {
+                retry.failed(now)
+                search(now)
+            }
+            PlacementAttempt.SETTLED -> place(now, source, settled = true)
+            PlacementAttempt.APPROXIMATE -> place(now, source, settled = false)
+        }
+    }
+
+    internal fun restartTrackedSearch() {
+        trackedSearchStartedAt = null
+        surfaceRetry.reset()
+        estimatedRetry.reset()
+    }
+
+    private fun place(now: Long, source: PlacementSource, settled: Boolean): FrameEffect {
         placementRequested = false
         hasPlacement = true
+        onPlacementAnchor(source, settled)
         isSelected = true
         isSelectionShown = false
         placementsCreated++

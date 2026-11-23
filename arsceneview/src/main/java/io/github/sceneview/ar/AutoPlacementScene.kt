@@ -22,6 +22,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Ray
+import io.github.sceneview.ar.arcore.getProjectionTransform
+import io.github.sceneview.ar.arcore.position
+import io.github.sceneview.ar.arcore.viewTransform
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.haptic.ARHapticEvent
 import io.github.sceneview.gesture.RotateGestureDetector
@@ -49,14 +53,13 @@ import java.io.File
 /** Supported automatic-placement alignment. Surface accepts tables, never ceilings. */
 enum class PlacementSurface { SURFACE, WALL }
 
-private const val NO_PLANE_MESSAGE = "This wall was found through the depth API or inferred from " +
-    "the floor seam: ARCore has no plane for it yet. Read planeOrNull instead."
+private const val NO_PLANE_MESSAGE = "This placement has no ARCore plane. Read planeOrNull instead."
 
 /**
  * A placement and the ARCore identity of what it stands on. For a floor, a table or a wall
  * ARCore has grown a plane on, that is the [plane]. A plain painted wall often has no plane at
  * all (#4070): the placement then rides a depth hit or the tracked floor it was inferred from,
- * and [planeOrNull] is `null`.
+ * and [planeOrNull] is `null`. An estimated placement holds an [InstantPlacementPoint].
  */
 class AutoPlacementResult internal constructor(
     anchor: Anchor,
@@ -67,23 +70,32 @@ class AutoPlacementResult internal constructor(
     internal constructor(anchor: Anchor, plane: Plane, pose: Pose) :
         this(anchor, plane, pose, plane.wallKindOrNull())
 
-    var anchor: Anchor = anchor
+    private var currentAnchor by mutableStateOf(anchor)
+
+    var anchor: Anchor
+        get() = currentAnchor
         internal set(value) {
-            field = value
+            currentAnchor = value
             isAnchorReleased = false
         }
 
     private var isAnchorReleased = false
+    internal var instantPlacement: InstantPlacement? by mutableStateOf(null)
+    internal var relocate: ((AutoPlacementResult) -> Unit)? = null
 
     internal fun releaseAnchor() {
         if (isAnchorReleased) return
         isAnchorReleased = true
-        anchor.detach()
+        try {
+            instantPlacement?.refinement?.close()
+        } finally {
+            anchor.detach()
+        }
     }
     var pose: Pose = pose
         internal set
 
-    /** What the anchor is attached to: a [Plane], a [DepthPoint], or the floor under a seam wall. */
+    /** What holds the anchor: a plane, a depth point, the floor under a seam wall, or an instant point. */
     internal var trackable: Trackable = trackable
 
     /** How the wall holds, `null` for a floor or table placement. */
@@ -91,17 +103,24 @@ class AutoPlacementResult internal constructor(
 
     internal val isWall: Boolean get() = kind != null
 
+    internal fun replaceAnchor(next: AutoPlacementResult) {
+        anchor = next.anchor
+        trackable = next.trackable
+        kind = next.kind
+        pose = next.pose
+        instantPlacement = next.instantPlacement
+    }
+
     /**
      * The ARCore plane the object stands on.
      *
-     * @throws IllegalStateException for a wall found through the depth API or inferred from the
-     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     * @throws IllegalStateException when [planeOrNull] is `null`.
      */
     val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
 
     /**
      * The ARCore plane the object stands on, or `null` for a wall found through the depth API
-     * or inferred from the floor↔wall seam (#4070).
+     * or inferred from the floor↔wall seam (#4070), or for an estimated placement.
      */
     val planeOrNull: Plane? get() = planeOf(trackable, kind)
 }
@@ -123,33 +142,52 @@ class AutoPlacementCandidate internal constructor(
     /**
      * The ARCore plane the candidate lies on.
      *
-     * @throws IllegalStateException for a wall found through the depth API or inferred from the
-     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     * @throws IllegalStateException when [planeOrNull] is `null`.
      */
     val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
 
-    /** The ARCore plane the candidate lies on, `null` for a wall without one (#4070). */
+    /** The ARCore plane the candidate lies on, `null` for a wall without one or an estimated floor. */
     val planeOrNull: Plane? get() = planeOf(trackable, kind)
 
-    fun createAnchor(): AutoPlacementResult? = runCatching {
-        if (!accepts(pose)) return@runCatching null
+    fun createAnchor(): AutoPlacementResult? = createAnchor(null)
+
+    internal fun createAnchor(session: Session?): AutoPlacementResult? =
+        arSessionGuarded("AutoPlacement create anchor", null) {
+            runCatching { anchorCandidate(session) }.getOrElse {
+                if (isStaleArSessionError(it)) throw it
+                null
+            }
+        }
+
+    private fun anchorCandidate(session: Session?): AutoPlacementResult? {
+        if (!accepts(pose)) return null
         val anchor = trackable.createAnchor(pose)
-        if (anchor.trackingState != TrackingState.TRACKING) {
-            anchor.detach()
-            null
-        } else AutoPlacementResult(anchor, trackable, pose, kind)
-    }.getOrNull()
+        var keepAnchor = false
+        try {
+            if (anchor.trackingState != TrackingState.TRACKING) return null
+            val result = AutoPlacementResult(anchor, trackable, pose, kind)
+            if (session != null && trackable is InstantPlacementPoint && !isSettledOn(trackable)) {
+                // Keep the estimated floor pose stable while ARCore resolves depth.
+                result.instantPlacement = InstantPlacement(anchor, trackable, session.createAnchor(pose))
+            }
+            keepAnchor = true
+            return result
+        } finally {
+            if (!keepAnchor) anchor.detach()
+        }
+    }
 
     /**
      * Whether [target] is still a valid spot on this candidate's surface: inside the polygon for
      * a floor, up to [UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M] outside it for a wall plane,
-     * anywhere on an inferred wall (which has no polygon).
+     * anywhere on an inferred wall or an instant-placement point (which have no polygon).
      */
     internal fun accepts(target: Pose): Boolean {
         if (trackable.trackingState != TrackingState.TRACKING) return false
         val plane = trackable as? Plane
         return when (kind) {
-            null -> plane != null && (offPolygonFloor || plane.subsumedBy == null && plane.isPoseInPolygon(target))
+            null -> trackable is InstantPlacementPoint ||
+                plane != null && (offPolygonFloor || plane.subsumedBy == null && plane.isPoseInPolygon(target))
             WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
                 (plane.isPoseInPolygon(target) ||
                     plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
@@ -182,10 +220,19 @@ fun findAutoPlacementSurface(
     width: Int,
     height: Int,
     surface: PlacementSurface = PlacementSurface.SURFACE,
+): AutoPlacementCandidate? = findAutoPlacementSurface(frame, planes, width, height, surface) { true }
+
+private fun findAutoPlacementSurface(
+    frame: Frame,
+    planes: Collection<Plane>,
+    width: Int,
+    height: Int,
+    surface: PlacementSurface,
+    acceptsPlane: (Plane) -> Boolean,
 ): AutoPlacementCandidate? {
     if (width <= 0 || height <= 0 || frame.camera.trackingState != TrackingState.TRACKING) return null
     fun supported(plane: Plane) = plane.trackingState == TrackingState.TRACKING &&
-        plane.subsumedBy == null && plane.type == when (surface) {
+        plane.subsumedBy == null && acceptsPlane(plane) && plane.type == when (surface) {
             PlacementSurface.SURFACE -> Plane.Type.HORIZONTAL_UPWARD_FACING
             PlacementSurface.WALL -> Plane.Type.VERTICAL
         }
@@ -206,7 +253,7 @@ fun findAutoPlacementSurface(
         PlacementSurface.SURFACE -> {
             val hit = hits.firstOrNull { hit ->
                 val plane = hit.trackable as? Plane
-                plane != null && plane.subsumedBy == null && UsableSurfacePolicy.accept(
+                plane != null && plane.subsumedBy == null && acceptsPlane(plane) && UsableSurfacePolicy.accept(
                     surface, plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
                     plane.type == Plane.Type.VERTICAL, plane.trackingState == TrackingState.TRACKING,
                     plane.isPoseInPolygon(hit.hitPose), hit.distance,
@@ -354,6 +401,59 @@ internal fun autoPlacementDepthMode(surface: PlacementSurface): Config.DepthMode
         PlacementSurface.WALL -> Config.DepthMode.AUTOMATIC
     }
 
+private fun facingPose(point: Position, eye: Position): Pose {
+    val yaw = Rotation(y = PlacementMath.yawToward(point, eye)).toQuaternion()
+    return Pose(floatArrayOf(point.x, point.y, point.z), floatArrayOf(yaw.x, yaw.y, yaw.z, yaw.w))
+}
+
+private fun floorCandidate(
+    frame: Frame,
+    planes: List<Plane>,
+    viewport: IntSize,
+    preferPlane: Boolean = false,
+): AutoPlacementCandidate? = arSessionGuarded("AutoPlacement estimated floor", null) {
+    val width = viewport.width
+    val height = viewport.height
+    if (width <= 0 || height <= 0) return@arSessionGuarded null
+    val camera = frame.camera
+    val eye = camera.pose.position
+    val trackedFloor = trackedFloorY(planes)
+    if (preferPlane && trackedFloor != null && eye.y - trackedFloor >= FLOOR_BELOW_CAMERA_M) {
+        val floor = findAutoPlacementSurface(frame, planes, width, height, PlacementSurface.SURFACE) {
+            kotlin.math.abs(it.centerPose.ty() - trackedFloor) < 0.02f
+        }
+        if (floor != null) {
+            return@arSessionGuarded AutoPlacementCandidate(
+                floor.trackable, facingPose(floor.pose.position, eye), null,
+            )
+        }
+    }
+    val view = camera.viewTransform
+    val projection = camera.getProjectionTransform(0.1f, 100f)
+    val screenRay = PlacementMath.screenRay(width / 2f, height / 2f, width, height, view, projection)
+    val ray = Ray(eye, screenRay.direction)
+    val floorY = PlacementMath.estimateFloorHeight(eye.y, trackedFloor)
+    val distance = PlacementFeel.DEFAULT_DISTANCE_M
+    val minDistance = distance * PlacementFeel.NEAR_SHARE
+    val preferred = PlacementMath.floorPointAlong(ray, floorY, distance, minDistance)
+        ?: return@arSessionGuarded null
+    // A wider floor distance keeps the estimate in view when the user holds the phone level.
+    val pixel = PlacementMath.projectToScreen(preferred, width, height, view, projection)
+    val point = if (pixel != null) preferred else {
+        PlacementMath.floorPointAlong(ray, floorY, UsableSurfacePolicy.MAX_DISTANCE_M, minDistance)
+            ?: return@arSessionGuarded null
+    }
+    val target = pixel ?: PlacementMath.projectToScreen(point, width, height, view, projection)
+        ?: return@arSessionGuarded null
+    val reach = ViewportProjection.distance(point.x, point.y, point.z, eye.x, eye.y, eye.z)
+        .coerceIn(PlacementFeel.MIN_INSTANT_DISTANCE_M, MAX_DRAG_DISTANCE_M)
+    val hit = frame.hitTestInstantPlacement(target.x, target.y, reach)
+        .firstOrNull { it.trackable is InstantPlacementPoint } ?: return@arSessionGuarded null
+    val trackable = hit.trackable
+    val contact = if (isSettledOn(trackable)) hit.hitPose.position else point
+    AutoPlacementCandidate(trackable, facingPose(contact, eye), null)
+}
+
 /** A vertical plane's normal (centre-pose +Y), `null` for a floor or table. */
 private fun planeWallNormal(plane: Plane): FloatArray? =
     if (plane.type == Plane.Type.VERTICAL) plane.centerPose.getTransformedAxis(1, 1f) else null
@@ -377,12 +477,15 @@ private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: P
 fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementState() }
 
 /**
- * Places once on the first usable detected plane after [assetReady]. No tap and no reticle:
- * the detected surfaces show while the object looks for one and while it moves, then fade once
- * it stands still ([AutoPlacementState.guide], #5209). Load the asset before setting [assetReady]; keep the old asset
- * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
+ * Places once on the first usable detected plane after [assetReady]. After
+ * [AutoPlacementState.estimatedFallbackMillis] of tracked search (600 ms by default), a surface
+ * flow can place on the estimated floor. The model eases to the point resolved by ARCore.
+ * A wall flow waits for a wall. The detected surfaces show while the object looks for one and
+ * while it moves, then fade once it stands still ([AutoPlacementState.guide], #5209).
+ * Load the asset before setting [assetReady]. Keep the old asset until a replacement succeeds,
+ * and gate asynchronous results using [AutoPlacementState.ticket].
  *
- * [state] exposes recovery, reset and explicit request actions. Camera/capability events
+ * [state] exposes recovery, reset, [AutoPlacementState.recenter] and explicit request actions. Camera/capability events
  * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
  * same [state]. Content is composed on the main thread.
  * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
@@ -403,7 +506,7 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   own to read or occlude with it.
  * @param sessionConfiguration runs after this scene has set plane finding, depth and instant
  *   placement for [surface], as [ARSceneView]'s does: enable cloud anchors, depth, light
- *   estimation or semantics here. Turning plane finding off stops placement.
+ *   estimation or semantics here.
  * @param onSessionCreated the ARCore [Session], once created.
  * @param onSessionResumed called after the scene's own resume handling.
  * @param onSessionPaused the session paused (the host went to the background).
@@ -453,6 +556,12 @@ fun AutoPlacementScene(
     var planes by remember { mutableStateOf<List<Plane>>(emptyList()) }
     val ready by rememberUpdatedState(assetReady)
     val placedCallback by rememberUpdatedState(onPlaced)
+    val recenter = remember(state, surface) { RecenterRequest(surface) }
+    val currentRecenter by rememberUpdatedState(recenter)
+    DisposableEffect(recenter) {
+        state.recenterAction = { placement?.isWall == false && recenter.request() }
+        onDispose { state.recenterAction = null }
+    }
     LaunchedEffect(state, assetReady) {
         if (assetReady) state.requestPlacement() else state.withdrawRequest()
     }
@@ -467,6 +576,7 @@ fun AutoPlacementScene(
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
         val release: () -> Unit = {
+            currentRecenter.cancel()
             val owned = placementHolder.value
             placementHolder.value = null
             owned?.releaseAnchor()
@@ -501,7 +611,7 @@ fun AutoPlacementScene(
                 planeRenderer = state.showsPlaneGuide && state.guide.planes,
                 planeFindingMode = autoPlacementPlaneFindingMode(surface),
                 depthMode = autoPlacementDepthMode(surface),
-                instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+                instantPlacementMode = autoPlacementInstantPlacementMode(surface),
                 cameraPermissionOverlay = {
                     ARCameraPermissionOverlay(
                         state = it,
@@ -541,9 +651,14 @@ fun AutoPlacementScene(
                     state.cameraResumed()
                     onSessionResumed?.invoke(resumed)
                 },
-                onSessionPaused = onSessionPaused,
+                onSessionPaused = { paused ->
+                    recenter.onCameraTracking(false)
+                    state.restartTrackedSearch()
+                    onSessionPaused?.invoke(paused)
+                },
                 onSessionCreated = { created ->
                     (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
+                        currentRecenter.onCameraTracking(false)
                         val previous = placement
                         placement = null
                         planes = emptyList()
@@ -555,21 +670,50 @@ fun AutoPlacementScene(
                 onSessionFailure = onSessionFailure,
                 onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
                 onSessionUpdated = { session, frame ->
+                    val tracking = frame.camera.trackingState == TrackingState.TRACKING
+                    recenter.onCameraTracking(tracking)
                     val tracked = session.getAllTrackables(Plane::class.java)
                         .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                     if (tracked != planes) planes = tracked
                     state.onFloor(trackedFloorY(tracked))
-                    if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
-                    val candidate = if (ready && state.wantsSurface) {
+                    if (tracking) state.onCamera(frame.camera.pose.ty())
+                    val searching = ready && tracking && state.wantsSurface
+                    val candidate = if (searching) {
                         findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
                     } else null
+                    val now = SystemClock.uptimeMillis()
                     val effect = state.onFrame(
-                        FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
+                        FrameInput(now, tracking,
                             candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
-                        commit = {
-                            candidate?.createAnchor()?.let { placement = it; true } ?: false
+                        estimatedAvailable = searching && surface == PlacementSurface.SURFACE,
+                        anchorSettled = arSessionGuarded("AutoPlacement tracking method", null) {
+                            placement?.takeIf { tracking }?.let { isSettledOn(it.trackable) }
+                        },
+                        commit = { source ->
+                            val target = when (source) {
+                                PlacementSource.SURFACE -> candidate
+                                PlacementSource.ESTIMATED -> floorCandidate(frame, tracked, viewport)
+                            }
+                            if (target == null) return@onFrame PlacementAttempt.UNAVAILABLE
+                            val next = target.createAnchor(session) ?: return@onFrame PlacementAttempt.FAILED
+                            placement = next
+                            if (next.instantPlacement == null) PlacementAttempt.SETTLED else PlacementAttempt.APPROXIMATE
                         },
                     )
+                    recenter.onFrame(now, ready = effect != FrameEffect.PLACE && state.phase == PlacementPhase.PLACED) {
+                        val previous = placement?.takeUnless { it.isWall } ?: return@onFrame false
+                        val next = floorCandidate(frame, tracked, viewport, preferPlane = true)?.createAnchor(session)
+                            ?: return@onFrame false
+                        val relocate = previous.relocate
+                        if (relocate != null) {
+                            relocate(next)
+                        } else {
+                            previous.releaseAnchor()
+                            previous.replaceAnchor(next)
+                            state.onPlacementAnchor(next.source, settled = next.instantPlacement == null)
+                        }
+                        true
+                    }
                     if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
                     // Last, so a host callback that throws (ARSceneView catches and logs it) never
                     // costs this frame its placement work.
@@ -577,7 +721,13 @@ fun AutoPlacementScene(
                 },
             ) {
                 sceneContent?.invoke(this)
-                placement?.let { result -> key(result) { content(result) } }
+                placement?.let { result ->
+                    key(result) {
+                        CompositionLocalProvider(LocalInstantPlacement provides result.instantPlacement) {
+                            content(result)
+                        }
+                    }
+                }
                 // The plane renderer catches no shadow here, so these are the only receivers on the
                 // planes even while the surfaces show: no double darkening (#2657).
                 if (groundShadows &&
@@ -1345,6 +1495,8 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             }
         } }
         DisposableEffect(pivot, state) {
+            val relocate = root::recenter
+            placement.relocate = relocate
             state.moveAction = { x, y ->
                 // Every refused button press is felt, not only the first one (throttled per event).
                 root.moveBy(x, y).also { if (!it) state.gestureHapticSink?.invoke(ARHapticEvent.InvalidMove) }
@@ -1385,6 +1537,7 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             // Gestures begun on empty space edit this object (twist, pinch; a drag bubbles to the anchor).
             state.editTarget = pivot
             onDispose {
+                if (placement.relocate === relocate) placement.relocate = null
                 if (state.editTarget === pivot) state.editTarget = null
                 state.moveAction = null
                 state.rotateAction = null
@@ -1540,6 +1693,9 @@ internal const val FLOOR_BELOW_CAMERA_M = 1.0f
  */
 internal const val MAX_DRAG_DISTANCE_M = 5f
 
+private val AutoPlacementResult.source: PlacementSource
+    get() = if (trackable is InstantPlacementPoint) PlacementSource.ESTIMATED else PlacementSource.SURFACE
+
 /** Keeps the logical anchor alive while dragging; only a valid finished move replaces it. */
 private class AutomaticAnchorNode(
     engine: Engine,
@@ -1550,13 +1706,17 @@ private class AutomaticAnchorNode(
     private var offset: FloatArray? = null
     private var pending: AutoPlacementCandidate? = null
     private var interruptedMove = false
+    private val moveRetry = AnchorRetryPolicy(AnchorRetryPolicy.RELOCATION_ATTEMPTS)
 
     /** This drag opened an adjustment: only a drag that did closes one ([DragEnd]). */
     private var dragging = false
 
     /** When this drag began, `MotionEvent.eventTime`. */
     private var dragStartMs = 0L
-    init { isEditable = true }
+    init {
+        isEditable = true
+        instantPlacement = placement.instantPlacement
+    }
 
     private fun cancelAutomaticMove() {
         val wasDragging = dragging
@@ -1565,6 +1725,7 @@ private class AutomaticAnchorNode(
         dragging = false
         dragStartMs = 0L
         interruptedMove = false
+        moveRetry.reset()
         updateAnchorPose = true
         if (wasDragging) state.endAdjustment()
         invalidMove(false)
@@ -1576,6 +1737,11 @@ private class AutomaticAnchorNode(
         } finally {
             super.releaseSessionAnchor()
         }
+    }
+
+    fun recenter(next: AutoPlacementResult) {
+        adopt(next)
+        cancelAutomaticMove()
     }
 
     /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
@@ -1606,6 +1772,7 @@ private class AutomaticAnchorNode(
         offset = floatArrayOf(grab.x, grab.y, grab.z)
         pending = null
         interruptedMove = false
+        moveRetry.reset()
         updateAnchorPose = false
         return true
     }
@@ -1635,7 +1802,10 @@ private class AutomaticAnchorNode(
                 // instead of refusing the move (model-viewer's WebXR drag, ARMV). A table top
                 // ends at its edge: an object never floats past it.
                 ?: slideAlongWall(e, offPolygonFloor = true)
-                    ?.takeIf { standsOnFloor(pose.ty(), state.floorHeight, state.cameraHeight) }
+                    ?.takeIf {
+                        it.trackable is InstantPlacementPoint ||
+                            standsOnFloor(pose.ty(), state.floorHeight, state.cameraHeight)
+                    }
         }
         if (candidate == null || !candidate.accepts(candidate.pose) ||
             !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
@@ -1660,15 +1830,19 @@ private class AutomaticAnchorNode(
         }
         if (!dragging) return
         val target = pending?.pose
+        val origin = restingPose()
         val travel = if (target == null) 0f else ViewportProjection.distance(
-            target.tx(), target.ty(), target.tz(), anchor.pose.tx(), anchor.pose.ty(), anchor.pose.tz(),
+            target.tx(), target.ty(), target.tz(), origin.tx(), origin.ty(), origin.tz(),
         )
         when (DragEnd.of(dragging, e.pointerCount, e.eventTime - dragStartMs, travel)) {
             // The detector also ends a drag it never began — a second finger landing before the
             // first one travelled: that drag opened no adjustment, so it closes none (closing
             // one would end the pinch the two fingers are starting).
             DragEnd.NONE -> return
-            DragEnd.COMMIT -> if (state.isAdjusting) commitMove()
+            DragEnd.COMMIT -> if (state.isAdjusting && !commitMove() && pending != null) {
+                interruptedMove = true
+                moveRetry.failed(SystemClock.uptimeMillis())
+            }
             // A second finger landing right after the first started sliding is a pinch or a
             // twist starting (#4731): the few pixels the first finger slid are not a move.
             // Committed, each pinch walked the object a few centimetres away from where it was
@@ -1676,7 +1850,7 @@ private class AutomaticAnchorNode(
             DragEnd.REVERT -> {
                 pending = null
                 interruptedMove = false
-                if (trackingState == TrackingState.TRACKING) pose = anchor.pose
+                if (trackingState == TrackingState.TRACKING) pose = restingPose()
             }
         }
         dragging = false
@@ -1756,9 +1930,13 @@ private class AutomaticAnchorNode(
 
     /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall or a table keeps the placement range. */
     private fun dragDistanceLimit(target: Pose) =
-        if (placement.isWall || !standsOnFloor(target.ty(), state.floorHeight, state.cameraHeight)) {
+        if (!placement.isWall && (placement.trackable is InstantPlacementPoint ||
+                standsOnFloor(target.ty(), state.floorHeight, state.cameraHeight))
+        ) {
+            MAX_DRAG_DISTANCE_M
+        } else {
             UsableSurfacePolicy.MAX_DISTANCE_M
-        } else MAX_DRAG_DISTANCE_M
+        }
 
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
@@ -1776,14 +1954,20 @@ private class AutomaticAnchorNode(
         if (trackingState != TrackingState.TRACKING ||
             !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
         ) return false
-        val next = candidate.createAnchor() ?: return false
-        anchor = next.anchor
-        placement.anchor = next.anchor
-        placement.trackable = next.trackable
-        placement.kind = next.kind
-        placement.pose = next.pose
+        val next = candidate.createAnchor(session) ?: return false
+        adopt(next)
         pending = null
+        moveRetry.reset()
         return true
+    }
+
+    private fun restingPose(): Pose = instantPlacement?.refinement?.heldPose ?: anchor.pose
+
+    private fun adopt(next: AutoPlacementResult) {
+        anchor = next.anchor
+        instantPlacement = next.instantPlacement
+        placement.replaceAnchor(next)
+        state.onPlacementAnchor(next.source, settled = next.instantPlacement == null)
     }
 
     override fun update(session: Session, frame: Frame) {
@@ -1793,6 +1977,7 @@ private class AutomaticAnchorNode(
             if (!updateAnchorPose) {
                 // Freeze the last valid drag pose without replacing the logical anchor.
                 interruptedMove = pending != null
+                dragging = false
                 offset = null
                 state.endAdjustment()
                 if (!interruptedMove) updateAnchorPose = true
@@ -1805,10 +1990,23 @@ private class AutomaticAnchorNode(
             updateAnchorPose = followAnchor
             return
         }
-        if (interruptedMove && commitMove()) {
+        super.update(session, frame)
+        if (interruptedMove && !dragging) retryMove(SystemClock.uptimeMillis())
+    }
+
+    private fun retryMove(now: Long) {
+        if (!moveRetry.isDue(now)) return
+        if (commitMove()) {
             interruptedMove = false
             updateAnchorPose = true
+        } else {
+            moveRetry.failed(now)
+            if (moveRetry.isExhausted) {
+                interruptedMove = false
+                pending = null
+                updateAnchorPose = true
+                pose = restingPose()
+            }
         }
-        super.update(session, frame)
     }
 }
