@@ -153,8 +153,9 @@ An honest comparison for developers evaluating 3D and AR options.
 
 !!! question "Sceneform worked fine for us"
     Google archived Sceneform in 2021. The `.sfb` format is deprecated. No Compose support.
-    No new ARCore features (geospatial, streetscape, depth). The community fork has unresolved
-    issues including 16 KB page size compliance required by Android 15 (API 35).
+    No new ARCore features (geospatial, streetscape, depth). Sceneform 1.23 and older cannot
+    ship an app update on Google Play after February 1, 2027 (16 KB pages); Sceneform Maintained
+    1.24.0 fixes that, as a maintenance release with no new features.
     See the [Migration guide](migration.md) for a step-by-step walkthrough.
 
 !!! question "Is it production-ready?"

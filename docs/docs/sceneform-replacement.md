@@ -1,6 +1,6 @@
 ---
 title: Sceneform replacement — move from Sceneform to SceneView
-description: "Google archived Sceneform in 2021. SceneView is its maintained, Compose-native successor on ARCore and Filament: the Gradle dependency, a minimal tap-to-place AR screen, and the Sceneform to SceneView class mapping."
+description: "Google archived Sceneform in 2021. SceneView is its maintained, Compose-native successor on ARCore and Filament: the Gradle dependency, Google Play's 16 KB deadline of February 1, 2027, a minimal tap-to-place AR screen, and the Sceneform to SceneView class mapping."
 ---
 
 # Sceneform replacement: SceneView
@@ -28,6 +28,29 @@ dependencies {
 
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, Kotlin 2.3 or newer and JVM target 21 (on AGP 8 / compileSdk 36, use 4.18.0).
 The [quickstart requirements](quickstart.md#requirements) give the full Gradle block.
+
+## Google Play's 16 KB deadline: February 1, 2027
+
+From February 1, 2027, Google Play blocks app updates that do not support 16 KB memory pages
+([Android developer guide](https://developer.android.com/guide/practices/page-sizes)). Sceneform
+1.23 and older cannot pass: Google's Sceneform 1.17.1 and Sceneform Maintained 1.23.0 ship native
+libraries linked for 4 KB pages (Filament 1.21 and ARCore 1.31 in 1.23.0). An app that still
+ships one of them cannot release an update after that date.
+
+Two ways out:
+
+- **Stay on Sceneform for now:** [Sceneform Maintained](https://github.com/sceneview/sceneform-android)
+  1.24.0 moves to Filament 1.72.1 and ARCore 1.57.0, both 16 KB aligned, with the same API
+  (`com.gorisse.thomas.sceneform:sceneform:1.24.0`, `compileSdk` 34, JDK 17). Its README lists
+  what an app changes to upgrade from 1.23. It is a maintenance release: no new features.
+- **Move to SceneView:** its native dependencies are 16 KB aligned in every line an app can use.
+  4.72.0 uses Filament 1.77.3 and ARCore 1.57.0; 4.18.0, for AGP 8 or `compileSdk` 36, uses
+  Filament 1.71.5 and ARCore 1.54.0.
+
+Either way, the app opts in at packaging and checks its APK:
+[16 KB page-size alignment](migration.md#16-kb-page-size-alignment-api-35-required-for-play-store)
+gives the Gradle flag and three ways to check (APK Analyzer, `check_elf_alignment.sh`,
+`zipalign -c -P 16 -v 4 app.apk`). Any other prebuilt `.so` in the app must be 16 KB aligned too.
 
 ## Minimal AR screen: tap a plane to place a model
 
