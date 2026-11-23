@@ -11,6 +11,49 @@ function hasRule(code: string, rule: string) {
   return ruleIds(code).includes(rule);
 }
 
+// ─── setup/sceneview-compose-android-api ────────────────────────────────────
+
+describe("setup/sceneview-compose-android-api", () => {
+  const RULE = "setup/sceneview-compose-android-api";
+
+  it("fires when sceneview-compose is pinned with the Android API", () => {
+    const code = `
+      implementation("io.github.sceneview:sceneview-compose:4.72.0")
+      import io.github.sceneview.SceneView
+      import io.github.sceneview.rememberEngine
+
+      val engine = rememberEngine()
+      SceneView(engine = engine) { ModelNode(modelInstance = instance) }
+    `;
+    const issues = validateCode(code).filter((issue) => issue.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe("error");
+    expect(issues[0].message).toContain("`io.github.sceneview:sceneview`");
+  });
+
+  it("does NOT fire for sceneview-compose code using only the façade API", () => {
+    const code = `
+      implementation("io.github.sceneview:sceneview-compose:4.72.0")
+      import io.github.sceneview.compose.ModelSource
+      import io.github.sceneview.compose.SceneViewer
+
+      SceneViewer(model = ModelSource.Asset("models/chair.glb"))
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does NOT fire when the Android API uses the sceneview artifact", () => {
+    const code = `
+      implementation("io.github.sceneview:sceneview:4.72.0")
+      import io.github.sceneview.SceneView
+      import io.github.sceneview.rememberEngine
+
+      SceneView(engine = rememberEngine()) { ModelNode(modelInstance = instance) }
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+});
+
 // ─── threading/filament-off-main-thread ──────────────────────────────────────
 
 describe("threading/filament-off-main-thread", () => {

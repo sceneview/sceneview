@@ -38,6 +38,32 @@ function locallyDeclaredNames(code: string): Set<string> {
 }
 
 const RULES: Rule[] = [
+  // ─── Compose Multiplatform dependency with Android API ──────────────────
+  {
+    id: "setup/sceneview-compose-android-api",
+    severity: "error",
+    check(code, lines) {
+      const composeDependency = /io\.github\.sceneview:sceneview-compose(?::[^\s"')]+)?/;
+      if (!composeDependency.test(code)) return [];
+
+      const androidApi =
+        /(?:import\s+io\.github\.sceneview\.(?!compose(?:\.|\b))|\b(?:Scene|SceneView|ARScene|ARSceneView|PlacementScene|AutoPlacementScene|rememberEngine|rememberModelLoader|rememberModelInstance|rememberEnvironmentLoader|rememberMaterialLoader|rememberView|rememberARView|ModelNode|AnchorNode|CubeNode|LightNode)\b)/;
+      if (!androidApi.test(code)) return [];
+
+      const isAr =
+        /(?:import\s+io\.github\.sceneview\.ar(?:\.|\b)|\b(?:ARScene|ARSceneView|PlacementScene|AutoPlacementScene|rememberARView|AnchorNode)\b)/.test(
+          code
+        );
+      const coordinate = isAr ? "io.github.sceneview:arsceneview" : "io.github.sceneview:sceneview";
+      return findLines(lines, composeDependency).map((line) => ({
+        severity: "error",
+        rule: "setup/sceneview-compose-android-api",
+        message: `\`sceneview-compose\` is the Compose Multiplatform \`SceneViewer\` façade and does not expose the Android \`io.github.sceneview.*\` API. Use \`${coordinate}\` instead.`,
+        line,
+      }));
+    },
+  },
+
   // ─── Threading ────────────────────────────────────────────────────────────
   {
     id: "threading/filament-off-main-thread",
