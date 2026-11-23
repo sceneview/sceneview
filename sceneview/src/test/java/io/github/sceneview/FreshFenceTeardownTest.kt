@@ -49,6 +49,9 @@ class FreshFenceTeardownTest {
         fun createFence(): Int = enqueue(FENCE_ROUND_TRIP_MS)
         fun isReached(fence: Int) = doneAt[fence] <= now
 
+        /** How long a wait for [fence] would keep the caller now, unbounded. */
+        fun msUntilReached(fence: Int) = maxOf(0L, doneAt[fence] - now)
+
         /** How long a wait for everything queued so far would block the caller now. */
         fun drainWaitMs() = maxOf(0L, freeAt - now)
 
@@ -98,7 +101,28 @@ class FreshFenceTeardownTest {
         pollGaps: List<Long> = listOf(BACKEND_IDLE_POLL_MS),
         recoverAtMs: Long? = null,
         busy: (SimBackend) -> () -> Boolean,
-    ): Result {
+    ): Result = checkNotNull(
+        replayOrNull(
+            backlogMs, nextScreenAtMs, nextScreenWorkMs, frameWorkMs, mainThreadBusy, pollGaps, recoverAtMs, busy,
+        ),
+    ) { "the teardown never ran" }
+
+    /**
+     * [replay], or null when the teardown is still pending after 20 s. With [probe], the registry
+     * owns it, as `Engine.whenBackendIdle` does: its warning also drives the 1 s back-off.
+     */
+    @Suppress("LongParameterList")
+    private fun replayOrNull(
+        backlogMs: Long = 200,
+        nextScreenAtMs: Long = 20,
+        nextScreenWorkMs: Long = 3_000,
+        frameWorkMs: Long = 4,
+        mainThreadBusy: LongRange = LongRange.EMPTY,
+        pollGaps: List<Long> = listOf(BACKEND_IDLE_POLL_MS),
+        recoverAtMs: Long? = null,
+        busy: ((SimBackend) -> () -> Boolean)? = null,
+        probe: ((SimBackend) -> FreshFenceProbe<Int>)? = null,
+    ): Result? {
         val backend = SimBackend()
         backend.mainThreadBusy = mainThreadBusy
         backend.pollGaps = pollGaps
@@ -107,9 +131,10 @@ class FreshFenceTeardownTest {
         }
         var result: Result? = null
         if (backlogMs > 0) backend.enqueue(backlogMs)
-        BackendIdleTeardowns().defer(
+        val teardowns = probe?.let { BackendIdleTeardowns(probe = it(backend)) } ?: BackendIdleTeardowns()
+        teardowns.defer(
             isEngineAlive = { true },
-            isBackendBusy = busy(backend),
+            isBackendBusy = busy?.invoke(backend) ?: teardowns::isBackendBusy,
             schedule = backend.schedule,
             teardown = { deferred -> result = Result(backend.now, backend.drainWaitMs(), deferred) },
         )
@@ -121,7 +146,7 @@ class FreshFenceTeardownTest {
             frame += 16
         }
         backend.runUntil(20_000)
-        return checkNotNull(result) { "the teardown never ran" }
+        return result
     }
 
     /** `Engine.whenBackendIdle` before this change: one fence, created when the scene is disposed. */
@@ -168,6 +193,24 @@ class FreshFenceTeardownTest {
     )
 
     private val freshFence: (SimBackend) -> () -> Boolean = { backend -> newProbe(backend)::isBusy }
+
+    /** Every bounded wait the probe made: when, and how long it kept the main thread. */
+    private class BoundedWaits {
+        val waits = mutableListOf<Pair<Long, Long>>()
+    }
+
+    /** The production probe: zero-timeout checks, then the bounded confirmation after 5 s. */
+    private fun boundedProbe(backend: SimBackend, log: BoundedWaits = BoundedWaits()) = FreshFenceProbe(
+        createFence = backend::createFence,
+        isReached = backend::isReached,
+        destroyFence = {},
+        now = { backend.now },
+        awaitReached = { fence ->
+            val until = backend.msUntilReached(fence)
+            log.waits += backend.now to minOf(until, FRESH_FENCE_CONFIRM_BUDGET_MS)
+            until <= FRESH_FENCE_CONFIRM_BUDGET_MS
+        },
+    )
 
     @Test
     fun `a dispose-time fence releases into the next screen's backlog`() {
@@ -440,6 +483,107 @@ class FreshFenceTeardownTest {
         runs.forEach { (case, after) ->
             assertTrue("$case: blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
             assertTrue("$case: still pending at ${after.ranAtMs} ms", after.ranAtMs < FRESH_FENCE_WARN_AFTER_MS)
+        }
+    }
+
+    /**
+     * #4969: a steady main thread slower than the 48 ms window, on a shared engine that stays
+     * alive. Zero-timeout checks never see a fresh fence, so the release waited for Engine.destroy;
+     * the bounded confirmation finds the idle backend shortly after the warning.
+     */
+    @Test
+    fun `a main thread too slow for freshness still releases once the backend is idle`() {
+        for (gap in listOf(66L, 100L, 300L)) {
+            val zeroTimeout = replayOrNull(
+                // Like-for-like with the run below: a registry-owned probe, so the 1 s back-off applies.
+                backlogMs = 0, nextScreenWorkMs = 0, pollGaps = listOf(gap), probe = { newProbe(it) },
+            )
+            assertEquals("a poll every $gap ms, zero-timeout only", null, zeroTimeout)
+
+            val after = checkNotNull(
+                replayOrNull(backlogMs = 0, nextScreenWorkMs = 0, pollGaps = listOf(gap), probe = { boundedProbe(it) }),
+            ) { "a poll every $gap ms: never released" }
+            println("a poll every $gap ms, bounded check: released at ${after.ranAtMs} ms, blocked ${after.blockedMs} ms")
+            assertTrue("released at ${after.ranAtMs} ms", after.ranAtMs >= FRESH_FENCE_WARN_AFTER_MS)
+            assertTrue(
+                "released at ${after.ranAtMs} ms",
+                after.ranAtMs <= FRESH_FENCE_WARN_AFTER_MS + 2 * (BACKEND_IDLE_BACKOFF_MS + gap),
+            )
+            assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= FRESH_FENCE_CONFIRM_BUDGET_MS)
+        }
+    }
+
+    /**
+     * The bounded confirmation must not become the old give-up: the next screen queues 2 s of
+     * shaders at any instant around the warning, on a main thread too slow for freshness.
+     * The release waits for them and never blocks longer than the confirmation budget.
+     */
+    @Test
+    fun `the bounded confirmation never releases into the next screen's shaders`() {
+        for (gap in listOf(66L, 100L, 300L)) {
+            for (atMs in 3_000L..9_000L step 50) {
+                val case = "a poll every $gap ms, shaders at $atMs ms"
+                val after = checkNotNull(
+                    replayOrNull(
+                        backlogMs = 0,
+                        nextScreenAtMs = atMs,
+                        nextScreenWorkMs = 2_000,
+                        pollGaps = listOf(gap),
+                        probe = { boundedProbe(it) },
+                    ),
+                ) { "$case: never released" }
+                assertTrue("$case: blocked ${after.blockedMs} ms", after.blockedMs <= FRESH_FENCE_CONFIRM_BUDGET_MS)
+                if (after.ranAtMs >= atMs) {
+                    assertTrue("$case: released at ${after.ranAtMs} ms", after.ranAtMs >= atMs + 2_000)
+                }
+            }
+        }
+    }
+
+    /** A backend that never catches up keeps the release pending, and is never waited for. */
+    @Test
+    fun `a backend that never idles is neither released nor waited for`() {
+        for (gap in listOf(16L, 66L, 300L)) {
+            val log = BoundedWaits()
+            val after = replayOrNull(
+                backlogMs = 60_000,
+                nextScreenWorkMs = 0,
+                pollGaps = listOf(gap),
+                probe = { boundedProbe(it, log) },
+            )
+            assertEquals("a poll every $gap ms: released behind a busy backend", null, after)
+            // An unreached fence is kept: only a stale or errored one is replaced and confirmed.
+            assertEquals("a poll every $gap ms", 0, log.waits.size)
+        }
+    }
+
+    /**
+     * The probe's only new main-thread cost: bounded waits, none before the warning, at most
+     * [FRESH_FENCE_CONFIRM_BUDGET_MS] each and about two a second. Here the backend spends 15 ms
+     * of every 16 on frames, so most confirmations time out before one lands between two frames.
+     */
+    @Test
+    fun `bounded waits start after the warning and stay within budget`() {
+        for (gap in listOf(66L, 100L, 300L)) {
+            val log = BoundedWaits()
+            val after = checkNotNull(
+                replayOrNull(
+                    backlogMs = 0,
+                    nextScreenWorkMs = 0,
+                    frameWorkMs = 15,
+                    pollGaps = listOf(gap),
+                    probe = { boundedProbe(it, log) },
+                ),
+            ) { "a poll every $gap ms: never released" }
+            val seconds = 1 + (after.ranAtMs - FRESH_FENCE_WARN_AFTER_MS) / 1_000
+            println(
+                "a poll every $gap ms, 15 ms frames: ${log.waits.size} bounded waits " +
+                    "(${log.waits.sumOf { it.second }} ms), released at ${after.ranAtMs} ms, blocked ${after.blockedMs} ms",
+            )
+            assertTrue(log.waits.all { (atMs, _) -> atMs >= FRESH_FENCE_WARN_AFTER_MS })
+            assertTrue(log.waits.all { (_, waitedMs) -> waitedMs <= FRESH_FENCE_CONFIRM_BUDGET_MS })
+            assertTrue("${log.waits.size} waits in $seconds s", log.waits.size <= 2 * seconds + 1)
+            assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= FRESH_FENCE_CONFIRM_BUDGET_MS)
         }
     }
 

@@ -1,6 +1,10 @@
 package io.github.sceneview
 
-/** Polling backs off after the diagnostic, without authorizing a blocking release. */
+/**
+ * Polling backs off after the diagnostic, without authorizing a release behind a busy fence. Each
+ * poll may then wait [FRESH_FENCE_CONFIRM_BUDGET_MS] (per wake-up) for a fence it has just created,
+ * and releases at most one entry: pending entries drain at about two a second.
+ */
 internal const val BACKEND_IDLE_BACKOFF_MS = 1_000L
 
 /**
@@ -72,7 +76,8 @@ internal class BackendIdleTeardowns(
 
     /** Shared by fence-dependent releases and stalled model loads, at most once per poll. */
     fun isBackendBusy(): Boolean = backendBusy ?: checkNotNull(probe)
-        .isBusy(requireFresh = !retiring).also { backendBusy = it }
+        // The bounded confirmation runs from the scheduled poll only, never from a registration.
+        .isBusy(requireFresh = !retiring, mayWait = polling).also { backendBusy = it }
 
     private fun invalidateProbe() {
         probe?.release()

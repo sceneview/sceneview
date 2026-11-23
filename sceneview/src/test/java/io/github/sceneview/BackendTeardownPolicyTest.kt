@@ -67,6 +67,86 @@ class BackendTeardownPolicyTest {
         }
     }
 
+    /**
+     * #4969: an engine that outlives its screens (one per activity, or a home hero hoisted above
+     * navigation) on a main thread too slow for the 48 ms window. Every screen's renderer used to
+     * stay pending until Engine.destroy; the bounded confirmation releases each on the live engine.
+     */
+    @Test
+    fun aLongLivedSharedEngineDoesNotAccumulatePendingRenderers() {
+        for (bounded in listOf(false, true)) {
+            val clock = Clock()
+            val probe = FreshFenceProbe(
+                createFence = { clock.time },
+                // Zero-timeout checks never see a fence armed in the same poll; later ones are stale.
+                isReached = { clock.time > it },
+                destroyFence = {},
+                now = { clock.time },
+                awaitReached = if (bounded) ({ true }) else null,
+            )
+            val teardowns = BackendIdleTeardowns(probe)
+            var destroyed = 0
+            repeat(20) {
+                teardowns.defer(
+                    isEngineAlive = { true }, schedule = clock.schedule,
+                    teardown = { destroyed++ }, reclaimWithEngine = true,
+                )
+                repeat(30) { if (clock.callbacks.isNotEmpty()) clock.poll() }
+            }
+            repeat(200) { if (clock.callbacks.isNotEmpty()) clock.poll() }
+            if (bounded) {
+                assertEquals("every renderer released on the live engine", 20, destroyed)
+                assertEquals(0, teardowns.size)
+                assertTrue("polling stops once nothing is pending", clock.callbacks.isEmpty())
+            } else {
+                assertEquals("zero-timeout checks alone release nothing", 0, destroyed)
+                assertEquals(20, teardowns.size)
+            }
+        }
+    }
+
+    /**
+     * The drain rate after the warning: one release per poll (each release invalidates the probe,
+     * and the next poll confirms the fence it arms), polls alternating 1 s and a short confirmation.
+     * Registrations themselves never wait.
+     */
+    @Test
+    fun pendingReleasesDrainAtAboutTwoPerSecondAndRegistrationsNeverWait() {
+        val clock = Clock()
+        var waits = 0
+        var waitsDuringRegistration = 0
+        var registering = false
+        val probe = FreshFenceProbe(
+            createFence = { clock.time },
+            isReached = { clock.time > it },
+            destroyFence = {},
+            now = { clock.time },
+            awaitReached = {
+                waits++
+                if (registering) waitsDuringRegistration++
+                true
+            },
+        )
+        val teardowns = BackendIdleTeardowns(probe)
+        val releasedAt = mutableListOf<Long>()
+        repeat(20) {
+            registering = true
+            teardowns.defer(
+                isEngineAlive = { true }, schedule = clock.schedule,
+                teardown = { releasedAt += clock.time }, reclaimWithEngine = true,
+            )
+            registering = false
+        }
+        while (clock.callbacks.isNotEmpty()) clock.poll()
+        println("20 pending at 66 ms polls: first released at ${releasedAt.first()} ms, last at ${releasedAt.last()} ms")
+        assertEquals(20, releasedAt.size)
+        assertEquals(0, waitsDuringRegistration)
+        assertTrue("first at ${releasedAt.first()} ms", releasedAt.first() >= FRESH_FENCE_WARN_AFTER_MS)
+        val span = releasedAt.last() - releasedAt.first()
+        assertTrue("20 releases over $span ms", span <= 10 * (BACKEND_IDLE_BACKOFF_MS + clock.minimumGap))
+        assertEquals("one bounded wait per release", 20, waits)
+    }
+
     @Test
     fun retirementDoesNotAccumulateCallbacksForLateEngineOwnedResources() {
         val clock = Clock()
