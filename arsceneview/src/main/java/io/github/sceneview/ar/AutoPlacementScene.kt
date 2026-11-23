@@ -827,11 +827,16 @@ private fun io.github.sceneview.NodeScope.PlacementFootprint(
     surface: () -> io.github.sceneview.node.Node?,
 ) {
     val footprint = remember(corners) { SelectionRing.footprint(corners) }
-    val groundRadius = remember(corners, footprint) {
-        PlacementGroundContact.radius(footprint, PlacementContactShadow.quad(corners))
-    }
+    // The contact shadow's fade keeps its floor width at any pinch, so its reach in the pivot's
+    // units changes with the scale: read through an updated state, not a re-registration.
+    val pinch = state.scaleFactor
+    val groundRadius by rememberUpdatedState(
+        remember(corners, footprint, pinch) {
+            PlacementGroundContact.radius(footprint, PlacementContactShadow.quad(corners, pinch))
+        }
+    )
     val currentSurface by rememberUpdatedState(surface)
-    DisposableEffect(corners, footprint, groundRadius, groundContacts) {
+    DisposableEffect(corners, footprint, groundContacts) {
         val unregister = groundContacts.register {
             val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
             currentSurface().takeIf { placed }?.let {

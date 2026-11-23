@@ -52,6 +52,7 @@ import io.github.sceneview.node.CameraNode as CameraNodeImpl
 import io.github.sceneview.node.CapsuleNode as CapsuleNodeImpl
 import io.github.sceneview.node.ConeNode as ConeNodeImpl
 import io.github.sceneview.node.ContactShadowContext
+import io.github.sceneview.node.ContactShadowFootprint
 import io.github.sceneview.node.ContactShadowNode as ContactShadowNodeImpl
 import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.node.CylinderNode as CylinderNodeImpl
@@ -971,6 +972,40 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     // ── ContactShadow ─────────────────────────────────────────────────────────────────────────────
 
     /**
+     * Binary-compatibility shim for the pre-`footprint` descriptor of [ContactShadow]. The Compose
+     * compiler puts every parameter in the JVM signature, so the new parameter retyped the
+     * function: this keeps a library compiled against the old signature linking, with no
+     * footprint (the context's ellipse).
+     */
+    @Deprecated(
+        "Binary-compatibility overload. Use the ContactShadow overload that takes `footprint`.",
+        level = DeprecationLevel.HIDDEN,
+    )
+    @Composable
+    fun ContactShadow(
+        size: Size = ContactShadowNodeImpl.DEFAULT_SIZE,
+        context: ContactShadowContext = ContactShadowContext.Floor,
+        normal: Direction = Direction(y = 1.0f),
+        intensity: Float = context.intensity,
+        position: Position = Position(x = 0f),
+        rotation: Rotation = Rotation(x = 0f),
+        scale: Scale = Scale(1f),
+        apply: ContactShadowNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) = ContactShadow(
+        size = size,
+        context = context,
+        normal = normal,
+        intensity = intensity,
+        footprint = null,
+        position = position,
+        rotation = rotation,
+        scale = scale,
+        apply = apply,
+        content = content,
+    )
+
+    /**
      * A procedural contact shadow — the soft dark pool that makes an object read as *touching* a
      * surface instead of floating above it (#2740).
      *
@@ -996,10 +1031,24 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * )
      * ```
      *
+     * For a rectangular object (a sofa, a bed), pass a [footprint] instead of relying on the
+     * context's ellipse: the rectangle is fully dark up to the object's outline and fades out
+     * the same distance on every side.
+     *
+     * ```kotlin
+     * ContactShadow(
+     *     size = Size(2.5f, 0f, 1.2f),
+     *     intensity = 0.4f,
+     *     footprint = ContactShadowFootprint(halfU = 1.1f, halfV = 0.47f, fade = 0.12f),
+     * )
+     * ```
+     *
      * @param size      Quad size in metres.
      * @param context   Which surface this grounds against; sets the gradient shape.
      * @param normal    Facing direction of the quad; also drives the surface lift.
      * @param intensity Peak opacity. Defaults to the context's own value.
+     * @param footprint A rounded rectangle to draw instead of the context's ellipse, or `null`
+     *                  (the default) for the ellipse. See [ContactShadowFootprint].
      * @param position  World-space position.
      * @param rotation  World-space rotation (Euler angles in degrees).
      * @param scale     Uniform or non-uniform scale.
@@ -1014,6 +1063,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         context: ContactShadowContext = ContactShadowContext.Floor,
         normal: Direction = Direction(y = 1.0f),
         intensity: Float = context.intensity,
+        footprint: ContactShadowFootprint? = null,
         position: Position = Position(x = 0f),
         rotation: Rotation = Rotation(x = 0f),
         scale: Scale = Scale(1f),
@@ -1036,7 +1086,8 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         SideEffect {
             node.context = context
             node.intensity = intensity
-            val current = listOf<Any?>(context, intensity)
+            node.footprint = footprint
+            val current = listOf<Any?>(context, intensity, footprint)
             if (current != prevContactShadow.value) {
                 prevContactShadow.value = current
                 node.requestRender()

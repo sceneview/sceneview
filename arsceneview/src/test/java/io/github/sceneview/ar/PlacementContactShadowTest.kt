@@ -2,8 +2,6 @@ package io.github.sceneview.ar
 
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ContactShadowContext
-import io.github.sceneview.node.ContactShadowFootprint
-import io.github.sceneview.node.ContactShadowNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -30,18 +28,15 @@ class PlacementContactShadowTest {
     }
 
     /**
-     * `contact_shadow.mat`'s rounded-rectangle branch, line for line, at (x, z) metres from the
-     * quad centre: the opacity drawn there by the node [PlacementContactShadowNode] builds.
+     * `contact_shadow.mat`'s rounded-rectangle branch, line for line, at (x, z) from the quad
+     * centre in the pivot's units: the opacity drawn there by [PlacementContactShadowNode].
      */
     private fun alpha(q: PlacementContactShadow.Quad, x: Float, z: Float): Float {
-        val p = ContactShadowNode.footprintParameters(
-            ContactShadowFootprint(q.halfX, q.halfZ, q.fade, q.cornerRadius),
-        )
-        val r = p[2]
-        val kx = abs(x) - (p[0] - r)
-        val kz = abs(z) - (p[1] - r)
+        val r = min(q.cornerRadius, min(q.halfX, q.halfZ))
+        val kx = abs(x) - (q.halfX - r)
+        val kz = abs(z) - (q.halfZ - r)
         val sd = hypot(max(kx, 0f), max(kz, 0f)) + min(max(kx, kz), 0f) - r
-        var a = 1f - smoothstep(0f, p[3], sd)
+        var a = 1f - smoothstep(0f, q.fade, sd)
         val ex = q.sizeX / 2f - abs(x)
         val ez = q.sizeZ / 2f - abs(z)
         a *= smoothstep(0f, 0.01f, min(ex, ez))
@@ -90,10 +85,10 @@ class PlacementContactShadowTest {
             val a = alpha(q, x, z)
             assertTrue("alpha $a at ($x, $z)", a in 0.35f..0.45f)
         }
-        // The bounds' corner sits just outside the slightly rounded rectangle: a little lighter,
-        // never bare.
-        val corner = alpha(q, sofaHalfX, sofaHalfZ)
-        assertTrue("corner alpha $corner", corner in 0.3f..0.45f)
+        // The rounded corner leaves only the last few centimetres of each edge paler than half.
+        val halfDark = (0..300).map { it / 1000f }
+            .first { alpha(q, sofaHalfX - it, sofaHalfZ + 0.001f) >= PlacementContactShadow.EDGE_ALPHA / 2f }
+        assertTrue("edge half dark from ${halfDark}m off the corner", halfDark < 0.10f)
     }
 
     @Test fun `the band fades out over the same absolute width on every side`() {
@@ -117,6 +112,50 @@ class PlacementContactShadowTest {
         assertEquals(0.31f, front, 0.01f)
         assertTrue("three quarters along the front: $alongFront", alongFront < 0.05f)
         assertEquals(0f, corner, 0f)
+    }
+
+    /** How far past a round object's rim the band is still half dark, along [dirX], [dirZ]. */
+    private fun halfDarkReach(q: PlacementContactShadow.Quad, radius: Float, dirX: Float, dirZ: Float): Float {
+        val n = hypot(dirX, dirZ)
+        return (0..400).map { it / 1000f }.last {
+            alpha(q, (radius + it) * dirX / n, (radius + it) * dirZ / n) >= PlacementContactShadow.EDGE_ALPHA / 2f
+        }
+    }
+
+    @Test fun `a round table gets a nearly round pool`() {
+        // A 1 m round table: its bounds are a 1 m square. Without rounding, the band would stay
+        // half dark 25 cm past the rim on the diagonals against 6 cm on the axes.
+        val q = PlacementContactShadow.quad(box(0f, 0f, 0.5f, 0.75f, 0.5f))!!
+        val axis = halfDarkReach(q, 0.5f, 1f, 0f)
+        val diagonal = halfDarkReach(q, 0.5f, 1f, 1f)
+        assertEquals(0.06f, axis, 0.002f)
+        assertTrue("diagonal reaches ${diagonal - axis}m farther", diagonal - axis < 0.09f)
+    }
+
+    @Test fun `a mug gets a nearly round pool too`() {
+        val q = PlacementContactShadow.quad(box(0f, 0f, 0.045f, 0.1f, 0.045f))!!
+        val axis = halfDarkReach(q, 0.045f, 1f, 0f)
+        val diagonal = halfDarkReach(q, 0.045f, 1f, 1f)
+        assertTrue("diagonal reaches ${diagonal - axis}m farther", diagonal - axis < 0.01f)
+    }
+
+    @Test fun `the fade keeps its floor width at any pinch`() {
+        val corners = box(0f, 0f, sofaHalfX, 0.84f, sofaHalfZ)
+        for (pinch in listOf(0.25f, 0.5f, 1f, 2f, 4f)) {
+            val q = PlacementContactShadow.quad(corners, pinch)!!
+            // The rectangle stays the footprint in the pivot's units; the pivot scales it.
+            assertEquals(sofaHalfX, q.halfX, 1e-6f)
+            assertEquals("fade on the floor at $pinch", PlacementContactShadow.FADE_METERS, q.fade * pinch, 1e-5f)
+            assertTrue(q.halfX + q.fade < q.sizeX / 2f)
+        }
+        // A degenerate pinch falls back to the real size rather than an infinite fade.
+        assertEquals(PlacementContactShadow.FADE_METERS, PlacementContactShadow.quad(corners, 0f)!!.fade, 1e-6f)
+    }
+
+    @Test fun `a pinched-down mug keeps a fade proportional to itself`() {
+        // At 25 % a 9 cm mug shows 2 cm wide: its fade stays half its half-extent, not 12 cm.
+        val q = PlacementContactShadow.quad(box(0f, 0f, 0.045f, 0.1f, 0.045f), 0.25f)!!
+        assertEquals(0.045f * PlacementContactShadow.FADE_FRACTION, q.fade, 1e-6f)
     }
 
     @Test fun `the fade ends inside the quad, before its border feather`() {

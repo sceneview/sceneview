@@ -48,15 +48,18 @@
 //               every orientation. See ContactShadowNode.surfaceOffsetFor.
 //   footprint — float4, optional rounded-rectangle mode (AR placement). xy = the
 //               rectangle's half-extents along u and v, z = its corner radius, w = the
-//               fade width beyond its outline — all in METRES, not UV. With w > 0 the pool
-//               is `intensity` inside the rectangle and fades to 0 across `w` metres
-//               outside it, whatever the object's size: the band a viewer sees around a
-//               long sofa is as wide on its short sides as on its long ones, and the
-//               corners are covered (an ellipse fitted to a rectangle leaves them bare).
+//               fade width beyond its outline — all in the quad's MODEL units (metres at
+//               scale 1), not UV. With w > 0 the pool is `intensity` inside the rectangle
+//               and fades to 0 across `w` outside it: the band a viewer sees around a long
+//               sofa is as wide on its short sides as on its long ones, and the corners
+//               are covered (an ellipse fitted to a rectangle leaves them bare). The
+//               rectangle is centred on the quad: `center` is ignored in this mode.
 //               w <= 0 (the default: all zeros) keeps the elliptical gradient above,
 //               bit for bit, so `radius` and `softness` stay the shape of every preset.
-//   quadSize  — float2, the quad's size along u and v in metres. Only read in
-//               rectangle mode, to turn UVs into metres.
+//
+//               The quad's size is not a parameter: the fragment stage reads it from the
+//               screen-space derivatives of the model-space position against the UVs, so
+//               `PlaneNode.updateGeometry(size = ...)` can never leave it stale.
 //
 // matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan"). Matches the
 // AR material set: this ships inside AR scenes, so it must cover the same backends as
@@ -89,10 +92,6 @@ material {
         {
             "type": "float4",
             "name": "footprint"
-        },
-        {
-            "type": "float2",
-            "name": "quadSize"
         }
     ],
 
@@ -101,6 +100,9 @@ material {
     "requires" : [
         "uv0"
     ],
+
+    // Model-space position, read by the rectangle mode to measure the quad in metres.
+    "variables" : [ "modelPosition" ],
 
     shadingModel : unlit,
     blending : transparent
@@ -116,6 +118,7 @@ vertex {
         // depends on how it was built — see the `surfaceOffset` note in the header.
         pos += materialParams.surfaceOffset;
         material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
+        material.modelPosition = float4(pos, 0.0);
     }
 }
 
@@ -125,20 +128,35 @@ fragment {
 
         float a;
         if (materialParams.footprint.w > 0.0) {
-            // Rounded-rectangle mode: everything in metres. `center` stays a UV offset.
-            float2 size = max(materialParams.quadSize, float2(1e-4));
-            float2 m = (getUV0() - 0.5 - materialParams.center) * size;
-            float2 box = max(materialParams.footprint.xy, float2(0.0));
+            // Rectangle mode, in model units. The quad's size along u and v is how far the
+            // model-space position moves per unit of UV: solve the 2x2 screen-space Jacobian
+            // [dP/dx dP/dy] = [dP/du dP/dv] [dUV/dx dUV/dy]. Position and UVs are interpolated
+            // from the same four vertices, so the map is exactly affine and the solve is exact
+            // on every pixel, helper lanes included.
+            highp float2 uv = getUV0();
+            highp float3 dpdx = dFdx(variable_modelPosition.xyz);
+            highp float3 dpdy = dFdy(variable_modelPosition.xyz);
+            highp float2 duvdx = dFdx(uv);
+            highp float2 duvdy = dFdy(uv);
+            highp float det = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
+            highp float3 dpdu = (dpdx * duvdy.y - dpdy * duvdx.y) / det;
+            highp float3 dpdv = (dpdy * duvdx.x - dpdx * duvdy.x) / det;
+            highp float2 size = float2(length(dpdu), length(dpdv));
+
+            highp float2 m = (uv - 0.5) * size;
+            highp float2 box = max(materialParams.footprint.xy, float2(0.0));
             float r = clamp(materialParams.footprint.z, 0.0, min(box.x, box.y));
-            // Signed distance to the rounded rectangle: < 0 inside, metres outside.
-            float2 k = abs(m) - (box - r);
-            float sd = length(max(k, float2(0.0))) + min(max(k.x, k.y), 0.0) - r;
+            // Signed distance to the rounded rectangle: < 0 inside, model units outside.
+            highp float2 k = abs(m) - (box - r);
+            highp float sd = length(max(k, float2(0.0))) + min(max(k.x, k.y), 0.0) - r;
             // Full `intensity` up to the outline, then a smooth fall to 0 across the fade.
             a = 1.0 - smoothstep(0.0, materialParams.footprint.w, sd);
-            // A 1 cm metric feather at the quad's border: a fixed fraction of the UVs (as
-            // below) would eat a long sofa's band, 8 % of 2.4 m being 19 cm.
-            float2 e = min(getUV0(), float2(1.0) - getUV0()) * size;
+            // A 1 cm feather at the quad's border: a fixed fraction of the UVs (as below)
+            // would eat a long sofa's band, 8 % of 2.4 m being 19 cm.
+            highp float2 e = min(uv, float2(1.0) - uv) * size;
             a *= smoothstep(0.0, 0.01, min(e.x, e.y));
+            // An edge-on quad has no area on screen: nothing to draw, never a NaN.
+            if (!(abs(det) > 0.0)) a = 0.0;
         } else {
             // UVs run 0..1 across the quad — recentre to -0.5..0.5, then apply the context
             // offset (wall pushes the pool below the object's midline).

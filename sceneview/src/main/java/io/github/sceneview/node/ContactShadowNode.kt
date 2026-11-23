@@ -83,31 +83,45 @@ enum class ContactShadowContext(
 }
 
 /**
- * A rounded-rectangle shape for a [ContactShadowNode], in metres, set through
+ * A rounded-rectangle shape for a [ContactShadowNode], set through
  * [ContactShadowNode.footprint] in place of its context's ellipse.
  *
  * The pool is the node's full [ContactShadowNode.intensity] inside the rectangle and fades to
- * nothing across [fade] metres beyond its outline. The fade is absolute: a 2.2 m sofa gets the
- * same band on its short sides as on its long ones, and the rectangle's corners are covered,
- * which an ellipse fitted to the same footprint leaves bare. Set the rectangle to the object's
- * footprint: the object hides the inside, and the band around it is the shadow a viewer sees.
+ * nothing across [fade] beyond its outline. The fade is the same width on every side: a 2.2 m
+ * sofa gets the same band on its short sides as on its long ones, and the rectangle's corners
+ * are covered, which an ellipse fitted to the same footprint leaves bare. Set the rectangle to
+ * the object's footprint: the object hides the inside, and the band around it is the shadow a
+ * viewer sees. A [cornerRadius] up to the smaller half-extent rounds it towards a disc, for
+ * objects whose footprint is not a box.
  *
- * Half-extents run along the quad's `u` and `v` axes (see [ContactShadowNode]'s UV table): X and
- * Z for a floor quad. Make the quad at least `2 × (half-extent + fade)` on each axis, or the
- * band is cut at the quad's border.
+ * All four values are in the node's own units — metres at scale 1 — so they scale with the node
+ * like its [size][ContactShadowNode]. The rectangle is centred on the quad (the context's centre
+ * offset does not apply) and its half-extents run along the quad's `u` and `v` axes (see
+ * [ContactShadowNode]'s UV table): X and Z for a floor quad, X and Y for a wall quad. Make the
+ * quad at least `2 × (half-extent + fade)` on each axis, or the band is cut at its border.
  *
- * @property halfU        Half-extent of the rectangle along `u`, metres.
- * @property halfV        Half-extent of the rectangle along `v`, metres.
- * @property fade         Width of the fade beyond the outline, metres. Must be > 0.
- * @property cornerRadius Corner radius of the rectangle, metres, clamped to the smaller
- *                        half-extent.
+ * @property halfU        Half-extent of the rectangle along `u`.
+ * @property halfV        Half-extent of the rectangle along `v`.
+ * @property fade         Width of the fade beyond the outline. Must be > 0, or the node keeps
+ *                        the ellipse.
+ * @property cornerRadius Corner radius of the rectangle, clamped to the smaller half-extent.
  */
-data class ContactShadowFootprint(
+class ContactShadowFootprint(
     val halfU: Float,
     val halfV: Float,
     val fade: Float,
     val cornerRadius: Float = 0.0f,
-)
+) {
+    override fun equals(other: Any?): Boolean = this === other || other is ContactShadowFootprint &&
+        halfU == other.halfU && halfV == other.halfV && fade == other.fade &&
+        cornerRadius == other.cornerRadius
+
+    override fun hashCode(): Int =
+        ((halfU.hashCode() * 31 + halfV.hashCode()) * 31 + fade.hashCode()) * 31 + cornerRadius.hashCode()
+
+    override fun toString(): String =
+        "ContactShadowFootprint(halfU=$halfU, halfV=$halfV, fade=$fade, cornerRadius=$cornerRadius)"
+}
 
 /**
  * A procedural contact shadow — the soft dark pool that makes an object read as *touching* a
@@ -214,14 +228,17 @@ open class ContactShadowNode private constructor(
 
     /**
      * A rounded-rectangle pool with an absolute fade, in place of the [context]'s ellipse, or
-     * `null` (the default) for the ellipse. The context's centre offset still applies. Updating
-     * it takes effect on the next frame; set it again after resizing the quad, since the material
-     * reads the quad's size in metres when it is set.
+     * `null` (the default) for the ellipse. The rectangle is centred on the quad; the context's
+     * centre offset does not apply to it. Updating it takes effect on the next frame, and the
+     * shader measures the quad itself, so resizing it with `updateGeometry` keeps the rectangle
+     * true.
      */
     var footprint: ContactShadowFootprint? = null
         set(value) {
-            field = value
-            applyFootprint(value)
+            if (field != value) {
+                field = value
+                applyFootprint(value)
+            }
         }
 
     /** The surface context driving the gradient shape. Changing it re-applies every parameter. */
@@ -258,8 +275,6 @@ open class ContactShadowNode private constructor(
         val instance = shadowMaterialInstance
         val params = footprintParameters(footprint)
         instance.setParameter(MATERIAL_FOOTPRINT, params[0], params[1], params[2], params[3])
-        val size = geometry.size
-        instance.setParameter(MATERIAL_QUAD_SIZE, size.x, kotlin.math.hypot(size.y, size.z))
     }
 
     override fun destroy() {
@@ -294,19 +309,16 @@ open class ContactShadowNode private constructor(
 
         /**
          * Name of the material's rounded-rectangle parameter (`float4`: half-extents, corner
-         * radius, fade, metres). A zero fade keeps the ellipse.
+         * radius, fade, in the node's units). A zero fade keeps the ellipse.
          */
         const val MATERIAL_FOOTPRINT = "footprint"
-
-        /** Name of the material's quad-size parameter (`float2`, metres along `u` and `v`). */
-        const val MATERIAL_QUAD_SIZE = "quadSize"
 
         /**
          * The `footprint` material parameter for [footprint]: `(halfU, halfV, cornerRadius,
          * fade)`, all zeros (the ellipse) for `null` or a fade that is not a positive finite
          * number. Negative or non-finite extents clamp to zero.
          */
-        fun footprintParameters(footprint: ContactShadowFootprint?): FloatArray {
+        internal fun footprintParameters(footprint: ContactShadowFootprint?): FloatArray {
             val fade = footprint?.fade ?: 0.0f
             if (footprint == null || !(fade > 0.0f) || !fade.isFinite()) return FloatArray(4)
             fun metres(value: Float) = if (value.isFinite()) value.coerceAtLeast(0.0f) else 0.0f

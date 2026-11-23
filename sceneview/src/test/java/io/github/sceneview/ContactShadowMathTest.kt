@@ -226,6 +226,15 @@ class ContactShadowMathTest {
     }
 
     @Test
+    fun `footprints compare by value`() {
+        // The composable pushes the footprint on every recomposition; the node skips equal ones.
+        val a = ContactShadowFootprint(1.1f, 0.47f, 0.12f, 0.2f)
+        assertEquals(a, ContactShadowFootprint(1.1f, 0.47f, 0.12f, 0.2f))
+        assertEquals(a.hashCode(), ContactShadowFootprint(1.1f, 0.47f, 0.12f, 0.2f).hashCode())
+        assertTrue(a != ContactShadowFootprint(1.1f, 0.47f, 0.12f))
+    }
+
+    @Test
     fun `a footprint without a positive finite fade keeps the ellipse`() {
         for (fade in listOf(0.0f, -0.1f, Float.NaN, Float.POSITIVE_INFINITY)) {
             val params = ContactShadowNode.footprintParameters(ContactShadowFootprint(1.0f, 0.5f, fade))
