@@ -10,8 +10,10 @@
 // - the `package` line;
 // - the lines that compile against no SceneView 2.x release are commented out, each under a
 //   `// Left out:` line that says why. They get no shim: either they never existed in any
-//   SceneView release, or they are the pre-2.x API (0.x, or arsceneview 1.1.0), which is out of
-//   the scope of the 2.x shims. The imports that resolve to nothing are commented out with
+//   SceneView release, or they are the pre-2.x API (0.x, or arsceneview 1.1.0–1.2.2), which is
+//   out of the scope of the 2.x shims. `onSessionConfiguration` gets no shim on purpose: it was
+//   never in a 2.x artifact, a shim would rescue no answer, and it would add public API to a
+//   frozen major. The imports that resolve to nothing are commented out with
 //   them; the others stay, unused.
 // `setContent` needs `activity-compose` on the test classpath, as in an app (build.gradle).
 // Everything else compiles unchanged against 4.72.0 through the `rememberNodes` and
@@ -74,7 +76,7 @@ fun ARChairScreen() {
             modelLoader = modelLoader,
             cameraNode = cameraNode,
             planeRenderer = true, // Shows dots on the floor to indicate detected planes
-            // Left out: arsceneview 1.1.0 only; 2.x (2.0.1 on) and 4.x call it `sessionConfiguration`.
+            // Left out: arsceneview 1.1.0–1.2.2 only (renamed in 1.2.3); 2.x and 4.x call it `sessionConfiguration`.
             // onSessionConfiguration = { session, config ->
             //     // Look for horizontal planes (floors/tables)
             //     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL

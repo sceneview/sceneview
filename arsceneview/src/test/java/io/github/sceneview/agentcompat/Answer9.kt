@@ -19,6 +19,7 @@
 // What remains (the `ARScene` call itself and the Compose overlay) compiles unchanged against
 // 4.72.0 through the deprecated `ARScene` alias. The deprecation warning it raises is left on
 // purpose: it is what the alias tells the agent.
+// Kept as a record of the answer: it only guards the bare deprecated `ARScene` alias.
 // Compile-only: nothing here runs. If this file stops compiling, a 2.x alias broke.
 package io.github.sceneview.agentcompat
 

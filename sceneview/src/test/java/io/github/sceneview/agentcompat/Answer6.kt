@@ -3,8 +3,10 @@
 // Source: the 2026-11-23 Gemini check (OpenRouter, no tools, no MCP server or skill, no web
 // search, one answer per prompt). Gemini 3.1 Pro preview, prompt 1: "Add a screen that shows a GLB
 // model the user can rotate, in Jetpack Compose." It recommended
-// `io.github.sceneview:sceneview-compose:2.2.1`, an artifact that never existed (the code is the
-// `sceneview` 2.x API), and wrote the code below. The 4.x shims are in Compat2x.kt; issue #5216.
+// `io.github.sceneview:sceneview-compose:2.2.1`, a version that never existed: that artifact is
+// on Maven Central from 4.27.0 only, and exposes `sceneview` at runtime scope only, so bumping
+// the coordinate does not make this code compile (#5242). The code is the `sceneview` 2.x API.
+// The 4.x shims are in Compat2x.kt; issue #5216.
 //
 // The code is verbatim, imports included. Changes, none of them SceneView API:
 // - the `package` line;

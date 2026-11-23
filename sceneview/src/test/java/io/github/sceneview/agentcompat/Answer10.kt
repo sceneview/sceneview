@@ -4,15 +4,17 @@
 // Source: the 2026-11-23 Gemini check (OpenRouter, no tools, no MCP server or skill, no web
 // search, one answer per prompt). Gemini 3.1 Pro preview, prompt 5: "Load a 3D model from a URL
 // with a loading state and an error state, in an Android app with Jetpack Compose." It
-// recommended `io.github.sceneview:sceneview-compose:2.2.1`, an artifact that never existed (the
-// code is the `sceneview` 2.x API), and wrote the code below. The 4.x shims are in Compat2x.kt;
+// recommended `io.github.sceneview:sceneview-compose:2.2.1`, a version that never existed: that
+// artifact is on Maven Central from 4.27.0 only, and exposes `sceneview` at runtime scope only, so
+// bumping the coordinate does not make this code compile (#5242). The code is the `sceneview` 2.x
+// API; the answer wrote it as below. The 4.x shims are in Compat2x.kt;
 // issue #5216.
 //
 // The code is verbatim, imports included. Changes, none of them SceneView API:
 // - the `package` line; the answer's state class (`ModelLoadState`, its own section) and its
 //   usage snippet (`MainScreen`) merged into this file;
 // - the lines that compile against no SceneView 2.x release are commented out, each under a
-//   `// Left out:` line that says why: a `ModelNode` with a null model never existed, and
+//   `// Left out:` line that says why: no `ModelNode` constructor ever took a null model, and
 //   assigning `modelInstance` is the 0.x API. They get no shim. The `childNodes` argument that
 //   lists the left-out node goes with it, so `Scene` resolves to its 4.x-shaped alias.
 // Everything else compiles unchanged against 4.72.0, `loadModelInstance(url)` included. The
@@ -60,7 +62,7 @@ fun Network3DViewer(
     val modelLoader = rememberModelLoader(engine = engine)
     val environmentLoader = rememberEnvironmentLoader(engine = engine)
 
-    // Left out: hallucinated. No SceneView release has a ModelNode without an engine or with a null modelInstance.
+    // Left out: hallucinated. No ModelNode constructor ever accepted a null modelInstance (0.9.5–1.1.0 only had a nullable `var`).
     // // Create the Node that will hold the 3D model
     // val modelNode = remember {
     //     ModelNode(
@@ -77,7 +79,7 @@ fun Network3DViewer(
             val modelInstance = modelLoader.loadModelInstance(modelUrl)
 
             if (modelInstance != null) {
-                // Left out: 0.x API (sceneview 1.0.x `var modelInstance`); a `val` since 2.0, and its node is left out.
+                // Left out: 0.x API (sceneview 0.9.5–1.1.0 `var modelInstance`); a `val` since 2.0, and its node is left out.
                 // modelNode.modelInstance = modelInstance
                 loadState = ModelLoadState.Success
             } else {
