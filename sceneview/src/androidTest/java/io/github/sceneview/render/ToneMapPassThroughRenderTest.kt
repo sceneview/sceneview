@@ -59,6 +59,16 @@ class ToneMapPassThroughRenderTest {
             0x66B0F5, 0xD95F57, 0x4CB050, 0x2196F2, 0xF5428C, 0x00BDD4, 0xFFC207, 0x9E75BD, 0x808080,
         )
 
+        /**
+         * Vivid cyans no inverse can show as they are: they need a negative Rec.709 channel, which
+         * the colour buffer cannot hold. Each maps to what `ToneMapInverseContractTest`'s model of
+         * the shared inverse predicts: under PBR Neutral, the per-channel Rec.709 inverse's result
+         * (clipping alone showed #00FFFF as (150, 254, 254)); under Filmic, the clipped one, nearer
+         * the source than before (#00FFFF used to show (245, 255, 255)).
+         */
+        private val VIVID_IN_A_3D_VIEW = mapOf(0x00FFFF to 0x00E9E9, 0x00E5FF to 0x00E3E9)
+        private val VIVID_IN_AN_AR_VIEW = mapOf(0x00FFFF to 0xDFF9FE, 0x00E5FF to 0xAEE2FE)
+
         /** 8-bit steps per channel left to the grading LUT, the colour buffer and dithering. */
         private const val TOLERANCE = 6
 
@@ -145,9 +155,14 @@ class ToneMapPassThroughRenderTest {
 
     /**
      * Each chart colour through [material]'s instance on a full-frame quad, read back at the
-     * centre, against the source colour.
+     * centre, against the source colour; each [vivid] colour against the colour it maps to.
      */
-    private fun assertChartShowsAsSource(view: String, material: String, instanceOf: (Texture) -> MaterialInstance) {
+    private fun assertChartShowsAsSource(
+        view: String,
+        material: String,
+        vivid: Map<Int, Int>,
+        instanceOf: (Texture) -> MaterialInstance,
+    ) {
         harness.resetScene()
         harness.runOnMain { lookAtTheOrigin() }
         var source: StreamSource? = null
@@ -169,7 +184,7 @@ class ToneMapPassThroughRenderTest {
                 // at its view's inverse.
                 nodeManager.addNode(node)
             }
-            for (rgb in CHART) {
+            for (rgb in CHART.toList() + vivid.keys) {
                 harness.runOnMain { source!!.paint(rgb) }
                 // The stream latches the newest frame at each beginFrame: give the producer a
                 // moment, then draw a few frames so the grading pipeline settles on it.
@@ -192,12 +207,13 @@ class ToneMapPassThroughRenderTest {
             }
         }
         val said = drawn.entries.joinToString("; ") { (src, shown) ->
-            val off = channels(shown).zip(channels(src)).maxOf { (a, b) -> abs(a - b) }
-            "source #%06X shown #%06X (%d off)".format(src, shown, off)
+            val off = channels(shown).zip(channels(vivid[src] ?: src)).maxOf { (a, b) -> abs(a - b) }
+            val expected = vivid[src]?.let { " expected #%06X".format(it) } ?: ""
+            "source #%06X$expected shown #%06X (%d off)".format(src, shown, off)
         }
         Log.i(TAG, "$material, $view: $said")
         drawn.forEach { (src, shown) ->
-            val want = channels(src)
+            val want = channels(vivid[src] ?: src)
             channels(shown).forEachIndexed { c, value ->
                 val tolerance = if (want[c] < DARK_CHANNEL) DARK_TOLERANCE else TOLERANCE
                 assertTrue(
@@ -238,24 +254,24 @@ class ToneMapPassThroughRenderTest {
     @Test
     fun video_showsASaturatedChartAsItsSource_inA3dView() {
         RenderTestCapabilities.assumeGpuReadbackAvailable()
-        assertChartShowsAsSource("PBR Neutral (createView)", "video_texture", video)
+        assertChartShowsAsSource("PBR Neutral (createView)", "video_texture", VIVID_IN_A_3D_VIEW, video)
     }
 
     @Test
     fun video_showsASaturatedChartAsItsSource_inAnArView() {
         RenderTestCapabilities.assumeGpuReadbackAvailable()
-        inAFilmicView { assertChartShowsAsSource("Filmic (createARView)", "video_texture", video) }
+        inAFilmicView { assertChartShowsAsSource("Filmic (createARView)", "video_texture", VIVID_IN_AN_AR_VIEW, video) }
     }
 
     @Test
     fun viewTextureUnlit_showsASaturatedChartAsItsSource_inA3dView() {
         RenderTestCapabilities.assumeGpuReadbackAvailable()
-        assertChartShowsAsSource("PBR Neutral (createView)", "view_texture_unlit", viewUnlit)
+        assertChartShowsAsSource("PBR Neutral (createView)", "view_texture_unlit", VIVID_IN_A_3D_VIEW, viewUnlit)
     }
 
     @Test
     fun viewTextureUnlit_showsASaturatedChartAsItsSource_inAnArView() {
         RenderTestCapabilities.assumeGpuReadbackAvailable()
-        inAFilmicView { assertChartShowsAsSource("Filmic (createARView)", "view_texture_unlit", viewUnlit) }
+        inAFilmicView { assertChartShowsAsSource("Filmic (createARView)", "view_texture_unlit", VIVID_IN_AN_AR_VIEW, viewUnlit) }
     }
 }

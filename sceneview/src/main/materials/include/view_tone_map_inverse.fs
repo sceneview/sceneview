@@ -26,7 +26,7 @@ vec3 viewInverseSrgbToLinear(vec3 srgb) {
 // Filament's ColorGrading tone-maps in its Rec.2020 working space, not in Rec.709: the View
 // converts the scene colour to Rec.2020, applies the tone mapper there and converts back.
 // Inverted channel by channel in Rec.709, the curve is exact for greys only: a #66B0F5 sky came
-// out #95B2FB under Filmic (#5102, #5219). Column-major, the constants of Filament's
+// out #93B2FA under Filmic (#5102, #5219). Column-major, the constants of Filament's
 // sRGB_to_REC2020 / REC2020_to_sRGB.
 const mat3 VIEW_INVERSE_REC709_TO_REC2020 = mat3(
     0.6274040, 0.0690970, 0.0163916,
@@ -101,11 +101,29 @@ vec3 inversePbrNeutral(vec3 o) {
 
 // sRGB-encoded colour -> scene-linear Rec.709 colour that the View displays as that colour.
 // `filmic`: the View tone-maps with ToneMapper.Filmic (createARView), otherwise PBR Neutral
-// (createView, the default). A saturated colour that would need a negative channel (a strong
-// blue's or a cyan's red under Filmic) is clipped at zero: the colour buffer holds no negative
-// value, and that channel lands a few steps above its source.
+// (createView, the default).
+//
+// Exact for in-gamut colours. A vivid colour whose preimage needs a negative Rec.709 channel
+// cannot be shown as it is: the colour buffer holds no negative value.
+//  - Filmic: that channel is clipped at zero. A strong blue's or a cyan's red then lands a few
+//    steps above its source, and the most vivid cyans and azures further: #00FFFF shows about
+//    (223, 249, 254). Never further than the per-channel Rec.709 inverse it replaced.
+//  - PBR Neutral: clipping alone did worse than the per-channel Rec.709 inverse there, which
+//    falls back on #4595's bisection for those colours (#00FFFF showed (150, 254, 254) instead
+//    of (0, 233, 233)). So the result blends toward that inverse, fully once the negative channel
+//    reaches a tenth of the peak: in-gamut colours are untouched, vivid ones match it.
 vec3 inverseViewTonemapSRGB(vec3 srgb, bool filmic) {
-    vec3 working = VIEW_INVERSE_REC709_TO_REC2020 * viewInverseSrgbToLinear(srgb);
-    vec3 scene = filmic ? viewInverseFilmic(working) : inversePbrNeutral(working);
-    return max(VIEW_INVERSE_REC2020_TO_REC709 * scene, vec3(0.0));
+    vec3 linear = viewInverseSrgbToLinear(srgb);
+    vec3 working = VIEW_INVERSE_REC709_TO_REC2020 * linear;
+    if (filmic) {
+        return max(VIEW_INVERSE_REC2020_TO_REC709 * viewInverseFilmic(working), vec3(0.0));
+    }
+    vec3 scene = VIEW_INVERSE_REC2020_TO_REC709 * inversePbrNeutral(working);
+    float lowest = min(scene.r, min(scene.g, scene.b));
+    if (lowest >= 0.0) {
+        return scene;
+    }
+    float highest = max(scene.r, max(scene.g, scene.b));
+    float toward709 = clamp(-lowest / (0.1 * max(highest, 1e-4)), 0.0, 1.0);
+    return mix(max(scene, vec3(0.0)), inversePbrNeutral(linear), toward709);
 }

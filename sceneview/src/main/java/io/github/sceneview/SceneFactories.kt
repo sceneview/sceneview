@@ -186,8 +186,9 @@ fun createView(engine: Engine): View = engine.createView().apply {
  * so the pair cancels term for term. Filament's grading applies the curve in its Rec.2020 working
  * space, so the inverse runs there too: inverted channel by channel in Rec.709 it cancelled for
  * greys only, and a `#66B0F5` sky showed at `#93B2FA` (#5219). The inverse is shared with the
- * other pass-through materials, `sceneview/src/main/materials/include/view_tone_map_inverse.fs`. Using [ToneMapper.Linear] here (as a previous fix for #657
- * did) leaves the inverse-Filmic curve baked into the feed with nothing to cancel it — the camera
+ * other pass-through materials, `sceneview/src/main/materials/include/view_tone_map_inverse.fs`.
+ * Using [ToneMapper.Linear] here (as a previous fix for #657 did) leaves the inverse-Filmic curve
+ * baked into the feed with nothing to cancel it — the camera
  * background comes out washed-out and low-contrast (issue #1434). [ToneMapper.Filmic] is the only
  * tone mapper that cancels the shader's curve, and it is also the right curve for virtual content.
  *
