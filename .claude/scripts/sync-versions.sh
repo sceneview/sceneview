@@ -408,6 +408,7 @@ AGENT_RULE_FILES=(
     .github/copilot-instructions.md
     pro/gpt-store/gpt-instructions.md
     agents/OPENAI-PLUGIN.md
+    context7.json
 )
 AGENT_MAVEN_RE='(io\.github\.sceneview:[[:alnum:]_.-]+:)[0-9]+\.[0-9]+\.[0-9]+(-[[:alnum:].-]+)?(\+[[:alnum:].-]+)?'
 for agentf in "${AGENT_RULE_FILES[@]}"; do

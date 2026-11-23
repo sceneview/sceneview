@@ -339,6 +339,7 @@ jobs:
               - '.github/copilot-instructions.md'
               - 'pro/gpt-store/gpt-instructions.md'
               - 'agents/OPENAI-PLUGIN.md'
+              - 'context7.json'
             play-store-scripts:
               - '.github/workflows/ci.yml'
               - '.github/workflows/play-store.yml'

@@ -23,6 +23,7 @@ FILES = (
     ".github/copilot-instructions.md",
     "pro/gpt-store/gpt-instructions.md",
     "agents/OPENAI-PLUGIN.md",
+    "context7.json",
 )
 COORDINATE = re.compile(r"(io\.github\.sceneview:[\w.-]+:)([0-9][\w.+-]*)")
 VERSION = re.search(r"^VERSION_NAME=(.+)$", (REPO / "gradle.properties").read_text(), re.M)[1]
