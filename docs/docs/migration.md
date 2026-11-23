@@ -1010,16 +1010,23 @@ main thread, so it is both non-blocking and thread-safe.
 
 ---
 
-## 6. `SurfaceType` — replaces boolean flags
+## 6. `SurfaceType` and `isOpaque` — a transparent background takes both
+
+`surfaceType` picks the Android view that hosts the render; `isOpaque` still exists and decides
+whether the background is cleared to transparent. To see Compose content *behind* the scene, set
+both, and use an environment without a skybox:
 
 ```kotlin
-// Before (if the flag existed in your version)
-SceneView(isOpaque = false)
+SceneView(
+    surfaceType = SurfaceType.TextureSurface,   // TextureView: composited with the Compose layers
+    isOpaque = false,                           // translucent blend mode, clear alpha 0
+    environment = rememberEnvironment(environmentLoader, isOpaque = false), // no skybox
+)
 
-// After — explicit enum
-SceneView(surfaceType = SurfaceType.TextureSurface)  // TextureView, supports alpha blending
-SceneView(surfaceType = SurfaceType.Surface)          // SurfaceView, best performance (default)
+SceneView(surfaceType = SurfaceType.Surface)    // SurfaceView, opaque, best performance (default)
 ```
+
+`TextureSurface` alone still renders an opaque black background.
 
 ---
 
@@ -1091,7 +1098,7 @@ the imports continue to work. No action required.
 | Replace `add(ModelNode(...))` | Use `ModelNode(...)` composable directly |
 | Replace `addChildNode(...)` | Use nested `NodeScope` content lambda |
 | Replace `modelLoader.createModelInstance(...)` | Use `rememberModelInstance(modelLoader, path)` |
-| Replace `isOpaque = false` | Use `surfaceType = SurfaceType.TextureSurface` |
+| Transparent background | `surfaceType = SurfaceType.TextureSurface` **and** `isOpaque = false` |
 | Replace Fragment + XML layout | Use `ComponentActivity` + `setContent { }` |
 | Replace imperative `anchor` node wiring | Drive with `mutableStateOf<Anchor?>` |
 
