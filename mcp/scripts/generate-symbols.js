@@ -189,7 +189,11 @@ function parseDump(text, module) {
 
     // Members. Skip `synthetic` (accessors, $default bridges) — they are not
     // callable from Kotlin source under those names.
-    const funMatch = /^\tpublic (?:static )?(?:final |abstract |open )?fun ([\w$<>]+) /.exec(line);
+    // A function with an inline-class parameter (Dp, Color…) is name-mangled in
+    // the JVM dump: `PlacementScene-O_N-pM8`. Kotlin source calls it by the name
+    // before the 7-character hash, so register that.
+    const funMatch =
+      /^\tpublic (?:static )?(?:final |abstract |open )?fun ([\w$<>]+)(?:-[\w-]{7})? /.exec(line);
     if (funMatch) {
       if (/synthetic/.test(line)) continue;
       const name = funMatch[1];
