@@ -43,6 +43,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.ImageSessionState
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.ar.rememberHostLifecycle
@@ -59,9 +60,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.CatalogueProductPill
-import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
-import io.github.sceneview.demo.common.rememberCatalogueProduct
+import io.github.sceneview.demo.common.rememberBundledSubject
 import io.github.sceneview.math.Position
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -97,9 +97,9 @@ import kotlinx.coroutines.withContext
  * session config on the main thread itself — the demo only has to call it from a coroutine.
  *
  * When ARCore detects a registered image in the camera feed, an `AugmentedImageNode` is placed
- * at the image location with a real product standing on it at its real size: the SMEG toaster
- * from the catalogue (#4560), fetched from the HD pack — a countertop object for a print on a
- * table.
+ * at the image location with a real object standing on it at its real size: the bundled
+ * motorcycle helmet, a tabletop object for a print on a table. It carries no third-party
+ * trademark, unlike the SMEG toaster it replaced (#5247).
  */
 @Composable
 fun ARImageDemo(onBack: () -> Unit) {
@@ -152,7 +152,9 @@ fun ARImageDemo(onBack: () -> Unit) {
     // reference image to point the camera at; it collapses to a chip once detection succeeds.
     var showScanGuide by remember { mutableStateOf(false) }
 
-    val toaster = rememberCatalogueProduct(modelLoader, CatalogueProducts.SMEG_TOASTER)
+    // The motorcycle helmet, a real object at its real size (about 30 cm). It replaced the SMEG
+    // toaster, whose lettering put a third-party trademark on the demo's own screen (#5247).
+    val subject = rememberBundledSubject(modelLoader, DemoMath.HELMET_ASSET, HELMET_SIZE_METRES)
 
     // Decode the reference image once per composition — ARCore calls sessionConfiguration on
     // every session reconfig, so decoding inside that lambda re-opens the asset + allocates a
@@ -255,8 +257,8 @@ fun ARImageDemo(onBack: () -> Unit) {
             // flow. Grabs the live AR camera frame, registers it in the runtime database, and
             // ARCore starts tracking that scene with no pre-bundled database.
             //
-            // Until the toaster is in, its pill names it and narrates the download.
-            if (arCoreAvailability == null) CatalogueProductPill(toaster)
+            // A bundled subject: the pill stays silent (no download to narrate).
+            if (arCoreAvailability == null) CatalogueProductPill(subject)
             // Status overlay
             AnimatedVisibility(
                 visible = true,
@@ -442,12 +444,12 @@ fun ARImageDemo(onBack: () -> Unit) {
             ) {
                 detectedImages.forEach { image ->
                     // No image scale: it stretches X and Z by the print's size but not Y, which
-                    // flattens a real object. The toaster keeps its own real size instead.
+                    // flattens a real object. The helmet keeps its own real size instead.
                     AugmentedImageNode(augmentedImage = image) {
-                        toaster.instance?.let { instance ->
+                        subject.instance?.let { instance ->
                             ModelNode(
                                 modelInstance = instance,
-                                scaleToUnits = toaster.realSizeMetres,
+                                scaleToUnits = subject.realSizeMetres,
                                 // Standing on the image: the bottom of its box on the image centre.
                                 centerOrigin = Position(y = -1f),
                             )
@@ -464,3 +466,6 @@ fun ARImageDemo(onBack: () -> Unit) {
         }
     }
 }
+
+/** The motorcycle helmet's real height: an open-face helmet is about 30 cm. */
+private const val HELMET_SIZE_METRES = 0.30f

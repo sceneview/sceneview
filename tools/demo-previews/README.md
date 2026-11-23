@@ -22,7 +22,7 @@ does not load (#3438).
 
 | Ref | What it is | How it was made |
 |---|---|---|
-| `moto_helmet.webp` | The Motorcycle Helmet (`models/moto_helmet_v2.glb`, CC-BY 4.0 by sayedgamal655) that the Lighting, Camera & object controls, Materials and AR comparison demos load | Emulator capture of `--es demo lighting --ez qa_mode true` (Pixel_7a, 1280×2856, light), crop x 310–1010, y 834–1534, WebP q90 (#4951). It replaced `damaged_helmet.webp`, a crop of the Khronos Damaged Helmet, whose CC-BY-NC sculpt may not appear in a store app. |
+| `moto_helmet.webp` | The Motorcycle Helmet (`models/moto_helmet_v2.glb`, CC-BY 4.0 by sayedgamal655) that the Lighting, Camera & object controls, Materials, AR Image and AR comparison demos load | Emulator capture of `--es demo lighting --ez qa_mode true` (Pixel_7a, 1280×2856, light), crop x 310–1010, y 834–1534, WebP q90 (#4951). Recaptured by #5247 from the Android copy whose badge textures are blanked: the plates are plain leather, no Harley-Davidson mark. It replaced `damaged_helmet.webp`, a crop of the Khronos Damaged Helmet, whose CC-BY-NC sculpt may not appear in a store app. |
 | `torus_knot.webp` | The Custom Geometry ribbon knot | Offline render of `TorusKnot.vertices()` at its default parameters (168 segments, 2.5 turns, 0.3 ripple) under the demo's own camera and tilt. |
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
 | `raccoon_stump_scan.webp` | The raccoon-stump Gaussian splat `splat-preview` loads | The `splat-preview` card below at q90: a crop of the real CI render. It fed the generated `ar-splat-room` card until that demo became the dollhouse of #4075. |
@@ -63,8 +63,8 @@ ids, so do not pass them to `gen.py --only` for Android (the iOS imagesets still
 |---|---|---|
 | `materials` | `materials_default.png` | 540, 1102, 1080 — the nine-sphere grid |
 | `debug-overlay` | — | Since #4951 an emulator capture of the Performance test 15 s after a tap on "Start stress test" (1,000 spheres), Pixel_7a, 1280×2856, `--ez qa_mode true`, one per theme, the full-width 1280×1024 band from y = 820 (below the HUD). The light card of the iOS pair it replaced was a generated helmet |
-| `camera-gestures` | — | Since #4951 both cards are emulator captures (Pixel_7a, 1280×2856, `--ez qa_mode true`, one per theme: the stage follows it), window x 95–1275, y 1020–1964 — the whole stage, camera, motorcycle helmet and trainers. The golden still shows the Damaged Helmet |
-| `lighting` | — | Since #4951 an emulator capture (Pixel_7a, 1280×2856, `--ez qa_mode true`), the full-width 1280×1024 band from y = 820 — the motorcycle helmet and its two probes. The stage does not follow the theme: both cards are the same pixels |
+| `camera-gestures` | — | Since #4951 both cards are emulator captures (Pixel_7a, 1280×2856, `--ez qa_mode true`, one per theme: the stage follows it), window x 95–1275, y 1020–1964 — the whole stage. Since #5247 the stage is the Khronos Lantern (CC0), the motorcycle helmet and the Khronos Toy Car (CC0) on its cloth: the Canon AT-1 and the Nike Air Jordan 1 it held carried third-party marks. The golden still shows the Damaged Helmet |
+| `lighting` | — | Since #4951 an emulator capture (Pixel_7a, 1280×2856, `--ez qa_mode true`), the full-width 1280×1024 band from y = 820 — the motorcycle helmet and its two probes (recaptured by #5247: no badge on the helmet any more). The stage does not follow the theme: both cards are the same pixels |
 | `lighting-lab` | — | Retired on Android by #4603: the card folded into `lighting` and its golden went with it. Was `lightinglab_default.png`, 540, 990, 1080 — the lit floor with its sun disc |
 | `secondary-camera` | — | Superseded 2026-09-30: generated from a real capture, see "Cards generated from real captures" below. Was `secondarycamera_default.png`, 540, 870, 1600, black-padded — the picture-in-picture inset |
 | `animation-physics` | `animationphysics_default.png` | Light card superseded 2026-09-30: generated from this golden crop (500, 1414, 760), see "Cards generated from real captures" below. The dark card is still its own capture: Pixel_7a in night mode, `--ez qa_mode true`, crop 500, 1508, 760 (the screen is 96 px taller than the golden); since #4223 its stage is the dark stage (`SceneViewTokens.Stage.background`), so the dark card is the fox on that dark stage |
@@ -153,9 +153,11 @@ the viewer first shows the bundled motorcycle helmet stand-in.
 `ar-depth-occlusion` and `ar-people-occlusion` cannot run on the emulator (#2754), so they are
 `gen.py` items (`"ar": true`) from `moto_helmet.webp`, the model both demos place
 (`ARFeatureComparison`): the helmet behind a chair leg, and behind a passer-by's leg, one
-generation per theme. The GLB's ear-flap badge carries a motorcycle maker's logo, so the
-prompts ask for a plain shield plate: the first run, without that sentence, drew the logo
-legibly. The same run also put the dark people card's leg behind the helmet, the opposite of
+generation per theme. The GLB's ear-flap badge carried a motorcycle maker's logo, so the
+prompts asked for a plain shield plate: the first run, without that sentence, drew the logo
+legibly. Since #5247 the Android GLB has no badge at all (its plates are plain leather), the
+reference was recaptured from it, and the prompts ask for plain leather flaps with no plate,
+badge, lettering or logo; all four cards were regenerated from them in one run and kept. The same run also put the dark people card's leg behind the helmet, the opposite of
 occlusion, hence "closer to the camera than the helmet". Kept: the second run, all four.
 
 ### Cards generated from real captures (2026-09-30)

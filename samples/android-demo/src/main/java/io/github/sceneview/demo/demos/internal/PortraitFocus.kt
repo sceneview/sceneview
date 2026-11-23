@@ -8,11 +8,11 @@ import kotlin.math.sqrt
  * Filament and ARCore so they are tested on the JVM.
  *
  * A phone camera's portrait mode keeps the subject sharp as you move and lets you tap
- * elsewhere to focus there. The demo does the same: [Subject] follows the sneaker every frame,
+ * elsewhere to focus there. The demo does the same: [Subject] follows the toy car every frame,
  * [Point] holds the real-world depth of the pixel tapped last.
  */
 sealed interface PortraitFocusTarget {
-    /** The sneaker: the focus distance follows it as the phone moves. */
+    /** The toy car: the focus distance follows it as the phone moves. */
     data object Subject : PortraitFocusTarget
 
     /** A tapped point of the room, at [distanceMetres] from the lens when it was tapped. */
@@ -27,10 +27,10 @@ enum class PortraitFocusStatus {
     /** No ARCore Depth on this phone: the room cannot blur. */
     Unsupported,
 
-    /** Following the sneaker, but its distance is not known yet (no tracked frame). */
+    /** Following the toy car, but its distance is not known yet (no tracked frame). */
     Waiting,
 
-    /** Focused on the sneaker. */
+    /** Focused on the toy car. */
     Subject,
 
     /** Focused on a tapped point of the room. */
@@ -38,7 +38,7 @@ enum class PortraitFocusStatus {
 }
 
 object PortraitFocus {
-    /** Nearest focus Filament is given, in metres: a sneaker under the lens is still a distance. */
+    /** Nearest focus Filament is given, in metres: a toy car under the lens is still a distance. */
     const val MIN_FOCUS_METRES = 0.1f
 
     /** Farthest focus the slider offers, in metres. */

@@ -123,24 +123,28 @@ enum class RigSubject(
         extent = 0.58f,
         yawDegrees = -22f,
     ),
-    Sneaker(
-        label = "Nike Air Jordan 1",
-        assetPath = "models/air_jordan_1.glb",
+    // No subject on this stage may carry a third-party trademark: its catalog card and any
+    // store capture of it show them all (#5247). That ruled out the Nike sneaker and the
+    // Canon film camera the stage used to hold.
+    ToyCar(
+        label = "Toy Car",
+        assetPath = "models/khronos_toy_car.glb",
         groundX = 0.44f,
         groundZ = -0.27f,
-        // Long and low: normalising its length to the helmet's would leave it flat on the
-        // floor. The three subjects are matched by visual mass, not by bounding-box extent.
-        extent = 0.62f,
+        // Long and low, the car on a draped cloth wider than itself: at the helmet's extent the
+        // car would be a speck on the cloth. The three subjects are matched by visual mass, not
+        // by bounding-box extent.
+        extent = 0.74f,
         yawDegrees = 38f,
     ),
-    FilmCamera(
-        label = "Canon AT-1",
-        assetPath = "models/canon_at1.glb",
+    Lantern(
+        label = "Lantern",
+        assetPath = "models/khronos_lantern.glb",
         groundX = -0.44f,
         groundZ = 0.27f,
-        // A 1977 film SLR: compact and dense, chrome and leatherette, so it reads at a
-        // smaller extent than the two others.
-        extent = 0.50f,
+        // Tall and thin, the counterweight to the long car: its height is its extent, so it
+        // needs a larger one than the round helmet to read as more than a stick.
+        extent = 0.66f,
         yawDegrees = -34f,
     ),
 }

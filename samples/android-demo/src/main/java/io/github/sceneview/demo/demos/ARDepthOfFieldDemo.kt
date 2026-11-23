@@ -56,10 +56,9 @@ import io.github.sceneview.demo.DemoModeSwitch
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.CatalogueProductPill
-import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusCard
 import io.github.sceneview.demo.common.DemoStatusTone
-import io.github.sceneview.demo.common.rememberCatalogueProduct
+import io.github.sceneview.demo.common.rememberBundledSubject
 import io.github.sceneview.demo.demos.internal.PortraitFocus
 import io.github.sceneview.demo.demos.internal.PortraitFocusStatus
 import io.github.sceneview.demo.demos.internal.PortraitFocusTarget
@@ -77,7 +76,7 @@ import java.util.Locale
 
 /**
  * Portrait focus (`ar-depth-of-field`, #4649) — a phone camera's portrait mode in AR: the
- * sneaker stays sharp while the room behind it blurs with its real distance, and an
+ * toy car stays sharp while the room behind it blurs with its real distance, and an
  * Original | Portrait switch compares the two.
  *
  * The blur is Filament's native depth-of-field post-pass fed by ARCore environment depth:
@@ -86,11 +85,11 @@ import java.util.Locale
  * camera background blurs by its distance from the focus plane with no extra render pass (#1716).
  *
  * Focus works like the camera app:
- *  - **Subject** (default): the focus distance follows the sneaker every tracked frame — the
- *    distance from the lens to the sneaker, not ARCore's depth under it, which is the floor
+ *  - **Subject** (default): the focus distance follows the toy car every tracked frame — the
+ *    distance from the lens to the toy car, not ARCore's depth under it, which is the floor
  *    behind a virtual object. Walk around it and it stays sharp.
  *  - **Point**: tap the room and the focus moves to the real depth of that pixel
- *    ([Frame.depthFocusDistance]); tap the sneaker to come back.
+ *    ([Frame.depthFocusDistance]); tap the toy car to come back.
  *
  * The rules live in [PortraitFocus], tested on the JVM.
  */
@@ -106,9 +105,10 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     // `--es ar_playback_file <path>` (#1576). `null` for every normal launch.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    // A real product at its real size to focus on: the Nike Air Jordan 1 from the catalogue
-    // (#4560), seen three-quarter — the sneaker product shot portrait mode is made for.
-    val sneaker = rememberCatalogueProduct(modelLoader, CatalogueProducts.AIR_JORDAN_1)
+    // A tabletop subject seen three-quarter, long enough front to back for the focus to travel
+    // along it: the Khronos Toy Car (CC0) on its draped cloth. It replaced the Nike Air Jordan 1,
+    // a third-party trademark on the demo's own screen (#5247).
+    val subject = rememberBundledSubject(modelLoader, SUBJECT_ASSET, SUBJECT_SIZE_METRES)
 
     var portrait by remember { mutableStateOf(true) }
     var target by remember { mutableStateOf<PortraitFocusTarget>(PortraitFocusTarget.Subject) }
@@ -117,7 +117,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     // into black bands (#2480); the slider still goes to 6x for a stronger blur.
     var blurStrength by remember { mutableFloatStateOf(1.0f) }
     var depthSupported by remember { mutableStateOf<Boolean?>(null) }
-    // Until the first tracked frame, the distance the sneaker is placed at.
+    // Until the first tracked frame, the distance the toy car is placed at.
     val appliedFocus = PortraitFocus.focusDistance(target, subjectDistance) ?: DEFAULT_FOCUS_METRES
 
     // Latest Frame for tap-to-focus. The depth API requires the Frame from the same update tick.
@@ -192,8 +192,8 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
         },
         bottomOverlay = {
             if (!arSessionUnavailable) {
-                // Until the sneaker is in, its pill names it and narrates the download.
-                CatalogueProductPill(sneaker)
+                // A bundled subject: the pill stays silent (no download to narrate).
+                CatalogueProductPill(subject)
                 // Before / after, where a camera app puts its modes: just above the shutter.
                 DemoModePill(
                     DemoModeSwitch(
@@ -243,7 +243,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                 onSessionUpdated = { _, frame: Frame ->
                     latestFrame = frame
                     if (frame.camera.trackingState == TrackingState.TRACKING) {
-                        val measured = PortraitFocus.distance(frame.camera.pose.translation, SNEAKER_POSITION)
+                        val measured = PortraitFocus.distance(frame.camera.pose.translation, SUBJECT_POSITION)
                         val next = PortraitFocus.follow(subjectDistance, measured)
                         if (next != subjectDistance) subjectDistance = next
                     }
@@ -255,7 +255,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                             return@rememberOnGestureListener
                         }
                         if (node != null) {
-                            // The sneaker is the only node: back to following it.
+                            // The toy car is the only node: back to following it.
                             target = PortraitFocusTarget.Subject
                         } else {
                             frame.depthFocusDistance(event.x, event.y)?.let { d ->
@@ -269,12 +269,12 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
             ) {
                 // Placement-free, 1 m ahead of the session's first pose and a little below eye
                 // level: a stable subject against the real room. Placement has its own demos.
-                sneaker.instance?.let { instance ->
+                subject.instance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
-                        scaleToUnits = sneaker.realSizeMetres,
-                        position = Position(SNEAKER_POSITION[0], SNEAKER_POSITION[1], SNEAKER_POSITION[2]),
-                        rotation = Rotation(y = SNEAKER_YAW_DEGREES),
+                        scaleToUnits = subject.realSizeMetres,
+                        position = Position(SUBJECT_POSITION[0], SUBJECT_POSITION[1], SUBJECT_POSITION[2]),
+                        rotation = Rotation(y = SUBJECT_YAW_DEGREES),
                     )
                 }
             }
@@ -346,7 +346,7 @@ internal fun FocusRing(at: Offset, tap: Int, onFinished: () -> Unit) {
     }
 }
 
-/** Focus before the sneaker's distance is known: the distance it is placed at. */
+/** Focus before the toy car's distance is known: the distance it is placed at. */
 private const val DEFAULT_FOCUS_METRES = 1.0f
 
 /** Strongest blur the slider offers (circle-of-confusion scale). */
@@ -357,10 +357,16 @@ internal const val FOCUS_RING_HOLD_MS = 600
 internal const val FOCUS_RING_FADE_MS = 400
 
 /**
- * The sneaker's world position (x, y, z): 1 m ahead of the session's first pose (the world
+ * The toy car's world position (x, y, z): 1 m ahead of the session's first pose (the world
  * origin, looking down -Z) and 0.3 m below it — a hand-held phone over a table-top.
  */
-private val SNEAKER_POSITION = floatArrayOf(0f, -0.3f, -1.0f)
+private val SUBJECT_POSITION = floatArrayOf(0f, -0.3f, -1.0f)
+
+/** The subject: the Khronos Toy Car (CC0), no badge and no lettering (#5247). */
+private const val SUBJECT_ASSET = "models/khronos_toy_car.glb"
+
+/** The toy car's longest side, cloth included: a model car on a table. */
+private const val SUBJECT_SIZE_METRES = 0.32f
 
 /** The catalogue's three-quarter turn (the Model Viewer's `CATALOGUE_FRONT_YAW`). */
-private const val SNEAKER_YAW_DEGREES = -30f
+private const val SUBJECT_YAW_DEGREES = -30f

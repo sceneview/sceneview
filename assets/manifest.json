@@ -261,8 +261,8 @@
     {
       "path": "samples/android-demo/src/main/assets/models/moto_helmet_v2.glb",
       "scope": "android",
-      "sha256": "77c3ab5042092f9762394a496646ff66b98789f8a6694c96c4cb14760356ae08",
-      "size": 3134276,
+      "sha256": "ea4612976f74423ae7ddfa4d584ba29f62e64a7363f4baaee7d63dfdf02d8be4",
+      "size": 3105652,
       "source": "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
       "license": "CC-BY-4.0",
       "author": "sayedgamal655"

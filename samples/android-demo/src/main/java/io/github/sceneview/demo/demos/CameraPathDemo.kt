@@ -75,7 +75,7 @@ import io.github.sceneview.model.restPoseBoundingBox
  * **Camera path** — a keyframed camera move played around a car, the way a car commercial
  * turns round its subject.
  *
- * The camera is driven by [CameraPosePath.orbit]: one turn round the Peugeot 2008, framed from the
+ * The camera is driven by [CameraPosePath.orbit]: one turn round the Toy Car, framed from the
  * subject's measured bounding box and the camera's real field of view, so the whole subject stays
  * in frame at every azimuth. A [CameraPathPlayer] owns the playhead; the scene's `onFrame` advances
  * it by the time between frames and writes the pose to the camera. The timeline bar plays, pauses
@@ -91,8 +91,10 @@ import io.github.sceneview.model.restPoseBoundingBox
  * manipulator would overwrite the scripted pose on the next frame.
  *
  * In QA mode the move starts paused at its first keyframe, so a capture is deterministic. The
- * subject used to be the Khronos Fox (2026-11-09: "the demo models look bad"); a real car is what
- * a camera move like this is filmed round.
+ * subject used to be the Khronos Fox (2026-11-09: "the demo models look bad"); a car is what a
+ * camera move like this is filmed round. It was then the Peugeot 2008, whose badges and lettering
+ * put a third-party trademark on the demo's own stage (#5247): the Khronos Toy Car (CC0), a
+ * clear-coated model car on its draped cloth, has none.
  */
 @Composable
 fun CameraPathDemo(onBack: () -> Unit) {
@@ -318,8 +320,8 @@ internal fun formatClock(seconds: Float): String {
     return String.format(Locale.US, "%d:%02d", whole / SECONDS_PER_MINUTE, whole % SECONDS_PER_MINUTE)
 }
 
-/** A real product, bundled byte for byte from the HD pack (CC BY 4.0, David_Holiday). */
-private const val SUBJECT_ASSET = "models/peugeot_2008.glb"
+/** The Khronos Toy Car (CC0): no badge, no lettering, no third-party trademark (#5247). */
+private const val SUBJECT_ASSET = "models/khronos_toy_car.glb"
 private const val SUBJECT_UNITS = 1f
 private const val FALLBACK_DEPTH = 0.6f
 private const val FALLBACK_ASPECT = 0.47

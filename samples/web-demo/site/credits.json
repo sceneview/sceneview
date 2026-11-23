@@ -77,7 +77,7 @@
           "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
           "size": 3134276,
-          "note": ""
+          "note": "Modified derivative (CC-BY-4.0 indicate-changes): the Android demo's bundled copy (samples/android-demo, #5247) removes a third-party trademark: the two textures of the badge plates (base colour and metallic-roughness) become one plain leather tone with the leather's gloss, and the two dark shield silhouettes under them in the leather base colour are filled with the surrounding leather grain. Geometry, every other texture and every material are untouched; the website and web-demo copies are the original file."
         },
         {
           "file": "models/perseverance_rover.glb",
