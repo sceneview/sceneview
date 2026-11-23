@@ -1869,8 +1869,11 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 
 ### Automatic placement (recommended)
 
-`AutoPlacementScene` is additive: one usable detected plane consumes one placement
-request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
+`AutoPlacementScene` places one object per request. When no usable plane appears after
+0.6 s of tracked search, the default surface flow tries the estimated floor and eases to
+ARCore's refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface.
+`state.recenter()` moves the placed object back in front of the camera on a tracked or estimated floor.
+It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
 or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
 centers, and a 0.25–3 m placement range. A floor drag that leaves every detected
 plane keeps sliding on the floor at the object's height, up to 5 m away (a table top
@@ -8386,12 +8389,11 @@ struct AutomaticPlacement: View {
 Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
 APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
 `WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
-examples. To show the model before a plane is detected, opt in to instant placement below.
+examples.
 
 ### iOS: Instant placement
 
-Off by default, and iOS only for now: Android's `AutoPlacementScene` has no instant placement
-yet (it hard-codes ARCore's `InstantPlacementMode.DISABLED`). Without it, nothing appears until
+On iOS, instant placement is off by default. Without it, the object appears once
 ARKit detects a plane. Opt in when the first seconds matter more than
 the first pose:
 
