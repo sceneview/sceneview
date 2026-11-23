@@ -54,7 +54,7 @@ private fun legacyInferredTrackingCallback(
 }
 
 @Composable
-private fun legacyAllPositionalCallbacksAndContent(
+private fun legacyPositionalCallbacksWithNamedContent(
     engine: Engine,
     models: ModelLoader,
     materials: MaterialLoader,
@@ -66,7 +66,7 @@ private fun legacyAllPositionalCallbacksAndContent(
 ) {
     AutoPlacementScene(
         true, Modifier, state, PlacementSurface.SURFACE, engine, models, materials,
-        true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, content,
+        true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, content = content,
     )
 }
 
@@ -106,7 +106,7 @@ private fun permissionObserverAfterLegacyPositionalCallbacks(
 }
 
 @Composable
-private fun permissionObserverWithAllPositionalCallbacksAndContent(
+private fun permissionObserverWithPositionalCallbacksAndNamedContent(
     engine: Engine,
     models: ModelLoader,
     materials: MaterialLoader,
@@ -119,7 +119,7 @@ private fun permissionObserverWithAllPositionalCallbacksAndContent(
 ) {
     AutoPlacementScene(
         true, Modifier, state, PlacementSurface.SURFACE, engine, models, materials,
-        true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, permission, content,
+        true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, permission, content = content,
     )
 }
 
