@@ -35,6 +35,7 @@ import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.isDestroyed
+import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -374,13 +375,40 @@ private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: P
 fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementState() }
 
 /**
- * Places content as documented by the default [AutoPlacementScene] overload, with an explicit
- * permission-recovery observer. Existing placement callback positions are unchanged.
+ * Places once on the first usable detected plane after [assetReady]. No tap and no reticle:
+ * the detected surfaces show while the object looks for one and while it moves, then fade once
+ * it stands still ([AutoPlacementState.guide], #5209). Load the asset before setting [assetReady]; keep the old asset
+ * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
  *
+ * [state] exposes recovery, reset and explicit request actions. Camera/capability events
+ * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
+ * same [state]. Content is composed on the main thread.
+ * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
+ *
+ * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
+ *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
+ *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
+ *   status chrome while [ArGuidanceState.isCoaching] is true either way.
+ * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
+ *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
+ *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
+ *   and add their own margin. Permission and failure cards respect it even when [coaching]
+ *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
  * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
  *   receives, or `null` after a grant. A denial can precede session creation without changing
- *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
+ *   [AutoPlacementState.phase] or ARCore availability; use it when positioning host chrome.
+ * @param cameraStream the camera feed, as [ARSceneView]'s parameter of the same name — pass your
+ *   own to read or occlude with it.
+ * @param sessionConfiguration runs after this scene has set plane finding, depth and instant
+ *   placement for [surface], as [ARSceneView]'s does: enable cloud anchors, depth, light
+ *   estimation or semantics here. Turning plane finding off stops placement.
+ * @param onSessionCreated the ARCore [Session], once created.
+ * @param onSessionResumed called after the scene's own resume handling.
+ * @param onSessionUpdated every ARCore frame, before this scene looks for a surface in it.
+ * @param onSessionFailure a typed session failure; the scene has already reset its placement
+ *   when the session closed.
  */
+@Suppress("LongParameterList")
 @Composable
 fun AutoPlacementScene(
     assetReady: Boolean,
@@ -398,7 +426,13 @@ fun AutoPlacementScene(
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
-    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)? = null,
+    cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    onSessionCreated: ((session: Session) -> Unit)? = null,
+    onSessionResumed: ((session: Session) -> Unit)? = null,
+    onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -448,6 +482,8 @@ fun AutoPlacementScene(
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = playbackDataset,
+                cameraStream = cameraStream,
+                sessionConfiguration = sessionConfiguration,
                 // The surfaces show while the object looks for one and while it moves (#5209).
                 planeRenderer = state.showsPlaneGuide && state.guide.planes,
                 planeFindingMode = autoPlacementPlaneFindingMode(surface),
@@ -488,7 +524,10 @@ fun AutoPlacementScene(
                     trackingFailure = it
                     onTrackingFailureChanged?.invoke(it)
                 },
-                onSessionResumed = { state.cameraResumed() },
+                onSessionResumed = { resumed ->
+                    state.cameraResumed()
+                    onSessionResumed?.invoke(resumed)
+                },
                 onSessionCreated = { created ->
                     (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
                         val previous = placement
@@ -497,9 +536,12 @@ fun AutoPlacementScene(
                         state.resetPlacement(SystemClock.uptimeMillis())
                         previous?.releaseAnchor()
                     }
+                    onSessionCreated?.invoke(created)
                 },
+                onSessionFailure = onSessionFailure,
                 onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
                 onSessionUpdated = { session, frame ->
+                    onSessionUpdated?.invoke(session, frame)
                     val tracked = session.getAllTrackables(Plane::class.java)
                         .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                     if (tracked != planes) planes = tracked
@@ -540,29 +582,61 @@ fun AutoPlacementScene(
 }
 
 /**
- * Places once on the first usable detected plane after [assetReady]. No tap and no reticle:
- * the detected surfaces show while the object looks for one and while it moves, then fade once
- * it stands still ([AutoPlacementState.guide], #5209). Load the asset before setting [assetReady]; keep the old asset
- * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
- *
- * [state] exposes recovery, reset and explicit request actions. Camera/capability events
- * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
- * same [state]. Content is composed on the main thread.
- * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
- *
- * Callback positions and positional/trailing content retain the original API. Use the
- * permission-observer overload when host chrome depends on the permission-recovery card.
- *
- * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
- *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
- *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
- *   status chrome while [ArGuidanceState.isCoaching] is true either way.
- * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
- *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
- *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
- *   and add their own margin. Permission and failure cards respect it even when [coaching]
- *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
+ * Binary-compatibility shim for the v4.72 permission-observer descriptor of [AutoPlacementScene],
+ * before the session hooks. Code compiled against it gets the default camera stream and no hooks.
  */
+@Deprecated(
+    "Binary-compatibility overload. Use the AutoPlacementScene overload that takes the session hooks.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Suppress("LongParameterList")
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = coaching,
+    coachingContentPadding = coachingContentPadding,
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    onCameraPermissionStateChanged = onCameraPermissionStateChanged,
+    content = content,
+)
+
+/**
+ * Binary-compatibility shim for the pre-session-hooks descriptor of [AutoPlacementScene] without
+ * the permission observer (v4.72). Code compiled against it gets the defaults it had.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the AutoPlacementScene overload that takes the session hooks.",
+    level = DeprecationLevel.HIDDEN,
+)
 @Suppress("LongParameterList")
 @Composable
 fun AutoPlacementScene(
@@ -598,7 +672,6 @@ fun AutoPlacementScene(
     onTrackingFailureChanged = onTrackingFailureChanged,
     onSessionFailed = onSessionFailed,
     onPlaced = onPlaced,
-    onCameraPermissionStateChanged = null,
     content = content,
 )
 
