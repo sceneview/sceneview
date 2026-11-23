@@ -3250,12 +3250,33 @@ public final class io/github/sceneview/node/ContactShadowContext : java/lang/Enu
 	public static fun values ()[Lio/github/sceneview/node/ContactShadowContext;
 }
 
+public final class io/github/sceneview/node/ContactShadowFootprint {
+	public static final field $stable I
+	public fun <init> (FFFF)V
+	public synthetic fun <init> (FFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/node/ContactShadowFootprint;
+	public static synthetic fun copy$default (Lio/github/sceneview/node/ContactShadowFootprint;FFFFILjava/lang/Object;)Lio/github/sceneview/node/ContactShadowFootprint;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCornerRadius ()F
+	public final fun getFade ()F
+	public final fun getHalfU ()F
+	public final fun getHalfV ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public class io/github/sceneview/node/ContactShadowNode : io/github/sceneview/node/PlaneNode {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/node/ContactShadowNode$Companion;
 	public static final field MATERIAL_CENTER Ljava/lang/String;
 	public static final field MATERIAL_FILE_LOCATION Ljava/lang/String;
+	public static final field MATERIAL_FOOTPRINT Ljava/lang/String;
 	public static final field MATERIAL_INTENSITY Ljava/lang/String;
+	public static final field MATERIAL_QUAD_SIZE Ljava/lang/String;
 	public static final field MATERIAL_RADIUS Ljava/lang/String;
 	public static final field MATERIAL_SOFTNESS Ljava/lang/String;
 	public static final field MATERIAL_SURFACE_OFFSET Ljava/lang/String;
@@ -3264,12 +3285,15 @@ public class io/github/sceneview/node/ContactShadowNode : io/github/sceneview/no
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/ContactShadowContext;Ldev/romainguy/kotlin/math/Float3;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun destroy ()V
 	public final fun getContext ()Lio/github/sceneview/node/ContactShadowContext;
+	public final fun getFootprint ()Lio/github/sceneview/node/ContactShadowFootprint;
 	public final fun getIntensity ()F
 	public final fun setContext (Lio/github/sceneview/node/ContactShadowContext;)V
+	public final fun setFootprint (Lio/github/sceneview/node/ContactShadowFootprint;)V
 	public final fun setIntensity (F)V
 }
 
 public final class io/github/sceneview/node/ContactShadowNode$Companion {
+	public final fun footprintParameters (Lio/github/sceneview/node/ContactShadowFootprint;)[F
 	public final fun getDEFAULT_SIZE ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun surfaceOffsetFor (Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
 	public static synthetic fun surfaceOffsetFor$default (Lio/github/sceneview/node/ContactShadowNode$Companion;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;

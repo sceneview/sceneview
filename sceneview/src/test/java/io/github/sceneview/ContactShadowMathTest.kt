@@ -2,6 +2,7 @@ package io.github.sceneview
 
 import io.github.sceneview.math.Direction
 import io.github.sceneview.node.ContactShadowContext
+import io.github.sceneview.node.ContactShadowFootprint
 import io.github.sceneview.node.ContactShadowNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -212,6 +213,46 @@ class ContactShadowMathTest {
         val above = alphaAt(ContactShadowContext.Wall, 0.5f, 0.65f)
 
         assertTrue("the wall pool must be denser below the midline than above it", below > above)
+    }
+
+    // ── Rounded-rectangle footprint ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `no footprint keeps the ellipse`() {
+        // All zeros: the shader's `footprint.w > 0` branch is never taken, so every preset and
+        // every non-AR demo draws exactly the ellipse it drew before the footprint existed.
+        val params = ContactShadowNode.footprintParameters(null)
+        assertTrue(params.contentEquals(FloatArray(4)))
+    }
+
+    @Test
+    fun `a footprint without a positive finite fade keeps the ellipse`() {
+        for (fade in listOf(0.0f, -0.1f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            val params = ContactShadowNode.footprintParameters(ContactShadowFootprint(1.0f, 0.5f, fade))
+            assertEquals("fade $fade", 0.0f, params[3], 0.0f)
+        }
+    }
+
+    @Test
+    fun `a footprint is passed in metres, corner clamped to the smaller half-extent`() {
+        val params = ContactShadowNode.footprintParameters(
+            ContactShadowFootprint(halfU = 1.1f, halfV = 0.47f, fade = 0.12f, cornerRadius = 0.9f)
+        )
+        assertEquals(1.1f, params[0], eps)
+        assertEquals(0.47f, params[1], eps)
+        assertEquals(0.47f, params[2], eps)
+        assertEquals(0.12f, params[3], eps)
+    }
+
+    @Test
+    fun `negative or non-finite extents clamp to zero instead of reaching the shader`() {
+        val params = ContactShadowNode.footprintParameters(
+            ContactShadowFootprint(halfU = -1.0f, halfV = Float.NaN, fade = 0.1f, cornerRadius = -0.2f)
+        )
+        assertEquals(0.0f, params[0], 0.0f)
+        assertEquals(0.0f, params[1], 0.0f)
+        assertEquals(0.0f, params[2], 0.0f)
+        assertEquals(0.1f, params[3], eps)
     }
 
     /**

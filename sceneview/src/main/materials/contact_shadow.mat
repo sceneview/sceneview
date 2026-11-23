@@ -46,6 +46,17 @@
 //               slides the mesh UP ITS OWN FACE instead of off the wall, and z-fights.
 //               The node computes `normal * offset` and passes it, so one material serves
 //               every orientation. See ContactShadowNode.surfaceOffsetFor.
+//   footprint — float4, optional rounded-rectangle mode (AR placement). xy = the
+//               rectangle's half-extents along u and v, z = its corner radius, w = the
+//               fade width beyond its outline — all in METRES, not UV. With w > 0 the pool
+//               is `intensity` inside the rectangle and fades to 0 across `w` metres
+//               outside it, whatever the object's size: the band a viewer sees around a
+//               long sofa is as wide on its short sides as on its long ones, and the
+//               corners are covered (an ellipse fitted to a rectangle leaves them bare).
+//               w <= 0 (the default: all zeros) keeps the elliptical gradient above,
+//               bit for bit, so `radius` and `softness` stay the shape of every preset.
+//   quadSize  — float2, the quad's size along u and v in metres. Only read in
+//               rectangle mode, to turn UVs into metres.
 //
 // matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan"). Matches the
 // AR material set: this ships inside AR scenes, so it must cover the same backends as
@@ -74,6 +85,14 @@ material {
         {
             "type": "float3",
             "name": "surfaceOffset"
+        },
+        {
+            "type": "float4",
+            "name": "footprint"
+        },
+        {
+            "type": "float2",
+            "name": "quadSize"
         }
     ],
 
@@ -104,27 +123,45 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
 
-        // UVs run 0..1 across the quad — recentre to -0.5..0.5, then apply the context
-        // offset (wall pushes the pool below the object's midline).
-        float2 p = getUV0() - 0.5 - materialParams.center;
+        float a;
+        if (materialParams.footprint.w > 0.0) {
+            // Rounded-rectangle mode: everything in metres. `center` stays a UV offset.
+            float2 size = max(materialParams.quadSize, float2(1e-4));
+            float2 m = (getUV0() - 0.5 - materialParams.center) * size;
+            float2 box = max(materialParams.footprint.xy, float2(0.0));
+            float r = clamp(materialParams.footprint.z, 0.0, min(box.x, box.y));
+            // Signed distance to the rounded rectangle: < 0 inside, metres outside.
+            float2 k = abs(m) - (box - r);
+            float sd = length(max(k, float2(0.0))) + min(max(k.x, k.y), 0.0) - r;
+            // Full `intensity` up to the outline, then a smooth fall to 0 across the fade.
+            a = 1.0 - smoothstep(0.0, materialParams.footprint.w, sd);
+            // A 1 cm metric feather at the quad's border: a fixed fraction of the UVs (as
+            // below) would eat a long sofa's band, 8 % of 2.4 m being 19 cm.
+            float2 e = min(getUV0(), float2(1.0) - getUV0()) * size;
+            a *= smoothstep(0.0, 0.01, min(e.x, e.y));
+        } else {
+            // UVs run 0..1 across the quad — recentre to -0.5..0.5, then apply the context
+            // offset (wall pushes the pool below the object's midline).
+            float2 p = getUV0() - 0.5 - materialParams.center;
 
-        // Dividing by the per-axis radii maps the ellipse onto a unit circle, so a single
-        // length() gives the normalised distance. The clamp keeps a zero/negative radius
-        // from producing a division by zero (it degenerates to "no shadow", not NaN).
-        float2 q = p / max(materialParams.radius, float2(1e-4));
-        float d = length(q);
+            // Dividing by the per-axis radii maps the ellipse onto a unit circle, so a single
+            // length() gives the normalised distance. The clamp keeps a zero/negative radius
+            // from producing a division by zero (it degenerates to "no shadow", not NaN).
+            float2 q = p / max(materialParams.radius, float2(1e-4));
+            float d = length(q);
 
-        // 1 inside the ellipse, fading to 0 across `softness`.
-        float a = 1.0 - smoothstep(1.0, 1.0 + max(materialParams.softness, 1e-4), d);
+            // 1 inside the ellipse, fading to 0 across `softness`.
+            a = 1.0 - smoothstep(1.0, 1.0 + max(materialParams.softness, 1e-4), d);
 
-        // Edge feather. The gradient lives in UV space, so if it has NOT reached zero by the
-        // quad's border it gets CUT OFF there, leaving a visible rectangular seam around the
-        // pool — a hard-edged box instead of a shadow. The Wall preset really does reach the
-        // horizontal border at ~0.43 alpha (0.5/0.34 = 1.47, well short of the 1.85 where the
-        // falloff ends), so this is not a theoretical guard. Fading the outermost band
-        // guarantees the pool always ends in nothing, whatever radius/softness a caller picks.
-        float2 e = min(getUV0(), float2(1.0) - getUV0());
-        a *= smoothstep(0.0, 0.08, min(e.x, e.y));
+            // Edge feather. The gradient lives in UV space, so if it has NOT reached zero by the
+            // quad's border it gets CUT OFF there, leaving a visible rectangular seam around the
+            // pool — a hard-edged box instead of a shadow. The Wall preset really does reach the
+            // horizontal border at ~0.43 alpha (0.5/0.34 = 1.47, well short of the 1.85 where the
+            // falloff ends), so this is not a theoretical guard. Fading the outermost band
+            // guarantees the pool always ends in nothing, whatever radius/softness a caller picks.
+            float2 e = min(getUV0(), float2(1.0) - getUV0());
+            a *= smoothstep(0.0, 0.08, min(e.x, e.y));
+        }
 
         // Black at the computed alpha. rgb is 0, so the straight-vs-premultiplied alpha
         // pitfall documented in plane_renderer.mat (#2224) cannot bite here (0 * a == 0

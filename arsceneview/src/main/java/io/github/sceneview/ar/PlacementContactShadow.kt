@@ -10,14 +10,22 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import io.github.sceneview.math.Transform
 import io.github.sceneview.node.ContactShadowContext
+import io.github.sceneview.node.ContactShadowFootprint
 import io.github.sceneview.node.ContactShadowNode
 import io.github.sceneview.node.ModelNode
+import kotlin.math.hypot
 
 /**
  * The soft dark pool under an [AutoPlacementModel], or a sized [AutoPlacementNode], standing on a
  * floor or a table — what makes it
  * look *on* the surface rather than floating a few millimetres above it, as Scene Viewer and AR
  * Quick Look both draw under a placed object.
+ *
+ * In AR the object hides its own footprint from almost any viewpoint, so the shadow a user
+ * actually sees is the band just outside it. The pool is therefore a rounded rectangle on the
+ * footprint, [PlacementContactShadow.EDGE_ALPHA] dark at the object's edge and fading out over a
+ * fixed [PlacementContactShadow.FADE_METERS] whatever the object's size — not an ellipse whose
+ * dark core sat inside the footprint and whose pale fade scaled with each axis.
  *
  * It complements the real shadow the scene's [ShadowReceiverPlane][io.github.sceneview.ar.light.ShadowReceiverPlane]
  * catches: that one follows the estimated light and can fall away from the object, or vanish when
@@ -41,7 +49,16 @@ internal fun NodeScope.PlacementContactShadowNode(
             materialLoader = materialLoader,
             size = Size(quad.sizeX, 0f, quad.sizeZ),
             context = ContactShadowContext.Floor,
+            intensity = PlacementContactShadow.EDGE_ALPHA,
         ).apply {
+            // A floor quad's u runs along +X and v along -Z: the rectangle is symmetric, so its
+            // half-extents map straight onto X and Z.
+            footprint = ContactShadowFootprint(
+                halfU = quad.halfX,
+                halfV = quad.halfZ,
+                fade = quad.fade,
+                cornerRadius = quad.cornerRadius,
+            )
             position = Position(quad.centerX, 0f, quad.centerZ)
             isShadowCaster = false
             isShadowReceiver = false
@@ -62,50 +79,73 @@ internal fun ModelNode.groundedCorners(): List<Position> = buildList {
 internal object PlacementContactShadow {
 
     /**
-     * The dark core reaches this fraction of the footprint's half-extent on each axis: the pool
-     * is darkest under the object and starts fading just inside its outline, so a slim chair leg
-     * or a sofa's skirt is never ringed by a hard dark band.
+     * Opacity at the object's edge and under it. The band outside the footprint is all a viewer
+     * sees, so it has to read on a light floor on its own.
      */
-    const val CORE_FRACTION = 0.8f
+    const val EDGE_ALPHA = 0.4f
+
+    /** How far beyond the footprint the shadow fades out, metres, whatever the object's size. */
+    const val FADE_METERS = 0.12f
 
     /**
-     * Smallest half-extent of either axis, as a fraction of the larger one. Keeps a pencil-thin
-     * object from getting a pool so narrow it reads as a line.
+     * A small object's fade, as a fraction of its larger half-extent: a mug does not get a
+     * 12 cm pool.
      */
-    const val MIN_ASPECT = 0.25f
+    const val FADE_FRACTION = 0.5f
+
+    /** Corner radius of the rectangle, as a fraction of its smaller half-extent. */
+    const val CORNER_FRACTION = 0.1f
+
+    /** Bare quad kept beyond the end of the fade, metres: room for the material's 1 cm feather. */
+    const val MARGIN_METERS = 0.02f
 
     /** Smallest half-extent, metres — a few millimetres of pool under a key or a ring. */
     const val MIN_HALF_EXTENT = 0.01f
 
-    /** Quad centre on the surface (parent X/Z) and its size along X and Z, metres. */
-    data class Quad(val centerX: Float, val centerZ: Float, val sizeX: Float, val sizeZ: Float)
+    /**
+     * The shadow under a footprint, metres: the quad's centre on the surface (parent X/Z) and its
+     * size along X and Z, and the rounded rectangle drawn in it ([halfX], [halfZ],
+     * [cornerRadius]), fully dark up to its outline and faded out [fade] beyond it.
+     */
+    data class Quad(
+        val centerX: Float,
+        val centerZ: Float,
+        val sizeX: Float,
+        val sizeZ: Float,
+        val halfX: Float,
+        val halfZ: Float,
+        val fade: Float,
+        val cornerRadius: Float,
+    ) {
+        /** Farthest the shadow reaches from the centre: a corner, at the end of the fade. */
+        val reach: Float
+            get() = hypot(halfX - cornerRadius, halfZ - cornerRadius) + cornerRadius + fade
+    }
 
     /**
      * The quad under the object whose bounds corners (in the surface frame, +Y the normal) are
-     * [corners], or `null` when there is nothing finite to ground.
-     *
-     * [ContactShadowContext.Floor] keeps its pool fully dark out to [ContactShadowContext.radiusU]
-     * of the quad's width from the centre, then fades out across
-     * `radiusU × softness` more: sizing the quad so that the core is [CORE_FRACTION] of the
-     * footprint puts the end of the fade about a quarter of the footprint beyond its edge.
+     * [corners], or `null` when there is nothing finite to ground. The rectangle is the
+     * footprint itself, so the object hides the inside and the visible band starts at its edge.
      */
-    fun quad(corners: List<Position>, context: ContactShadowContext = ContactShadowContext.Floor): Quad? {
+    fun quad(corners: List<Position>): Quad? {
         if (corners.isEmpty()) return null
         val minX = corners.minOf { it.x }
         val maxX = corners.maxOf { it.x }
         val minZ = corners.minOf { it.z }
         val maxZ = corners.maxOf { it.z }
         if (!(minX.isFinite() && maxX.isFinite() && minZ.isFinite() && maxZ.isFinite())) return null
-        val rawX = (maxX - minX) / 2f
-        val rawZ = (maxZ - minZ) / 2f
-        val floor = maxOf(MIN_HALF_EXTENT, maxOf(rawX, rawZ) * MIN_ASPECT)
-        val halfX = maxOf(rawX, floor)
-        val halfZ = maxOf(rawZ, floor)
+        val halfX = maxOf((maxX - minX) / 2f, MIN_HALF_EXTENT)
+        val halfZ = maxOf((maxZ - minZ) / 2f, MIN_HALF_EXTENT)
+        val fade = minOf(FADE_METERS, maxOf(halfX, halfZ) * FADE_FRACTION)
         return Quad(
             centerX = (minX + maxX) / 2f,
             centerZ = (minZ + maxZ) / 2f,
-            sizeX = halfX * CORE_FRACTION / context.radiusU,
-            sizeZ = halfZ * CORE_FRACTION / context.radiusV,
+            sizeX = 2f * (halfX + fade + MARGIN_METERS),
+            sizeZ = 2f * (halfZ + fade + MARGIN_METERS),
+            halfX = halfX,
+            halfZ = halfZ,
+            fade = fade,
+            cornerRadius = minOf(halfX, halfZ) * CORNER_FRACTION,
         )
     }
 }
@@ -121,14 +161,14 @@ internal object PlacementGroundContact {
 
     /**
      * Disc radius in the surface frame, metres: the outer edge of the selection ring's edging, or the
-     * contact shadow's quad when that reaches farther.
+     * contact shadow's [reach][PlacementContactShadow.Quad.reach] when that is farther.
      */
     fun radius(footprint: SelectionRing.Footprint, quad: PlacementContactShadow.Quad?): Float {
         // The outer edging of the held (widest) ring.
         val ring = if (footprint.radius > 0f) {
             SelectionRing.bands(footprint, held = true).maxOf { it.radius + it.tube }
         } else 0f
-        val shadow = quad?.let { maxOf(it.sizeX, it.sizeZ) / 2f } ?: 0f
+        val shadow = quad?.reach ?: 0f
         return maxOf(ring, shadow)
     }
 

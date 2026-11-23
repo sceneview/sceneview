@@ -2563,8 +2563,9 @@ no fill — that is `PlaneNode`, which carries no shadow receiver); declare `Pla
 
 `AutoPlacementScene` (and, by default, `PlacementScene`) already catch these shadows. On top of
 them, `AutoPlacementModel` draws a procedural `ContactShadowNode` pool under an object standing on
-a floor or a table, sized from its bounds (dark core at 80 % of the footprint, faded out about a
-quarter beyond it), turning and scaling with it — it stays under the object when the estimated
+a floor or a table, sized from its bounds (a rounded rectangle on the footprint at 0.4 opacity,
+faded out 12 cm beyond its edge whatever the object's size: the object hides the inside, so that
+band is the shadow a user sees), turning and scaling with it — it stays under the object when the estimated
 light puts the real shadow off to one side or nowhere. Never drawn for a wall placement. Opt out
 with `AutoPlacementState.showsContactShadow = false`.
 
@@ -2627,6 +2628,18 @@ ContactShadow(
 situation: `Floor` (centred, dense — light faces the surface), `Wall` (fainter, wider than tall,
 pushed *below* the object — light grazes the surface), `TableTop` (tight and crisp — the object
 sits close). `intensity` overrides the peak opacity if you need to.
+
+**Rectangular object? Set a footprint.** An ellipse fitted to a sofa leaves its corners bare and
+fades proportionally per axis. `ContactShadowNode.footprint = ContactShadowFootprint(halfU, halfV,
+fade, cornerRadius)` (metres) draws a rounded rectangle instead: full `intensity` inside, faded
+to nothing `fade` metres beyond its outline on every side. Make the quad at least
+`2 × (half + fade)` per axis. `null` (the default) keeps the context's ellipse.
+
+```kotlin
+ContactShadowNode(engine, materialLoader, size = Size(2.5f, 0f, 1.2f), intensity = 0.4f).apply {
+    footprint = ContactShadowFootprint(halfU = 1.1f, halfV = 0.47f, fade = 0.12f)
+}
+```
 
 **Match `size` to `normal`.** `Plane` does NOT rotate its geometry to match its `normal`
 parameter, so the quad's plane is decided by which `size` component is zero:
