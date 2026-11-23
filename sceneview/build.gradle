@@ -157,6 +157,9 @@ dependencies {
     // during a twist. Test classpath only: the published AAR gains no dependency.
     testImplementation platform(libs.androidx.compose.bom)
     testImplementation libs.androidx.compose.ui.test.junit4
+    // The verbatim 2.x agent answers in `agentcompat/` (Answer6, Answer8, Answer10) draw their
+    // loading and error states with Material 3, as an app would: they must compile unchanged.
+    testImplementation libs.androidx.compose.material3
     // Coroutines test — FrameRatePolicyTest drives `awaitRenderingEnabled` on virtual time to
     // assert the settled (FrameRatePolicy.OnDemand) path PARKS rather than polls (#3108). A poll
     // loop cannot
