@@ -1489,8 +1489,10 @@ private class AutomaticAnchorNode(
         if (!isTracking(frame)) return false
         val tangent = pose.rotateVector(floatArrayOf(x, 0f, if (placement.isWall) -y else y))
         val target = translated(pose, tangent)
-        val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind)
-        if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target)) {
+        // Same floor policy as a drag: on the floor it may leave the polygon and reach 5 m.
+        val onFloor = !placement.isWall && standsOnFloor(target.ty(), state.floorHeight, state.cameraHeight)
+        val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind, onFloor)
+        if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target, dragDistanceLimit(target))) {
             invalidMove(true)
             return false
         }
