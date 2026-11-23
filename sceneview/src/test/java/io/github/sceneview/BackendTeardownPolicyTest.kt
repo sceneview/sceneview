@@ -67,6 +67,44 @@ class BackendTeardownPolicyTest {
         }
     }
 
+    /**
+     * #4969: an engine that outlives its screens (one per activity, or a home hero hoisted above
+     * navigation) on a main thread too slow for the 48 ms window. Every screen's renderer used to
+     * stay pending until Engine.destroy; the bounded confirmation releases each on the live engine.
+     */
+    @Test
+    fun aLongLivedSharedEngineDoesNotAccumulatePendingRenderers() {
+        for (bounded in listOf(false, true)) {
+            val clock = Clock()
+            val probe = FreshFenceProbe(
+                createFence = { clock.time },
+                // Zero-timeout checks never see a fence armed in the same poll; later ones are stale.
+                isReached = { clock.time > it },
+                destroyFence = {},
+                now = { clock.time },
+                awaitReached = if (bounded) ({ true }) else null,
+            )
+            val teardowns = BackendIdleTeardowns(probe)
+            var destroyed = 0
+            repeat(20) {
+                teardowns.defer(
+                    isEngineAlive = { true }, schedule = clock.schedule,
+                    teardown = { destroyed++ }, reclaimWithEngine = true,
+                )
+                repeat(30) { if (clock.callbacks.isNotEmpty()) clock.poll() }
+            }
+            repeat(200) { if (clock.callbacks.isNotEmpty()) clock.poll() }
+            if (bounded) {
+                assertEquals("every renderer released on the live engine", 20, destroyed)
+                assertEquals(0, teardowns.size)
+                assertTrue("polling stops once nothing is pending", clock.callbacks.isEmpty())
+            } else {
+                assertEquals("zero-timeout checks alone release nothing", 0, destroyed)
+                assertEquals(20, teardowns.size)
+            }
+        }
+    }
+
     @Test
     fun retirementDoesNotAccumulateCallbacksForLateEngineOwnedResources() {
         val clock = Clock()

@@ -12,8 +12,26 @@ package io.github.sceneview
  */
 internal const val FRESH_FENCE_MAX_AGE_MS = 3 * BACKEND_IDLE_POLL_MS
 
-/** Diagnostic threshold only: elapsed time never makes a stale fence safe. */
+/**
+ * After this delay a poll may also confirm with a bounded wait. Elapsed time never makes a
+ * stale fence safe: it only lets the probe ask, with a fence created in that poll, whether the
+ * backend is idle right now.
+ */
 internal const val FRESH_FENCE_WARN_AFTER_MS = 5_000L
+
+/**
+ * Longest main-thread wait of the one bounded fence check a poll makes after
+ * [FRESH_FENCE_WARN_AFTER_MS] (#4969).
+ *
+ * A fence created in the poll and reached within this budget covers everything queued so far, so
+ * a release run right after it in the same message waits for nothing the main thread queued
+ * since. That is what the 48 ms freshness window approximates, and what a main thread polling
+ * less often than every 48 ms never satisfies: without it, a shared engine on a low-end device
+ * kept its pending releases until Engine.destroy. A backend still busy (a new screen's shaders)
+ * misses the budget, and the release stays pending. With the 1 s back-off and its short
+ * confirmation poll, the cost is at most two such waits a second, only while a release is pending.
+ */
+internal const val FRESH_FENCE_CONFIRM_BUDGET_MS = 4L
 
 /** Elapsed waiting time never grants readiness; retirement after producers stop drops freshness. */
 internal fun fenceAllowsTeardown(
@@ -38,8 +56,12 @@ internal fun fenceAllowsTeardown(
  * releases cover that teardown's commands too. Other conditions, such as decoders, still apply.
  *
  * After [warnAfterMs], counted from the first poll rather than construction (a load may delay
- * polling), [onStillBusy] runs once. This never authorizes destruction. The owner backs off,
- * keeping occasional short confirmation polls for shared engines to observe a fresh fence.
+ * polling), [onStillBusy] runs once. This never authorizes destruction behind a stale fence. The
+ * owner backs off, keeping occasional short confirmation polls for shared engines to observe a
+ * fresh fence. From then on the replacement fence armed in a poll is checked with [awaitReached],
+ * a wait bounded by the caller ([FRESH_FENCE_CONFIRM_BUDGET_MS] on an engine), instead of the
+ * zero-timeout [isReached]: reached within it, the backend is idle right now, whatever the
+ * main thread's cadence. Without [awaitReached] the probe never waits.
  * Missing fences remain busy; an errored fence ([isReached] returns null) is replaced.
  *
  * Filament-free for JVM tests. The owner must release the probe before destroying its engine,
@@ -53,6 +75,7 @@ internal class FreshFenceProbe<F : Any>(
     private val maxFreshAgeMs: Long = FRESH_FENCE_MAX_AGE_MS,
     private val warnAfterMs: Long = FRESH_FENCE_WARN_AFTER_MS,
     private val onStillBusy: () -> Unit = {},
+    private val awaitReached: ((F) -> Boolean?)? = null,
 ) {
     private var fence: F? = null
     private var armedAt = 0L
@@ -63,7 +86,8 @@ internal class FreshFenceProbe<F : Any>(
     /**
      * `true` while the backend has not recently caught up with what is queued on it.
      * Failure to create a fence is not evidence that the backend is idle. Fence waits use a zero
-     * timeout, but submitting commands can still block in Filament.
+     * timeout, or [awaitReached]'s bound after the warning; submitting commands can still block
+     * in Filament.
      */
     fun isBusy(): Boolean = isBusy(requireFresh = true)
 
@@ -82,8 +106,10 @@ internal class FreshFenceProbe<F : Any>(
         release()
         val replacement = arm(now()) ?: return true
         // A reached replacement covers everything queued right now, even on a slow looper.
-        // This is another zero-timeout check, never a wait for it to become reached.
-        return isReached(replacement) != true
+        // Zero-timeout at first; after the warning, a wait bounded by awaitReached, so a main
+        // thread too slow for the freshness window can still find the backend idle (#4969).
+        val confirm = awaitReached?.takeIf { hasWarned } ?: isReached
+        return confirm(replacement) != true
     }
 
     /** Destroys the fence still held, if any. Call once the probe is no longer polled. */

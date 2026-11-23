@@ -147,9 +147,11 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
  * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
  * On a shared engine, polling less often than every 48 ms keeps the destroy pending unless a
- * replacement fence is already reached in the same poll. Once the engine is retiring,
- * Engine.destroy reclaims the renderer. Five seconds triggers a warning and slower polls,
- * never permission to destroy behind a busy fence.
+ * replacement fence is already reached in the same poll. Five seconds triggers a warning and
+ * slower polls, never permission to destroy behind a busy fence: from then on, each poll's
+ * replacement fence may be waited for up to [FRESH_FENCE_CONFIRM_BUDGET_MS], and the renderer is
+ * destroyed only if it is reached, the backend idle at that instant (#4969). Once the engine is
+ * retiring, Engine.destroy reclaims the renderer.
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
@@ -196,8 +198,10 @@ internal fun Engine.isBackendBusy(): Boolean = teardowns().isBackendBusy()
  * `reclaimWithEngine` are left to Engine.destroy. See [BackendIdleTeardowns].
  *
  * One poll and probe are shared per engine. After five seconds polling backs off, with occasional
- * short confirmation polls for freshness. There is no timeout-triggered destruction. Neither a
- * reached nor a fresh fence bounds native destruction or command submission time.
+ * short confirmation polls for freshness, and each poll may wait up to
+ * [FRESH_FENCE_CONFIRM_BUDGET_MS] for a fence it has just created. There is no timeout-triggered
+ * destruction. Neither a reached nor a fresh fence bounds native destruction or command
+ * submission time.
  *
  * [onIdle] receives `deferred = false` if it runs before this call returns. [onEngineGone] runs
  * instead after a raw engine destruction, without touching the fence. [safeDestroy] explicitly
@@ -219,22 +223,33 @@ internal fun Engine.whenBackendIdle(
     onIdle = onIdle,
 )
 
-/** Zero-timeout fence polling; FLUSH itself can still block on a full command stream. */
+/**
+ * Zero-timeout fence polling, then after five seconds one wait of at most
+ * [FRESH_FENCE_CONFIRM_BUDGET_MS] per poll. FLUSH itself can still block on a full command stream.
+ */
 private fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     createFence = { runCatching { createFence() }.getOrNull() },
-    isReached = { fence ->
-        when (runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull()) {
-            Fence.FenceStatus.CONDITION_SATISFIED -> true
-            Fence.FenceStatus.TIMEOUT_EXPIRED -> false
-            else -> null // ERROR (or a failed wait) must re-arm, not poll a broken fence forever.
-        }
-    },
+    isReached = { fence -> fence.reachedWithin(0L) },
     destroyFence = { destroyFence(it) },
     now = SystemClock::uptimeMillis,
     onStillBusy = {
-        Log.w("Sceneview", "Backend teardown still pending after 5 s; backing off polls (#4969)")
+        Log.w(
+            "Sceneview",
+            "Backend teardown still pending after 5 s; backing off polls, each confirmed by a " +
+                "wait of at most $FRESH_FENCE_CONFIRM_BUDGET_MS ms (#4969)",
+        )
     },
+    awaitReached = { fence -> fence.reachedWithin(FRESH_FENCE_CONFIRM_BUDGET_MS * NANOS_PER_MS) },
 )
+
+private const val NANOS_PER_MS = 1_000_000L
+
+private fun Fence.reachedWithin(timeoutNanos: Long): Boolean? =
+    when (runCatching { wait(Fence.Mode.FLUSH, timeoutNanos) }.getOrNull()) {
+        Fence.FenceStatus.CONDITION_SATISFIED -> true
+        Fence.FenceStatus.TIMEOUT_EXPIRED -> false
+        else -> null // ERROR (or a failed wait) must re-arm, not poll a broken fence forever.
+    }
 
 /**
  * General form of [whenBackendIdle] for other readiness conditions, such as model decoders.
