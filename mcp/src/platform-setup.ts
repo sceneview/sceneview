@@ -217,6 +217,8 @@ fun MyARScreen() {
 
 const IOS_3D = `## SceneViewSwift — iOS/macOS/visionOS 3D Setup
 
+> **End of life:** SceneViewSwift 4.68.0 (November 2026) is the last release. No new releases; published versions stay installable. Do not start new code on it. See https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md
+
 ### 1. SPM Dependency
 
 In Xcode: **File > Add Package Dependencies** > paste:
@@ -322,6 +324,8 @@ SceneViewSwift provides ${IOS_NODE_TYPE_COUNT} node types:
 | \`AugmentedImageNode\` | AR image detection and tracking (iOS only) |`;
 
 const IOS_AR = `## SceneViewSwift — iOS AR Setup
+
+> **End of life:** SceneViewSwift 4.68.0 (November 2026) is the last release. No new releases; published versions stay installable. Do not start new code on it. See https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md
 
 ### 1. SPM Dependency
 
