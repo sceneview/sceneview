@@ -122,3 +122,41 @@ private fun permissionObserverWithAllPositionalCallbacksAndContent(
         true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, permission, content,
     )
 }
+
+@Composable
+private fun sessionHooksWithTrailingContent(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+    tracking: (TrackingFailureReason?) -> Unit,
+) {
+    // A session hook selects the main overload; everything else stays named and optional.
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        onTrackingFailureChanged = tracking,
+        sessionConfiguration = { _, config ->
+            config.cloudAnchorMode = com.google.ar.core.Config.CloudAnchorMode.ENABLED
+        },
+        onSessionUpdated = { _, _ -> },
+    ) { _ -> }
+}
+
+@Composable
+private fun sessionHooksWithPermissionObserver(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+    permission: (ARCameraPermissionState?) -> Unit,
+) {
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        onCameraPermissionStateChanged = permission,
+        onSessionCreated = { _ -> },
+    ) { _ -> }
+}

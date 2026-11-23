@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `placement-scene` demo (registered by
-     `PlacementSceneFragment.kt`). Android's resource merger
-     fans every `res/values/*.xml` file in, so `R.string.demo_placement_scene_title` etc.
-     remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870. -->
-<resources>
-    <string name="demo_placement_scene_title">One-Call AR</string>
-</resources>

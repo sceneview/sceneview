@@ -404,6 +404,7 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   estimation or semantics here. Turning plane finding off stops placement.
  * @param onSessionCreated the ARCore [Session], once created.
  * @param onSessionResumed called after the scene's own resume handling.
+ * @param onSessionPaused the session paused (the host went to the background).
  * @param onSessionUpdated every ARCore frame, before this scene looks for a surface in it.
  * @param onSessionFailure a typed session failure; the scene has already reset its placement
  *   when the session closed.
@@ -431,6 +432,7 @@ fun AutoPlacementScene(
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     onSessionCreated: ((session: Session) -> Unit)? = null,
     onSessionResumed: ((session: Session) -> Unit)? = null,
+    onSessionPaused: ((session: Session) -> Unit)? = null,
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
@@ -528,6 +530,7 @@ fun AutoPlacementScene(
                     state.cameraResumed()
                     onSessionResumed?.invoke(resumed)
                 },
+                onSessionPaused = onSessionPaused,
                 onSessionCreated = { created ->
                     (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
                         val previous = placement
@@ -582,13 +585,13 @@ fun AutoPlacementScene(
 }
 
 /**
- * Binary-compatibility shim for the v4.72 permission-observer descriptor of [AutoPlacementScene],
- * before the session hooks. Code compiled against it gets the default camera stream and no hooks.
+ * Places content as documented by the main [AutoPlacementScene] overload, with an explicit
+ * permission-recovery observer. Existing placement callback positions are unchanged.
+ *
+ * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
+ *   receives, or `null` after a grant. A denial can precede session creation without changing
+ *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
  */
-@Deprecated(
-    "Binary-compatibility overload. Use the AutoPlacementScene overload that takes the session hooks.",
-    level = DeprecationLevel.HIDDEN,
-)
 @Suppress("LongParameterList")
 @Composable
 fun AutoPlacementScene(
@@ -609,7 +612,7 @@ fun AutoPlacementScene(
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
@@ -630,13 +633,10 @@ fun AutoPlacementScene(
 )
 
 /**
- * Binary-compatibility shim for the pre-session-hooks descriptor of [AutoPlacementScene] without
- * the permission observer (v4.72). Code compiled against it gets the defaults it had.
+ * Places content as documented by the main [AutoPlacementScene] overload: the common case, with
+ * every callback in its original position. Pass a session hook (`sessionConfiguration`,
+ * `onSessionUpdated`, …) to reach the main overload.
  */
-@Deprecated(
-    "Binary-compatibility overload. Use the AutoPlacementScene overload that takes the session hooks.",
-    level = DeprecationLevel.HIDDEN,
-)
 @Suppress("LongParameterList")
 @Composable
 fun AutoPlacementScene(
@@ -656,7 +656,7 @@ fun AutoPlacementScene(
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
@@ -701,7 +701,7 @@ fun AutoPlacementScene(
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
@@ -746,7 +746,7 @@ fun AutoPlacementScene(
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
