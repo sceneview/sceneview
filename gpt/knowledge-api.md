@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.71.0)
+  Source of truth: /llms.txt  (SceneView 4.72.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.71.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.72.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -57,7 +57,7 @@ Every page below is also served as Markdown: replace the trailing `/` with `.md`
 
 ## Start here — complete Android screens
 
-These examples compile as they are against `io.github.sceneview:arsceneview:4.71.0` (CI builds every
+These examples compile as they are against `io.github.sceneview:arsceneview:4.72.0` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -2397,8 +2397,10 @@ no fill — that is `PlaneNode`, which carries no shadow receiver); declare `Pla
 
 `AutoPlacementScene` (and, by default, `PlacementScene`) already catch these shadows. On top of
 them, `AutoPlacementModel` draws a procedural `ContactShadowNode` pool under an object standing on
-a floor or a table, sized from its bounds (dark core at 80 % of the footprint, faded out about a
-quarter beyond it), turning and scaling with it — it stays under the object when the estimated
+a floor or a table, sized from its bounds (a rounded rectangle on the footprint at 0.4 opacity,
+faded out over 12 cm of real floor beyond its edge at any pinch, or over half the object's larger
+half-extent when it is under about 48 cm: the object hides the inside, so that band is the shadow
+a user sees), turning and scaling with it — it stays under the object when the estimated
 light puts the real shadow off to one side or nowhere. Never drawn for a wall placement. Opt out
 with `AutoPlacementState.showsContactShadow = false`.
 
@@ -2461,6 +2463,24 @@ ContactShadow(
 situation: `Floor` (centred, dense — light faces the surface), `Wall` (fainter, wider than tall,
 pushed *below* the object — light grazes the surface), `TableTop` (tight and crisp — the object
 sits close). `intensity` overrides the peak opacity if you need to.
+
+**Rectangular object? Pass a footprint.** An ellipse fitted to a sofa leaves its corners bare
+and fades proportionally per axis. `footprint = ContactShadowFootprint(halfU, halfV, fade,
+cornerRadius)` draws a rounded rectangle instead: full `intensity` inside, faded to nothing
+`fade` beyond its outline on every side. Values are in the node's units (metres at scale 1),
+the rectangle is centred on the quad (the context's centre offset does not apply), and
+`cornerRadius` up to the smaller half-extent rounds it towards a disc. Make the quad at least
+`2 × (half + fade)` per axis. `null` (the default) keeps the context's ellipse.
+`ContactShadowNode.footprint` sets the same thing imperatively.
+
+```kotlin
+ContactShadow(
+    size = Size(2.5f, 0f, 1.2f),                // floor quad: u = X, v = Z
+    intensity = 0.4f,
+    footprint = ContactShadowFootprint(halfU = 1.1f, halfV = 0.47f, fade = 0.12f),
+    position = Position(x = 0f, y = 0f, z = -1.5f),
+)
+```
 
 **Match `size` to `normal`.** `Plane` does NOT rotate its geometry to match its `normal`
 parameter, so the quad's plane is decided by which `size` component is zero:
@@ -3320,6 +3340,8 @@ import io.github.sceneview.material.setSemanticsOpacity
 val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
 overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
 ```
+
+Each class then shows its documented sRGB colour, so a legend built from those colours matches it, provided the instance is carried by a node of the `Scene`/`ARScene` (e.g. `PlaneNode(materialInstance = overlay)`): the node sets the inverse of that view's tone mapper.
 
 The label texture is sampled at the nearest texel, clamped at the edges, by default
 (`setSemanticsTexture(texture, sampler = …)`). A texel is a class number, not a colour: never
@@ -4756,6 +4778,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberARCameraStream(materialLoader)` | `ARCameraStream` | Camera feed background texture |
 | `rememberAREnvironment(engine)` | `Environment` | No-skybox environment for AR |
 
+**SceneView 2.x compatibility only (#5216):** `rememberNodes { … }`, `Scene(childNodes = …)` and `ARScene(childNodes = …)` exist as deprecated shims so that 2.x code still compiles, with a deprecation warning that names the 4.x form. Never write them: 2.x code may still compile, with deprecation warnings, but always write the 4.x form — nodes declared in the `SceneView { }` / `ARSceneView { }` block.
+
 **NOTE:** There is no `rememberMaterialInstance` in the published SceneView SDK — create materials with `materialLoader.createColorInstance(...)` inside a `remember` block. (The demos use a sample-only helper of that name from `samples/common`; in your own code copy this pattern, not the helper.)
 ```kotlin
 val mat = remember(materialLoader) {
@@ -5815,7 +5839,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.71.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.72.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -6020,7 +6044,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.71.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.72.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 

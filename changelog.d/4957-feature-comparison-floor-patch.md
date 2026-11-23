@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Demo: the depth occlusion, people occlusion and stabilisation comparisons no longer draw a large jagged dark patch, or dark rectangles, on the floor around the placed helmet. The helmet's hard cast shadow, from a low estimated light, was caught over each detected plane's whole rectangle and cut by the floor's depth noise; the soft contact shadow alone now grounds it (#4957).

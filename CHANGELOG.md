@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v4.72.0 — 2026-11-23
+
+### Added
+
+- **SceneView 2.x code written by AI agents compiles on 4.x ([#5216](https://github.com/sceneview/sceneview/issues/5216)).** Assistants without docs still answer with the 2.x API. `rememberNodes { … }`, `Scene(childNodes = …)` and `ARScene(childNodes = …)` are back as deprecated shims: the nodes in the list are attached to the scene and follow it, `childNodes += anchorNode` from a tap included. Each deprecation warning spells the 4.x form (`SceneView { ModelNode(…) }`, `ARSceneView { AnchorNode(anchor) { … } }`), so the agent that reads the build log learns it. Additions only: no 4.x signature changes. Leaving an `ARScene` releases the listed anchors while the session is still open. Five agent answers (a product viewer, a `.glb` screen, a light-and-ground-shadow scene with `PlaneNode`, an AR furniture placement, and a 3D viewer with its AR placement screen) are kept verbatim as compile-only tests, so the shims cannot break unnoticed.
+
+### Fixed
+
+- Demo: the depth occlusion, people occlusion and stabilisation comparisons no longer draw a large jagged dark patch, or dark rectangles, on the floor around the placed helmet. The helmet's hard cast shadow, from a low estimated light, was caught over each detected plane's whole rectangle and cut by the floor's depth noise; the soft contact shadow alone now grounds it (#4957).
+- **The Scene Semantics overlay material draws each class in its documented colour ([#5102](https://github.com/sceneview/sceneview/issues/5102)).** `semantics_overlay` took its sRGB palette as linear light, so the view's tone mapper and sRGB encoding lightened every class: `SKY` `#66B0F5` reached the screen as `#9DCCED`. It now pre-distorts the palette by the exact inverse of the view's tone mapper (PBR Neutral in a 3D view, Filmic in an AR view), taken in the Rec.2020 space Filament grades in, so a legend built from the documented colours matches the overlay: read back on the emulator, every channel lands within 6 steps of its legend, and a channel darker than `0x30` within 16. A node carrying the instance picks the inverse matching its view when it is added to a scene, or when it is given the instance afterwards.
+- **Android demo: Finger Drawing and Streetscape no longer read a closed AR session ([#5208](https://github.com/sceneview/sceneview/issues/5208)).** After a fatal session failure, Finger Drawing forgets its strokes and the anchors they hang on, and Streetscape forgets its geometries and the session its coverage check used. "Try again" then starts from an empty scene instead of reading the closed session's objects on the first frame. The coverage check cancelled with the closed session no longer touches its freed future, and a successful "Try again" clears the session error banner. A camera resume failure keeps everything.
+- AR: the contact shadow under a placed object now shows around it. The object hides its own footprint, so the shadow a user sees is the band just outside it, and that band was too pale, bare at the corners and missing along most of a sofa's edge. `AutoPlacementModel` now draws a rounded rectangle on the footprint, 0.4 opacity at the object's edge, faded out over 12 cm of real floor at any pinch (half the object's larger half-extent for objects under about 48 cm). Its corners are rounded to 60 % of the smaller half-extent, so a round table or a mug gets a nearly round pool. `ContactShadowNode.footprint` and the `ContactShadow(footprint = …)` composable take a `ContactShadowFootprint` for that shape; without one the node draws the same ellipse as before ([#5221](https://github.com/sceneview/sceneview/pull/5221)).
+
+### Docs
+
+- **README and llms.txt open with the 4.x dependency and a 2.x → 4.x table ([#5214](https://github.com/sceneview/sceneview/issues/5214)).** Assistants answering from memory still recommend SceneView 2.3.0 and its API. The top of `README.md` and `llms.txt` now gives the current Gradle lines for `sceneview` and `arsceneview`, says that 2.x and 3.x are outdated, and links to a table that maps each 2.x construct those assistants emit (`Scene`, `ARScene`, `childNodes = rememberNodes { }`, `modelLoader.createModelInstance` in `ModelNode(…)`, `AnchorNode(engine, anchor)` with `addChildNode`, tap-to-place through `rememberOnGestureListener`, the old `SceneView/sceneview-android` repository) to its 4.x form. The full table is also on the Upgrading from 2.3.x docs page.
+- **Migration guide: the right 16 KB page-size date.** The guide said Google Play has enforced 16 KB alignment "since January 2026". Google's page gives February 1, 2027, the date from which Play blocks updates of apps targeting API 35+ that do not support it. The section now also says what the AGP flag does (packaging) and what it cannot do (fix a prebuilt `.so` linked for 4 KB pages, such as Sceneform 1.23's).
+
 ## v4.71.0 — 2026-11-22
 
 ### Added
