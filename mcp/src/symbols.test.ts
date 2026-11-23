@@ -35,6 +35,14 @@ describe("generated symbols index", () => {
     expect("rememberModelInstance" in SYMBOLS.topLevel).toBe(true);
   });
 
+  it("indexes name-mangled functions under their Kotlin name (inline-class parameters)", () => {
+    // `PlacementScene-O_N-pM8` in arsceneview.api: a Dp/Color parameter mangles the JVM name.
+    expect(isKnownTopLevelFunction("PlacementScene")).toBe(true);
+    expect(isKnownTopLevelFunction("FogNode")).toBe(true);
+    expect(resolveImport("io.github.sceneview.ar.PlacementScene")).toBeTruthy();
+    expect(isKnownTopLevelFunction("PlacementScene-O_N-pM8")).toBe(false);
+  });
+
   it("keeps compiler noise out of the index", () => {
     const classNames = Object.keys(SYMBOLS.classes);
     expect(classNames.some((c) => c.includes("ComposableSingletons"))).toBe(false);
