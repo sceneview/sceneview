@@ -526,9 +526,12 @@ class DeepLinkRouterTest {
         fun launch(rawId: String, tab: String? = null) =
             DeepLinkRouter.resolveLaunch(DeepLinkRouter.validate(rawId, ALL_DEMOS), rawId, tab)
 
-        assertEquals(DeepLinkRouter.Launch("ar-placement", 2), launch("ar-pose"))
-        // `placement-scene` is the One call mode: the AutoPlacementScene screen, not Place.
-        assertEquals(DeepLinkRouter.Launch("ar-placement", 3), launch("placement-scene"))
+        // `ar-pose` and `placement-scene` were the Free pose and One call modes; since #5262
+        // `ar-placement` has one placement and no modes, so they open its floor placement.
+        assertEquals(DeepLinkRouter.Launch("ar-placement", null), launch("ar-pose"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", null), launch("placement-scene"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 0), launch("ar-placement", "one-call"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("ar-placement", "wall"))
         assertEquals(DeepLinkRouter.Launch("camera-gestures", 1), launch("secondary-camera"))
         assertEquals(DeepLinkRouter.Launch("rolling-balls", 1), launch("double-pendulum"))
         assertEquals(DeepLinkRouter.Launch("ar-rerun", 1), launch("ar-record-playback"))
@@ -544,8 +547,7 @@ class DeepLinkRouterTest {
         assertEquals(DeepLinkRouter.Launch("camera-gestures", 1), launch("camera-gestures", "pip"))
         assertEquals(DeepLinkRouter.Launch("ar-rerun", 1), launch("ar-rerun", "session-mp4"))
         assertEquals(DeepLinkRouter.Launch("ar-cloud-anchor", 1), launch("ar-cloud-anchor", "collaborative"))
-        assertEquals(DeepLinkRouter.Launch("ar-placement", 2), launch("ar-placement", "free-pose"))
-        assertEquals(DeepLinkRouter.Launch("ar-placement", 3), launch("ar-placement", "one-call"))
+        assertEquals(DeepLinkRouter.Launch("ar-placement", 0), launch("ar-placement", "free-pose"))
         // `?tab=wall` is the token iOS accepts for the wall placement; Android reads it too.
         assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("ar-placement", "wall"))
         assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("wall-placement", "wall"))

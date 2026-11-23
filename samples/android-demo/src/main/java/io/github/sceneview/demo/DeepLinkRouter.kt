@@ -197,8 +197,8 @@ internal object DeepLinkRouter {
         // Samples step 0 — consolidation before any redesign (samples audit, 2026-10-02).
         // Each retired card is a mode of the card that absorbed it; the mode is
         // pre-selected through [ALIAS_INITIAL_TAB] when it is not the default one.
-        // `ar-pose` is the Free pose mode of `ar-placement`; `placement-scene`, the same
-        // flow as one `AutoPlacementScene` call, is its One call mode.
+        // `ar-pose` and `placement-scene` were the Free pose and One call modes of
+        // `ar-placement`; since #5262 it has one placement and no modes, and they open it.
         "ar-pose" to "ar-placement",
         "placement-scene" to "ar-placement",
         "secondary-camera" to "camera-gestures",
@@ -289,11 +289,6 @@ internal object DeepLinkRouter {
         "ar-streetscape" to 2,
         // Wave 1 — Scene Geometry is the Streetscape mode with its colour switch on.
         "ar-scene-mesh" to 2,
-        // Samples step 0. ar-placement — launch tab 2 is the Free pose mode (tabs 0 and 1
-        // stay the floor and wall placements inside the Place mode).
-        "ar-pose" to 2,
-        // ar-placement — launch tab 3 is the One call mode.
-        "placement-scene" to 3,
         // camera-gestures — [Camera, PiP].
         "secondary-camera" to 1,
         // rolling-balls — [Balls, Pendulum, On your table].
@@ -318,8 +313,9 @@ internal object DeepLinkRouter {
         // cosmos — [Starlight, Spacetime], the Star scene's two views.
         "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
         // Samples step 0 — each consolidated card's modes, by the [DemoMode] key its pill uses.
-        // ar-placement — `wall` is the wall placement inside Place, the token iOS uses too.
-        "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3),
+        // ar-placement — `wall` is the wall placement, the token iOS uses too. `free-pose` and
+        // `one-call` named modes retired by #5262: they open the floor placement.
+        "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 0, "one-call" to 0),
         "camera-gestures" to mapOf("camera" to 0, "pip" to 1),
         "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1, "table" to 2),
         "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),

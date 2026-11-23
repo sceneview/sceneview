@@ -41,15 +41,15 @@ class DemoModeHostTest {
 
     @Test
     fun `an owned tab of a host whose default mode reads tabs is still consumed`() {
-        // ar-placement: launch tab 2 is the Free pose mode.
+        // A host whose first mode reads launch tabs 0 and 1 and owns tab 2 for its second mode.
         DemoSettings.initialTab = 2
         assertEquals(1, initialHostMode(mapOf(2 to 1), defaultModeReadsTab = true, modeCount = 2))
         assertNull(DemoSettings.initialTab)
     }
 
     @Test
-    fun `the placement-scene launch tab opens the One call mode`() {
-        // ar-placement: [Place, Free pose, One call], launch tabs 2 and 3 owned by the host.
+    fun `a second owned launch tab opens the third mode`() {
+        // Three modes, launch tabs 2 and 3 owned by the host.
         DemoSettings.initialTab = 3
         assertEquals(2, initialHostMode(mapOf(2 to 1, 3 to 2), defaultModeReadsTab = true, modeCount = 3))
         assertNull(DemoSettings.initialTab)

@@ -4,7 +4,6 @@ import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DeepLinkRouter
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.ai.ASK_QA_STATE_IDS
-import io.github.sceneview.demo.demos.AR_START_FAILED_QA_STATE
 import io.github.sceneview.demo.demos.internal.CloudAnchorScenario
 import io.github.sceneview.demo.demos.internal.cloudAnchorScenarioOf
 import io.github.sceneview.demo.ui.home.HERO_STILL_QA_STATE
@@ -31,13 +30,11 @@ import org.robolectric.RobolectricTestRunner
 class QaStateReleaseGuardTest {
 
     /**
-     * Cloud Anchors (as Maestro sends them, `resolve_not_found`), Point & Ask, Home and One
-     * call's session failure. The router knows no vocabulary, so the other demos' ids
+     * Cloud Anchors (as Maestro sends them, `resolve_not_found`), Point & Ask and Home. The router knows no vocabulary, so the other demos' ids
      * (Geospatial, Rerun, Record & Playback, motion sensor) take the same path.
      */
     private val everyQaStateId: List<String> =
-        CloudAnchorScenario.entries.map { it.name.toSnakeCase() } + ASK_QA_STATE_IDS + HERO_STILL_QA_STATE +
-            AR_START_FAILED_QA_STATE
+        CloudAnchorScenario.entries.map { it.name.toSnakeCase() } + ASK_QA_STATE_IDS + HERO_STILL_QA_STATE
 
     private fun String.toSnakeCase(): String =
         replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()

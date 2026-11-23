@@ -240,8 +240,9 @@ class DemoAnalyticsTest {
         assertEquals("sun", initialSampleMode("lighting", 2))
         assertEquals("place", initialSampleMode("ar-placement", null))
         assertEquals("wall", initialSampleMode("ar-placement", 1))
-        assertEquals("free-pose", initialSampleMode("ar-placement", 2))
-        assertEquals("one-call", initialSampleMode("ar-placement", 3))
+        // The Free pose and One call launch tabs of before #5262 open the floor placement.
+        assertEquals("place", initialSampleMode("ar-placement", 2))
+        assertEquals("place", initialSampleMode("ar-placement", 3))
         assertEquals("terrain", initialSampleMode("ar-geospatial-anchors", null))
         assertEquals("rooftop", initialSampleMode("ar-geospatial-anchors", 1))
         assertEquals("streetscape", initialSampleMode("ar-geospatial-anchors", 2))
