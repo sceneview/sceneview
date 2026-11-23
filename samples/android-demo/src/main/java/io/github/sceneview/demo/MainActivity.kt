@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.ProvideStatusBarIcons
+import io.github.sceneview.demo.demos.ScanScopeStore
+import io.github.sceneview.demo.demos.internal.ScanScope
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.support.SupportBilling
 import io.github.sceneview.demo.support.SupportPrompt
@@ -229,6 +231,7 @@ class MainActivity : ComponentActivity() {
         DemoSettings.arPendingPlaybackFile = intent?.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.arReplayProbe = resolveArReplayProbe(intent)
+        applyDebugScanScope(intent)
         // Optional camera-to-model distance (zoom level). Maestro has no pinch gesture, so
         // the device-QA flows drive 3D zoom by deep link instead (#1571). Same dual-ingress
         // policy: the `camera_distance` QA extra (any Bundle type — Float from `adb --ef`,
@@ -275,6 +278,7 @@ class MainActivity : ComponentActivity() {
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.arReplayProbe = resolveArReplayProbe(intent)
+        applyDebugScanScope(intent)
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
         if (BuildConfig.DEBUG) Telemetry.applyDebugConsent(this, intent.getStringExtra("telemetry_consent"))
         applyLaunch(intent)
@@ -286,6 +290,16 @@ class MainActivity : ComponentActivity() {
      */
     private fun resolveQaBackdrop(intent: Intent?): Boolean? =
         intent?.takeIf { it.hasExtra("qa_backdrop") }?.getBooleanExtra("qa_backdrop", false)
+
+    /** A debug replay starts with the requested scope, even after an install preserving data. */
+    private fun applyDebugScanScope(intent: Intent?) {
+        if (!BuildConfig.DEBUG) return
+        ScanScopeStore.launchOverride = when (intent?.getStringExtra("scan_scope")) {
+            "room" -> ScanScope.Room
+            "object" -> ScanScope.Object
+            else -> null
+        }
+    }
 
     /**
      * `--es qa_state <id>` pins a demo to one named visual state (#3421, #3455) — the one

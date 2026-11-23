@@ -83,9 +83,14 @@ internal object ScanScopeStore {
     private const val PREFS = "sceneview_demo_ar_rerun"
     private const val KEY = "ar_rerun_scan_scope"
 
+    /** Set only by MainActivity's debug intent ingress; never written to preferences. */
+    internal var launchOverride: ScanScope? = null
+
     /** The last choice, as the card offered for it: a home or an area chosen before comes back as a room. */
     fun last(context: Context): ScanScope =
-        ScanScope.fromKey(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)).offered
+        launchOverride ?: ScanScope.fromKey(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null),
+        ).offered
 
     fun remember(context: Context, scope: ScanScope) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, scope.key).apply()

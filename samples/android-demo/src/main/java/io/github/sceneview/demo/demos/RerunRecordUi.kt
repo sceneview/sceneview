@@ -782,6 +782,7 @@ internal fun ScanLiveView(
                     // The depth cloud tells how much of each wall was seen: a wall is drawn that far.
                     walls?.observe(frame, coverage, pose, dense = dense)
                 }
+                scanBenchObserve(media, frame, coverage, dense, walls)
             },
             // The walls stand in the room while it is scanned; saving, the orbit shows the cloud.
             walls = walls,
