@@ -44,7 +44,7 @@ object CatalogueProducts {
     /** A full-size sofa on the floor: the plane renderer's floor, at the scale of a living room. */
     const val IKEA_NOCKEBY_SOFA = "ikea-nockeby-sofa"
 
-    /** A countertop appliance that automatic placement can set on a table or a floor alike. */
+    /** A countertop appliance. Its lettering keeps it off every demo's own stage (#5247). */
     const val KITCHENAID_STAND_MIXER = "kitchenaid-stand-mixer"
 
     /**
