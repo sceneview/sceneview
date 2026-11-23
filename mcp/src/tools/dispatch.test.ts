@@ -74,6 +74,13 @@ describe("tools library — dispatchTool", () => {
     expect(result.content[0]?.text).not.toContain("from:");
   });
 
+  it("opens both Apple setups with the end-of-life notice", async () => {
+    for (const type of ["3d", "ar"]) {
+      const result = await dispatchTool("get_ios_setup", { type });
+      expect(result.content[0]?.text).toContain("**End of life:** SceneViewSwift 4.68.0");
+    }
+  });
+
   it("lists retired platforms at their last release", async () => {
     const result = await dispatchTool("list_platforms", {});
     for (const platform of ["iOS", "macOS", "visionOS", "Flutter", "React Native"]) {
