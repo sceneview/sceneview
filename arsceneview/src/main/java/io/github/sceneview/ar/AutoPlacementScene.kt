@@ -405,7 +405,8 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  * @param onSessionCreated the ARCore [Session], once created.
  * @param onSessionResumed called after the scene's own resume handling.
  * @param onSessionPaused the session paused (the host went to the background).
- * @param onSessionUpdated every ARCore frame, before this scene looks for a surface in it.
+ * @param onSessionUpdated every ARCore frame, after this scene has handled it (surface search,
+ *   placement): an exception thrown here never stops the placement.
  * @param onSessionFailure a typed session failure; the scene has already reset its placement
  *   when the session closed.
  */
@@ -544,7 +545,6 @@ fun AutoPlacementScene(
                 onSessionFailure = onSessionFailure,
                 onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
                 onSessionUpdated = { session, frame ->
-                    onSessionUpdated?.invoke(session, frame)
                     val tracked = session.getAllTrackables(Plane::class.java)
                         .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                     if (tracked != planes) planes = tracked
@@ -561,6 +561,9 @@ fun AutoPlacementScene(
                         },
                     )
                     if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+                    // Last, so a host callback that throws (ARSceneView catches and logs it) never
+                    // costs this frame its placement work.
+                    onSessionUpdated?.invoke(session, frame)
                 },
             ) {
                 placement?.let { result -> key(result) { content(result) } }
