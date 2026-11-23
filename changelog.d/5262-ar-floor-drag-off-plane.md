@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **AR: dragging a placed object on the floor no longer stops at the edge of the detected plane.** `AutoPlacementScene` refused a floor drag as soon as the finger left every tracked polygon, so an object could not be moved onto floor ARCore had not mapped yet. The drag now slides on the floor at the object's height, as in model-viewer's WebXR mode, and reaches 5 m instead of 3. The first automatic placement still needs a detected plane within 3 m; walls are unchanged.

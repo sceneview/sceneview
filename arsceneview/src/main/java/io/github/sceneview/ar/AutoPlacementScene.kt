@@ -108,6 +108,12 @@ class AutoPlacementCandidate internal constructor(
     internal val trackable: Trackable,
     val pose: Pose,
     internal val kind: WallHitKind?,
+    /**
+     * A floor drag that left every tracked polygon: the object slides on the horizontal plane at
+     * its own height (model-viewer's WebXR drag, ARMV's `floorUnder`), anchored to the floor plane
+     * it stood on. Only a drag produces it; the first placement still needs a polygon.
+     */
+    internal val offPolygonFloor: Boolean = false,
 ) {
     internal constructor(plane: Plane, pose: Pose) : this(plane, pose, plane.wallKindOrNull())
 
@@ -140,7 +146,7 @@ class AutoPlacementCandidate internal constructor(
         if (trackable.trackingState != TrackingState.TRACKING) return false
         val plane = trackable as? Plane
         return when (kind) {
-            null -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            null -> plane != null && (offPolygonFloor || plane.subsumedBy == null && plane.isPoseInPolygon(target))
             WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
                 (plane.isPoseInPolygon(target) ||
                     plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
@@ -1401,16 +1407,27 @@ internal fun automaticPlacementOffset(corners: List<Position>, wall: Boolean): P
     if (wall) -corners.maxOf { it.z } else -(corners.minOf { it.z } + corners.maxOf { it.z }) / 2f,
 )
 
-private fun visiblePlacementPoint(frame: Frame, pose: Pose): Boolean {
+private fun visiblePlacementPoint(
+    frame: Frame,
+    pose: Pose,
+    maxDistance: Float = UsableSurfacePolicy.MAX_DISTANCE_M,
+): Boolean {
     if (frame.camera.trackingState != TrackingState.TRACKING) return false
     val camera = frame.camera.pose
     val distance = ViewportProjection.distance(pose.tx(), pose.ty(), pose.tz(), camera.tx(), camera.ty(), camera.tz())
-    if (distance !in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M) return false
+    if (distance !in UsableSurfacePolicy.MIN_DISTANCE_M..maxDistance) return false
     val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
     val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
     return ViewportProjection.project(ViewportProjection.multiply(projection, view),
         pose.tx(), pose.ty(), pose.tz())?.isInsideViewport == true
 }
+
+/**
+ * How far a floor drag may carry the object: 5 m, as ARMV (model-viewer's WebXR drag allows 10).
+ * The first automatic placement keeps [UsableSurfacePolicy.MAX_DISTANCE_M], where an error the
+ * user cannot see is the risk; a drag is under the user's eye and finger.
+ */
+internal const val MAX_DRAG_DISTANCE_M = 5f
 
 /** Keeps the logical anchor alive while dragging; only a valid finished move replaces it. */
 private class AutomaticAnchorNode(
@@ -1496,10 +1513,15 @@ private class AutomaticAnchorNode(
                 val plane = it.trackable as? Plane
                 plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
                     plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
-                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..MAX_DRAG_DISTANCE_M
             }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+                // Off every tracked polygon: keep sliding on the floor at the object's height
+                // instead of refusing the move (model-viewer's WebXR drag, ARMV).
+                ?: slideAlongWall(e, offPolygonFloor = true)
         }
-        if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
+        if (candidate == null || !candidate.accepts(candidate.pose) ||
+            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit())
+        ) {
             invalidMove(true)
             return false
         }
@@ -1579,7 +1601,7 @@ private class AutomaticAnchorNode(
      * The finger's ray against the wall the object stands on, treated as infinite — the only
      * drag target on a plain wall that yields no plane and no depth hit under the finger.
      */
-    private fun slideAlongWall(e: MotionEvent): AutoPlacementCandidate? {
+    private fun slideAlongWall(e: MotionEvent, offPolygonFloor: Boolean = false): AutoPlacementCandidate? {
         val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
         val axis = pose.getTransformedAxis(1, 1f)
         val normal = Float3(axis[0], axis[1], axis[2])
@@ -1595,6 +1617,7 @@ private class AutomaticAnchorNode(
             placement.trackable,
             Pose(floatArrayOf(target.x, target.y, target.z), pose.rotationQuaternion),
             placement.kind,
+            offPolygonFloor,
         )
     }
 
@@ -1610,6 +1633,10 @@ private class AutomaticAnchorNode(
         )
     }
 
+    /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall keeps the placement range. */
+    private fun dragDistanceLimit() =
+        if (placement.isWall) UsableSurfacePolicy.MAX_DISTANCE_M else MAX_DRAG_DISTANCE_M
+
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
             trackingState == TrackingState.TRACKING
@@ -1624,7 +1651,7 @@ private class AutomaticAnchorNode(
         val candidate = pending ?: return false
         val frame = frame ?: return false
         if (trackingState != TrackingState.TRACKING ||
-            !visiblePlacementPoint(frame, candidate.pose)
+            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit())
         ) return false
         val next = candidate.createAnchor() ?: return false
         anchor = next.anchor

@@ -51,6 +51,27 @@ class WallPlacementMathTest {
     }
 
     @Test
+    fun `floor drag off every polygon slides at the object's height under the finger`() {
+        // The slide a floor drag falls back on once the finger leaves every tracked polygon:
+        // the finger ray against the horizontal plane through the object's contact point.
+        val contact = Position(0.2f, -1.4f, -1.5f)
+        val up = Direction(0f, 1f, 0f)
+        val eye = Position(0f, 0f, 0f)
+        val grab = wallGrabOffset(contact, up, eye, normalize(contact - eye))!!
+        assertVecEquals(Position(0f, 0f, 0f), grab) // Grabbed at its contact point.
+        // The finger moves to a spot 4 m away on the same floor, past any detected polygon.
+        val far = Position(-1f, -1.4f, -4f)
+        val toRay = wallGrabOffset(contact, up, eye, normalize(far - eye))!!
+        val target = contact - toRay + wallTangentOffset(grab, up)
+        assertVecEquals(far, target)
+        assertEquals(contact.y, target.y, eps) // Height never follows the finger.
+        // Finger above the horizon: no floor under it, the move is refused.
+        assertNull(wallGrabOffset(contact, up, eye, normalize(Direction(0f, 0.2f, -1f))))
+        // A drag reaches further than the first automatic placement, as in ARMV.
+        assertTrue(MAX_DRAG_DISTANCE_M > UsableSurfacePolicy.MAX_DISTANCE_M)
+    }
+
+    @Test
     fun `wall contact survives combined twist scale and transfer to another wall`() {
         for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
             normalize(Direction(1f, 0.1f, -1f)))) {
