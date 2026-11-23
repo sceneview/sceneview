@@ -146,13 +146,18 @@ data class PlacementModel(
  * silhouette and material, so cycling the picker visibly changes the room.
  *
  * **What the catalogue offers, and why (2026-11-09).** Real products at their real size, as an
- * IKEA Place would show them: a sofa arrives 2.1 m long, a toaster 30 cm wide. The rows used to
+ * IKEA Place would show them: a sofa arrives 2.1 m long, a dining chair 74 cm tall. The rows used to
  * be Khronos glTF sample assets (Toy Car, Lantern, Velvet Sofa, Sheen Chair, Olive Dish) and the
  * Quaternius Ranger, all fitted into the same 0.3 m preview — material tests at toy size, which
  * is what "the demo models look bad" describes. These files are the HD pack's, bundled byte for
  * byte ([io.github.sceneview.demo.common.CatalogueProducts.BUNDLED]), authored in metres: the
  * sizes below are their own bounding boxes, so the read-out says "Actual size". The old GLBs
  * stay in the APK — `SampleAssets` fallbacks and other demos still load them.
+ *
+ * **No third-party trademark (#5247).** The picker is the demo's own screen, so it may end up in
+ * a store screenshot, and stores reject third-party marks there. The SMEG toaster (its lettering)
+ * and the Nike Air Jordan 1 (its swoosh) left it; both stay in the Model Viewer's catalogue,
+ * where the user picks them.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
     PlacementModel(
@@ -181,20 +186,6 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
         displayName = "Wishbone dining chair",
         assetLocation = "models/wishbone_chair.glb",
         realWorldSizeMeters = 0.74f,
-        sizeIsMeasured = true,
-    ),
-    PlacementModel(
-        id = "smeg-toaster",
-        displayName = "SMEG toaster",
-        assetLocation = "models/smeg_toaster.glb",
-        realWorldSizeMeters = 0.30f,
-        sizeIsMeasured = true,
-    ),
-    PlacementModel(
-        id = "air-jordan-1",
-        displayName = "Nike Air Jordan 1",
-        assetLocation = "models/air_jordan_1.glb",
-        realWorldSizeMeters = 0.33f,
         sizeIsMeasured = true,
     ),
 )

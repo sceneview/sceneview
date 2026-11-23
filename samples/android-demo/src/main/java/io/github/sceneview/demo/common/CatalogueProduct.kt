@@ -35,16 +35,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * expects to see in their room.
  */
 object CatalogueProducts {
-    /** Countertop size (~33 cm): sits on a tracked image on a table. */
+    /** Countertop size (~33 cm). Its SMEG lettering keeps it off every demo's own stage (#5247). */
     const val SMEG_TOASTER = "smeg-toaster"
 
-    /** A sneaker seen three-quarter has front-to-back depth for the focus to travel along. */
+    /** The Model Viewer's sneaker. A Nike product: never a demo's own subject (#5247). */
     const val AIR_JORDAN_1 = "air-jordan-1"
 
     /** A full-size sofa on the floor: the plane renderer's floor, at the scale of a living room. */
     const val IKEA_NOCKEBY_SOFA = "ikea-nockeby-sofa"
 
-    /** A countertop appliance that automatic placement can set on a table or a floor alike. */
+    /** A countertop appliance. Its lettering keeps it off every demo's own stage (#5247). */
     const val KITCHENAID_STAND_MIXER = "kitchenaid-stand-mixer"
 
     /**
@@ -77,11 +77,14 @@ class CatalogueProduct internal constructor(
     val instance: ModelInstance?,
     val status: HdPackStatus,
     val fileOnDevice: Boolean,
+    private val fixedSizeMetres: Float? = null,
 ) {
     val realSizeMetres: Float?
         get() = instance?.let { model ->
-            val half = model.asset.restPoseBoundingBox.halfExtent
-            maxOf(half[0], half[1], half[2]) * 2f * (asset?.scale ?: 1f)
+            fixedSizeMetres ?: run {
+                val half = model.asset.restPoseBoundingBox.halfExtent
+                maxOf(half[0], half[1], half[2]) * 2f * (asset?.scale ?: 1f)
+            }
         }
 
     /** The pill has something to say: the file is not in yet, or is still loading. */
@@ -113,6 +116,26 @@ fun rememberCatalogueProduct(modelLoader: ModelLoader, assetId: String): Catalog
     }
     val instance = rememberFileModelInstance(modelLoader, file)
     return CatalogueProduct(asset, instance, status, fileOnDevice = file != null)
+}
+
+/**
+ * A bundled model that is not a catalogue product, shown at [realSizeMetres] (its longest side)
+ * the way [rememberCatalogueProduct] shows a product. It needs no download, so
+ * [CatalogueProductPill] stays silent on it.
+ *
+ * For a demo's own subject that must carry no third-party trademark (#5247): every bundled
+ * catalogue product is a branded one, or a piece of furniture too big for a tabletop.
+ */
+@Composable
+fun rememberBundledSubject(modelLoader: ModelLoader, assetPath: String, realSizeMetres: Float): CatalogueProduct {
+    val instance = rememberModelInstance(modelLoader, assetPath)
+    return CatalogueProduct(
+        asset = null,
+        instance = instance,
+        status = HdPackStatus.Ready,
+        fileOnDevice = true,
+        fixedSizeMetres = realSizeMetres,
+    )
 }
 
 /**

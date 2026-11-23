@@ -189,9 +189,9 @@ private data class PropSpec(val asset: String, val label: String, val scaleUnits
 
 /** Drop-3D mode's picker options, in display order; the first is the default. */
 private val DROP_PROPS = listOf(
-    PropSpec(asset = "models/smeg_toaster.glb", label = "SMEG toaster", scaleUnits = 0.30f),
-    PropSpec(asset = "models/air_jordan_1.glb", label = "Air Jordan 1", scaleUnits = 0.33f),
-    PropSpec(asset = "models/canon_at1.glb", label = "Canon AT-1", scaleUnits = 0.14f),
+    PropSpec(asset = "models/wishbone_chair.glb", label = "Dining chair", scaleUnits = 0.74f),
+    PropSpec(asset = "models/rivet_aiden_armchair.glb", label = "Armchair", scaleUnits = 0.93f),
+    PropSpec(asset = "models/rivet_arc_floor_lamp.glb", label = "Floor lamp", scaleUnits = 1.93f),
 )
 
 /**
@@ -259,8 +259,8 @@ private class AnswerPanel(
  * is shown in an overlay card. Fully offline — the frame never leaves the device.
  *
  * Long-press a surface to drop a virtual prop into the room: because the capture reads the
- * AR view itself, the on-device model *sees the augmented scene* — tap the toaster you just
- * placed and Nano describes a SMEG toaster that only exists in AR. That is the demo's whole point,
+ * AR view itself, the on-device model *sees the augmented scene* — tap the chair you just
+ * placed and Nano describes a dining chair that only exists in AR. That is the demo's whole point,
  * which is why a tap on a node is never swallowed (#3187).
  *
  * **The screen is one explicit state machine** ([AskFlow], plain Kotlin, JVM-tested):
@@ -312,9 +312,10 @@ private class AnswerPanel(
  *    rather than the end of it — still no `RECORD_AUDIO`, by design.
  *  - **Drop-3D mode** — long-press now drops whichever [PropSpec] is selected in the picker
  *    (`DROP_PROPS`). Since 2026-11-09 the picker offers real products bundled in the APK (a
- *    SMEG toaster, a Nike Air Jordan 1, a Canon AT-1) instead of the Shiba, the Fox and the
- *    Toy Car: "what is this and how much does it cost?" has an answer for a real product, and
- *    none for a sample asset.
+ *    dining chair, an armchair, a floor lamp) instead of the Shiba, the Fox and the Toy Car:
+ *    "what is this and how much does it cost?" has an answer for a real product, and none for
+ *    a sample asset. Unbranded ones since #5247: the SMEG toaster, Nike Air Jordan 1 and Canon
+ *    AT-1 it first offered put third-party trademarks on the demo's own screen.
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {

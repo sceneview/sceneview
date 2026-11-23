@@ -29,7 +29,6 @@ import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.demo.common.LocalMotionSensorSilent
 import io.github.sceneview.demo.common.CatalogueProductPill
-import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.DemoScaffold
@@ -41,21 +40,24 @@ import io.github.sceneview.demo.common.placement.coachStackSlot
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.LocalDemoChromeTopInset
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.rememberCatalogueProduct
+import io.github.sceneview.demo.common.rememberBundledSubject
+import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 
 /**
- * The additive automatic-placement convenience API, placing a real product at its real size:
- * the KitchenAid stand mixer from the catalogue (#4560), on a table or on the floor.
+ * The additive automatic-placement convenience API, placing a real object at its real size:
+ * the bundled motorcycle helmet (about 30 cm), on a table or on the floor. It replaced the
+ * KitchenAid stand mixer, whose lettering put a third-party trademark on the demo's own screen
+ * (#5247).
  */
 @Composable
 fun PlacementSceneDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val product = rememberCatalogueProduct(modelLoader, CatalogueProducts.KITCHENAID_STAND_MIXER)
+    val product = rememberBundledSubject(modelLoader, DemoMath.HELMET_ASSET, HELMET_SIZE_METRES)
     val state = rememberAutoPlacementState()
     // AutoPlacementScene draws the coaching card itself (coaching = true, the default); this
     // only tells the demo when to keep its own pill quiet, from the same tracking reason.
@@ -125,8 +127,8 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 onTrackingFailureChanged = { trackingFailure = it },
             ) { placement ->
                 product.instance?.let {
-                    // Real size, not the API's 0.3 m preview: a mixer reads as a mixer next to the
-                    // user's own kitchen counter.
+                    // Its own real size (about 30 cm), so it reads as a helmet next to the
+                    // user's own table or floor.
                     AutoPlacementModel(placement, state, it, scaleToUnits = product.realSizeMetres)
                 }
             }
@@ -171,3 +173,6 @@ internal fun autoPlacementRecoveryCardShown(
     availability: ARCoreAvailability?,
     phase: PlacementPhase,
 ): Boolean = cameraDenied || availability != null || phase == PlacementPhase.CAMERA_ERROR
+
+/** The motorcycle helmet's real height: an open-face helmet is about 30 cm. */
+private const val HELMET_SIZE_METRES = 0.30f

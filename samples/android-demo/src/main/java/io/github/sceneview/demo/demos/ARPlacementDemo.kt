@@ -100,7 +100,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * ## What this file still contributes over the AR View tab
  *
- *  - **A richer catalogue** — the six bundled models of [BUNDLED_PLACEMENT_MODELS] plus the
+ *  - **A richer catalogue** — the four bundled models of [BUNDLED_PLACEMENT_MODELS] plus the
  *    six streamed CC-BY Sketchfab rows of `SampleAssets.byCategory["ar_placement"]` (#1152).
  *  - **The asset-source chip**, reporting where the *armed* row's bytes came from (#2953).
  *  - **The QA tracking-failure shim** ([ForceTrackingFailureMenu], #1881).
