@@ -87,9 +87,9 @@ Model Viewer showed on the app's first screen.
 so it may not appear on a store listing. The Model Viewer now opens on the
 CC-BY 4.0 Phoenix Bird. The 4.69.0 captures removed it from every Android
 listing slot: phone slots 4 and 6 now show the CC0 Flight Helmet, and the
-tablet classes dropped the generated `ar-tablet` slot 1 (its `store.json` prompt
-and `refs/damaged_helmet.webp` reference must move to a CC-BY subject before it
-can return). No tablet AVD is needed any more: the phone AVD with a `wm size`
+tablet classes dropped the generated `ar-tablet` slot 1. Its `store.json` prompt
+now names the CC-BY 4.0 motorcycle helmet (`refs/moto_helmet.webp`, #4951), but
+no slot has been regenerated from it yet. No tablet AVD is needed any more: the phone AVD with a `wm size`
 override renders the app's tablet layout.
 
 Why generated: a real AR capture needs a device camera. ARCore's emulator
