@@ -75,7 +75,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.7",
+    "@biomejs/biome": "2.6.8",
     "@types/node": "^26.6.2",
     "tsx": "^4.0.0",
     "typescript": "^7.0.2",
