@@ -170,13 +170,3 @@ internal class StreetscapeSessionState<S, G> : DemoSessionState() {
         geometries.clear()
     }
 }
-
-/** Feature demos must also forget the placement adapter's anchor and cached planes. */
-internal class FeaturePlacementSessionState<P, T> : DemoSessionState() {
-    var placement by mutableStateOf<P?>(null)
-    var planes by mutableStateOf<List<T>>(emptyList())
-    override fun clear() {
-        placement = null
-        planes = emptyList()
-    }
-}

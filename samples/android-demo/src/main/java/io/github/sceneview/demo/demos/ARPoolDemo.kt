@@ -51,6 +51,8 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.AutoPlacementNode
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.ar.AutoPlacementState
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.camera.ARCameraStream
@@ -67,7 +69,6 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.QaCameraBackdrop
-import io.github.sceneview.demo.common.placement.FeaturePlacementScene
 import io.github.sceneview.demo.common.placement.PLACEMENT_GESTURE_HINT_MS
 import io.github.sceneview.demo.common.placement.PlacementActionCard
 import io.github.sceneview.demo.common.placement.PlacementCard
@@ -300,10 +301,13 @@ private fun PoolSession(choices: PoolChoices, onBack: () -> Unit, onRestart: () 
             PoolPreviewScene(engine, modelLoader, materialLoader, spec, materials, night)
             return@DemoScaffold
         }
-        FeaturePlacementScene(
+        AutoPlacementScene(
             assetReady = true,
+            // This screen draws the coaching below, silent behind its cards.
+            coaching = false,
             state = state, engine = engine, modelLoader = modelLoader, materialLoader = materialLoader,
             modifier = Modifier.fillMaxSize(), cameraStream = stream, playbackDataset = playback,
+            lifecycle = rememberHostLifecycle(),
             sessionConfiguration = { _, config ->
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
             },
@@ -315,11 +319,9 @@ private fun PoolSession(choices: PoolChoices, onBack: () -> Unit, onRestart: () 
             onSessionFailed = { cameraFailed = true },
             onARCoreAvailability = { availability = it },
             onTrackingFailureChanged = { trackingFailure = it },
-        ) { placement ->
-            placement?.let { result ->
-                AutoPlacementNode(result, state, onInvalidMove = { invalidMove = it }) { opacity ->
-                    PoolNodes(spec, materials, night, opacity, poolScale)
-                }
+        ) { result ->
+            AutoPlacementNode(result, state, onInvalidMove = { invalidMove = it }) { opacity ->
+                PoolNodes(spec, materials, night, opacity, poolScale)
             }
         }
         // Silent while a card explains that AR could not start (#3986).

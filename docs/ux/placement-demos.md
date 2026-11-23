@@ -5,10 +5,10 @@ local Cloud Anchor setup use the same automatic placement policy as AR Placement
 A loaded subject receives the first usable horizontal plane; empty-space taps do
 not place anything. Reset arms a new placement without restarting the camera.
 
-Android feature sessions use the app's `FeaturePlacementScene` adapter because
-these demos require ARCore session and camera-stream configuration hooks. It
-consumes the SDK's `AutoPlacementState`, `findAutoPlacementSurface` and
-`AutoPlacementModel`; it does not add a public SDK API or another placement policy.
+Android feature sessions run on the SDK's `AutoPlacementScene` itself, through its
+ARCore hooks (`cameraStream`, `sessionConfiguration`, `onSessionCreated`,
+`onSessionUpdated`, `onSessionFailure`); Cloud Anchors renders its resolved anchor
+in `sceneContent`. There is no app-side copy of the placement policy.
 iOS feature sessions use `ARPlacementExperience` and `ARPlacementController`.
 
 Both occlusion comparisons use the bundled Damaged Helmet with a 0.3 m longest

@@ -234,18 +234,6 @@ class DemoClosedSessionStreetscapeTest {
     }
 }
 
-class DemoClosedSessionFeaturePlacementTest {
-    @Test fun `feature adapter forgets native planes and placement before retry`() {
-        assertSessionLifecycle(FeaturePlacementSessionState<SessionHandle, SessionHandle>(),
-            { placement = it; planes = listOf(it) }, { listOfNotNull(placement) + planes })
-        val source = File("src/main/java/io/github/sceneview/demo/common/placement/FeaturePlacementScene.kt").readText()
-        assertTrue(source.contains("sessionState.onFailure(failure)"))
-        assertTrue(source.contains("state.resetPlacement(SystemClock.uptimeMillis())"))
-        assertTrue(source.contains("onDispose {\n            sessionState.placement?.anchor?.detach()"))
-        assertFalse(source.contains("currentPlacement"))
-    }
-}
-
 class DemoClosedSessionFatalFailureClassificationTest {
     @Test fun `typed fatal failure invalidates session references`() {
         val state = PortraitSessionState<Any>().apply { latestFrame = Any() }

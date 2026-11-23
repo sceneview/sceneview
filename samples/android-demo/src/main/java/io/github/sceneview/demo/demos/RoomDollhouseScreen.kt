@@ -58,6 +58,7 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementNode
 import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.ar.AutoPlacementState
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.rememberArGuidanceState
@@ -464,6 +465,7 @@ internal fun RoomDollhouseScreen(
                     assetReady = armed,
                     modifier = Modifier.fillMaxSize(),
                     state = state,
+                    lifecycle = rememberHostLifecycle(),
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
