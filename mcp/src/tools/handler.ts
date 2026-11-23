@@ -351,6 +351,8 @@ export async function dispatchTool(
               text: [
                 `## SceneViewSwift — iOS/macOS/visionOS 3D Setup`,
                 ``,
+                `> **End of life:** SceneViewSwift 4.68.0 (November 2026) is the last release. No new releases; published versions stay installable. Do not start new code on it. See https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md`,
+                ``,
                 `### 1. Add SPM Dependency`,
                 ``,
                 `In Xcode: **File → Add Package Dependencies** → paste:`,
@@ -435,6 +437,8 @@ export async function dispatchTool(
               type: "text",
               text: [
                 `## SceneViewSwift — iOS AR Setup`,
+                ``,
+                `> **End of life:** SceneViewSwift 4.68.0 (November 2026) is the last release. No new releases; published versions stay installable. Do not start new code on it. See https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md`,
                 ``,
                 `### 1. Add SPM Dependency`,
                 ``,
