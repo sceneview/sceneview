@@ -1147,9 +1147,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
 ## 16 KB page-size alignment (API 35+, required for Play Store)
 
-Google Play has enforced 16 KB ELF page-size alignment for all APKs targeting Android 15+
-(API 35) since January 2026. SceneView adds the AGP flag to its own library modules; your
-**app-level** `build.gradle` / `build.gradle.kts` must also opt in:
+Google Play requires apps that target Android 15 (API 35) or higher to support 16 KB memory
+page sizes on 64-bit devices. **From February 1, 2027**, Play blocks the release of an app update
+that does not ([Android developer guide](https://developer.android.com/guide/practices/page-sizes)).
+
+SceneView's native dependencies are already built for it: Filament (1.77.3) and ARCore (1.57.0)
+ship 16 KB-aligned `.so` files. SceneView adds the AGP flag to its own library modules; your
+**app-level** `build.gradle` / `build.gradle.kts` should opt in too:
 
 ```groovy
 // app/build.gradle (Groovy DSL)
@@ -1167,7 +1171,11 @@ android {
 }
 ```
 
-This rewrites ELF `PT_LOAD` alignment headers for **all** native `.so` files packaged
-into the APK/AAB at build time, including the Filament and ARCore prebuilt libraries.
-Without this flag, Play Store will reject the upload with:
-`Artifact does not support 16KB page size`.
+The flag handles packaging: it aligns the native libraries stored uncompressed in the APK/AAB.
+It cannot fix a library whose ELF `LOAD` segments were linked for 4 KB pages. Any other prebuilt
+`.so` your app ships must be rebuilt (NDK r28+, or `-Wl,-z,max-page-size=16384`) or replaced by a
+16 KB build from its vendor. Sceneform 1.23 and older are such libraries: they bundle Filament
+1.21 and an old ARCore.
+
+Check the result with Android Studio's APK Analyzer (its *Alignment* column), Google's
+`check_elf_alignment.sh`, or `zipalign -c -P 16 -v 4 app.apk`.
