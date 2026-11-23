@@ -23,6 +23,7 @@ FILES = (
     ".github/copilot-instructions.md",
     "pro/gpt-store/gpt-instructions.md",
     "agents/OPENAI-PLUGIN.md",
+    "context7.json",
 )
 COORDINATE = re.compile(r"(io\.github\.sceneview:[\w.-]+:)([0-9][\w.+-]*)")
 VERSION = re.search(r"^VERSION_NAME=(.+)$", (REPO / "gradle.properties").read_text(), re.M)[1]
@@ -38,6 +39,15 @@ class AgentRuleVersionsTest(unittest.TestCase):
                 for match in matches:
                     line = text.count("\n", 0, match.start()) + 1
                     self.assertEqual(match[2], VERSION, f"{name}:{line}: {match[0]}")
+
+    def test_context7_config_is_valid(self):
+        # Context7 rejects the file on invalid JSON, and truncates or drops
+        # rules over 255 characters. Leave room for a longer version string.
+        import json
+        config = json.loads((REPO / "context7.json").read_text())
+        for rule in config["rules"]:
+            with self.subTest(rule=rule[:40]):
+                self.assertLessEqual(len(rule) + 20, 255, rule)
 
     def test_check_fix_and_future_release(self):
         with tempfile.TemporaryDirectory(prefix="sceneview-agent-versions-") as tmp:
