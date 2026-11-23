@@ -1516,14 +1516,15 @@ private class AutomaticAnchorNode(
                 ?.let { (hit, kind) -> hitCandidate(frame, hit, kind, wallNormalOf(hit)) }
                 ?: slideAlongWall(e)
         } else {
-            hits.firstOrNull {
+            // Every surface under the finger, nearest first: the grab offset can carry the object
+            // past a table's edge while the finger is still on it, onto the floor hit behind.
+            hits.asSequence().filter {
                 val plane = it.trackable as? Plane
                 plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
                     plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
                     it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..MAX_DRAG_DISTANCE_M
-            }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
-                // The grab offset can carry the object past the edge while the finger is still in.
-                ?.takeIf { it.accepts(it.pose) && visiblePlacementPoint(frame, it.pose, MAX_DRAG_DISTANCE_M) }
+            }.map { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+                .firstOrNull { it.accepts(it.pose) && visiblePlacementPoint(frame, it.pose, dragDistanceLimit(it.pose)) }
                 // Off every tracked polygon: keep sliding on the floor at the object's height
                 // instead of refusing the move (model-viewer's WebXR drag, ARMV). A table top
                 // ends at its edge: an object never floats past it.
@@ -1531,7 +1532,7 @@ private class AutomaticAnchorNode(
                     ?.takeIf { standsOnFloor(pose.ty(), state.floorHeight) }
         }
         if (candidate == null || !candidate.accepts(candidate.pose) ||
-            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit())
+            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
         ) {
             invalidMove(true)
             return false
@@ -1647,9 +1648,10 @@ private class AutomaticAnchorNode(
         )
     }
 
-    /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall keeps the placement range. */
-    private fun dragDistanceLimit() =
-        if (placement.isWall) UsableSurfacePolicy.MAX_DISTANCE_M else MAX_DRAG_DISTANCE_M
+    /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall or a table keeps the placement range. */
+    private fun dragDistanceLimit(target: Pose) =
+        if (!placement.isWall && standsOnFloor(target.ty(), state.floorHeight)) MAX_DRAG_DISTANCE_M
+        else UsableSurfacePolicy.MAX_DISTANCE_M
 
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
@@ -1665,7 +1667,7 @@ private class AutomaticAnchorNode(
         val candidate = pending ?: return false
         val frame = frame ?: return false
         if (trackingState != TrackingState.TRACKING ||
-            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit())
+            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
         ) return false
         val next = candidate.createAnchor() ?: return false
         anchor = next.anchor
