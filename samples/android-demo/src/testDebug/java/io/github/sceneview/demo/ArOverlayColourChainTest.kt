@@ -49,7 +49,8 @@ class ArOverlayColourChainTest {
         )
         assertTrue(
             "the Filmic branch converts, inverts, converts back and clips as cameraToBuffer does",
-            include.contains("vec3 working = VIEW_INVERSE_REC709_TO_REC2020 * linear;") &&
+            include.contains("vec3 linear = viewInverseSrgbToLinear(srgb);") &&
+                include.contains("vec3 working = VIEW_INVERSE_REC709_TO_REC2020 * linear;") &&
                 include.contains("return max(VIEW_INVERSE_REC2020_TO_REC709 * viewInverseFilmic(working), vec3(0.0));"),
         )
     }
@@ -97,6 +98,8 @@ class ArOverlayColourChainTest {
             for (camera in listOf(BRIGHT_WALL, MID_GREY, DARK_CORNER)) {
                 val out = tinted(token, cameraToBuffer(grey(camera)))
                 val where = "$token over $camera"
+                // HSL saturation, which runs high near white: the ground blue over a bright wall
+                // passes at 0.92 as `#A1DDFB`, a pastel (HSV ~36 %). Its design question is #5241.
                 assertTrue("$where: saturation ${saturation(out)}", saturation(out) > 0.8f)
                 assertTrue("$where: hue ${hue(out)} vs ${hue(token.channels())}", hueGap(out, token) < MAX_HUE_DRIFT)
             }
@@ -183,8 +186,8 @@ class ArOverlayColourChainTest {
 
         /**
          * A white wall pulls the orange towards amber by ~21° and the blue towards cyan by ~11°:
-         * still the same family, never pastel. (Graded per channel in Rec.709, the model put the
-         * blue's drift at ~22°.)
+         * still the same hue family. (Graded per channel in Rec.709, the model put the blue's drift
+         * at ~22°.) The blue also lightens there, to `#A1DDFB`: tracked in #5241.
          */
         const val MAX_HUE_DRIFT = 25f
 
@@ -195,11 +198,12 @@ class ArOverlayColourChainTest {
         const val GAIN = 2.5f
 
         /**
-         * Hues, in degrees, that read as orange: below is red, above is amber and yellow. Graded in
-         * Rec.2020, as Filament does, the orange over a black camera pixel shows as `#7D2100`, 15.7°
-         * (17.2° in the per-channel Rec.709 model this test used to grade with): a dark burnt orange,
-         * still clear of red (0–10°).
+         * Hues, in degrees, that read as orange: below is red, above is amber and yellow. The lowest
+         * case is the orange over a black camera pixel, `#7D2100` at 15.7°: a dark burnt orange. It
+         * read 17.2° only because this test used to grade per channel in Rec.709; Filament grades
+         * in Rec.2020, and nothing on screen moved. 12° keeps a round margin under it, still clear
+         * of red (0–10°).
          */
-        val ORANGE_HUES = 15f..50f
+        val ORANGE_HUES = 12f..50f
     }
 }
