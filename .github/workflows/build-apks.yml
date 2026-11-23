@@ -30,7 +30,7 @@ on:
         # `gh workflow run build-apks.yml --ref <branch> -f demo_id_suffix=.floordrag`,
         # then `gh run download <run> -n sample-apks`. The suffix makes the demo a
         # separate app, installed next to the Play Store one and the `.qa` one
-        # without replacing either. Empty (the default and every tag build):
+        # without replacing either (install it with `adb install`). Empty (the default and every tag build):
         # the plain public demo, as before.
         description: "Application id suffix for a side-by-side demo APK, e.g. .floordrag (empty: plain demo)"
         required: false
@@ -128,6 +128,11 @@ jobs:
               echo "::error::demo_id_suffix must look like .floordrag (a dot, then lowercase letters, digits or _)."
               exit 1
             fi
+            if [ "$DEMO_ID_SUFFIX" = ".qa" ]; then
+              # A CI-signed .qa cannot update the locally built one on a phone.
+              echo "::error::.qa is the local QA app; pick another suffix, e.g. .floordrag."
+              exit 1
+            fi
             # The demo alone, as its own app next to the store and .qa installs.
             ./gradlew :samples:android-demo:assembleDebug \
               "-PdemoApplicationIdSuffix=$DEMO_ID_SUFFIX" --console=plain
@@ -140,12 +145,17 @@ jobs:
             --console=plain
 
       - name: Collect APKs
+        env:
+          DEMO_ID_SUFFIX: ${{ inputs.demo_id_suffix }}
         run: |
           mkdir -p dist
           for sample in android-demo android-tv-demo; do
-            apk=$(find "samples/$sample/build/outputs/apk/debug" -name "*.apk" | head -1)
+            out="samples/$sample/build/outputs/apk/debug"
+            [ -d "$out" ] || continue # A suffixed proof build skips the TV demo.
+            apk=$(find "$out" -name "*.apk" | head -1)
             if [ -n "$apk" ]; then
-              cp "$apk" "dist/sceneview-${sample}.apk"
+              # A proof APK is never named like the public demo.
+              cp "$apk" "dist/sceneview-${sample}${DEMO_ID_SUFFIX}.apk"
             fi
           done
 
