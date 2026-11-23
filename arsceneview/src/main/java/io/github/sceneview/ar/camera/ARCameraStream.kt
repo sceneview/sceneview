@@ -372,7 +372,7 @@ open class ARCameraStream(
                 setParameter(kFogEnabledParameter, 1f)
                 // Compose Color is sRGB; the shader does its haze blend in the
                 // pre-tone-mapped space the shader decodes into with
-                // `Inverse_Tonemap_Filmic(srgbToLinearExact(...))` (#3338).
+                // `inverseViewTonemapSRGB(camera, true)` (#3338, #5219).
                 // Use the linear components straight (`red`/`green`/`blue` on
                 // Compose Color are already in the colour-space's component
                 // domain) — matches how `FogNode` writes to `fogOptions.color`.

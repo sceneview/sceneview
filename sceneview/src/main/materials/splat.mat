@@ -49,7 +49,8 @@
 //   * Colour: splat colours are display-referred (the trainer fitted them to sRGB photos). The
 //     View applies its tone mapper (PBR Neutral by default, Filmic in AR) then the exact sRGB
 //     OETF, so the colour is pre-distorted by the exact inverse (exact sRGB EOTF, then the
-//     inverse of that tone mapper) — the same round trip as camera_stream_flat.mat (#3338).
+//     inverse of that tone mapper in the Rec.2020 space Filament grades in) — the round trip
+//     of include/view_tone_map_inverse.fs, shared with camera_stream_flat.mat (#3338, #5219).
 //     Without it a 0.5 grey displays at ~0.81 under Filmic: the over-bright, washed-out look of
 //     the P1 billboard.
 //   * blending:transparent composites ONE*src + (1-a)*dst and does NOT premultiply unlit
@@ -113,79 +114,10 @@ material {
     "depthCulling" : true
 }
 vertex {
-    // Exact sRGB EOTF (IEC 61966-2-1) — see camera_stream_flat.mat, #3338.
-    float3 splatSrgbToLinear(float3 srgb) {
-        float3 s = clamp(srgb, 0.0, 1.0);
-        return mix(s * (1.0 / 12.92),
-                   pow((s + 0.055) * (1.0 / 1.055), float3(2.4)),
-                   step(float3(0.04045), s));
-    }
-
-    // Exact analytic inverse of ToneMapper.Filmic (Filament's Inverse_Tonemap_Filmic, inlined
-    // so it is available in the vertex stage — the colour is per splat, not per fragment).
-    float3 splatInverseFilmic(float3 x) {
-        return (0.03 - 0.59 * x - sqrt(0.0009 + 1.3702 * x - 1.0127 * x * x)) / (-5.02 + 4.86 * x);
-    }
-
-    // ---- Inverse of ToneMapper.PBRNeutralToneMapper (Khronos PBR Neutral, #4595) ----
-    // Shared verbatim by splat.mat, video_texture*.mat and view_texture_*.mat
-    // (ToneMapInverseContractTest checks they stay identical).
-
-    // The forward curve's highlight compression at scene peak p: (new peak, desaturation).
-    vec2 pbrNeutralCompression(float p) {
-        float np = 1.0 - 0.0576 / (p - 0.52);
-        return vec2(np, 1.0 - 1.0 / (0.15 * (p - np) + 1.0));
-    }
-
-    // Undoes the toe offset the forward curve subtracts from every channel.
-    vec3 inversePbrNeutralToe(vec3 c) {
-        float m = min(c.r, min(c.g, c.b));
-        float offset = m < 0.04 ? sqrt(max(m, 0.0) / 6.25) - m : 0.04;
-        return c + offset;
-    }
-
-    // Display-linear colour -> scene-linear colour that PBR Neutral maps back onto it.
-    // Exact for every colour the curve can produce. The peak is capped at 0.99143 (252.8/255),
-    // whose inverse is 7.24, the value Filmic's inverse gives white: PBR Neutral's inverse is
-    // unbounded as the peak nears 1. A bright saturated colour (#FF0000) has no preimage, since
-    // the curve desaturates highlights: the scene peak is then bisected so the peak shortfall
-    // equals the unavoidable desaturation lift in display (gamma) space, red -> (235, 13, 13)
-    // instead of a pink (255, 212, 212).
-    vec3 inversePbrNeutral(vec3 o) {
-        float peak = max(o.r, max(o.g, o.b));
-        if (peak < 0.76) {
-            return inversePbrNeutralToe(o);
-        }
-        float np = min(peak, 0.99143);
-        float p = 0.0576 / (1.0 - np) + 0.52;
-        vec2 ng = pbrNeutralCompression(p);
-        vec3 c = (o - ng.x * ng.y) / (1.0 - ng.y) * (p / ng.x);
-        if (min(c.r, min(c.g, c.b)) >= -1e-4) {
-            return inversePbrNeutralToe(c);
-        }
-        float omin = max(min(o.r, min(o.g, o.b)), 0.0);
-        float encPeak = pow(peak, 1.0 / 2.2);
-        float encMin = pow(omin, 1.0 / 2.2);
-        float lo = 0.76;
-        float hi = p;
-        for (int i = 0; i < 12; i++) {
-            float mid = 0.5 * (lo + hi);
-            ng = pbrNeutralCompression(mid);
-            if (encPeak - pow(ng.x, 1.0 / 2.2) > pow(omin + ng.x * ng.y, 1.0 / 2.2) - encMin) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        p = 0.5 * (lo + hi);
-        ng = pbrNeutralCompression(p);
-        vec3 ratio = clamp((o - ng.x * ng.y) / (ng.x * (1.0 - ng.y)), 0.0, 1.0);
-        return inversePbrNeutralToe(ratio * p);
-    }
-
-    float3 splatInversePbrNeutral(float3 o) {
-        return inversePbrNeutral(o);
-    }
+    // The exact inverse of the View's tone mapper and OETF, in the Rec.2020 space Filament
+    // grades in, shared by every pass-through material (#5219). Plain GLSL, so it runs here in
+    // the vertex stage: the colour is per splat, not per fragment.
+    #include "include/view_tone_map_inverse.fs"
 
     void materialVertex(inout MaterialVertexInputs material) {
         int tw = materialParams.texWidth;
@@ -271,10 +203,7 @@ vertex {
 
         // Custom material `variables` are float4 interpolants: the corner in σ units.
         material.quadUv = float4(corner * sigmaUv, 0.0, 0.0);
-        float3 displayLinear = splatSrgbToLinear(col.rgb);
-        float3 sceneLinear = materialParams.inverseFilmic
-                ? splatInverseFilmic(displayLinear)
-                : splatInversePbrNeutral(displayLinear);
+        float3 sceneLinear = inverseViewTonemapSRGB(col.rgb, materialParams.inverseFilmic);
         material.splatColor = float4(sceneLinear, alpha);
     }
 }

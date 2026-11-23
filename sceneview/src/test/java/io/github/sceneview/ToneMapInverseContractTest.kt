@@ -19,8 +19,11 @@ import kotlin.math.sqrt
  * `createView` grades with PBR Neutral and `createARView` with Filmic. The video and view-texture
  * materials used to call Filament's `inverseTonemapSRGB()` unconditionally, which only inverts
  * Filmic, so once the default became PBR Neutral a ViewNode card or a VideoNode lost its source
- * colours. They now pick the inverse from an `inverseFilmic` parameter the node sets from its view,
- * and share the splat's PBR Neutral inverse.
+ * colours. They now pick the inverse from an `inverseFilmic` parameter the node sets from its view.
+ *
+ * Filament grades in Rec.2020, so the inverse runs there too (#5102, then #5219 for every material
+ * but the overlay). It lives in one file, `include/view_tone_map_inverse.fs`, that each of these
+ * materials includes; the AR camera-stream materials include it as well (`CameraStreamColorContractTest`).
  */
 class ToneMapInverseContractTest {
 
@@ -33,6 +36,9 @@ class ToneMapInverseContractTest {
     )
 
     private fun source(name: String) = File("src/main/materials/$name.mat").readText()
+
+    /** The inverse every pass-through material includes (#5219). */
+    private val shared by lazy { File("src/main/materials/include/view_tone_map_inverse.fs").readText() }
 
     // ---- Forward Khronos PBR Neutral, and a line-for-line port of the shared GLSL inverse ----
 
@@ -98,19 +104,48 @@ class ToneMapInverseContractTest {
                 "$name still assigns inverseTonemapSRGB() unconditionally",
                 Regex("=\\s*inverseTonemapSRGB\\(").containsMatchIn(mat)
             )
-            assertTrue("$name uses the view-matched inverse", mat.contains("= inverseViewTonemapSRGB("))
+            assertTrue(
+                "$name uses the view-matched inverse",
+                mat.contains("= inverseViewTonemapSRGB(") && mat.contains(", materialParams.inverseFilmic);")
+            )
         }
     }
 
     @Test
-    fun `all six materials share one PBR Neutral inverse`() {
-        val block = Regex(
-            "    // ---- Inverse of ToneMapper.PBRNeutralToneMapper[\\s\\S]*?" +
-                "\\n    vec3 inversePbrNeutral\\(vec3 o\\) \\{[\\s\\S]*?\\n    }\\n"
+    fun `every pass-through material includes the one shared inverse`() {
+        (viewMatched + "splat").forEach { name ->
+            val mat = source(name)
+            assertTrue("$name includes the shared inverse", mat.contains("#include \"include/view_tone_map_inverse.fs\""))
+            // A copy left beside the include would be a second definition, or a drift waiting to happen.
+            listOf("vec3 inversePbrNeutral(", "vec2 pbrNeutralCompression(", "const mat3 ", "pow((s + 0.055)").forEach {
+                assertFalse("$name defines its own `$it`", mat.contains(it))
+            }
+        }
+        listOf(
+            "vec3 viewInverseSrgbToLinear(vec3 srgb)",
+            "vec3 inversePbrNeutral(vec3 o)",
+            "vec3 viewInverseFilmic(vec3 x)",
+            "vec3 inverseViewTonemapSRGB(vec3 srgb, bool filmic)",
+        ).forEach { assertTrue("the include defines $it", shared.contains(it)) }
+        // No Filament built-in: splat.mat includes it in a vertex block, where they do not exist.
+        listOf("Inverse_Tonemap_Filmic", "inverseTonemapSRGB(", "materialParams").forEach {
+            assertFalse("the include calls `$it`", shared.lines().filterNot { l -> l.trimStart().startsWith("//") }
+                .any { l -> l.contains(it) })
+        }
+    }
+
+    @Test
+    fun `the shared inverse decodes, converts and clips as this model does`() {
+        val body = Regex("vec3 inverseViewTonemapSRGB\\(vec3 srgb, bool filmic\\) \\{([\\s\\S]*?)\\n}").find(shared)!!
+            .groupValues[1].lines().map { it.trim() }.filter { it.isNotEmpty() }
+        assertEquals(
+            listOf(
+                "vec3 working = VIEW_INVERSE_REC709_TO_REC2020 * viewInverseSrgbToLinear(srgb);",
+                "vec3 scene = filmic ? viewInverseFilmic(working) : inversePbrNeutral(working);",
+                "return max(VIEW_INVERSE_REC2020_TO_REC709 * scene, vec3(0.0));",
+            ),
+            body
         )
-        val bodies = (viewMatched + "splat").map { block.find(source(it))?.value }
-        assertTrue("every material inlines the block", bodies.all { it != null })
-        assertEquals("the inlined blocks are identical", 1, bodies.toSet().size)
     }
 
     // ---- Colour behaviour of that inverse ----
@@ -171,7 +206,7 @@ class ToneMapInverseContractTest {
     // ---- Scene Semantics overlay palette (#5102) ----
 
     // Filament's ToneMapper.Filmic (Narkowicz ACES fit) and its exact analytic inverse,
-    // Inverse_Tonemap_Filmic, which semantics_overlay.mat calls for an AR view.
+    // Inverse_Tonemap_Filmic, which the shared include spells out as viewInverseFilmic.
     private fun filmic(x: Double) = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)
     private fun inverseFilmic(x: Double) =
         (0.03 - 0.59 * x - sqrt(0.0009 + 1.3702 * x - 1.0127 * x * x)) / (-5.02 + 4.86 * x)
@@ -200,20 +235,20 @@ class ToneMapInverseContractTest {
         doubleArrayOf(-0.0181508, -0.1005789, 1.1187297),
     )
 
-    /** A `const mat3 <name> = mat3(...)` of `semantics_overlay.mat`, as the rows it multiplies by. */
+    /** A `const mat3 <name> = mat3(...)` of the shared include, as the rows it multiplies by. */
     private fun shaderMatrix(name: String): Array<DoubleArray> {
-        val body = Regex("const mat3 $name = mat3\\(([^)]*)\\);").find(source("semantics_overlay"))
-            ?.groupValues?.get(1) ?: error("semantics_overlay.mat declares no mat3 $name")
+        val body = Regex("const mat3 $name = mat3\\(([^)]*)\\);").find(shared)
+            ?.groupValues?.get(1) ?: error("view_tone_map_inverse.fs declares no mat3 $name")
         val columnMajor = body.split(',').map { it.trim().toDouble() }
         assertEquals("$name has 9 entries", 9, columnMajor.size)
         return Array(3) { row -> DoubleArray(3) { col -> columnMajor[col * 3 + row] } }
     }
 
     @Test
-    fun `semantics overlay converts with the matrices this model grades with`() {
+    fun `the shared inverse converts with the matrices this model grades with`() {
         for ((name, rows) in listOf(
-            "SEMANTICS_REC709_TO_REC2020" to rec709ToRec2020,
-            "SEMANTICS_REC2020_TO_REC709" to rec2020ToRec709,
+            "VIEW_INVERSE_REC709_TO_REC2020" to rec709ToRec2020,
+            "VIEW_INVERSE_REC2020_TO_REC709" to rec2020ToRec709,
         )) {
             val shader = shaderMatrix(name)
             for (r in 0..2) for (c in 0..2) assertEquals("$name[$r][$c]", rows[r][c], shader[r][c], 0.0)
@@ -233,7 +268,7 @@ class ToneMapInverseContractTest {
     private fun graded(scene: DoubleArray, curve: (DoubleArray) -> DoubleArray) =
         bytes(rec2020ToRec709.times(curve(rec709ToRec2020.times(scene))))
 
-    /** `inverseViewTonemapSRGB` of `semantics_overlay.mat`, line for line. */
+    /** `inverseViewTonemapSRGB` of `include/view_tone_map_inverse.fs`, line for line. */
     private fun overlayScene(legend: IntArray, inverse: (DoubleArray) -> DoubleArray): DoubleArray {
         val working = rec709ToRec2020.times(DoubleArray(3) { srgbToLinear(legend[it] / 255.0) })
         return rec2020ToRec709.times(inverse(working)).map { max(it, 0.0) }.toDoubleArray()
@@ -290,5 +325,52 @@ class ToneMapInverseContractTest {
         val sky = semanticsLegend()[0]
         val asLinear = graded(DoubleArray(3) { sky[it] / 255.0 }) { pbrNeutral(it) }
         assertTrue("SKY read as linear shows $asLinear", abs(asLinear[0] - 157) <= 3 && abs(asLinear[1] - 204) <= 3)
+    }
+
+    // ---- Every pass-through material (#5219) ----
+
+    /**
+     * A saturated chart, as a video frame, a drawn View or a camera image carries it: the Scene
+     * Semantics legend's most saturated classes, and a grey.
+     */
+    private val chart = listOf(0x66B0F5, 0xD95F57, 0x4CB050, 0x2196F2, 0xF5428C, 0x00BDD4, 0xFFC207, 0x9E75BD, 0x808080)
+        .map { rgb -> IntArray(3) { (rgb shr (16 - 8 * it)) and 0xFF } }
+
+    private fun assertChartPassesThrough(
+        view: String,
+        inverse: (DoubleArray) -> DoubleArray,
+        curve: (DoubleArray) -> DoubleArray,
+    ) {
+        chart.forEach { source ->
+            val shown = graded(overlayScene(source, inverse), curve)
+            for (c in 0..2) {
+                // A channel that would need a negative scene value is clipped at zero (a strong
+                // blue's and a cyan's red under Filmic): it lands a few steps above its source.
+                val tolerance = if (source[c] < 0x30) 16 else 1
+                assertTrue(
+                    "$view: source ${source.toList()}, shown $shown (tolerance $tolerance)",
+                    abs(shown[c] - source[c]) <= tolerance
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a saturated chart passes through unchanged in an AR view`() {
+        assertChartPassesThrough("Filmic (createARView)", { inverseFilmicCurve(it) }) { filmicCurve(it) }
+    }
+
+    @Test
+    fun `a saturated chart passes through unchanged in a 3D view`() {
+        assertChartPassesThrough("PBR Neutral (createView)", { inversePbrNeutral(it) }) { pbrNeutral(it) }
+    }
+
+    @Test
+    fun `inverted channel by channel in Rec 709, the camera sky was lighter and less saturated`() {
+        // What #5219 predicted for the AR camera feed (exact sRGB EOTF, then Inverse_Tonemap_Filmic
+        // per channel in Rec.709): a #66B0F5 sky shown at #93B2FA.
+        val sky = chart[0]
+        val shown = graded(DoubleArray(3) { inverseFilmic(srgbToLinear(sky[it] / 255.0)) }) { filmicCurve(it) }
+        assertEquals("camera sky, inverted in Rec.709", listOf(0x93, 0xB2, 0xFA), shown)
     }
 }

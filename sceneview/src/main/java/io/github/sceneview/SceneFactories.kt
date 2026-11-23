@@ -178,11 +178,15 @@ fun createView(engine: Engine): View = engine.createView().apply {
  * BT.709 RGB. To reach the framebuffer untouched, that pixel must be pre-distorted by the exact
  * inverse of everything Filament applies downstream. Two legs, both of which must cancel exactly:
  *
- *   camera sRGB → sRGB EOTF (exact) → Inverse_Tonemap_Filmic → working space
- *               → ToneMapper.Filmic → sRGB OETF (exact) → output = original camera image ✓
+ *   camera sRGB → sRGB EOTF (exact) → Rec.2020 → inverse Filmic → Rec.709 → working space
+ *               → Rec.2020 → ToneMapper.Filmic → Rec.709 → sRGB OETF (exact)
+ *               → output = original camera image ✓
  *
- * **Tone-map leg.** `Inverse_Tonemap_Filmic` is the exact analytic inverse of [ToneMapper.Filmic],
- * so the pair cancels term for term. Using [ToneMapper.Linear] here (as a previous fix for #657
+ * **Tone-map leg.** The inverse Filmic curve is the exact analytic inverse of [ToneMapper.Filmic],
+ * so the pair cancels term for term. Filament's grading applies the curve in its Rec.2020 working
+ * space, so the inverse runs there too: inverted channel by channel in Rec.709 it cancelled for
+ * greys only, and a `#66B0F5` sky showed at `#93B2FA` (#5219). The inverse is shared with the
+ * other pass-through materials, `sceneview/src/main/materials/include/view_tone_map_inverse.fs`. Using [ToneMapper.Linear] here (as a previous fix for #657
  * did) leaves the inverse-Filmic curve baked into the feed with nothing to cancel it — the camera
  * background comes out washed-out and low-contrast (issue #1434). [ToneMapper.Filmic] is the only
  * tone mapper that cancels the shader's curve, and it is also the right curve for virtual content.
