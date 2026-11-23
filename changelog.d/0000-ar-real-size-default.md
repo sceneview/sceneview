@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **`AutoPlacementModel` places the model at its real size by default.** The asset keeps its authored metres, as in AR Quick Look and Scene Viewer: a 1.8 m figure stands 1.8 m tall. Until 4.72 it was fitted into a 0.3 m preview. To keep the old size, pass `scaleToUnits = 0.3f` (or `size = PlacementSize.FitInto(0.3f)`). The binary API is unchanged, and apps built against 4.72 get the new default without recompiling: the default is evaluated inside the library.

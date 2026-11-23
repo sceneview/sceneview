@@ -681,8 +681,10 @@ fun AutoPlacementScene(
 )
 
 /**
- * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
- * default. Pass null [scaleToUnits] to retain authored units — or use the overload taking a
+ * Grounded model content for [AutoPlacementScene], at the asset's authored size by default:
+ * glTF is in metres, so a 1.8 m figure stands 1.8 m tall, as in AR Quick Look and Scene Viewer.
+ * Pass [scaleToUnits] (e.g. `0.3f`, the default up to 4.72) to fit the longest axis into that
+ * many metres instead, for assets whose units are unknown — or use the overload taking a
  * [PlacementSize], which names the choice. The model's complete bounding
  * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
  * before the grounded bounds are calculated. The model's bottom-centre rests on the contact
@@ -709,7 +711,7 @@ fun ARSceneScope.AutoPlacementModel(
     placement: AutoPlacementResult,
     state: AutoPlacementState,
     modelInstance: ModelInstance,
-    scaleToUnits: Float? = 0.3f,
+    scaleToUnits: Float? = null,
     assetRotation: Rotation = Rotation(0f),
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
