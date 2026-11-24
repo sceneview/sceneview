@@ -685,7 +685,11 @@ fun AutoPlacementScene(
  * glTF is in metres, so a 1.8 m figure stands 1.8 m tall, as in AR Quick Look and Scene Viewer.
  * Pass [scaleToUnits] (e.g. `0.3f`, the default up to 4.72) to fit the longest axis into that
  * many metres instead, for assets whose units are unknown — or use the overload taking a
- * [PlacementSize], which names the choice. The model's complete bounding
+ * [PlacementSize], which names the choice. Without [scaleToUnits], a model whose longest
+ * authored side exceeds 10 m (a file authored in centimetres reads a hundred times too large)
+ * first shows fitted into 1 m and does not report [AutoPlacementState.isAtRealWorldSize]: at
+ * that size it would stand around the phone. `size = PlacementSize.RealWorld` trusts the
+ * authored metres and never brings a model down. The model's complete bounding
  * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
  * before the grounded bounds are calculated. The model's bottom-centre rests on the contact
  * point, and the pinch scales about it. Its dimensions are published on
@@ -715,7 +719,10 @@ fun ARSceneScope.AutoPlacementModel(
     assetRotation: Rotation = Rotation(0f),
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
-) = PlacedModelContent(placement, state, modelInstance, scaleToUnits, assetRotation, onInvalidMove, onScaleChanged)
+) = PlacedModelContent(
+    placement, state, modelInstance, scaleToUnits, trustsAuthoredSize = false, assetRotation, onInvalidMove,
+    onScaleChanged,
+)
 
 /**
  * Grounded model content for [AutoPlacementScene] at an explicit [size]:
@@ -751,7 +758,8 @@ fun ARSceneScope.AutoPlacementModel(
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
 ) = PlacedModelContent(
-    placement, state, modelInstance, size.scaleToUnits, assetRotation, onInvalidMove, onScaleChanged,
+    placement, state, modelInstance, size.scaleToUnits, trustsAuthoredSize = true, assetRotation, onInvalidMove,
+    onScaleChanged,
 )
 
 @Composable
@@ -760,6 +768,7 @@ private fun ARSceneScope.PlacedModelContent(
     state: AutoPlacementState,
     modelInstance: ModelInstance,
     scaleToUnits: Float?,
+    trustsAuthoredSize: Boolean,
     assetRotation: Rotation,
     onInvalidMove: (Boolean) -> Unit,
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit,
@@ -770,8 +779,14 @@ private fun ARSceneScope.PlacedModelContent(
         // A model destroyed under the composition has nothing left to show, and building a node
         // over it (a re-key below) would throw: the pivot stays, the object leaves.
         if (modelInstance.isDestroyed) return@AutomaticPlacementPivot
-        val model = remember(modelInstance, scaleToUnits, assetRotation) {
-            io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
+        // Authored metres the caller did not vouch for, and too large to be metres (a file in
+        // centimetres): brought down, or it would stand around the phone and show nothing.
+        val authoredFit = remember(modelInstance, scaleToUnits, trustsAuthoredSize) {
+            if (scaleToUnits != null || trustsAuthoredSize) null
+            else implausibleAuthoredSizeFit(modelInstance.longestAuthoredSide())
+        }
+        val model = remember(modelInstance, scaleToUnits, authoredFit, assetRotation) {
+            io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits ?: authoredFit).apply {
                 quaternion = if (placement.isWall) {
                     Rotation(x = -90f).toQuaternion() * assetRotation.toQuaternion()
                 } else assetRotation.toQuaternion()
@@ -795,7 +810,7 @@ private fun ARSceneScope.PlacedModelContent(
             state.publishBaseSize(
                 owner = model,
                 size = placementBaseSize(model.halfExtent, model.scale, assetRotation),
-                realWorld = scaleToUnits == null,
+                realWorld = scaleToUnits == null && authoredFit == null,
             )
             onDispose { state.clearBaseSize(model) }
         }
