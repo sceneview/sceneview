@@ -1,0 +1,3 @@
+<!-- category: Changed -->
+- **Automatic AR placement ([#4858](https://github.com/sceneview/sceneview/issues/4858)).** The object now appears on the estimated floor after 0.6 s of tracked search when no usable plane is found, then eases into the pose ARCore resolves. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Wall placement waits for a wall. Failed anchor creation backs off between attempts ([#4901](https://github.com/sceneview/sceneview/issues/4901)).
+- **Recenter in AR.** Call `state.recenter()` to bring the placed object back in front of the camera on a tracked or estimated floor.
