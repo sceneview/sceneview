@@ -778,6 +778,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getAlwaysShowsDimensions ()Z
 	public final fun getBaseSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getCameraHeight ()Ljava/lang/Float;
+	public final fun getEstimatedFallbackMillis ()Ljava/lang/Long;
 	public final fun getFloorHeight ()Ljava/lang/Float;
 	public final fun getGuide ()Lio/github/sceneview/ar/PlacementGuide;
 	public final fun getHasCameraFrame ()Z
@@ -798,12 +799,15 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getWantsSurface ()Z
 	public final fun isAdjusting ()Z
 	public final fun isAtRealWorldSize ()Z
+	public final fun isEstimated ()Z
 	public final fun isSelected ()Z
+	public final fun isSettled ()Z
 	public final fun keepScanning (J)V
 	public final fun moveBy (FF)Z
 	public final fun onBackgroundTap ()Lio/github/sceneview/ar/FrameEffect;
 	public final fun onFrame (Lio/github/sceneview/ar/FrameInput;Lkotlin/jvm/functions/Function0;)Lio/github/sceneview/ar/FrameEffect;
 	public static synthetic fun onFrame$default (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/FrameInput;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lio/github/sceneview/ar/FrameEffect;
+	public final fun recenter ()Z
 	public final fun requestPlacement ()V
 	public final fun resetPlacement (J)V
 	public final fun rotateBy (F)V
@@ -812,6 +816,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun selectPlacement ()V
 	public final fun setAllowsScaling (Z)V
 	public final fun setAlwaysShowsDimensions (Z)V
+	public final fun setEstimatedFallbackMillis (Ljava/lang/Long;)V
 	public final fun setScaleRange (Lkotlin/ranges/ClosedFloatingPointRange;)V
 	public final fun setShowsContactShadow (Z)V
 	public final fun setShowsPlaneGuide (Z)V
