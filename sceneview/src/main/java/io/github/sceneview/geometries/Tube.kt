@@ -14,6 +14,7 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import kotlin.math.acos
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
 
 /**
@@ -29,6 +30,7 @@ import kotlin.math.sin
  * SceneView {
  *     val material = rememberMaterialInstance(materialLoader, Color.Blue)
  *     TubeNode(points = routeSamples, radius = 0.02f, materialInstance = material)
+ *     TubeNode(points = pts, radii = widths, capStyle = Tube.CapStyle.Round, capacity = 256, materialInstance = m)
  * }
  * ```
  *
@@ -38,9 +40,12 @@ import kotlin.math.sin
  * is `true` the twist the loop accumulates on the way round is spread evenly over the rings, so
  * the seam is no sharper than any other joint.
  *
- * Vertex layout: `pointCount` (or `pointCount + 1` when [closed]) rings of `radialSegments + 1`
- * vertices — the seam vertex is duplicated so UVs stay continuous — followed, for an open tube
- * with [caps], by two flat end discs.
+ * Vertex layout: with exact [capacity] and [CapStyle.None] or [CapStyle.Flat], `pointCount` (or
+ * `pointCount + 1` when [closed]) rings of `radialSegments + 1` vertices — the seam vertex is
+ * duplicated so UVs stay continuous — are followed, for an open tube with flat caps, by two end
+ * discs, preserving the legacy order. With spare [capacity] or [CapStyle.Round], capacity-sized
+ * body rings are followed by the caps, every live triangle is an index-buffer prefix, and unused
+ * padding rings collapse onto the last live point so they do not enlarge the bounds.
  *
  * Instances are immutable once built; create one with the [Builder] and mutate it afterwards
  * through [update]. All Filament buffer operations run synchronously and must be called on the
@@ -49,30 +54,47 @@ import kotlin.math.sin
  * @see Path for the 1-px GPU polyline this replaces.
  */
 class Tube private constructor(
-    primitiveType: PrimitiveType,
-    vertices: List<Vertex>,
-    vertexBuffer: VertexBuffer,
-    indices: List<List<Int>>,
-    indexBuffer: IndexBuffer,
-    primitivesOffsets: List<IntRange>,
-    boundingBox: Box,
-    points: List<Position>,
-    radius: Float,
-    radialSegments: Int,
-    closed: Boolean,
-    caps: Boolean
+    primitiveType: PrimitiveType, vertices: List<Vertex>, vertexBuffer: VertexBuffer,
+    indices: List<List<Int>>, indexBuffer: IndexBuffer, primitivesOffsets: List<IntRange>,
+    boundingBox: Box, points: List<Position>, radius: Float, radii: List<Float>?,
+    radialSegments: Int, closed: Boolean, capStyle: CapStyle, capacity: Int,
+    capacityExplicit: Boolean, liveIndexCount: Int,
 ) : Geometry(
-    primitiveType,
-    vertices,
-    vertexBuffer,
-    indices,
-    indexBuffer,
-    primitivesOffsets,
-    boundingBox
+    primitiveType, vertices, vertexBuffer, indices, indexBuffer, primitivesOffsets, boundingBox
 ) {
+    // Kept because its synthetic accessor is part of sceneview.api.
+    @Suppress("DEPRECATION")
+    private constructor(
+        primitiveType: PrimitiveType,
+        vertices: List<Vertex>,
+        vertexBuffer: VertexBuffer,
+        indices: List<List<Int>>,
+        indexBuffer: IndexBuffer,
+        primitivesOffsets: List<IntRange>,
+        boundingBox: Box,
+        points: List<Position>,
+        radius: Float,
+        radialSegments: Int,
+        closed: Boolean,
+        caps: Boolean,
+    ) : this(
+        primitiveType, vertices, vertexBuffer, indices, indexBuffer, primitivesOffsets,
+        boundingBox, points, radius, null, radialSegments, closed,
+        if (caps) CapStyle.Flat else CapStyle.None, points.size, false,
+        liveIndexCount(
+            points.size, radialSegments, closed,
+            if (caps) CapStyle.Flat else CapStyle.None,
+        ),
+    )
+
+    /** How an open tube is closed. Closed tubes ignore this setting. */
+    enum class CapStyle { None, Flat, Round }
+
     /**
      * Builder for [Tube]. Configure the [points] the tube is swept along, its [radius], the
      * [radialSegments] tessellation and whether the path is [closed] / [caps]ped, then [build].
+     * [radii] can vary its width, [capStyle] selects the end shape, and [capacity] reserves room
+     * for growth in the same Filament buffers.
      */
     class Builder : Geometry.Builder(PrimitiveType.TRIANGLES) {
         /** Ordered polyline the tube is swept along. At least 2 points. */
@@ -83,6 +105,13 @@ class Tube private constructor(
         var radius: Float = DEFAULT_RADIUS
             private set
 
+        /**
+         * Optional cross-section radius at each [points] entry, in scene units (metres).
+         * `null` uses the uniform [radius].
+         */
+        var radii: List<Float>? = null
+            private set
+
         /** Number of segments around the cross-section. Defaults to [DEFAULT_RADIAL_SEGMENTS]. */
         var radialSegments: Int = DEFAULT_RADIAL_SEGMENTS
             private set
@@ -91,9 +120,20 @@ class Tube private constructor(
         var closed: Boolean = DEFAULT_CLOSED
             private set
 
-        /** When `true` (and not [closed]), both ends are filled with a flat disc. */
-        var caps: Boolean = DEFAULT_CAPS
+        /** End treatment for an open tube. Round caps make strokes close smoothly. */
+        var capStyle: CapStyle = DEFAULT_CAP_STYLE
             private set
+
+        /**
+         * Number of path points to allocate in the buffers. Zero allocates exactly [points]; a
+         * larger value lets [Tube.update] grow the tube without replacing its Filament buffers.
+         */
+        var capacity: Int = 0
+            private set
+
+        /** When `true` (and not [closed]), both ends are filled with a flat disc. */
+        @Deprecated("Use capStyle", ReplaceWith("capStyle != Tube.CapStyle.None"))
+        val caps: Boolean get() = capStyle != CapStyle.None
 
         /** Sets the polyline to sweep along. Returns this builder for chaining. */
         fun points(points: List<Position>) = apply { this.points = points }
@@ -101,29 +141,67 @@ class Tube private constructor(
         /** Sets the cross-section radius in scene units. Returns this builder for chaining. */
         fun radius(radius: Float) = apply { this.radius = radius }
 
+        /**
+         * Sets one cross-section radius per point in scene units, or `null` to use [radius].
+         * Returns this builder for chaining.
+         */
+        fun radii(radii: List<Float>?) = apply { this.radii = radii }
+
         /** Sets the cross-section tessellation. Returns this builder for chaining. */
         fun radialSegments(radialSegments: Int) = apply { this.radialSegments = radialSegments }
 
         /** Sets whether the path loops back on itself. Returns this builder for chaining. */
         fun closed(closed: Boolean) = apply { this.closed = closed }
 
+        /** Sets the end treatment for an open tube. Returns this builder for chaining. */
+        fun capStyle(capStyle: CapStyle) = apply { this.capStyle = capStyle }
+
+        /**
+         * Reserves buffers for this many path points. Zero allocates exactly [points]. Returns
+         * this builder for chaining.
+         */
+        fun capacity(capacity: Int) = apply { this.capacity = capacity }
+
         /** Sets whether open ends are filled with a disc. Returns this builder for chaining. */
-        fun caps(caps: Boolean) = apply { this.caps = caps }
+        @Deprecated(
+            "Use capStyle",
+            ReplaceWith("capStyle(if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
+        )
+        fun caps(caps: Boolean) = capStyle(if (caps) CapStyle.Flat else CapStyle.None)
 
         /**
          * Builds the [Tube], allocating its Filament vertex and index buffers on [engine].
          * Must be called on the main thread.
          */
         override fun build(engine: Engine): Tube {
-            require(points.size >= 2) { "Tube requires at least 2 points" }
-            require(radialSegments >= 3) { "Tube requires at least 3 radial segments" }
-            vertices(getVertices(points, radius, radialSegments, closed, caps))
-            primitivesIndices(getIndices(points.size, radialSegments, closed, caps))
+            validate(points, radius, radii, radialSegments, capacity)
+            val allocated = max(points.size, capacity.takeIf { it > 0 } ?: points.size)
+            val tubeVertices = getVertices(
+                points, radius, radialSegments, closed, capStyle, radii, allocated
+            )
+            val tubeIndices = getIndices(
+                points.size, radialSegments, closed, capStyle,
+                if (capacity > 0) allocated else 0,
+            )
+            vertices(tubeVertices)
+            primitivesIndices(tubeIndices)
             return build(engine) { vertexBuffer, indexBuffer, offsets, boundingBox ->
-                Tube(
-                    primitiveType, vertices, vertexBuffer, indices, indexBuffer, offsets,
-                    boundingBox, points, radius, radialSegments, closed, caps
-                )
+                // Route legacy calls through the constructor whose synthetic accessor is public API.
+                if (radii == null && capacity == 0 && capStyle != CapStyle.Round) {
+                    @Suppress("DEPRECATION")
+                    Tube(
+                        primitiveType, tubeVertices, vertexBuffer, tubeIndices, indexBuffer,
+                        offsets, boundingBox, points, radius, radialSegments, closed,
+                        capStyle != CapStyle.None,
+                    )
+                } else {
+                    Tube(
+                        primitiveType, tubeVertices, vertexBuffer, tubeIndices, indexBuffer,
+                        offsets, boundingBox, points, radius, radii, radialSegments, closed,
+                        capStyle, allocated, capacity > 0,
+                        liveIndexCount(points.size, radialSegments, closed, capStyle),
+                    )
+                }
             }
         }
     }
@@ -136,6 +214,10 @@ class Tube private constructor(
     var radius: Float = radius
         private set
 
+    /** Current cross-section radius per point in scene units, or `null` for [radius]. */
+    var radii: List<Float>? = radii
+        private set
+
     /** Current number of segments around the cross-section. */
     var radialSegments: Int = radialSegments
         private set
@@ -144,17 +226,32 @@ class Tube private constructor(
     var closed: Boolean = closed
         private set
 
-    /** Whether open ends are currently filled with a disc. */
-    var caps: Boolean = caps
+    /** Current end treatment for an open tube, ignored when [closed]. */
+    var capStyle: CapStyle = capStyle
         private set
+
+    /** Number of path points for which the current Filament buffers are allocated. */
+    var capacity: Int = capacity
+        private set
+
+    /** Whether open ends are currently filled with a disc. */
+    @Deprecated("Use capStyle", ReplaceWith("capStyle != Tube.CapStyle.None"))
+    val caps: Boolean get() = capStyle != CapStyle.None
+
+    private var capacityExplicit = capacityExplicit
+    private var liveIndexCount = liveIndexCount
+
+    override fun drawnOffsets(primitivesIndices: List<List<Int>>) = listOf(0 until liveIndexCount)
 
     /**
      * Regenerates the tube and re-uploads it to the existing Filament buffers.
      *
-     * The index buffer is rebuilt only when the topology changes ([points] count,
-     * [radialSegments], [closed] or [caps]); moving the same number of points or changing only
-     * the [radius] reuses the allocated index buffer, which is what makes per-frame animation of
-     * a path affordable. Must be called on the main thread. Returns this geometry for chaining.
+     * Moving points, changing radii, or changing the live point count while it fits [capacity]
+     * reuses the same vertex and index buffers. Exceeding an explicitly reserved capacity grows
+     * it to the larger of the requested size and twice its old size; a tube built at exact
+     * capacity grows exactly to the new point count. A zero [capacity] request keeps that current
+     * allocation mode. Changing [radialSegments], [closed] or [capStyle] may rebuild the buffers.
+     * Must be called on the main thread. Returns this geometry for chaining.
      */
     fun update(
         engine: Engine,
@@ -162,29 +259,53 @@ class Tube private constructor(
         radius: Float = this.radius,
         radialSegments: Int = this.radialSegments,
         closed: Boolean = this.closed,
-        caps: Boolean = this.caps
+        capStyle: CapStyle = this.capStyle,
+        radii: List<Float>? = this.radii,
+        capacity: Int = this.capacity,
     ) = apply {
-        require(points.size >= 2) { "Tube requires at least 2 points" }
-        require(radialSegments >= 3) { "Tube requires at least 3 radial segments" }
-        val topologyChanged = points.size != this.points.size ||
-                radialSegments != this.radialSegments ||
-                closed != this.closed ||
-                caps != this.caps
-        update(
-            engine = engine,
-            vertices = getVertices(points, radius, radialSegments, closed, caps),
-            primitivesIndices = if (topologyChanged) {
-                getIndices(points.size, radialSegments, closed, caps)
-            } else {
-                primitivesIndices
-            }
+        validate(points, radius, radii, radialSegments, capacity)
+        val newCapacityExplicit = isCapacityExplicit(capacityExplicit, points.size, capacity)
+        val newCapacity = grownCapacity(
+            points.size, this.capacity, capacity, newCapacityExplicit
+        )
+        val topologyChanged = radialSegments != this.radialSegments || closed != this.closed ||
+            capStyle != this.capStyle || newCapacity != this.capacity ||
+            (newCapacity > points.size) != (this.capacity > this.points.size)
+        val newIndices = if (topologyChanged) {
+            getIndices(
+                points.size, radialSegments, closed, capStyle,
+                if (newCapacityExplicit) newCapacity else 0,
+            )
+        } else primitivesIndices
+        liveIndexCount = liveIndexCount(points.size, radialSegments, closed, capStyle)
+        super.update(
+            engine,
+            getVertices(points, radius, radialSegments, closed, capStyle, radii, newCapacity),
+            newIndices,
         )
         this.points = points
         this.radius = radius
+        this.radii = radii
         this.radialSegments = radialSegments
         this.closed = closed
-        this.caps = caps
+        this.capStyle = capStyle
+        this.capacity = newCapacity
+        capacityExplicit = newCapacityExplicit
     }
+
+    /** Deprecated flat-cap overload retained for source and binary compatibility. */
+    @Deprecated(
+        "Use capStyle",
+        ReplaceWith("update(engine, points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
+    )
+    @Suppress("DEPRECATION")
+    fun update(
+        engine: Engine, points: List<Position> = this.points, radius: Float = this.radius,
+        radialSegments: Int = this.radialSegments, closed: Boolean = this.closed, caps: Boolean,
+    ) = update(
+        engine, points, radius, radialSegments, closed,
+        if (caps) CapStyle.Flat else CapStyle.None, radii, capacity,
+    )
 
     /**
      * An orthonormal cross-section frame at one point of the swept path.
@@ -211,7 +332,11 @@ class Tube private constructor(
         /** Paths are open by default, like [Path]. */
         const val DEFAULT_CLOSED = false
 
+        /** Flat ends preserve the historical default. */
+        val DEFAULT_CAP_STYLE = CapStyle.Flat
+
         /** Open ends are capped by default — a hollow stroke end reads as a rendering glitch. */
+        @Deprecated("Use DEFAULT_CAP_STYLE", ReplaceWith("DEFAULT_CAP_STYLE != Tube.CapStyle.None"))
         const val DEFAULT_CAPS = true
 
         /** Below this, two consecutive path points count as coincident and share a tangent. */
@@ -224,6 +349,27 @@ class Tube private constructor(
          * UV column instead of wrapping the texture backwards over the last segment.
          */
         fun ringCount(pointCount: Int, closed: Boolean) = if (closed) pointCount + 1 else pointCount
+        /** Latitude-ring count for each hemispherical cap, including its pole ring. */
+        fun roundCapRings(radialSegments: Int): Int = max(2, (radialSegments + 2) / 3)
+
+        /** Pure point-capacity growth decision used by [update]. */
+        internal fun grownCapacity(
+            pointCount: Int, currentCapacity: Int, requestedCapacity: Int, explicit: Boolean,
+        ): Int {
+            require(requestedCapacity >= 0) { "Tube capacity must be non-negative" }
+            val requested = max(pointCount, requestedCapacity)
+            if (requested <= currentCapacity) return currentCapacity
+            return if (explicit) max(requested, currentCapacity * 2) else requested
+        }
+
+        /** Whether [requestedCapacity] reserves spare room beyond the live [pointCount]. */
+        internal fun isExplicitCapacityRequest(pointCount: Int, requestedCapacity: Int) =
+            requestedCapacity > pointCount
+
+        /** Whether the tube remains in, or newly enters, spare-capacity allocation mode. */
+        internal fun isCapacityExplicit(
+            currentExplicit: Boolean, pointCount: Int, requestedCapacity: Int,
+        ) = currentExplicit || isExplicitCapacityRequest(pointCount, requestedCapacity)
 
         /**
          * Rotation-minimising frames along [points], one per point.
@@ -245,10 +391,10 @@ class Tube private constructor(
             val tangents = MutableList(count) { i -> tangentAt(points, i, closed) }
             // A degenerate (repeated) point yields a zero tangent — inherit the previous one so a
             // duplicated control point dents the tube instead of collapsing it to NaN.
+            if (length(tangents[0]) < EPSILON) tangents[0] = Direction(x = 1f)
             for (i in 1 until count) {
                 if (length(tangents[i]) < EPSILON) tangents[i] = tangents[i - 1]
             }
-            if (length(tangents[0]) < EPSILON) tangents[0] = Direction(x = 1f)
             for (i in 0 until count) tangents[i] = normalize(tangents[i])
 
             val normals = MutableList(count) { Direction(x = 1f) }
@@ -292,92 +438,167 @@ class Tube private constructor(
 
         /**
          * Sweeps the cross-section along [points], producing ring vertices then, for an open
-         * capped tube, the two end discs.
+         * capped tube, the two ends. Spare [capacity] pads the body with rings collapsed onto the
+         * last live point, and [radii] supplies one non-negative radius per point.
          *
          * @param points Ordered polyline, at least 2 points.
-         * @param radius Cross-section radius in scene units.
+         * @param radius Cross-section radius in scene units, used when [radii] is `null`.
          * @param radialSegments Sides of the cross-section, at least 3.
          * @param closed Whether the last point joins back to the first.
-         * @param caps Whether open ends are filled with a disc. Ignored when [closed].
+         * @param capStyle How open ends are closed. Ignored when [closed].
+         * @param radii Cross-section radius at each point in scene units, or `null` for [radius].
+         * @param capacity Number of path points to allocate; zero means exactly [points].
          */
         fun getVertices(
-            points: List<Position>,
-            radius: Float = DEFAULT_RADIUS,
-            radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
-            closed: Boolean = DEFAULT_CLOSED,
-            caps: Boolean = DEFAULT_CAPS
+            points: List<Position>, radius: Float = DEFAULT_RADIUS,
+            radialSegments: Int = DEFAULT_RADIAL_SEGMENTS, closed: Boolean = DEFAULT_CLOSED,
+            capStyle: CapStyle = DEFAULT_CAP_STYLE, radii: List<Float>? = null, capacity: Int = 0,
         ): List<Vertex> {
-            require(points.size >= 2) { "Tube requires at least 2 points" }
-            require(radialSegments >= 3) { "Tube requires at least 3 radial segments" }
+            validate(points, radius, radii, radialSegments, capacity)
+            val allocated = max(points.size, capacity.takeIf { it > 0 } ?: points.size)
             val frames = frames(points, closed)
-            val rings = ringCount(points.size, closed)
-            val lastRing = rings - 1
-
-            return buildList {
-                for (i in 0 until rings) {
-                    // The extra ring of a closed tube re-uses point 0's position AND frame, so
-                    // the seam is geometrically identical to the start — only its UV differs.
-                    val source = if (i == points.size) 0 else i
-                    val center = points[source]
-                    val frame = frames[source]
-                    val u = i.toFloat() / lastRing
-                    for (j in 0..radialSegments) {
-                        val v = j.toFloat() / radialSegments
+            val values = radii ?: List(points.size) { radius }
+            val slopes = radiusSlopes(points, values, closed)
+            val rings = ringCount(allocated, closed)
+            val liveRings = ringCount(points.size, closed)
+            val result = ArrayList<Vertex>()
+            for (i in 0 until rings) {
+                // The extra ring of a closed tube re-uses point 0's position AND frame, so
+                // the seam is geometrically identical to the start — only its UV differs.
+                val seam = closed && i == points.size
+                val live = i < points.size || seam
+                val source = if (seam) 0 else i.coerceAtMost(points.lastIndex)
+                val center = if (live) points[source] else points.last()
+                val frame = frames[source]
+                val u = i.coerceAtMost(liveRings - 1).toFloat() / (liveRings - 1)
+                for (j in 0..radialSegments) {
+                    val v = j.toFloat() / radialSegments
+                    if (!live) {
+                        result += Vertex(center, frame.normal, UvCoordinate(u, v))
+                    } else {
                         val angle = v * TWO_PI
-                        val outward = normalize(
-                            frame.normal * cos(angle) + frame.binormal * sin(angle)
-                        )
-                        add(
-                            Vertex(
-                                position = center + outward * radius,
-                                normal = outward,
-                                uvCoordinate = UvCoordinate(x = u, y = v)
-                            )
-                        )
+                        val outward = normalize(frame.normal * cos(angle) + frame.binormal * sin(angle))
+                        val slope = slopes[source]
+                        val normal = if (slope == 0f) outward else normalize(outward - frame.tangent * slope)
+                        result += Vertex(center + outward * values[source], normal, UvCoordinate(u, v))
                     }
                 }
-                if (!closed && caps) {
-                    addAll(capVertices(points.first(), frames.first(), radius, radialSegments, start = true))
-                    addAll(capVertices(points.last(), frames.last(), radius, radialSegments, start = false))
+            }
+            if (!closed) when (capStyle) {
+                CapStyle.None -> Unit
+                CapStyle.Flat -> {
+                    result += flatCapVertices(
+                        points.first(), frames.first(), values.first(), radialSegments, true
+                    )
+                    result += flatCapVertices(
+                        points.last(), frames.last(), values.last(), radialSegments, false
+                    )
+                }
+                CapStyle.Round -> {
+                    result += roundCapVertices(
+                        points.first(), frames.first(), values.first(), slopes.first(),
+                        radialSegments, true
+                    )
+                    result += roundCapVertices(
+                        points.last(), frames.last(), values.last(), slopes.last(),
+                        radialSegments, false
+                    )
                 }
             }
+            return result
         }
+
+        /** Deprecated flat-cap overload retained for source and binary compatibility. */
+        @Deprecated(
+            "Use capStyle",
+            ReplaceWith("getVertices(points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
+        )
+        @Suppress("DEPRECATION")
+        fun getVertices(
+            points: List<Position>, radius: Float = DEFAULT_RADIUS,
+            radialSegments: Int = DEFAULT_RADIAL_SEGMENTS, closed: Boolean = DEFAULT_CLOSED,
+            caps: Boolean,
+        ) = getVertices(
+            points, radius, radialSegments, closed,
+            if (caps) CapStyle.Flat else CapStyle.None, null, 0,
+        )
 
         /**
          * Triangle indices matching [getVertices] for a path of [pointCount] points.
          *
          * Winding is counter-clockwise as seen from outside, matching the outward shading normal
          * under the default single-sided material (Filament back-face-culls clockwise triangles —
-         * same contract as [Torus], see issue #2469).
+         * same contract as [Torus], see issue #2469). [capacity] fixes the allocated point count;
+         * with spare capacity or round caps, live triangles occupy a prefix of the index buffer.
          */
         fun getIndices(
-            pointCount: Int,
-            radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
-            closed: Boolean = DEFAULT_CLOSED,
-            caps: Boolean = DEFAULT_CAPS
+            pointCount: Int, radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
+            closed: Boolean = DEFAULT_CLOSED, capStyle: CapStyle = DEFAULT_CAP_STYLE,
+            capacity: Int = 0,
         ): List<List<Int>> {
             require(pointCount >= 2) { "Tube requires at least 2 points" }
             require(radialSegments >= 3) { "Tube requires at least 3 radial segments" }
-            val rings = ringCount(pointCount, closed)
-            val stride = radialSegments + 1
+            require(capacity >= 0) { "Tube capacity must be non-negative" }
+            val allocated = max(pointCount, capacity.takeIf { it > 0 } ?: pointCount)
+            val prefix = capacity > 0 || capStyle == CapStyle.Round
             val triangles = mutableListOf<Int>()
-            for (i in 0 until rings - 1) {
-                for (j in 0 until radialSegments) {
-                    val a = i * stride + j
-                    val b = a + stride
-                    val c = a + 1
-                    val d = b + 1
-                    triangles.addAll(listOf(a, d, b, a, c, d))
-                }
+            val stride = radialSegments + 1
+            val bodyRings = ringCount(allocated, closed)
+            if (prefix && !closed) appendCaps(triangles, bodyRings * stride, radialSegments, capStyle)
+            repeat(if (closed) allocated else allocated - 1) {
+                appendBodySegment(triangles, it, stride, radialSegments)
             }
-            if (!closed && caps) {
-                var base = rings * stride
-                // Start disc faces backwards along the path, so its fan winds the other way.
-                base = appendCapIndices(triangles, base, radialSegments, start = true)
-                appendCapIndices(triangles, base, radialSegments, start = false)
-            }
+            if (!prefix && !closed) appendCaps(triangles, bodyRings * stride, radialSegments, capStyle)
             return listOf(triangles)
         }
+
+        /** Deprecated flat-cap overload retained for source and binary compatibility. */
+        @Deprecated(
+            "Use capStyle",
+            ReplaceWith("getIndices(pointCount, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
+        )
+        @Suppress("DEPRECATION")
+        fun getIndices(
+            pointCount: Int, radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
+            closed: Boolean = DEFAULT_CLOSED, caps: Boolean,
+        ) = getIndices(
+            pointCount, radialSegments, closed,
+            if (caps) CapStyle.Flat else CapStyle.None, 0,
+        )
+
+        internal fun liveIndexCount(
+            pointCount: Int, radialSegments: Int, closed: Boolean, capStyle: CapStyle,
+        ): Int {
+            val body = (if (closed) pointCount else pointCount - 1) * radialSegments * 6
+            val caps = if (closed) 0 else when (capStyle) {
+                CapStyle.None -> 0
+                CapStyle.Flat -> radialSegments * 3 * 2
+                CapStyle.Round -> roundCapRings(radialSegments) * radialSegments * 6 * 2
+            }
+            return body + caps
+        }
+
+        private fun validate(
+            points: List<Position>, radius: Float, radii: List<Float>?,
+            radialSegments: Int, capacity: Int,
+        ) {
+            require(points.size >= 2) { "Tube requires at least 2 points" }
+            require(radius >= 0f) { "Tube radius must be non-negative" }
+            require(radialSegments >= 3) { "Tube requires at least 3 radial segments" }
+            require(capacity >= 0) { "Tube capacity must be non-negative" }
+            radii?.let {
+                require(it.size == points.size) { "Tube radii must match points" }
+                require(it.all { value -> value >= 0f }) { "Tube radii must be non-negative" }
+            }
+        }
+
+        private fun radiusSlopes(points: List<Position>, radii: List<Float>, closed: Boolean) =
+            FloatArray(points.size) { i ->
+                val before = if (closed) (i - 1 + points.size) % points.size else max(i - 1, 0)
+                val after = if (closed) (i + 1) % points.size else minOf(i + 1, points.lastIndex)
+                val run = length(points[after] - points[before])
+                if (run < EPSILON) 0f else ((radii[after] - radii[before]) / run).coerceIn(-1f, 1f)
+            }
 
         /** Central-difference tangent, wrapping when [closed] and one-sided at open ends. */
         private fun tangentAt(points: List<Position>, i: Int, closed: Boolean): Direction {
@@ -460,7 +681,7 @@ class Tube private constructor(
          * carrying the cap's flat normal (±tangent) so the end shades as a face, not as a
          * continuation of the tube.
          */
-        private fun capVertices(
+        private fun flatCapVertices(
             center: Position,
             frame: Frame,
             radius: Float,
@@ -493,11 +714,74 @@ class Tube private constructor(
             }
         }
 
+        private fun roundCapVertices(
+            center: Position, frame: Frame, radius: Float, slope: Float,
+            radialSegments: Int, start: Boolean,
+        ): List<Vertex> = buildList {
+            val rings = roundCapRings(radialSegments)
+            val direction = if (start) -frame.tangent else frame.tangent
+            // Duplicate the equator so both caps keep fixed indices while the live body end moves
+            // within a larger capacity. It is geometrically identical to the endpoint body ring.
+            for (k in 0..rings) {
+                val phi = k.toFloat() / rings * (kotlin.math.PI.toFloat() / 2f)
+                val along = sin(phi)
+                val across = cos(phi)
+                val ringCenter = center + direction * (radius * along)
+                for (j in 0..radialSegments) {
+                    val v = j.toFloat() / radialSegments
+                    val angle = v * TWO_PI
+                    val outward = frame.normal * cos(angle) + frame.binormal * sin(angle)
+                    val normal = if (k == 0) {
+                        if (slope == 0f) outward else normalize(outward - frame.tangent * slope)
+                    } else {
+                        normalize(outward * across + direction * along)
+                    }
+                    add(Vertex(
+                        ringCenter + outward * (radius * across), normal,
+                        UvCoordinate(k.toFloat() / rings, v),
+                    ))
+                }
+            }
+        }
+
+        private fun appendBodySegment(
+            triangles: MutableList<Int>, ring: Int, stride: Int, radialSegments: Int,
+        ) {
+            for (j in 0 until radialSegments) {
+                val a = ring * stride + j
+                val b = a + stride
+                val c = a + 1
+                val d = b + 1
+                triangles.addAll(listOf(a, d, b, a, c, d))
+            }
+        }
+
+        private fun appendCaps(
+            triangles: MutableList<Int>, base: Int, radialSegments: Int, capStyle: CapStyle,
+        ) {
+            when (capStyle) {
+                CapStyle.None -> Unit
+                CapStyle.Flat -> {
+                    // Start disc faces backwards along the path, so its fan winds the other way.
+                    val next = appendFlatCapIndices(triangles, base, radialSegments, true)
+                    appendFlatCapIndices(triangles, next, radialSegments, false)
+                }
+                CapStyle.Round -> {
+                    val stride = radialSegments + 1
+                    val capRings = roundCapRings(radialSegments)
+                    appendRoundCapIndices(triangles, base, radialSegments, true)
+                    appendRoundCapIndices(
+                        triangles, base + (capRings + 1) * stride, radialSegments, false,
+                    )
+                }
+            }
+        }
+
         /**
          * Appends one cap fan starting at vertex [base] and returns the next free vertex index.
          * The start cap faces backwards along the path, so its fan winds opposite to the end cap.
          */
-        private fun appendCapIndices(
+        private fun appendFlatCapIndices(
             triangles: MutableList<Int>,
             base: Int,
             radialSegments: Int,
@@ -514,6 +798,26 @@ class Tube private constructor(
                 }
             }
             return base + radialSegments + 2
+        }
+
+        private fun appendRoundCapIndices(
+            triangles: MutableList<Int>, capBase: Int, radialSegments: Int, start: Boolean,
+        ) {
+            val stride = radialSegments + 1
+            repeat(roundCapRings(radialSegments)) { k ->
+                val from = capBase + k * stride
+                val to = from + stride
+                for (j in 0 until radialSegments) {
+                    val a = from + j
+                    val b = to + j
+                    val c = a + 1
+                    val d = b + 1
+                    triangles.addAll(
+                        if (start) listOf(a, b, d, a, d, c)
+                        else listOf(a, d, b, a, c, d)
+                    )
+                }
+            }
         }
     }
 }

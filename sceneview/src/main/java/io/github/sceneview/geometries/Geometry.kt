@@ -200,7 +200,9 @@ open class Geometry internal constructor(
             require(vertices.isNotEmpty()) { "Geometry requires at least one vertex" }
             val (vertexBuffer, indexBuffer) = buildBuffers(engine, handler = null, released = null)
             return try {
-                constructor(vertexBuffer, indexBuffer, indices.getOffsets(), vertices.boundingBox())
+                constructor(vertexBuffer, indexBuffer, indices.getOffsets(), vertices.boundingBox()).also {
+                    it.primitivesOffsets = it.drawnOffsets(indices)
+                }
             } catch (failure: Throwable) {
                 // These buffers have not been handed to any renderable yet.
                 engine.safeDestroyVertexBuffer(vertexBuffer)
@@ -398,8 +400,16 @@ open class Geometry internal constructor(
     /** [boundingBox] and [primitivesOffsets], from the state the bound buffers are sized for. */
     private fun describeBuffers() {
         boundingBox = vertices.boundingBox()
-        primitivesOffsets = primitivesIndices.getOffsets()
+        primitivesOffsets = drawnOffsets(primitivesIndices)
     }
+
+    /**
+     * Index ranges Filament draws from [primitivesIndices]. [describeBuffers] and [Builder.build]
+     * use them when describing the current buffers. A subclass overrides this to draw only a
+     * prefix of its index buffer, as [Tube] does when its buffers reserve spare capacity.
+     */
+    internal open fun drawnOffsets(primitivesIndices: List<List<Int>>): List<IntRange> =
+        primitivesIndices.getOffsets()
 
     /**
      * Hands the latest state to Filament — called by the gate, during [update] when nothing is in

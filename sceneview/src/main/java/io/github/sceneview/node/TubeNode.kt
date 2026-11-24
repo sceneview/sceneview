@@ -45,6 +45,7 @@ open class TubeNode private constructor(
     builderApply = builderApply
 ) {
 
+    /** Creates a node that renders an existing [geometry]. */
     constructor(
         engine: Engine,
         geometry: Tube,
@@ -58,13 +59,19 @@ open class TubeNode private constructor(
         builderApply = builderApply
     )
 
+    /**
+     * Creates a tube from [points]. [radii] optionally supplies one radius per point, while
+     * [capacity] reserves point slots for growth and [capStyle] chooses the open-end shape.
+     */
     constructor(
         engine: Engine,
         points: List<Position> = Tube.DEFAULT_POINTS,
         radius: Float = Tube.DEFAULT_RADIUS,
         radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,
         closed: Boolean = Tube.DEFAULT_CLOSED,
-        caps: Boolean = Tube.DEFAULT_CAPS,
+        capStyle: Tube.CapStyle = Tube.DEFAULT_CAP_STYLE,
+        radii: List<Float>? = null,
+        capacity: Int = 0,
         materialInstance: MaterialInstance? = null,
         builderApply: RenderableManager.Builder.() -> Unit = {}
     ) : this(
@@ -72,25 +79,68 @@ open class TubeNode private constructor(
         geometry = Tube.Builder()
             .points(points)
             .radius(radius)
+            .radii(radii)
             .radialSegments(radialSegments)
             .closed(closed)
-            .caps(caps)
+            .capStyle(capStyle)
+            .capacity(capacity)
             .build(engine),
         materialInstance = materialInstance,
         builderApply = builderApply
     )
 
+    /** Deprecated flat-cap constructor retained for source and binary compatibility. */
+    @Deprecated(
+        "Use capStyle",
+        ReplaceWith("TubeNode(engine, points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None, materialInstance = materialInstance, builderApply = builderApply)"),
+    )
+    @Suppress("DEPRECATION")
+    constructor(
+        engine: Engine,
+        points: List<Position> = Tube.DEFAULT_POINTS,
+        radius: Float = Tube.DEFAULT_RADIUS,
+        radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,
+        closed: Boolean = Tube.DEFAULT_CLOSED,
+        caps: Boolean,
+        materialInstance: MaterialInstance? = null,
+        builderApply: RenderableManager.Builder.() -> Unit = {}
+    ) : this(
+        engine, points, radius, radialSegments, closed,
+        if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None,
+        null, 0, materialInstance, builderApply,
+    )
+
     /**
      * Re-sweeps the tube and re-uploads it. Cheap enough to call every frame while the point
-     * count is unchanged — see [Tube.update] for what is and is not reallocated.
+     * count stays within [capacity] — see [Tube.update] for what is and is not reallocated.
+     * [radii] is one radius per point or `null` for [radius]; [capStyle] is ignored when closed.
      */
     fun updateGeometry(
         points: List<Position> = geometry.points,
         radius: Float = geometry.radius,
         radialSegments: Int = geometry.radialSegments,
         closed: Boolean = geometry.closed,
-        caps: Boolean = geometry.caps
+        capStyle: Tube.CapStyle = geometry.capStyle,
+        radii: List<Float>? = geometry.radii,
+        capacity: Int = geometry.capacity,
     ) {
-        geometry.update(engine, points, radius, radialSegments, closed, caps)
+        geometry.update(engine, points, radius, radialSegments, closed, capStyle, radii, capacity)
     }
+
+    /** Deprecated flat-cap update retained for source and binary compatibility. */
+    @Deprecated(
+        "Use capStyle",
+        ReplaceWith("updateGeometry(points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
+    )
+    @Suppress("DEPRECATION")
+    fun updateGeometry(
+        points: List<Position> = geometry.points,
+        radius: Float = geometry.radius,
+        radialSegments: Int = geometry.radialSegments,
+        closed: Boolean = geometry.closed,
+        caps: Boolean,
+    ) = updateGeometry(
+        points, radius, radialSegments, closed,
+        if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None, geometry.radii, geometry.capacity,
+    )
 }

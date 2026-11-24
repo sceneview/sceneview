@@ -1,19 +1,11 @@
 package io.github.sceneview.demo.demos.internal
 
-import dev.romainguy.kotlin.math.cross
-import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.length
-import dev.romainguy.kotlin.math.normalize
-import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
-import kotlin.math.PI
 import kotlin.math.ceil
-import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -180,16 +172,6 @@ internal data class Drawing(
 /**
  * The geometry behind the *Finger Drawing* demo: touch samples in, a smooth round tube out.
  *
- * ## Why the demo generates its own mesh
- *
- * SceneView's `TubeNode` sweeps a circle of one constant radius with flat ends, and
- * rebuilding it for every finger move would rebuild its GPU buffers too. Paint wants three
- * things it does not offer: a thickness that changes along the stroke, round ends, and a
- * mesh that grows in place. So this object produces plain [Geometry.Vertex] lists and the
- * demo uploads them with `Geometry.Builder` + `MeshNode`, exactly as
- * [io.github.sceneview.demo.demos.CustomGeometryDemo] does. No engine type appears below,
- * which is what lets `FingerDrawingTest` check every property on the JVM.
- *
  * ## The pipeline, in the order the code runs
  *
  * 0. [SteadyPen] — before any geometry, the touch samples are steadied: the paint follows
@@ -200,31 +182,18 @@ internal data class Drawing(
  *    draw a polygon. The centripetal form is the one that never overshoots or loops between
  *    unevenly spaced samples.
  *    A stroke keeps its thickness right to its ends: there is no taper. The ends are closed
- *    by full hemispherical caps (step 3), so a stroke reads as paint of the chosen
+ *    by full hemispherical caps (`Tube.CapStyle.Round`), so a stroke reads as paint of the chosen
  *    thickness, not as a brush lifting off (#4504).
- * 2. [frames] — a cross-section orientation per ring, by parallel transport (the double
- *    reflection method). A naive "up vector" frame flips when the stroke turns past it and
- *    pinches the tube; a transported frame cannot twist.
- * 3. [vertices] — [RADIAL_SEGMENTS] vertices per ring, plus [CAP_RINGS] rings closing each
- *    end in a hemisphere of the end's own radius. Normals follow the thickness slope, so a swelling stroke shades as
- *    a cone, not as a stack of cylinders.
- * 4. [triangleIndices] — a quad strip between consecutive rings. It depends on the ring
- *    count only.
  *
- * ## Growing in place
+ * ## TubeNode
  *
- * The stroke under the finger gains rings at every move. [vertices] takes a `capacity` and
- * pads the list to it with rings collapsed on the end pole — zero-area triangles, which the
- * GPU discards. As long as the capacity holds ([capacityFor] grows it in steps), the vertex
- * count is constant and `Geometry.update` rewrites the same buffers instead of allocating.
+ * The stroke is drawn by `TubeNode` with per-point `radii`, `Tube.CapStyle.Round`
+ * and a `capacity` stepped by [capacityFor], so a growing stroke rewrites the same buffers.
  */
 internal object FingerDrawing {
 
     /** Vertices around one ring. Twelve reads as round at any thickness the slider allows. */
     const val RADIAL_SEGMENTS: Int = 12
-
-    /** Rings in each hemispherical end cap, the pole included. */
-    const val CAP_RINGS: Int = 4
 
     /** A spline segment is split in at most this many pieces, however far apart its ends. */
     const val MAX_SUBDIVISIONS: Int = 8
@@ -398,212 +367,15 @@ internal object FingerDrawing {
     private fun blend(a: StrokePoint, b: StrokePoint, wa: Float, wb: Float) =
         StrokePoint(a.position * wa + b.position * wb, a.radius * wa + b.radius * wb)
 
-    // ── Frames ────────────────────────────────────────────────────────────────
-
-    /** The orientation of one ring: the curve's direction and two axes across it. */
-    data class Frame(val tangent: Direction, val normal: Direction, val binormal: Direction)
-
-    /**
-     * A twist-free frame per centreline point.
-     *
-     * The first frame leans its normal towards [hint]; every next one is the previous frame
-     * carried along the curve by two reflections (Wang et al., "Computation of Rotation
-     * Minimizing Frames", 2008) — the cheapest construction that neither flips at an
-     * inflection, as a Frenet frame does, nor drifts, as repeated projection does.
-     */
-    fun frames(centerline: List<StrokePoint>, hint: Direction): List<Frame> {
-        if (centerline.isEmpty()) return emptyList()
-        val tangents = tangents(centerline, hint)
-        var normal = perpendicularTo(tangents[0], hint)
-        val result = ArrayList<Frame>(centerline.size)
-        result += Frame(tangents[0], normal, cross(tangents[0], normal))
-        for (i in 0 until centerline.size - 1) {
-            val v1 = centerline[i + 1].position - centerline[i].position
-            val c1 = dot(v1, v1)
-            var reflectedNormal = normal
-            var reflectedTangent = tangents[i]
-            if (c1 > EPSILON * EPSILON) {
-                reflectedNormal = normal - v1 * (2f / c1 * dot(v1, normal))
-                reflectedTangent = tangents[i] - v1 * (2f / c1 * dot(v1, tangents[i]))
-            }
-            val v2 = tangents[i + 1] - reflectedTangent
-            val c2 = dot(v2, v2)
-            normal = if (c2 > EPSILON * EPSILON) {
-                reflectedNormal - v2 * (2f / c2 * dot(v2, reflectedNormal))
-            } else {
-                reflectedNormal
-            }
-            // Re-orthogonalise: float error must not accumulate over hundreds of rings.
-            normal = perpendicularTo(tangents[i + 1], normal)
-            result += Frame(tangents[i + 1], normal, cross(tangents[i + 1], normal))
-        }
-        return result
-    }
-
-    private fun tangents(centerline: List<StrokePoint>, hint: Direction): List<Direction> {
-        if (centerline.size == 1) {
-            // A dot has no direction. Lay its axis across the view so the poles of the little
-            // sphere sit on its sides, not in the viewer's eye.
-            return listOf(perpendicularTo(hint, Direction(x = 1f)))
-        }
-        var previous: Direction? = null
-        return centerline.indices.map { i ->
-            val before = centerline[max(i - 1, 0)].position
-            val after = centerline[min(i + 1, centerline.size - 1)].position
-            val delta = after - before
-            val tangent = if (length(delta) > EPSILON) {
-                normalize(delta)
-            } else {
-                previous ?: perpendicularTo(hint, Direction(x = 1f))
-            }
-            previous = tangent
-            tangent
-        }
-    }
-
-    /** The unit vector closest to [preferred] that is perpendicular to unit [axis]. */
-    private fun perpendicularTo(axis: Direction, preferred: Direction): Direction {
-        val projected = preferred - axis * dot(preferred, axis)
-        if (length(projected) > 1e-3f) return normalize(projected)
-        // `preferred` runs along the axis: any perpendicular will do, pick a stable one.
-        val fallback = if (kotlin.math.abs(axis.y) < 0.9f) Direction(y = 1f) else Direction(x = 1f)
-        return normalize(fallback - axis * dot(fallback, axis))
-    }
-
-    // ── Mesh ──────────────────────────────────────────────────────────────────
-
-    /** Rings of a mesh holding [centerlineCount] centreline points: them and the two caps. */
-    fun ringCount(centerlineCount: Int): Int = centerlineCount + 2 * CAP_RINGS
-
-    fun vertexCount(centerlineCount: Int): Int = ringCount(centerlineCount) * RADIAL_SEGMENTS
-
-    fun triangleCount(centerlineCount: Int): Int =
-        (ringCount(centerlineCount) - 1) * RADIAL_SEGMENTS * 2
-
     /**
      * The centreline capacity to allocate for a stroke of [centerlineCount] points that is
-     * still growing: the first step that holds it. Past the last step — which [MAX_RINGS]
-     * keeps a stroke from reaching — the count itself.
+     * still growing: the first step that holds it. The result feeds `TubeNode(capacity = ...)`.
      */
     fun capacityFor(centerlineCount: Int): Int =
         CAPACITY_STEPS.firstOrNull { it >= centerlineCount } ?: centerlineCount
 
-    /**
-     * The tube around [centerline] — already resampled — as
-     * [vertexCount]`(capacity)` vertices: start cap, one ring per centreline point, end cap,
-     * then padding collapsed on the end pole.
-     *
-     * @param capacity Centreline points the vertex list is sized for; at least
-     *                 `centerline.size`. Pass the stroke's own size for a finished stroke.
-     */
-    fun vertices(
-        centerline: List<StrokePoint>,
-        hint: Direction,
-        capacity: Int = centerline.size,
-    ): List<Geometry.Vertex> {
-        require(centerline.isNotEmpty()) { "a stroke has at least one point" }
-        require(capacity >= centerline.size) { "capacity $capacity < ${centerline.size} points" }
-        val frames = frames(centerline, hint)
-        val slopes = radiusSlopes(centerline)
-        val result = ArrayList<Geometry.Vertex>(vertexCount(capacity))
-
-        // Start cap, pole first, bulging backwards along the first tangent.
-        val first = centerline.first()
-        for (k in CAP_RINGS downTo 1) {
-            val phi = k / CAP_RINGS.toFloat() * (PI.toFloat() / 2f)
-            result.addRing(
-                center = first.position - frames.first().tangent * (first.radius * sin(phi)),
-                radius = first.radius * cos(phi),
-                frame = frames.first(),
-                alongTangent = -sin(phi),
-                acrossTangent = cos(phi),
-            )
-        }
-        // Body. A ring whose radius grows along the stroke leans its normals backwards by
-        // the slope, which is what makes a swelling stroke catch the light as a cone.
-        for (i in centerline.indices) {
-            val slope = slopes[i]
-            val scale = 1f / sqrt(1f + slope * slope)
-            result.addRing(
-                center = centerline[i].position,
-                radius = centerline[i].radius,
-                frame = frames[i],
-                alongTangent = -slope * scale,
-                acrossTangent = scale,
-            )
-        }
-        // End cap, bulging forwards, pole last.
-        val last = centerline.last()
-        for (k in 1..CAP_RINGS) {
-            val phi = k / CAP_RINGS.toFloat() * (PI.toFloat() / 2f)
-            result.addRing(
-                center = last.position + frames.last().tangent * (last.radius * sin(phi)),
-                radius = last.radius * cos(phi),
-                frame = frames.last(),
-                alongTangent = sin(phi),
-                acrossTangent = cos(phi),
-            )
-        }
-        // Padding: whole rings on the end pole. Their triangles have no area.
-        val pole = Geometry.Vertex(
-            position = last.position + frames.last().tangent * last.radius,
-            normal = frames.last().tangent,
-        )
-        repeat((capacity - centerline.size) * RADIAL_SEGMENTS) { result += pole }
-        return result
-    }
-
-    private fun ArrayList<Geometry.Vertex>.addRing(
-        center: Position,
-        radius: Float,
-        frame: Frame,
-        alongTangent: Float,
-        acrossTangent: Float,
-    ) {
-        for (j in 0 until RADIAL_SEGMENTS) {
-            val theta = j / RADIAL_SEGMENTS.toFloat() * (2f * PI.toFloat())
-            val radial = frame.normal * cos(theta) + frame.binormal * sin(theta)
-            add(
-                Geometry.Vertex(
-                    position = center + radial * radius,
-                    normal = normalize(radial * acrossTangent + frame.tangent * alongTangent),
-                )
-            )
-        }
-    }
-
-    /** Change of radius per unit of length at each centreline point, by central difference. */
-    private fun radiusSlopes(centerline: List<StrokePoint>): FloatArray =
-        FloatArray(centerline.size) { i ->
-            val before = centerline[max(i - 1, 0)]
-            val after = centerline[min(i + 1, centerline.size - 1)]
-            val run = length(after.position - before.position)
-            if (run < EPSILON) 0f else ((after.radius - before.radius) / run).coerceIn(-1f, 1f)
-        }
-
-    /**
-     * Triangle list of a mesh sized for [capacity] centreline points: two triangles per quad
-     * between consecutive rings, wound counter-clockwise seen from outside.
-     */
-    fun triangleIndices(capacity: Int): List<Int> {
-        val rings = ringCount(capacity)
-        return buildList(triangleCount(capacity) * 3) {
-            for (ring in 0 until rings - 1) {
-                val a = ring * RADIAL_SEGMENTS
-                val b = a + RADIAL_SEGMENTS
-                for (j in 0 until RADIAL_SEGMENTS) {
-                    val next = (j + 1) % RADIAL_SEGMENTS
-                    add(a + j); add(a + next); add(b + j)
-                    add(a + next); add(b + next); add(b + j)
-                }
-            }
-        }
-    }
-
-    /**
-     * The centreline [vertices] sweeps for [stroke]: resampled, at the thickness the finger
-     * gave it right to both ends — the caps [vertices] adds close it with a full half-sphere.
-     */
+    /** The resampled centreline and radii that `TubeNode` sweeps for [stroke]. */
     fun line(stroke: Stroke): List<StrokePoint> =
         centerline(stroke.points, stroke.spacing, stroke.leadIn, stroke.leadOut)
+
 }
