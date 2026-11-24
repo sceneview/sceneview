@@ -4,6 +4,7 @@ import {
   editDistance,
   isKnownTopLevelFunction,
   isKnownTypeName,
+  manualPlacementReplacement,
   membersOfClass,
   rememberHelperNames,
   resolveImport,
@@ -33,6 +34,25 @@ describe("generated symbols index", () => {
     expect("ARSceneView" in SYMBOLS.topLevel).toBe(true);
     expect("rememberEngine" in SYMBOLS.topLevel).toBe(true);
     expect("rememberModelInstance" in SYMBOLS.topLevel).toBe(true);
+  });
+
+  it("resolves the automatic placement composable, model extension and state helpers", () => {
+    for (const name of [
+      "AutoPlacementScene",
+      "AutoPlacementModel",
+      "rememberAutoPlacementState",
+      "rememberHostLifecycle",
+    ]) {
+      expect(resolveImport(`io.github.sceneview.ar.${name}`)).toBe("member");
+      expect(manualPlacementReplacement(name)).toBeUndefined();
+    }
+  });
+
+  it("resolves the deprecated composables and supplies their migration targets", () => {
+    expect(resolveImport("io.github.sceneview.ar.PlacementScene")).toBe("member");
+    expect(resolveImport("io.github.sceneview.ar.WallPlacementScene")).toBe("member");
+    expect(manualPlacementReplacement("PlacementScene")).toBe("AutoPlacementScene");
+    expect(manualPlacementReplacement("WallPlacementScene")).toContain("PlacementSurface.WALL");
   });
 
   it("indexes name-mangled functions under their Kotlin name (inline-class parameters)", () => {

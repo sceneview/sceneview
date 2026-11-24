@@ -75,37 +75,10 @@ fun ModelViewer() {
 }
 ```
 
-### AR tap-to-place on a surface
+### Place a model in AR
 
-```kotlin
-@Composable
-fun ARTapToPlace() {
-    var anchor by remember { mutableStateOf<Anchor?>(null) }
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val model = rememberModelInstance(modelLoader, "models/chair.glb")
-
-    ARSceneView(
-        modifier = Modifier.fillMaxSize(),
-        engine = engine,
-        modelLoader = modelLoader,
-        planeRenderer = true,
-        onSessionUpdated = { _, frame ->
-            if (anchor == null) {
-                anchor = frame.getUpdatedPlanes()
-                    .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                    ?.let { plane -> plane.createAnchorOrNull(plane.centerPose) }
-            }
-        }
-    ) {
-        anchor?.let { a ->
-            AnchorNode(anchor = a) {
-                model?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f) }
-            }
-        }
-    }
-}
-```
+See [AR model placement](#ar-model-placement) for the starter screen and
+[automatic placement](#automatic-placement-recommended) for session hooks and walls.
 
 ### Point & Ask — AI explains the AR scene (on-device, offline)
 

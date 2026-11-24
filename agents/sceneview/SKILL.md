@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-11-19'
+  last-updated: '2026-11-23'
   keywords:
   - sceneview
   - 3d
@@ -122,8 +122,9 @@ fun RealSizeStlViewer() {
 }
 ```
 
-For AR at real size, use the same instance in `PlacementScene`'s named `onPlaced` callback:
-`AnchorNode(anchor = anchor) { ModelNode(modelInstance = instance, scaleToUnits = null) }`.
+For AR, load the same asset before calling `AutoPlacementScene` and show it with
+`AutoPlacementModel`, which defaults to `scaleToUnits = 0.3f`.
+Follow the [placement recipe](references/recipes.md#place-a-model-in-ar).
 
 **Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
 parses them, with `io.github.sceneview.core.model.UnsupportedModelFormat(extension)`: thrown by
@@ -217,55 +218,11 @@ fun ModelViewerDemo() {
 }
 ```
 
-AR tap-to-place is the same shape with `ARSceneView`. Verified against
-`samples/android-demo/.../ARPlacementDemo.kt`:
+Use `AutoPlacementScene` and `AutoPlacementModel` to place a model on a detected surface.
+Floor drags can continue past detected plane edges. Gestures work anywhere on screen.
 
-```kotlin
-@Composable
-fun ARPlacementDemo() {
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val placedAnchors = remember { mutableStateListOf<Anchor>() }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
-
-    ARSceneView(
-        modifier = Modifier.fillMaxSize(),
-        engine = engine,
-        modelLoader = modelLoader,
-        planeRenderer = true,
-        sessionConfiguration = { _, config ->
-            config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-        },
-        onSessionUpdated = { _, frame -> latestFrame = frame },
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { event, node ->
-                if (node != null) return@rememberOnGestureListener
-                val frame = latestFrame ?: return@rememberOnGestureListener
-                val hit = frame.hitTest(event).firstOrNull {
-                    it.trackable is Plane && (it.trackable as Plane).isPoseInPolygon(it.hitPose)
-                }
-                hit?.createAnchor()?.let { placedAnchors.add(it) }
-            }
-        ),
-    ) {
-        placedAnchors.forEach { anchor ->
-            key(anchor) {
-                AnchorNode(anchor = anchor) {
-                    rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
-                        ModelNode(modelInstance = instance, scaleToUnits = 0.3f, isEditable = true)
-                    }
-                }
-            }
-        }
-    }
-}
-```
-
-Note: `ARSceneView` takes a `sessionConfiguration: (Session, Config) -> Unit`
-lambda — there is NO `rememberARSession()` helper, do NOT invent one.
-`AnchorNode` takes a `com.google.ar.core.Anchor` instance; create one via
-`hit.createAnchor()` after a hit-test on the latest `Frame`.
+Use `surface = PlacementSurface.WALL` for walls. The
+[placement recipe](references/recipes.md#place-a-model-in-ar) shows the complete screen.
 
 ## Critical rules (verified — do not break)
 

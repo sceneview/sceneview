@@ -6,6 +6,7 @@ import {
   PLATFORM_ROADMAP,
   TROUBLESHOOTING_GUIDE,
 } from "./guides.js";
+import { SAMPLES } from "./samples.js";
 
 // A `v` prefix is a word character, so a leading \b never matches "v4.0.0" — the
 // spelling the roadmap actually uses. Match the prefix explicitly and capture the
@@ -179,19 +180,9 @@ describe("AR_SETUP_GUIDE", () => {
 
   versionChecks({ AR_SETUP_GUIDE });
 
-  it("places on a confirmed tap on empty space, not on ACTION_UP", () => {
-    expect(AR_SETUP_GUIDE).toContain("onGestureListener = rememberOnGestureListener(");
-    expect(AR_SETUP_GUIDE).toContain("onSingleTapConfirmed = { event, node ->");
-    expect(AR_SETUP_GUIDE).toContain("if (node == null)");
-    expect(AR_SETUP_GUIDE).toContain("?.createAnchorOrNull()");
-    expect(AR_SETUP_GUIDE).not.toContain("MotionEvent.ACTION_UP)");
-    expect(AR_SETUP_GUIDE).not.toContain("anchorCreated");
-    expect(AR_SETUP_GUIDE).not.toContain("onTouchEvent = { event, _ ->");
-  });
-
-  it("imports the ARCore Plane and the SceneView tap helpers", () => {
-    expect(AR_SETUP_GUIDE).toContain("import com.google.ar.core.Plane\n");
-    expect(AR_SETUP_GUIDE).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
-    expect(AR_SETUP_GUIDE).toContain("import io.github.sceneview.rememberOnGestureListener\n");
+  it("shares the Android automatic placement sample and documents its defaults", () => {
+    expect(AR_SETUP_GUIDE).toContain(SAMPLES["ar-model-viewer"].code);
+    expect(AR_SETUP_GUIDE).toContain("scaleToUnits = 0.3f");
+    expect(AR_SETUP_GUIDE).toContain("surface = PlacementSurface.WALL");
   });
 });

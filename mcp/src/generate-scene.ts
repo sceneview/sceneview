@@ -2,7 +2,7 @@ import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 /**
  * generate-scene.ts
  *
- * Generates a complete SceneView{} or ARSceneView{} composable from a text description.
+ * Generates a SceneView or AutoPlacementScene composable from a text description.
  * Maps common objects/concepts to SceneView node types and builds compilable code.
  *
  * All generated code targets SceneView v4.0.0 API and is verified against llms.txt.
@@ -627,6 +627,7 @@ export function generateScene(description: string): GeneratedScene {
 
   // Build model instance declarations
   const modelElements = elements.filter((e) => e.type === "model");
+  const autoPlaceModel = isAR && modelElements.length === 1 && !hasGeometry && !parsed.hasText;
   const uniqueModels = new Map<string, string>();
   modelElements.forEach((e) => {
     const path = e.properties.modelPath;
@@ -653,14 +654,27 @@ export function generateScene(description: string): GeneratedScene {
   // Generate Kotlin code
   const lines: string[] = [];
   if (isAR) {
-    // The AR-only imports an AI cannot guess: `Plane` exists in three packages and
-    // `createAnchorOrNull` is an extension. Compose and SceneView entry points are the usual ones.
-    lines.push("import com.google.ar.core.Anchor");
-    lines.push("import com.google.ar.core.Config");
-    lines.push("import com.google.ar.core.Frame");
-    lines.push("import com.google.ar.core.Plane");
-    lines.push("import io.github.sceneview.ar.arcore.createAnchorOrNull");
-    lines.push("import io.github.sceneview.rememberOnGestureListener");
+    lines.push("import androidx.compose.foundation.layout.fillMaxSize");
+    lines.push("import androidx.compose.runtime.Composable");
+    if (hasGeometry) lines.push("import androidx.compose.runtime.remember");
+    lines.push("import androidx.compose.ui.Modifier");
+    if (hasGeometry) lines.push("import androidx.compose.ui.graphics.Color");
+    lines.push("import com.google.android.filament.LightManager");
+    lines.push(
+      autoPlaceModel
+        ? "import io.github.sceneview.ar.AutoPlacementModel"
+        : "import io.github.sceneview.ar.AutoPlacementNode"
+    );
+    lines.push("import io.github.sceneview.ar.AutoPlacementScene");
+    lines.push("import io.github.sceneview.ar.rememberAutoPlacementState");
+    if (!autoPlaceModel) lines.push("import io.github.sceneview.math.Position");
+    if (hasGeometry) lines.push("import io.github.sceneview.math.Size");
+    lines.push("import io.github.sceneview.rememberEngine");
+    if (hasGeometry) lines.push("import io.github.sceneview.rememberMaterialLoader");
+    if (hasModel) {
+      lines.push("import io.github.sceneview.rememberModelInstance");
+      lines.push("import io.github.sceneview.rememberModelLoader");
+    }
     lines.push("");
   }
   lines.push("@Composable");
@@ -695,43 +709,20 @@ export function generateScene(description: string): GeneratedScene {
     lines.push("");
   }
 
-  // SceneView or ARSceneView
+  // SceneView or automatic AR placement
   if (isAR) {
-    lines.push("    var anchor by remember { mutableStateOf<Anchor?>(null) }");
-    lines.push("    var latestFrame by remember { mutableStateOf<Frame?>(null) }");
+    const assetReady = [...uniqueModels.values()].map((name) => `${name} != null`).join(" && ");
+    lines.push("    val placementState = rememberAutoPlacementState()");
     lines.push("");
-    lines.push("    ARSceneView(");
+    lines.push("    AutoPlacementScene(");
+    lines.push(`        assetReady = ${assetReady || "true"},`);
     lines.push("        modifier = Modifier.fillMaxSize(),");
+    lines.push("        state = placementState,");
     lines.push("        engine = engine,");
     if (hasModel) lines.push("        modelLoader = modelLoader,");
-    lines.push("        planeRenderer = true,");
-    lines.push("        sessionConfiguration = { session, config ->");
-    lines.push(
-      "            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR"
-    );
-    lines.push("        },");
-    lines.push("        onSessionUpdated = { _, frame -> latestFrame = frame },");
-    // Place on a confirmed single tap on empty space, never on a raw ACTION_UP: that also
-    // fires at the end of every drag or pinch, and returning true from onTouchEvent
-    // swallows the model's own gestures. The AnchorNode keyed on `anchor` detaches the
-    // previous anchor when it is replaced, so no explicit detach() is needed.
-    lines.push("        onGestureListener = rememberOnGestureListener(");
-    lines.push("            onSingleTapConfirmed = { event, node ->");
-    lines.push("                if (node == null) { // empty space, not a placed model");
-    lines.push("                    latestFrame?.hitTest(event)");
-    lines.push(
-      "                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }"
-    );
-    lines.push("                        ?.createAnchorOrNull()");
-    lines.push(
-      "                        ?.let { anchor = it } // the old AnchorNode detaches its anchor"
-    );
-    lines.push("                }");
-    lines.push("            }");
-    lines.push("        )");
-    lines.push("    ) {");
-    lines.push("        anchor?.let { a ->");
-    lines.push("            AnchorNode(anchor = a) {");
+    if (hasGeometry) lines.push("        materialLoader = materialLoader,");
+    lines.push("    ) { placement ->");
+    if (!autoPlaceModel) lines.push("        AutoPlacementNode(placement, placementState) {");
   } else {
     lines.push("    SceneView(");
     lines.push("        modifier = Modifier.fillMaxSize(),");
@@ -748,28 +739,17 @@ export function generateScene(description: string): GeneratedScene {
     lines.push("    ) {");
   }
 
-  const indent = isAR ? "                " : "        ";
+  const indent = isAR && !autoPlaceModel ? "            " : "        ";
 
   // Declare material instances for geometry nodes
-  if (hasGeometry && !isAR) {
+  if (hasGeometry) {
     for (const [color, varName] of uniqueColors) {
-      const roughness = color.includes("DarkGray") ? "0.9f" : "0.6f";
+      const roughness = !isAR && color.includes("DarkGray") ? "0.9f" : "0.6f";
       lines.push(`${indent}val ${varName} = remember(materialLoader) {`);
       lines.push(
         `${indent}    materialLoader.createColorInstance(${color}, roughness = ${roughness})`
       );
       lines.push(`${indent}}`);
-    }
-    lines.push("");
-  } else if (hasGeometry && isAR) {
-    // In AR context, indent is deeper
-    const arMatIndent = "                ";
-    for (const [color, varName] of uniqueColors) {
-      lines.push(`${arMatIndent}val ${varName} = remember(materialLoader) {`);
-      lines.push(
-        `${arMatIndent}    materialLoader.createColorInstance(${color}, roughness = 0.6f)`
-      );
-      lines.push(`${arMatIndent}}`);
     }
     lines.push("");
   }
@@ -782,6 +762,13 @@ export function generateScene(description: string): GeneratedScene {
       case "model": {
         const varName = uniqueModels.get(elem.properties.modelPath)!;
         lines.push(`${indent}${varName}?.let { instance ->`);
+        if (autoPlaceModel) {
+          lines.push(
+            `${indent}    AutoPlacementModel(placement, placementState, instance, scaleToUnits = ${elem.properties.scaleToUnits}f)`
+          );
+          lines.push(`${indent}}`);
+          break;
+        }
         lines.push(`${indent}    ModelNode(`);
         lines.push(`${indent}        modelInstance = instance,`);
         lines.push(`${indent}        scaleToUnits = ${elem.properties.scaleToUnits}f,`);
@@ -868,10 +855,7 @@ export function generateScene(description: string): GeneratedScene {
   }
 
   // Close braces
-  if (isAR) {
-    lines.push("            }");
-    lines.push("        }");
-  }
+  if (isAR && !autoPlaceModel) lines.push("        }");
   lines.push("    }");
   lines.push("}");
 
@@ -884,7 +868,7 @@ export function generateScene(description: string): GeneratedScene {
   }
   if (isAR) {
     notes.push(
-      'AR requires camera permission at runtime and ARCore on the device. See `get_platform_setup("android", "ar")` for full setup.'
+      'AR requires camera permission and ARCore. See `get_platform_setup("android", "ar")` for setup and `get_sample("ar-model-viewer")` for the single-model example.'
     );
   }
   if (elements.length <= 2 && !hasModel && !hasGeometry) {
@@ -913,7 +897,7 @@ export function formatGeneratedScene(result: GeneratedScene): string {
 
   parts.push(`## Generated Scene\n`);
   parts.push(`**Description:** "${result.description}"`);
-  parts.push(`**Mode:** ${result.isAR ? "AR (ARSceneView)" : "3D (SceneView)"}`);
+  parts.push(`**Mode:** ${result.isAR ? "AR (AutoPlacementScene)" : "3D (SceneView)"}`);
   parts.push(`**Elements:** ${result.elements.length} nodes\n`);
 
   parts.push(`### Dependency\n`);

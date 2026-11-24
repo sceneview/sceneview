@@ -407,7 +407,9 @@ internal fun isWallPlacementHit(
 ) != null
 
 /**
- * One-call **wall placement** AR scene — the vertical-surface sibling of [PlacementScene].
+ * Legacy wall placement scene for products that place several objects by tap.
+ * Use `AutoPlacementScene(surface = PlacementSurface.WALL)` for automatic placement. See the
+ * [migration guide](https://sceneview.github.io/docs/migration/#from-placementscene-to-autoplacementscene).
  *
  * Enables horizontal+vertical plane finding and, where supported, the depth API (a plain wall
  * yields depth hits but no plane, #4070), tracks the floor height and the current wall, exposes
@@ -416,14 +418,13 @@ internal fun isWallPlacementHit(
  * [wallAnchorPose]:
  *
  * ```kotlin
- * WallPlacementScene(mountHeight = 1.2f) { anchor ->
+ * WallPlacementScene(mountHeight = 1.2f, onPlaced = { anchor ->
  *     AnchorNode(anchor = anchor) {
- *         ModelNode(
- *             modelInstance = rememberModelInstance(modelLoader, "models/tv.glb"),
- *             scaleToUnits = 1.4f
- *         )
+ *         rememberModelInstance(modelLoader, "models/tv.glb")?.let { instance ->
+ *             ModelNode(modelInstance = instance)
+ *         }
  *     }
- * }
+ * })
  * ```
  *
  * **Scope of this first increment ([#2740](https://github.com/sceneview/sceneview/issues/2740)):**
@@ -452,6 +453,11 @@ internal fun isWallPlacementHit(
  * @param content              optional extra [ARSceneScope] content; receives the shared
  *                             [PlacementController] (clear placements / read the anchor list).
  */
+@Deprecated(
+    message = "Use AutoPlacementScene: it places the object itself, drags past the detected floor " +
+        "and takes gestures anywhere on screen. See the migration guide.",
+    level = DeprecationLevel.WARNING,
+)
 @Composable
 fun WallPlacementScene(
     modifier: Modifier = Modifier,
