@@ -321,8 +321,7 @@ fun HomeScreen(
                         FeaturedPage.Demo(
                             entry = entry,
                             // The flagship page is a window onto the live stage, not a
-                            // still (#3948). `preview_hero_model_viewer` stays bundled;
-                            // no page draws it.
+                            // still (#3948).
                             heroArt = null,
                             // The flagship's page says what it opens (#4622).
                             titleRes = if (entry.id == HERO_DEMO_ID) {

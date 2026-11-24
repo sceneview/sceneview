@@ -72,8 +72,8 @@ sealed interface FeaturedPage {
      *
      * [heroArt] overrides the demo's grid capture for pages that have bespoke
      * editorial artwork. The Model Viewer page no longer passes one: it is the window
-     * onto the live stage (#3948). `preview_hero_model_viewer` stays bundled unused —
-     * assets are never deleted — framed for a full-span card should a page want it.
+     * onto the live stage (#3948). Its old artwork, `preview_hero_model_viewer`, drew the
+     * CC-BY-NC Damaged Helmet and was removed unused (#4951).
      *
      * [titleRes] overrides the demo's catalogue title on its page. The flagship passes the
      * screen it opens, "Model Viewer" (#4622): titled "Models", its page read as a section
