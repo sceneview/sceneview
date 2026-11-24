@@ -643,6 +643,9 @@ fun AutoPlacementScene(
     onSessionFailed = onSessionFailed,
     onPlaced = onPlaced,
     onCameraPermissionStateChanged = onCameraPermissionStateChanged,
+    // A parameter only the main overload has: with this overload's own arguments alone, Kotlin
+    // resolves the call to this overload again (fewest defaults wins) and recurses forever.
+    sceneContent = null,
     content = content,
 )
 
@@ -686,6 +689,8 @@ fun AutoPlacementScene(
     onTrackingFailureChanged = onTrackingFailureChanged,
     onSessionFailed = onSessionFailed,
     onPlaced = onPlaced,
+    // Only the main overload has it: without it this call resolves to this overload again.
+    sceneContent = null,
     content = content,
 )
 
