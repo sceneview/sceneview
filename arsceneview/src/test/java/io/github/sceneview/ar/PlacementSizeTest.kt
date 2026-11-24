@@ -38,6 +38,25 @@ class PlacementSizeTest {
         }
     }
 
+    @Test fun `plausible authored sizes are kept`() {
+        // A mug, a chair, a sofa, a car: authored metres, untouched.
+        for (side in floatArrayOf(0.1f, 0.9f, 2.2f, 4.5f, MAX_PLAUSIBLE_AUTHORED_METRES)) {
+            assertNull("$side m", implausibleAuthoredSizeFit(side))
+        }
+    }
+
+    @Test fun `a file authored in centimetres is brought down to a metre`() {
+        // The Khronos Fox: about 140 units long, 140 m read as metres.
+        assertEquals(UNKNOWN_UNITS_FIT_METRES, implausibleAuthoredSizeFit(140f)!!, 0f)
+        assertEquals(1f, UNKNOWN_UNITS_FIT_METRES, 0f)
+    }
+
+    @Test fun `unusable sizes are left alone`() {
+        for (side in floatArrayOf(Float.NaN, Float.POSITIVE_INFINITY, 0f, -3f)) {
+            assertNull("$side", implausibleAuthoredSizeFit(side))
+        }
+    }
+
     @Test fun `one metre cube at real world size is one metre`() {
         val base = placementBaseSize(
             halfExtent = Size(0.5f, 0.5f, 0.5f), scale = Scale(1f), assetRotation = Rotation(0f),

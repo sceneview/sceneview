@@ -302,6 +302,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
             ) { result ->
                 model?.let { instance ->
                     AutoPlacementModel(result, state, instance,
+                        scaleToUnits = HELMET_PREVIEW_SIZE_METRES,
                         assetRotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
                         onInvalidMove = { invalidMove = it })
                 }
