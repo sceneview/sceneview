@@ -64,6 +64,10 @@ describe("tools library — dispatchTool", () => {
     const result = await dispatchTool("get_setup", { type: "3d" });
     expect(result.isError).toBeFalsy();
     expect(result.content[0]?.text).toContain("sceneview");
+
+    const arSetup = await dispatchTool("get_setup", { type: "ar" });
+    expect(arSetup.isError).toBeFalsy();
+    expect(arSetup.content[0]?.text).toContain('get_sample("ar-model-viewer")');
   });
 
   it("keeps the legacy Xcode setup on the exact last Apple release", async () => {

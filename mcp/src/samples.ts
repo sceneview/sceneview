@@ -132,10 +132,10 @@ fun ModelViewerScreen() {
     id: "ar-model-viewer",
     title: "AR Automatic Placement Model Viewer",
     description:
-      "Automatically places a GLB at its authored size. Drag the model past detected floor edges and use gestures anywhere on screen.",
+      "Automatically places a GLB on a detected surface. Drag the model past detected floor edges and use gestures anywhere on screen.",
     tags: ["ar", "model", "anchor", "plane-detection", "placement", "gestures"],
     dependency: "io.github.sceneview:arsceneview:" + LATEST_SCENEVIEW_RELEASE + "",
-    prompt: `Place a GLB in AR with AutoPlacementScene and AutoPlacementModel at its authored size. Use the default estimated-floor fallback after 600 ms of tracked search, and use PlacementSurface.WALL if the model belongs on a wall. Use SceneView \`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}\`.`,
+    prompt: `Place a GLB on a detected surface with AutoPlacementScene and AutoPlacementModel. Use PlacementSurface.WALL if the model belongs on a wall. Use SceneView \`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}\`.`,
     code: `import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier

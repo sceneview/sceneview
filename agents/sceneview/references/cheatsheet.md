@@ -79,11 +79,8 @@ shadows (#2657). Gate them mutually exclusively (grid while scanning, shadow rec
 placement). `AutoPlacementScene` provides the ground-shadow flow.
 
 **Place a model in AR.** Use `AutoPlacementScene` with `rememberAutoPlacementState()` and
-`AutoPlacementModel`. The model places itself at authored size and takes gestures across the screen.
-The horizontal flow tries the estimated floor after 600 ms of tracked search.
-Set `state.estimatedFallbackMillis = null` to wait for a detected plane, or call
-`state.recenter()` to bring a placed model back in front of the camera. Use
-`surface = PlacementSurface.WALL` for walls.
+`AutoPlacementModel`. The model places itself on a detected surface and takes gestures across
+the screen. Use `surface = PlacementSurface.WALL` for walls.
 See the [placement recipe](recipes.md#place-a-model-in-ar).
 
 **Manual placement.** `PlacementScene` and `WallPlacementScene` are deprecated with a

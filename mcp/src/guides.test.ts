@@ -182,10 +182,7 @@ describe("AR_SETUP_GUIDE", () => {
 
   it("shares the Android automatic placement sample and documents its defaults", () => {
     expect(AR_SETUP_GUIDE).toContain(SAMPLES["ar-model-viewer"].code);
-    expect(AR_SETUP_GUIDE).toContain("600 ms");
-    expect(AR_SETUP_GUIDE).toContain("scaleToUnits = null");
-    expect(AR_SETUP_GUIDE).toContain("state.estimatedFallbackMillis = null");
-    expect(AR_SETUP_GUIDE).toContain("state.recenter()");
+    expect(AR_SETUP_GUIDE).toContain("scaleToUnits = 0.3f");
     expect(AR_SETUP_GUIDE).toContain("surface = PlacementSurface.WALL");
   });
 });

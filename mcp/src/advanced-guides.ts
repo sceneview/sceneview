@@ -4,6 +4,8 @@
  * Animation, gesture, and performance guides for SceneView developers.
  */
 
+import { SAMPLES } from "./samples.js";
+
 // ─── Animation Guide ─────────────────────────────────────────────────────────
 
 export const ANIMATION_GUIDE = `# SceneView Animation Guide
@@ -367,58 +369,13 @@ fun CustomGestureScreen() {
 }
 \`\`\`
 
-## 3. Tap-to-Place in AR
+## 3. Automatic Placement in AR
 
-The most common AR gesture — tap a detected plane to place a model.
+\`AutoPlacementScene\` places the loaded model when it finds a usable surface.
+\`AutoPlacementModel\` handles dragging, pinching and twisting anywhere on screen.
 
 \`\`\`kotlin
-import com.google.ar.core.Anchor
-import com.google.ar.core.Frame
-import com.google.ar.core.Plane
-import io.github.sceneview.ar.arcore.createAnchorOrNull
-import io.github.sceneview.rememberOnGestureListener
-// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
-
-@Composable
-fun TapToPlaceAR() {
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/furniture.glb")
-    var anchor by remember { mutableStateOf<Anchor?>(null) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
-
-    ARSceneView(
-        engine = engine,
-        modelLoader = modelLoader,
-        planeRenderer = true,
-        onSessionUpdated = { _, frame -> latestFrame = frame },
-        // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
-        // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { event, node ->
-                if (node == null) { // empty space, not the placed model
-                    latestFrame?.hitTest(event)
-                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
-                        ?.createAnchorOrNull()
-                        // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
-                        ?.let { anchor = it }
-                }
-            }
-        )
-    ) {
-        anchor?.let { a ->
-            AnchorNode(anchor = a) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.5f,
-                        isEditable = true // allow further manipulation after placement
-                    )
-                }
-            }
-        }
-    }
-}
+${SAMPLES["ar-model-viewer"].code}
 \`\`\`
 
 ## 4. Drag-to-Rotate with Custom Sensitivity
@@ -565,7 +522,7 @@ fun SurfaceCursorAR() {
 
 1. **\`isEditable = true\`** — one-liner for pinch/drag/tap on any ModelNode.
 2. **\`onTouchEvent\`** — full MotionEvent access for custom gesture logic.
-3. **AR tap-to-place** — in \`onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })\`, hit-test the latest ARCore \`Frame\` (from \`onSessionUpdated\`) and call \`createAnchorOrNull()\` on the in-polygon plane hit. Never place on a raw \`ACTION_UP\` in \`onTouchEvent\`: it also fires at the end of every drag and pinch, and returning \`true\` there swallows the editable model's gestures. Swapping the \`anchor\` state disposes the old \`AnchorNode\`, which detaches its anchor.
+3. **Automatic AR placement** — use \`AutoPlacementScene\` with \`AutoPlacementModel\` for surface-constrained gestures.
 4. **Custom rotation/scale** — track touch deltas or use \`ScaleGestureDetector\`.
 5. **HitResultNode** — AR surface cursor that follows the center of the screen.
 6. **Multi-model** — set \`onSingleTapConfirmed\` per ModelNode (in \`apply\`) for selection, or use \`rememberOnGestureListener(onSingleTapConfirmed = { e, node -> })\` on the scene.

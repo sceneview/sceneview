@@ -300,8 +300,9 @@ fun ModelViewerWithLoading() {
 
 ### AR model placement
 
-`AutoPlacementScene` places the model automatically at its authored size, lets you drag
-along the floor past detected plane edges, and accepts gestures anywhere on screen.
+`AutoPlacementScene` places the model on a detected surface. `AutoPlacementModel` uses a
+30 cm preview by default, lets you drag along the floor past detected plane edges, and
+accepts gestures anywhere on screen.
 
 ```kotlin
 import androidx.compose.foundation.layout.fillMaxSize
@@ -381,7 +382,7 @@ fun RealSizeStlViewer() {
 ```
 
 For AR, load the same instance before calling `AutoPlacementScene` and pass it to
-`AutoPlacementModel(placement, state, instance)`. The model keeps its authored metres by default.
+`AutoPlacementModel(placement, state, instance)`, which defaults to `scaleToUnits = 0.3f`.
 See the [automatic placement recipe](#automatic-placement-recommended).
 
 **Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
@@ -1877,11 +1878,7 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 
 `AutoPlacementScene` places one object per request once the asset and camera tracking are ready.
 It looks for upward-facing floors or tables (`SURFACE`) by default, using a center ray and
-then visible plane centers within 0.25–3 m. After 600 ms of tracked search without a usable
-surface, it tries an estimated floor and eases to the refined pose. Set
-`state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()`
-to move a placed object in front of the camera on a tracked or estimated floor. It returns
-`true` if queued and `false` for a wall, without a placement, or while tracking is unavailable.
+then visible plane centers within 0.25–3 m.
 
 `AutoPlacementModel` accepts gestures anywhere on screen. Floor drags can continue beyond
 detected plane edges, at the object's height and up to 5 m away. Table drags stop at the
@@ -1894,7 +1891,7 @@ moved, or always with `state.alwaysShowsDimensions = true`). Set `state.showsPla
 to hide the surface guide.
 
 **Session hooks.** Use `cameraStream` for a custom camera feed. `sessionConfiguration` runs
-after the scene sets plane finding, depth and instant placement. Keep plane finding enabled.
+after the scene configures plane finding and depth. Keep plane finding enabled.
 `onSessionCreated`, `onSessionResumed`, `onSessionPaused` and `onSessionFailure` report session
 events. `onSessionUpdated` receives the ARCore frame after the scene handles placement.
 For an animated `NavHost` destination, pass `lifecycle = rememberHostLifecycle()` to keep the
@@ -2026,9 +2023,8 @@ tracked): content placed on a table that must stand on the floor drops by
 `floorHeight - pose.ty()`.
 
 `AutoPlacementModel` grounds the model bounds and preserves the contact pivot while
-rotating and scaling. By default `scaleToUnits` is `null`, so the model keeps its authored
-metres (**Actual size**), as in AR Quick Look and Scene Viewer. Use
-`size = PlacementSize.FitInto(0.3f)` for a 30 cm preview. Scale limits are 25–400% of the base size by default;
+rotating and scaling. The default `scaleToUnits = 0.3f` fits the longest dimension to 0.3 m
+(**Preview size**). Scale limits are 25–400% of the base size by default;
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
@@ -2082,8 +2078,7 @@ See [From PlacementScene to AutoPlacementScene](https://sceneview.github.io/docs
 ### Direct wall placement
 
 Pass `surface = PlacementSurface.WALL` to place on a wall. The scene looks for a usable
-vertical plane and can use depth or a floor edge to infer a wall. The 600 ms estimated-floor
-fallback and `recenter()` apply to horizontal placement. Drag to a valid alternative wall or
+vertical plane and can use depth or a floor edge to infer a wall. Drag to a valid alternative wall or
 reset explicitly. Tracking loss retains the placement for recovery.
 
 Author wall models with **+Y up and +Z front** (or supply `assetRotation`).
@@ -2170,10 +2165,19 @@ The optional `content` block receives a `PlacementController` — call `controll
 detach every placed anchor (e.g. a "Clear All" button), or read `controller.count` /
 `controller.anchors` to drive a placement counter. Both are Compose-observable.
 
-The manual hit test prefers in-polygon planes. If enabled, instant placement uses
-`Frame.hitTestInstantPlacement` at an approximate distance of 1 m. Its anchor follows the drop
-position while depth is estimated, then blends to the refined pose over 300 ms. A successful
-tap fires a long-press haptic.
+`PlacementScene` accepts plane hits (inside the polygon) and — when `instantPlacement = true` —
+instant-placement hits. Plane hits always win; the instant fallback is only consulted when no
+plane answered, and it comes from `Frame.hitTestInstantPlacement` at a 1 m approximate distance
+(`Frame.hitTest` never returns an `InstantPlacementPoint` — the trap #3571 fixed). A successful
+placement fires a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
+An `AnchorNode` declared in `onPlaced` holds its physical drop location through an independent
+world anchor while an instant-placement point has only approximate depth. Its numerical pose
+can still change as ARCore corrects world coordinates. Once ARCore reports `FULL_TRACKING`, it
+blends between the held and refined anchors' current poses over 300 ms, then follows normal
+tracking corrections. The temporary world anchor is detached after refinement or when the
+placement is moved, replaced, cleared, or disposed. This applies to the anchors
+created by `PlacementScene`; an `Anchor` passed directly to `ARSceneView`'s `AnchorNode` does not
+carry its source trackable and retains the usual anchor-following behavior.
 
 The reticle shows while the camera is tracking and defaults to the ring style. If coaching
 is enabled, pass `coachingBottomClearance` to give the cards space above host UI.
@@ -6483,7 +6487,7 @@ AutoPlacementScene(
     engine = engine,
     modelLoader = modelLoader,
 ) { result ->
-    model?.let { AutoPlacementModel(result, placement, it) }
+    model?.let { AutoPlacementModel(result, placement, it, scaleToUnits = 0.3f) }
 }
 ```
 
@@ -8311,12 +8315,14 @@ struct AutomaticPlacement: View {
   `rememberArGuidanceState(placement).isCoaching`.
 
 Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
-APIs with unchanged behavior. To show the model before a plane is detected, opt in
-to instant placement below.
+APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
+`WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
+examples. To show the model before a plane is detected, opt in to instant placement below.
 
 ### iOS: Instant placement
 
-On iOS, instant placement is off by default. Without it, nothing appears until
+Off by default, and iOS only for now: Android's `AutoPlacementScene` has no instant placement
+yet (it hard-codes ARCore's `InstantPlacementMode.DISABLED`). Without it, nothing appears until
 ARKit detects a plane. Opt in when the first seconds matter more than
 the first pose:
 

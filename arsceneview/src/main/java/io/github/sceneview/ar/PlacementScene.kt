@@ -160,13 +160,6 @@ import java.io.File
 @Deprecated(
     message = "Use AutoPlacementScene: it places the object itself, drags past the detected floor " +
         "and takes gestures anywhere on screen. See the migration guide.",
-    replaceWith = ReplaceWith(
-        "AutoPlacementScene(assetReady = true, modifier = modifier, engine = engine, " +
-            "modelLoader = modelLoader, materialLoader = materialLoader, groundShadows = groundShadows, " +
-            "playbackDataset = playbackDataset, sessionConfiguration = sessionConfiguration) { placement -> " +
-            "onPlaced(placement.anchor) }",
-        "io.github.sceneview.ar.AutoPlacementScene",
-    ),
     level = DeprecationLevel.WARNING,
 )
 @Composable

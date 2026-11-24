@@ -88,14 +88,13 @@ fun ARPlacementScreen() {
 }
 ```
 
-It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+The model places automatically on a detected surface. You can drag it along the floor past
+detected plane edges and use gestures anywhere on screen.
 
 For a wall, set `surface = PlacementSurface.WALL`. Review any manual mount height, seam
 callbacks and `PlacementController`-based actions when migrating, since automatic placement
 owns one object and chooses the wall contact point. Use `sceneContent` for other anchors
-and `onPlaced` for one-shot placement notifications. The IDE replacement carries the old
-anchor block as a starting point. Move asset loading out of it and replace the anchor/model
-pair with `AutoPlacementModel` as shown above.
+and `onPlaced` for one-shot placement notifications.
 
 ## Android camera permission recovery — `SettingsWithRequest`
 

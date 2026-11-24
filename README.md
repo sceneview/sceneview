@@ -217,7 +217,9 @@ fun ARPlacementScreen() {
 }
 ```
 
-It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen.
+The model places automatically on a detected surface. You can drag it along the floor past
+detected plane edges and use gestures anywhere on screen. The default preview size is 30 cm
+along the model’s longest axis.
 See [automatic placement](docs/docs/cheatsheet.md#automatic-placement-recommended).
 
 `arsceneview` already declares the `CAMERA` permission and marks ARCore as optional. An AR

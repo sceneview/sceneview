@@ -109,10 +109,7 @@ Android options.
 ## Automatic placement (recommended)
 
 `AutoPlacementScene` places one object per request once the asset and camera tracking are ready.
-It looks for upward-facing floors or tables (`SURFACE`) by default. After 600 ms of tracked
-search without a usable surface, it tries an estimated floor and eases to the refined pose.
-Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()`
-to move a placed object in front of the camera on a tracked or estimated floor.
+It looks for upward-facing floors or tables (`SURFACE`) by default.
 
 `AutoPlacementModel` accepts gestures anywhere on screen. Floor drags can continue beyond
 detected plane edges, at the object's height and up to 5 m away. Table drags stop at the
@@ -150,9 +147,8 @@ fun ARPlacementScreen() {
 ```
 
 `AutoPlacementModel` grounds the model bounds and preserves the contact pivot while
-rotating and scaling. By default `scaleToUnits` is `null`, so the model keeps its authored
-metres (**Actual size**), as in AR Quick Look and Scene Viewer. Use
-`size = PlacementSize.FitInto(0.3f)` for a 30 cm preview. Scale limits are 25–400% of the base size by default;
+rotating and scaling. The default `scaleToUnits = 0.3f` fits the longest dimension to 0.3 m
+(**Preview size**). Scale limits are 25–400% of the base size by default;
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them. `state.cameraHeight`
 is the tracked camera's world height in metres, or `null` until it tracks.
 
@@ -196,8 +192,7 @@ See [From PlacementScene to AutoPlacementScene](migration.md#from-placementscene
 ### Direct wall placement
 
 Pass `surface = PlacementSurface.WALL` to place on a wall. The scene looks for a usable
-vertical plane and can use depth or a floor edge to infer a wall. The 600 ms estimated-floor
-fallback and `recenter()` apply to horizontal placement. Drag to a valid alternative wall or
+vertical plane and can use depth or a floor edge to infer a wall. Drag to a valid alternative wall or
 reset explicitly. Tracking loss retains the placement for recovery.
 
 Author wall models with **+Y up and +Z front** (or supply `assetRotation`).

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ANIMATION_GUIDE, GESTURE_GUIDE, PERFORMANCE_TIPS } from "./advanced-guides.js";
+import { SAMPLES } from "./samples.js";
 
 // ─── Animation Guide Tests ───────────────────────────────────────────────────
 
@@ -76,33 +77,14 @@ describe("GESTURE_GUIDE", () => {
     expect(GESTURE_GUIDE).toContain("MotionEvent.ACTION_UP");
   });
 
-  it("contains AR tap-to-place example", () => {
-    expect(GESTURE_GUIDE).toContain("createAnchorOrNull()");
-    expect(GESTURE_GUIDE).toContain("AnchorNode");
-    expect(GESTURE_GUIDE).toContain("ARSceneView(");
-    expect(GESTURE_GUIDE).toContain("planeRenderer");
-  });
-
-  it("places on a confirmed tap on empty space, never on ACTION_UP", () => {
-    const tapToPlace = GESTURE_GUIDE.slice(
-      GESTURE_GUIDE.indexOf("## 3. Tap-to-Place in AR"),
+  it("shares the automatic placement sample in the AR gestures section", () => {
+    const placement = GESTURE_GUIDE.slice(
+      GESTURE_GUIDE.indexOf("## 3. Automatic Placement in AR"),
       GESTURE_GUIDE.indexOf("## 4. ")
     );
-    expect(tapToPlace).toContain("onGestureListener = rememberOnGestureListener(");
-    expect(tapToPlace).toContain("onSingleTapConfirmed = { event, node ->");
-    expect(tapToPlace).toContain("if (node == null)");
-    expect(tapToPlace).toContain("isEditable = true");
-    expect(tapToPlace).not.toContain("onTouchEvent = {");
-    expect(tapToPlace).not.toContain("MotionEvent.ACTION_UP");
-    expect(tapToPlace).not.toContain("anchorCreated");
-    expect(tapToPlace).toContain("import com.google.ar.core.Plane\n");
-    expect(tapToPlace).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
-    expect(tapToPlace).toContain("import io.github.sceneview.rememberOnGestureListener\n");
-    // The key takeaway teaches the same hook.
-    expect(GESTURE_GUIDE).not.toContain("on `ACTION_UP` in `onTouchEvent`, hit-test");
-    expect(GESTURE_GUIDE).toContain(
-      "**AR tap-to-place** — in `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed"
-    );
+    expect(placement).toContain(SAMPLES["ar-model-viewer"].code);
+    expect(placement).not.toContain("onSingleTapConfirmed");
+    expect(GESTURE_GUIDE).toContain("**Automatic AR placement**");
   });
 
   it("contains drag-to-rotate with custom sensitivity", () => {

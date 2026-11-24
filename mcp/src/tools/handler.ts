@@ -249,6 +249,8 @@ export async function dispatchTool(
                 `    <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />`,
                 `</application>`,
                 `\`\`\``,
+                ``,
+                `For automatic model placement, see \`get_sample("ar-model-viewer")\`.`,
               ].join("\n"),
             },
           ]),

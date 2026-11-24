@@ -248,7 +248,7 @@ SceneView(
 - [ ] Remove manual \`engine.destroy()\` calls
 - [ ] Replace manual \`worldPosition\` in AR → \`AnchorNode\`
 - [ ] Replace \`ArFragment\` → \`ARSceneView()\` composable
-- [ ] Replace \`onTapArPlane\` → \`rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })\` + \`latestFrame?.hitTest(event)\`
+- [ ] Replace \`onTapArPlane\` → \`AutoPlacementScene\` with \`AutoPlacementModel\` for automatic model placement (see \`get_sample("ar-model-viewer")\`)
 - [ ] Replace \`setRenderable\` → \`ModelNode(modelInstance = ...)\`
 - [ ] Replace \`setParent\` → nest composable nodes inside parent
 - [ ] Move all Filament calls to main thread (no Dispatchers.IO)
@@ -276,7 +276,7 @@ SceneView(
 | 2.x | 3.0 |
 |-----|-----|
 | \`ArFragment\` in XML layout | \`ARSceneView()\` composable |
-| \`arFragment.setOnTapArPlaneListener\` | \`ARSceneView(onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> … }))\` |
+| \`arFragment.setOnTapArPlaneListener\` | \`AutoPlacementScene\` with \`AutoPlacementModel\`. See \`get_sample("ar-model-viewer")\` for automatic model placement |
 | \`arFragment.arSceneView\` | Direct access via composable params |
 
 ---

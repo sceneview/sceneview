@@ -123,7 +123,8 @@ fun RealSizeStlViewer() {
 ```
 
 For AR, load the same asset before calling `AutoPlacementScene` and show it with
-`AutoPlacementModel`. Authored metres are the default. Follow the [placement recipe](references/recipes.md#place-a-model-in-ar).
+`AutoPlacementModel`, which defaults to `scaleToUnits = 0.3f`.
+Follow the [placement recipe](references/recipes.md#place-a-model-in-ar).
 
 **Unsupported on Android:** STEP, FBX and USDZ (and unknown inputs) are refused before Filament
 parses them, with `io.github.sceneview.core.model.UnsupportedModelFormat(extension)`: thrown by
@@ -217,11 +218,8 @@ fun ModelViewerDemo() {
 }
 ```
 
-Use `AutoPlacementScene` and `AutoPlacementModel` to place a model in AR. The model places itself
-at its authored size, drags along the floor past detected plane edges, and takes gestures
-anywhere on screen. After 600 ms of tracked search without a usable surface, the horizontal
-flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null`
-to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+Use `AutoPlacementScene` and `AutoPlacementModel` to place a model on a detected surface.
+Floor drags can continue past detected plane edges. Gestures work anywhere on screen.
 
 Use `surface = PlacementSurface.WALL` for walls. The
 [placement recipe](references/recipes.md#place-a-model-in-ar) shows the complete screen.

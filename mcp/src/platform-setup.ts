@@ -10,6 +10,7 @@ import {
   LATEST_FLUTTER_PUB_RELEASE,
   LATEST_SCENEVIEW_RELEASE,
 } from "./generated/version.js";
+import { SAMPLES } from "./samples.js";
 
 export type Platform = "android" | "ios" | "web" | "flutter" | "react-native" | "desktop" | "tv";
 export type SetupType = "3d" | "ar";
@@ -133,79 +134,19 @@ dependencies {
 
 ### 3. Camera Permission at Runtime
 
-\`\`\`kotlin
-val cameraPermission = rememberLauncherForActivityResult(
-    ActivityResultContracts.RequestPermission()
-) { granted -> if (granted) showAR = true }
+SceneView's default permission handler requests camera access when the AR scene starts in a ComponentActivity.
 
-LaunchedEffect(Unit) {
-    cameraPermission.launch(Manifest.permission.CAMERA)
-}
-\`\`\`
+### 4. Place a Model Automatically
 
-### 4. Basic AR Scene
+Use \`AutoPlacementScene\` and \`AutoPlacementModel\` to place a loaded GLB when a usable surface is detected.
 
 \`\`\`kotlin
-import com.google.ar.core.Anchor
-import com.google.ar.core.Config
-import com.google.ar.core.Frame
-import com.google.ar.core.Plane
-import io.github.sceneview.ar.arcore.createAnchorOrNull
-import io.github.sceneview.rememberOnGestureListener
-// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
-
-@Composable
-fun MyARScreen() {
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    var anchor by remember { mutableStateOf<Anchor?>(null) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
-
-    val modelInstance = rememberModelInstance(modelLoader, "models/robot.glb")
-
-    ARSceneView(
-        modifier = Modifier.fillMaxSize(),
-        engine = engine,
-        modelLoader = modelLoader,
-        planeRenderer = true,
-        sessionConfiguration = { session, config ->
-            config.depthMode =
-                if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
-                    Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED
-            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-            config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-        },
-        onSessionUpdated = { _, frame -> latestFrame = frame },
-        // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
-        // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { event, node ->
-                if (node == null) { // empty space, not the placed model
-                    latestFrame?.hitTest(event)
-                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
-                        ?.createAnchorOrNull()
-                        // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
-                        ?.let { anchor = it }
-                }
-            }
-        )
-    ) {
-        anchor?.let { a ->
-            AnchorNode(anchor = a) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.5f,
-                        isEditable = true
-                    )
-                }
-            }
-        }
-    }
-}
+${SAMPLES["ar-model-viewer"].code}
 \`\`\`
 
 ### 5. Session Configuration Options
+
+These are the options for custom sessions using \`ARSceneView\` directly.
 
 | Option | Values | Default |
 |--------|--------|---------|

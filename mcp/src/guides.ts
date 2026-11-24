@@ -530,12 +530,10 @@ if (availability.isSupported) { /* show AR */ }
 
 ## 3. Place a Model Automatically
 
-Use \`AutoPlacementScene\` with \`AutoPlacementModel\`. It places the asset at its authored size
-(\`scaleToUnits = null\`), lets the object drag along the floor past detected plane edges, and
-takes gestures anywhere on screen. The horizontal flow tries the estimated floor after 600 ms
-of tracked search if a detected surface is still unavailable. Set
-\`state.estimatedFallbackMillis = null\` to wait for a detected surface, or call
-\`state.recenter()\` to bring a placed object back in front of the camera.
+Use \`AutoPlacementScene\` with \`AutoPlacementModel\` to place a loaded asset on a
+detected surface. The default \`scaleToUnits = 0.3f\` gives a 30 cm preview along the
+model's longest axis. Floor drags can extend past detected plane edges, and gestures
+work anywhere on screen.
 Use \`surface = PlacementSurface.WALL\` for walls.
 
 \`\`\`kotlin
@@ -637,19 +635,7 @@ ARSceneView(
 
 ## 6. Permissions
 
-Camera permission must be requested at runtime (Android 6.0+). SceneView does **not** handle this — you must request it before showing ARSceneView:
-
-\`\`\`kotlin
-val cameraPermission = rememberLauncherForActivityResult(
-    ActivityResultContracts.RequestPermission()
-) { granted -> if (granted) showAR = true }
-
-LaunchedEffect(Unit) {
-    cameraPermission.launch(Manifest.permission.CAMERA)
-}
-
-if (showAR) {
-    ARSceneView(engine = engine, modelLoader = modelLoader) { /* ... */ }
-}
-\`\`\`
+In a ComponentActivity, SceneView's default permission handler requests camera access
+when the AR scene starts. The library manifest supplies the camera permission declaration.
+The AR scene shows recovery controls if access is denied.
 `;

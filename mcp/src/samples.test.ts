@@ -190,13 +190,12 @@ describe("AR samples", () => {
     expect(code).toContain("isTouchable = false");
   });
 
-  it("ar-model-viewer places the loaded model at its authored size", () => {
-    const { code, prompt } = SAMPLES["ar-model-viewer"];
+  it("ar-model-viewer places the loaded model automatically", () => {
+    const { code } = SAMPLES["ar-model-viewer"];
     expect(code).toContain("AutoPlacementScene(");
     expect(code).toContain("assetReady = instance != null");
     expect(code).toContain("instance?.let { AutoPlacementModel(placement, state, it) }");
-    expect(code).not.toMatch(/scaleToUnits|hitTest|onSingleTapConfirmed/);
-    expect(prompt).toContain("600 ms of tracked search");
+    expect(code).not.toMatch(/hitTest|onSingleTapConfirmed/);
   });
 });
 

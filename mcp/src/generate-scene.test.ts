@@ -15,36 +15,37 @@ describe("generateScene", () => {
 
   it("generates AR scene when description mentions AR", () => {
     const result = generateScene("AR scene with a chair placed in real world");
-    expect(result.code).toContain("ARSceneView(");
-    expect(result.code).toContain("AnchorNode");
-    expect(result.code).toContain("onSingleTapConfirmed");
+    expect(result.code).toContain("AutoPlacementScene(");
+    expect(result.code).toContain("state = placementState");
+    expect(result.code).toContain("AutoPlacementModel(placement, placementState, instance,");
     expect(result.isAR).toBe(true);
     expect(result.dependencies[0]).toContain("arsceneview");
+    expect(result.notes.join("\n")).toContain('get_sample("ar-model-viewer")');
   });
 
-  it("hit-tests the latest ARCore frame on a confirmed tap on empty space", () => {
-    const code = generateScene("AR scene with an editable chair").code;
-    expect(code).toContain("onSessionUpdated = { _, frame -> latestFrame = frame }");
-    expect(code).toContain("onGestureListener = rememberOnGestureListener(");
-    expect(code).toContain("onSingleTapConfirmed = { event, node ->");
-    expect(code).toContain("if (node == null)");
-    expect(code).toContain("(it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true");
-    expect(code).toContain("createAnchorOrNull()");
-    expect(code).toContain("?.let { anchor = it }");
-    expect(code).not.toContain("onTouchEvent");
-    expect(code).not.toContain("ACTION_UP");
-    expect(code).not.toContain("anchorCreated");
-    expect(code).not.toContain("hitResult.createAnchor()");
+  it("waits for the model to load before asking to place it", () => {
+    const code = generateScene("AR scene with a chair").code;
+    expect(code).toContain('rememberModelInstance(modelLoader, "models/chair.glb")');
+    expect(code).toContain("assetReady = chairInstance != null");
+    expect(code).toContain("chairInstance?.let { instance ->");
+    expect(code).not.toMatch(/hitTest|onSingleTapConfirmed/);
   });
 
-  it("imports the ARCore Plane and the SceneView tap helpers in AR scenes only", () => {
+  it("imports the automatic placement composables in AR scenes only", () => {
     const ar = generateScene("AR scene with a chair").code;
-    expect(ar.startsWith("import com.google.ar.core.Anchor\n")).toBe(true);
-    expect(ar).toContain("import com.google.ar.core.Plane\n");
-    expect(ar).toContain("import com.google.ar.core.Frame\n");
-    expect(ar).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
-    expect(ar).toContain("import io.github.sceneview.rememberOnGestureListener\n");
+    expect(ar).toContain("import io.github.sceneview.ar.AutoPlacementScene\n");
+    expect(ar).toContain("import io.github.sceneview.ar.AutoPlacementModel\n");
+    expect(ar).toContain("import io.github.sceneview.ar.rememberAutoPlacementState\n");
     expect(generateScene("a red sphere").code.startsWith("@Composable")).toBe(true);
+  });
+
+  it("places a group once all its models are loaded", () => {
+    const code = generateScene("AR scene with a chair, a tree and a sphere").code;
+    expect(code).toContain("chairInstance != null");
+    expect(code).toContain("treeInstance != null");
+    expect(code).toContain("AutoPlacementNode(placement, placementState) {");
+    expect(code).toContain("SphereNode(");
+    expect(code).toContain("ModelNode(");
   });
 
   it("includes light in every scene", () => {
@@ -118,7 +119,7 @@ describe("formatGeneratedScene", () => {
   it("shows AR mode for AR scenes", () => {
     const result = generateScene("AR with a robot");
     const formatted = formatGeneratedScene(result);
-    expect(formatted).toContain("AR (ARSceneView)");
+    expect(formatted).toContain("AR (AutoPlacementScene)");
   });
 
   it("shows 3D mode for regular scenes", () => {

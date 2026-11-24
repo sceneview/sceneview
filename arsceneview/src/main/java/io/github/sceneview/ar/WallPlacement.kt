@@ -456,14 +456,6 @@ internal fun isWallPlacementHit(
 @Deprecated(
     message = "Use AutoPlacementScene: it places the object itself, drags past the detected floor " +
         "and takes gestures anywhere on screen. See the migration guide.",
-    replaceWith = ReplaceWith(
-        "AutoPlacementScene(assetReady = true, modifier = modifier, surface = PlacementSurface.WALL, " +
-            "engine = engine, modelLoader = modelLoader, materialLoader = materialLoader, " +
-            "playbackDataset = playbackDataset, sessionConfiguration = sessionConfiguration) { placement -> " +
-            "onPlaced(placement.anchor) }",
-        "io.github.sceneview.ar.AutoPlacementScene",
-        "io.github.sceneview.ar.PlacementSurface",
-    ),
     level = DeprecationLevel.WARNING,
 )
 @Composable

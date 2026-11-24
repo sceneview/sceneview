@@ -64,7 +64,9 @@ fun ARPlacementScreen() {
 }
 ```
 
-Put `models/chair.glb` in `src/main/assets/`. It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+Put `models/chair.glb` in `src/main/assets/`.
+The model places automatically on a detected surface. You can drag it along the floor past
+detected plane edges and use gestures anywhere on screen.
 
 `arsceneview` already declares the `CAMERA` permission and ARCore as optional; the
 [AR manifest](quickstart.md#ar-manifest) section shows what an AR Required app adds.

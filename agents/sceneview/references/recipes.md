@@ -16,7 +16,7 @@ mirroring the same surface.
 
 ## 3. Automatic AR model placement
 Use `AutoPlacementScene` and `AutoPlacementModel` in the [placement recipe](#place-a-model-in-ar).
-The demo is [`ARPlacementDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt).
+The demo uses [`TapToPlaceArSession.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/common/placement/TapToPlaceArSession.kt).
 
 ## 4. Augmented image tracking
 [`ARImageDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARImageDemo.kt) — `AugmentedImageNode(augmentedImage = …) { ModelNode(...) }` — one node per detected `AugmentedImage` from `frame.getUpdatedAugmentedImages()`. The reference-image database is configured via `sessionConfiguration`.
@@ -72,7 +72,8 @@ are:
 
 ## Place a model in AR
 
-Use `AutoPlacementScene` with `AutoPlacementModel`. It places the model automatically at its authored size, lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen.
+Use `AutoPlacementScene` with `AutoPlacementModel`. It places the model on a detected surface,
+lets you drag along the floor past detected plane edges, and accepts gestures anywhere on screen.
 
 ```kotlin
 import androidx.compose.foundation.layout.fillMaxSize
@@ -104,7 +105,7 @@ fun ARPlacementScreen() {
 }
 ```
 
-Put the GLB in `src/main/assets/models/`. After 600 ms of tracked search without a usable surface, the horizontal flow tries an estimated floor and eases to the refined pose. Set `state.estimatedFallbackMillis = null` to wait for a detected surface. Call `state.recenter()` to move the object back in front of the camera.
+Put the GLB in `src/main/assets/models/`.
 Set `surface = PlacementSurface.WALL` for wall placement. For a host toolbar or bottom sheet,
 pass its occupied space as `coachingContentPadding` to keep built-in cards clear of it.
 
