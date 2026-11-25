@@ -525,6 +525,9 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
     // Filming cues (debug `--es ask_q_at 41 --es ask_q2_at 63`): each question starts at that
     // second of the session clock instead of chaining, and the earlier answer stays pinned.
     val cues = remember(activity) { AskArAutomation.cues(activity?.intent) }
+    // Filming a replay (debug `--es ask_aim 0.62,0.45`): the point on screen the user aimed at,
+    // a tap on a screw say, read in place of the screen's centre.
+    val aim = remember(activity) { AskArAutomation.aim(activity?.intent) }
     var hideChrome by remember(activity) { mutableStateOf(AskArAutomation.hideChrome(activity?.intent) == true) }
     // A question sent while the demo is open (`am start` again, or the link again) is taken
     // in place: the AR session and any replay run on, and the answer on screen stays where it
@@ -688,7 +691,7 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                             // A wall plane or a depth hit, and the floor, are worth a short wait
                             // over a feature point and a guessed floor: ARCore often finds them
                             // within a second of being pointed at the wall.
-                            val room = AskRoomReader.read(session, frame, currentViewSize)
+                            val room = AskRoomReader.read(session, frame, currentViewSize, aim)
                             if (AskRoomReader.isSettled(room) || ++state.roomFrames >= ROOM_PATIENCE_FRAMES) {
                                 Log.i(LOG_TAG, AskRoomReader.describe(room) + " after ${state.roomFrames} frames")
                                 state.roomRequested = false
@@ -1210,7 +1213,7 @@ private fun yawQuaternion(yaw: Float) = floatArrayOf(0f, sin(yaw / 2f), 0f, cos(
  */
 private object AskRoomReader {
 
-    fun read(session: Session, frame: Frame, viewSize: IntSize): AskRoom {
+    fun read(session: Session, frame: Frame, viewSize: IntSize, aim: Pair<Float, Float>? = null): AskRoom {
         val pose = frame.camera.pose
         val c = pose.translation
         val camera = Float3(c[0], c[1], c[2])
@@ -1222,8 +1225,8 @@ private object AskRoomReader {
             }
             .map { it.centerPose.ty() }
         val floor = AskFloor.pick(camera.y, floorHeights, lowPointHeights(frame, viewSize))
-        val hits = centreHits(frame, viewSize)
-        // What the centre ray hit, by kind: a wall plane, else a depth point, else a feature
+        val hits = centreHits(frame, viewSize, aim)
+        // What the centre ray (or the aimed one) hit, by kind: a wall plane, else a depth point, else a feature
         // point; a feature point never nearer than WallPick.MIN_DISTANCE (one on the phone's
         // own edge of the scene is not the wall), a plane or depth from MIN_SURFACE_DISTANCE.
         val kinds = hits.map { hit -> wallKind(hit) to hit.distance }
@@ -1342,9 +1345,10 @@ private object AskRoomReader {
         return Float3(fx / norm, 0f, fz / norm)
     }
 
-    private fun centreHits(frame: Frame, viewSize: IntSize): List<HitResult> {
+    private fun centreHits(frame: Frame, viewSize: IntSize, aim: Pair<Float, Float>?): List<HitResult> {
         if (viewSize.width == 0 || viewSize.height == 0) return emptyList()
-        return runCatching { frame.hitTest(viewSize.width / 2f, viewSize.height / 2f) }.getOrNull().orEmpty()
+        val (fx, fy) = aim ?: (0.5f to 0.5f)
+        return runCatching { frame.hitTest(viewSize.width * fx, viewSize.height * fy) }.getOrNull().orEmpty()
     }
 
     /** What a ray from [origin] along [direction] hits: a wall ARCore found, a depth point, or else. */
@@ -1417,6 +1421,19 @@ internal object AskArAutomation {
     fun cues(intent: Intent?): List<Float?> =
         if (intent == null || !BuildConfig.DEBUG) emptyList()
         else CUES.map { intent.getStringExtra(it)?.trim()?.toFloatOrNull() }
+
+    /**
+     * Filming a replay, debug only: `--es ask_aim <x>,<y>`, fractions of the screen's width and
+     * height, is where the room read aims instead of the centre, standing in for the user who
+     * centres the screw. A recording rarely holds the spot dead centre at the second it is read.
+     */
+    private const val AIM = "ask_aim"
+
+    fun aim(intent: Intent?): Pair<Float, Float>? {
+        if (intent == null || !BuildConfig.DEBUG) return null
+        val xy = intent.getStringExtra(AIM)?.split(',')?.mapNotNull { it.trim().toFloatOrNull() } ?: return null
+        return xy.takeIf { it.size == 2 && it.all { f -> f in 0f..1f } }?.let { it[0] to it[1] }
+    }
 
     /** `--ez ask_hide_chrome`, if the intent says (debug builds only), else `null`. */
     fun hideChrome(intent: Intent?): Boolean? =

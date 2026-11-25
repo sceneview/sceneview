@@ -123,8 +123,8 @@ class AskDrawingTest {
     @Test fun `each nail is a cross of two strokes on the line`() {
         val plan = HangPicture.plan(wallAhead, floorY = 0f)
         val strokes = plan.sheets.single().writing.strokes
-        // Level line, centre tick, then the two crosses.
-        val crosses = strokes.subList(2, 6)
+        // The two crosses come last, after the height and the note.
+        val crosses = strokes.takeLast(4)
         for ((i, x) in listOf(-0.2f, 0.2f).withIndex()) {
             val pair = crosses.subList(2 * i, 2 * i + 2)
             val centreX = pair.flatMap { it.points }.let { (it.minOf { p -> p.x } + it.maxOf { p -> p.x }) / 2f }
@@ -359,10 +359,11 @@ class AskDrawingTest {
         assertNear(Float3(0.4f, 0.5f, -1f + RadiatorBleed.SURFACE_LIFT), plan.origin)
         val surface = plan.sheets.first()
         assertEquals(SheetFacing.Wall, surface.facing)
-        // Two loops round the screw, about 6 cm out.
+        // Two loops round the screw's cap, about 4 cm out.
         val circle = surface.writing.strokes.first().points
         val radii = circle.map { kotlin.math.sqrt(it.x * it.x + it.y * it.y) }
-        assertTrue(radii.all { it in 0.05f..0.07f })
+        val r = RadiatorBleed.CIRCLE_RADIUS
+        assertTrue(radii.all { it in r * 0.9f..r * 1.12f })
         val turns = circle.zipWithNext { p, q -> kotlin.math.atan2(p.x * q.y - p.y * q.x, p.x * q.x + p.y * q.y) }.sum() /
             (2f * Math.PI.toFloat())
         assertTrue("$turns turns", turns in 1.6f..2f)
@@ -374,7 +375,7 @@ class AskDrawingTest {
         assertTrue(plan.sheets.drop(1).all { it.facing == SheetFacing.Billboard })
     }
 
-    @Test fun `the arrow and its label go opposite the steps, and everything stays within 25 cm of the screw`() {
+    @Test fun `the arrow goes opposite the steps, its label above the circle, everything within 25 cm of the screw`() {
         for (camera in listOf(Float3(0f, 1.2f, 0f), Float3(-0.6f, 1.2f, 0f))) {
             val screw = WallSpot(Float3(0f, 0.5f, -1f), Float3(0f, 0f, 1f))
             val side = RadiatorBleed.stepsSide(screw, camera)
@@ -384,7 +385,13 @@ class AskDrawingTest {
             // The arrow is the surface's second stroke: its middle on the other side.
             val shaft = surface.writing.strokes[1].points
             assertTrue("arrow on the steps' side", shaft[shaft.size / 2].x * side < 0f)
-            assertTrue("label on the steps' side", xs(label).all { it * side < 0.01f })
+            // Centred over the screw, and wholly above the arrow's head.
+            val labelXs = xs(label)
+            assertEquals(0f, (labelXs.min() + labelXs.max()) / 2f, 0.01f)
+            val arrowTop = surface.writing.strokes.drop(1).flatMap { s -> s.points.map { it.y } }.max()
+            val labelBottom = label.writing.strokes.flatMap { s -> s.points.map { label.offset.y + it.y } }.min()
+            assertTrue("label at $labelBottom cuts the arrow at $arrowTop", labelBottom > arrowTop)
+            assertTrue("label reaches the steps", labelXs.all { abs(it) < RadiatorBleed.STEPS_GAP })
             assertTrue("steps on the wrong side", xs(steps).all { it * side > 0f })
             val all = plan.sheets.flatMap(::xs)
             val half = RadiatorBleed.HALF_SPAN + 0.005f

@@ -369,7 +369,7 @@ internal object HangPicture {
     const val NOTE = "Centre here. *Eye level.*"
 
     private const val NAIL_SIZE = 0.03f
-    private const val TICK_X = -0.3f
+    private const val TICK_X = -0.1f
     private const val TICK_LENGTH = 0.22f
     private const val INK = 0.0062f
     private const val RIM = 0.0024f
@@ -377,7 +377,7 @@ internal object HangPicture {
         blockWidth = 2f, capHeight = 0.065f, inkRadius = 0.0056f, pointSpacing = 0.0032f,
         taperLength = 0.02f, minSeconds = 0.8f, maxSeconds = 1.3f,
     )
-    private val NOTE_STYLE = LABEL.copy(blockWidth = 0.55f, minSeconds = 1.6f, maxSeconds = 2.4f)
+    private val NOTE_STYLE = LABEL.copy(blockWidth = 0.55f, minSeconds = 1.1f, maxSeconds = 1.6f)
 
     /** Along the wall, to the right as seen by someone facing it. */
     fun right(normal: Float3) = Float3(normal.z, 0f, -normal.x)
@@ -443,18 +443,6 @@ internal object HangPicture {
             line(Sketch.handLine(InkPoint(-half, 0f), InkPoint(half, 0f), 0.0028f * k, r), ink, speed = 0.95f, pause = 0f)
             // A small tick on its centre.
             line(Sketch.handLine(InkPoint(0f, 0.028f * k), InkPoint(0.002f, -0.028f * k), 0.001f, r, 0.005f), ink * 0.9f, 0.6f)
-            // Two crosses for the nails: each two strokes, top-left first.
-            for (x in listOf(-nail, nail)) {
-                fun jitter() = (r.nextFloat() - 0.5f) * 0.006f
-                line(
-                    listOf(InkPoint(x - mark + jitter(), mark + jitter()), InkPoint(x + mark + jitter(), -mark + jitter())),
-                    ink, 0.5f, pause = 0.12f,
-                )
-                line(
-                    listOf(InkPoint(x + mark + jitter(), mark + jitter()), InkPoint(x - mark + jitter(), -mark + jitter())),
-                    ink, 0.5f,
-                )
-            }
             // The height: a tick down toward the floor, its arrowhead, and its label.
             val bottom = -TICK_LENGTH * k
             val barb = 0.018f * k
@@ -467,6 +455,18 @@ internal object HangPicture {
             // The note, above the line's centre.
             text(NOTE, note, Doodle.Underline, pause = 0.25f) { w ->
                 InkPoint(-w.bounds.centerX, 0.08f * k - w.bounds.minY)
+            }
+            // Last, two crosses for the nails: each two strokes, top-left first.
+            for (x in listOf(-nail, nail)) {
+                fun jitter() = (r.nextFloat() - 0.5f) * 0.006f
+                line(
+                    listOf(InkPoint(x - mark + jitter(), mark + jitter()), InkPoint(x + mark + jitter(), -mark + jitter())),
+                    ink, 0.5f, pause = 0.12f,
+                )
+                line(
+                    listOf(InkPoint(x + mark + jitter(), mark + jitter()), InkPoint(x - mark + jitter(), -mark + jitter())),
+                    ink, 0.5f,
+                )
             }
         }
         return sketch.build(lineCentre(wall, floorY), atan2(wall.normal.x, wall.normal.z))
@@ -695,10 +695,11 @@ internal object SofaFit {
  * and turn to face the phone.
  */
 internal object RadiatorBleed {
-    const val CIRCLE_RADIUS = 0.06f
+    /** Round the screw's cap, not the end of the radiator: a bleed screw is a couple of centimetres. */
+    const val CIRCLE_RADIUS = 0.04f
 
     /** The arrow runs just outside the circle. */
-    const val ARROW_RADIUS = 0.085f
+    const val ARROW_RADIUS = 0.058f
 
     /** From a touch below the right of the screw, a quarter turn anticlockwise to its top. */
     val ARROW_FROM = (-5.0 * PI / 180.0).toFloat()
@@ -812,13 +813,12 @@ internal object RadiatorBleed {
             line(shaft, INK, speed = 0.55f, pause = 0.12f)
             line(head, INK, speed = 0.35f)
         }
-        // "¼ turn" by the middle of the arrow, outside it: the fraction drawn by hand, the font
-        // has none. Away from the screw: right-aligned on the left, left-aligned on the right.
-        val mid = from + ARROW_SWEEP / 2f
-        val labelAt = Float3((ARROW_RADIUS + LABEL_OUT) * cos(mid), (ARROW_RADIUS + LABEL_OUT) * sin(mid), WORDS_LIFT)
+        // "¼ turn" centred above the circle, clear of the arrow's head: the fraction drawn by
+        // hand, the font has none. Above rather than beside it, so it stays on a narrow screen
+        // when the screw is off centre.
         val turnWidth = HandwritingLayout.layout("turn", Doodle.None, WORDS).textBounds.width
-        val x0 = if (side > 0f) -(FRACTION_WIDTH + turnWidth) else 0f
-        sketch.sheet(SheetFacing.Billboard, labelAt, RIM) {
+        val x0 = -(FRACTION_WIDTH + turnWidth) / 2f
+        sketch.sheet(SheetFacing.Billboard, Float3(0f, ARROW_RADIUS + LABEL_ABOVE, WORDS_LIFT), RIM) {
             text("1", SMALL, pause = 0.15f) { w -> InkPoint(x0 - w.textBounds.minX, 0.009f - w.textBounds.minY) }
             line(listOf(InkPoint(x0 + 0.003f, -0.003f), InkPoint(x0 + 0.018f, 0.024f)), WORDS.inkRadius * 0.9f, 0.4f)
             text("4", SMALL, pause = 0.04f) { w -> InkPoint(x0 + 0.015f - w.textBounds.minX, -0.003f - w.textBounds.minY) }
@@ -843,7 +843,7 @@ internal object RadiatorBleed {
     }
 
     private const val SIDE_DEADBAND = 0.1f
-    private const val LABEL_OUT = 0.025f
+    private const val LABEL_ABOVE = 0.032f
     private const val FRACTION_WIDTH = 0.034f
     private const val STEP_GAP = 0.75f
 }
