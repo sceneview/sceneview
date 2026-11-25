@@ -19,7 +19,7 @@ concurrency:
 
 env:
   # Third-party asset from the public MAVLab report (Labs-Ascend/MAVLab). Fetched at run time, never committed.
-  DRONE_URL: https://media.githubusercontent.com/media/Labs-Ascend/MAVLab/843fefe3fe58345609282ec4c548c811a44ac659/mavlab-android/app/src/main/assets/models/drone.glb
+  DRONE_URL: https://raw.githubusercontent.com/Labs-Ascend/MAVLab/843fefe3fe58345609282ec4c548c811a44ac659/mavlab-android/app/src/main/assets/models/drone.glb
   DRONE_BYTES: "5794580"
 
 jobs:

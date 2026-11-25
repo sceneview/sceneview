@@ -13,7 +13,7 @@ The app is a minimal copy of the reporter's scene: `rememberEngine` + `rememberM
 (`Labs-Ascend/MAVLab` at `843fefe3fe58345609282ec4c548c811a44ac659`). It is fetched at run time and
 never committed (`app/src/main/assets/models/` is ignored):
 
-    curl -L -o app/src/main/assets/models/drone.glb https://media.githubusercontent.com/media/Labs-Ascend/MAVLab/843fefe3fe58345609282ec4c548c811a44ac659/mavlab-android/app/src/main/assets/models/drone.glb
+    curl -L -o app/src/main/assets/models/drone.glb https://raw.githubusercontent.com/Labs-Ascend/MAVLab/843fefe3fe58345609282ec4c548c811a44ac659/mavlab-android/app/src/main/assets/models/drone.glb
 
 ## Build
 
