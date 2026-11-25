@@ -78,6 +78,13 @@
          the app's own window, the app's own logcat tail, and a user-driven share
          intent — zero foreground service, zero Play Console FGS declaration. -->
 
+    <!-- Ask in AR (`ask-ar`): the question is heard by SpeechRecognizer, which needs the
+         microphone. Asked at runtime on the first tap on the mic, never on launch. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
     <!-- Package-visibility (API 30+): without this, resolveActivity() on the
          speech-recognition intent below always returns null, even when a
          recognizer is installed — the bug-report sheet's mic button would

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="demo_ask_ar_title">Ask in AR</string>
+    <string name="demo_ask_ar_subtitle">Ask out loud, and the answer writes itself in the room</string>
+    <string name="demo_ask_ar_idle_hint">Tap the mic and ask anything</string>
+    <string name="demo_ask_ar_listening">Listening…</string>
+    <string name="demo_ask_ar_tracking_hint">Move your phone slowly so it can see the room</string>
+    <string name="demo_ask_ar_ask">Ask a question</string>
+    <string name="demo_ask_ar_stop">Stop listening</string>
+    <string name="demo_ask_ar_clear">Clear the answer</string>
+    <string name="demo_ask_ar_example">Ask an example question</string>
+    <string name="demo_ask_ar_no_speech">Speech recognition isn’t available on this phone. Try an example question instead.</string>
+    <string name="demo_ask_ar_not_heard">Didn’t catch that. Tap the mic and try again.</string>
+    <string name="demo_ask_ar_mic_denied">Allow the microphone to ask out loud, or try an example question.</string>
+</resources>
