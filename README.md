@@ -688,6 +688,8 @@ Confirmed by the team (November 25, 2026):
 - **[Wikiloc](https://www.wikiloc.com/)** — [Wikiloc - Trails of the World](https://play.google.com/store/apps/details?id=com.wikiloc.wikilocandroid).
 - **[Forty](https://www.forty.co.il/)** — pregnancy and cycle tracker: [Google Play](https://play.google.com/store/apps/details?id=com.forty.eliran.forum) · [App Store](https://apps.apple.com/il/app/pregnancy-tracker-forty/id1341872033).
 
+**Your team ships SceneView?** Write to [hello@sceneview.dev](mailto:hello@sceneview.dev?subject=Our%20app%20ships%20SceneView) with the app's name. It goes into this list once you've approved the line, and you can reach the maintainer directly when something breaks.
+
 ## Built with SceneView
 
 - **[3D AR Model Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
