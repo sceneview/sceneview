@@ -1,0 +1,119 @@
+name: Model load OOM on rotation (Android 8+ emulators)
+
+# Proof for #5271 on real x86_64 emulators with a small ART heap (vm.heapSize),
+# which arm64 hosts cannot run for API 26-28. Not a required check: it only runs
+# when its own files change, or by hand.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/model-load-rotation-oom.yml
+      - tools/model-load-rotation-oom/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-load-rotation-oom-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Third-party asset from the public MAVLab report (Labs-Ascend/MAVLab). Fetched at run time, never committed.
+  DRONE_URL: https://media.githubusercontent.com/media/Labs-Ascend/MAVLab/843fefe3fe58345609282ec4c548c811a44ac659/mavlab-android/app/src/main/assets/models/drone.glb
+  DRONE_BYTES: "5794580"
+
+jobs:
+  build:
+    name: Build repro APKs (4.72.0, fix, 4.16.10)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Publish the fixed sceneview to mavenLocal as 4.72.0-oomfix
+        run: ./gradlew :sceneview:publishToMavenLocal -PVERSION_NAME=4.72.0-oomfix -PRELEASE_SIGNING_ENABLED=false --no-configuration-cache --stacktrace
+
+      - name: Fetch drone.glb
+        working-directory: tools/model-load-rotation-oom
+        run: |
+          mkdir -p app/src/main/assets/models
+          curl -fsSL -o app/src/main/assets/models/drone.glb "$DRONE_URL"
+          size=$(stat -c %s app/src/main/assets/models/drone.glb)
+          echo "drone.glb: $size bytes"
+          test "$size" = "$DRONE_BYTES"
+
+      - name: Assemble one APK per version
+        working-directory: tools/model-load-rotation-oom
+        run: |
+          mkdir -p apks
+          for v in 4.72.0 4.72.0-oomfix 4.16.10; do
+            if ./gradlew :app:assembleDebug -Psv=$v --stacktrace; then
+              cp app/build/outputs/apk/debug/app-debug.apk apks/mavlab-repro-$v.apk
+            elif [ "$v" = "4.16.10" ]; then
+              echo "::warning::4.16.10 baseline does not build against the repro; skipped"
+            else
+              exit 1
+            fi
+          done
+          ls -l apks
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: repro-apks
+          path: tools/model-load-rotation-oom/apks/
+          retention-days: 7
+
+  emulator:
+    name: API ${{ matrix.api }}, heap ${{ matrix.heap }} MiB
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { api: 26, heap: 16, versions: "4.72.0 4.72.0-oomfix 4.16.10" }
+          - { api: 27, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
+          - { api: 28, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
+          - { api: 29, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
+          - { api: 26, heap: 24, versions: "4.72.0" }
+          - { api: 26, heap: 32, versions: "4.72.0" }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/model-load-rotation-oom
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: repro-apks
+          path: apks
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Trials on the emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          heap-size: ${{ matrix.heap }}M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          # Each line runs in its own `sh -c`: keep every command on one line.
+          script: |
+            timeout 150 adb wait-for-device
+            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 90 ]; do sleep 2; attempts=$((attempts + 1)); done
+            bash tools/model-load-rotation-oom/ci-trials.sh apks "${{ matrix.versions }}" ${{ matrix.api }} ${{ matrix.heap }} 3 results
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: oom-api${{ matrix.api }}-heap${{ matrix.heap }}
+          path: results/
+          retention-days: 14
+          if-no-files-found: ignore
