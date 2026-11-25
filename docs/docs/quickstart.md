@@ -130,6 +130,9 @@ dependencies {
 
 Sync Gradle.
 
+To check for a newer release, look at [Maven Central](https://central.sonatype.com/artifact/io.github.sceneview/sceneview) or [`maven-metadata.xml`](https://repo1.maven.org/maven2/io/github/sceneview/sceneview/maven-metadata.xml).
+The search.maven.org index is stale: it still shows an old 2.x release as the latest.
+
 ---
 
 ## Step 3: Add a 3D model

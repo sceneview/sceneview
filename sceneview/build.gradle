@@ -138,9 +138,12 @@ dependencies {
     api libs.filament.gltfio
     api libs.filament.utils
 
-    // Fuel
+    // Fuel — the http(s) client behind `FileLoader`. Its type is public (`FileLoader.fuelManager`),
+    // so it stays. `fuel-android` is deliberately absent: it only swaps the callback executor of
+    // Fuel's async `response { }` handlers for the main looper, which `FileLoader` never uses (it
+    // calls the suspending `awaitByteArray` on Dispatchers.IO), and it is what dragged the
+    // deprecated `org.jetbrains.kotlin:kotlin-android-extensions-runtime:1.4.10` into every app.
     implementation libs.fuel
-    implementation libs.fuel.android
     implementation libs.fuel.coroutines
 
     // Unit tests (JVM)
