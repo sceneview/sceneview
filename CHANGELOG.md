@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v4.74.0 — 2026-11-25
+
+### Added
+
+- **`Tube` / `TubeNode`: a radius per point, round caps, and growth without reallocating ([#4489](https://github.com/sceneview/sceneview/issues/4489)).** `radii: List<Float>?` gives every point its own radius, with normals that follow the slope so a tapering stroke shades as a cone. `capStyle: Tube.CapStyle` picks `None`, `Flat` (the previous default) or `Round`, a hemisphere of the end's own radius; `caps: Boolean` stays as a deprecated alias. `capacity: Int` sizes the buffers for more points than the tube has: while it holds, an update rewrites the same vertex buffer, leaves the index buffer alone and draws only the live range, and past it the tube grows once to twice the capacity. Every previous signature is kept. The Finger Drawing demo now draws its strokes with one `TubeNode` call instead of its own mesh generator.
+
+### Fixed
+
+- **Demo apps: the unused Damaged Helmet preview images are gone ([#5274](https://github.com/sceneview/sceneview/pull/5274), part of [#4951](https://github.com/sceneview/sceneview/issues/4951)).** The Android `preview_hero_model_viewer.webp` and the iOS `preview_hero_model_viewer`, `preview_camera_controls` and `preview_dynamic_sky` imagesets still pictured the CC-BY-NC Damaged Helmet, and no screen drew them: no drawable reference on Android, and no iOS scene id that maps to those names. They are deleted, and `tools/demo-previews/README.md` no longer documents them.
+- **Android: `sceneview` no longer pulls in `kotlin-android-extensions-runtime` ([#5281](https://github.com/sceneview/sceneview/pull/5281)).** The `fuel-android` artifact, and with it `org.jetbrains.kotlin:kotlin-android-extensions-runtime:1.4.10`, is gone from the dependencies of `sceneview`, so also from `arsceneview` and `sceneview-compose`. Apps that excluded it by hand can drop the exclusion. `FileLoader` still downloads `http`/`https` models with Fuel 2.3.1 (`fuel` and `fuel-coroutines`), with the same timeouts, headers and errors, and `FileLoader.fuelManager` is unchanged. `fuel-android` only made Fuel's asynchronous `response { }` callbacks run on the main thread, and `FileLoader` does not use them. If your own code makes asynchronous Fuel calls through `FileLoader.fuelManager` and expects those callbacks on the main thread, declare `com.github.kittinunf.fuel:fuel-android:2.3.1` in your app.
+- **Docs: the README, the quickstart and `llms.txt` say where to find the latest release ([#5281](https://github.com/sceneview/sceneview/pull/5281)).** The search.maven.org index is stale and still shows an old 2.x release as the latest, so it looked as if SceneView had stopped. The three places now point to Maven Central and to `maven-metadata.xml` instead.
+
+### Docs
+
+- README: a third group in "Used in", apps whose team confirmed the line: Wikiloc and Forty ([#5278](https://github.com/sceneview/sceneview/pull/5278)).
+- README, docs (Community) and companies.html: a "Your team ships SceneView?" line. A team writes to hello@sceneview.dev with its app, which goes into "Used in" once the team has approved the line ([#5280](https://github.com/sceneview/sceneview/pull/5280)).
+
 ## v4.73.0 — 2026-11-25
 
 ### Added
