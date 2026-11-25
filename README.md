@@ -683,6 +683,11 @@ Declared in their public source code or published build files (checked November 
 - **[GeneXus](https://central.sonatype.com/artifact/com.genexus.android/AugmentedReality)**: its Android augmented reality module, in the Maven Central POM (SceneView 2.3.0).
 - **[TruVideo](https://central.sonatype.com/artifact/com.truvideo.com/sdk-camera)**: its camera SDK, in the Maven Central POM (ARSceneView 2.3.0).
 
+Confirmed by the team (November 25, 2026):
+
+- **[Wikiloc](https://www.wikiloc.com/)** — [Wikiloc - Trails of the World](https://play.google.com/store/apps/details?id=com.wikiloc.wikilocandroid).
+- **[Forty](https://www.forty.co.il/)** — pregnancy and cycle tracker: [Google Play](https://play.google.com/store/apps/details?id=com.forty.eliran.forum) · [App Store](https://apps.apple.com/il/app/pregnancy-tracker-forty/id1341872033).
+
 ## Built with SceneView
 
 - **[3D AR Model Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
