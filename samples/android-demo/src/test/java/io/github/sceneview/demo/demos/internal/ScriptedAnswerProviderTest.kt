@@ -22,6 +22,13 @@ class ScriptedAnswerProviderTest {
         assertEquals("foosball", matched("Who's winning at foosball?"))
         assertEquals("lawn", matched("Should I mow the lawn?"))
         assertEquals("keys", matched("Where did I leave my keys?"))
+        assertEquals("hang", matched("Where should I hang this picture?"))
+        assertEquals("hang", matched("Where do I put this painting?"))
+        assertEquals("hang", matched("How high should this frame go?"))
+        assertEquals("sofa", matched("Will a 2 m sofa fit here?"))
+        assertEquals("sofa", matched("Does the couch fit?"))
+        assertEquals("radiator", matched("How do I bleed this radiator?"))
+        assertEquals("radiator", matched("Comment purger ce radiateur ?"))
     }
 
     @Test fun `the example questions each land on their own script`() {

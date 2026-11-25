@@ -11,13 +11,18 @@ import kotlin.math.roundToInt
  * @param text   Short enough for one or two handwritten lines. Words wrapped in `*asterisks*`
  *               are what [doodle] marks.
  * @param doodle The hand-drawn mark made once the words are written.
+ * @param plan   A drawing laid out in the room itself — lines on a wall, a footprint on the
+ *               floor — drawn instead of the floating block. [text] then says in words what the
+ *               drawing says (the note, the verdict).
  */
-internal data class AskAnswer(val text: String, val doodle: Doodle)
+internal data class AskAnswer(val text: String, val doodle: Doodle, val plan: DrawingPlan? = null)
 
 /** What the room tells the answer, read from ARCore when the question is asked. */
 internal data class AskContext(
     /** Distance from the phone to the surface it points at, in metres, if one was hit. */
     val distanceAheadMeters: Float? = null,
+    /** The wall ahead, the floor, the room either side of a sofa: for answers drawn in the room. */
+    val room: AskRoom? = null,
 )
 
 /**
@@ -78,6 +83,30 @@ internal object ScriptedAnswerProvider : AnswerProvider {
             ),
             minScore = 2,
         ) { context -> wallAnswer(context.distanceAheadMeters) },
+        Script(
+            id = "hang",
+            keywords = listOf(
+                setOf("hang", "hanging", "picture", "frame", "painting", "print", "poster"),
+                setOf("where", "should", "wall", "high", "height", "put"),
+            ),
+            minScore = 1,
+        ) { context -> hangAnswer(context.room) },
+        Script(
+            id = "sofa",
+            keywords = listOf(
+                setOf("sofa", "couch", "settee", "fit", "fits"),
+                setOf("here", "space", "room", "enough", "will", "would", "does"),
+            ),
+            minScore = 1,
+        ) { context -> sofaAnswer(context.room) },
+        Script(
+            id = "radiator",
+            keywords = listOf(
+                setOf("bleed", "bleeding", "radiator", "radiators", "purge", "radiateur"),
+                setOf("how", "do", "should", "this"),
+            ),
+            minScore = 1,
+        ) { context -> radiatorAnswer(context.room) },
         Script(
             id = "cook",
             keywords = listOf(
@@ -140,6 +169,9 @@ internal object ScriptedAnswerProvider : AnswerProvider {
         "Who's winning at foosball?",
         "Should I mow the lawn?",
         "Where did I leave my keys?",
+        "Where should I hang this picture?",
+        "Will a 2 m sofa fit here?",
+        "How do I bleed this radiator?",
     )
 
     /** For anything the script does not know. */
@@ -217,6 +249,34 @@ internal object ScriptedAnswerProvider : AnswerProvider {
             val shown = if (halves % 2 == 0) "${halves / 2}" else "${halves / 2}.5"
             AskAnswer("About *${shown}m* away!", Doodle.Pointer)
         }
+    }
+
+    /**
+     * A level line at eye level on the wall ahead, its nails and a note, drawn on the wall ARCore
+     * found. With no wall to draw on, it says so.
+     */
+    internal fun hangAnswer(room: AskRoom?): AskAnswer {
+        val wall = room?.wall ?: return AskAnswer("Point me *at the wall.*", Doodle.Underline)
+        return AskAnswer(HangPicture.NOTE, Doodle.Underline, HangPicture.plan(wall, room.floor.y))
+    }
+
+    /**
+     * A sofa's footprint on the floor ahead and whether it fits, from what ARCore hit either side
+     * of it. Nothing hit (and the QA stage, which measures nothing) gets "Lots of room": never a
+     * number that was not measured.
+     */
+    internal fun sofaAnswer(room: AskRoom?): AskAnswer {
+        val spot = room?.sofa ?: return AskAnswer("Point me *at the floor.*", Doodle.Underline)
+        return AskAnswer(SofaFit.verdict(spot.left, spot.right), Doodle.Underline, SofaFit.plan(spot, room.heading))
+    }
+
+    /**
+     * A circle round the bleed screw the phone is centred on, a quarter-turn arrow and the four
+     * steps. With nothing hit at the centre of the screen, it asks for the screw.
+     */
+    internal fun radiatorAnswer(room: AskRoom?): AskAnswer {
+        val spot = room?.wall ?: return AskAnswer("Point me *at the screw.*", Doodle.Underline)
+        return AskAnswer("Open it a *quarter turn.*", Doodle.Underline, RadiatorBleed.plan(spot, room.camera))
     }
 
     private const val MIN_DISTANCE = 0.3f

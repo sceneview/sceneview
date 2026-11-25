@@ -83,6 +83,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.core.content.ContextCompat
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Engine
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -101,6 +103,7 @@ import com.google.ar.core.Point
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.NodeScope
 import io.github.sceneview.SceneScope
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
@@ -117,6 +120,15 @@ import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.demos.internal.AnswerProvider
 import io.github.sceneview.demo.demos.internal.AskContext
+import io.github.sceneview.demo.demos.internal.AskFloor
+import io.github.sceneview.demo.demos.internal.AskRoom
+import io.github.sceneview.demo.demos.internal.DrawingPlan
+import io.github.sceneview.demo.demos.internal.HangPicture
+import io.github.sceneview.demo.demos.internal.InkSheet
+import io.github.sceneview.demo.demos.internal.SheetFacing
+import io.github.sceneview.demo.demos.internal.SofaFit
+import io.github.sceneview.demo.demos.internal.SofaSpot
+import io.github.sceneview.demo.demos.internal.WallSpot
 import io.github.sceneview.demo.demos.internal.Doodle
 import io.github.sceneview.demo.demos.internal.Handwriting
 import io.github.sceneview.demo.demos.internal.HandwritingLayout
@@ -134,6 +146,7 @@ import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassSurface
 import io.github.sceneview.geometries.Tube
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberARView
 import io.github.sceneview.rememberEngine
@@ -208,6 +221,9 @@ private class AskState {
     /** The answer points at the surface ahead: hang it there, by its arrow's tip. */
     var placeOnSurface = false
 
+    /** Where a drawing plan goes, in world space: anchored there as it is, by the next frame. */
+    var placePose: Pose? = null
+
     /** Distance to whatever the centre of the screen points at, read every few frames. */
     var distanceAhead: Float? = null
     var frameCount = 0
@@ -215,13 +231,22 @@ private class AskState {
     /** Earlier answers left where they were written, oldest first: AR only. */
     var pinned by mutableStateOf<List<PinnedAnswer>>(emptyList())
 
+    /** An answer drawn in the room itself (a level line, a footprint), instead of [handwriting]. */
+    var plan by mutableStateOf<DrawingPlan?>(null)
+
+    /** Set by the flow, filled in by the next tracked camera frame: see [AskRoomReader]. */
+    var roomRequested = false
+    var room by mutableStateOf<AskRoom?>(null)
+
     fun clearAnswer() {
         handwriting = null
+        plan = null
         anchor = null
         stagePlaced = false
         elapsed = 0f
         placeRequested = false
         placeOnSurface = false
+        placePose = null
     }
 
     /**
@@ -231,9 +256,10 @@ private class AskState {
     fun pinAnswer() {
         val anchor = anchor
         val handwriting = handwriting
-        if (anchor != null && handwriting != null) {
+        val plan = plan
+        if (anchor != null && (handwriting != null || plan != null)) {
             // One dropped here leaves the scene, and its node detaches its anchor.
-            pinned = (pinned + PinnedAnswer(anchor, handwriting, blockScale)).takeLast(MAX_PINNED)
+            pinned = (pinned + PinnedAnswer(anchor, handwriting, plan, blockScale)).takeLast(MAX_PINNED)
         }
         clearAnswer()
     }
@@ -243,8 +269,10 @@ private class AskState {
     }
 }
 
-/** An answer written earlier, still hanging on its anchor. */
-private class PinnedAnswer(val anchor: Anchor, val handwriting: Handwriting, val scale: Float)
+/** An answer written earlier, still on its anchor: words on a block, or a drawing in the room. */
+private class PinnedAnswer(val anchor: Anchor, val handwriting: Handwriting?, val plan: DrawingPlan?, val scale: Float) {
+    val totalSeconds: Float get() = plan?.totalSeconds ?: handwriting?.totalSeconds ?: 0f
+}
 
 /**
  * A run of questions to play by themselves (see [AskArAutomation]). A new instance each time,
@@ -298,12 +326,47 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
     val ink = remember(materialLoader) { materialLoader.createUnlitColorInstance(INK_CORE) }
     val rim = remember(materialLoader) { materialLoader.createUnlitColorInstance(INK_RIM) }
 
+    /** The room as the next tracked frame reads it; the QA stage's fixed room on the stage. */
+    suspend fun readRoom(question: String): AskRoom {
+        if (stage) return stageRoom(question)
+        state.room = null
+        state.roomRequested = true
+        return snapshotFlow { state.room }.first { it != null }!!
+    }
+
+    /** Runs the pen's clock, [AskState.elapsed], from nothing to [total] seconds. */
+    suspend fun writeFor(total: Float) {
+        val start = withFrameNanos { it }
+        while (state.elapsed < total) {
+            withFrameNanos { now -> state.elapsed = (now - start) / NANOS_PER_SECOND }
+        }
+    }
+
     /** Answers [question]: a beat of thought, then the anchor, then the pen. */
     suspend fun answer(question: String) {
         state.phase = AskPhase.Thinking
         state.level = 0f
-        val reply = provider.answer(question, AskContext(distanceAheadMeters = state.distanceAhead))
+        val room = readRoom(question)
+        val reply = provider.answer(question, AskContext(distanceAheadMeters = state.distanceAhead, room = room))
         delay(THINK_MILLIS)
+        val plan = reply.plan
+        if (plan != null) {
+            // Drawn in the room at the size of the room: anchored where the plan says, no fitting.
+            state.plan = plan
+            state.blockScale = 1f
+            if (stage) {
+                state.stagePlaced = true
+            } else {
+                state.placePose = Pose(floatArrayOf(plan.origin.x, plan.origin.y, plan.origin.z), yawQuaternion(plan.yaw))
+                state.placeRequested = true
+                snapshotFlow { state.anchor }.first { it != null }
+            }
+            state.elapsed = 0f
+            state.phase = AskPhase.Writing
+            writeFor(plan.totalSeconds)
+            state.phase = AskPhase.Done
+            return
+        }
         state.handwriting = HandwritingLayout.layout(reply.text, reply.doodle)
         if (stage) {
             val size = currentViewSize
@@ -319,11 +382,7 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         }
         state.elapsed = 0f
         state.phase = AskPhase.Writing
-        val total = state.handwriting?.totalSeconds ?: 0f
-        val start = withFrameNanos { it }
-        while (state.elapsed < total) {
-            withFrameNanos { now -> state.elapsed = (now - start) / NANOS_PER_SECOND }
-        }
+        writeFor(state.handwriting?.totalSeconds ?: 0f)
         state.phase = AskPhase.Done
     }
 
@@ -536,10 +595,36 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         Box(modifier = Modifier.fillMaxSize().onSizeChanged { viewSize = it }) {
             if (stage) {
                 QaCameraBackdrop(seed = "ask-ar")
-                AskQaStage(engine, materialLoader, recorder.surfaceMirrorer) {
+                val stagePlan = state.plan?.takeIf { state.stagePlaced }
+                // A footprint on the floor is looked down at, through a wider lens, as a phone
+                // would be pointed at it; a radiator up close through a wider lens too, so the
+                // steps beside it are in the picture; everything else straight ahead.
+                val onFloor = stagePlan?.sheets?.any { it.facing == SheetFacing.Floor } == true
+                val close = stagePlan != null && -stagePlan.origin.z < STAGE_CLOSE_METRES + 0.1f
+                AskQaStage(
+                    engine,
+                    materialLoader,
+                    recorder.surfaceMirrorer,
+                    pitch = if (onFloor) STAGE_FLOOR_PITCH else 0f,
+                    focal = when {
+                        onFloor -> STAGE_FLOOR_FOCAL
+                        close -> STAGE_CLOSE_FOCAL
+                        else -> STAGE_FOCAL
+                    },
+                ) {
                     val handwriting = state.handwriting
                     if (state.stagePlaced && handwriting != null) {
                         Node(position = STAGE_BLOCK) { AnswerInk(handwriting, state.blockScale, state.elapsed, ink, rim) }
+                    }
+                    if (stagePlan != null) {
+                        key(stagePlan) {
+                            Node(
+                                position = Position(stagePlan.origin.x, stagePlan.origin.y, stagePlan.origin.z),
+                                rotation = Rotation(y = Math.toDegrees(stagePlan.yaw.toDouble()).toFloat()),
+                            ) {
+                                PlanInk(stagePlan, state.elapsed, ink, rim) { STAGE_ROOM.camera }
+                            }
+                        }
                     }
                 }
             } else ARSceneView(
@@ -576,15 +661,28 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                         if (state.frameCount++ % DISTANCE_EVERY_FRAMES == 0) {
                             state.distanceAhead = distanceAhead(frame, currentViewSize)
                         }
+                        if (state.roomRequested) {
+                            state.roomRequested = false
+                            state.room = AskRoomReader.read(session, frame, currentViewSize)
+                        }
                         if (state.placeRequested) {
-                            val (pose, distance) = AskPlacement.pose(frame, currentViewSize, state.placeOnSurface)
-                            val anchor = runCatching { session.createAnchor(pose) }.getOrNull()
-                            if (anchor != null) {
-                                val (wide, tall) = AskPlacement.visibleSize(frame, distance)
-                                state.blockScale = state.handwriting
-                                    ?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: 1f
-                                state.placeRequested = false
-                                state.anchor = anchor
+                            val planned = state.placePose
+                            if (planned != null) {
+                                val anchor = runCatching { session.createAnchor(planned) }.getOrNull()
+                                if (anchor != null) {
+                                    state.placeRequested = false
+                                    state.anchor = anchor
+                                }
+                            } else {
+                                val (pose, distance) = AskPlacement.pose(frame, currentViewSize, state.placeOnSurface)
+                                val anchor = runCatching { session.createAnchor(pose) }.getOrNull()
+                                if (anchor != null) {
+                                    val (wide, tall) = AskPlacement.visibleSize(frame, distance)
+                                    state.blockScale = state.handwriting
+                                        ?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: 1f
+                                    state.placeRequested = false
+                                    state.anchor = anchor
+                                }
                             }
                         }
                     }
@@ -594,16 +692,18 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                 // list, so an answer pinned keeps its node — and its anchor — as it moves up.
                 val anchor = state.anchor
                 val handwriting = state.handwriting
-                val current = if (anchor != null && handwriting != null) {
-                    listOf(PinnedAnswer(anchor, handwriting, state.blockScale))
+                val plan = state.plan
+                val current = if (anchor != null && (handwriting != null || plan != null)) {
+                    listOf(PinnedAnswer(anchor, handwriting, plan, state.blockScale))
                 } else {
                     emptyList()
                 }
                 (state.pinned + current).forEach { answer ->
                     key(answer.anchor) {
-                        val elapsed = if (answer.anchor == anchor) state.elapsed else answer.handwriting.totalSeconds
+                        val elapsed = if (answer.anchor == anchor) state.elapsed else answer.totalSeconds
                         AnchorNode(anchor = answer.anchor) {
-                            AnswerInk(answer.handwriting, answer.scale, elapsed, ink, rim)
+                            answer.plan?.let { PlanInk(it, elapsed, ink, rim) { cameraNode.worldPosition } }
+                            answer.handwriting?.let { AnswerInk(it, answer.scale, elapsed, ink, rim) }
                         }
                     }
                 }
@@ -639,6 +739,60 @@ private fun SceneScope.AnswerInk(
 }
 
 /**
+ * A drawing plan, drawn up to [elapsed] seconds, in its own frame (the caller puts the frame where
+ * the plan says). Each sheet lies as it faces: on the wall, flat on the floor, or upright and
+ * turned toward [cameraPosition] every frame — about the vertical only, so its words stay level.
+ */
+@Composable
+private fun SceneScope.PlanInk(
+    plan: DrawingPlan,
+    elapsed: Float,
+    ink: MaterialInstance,
+    rim: MaterialInstance,
+    cameraPosition: () -> Position,
+) {
+    plan.sheets.forEach { sheet ->
+        key(sheet) {
+            val position = Position(sheet.offset.x, sheet.offset.y, sheet.offset.z)
+            val strokes: @Composable NodeScope.() -> Unit = { SheetInk(sheet, elapsed, ink, rim) }
+            when (sheet.facing) {
+                SheetFacing.Wall -> Node(position = position, content = strokes)
+                // The sheet's y runs away from the phone, its +z (the side that shows) up.
+                SheetFacing.Floor -> Node(position = position, rotation = Rotation(x = -90f), content = strokes)
+                SheetFacing.Billboard -> Node(
+                    position = position,
+                    apply = {
+                        onFrame = {
+                            val eye = cameraPosition()
+                            val at = worldPosition
+                            val dx = eye.x - at.x
+                            val dz = eye.z - at.z
+                            if (dx * dx + dz * dz > 1e-6f) {
+                                val yaw = atan2(dx, dz)
+                                worldQuaternion = Quaternion(0f, sin(yaw / 2f), 0f, cos(yaw / 2f))
+                            }
+                        }
+                    },
+                    content = strokes,
+                )
+            }
+        }
+    }
+}
+
+/** Every stroke of [sheet] the pen has reached by [elapsed]. */
+@Composable
+private fun SceneScope.SheetInk(sheet: InkSheet, elapsed: Float, ink: MaterialInstance, rim: MaterialInstance) {
+    val writing = sheet.writing
+    writing.strokes.forEachIndexed { index, stroke ->
+        val progress = writing.progressOf(index, elapsed)
+        if (progress.count > 0) {
+            key(stroke.id) { InkTube(stroke, progress, ink, rim, rimWidth = sheet.rimWidth, rimDepth = sheet.rimWidth * 2f) }
+        }
+    }
+}
+
+/**
  * The QA stage: a transparent 3D scene over the room photo, its camera fixed at eye height
  * looking straight ahead, so the answer is written where the AR mode would hang it.
  */
@@ -647,11 +801,17 @@ private fun AskQaStage(
     engine: Engine,
     materialLoader: MaterialLoader,
     surfaceMirrorer: SurfaceMirrorer?,
+    pitch: Float,
+    focal: Float,
     content: @Composable SceneScope.() -> Unit,
 ) {
     val camera = rememberCameraNode(engine) {
         position = Position(0f, 0f, 0f)
         focalLength = STAGE_FOCAL.toDouble()
+    }
+    LaunchedEffect(camera, pitch, focal) {
+        camera.rotation = Rotation(x = pitch)
+        camera.focalLength = focal.toDouble()
     }
     SceneView(
         modifier = Modifier.fillMaxSize(),
@@ -678,9 +838,11 @@ private fun SceneScope.InkTube(
     progress: StrokeProgress,
     ink: MaterialInstance,
     rim: MaterialInstance,
+    rimWidth: Float = RIM_WIDTH,
+    rimDepth: Float = RIM_DEPTH,
 ) {
     val full = remember(stroke) { stroke.points.map { Position(it.x, it.y, 0f) } }
-    val fullRim = remember(stroke) { stroke.radii.map { it + RIM_WIDTH } }
+    val fullRim = remember(stroke, rimWidth) { stroke.radii.map { it + rimWidth } }
     val (points, radii) = remember(stroke, progress) {
         if (progress.count >= stroke.points.size) {
             full to stroke.radii
@@ -693,7 +855,7 @@ private fun SceneScope.InkTube(
                 (stroke.radii.subList(0, progress.count) + tipRadius)
         }
     }
-    val rimRadii = remember(radii) { if (radii === stroke.radii) fullRim else radii.map { it + RIM_WIDTH } }
+    val rimRadii = remember(radii) { if (radii === stroke.radii) fullRim else radii.map { it + rimWidth } }
     val capacity = stroke.points.size + 1
     TubeNode(
         points = points,
@@ -714,7 +876,7 @@ private fun SceneScope.InkTube(
         capStyle = Tube.CapStyle.Round,
         capacity = capacity,
         materialInstance = rim,
-        position = Position(z = -RIM_DEPTH),
+        position = Position(z = -rimDepth),
         apply = {
             isShadowCaster = false
             isShadowReceiver = false
@@ -1005,6 +1167,101 @@ private object AskPlacement {
     private const val FAR = 100f
 }
 
+/** A rotation of [yaw] radians about the vertical, as ARCore's (x, y, z, w) quaternion. */
+private fun yawQuaternion(yaw: Float) = floatArrayOf(0f, sin(yaw / 2f), 0f, cos(yaw / 2f))
+
+/**
+ * Reads the room from one tracked frame for the answers drawn in it ([AskRoom]): where the phone
+ * looks, the floor, the wall at the centre of the screen, and the room either side of a sofa in
+ * front of it. Every number in there was measured by ARCore, except a floor it has not found
+ * (see [AskFloor.pick]).
+ */
+private object AskRoomReader {
+
+    fun read(session: Session, frame: Frame, viewSize: IntSize): AskRoom {
+        val pose = frame.camera.pose
+        val c = pose.translation
+        val camera = Float3(c[0], c[1], c[2])
+        val heading = heading(pose)
+        val floorHeights = session.getAllTrackables(Plane::class.java)
+            .filter {
+                it.trackingState == TrackingState.TRACKING && it.subsumedBy == null &&
+                    it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
+            }
+            .map { it.centerPose.ty() }
+        val floor = AskFloor.pick(camera.y, floorHeights)
+        val wall = surfaceHit(frame, viewSize)?.let { hit ->
+            val t = hit.hitPose.translation
+            val point = Float3(t[0], t[1], t[2])
+            // A plane's or a depth point's pose carries the surface normal on its y axis; a
+            // feature point's does not.
+            val candidate = when (hit.trackable) {
+                is Plane, is DepthPoint -> hit.hitPose.yAxis.let { Float3(it[0], it[1], it[2]) }
+                else -> null
+            }
+            WallSpot(point, HangPicture.wallNormal(candidate, point, camera))
+        }
+        val floorHit = centreHits(frame, viewSize).firstOrNull { hit ->
+            val plane = hit.trackable as? Plane
+            plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.isPoseInPolygon(hit.hitPose) &&
+                kotlin.math.abs(hit.hitPose.ty() - floor.y) < FLOOR_TOLERANCE
+        }?.hitPose?.translation?.let { Float3(it[0], it[1], it[2]) }
+        val centre = SofaFit.centre(camera, heading, floor.y, floorHit)
+        val axis = SofaFit.axis(heading)
+        val origin = Float3(centre.x, floor.y + SofaFit.RAY_HEIGHT, centre.z)
+        val left = SofaFit.nearest(sideHits(frame, origin, Float3(-axis.x, 0f, -axis.z)))
+        val right = SofaFit.nearest(sideHits(frame, origin, axis))
+        return AskRoom(camera, heading, floor, wall, SofaSpot(centre, left, right))
+    }
+
+    /** Where the phone looks, flat on the floor; the way its top points when it looks straight down. */
+    private fun heading(camera: Pose): Float3 {
+        val z = camera.zAxis
+        var fx = -z[0]
+        var fz = -z[2]
+        if (sqrt(fx * fx + fz * fz) < MIN_FLAT) {
+            val y = camera.yAxis
+            fx = y[0]
+            fz = y[2]
+        }
+        val norm = sqrt(fx * fx + fz * fz).coerceAtLeast(1e-6f)
+        return Float3(fx / norm, 0f, fz / norm)
+    }
+
+    private fun centreHits(frame: Frame, viewSize: IntSize): List<HitResult> {
+        if (viewSize.width == 0 || viewSize.height == 0) return emptyList()
+        return runCatching { frame.hitTest(viewSize.width / 2f, viewSize.height / 2f) }.getOrNull().orEmpty()
+    }
+
+    /** What a ray from [origin] along [direction] hits: a wall ARCore found, a depth point, or else. */
+    private fun sideHits(frame: Frame, origin: Float3, direction: Float3): List<SofaFit.SideHit> {
+        val hits = runCatching {
+            frame.hitTest(floatArrayOf(origin.x, origin.y, origin.z), 0, floatArrayOf(direction.x, direction.y, direction.z), 0)
+        }.getOrNull().orEmpty()
+        return hits.map { hit ->
+            val t = hit.hitPose.translation
+            val dx = t[0] - origin.x
+            val dy = t[1] - origin.y
+            val dz = t[2] - origin.z
+            val kind = when (val trackable = hit.trackable) {
+                is Plane -> if (trackable.type == Plane.Type.VERTICAL && trackable.isPoseInPolygon(hit.hitPose)) {
+                    SofaFit.HitKind.VerticalPlane
+                } else {
+                    SofaFit.HitKind.Other
+                }
+                is DepthPoint -> SofaFit.HitKind.Depth
+                else -> SofaFit.HitKind.Other
+            }
+            SofaFit.SideHit(sqrt(dx * dx + dy * dy + dz * dz), kind)
+        }
+    }
+
+    private const val MIN_FLAT = 0.2f
+
+    /** A floor hit this far off the floor's height is a table, a bed, a step: not where a sofa goes. */
+    private const val FLOOR_TOLERANCE = 0.15f
+}
+
 /** How far the surface at the centre of the screen is, for "how far is that wall?". */
 private fun distanceAhead(frame: Frame, viewSize: IntSize): Float? = surfaceHit(frame, viewSize)?.distance
 
@@ -1190,6 +1447,44 @@ private const val UNWRITE_MILLIS = 700f
 
 /** What the QA stage says the wall ahead measures. */
 private const val STAGE_WALL_METRES = 2.4f
+
+/**
+ * The QA stage's room, for the answers drawn in it: the camera at the origin looking down -Z,
+ * the wall [STAGE_WALL_METRES] ahead, the floor at [AskFloor]'s fallback height (nothing is
+ * measured on the stage), and the phone pointed at the floor 2.4 m ahead. Nothing either side of
+ * the sofa: the stage never writes a number it did not measure.
+ */
+private val STAGE_ROOM: AskRoom = run {
+    val camera = Float3(0f, 0f, 0f)
+    val heading = Float3(0f, 0f, -1f)
+    val floor = AskFloor.pick(camera.y, emptyList())
+    AskRoom(
+        camera = camera,
+        heading = heading,
+        floor = floor,
+        wall = WallSpot(Float3(0f, 0f, -STAGE_WALL_METRES), Float3(0f, 0f, 1f)),
+        sofa = SofaSpot(SofaFit.centre(camera, heading, floor.y, Float3(0f, floor.y, -2f))),
+    )
+}
+
+/**
+ * The QA stage's room for [question]: [STAGE_ROOM], with the surface ahead brought up to
+ * [STAGE_CLOSE_METRES] for a radiator — a bleed screw is looked at from arm's length, not
+ * from across the room.
+ */
+private fun stageRoom(question: String): AskRoom =
+    if (ScriptedAnswerProvider.match(question)?.id == "radiator") {
+        STAGE_ROOM.copy(wall = WallSpot(Float3(0f, 0f, -STAGE_CLOSE_METRES), Float3(0f, 0f, 1f)))
+    } else {
+        STAGE_ROOM
+    }
+
+private const val STAGE_CLOSE_METRES = 1f
+private const val STAGE_CLOSE_FOCAL = 12f
+
+/** The stage looks down at a footprint on the floor, through a wider lens. */
+private const val STAGE_FLOOR_PITCH = -28f
+private const val STAGE_FLOOR_FOCAL = 10f
 
 /** Farthest a surface is measured for an answer, in metres. */
 private const val SURFACE_REACH = 8f
