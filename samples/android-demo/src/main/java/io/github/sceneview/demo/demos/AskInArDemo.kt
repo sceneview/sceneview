@@ -264,6 +264,10 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
     var flow by remember { mutableStateOf<Job?>(null) }
 
     var isTracking by remember { mutableStateOf(false) }
+    // Seconds since the session's first frame, from the frames' own timestamps: on a replay,
+    // the recording's clock, so a filming cue lands on the same scene on every take.
+    var sessionSeconds by remember { mutableStateOf(0f) }
+    var firstFrameNanos by remember { mutableStateOf(0L) }
     var cameraReady by remember { mutableStateOf(false) }
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
@@ -445,6 +449,9 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
     var request by remember(activity) {
         mutableStateOf(AskRequest(AskArAutomation.take(activity?.intent), keepPrevious = false))
     }
+    // Filming cues (debug `--es ask_q_at 41 --es ask_q2_at 63`): each question starts at that
+    // second of the session clock instead of chaining, and the earlier answer stays pinned.
+    val cues = remember(activity) { AskArAutomation.cues(activity?.intent) }
     var hideChrome by remember(activity) { mutableStateOf(AskArAutomation.hideChrome(activity?.intent) == true) }
     // A question sent while the demo is open (`am start` again, or the link again) is taken
     // in place: the AR session and any replay run on, and the answer on screen stays where it
@@ -472,7 +479,11 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         if (run.keepPrevious) state.pinAnswer()
         launchFlow {
             run.questions.forEachIndexed { i, question ->
-                if (i > 0) {
+                val at = cues.getOrNull(i)
+                if (at != null) {
+                    snapshotFlow { sessionSeconds }.first { it >= at }
+                    if (i > 0) state.pinAnswer()
+                } else if (i > 0) {
                     delay(CHAIN_HOLD_MILLIS)
                     unwrite()
                 }
@@ -555,6 +566,10 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                 },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
+                    if (frame.timestamp > 0L) {
+                        if (firstFrameNanos == 0L) firstFrameNanos = frame.timestamp
+                        sessionSeconds = (frame.timestamp - firstFrameNanos) / 1e9f
+                    }
                     val tracking = frame.camera.trackingState == TrackingState.TRACKING
                     isTracking = tracking
                     if (tracking) {
@@ -1024,6 +1039,13 @@ internal object AskArAutomation {
     /** Debug extra for filming: `--ez ask_hide_chrome true` leaves only the caption and the mic. */
     private const val HIDE_CHROME = "ask_hide_chrome"
     private const val DEMO_ID = "ask-ar"
+
+    /** Filming cues, debug only: `--es ask_q_at <s> --es ask_q2_at <s>`, seconds of session clock. */
+    private val CUES = listOf("ask_q_at", "ask_q2_at")
+
+    fun cues(intent: Intent?): List<Float?> =
+        if (intent == null || !BuildConfig.DEBUG) emptyList()
+        else CUES.map { intent.getStringExtra(it)?.trim()?.toFloatOrNull() }
 
     /** `--ez ask_hide_chrome`, if the intent says (debug builds only), else `null`. */
     fun hideChrome(intent: Intent?): Boolean? =
