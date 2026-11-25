@@ -33,7 +33,17 @@ internal object GltfMaterialCompatibility {
         }
     }
 
-    fun prepare(source: Buffer): Buffer {
+    /**
+     * [source] with the unsupported extensions removed. When [ownsSource] is `true` (the loader
+     * read the file itself, so nobody else holds these bytes) and the rewritten JSON fits in the
+     * old one, the JSON is rewritten in place and padded with spaces: a 5.8 MB GLB no longer needs
+     * a second 5.8 MB copy right after it was read. On Android a direct buffer is a Java-heap
+     * array, so that copy doubled the heap a load needed and ran a 16 MiB heap out of memory on a
+     * rotation (#5271). Dropping extensions shrinks the JSON, but `org.json` rewrites numbers
+     * (`1e9` becomes `1000000000`), so a minified file can grow: it then gets the copy. A buffer
+     * the caller owns is never written to, and gets the copy as before.
+     */
+    fun prepare(source: Buffer, ownsSource: Boolean = false): Buffer {
         val bytes = (source as? ByteBuffer)?.duplicate()?.order(ByteOrder.LITTLE_ENDIAN) ?: return source
         val text = GltfBufferUris.jsonText(bytes) ?: return source
         // The common case: no affected extension, nothing parsed, the caller's buffer as is.
@@ -62,11 +72,20 @@ internal object GltfMaterialCompatibility {
         }
         val encoded = unescapeSlashes(json.toString()).toByteArray(Charsets.UTF_8)
         val start = bytes.position()
+        val writable = ownsSource && !bytes.isReadOnly
         if (bytes.remaining() < 20 || bytes.getInt(start) != 0x46546C67) {
+            // A .gltf: the JSON is the whole buffer. Trailing spaces are valid JSON.
+            if (writable && encoded.size <= bytes.remaining()) {
+                return source.also { overwrite(bytes, start, encoded, bytes.remaining()) }
+            }
             return ByteBuffer.allocateDirect(encoded.size).put(encoded).apply { flip() }
         }
         // Preserve every trailing chunk byte for byte, including BIN padding and unknown chunks.
         val oldJsonLength = bytes.getInt(start + 12)
+        // Same JSON chunk length: the header, the BIN chunk and every offset stay as they are.
+        if (writable && encoded.size <= oldJsonLength) {
+            return source.also { overwrite(bytes, start + 20, encoded, oldJsonLength) }
+        }
         val tail = bytes.duplicate().apply { position(start + 20 + oldJsonLength) }
         val paddedLength = (encoded.size + 3) and -4
         return ByteBuffer.allocateDirect(20 + paddedLength + tail.remaining())
@@ -81,5 +100,14 @@ internal object GltfMaterialCompatibility {
                 put(tail)
                 flip()
             }
+    }
+
+    /** Writes [encoded] at [at] and pads it with spaces up to [length] bytes, without moving [bytes]. */
+    private fun overwrite(bytes: ByteBuffer, at: Int, encoded: ByteArray, length: Int) {
+        bytes.duplicate().apply {
+            position(at)
+            put(encoded)
+            repeat(length - encoded.size) { put(0x20.toByte()) }
+        }
     }
 }

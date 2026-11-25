@@ -9,6 +9,7 @@ import androidx.annotation.RawRes
 import com.github.kittinunf.fuel.core.FuelManager
 import com.github.kittinunf.fuel.coroutines.awaitByteArray
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
@@ -60,8 +61,10 @@ object FileLoader {
                         .awaitByteArray()
                 }
 
+                // Checked between chunks: a load abandoned mid-read (its screen rotated away)
+                // stops reading and frees the array instead of finishing a file nobody will use.
                 else -> {
-                    readFileBuffer(context, fileLocation, onProgress)
+                    readFileBuffer(context, fileLocation, onProgress, checkCancelled = { ensureActive() })
                 }
             }
         }
@@ -80,7 +83,12 @@ object FileLoader {
         readFileBuffer(context, fileLocation, onProgress = null)
 
     // Each stream is read into one array of its size (see `readFully`), not grown then copied.
-    internal fun readFileBuffer(context: Context, fileLocation: String, onProgress: ((Float) -> Unit)?): ByteBuffer? {
+    internal fun readFileBuffer(
+        context: Context,
+        fileLocation: String,
+        onProgress: ((Float) -> Unit)?,
+        checkCancelled: (() -> Unit)? = null,
+    ): ByteBuffer? {
         val uri = Uri.parse(fileLocation)
         val stream = when (uri.scheme) {
             ContentResolver.SCHEME_FILE -> localFileStream(context, uri)
@@ -100,7 +108,7 @@ object FileLoader {
 
             else -> context.assets.open(fileLocation)
         }
-        return stream?.use { it.readFully(onProgress = onProgress) }?.let { byteArray ->
+        return stream?.use { it.readFully(onProgress = onProgress, checkCancelled = checkCancelled) }?.let { byteArray ->
             ByteBuffer.wrap(byteArray)
         }
     }
@@ -167,9 +175,14 @@ private const val READ_CHUNK = 64 * 1024
  * held 100 MB of Java heap. A wrong hint still reads everything, at the cost of one copy.
  *
  * [onProgress] gets the fraction read so far, after each chunk, when [sizeHint] is known (> 0).
+ * [checkCancelled] runs after each chunk and stops the read by throwing.
  * Does not close the stream.
  */
-internal fun InputStream.readFully(sizeHint: Int = available(), onProgress: ((Float) -> Unit)? = null): ByteArray {
+internal fun InputStream.readFully(
+    sizeHint: Int = available(),
+    onProgress: ((Float) -> Unit)? = null,
+    checkCancelled: (() -> Unit)? = null,
+): ByteArray {
     val expected = sizeHint.coerceAtLeast(0)
     var buffer = ByteArray(if (expected > 0) expected else DEFAULT_BUFFER_SIZE)
     var size = 0
@@ -185,6 +198,7 @@ internal fun InputStream.readFully(sizeHint: Int = available(), onProgress: ((Fl
         if (n < 0) break
         size += n
         if (onProgress != null && expected > 0) onProgress(minOf(1f, size.toFloat() / expected))
+        checkCancelled?.invoke()
     }
     return if (size == buffer.size) buffer else buffer.copyOf(size)
 }
