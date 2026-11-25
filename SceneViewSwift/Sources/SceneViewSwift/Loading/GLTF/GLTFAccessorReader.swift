@@ -298,6 +298,7 @@ struct GLTFAccessorReader {
         let (isMatrix, rows, columnStride, size) = (span.isMatrix, span.rows, span.columnStride, type.size)
         guard count > 0 else { return }
 
+        // Offsets are relative to the buffer's first byte, including for a GLB BIN slice.
         buffer.withUnsafeBytes { raw in
             for element in 0..<count {
                 let base = first + element * stride

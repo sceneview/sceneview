@@ -68,6 +68,49 @@ final class GLTFTests: XCTestCase {
 
     // MARK: - Containers and accessors
 
+    func testGLBChunksAndEmbeddedImageShareTheSourceStorage() throws {
+        var builder = GLTFBuilder.texturedQuad()
+        _ = builder.view(Data(repeating: 0, count: 3 * 1024 * 1024))
+        let glb = builder.glb()
+        let chunks = try GLTFDocument.splitGLB(glb)
+        let bin = try XCTUnwrap(chunks.bin)
+        let document = try GLTFDocument.read(data: glb, baseURL: nil)
+        let image = try document.imageData(0)
+
+        XCTAssertGreaterThan(bin.count, 3 * 1024 * 1024)
+        for slice in [chunks.json, bin, image] {
+            try glb.withUnsafeBytes { sourceBytes in
+                try slice.withUnsafeBytes { sliceBytes in
+                    let source = try XCTUnwrap(sourceBytes.baseAddress)
+                    let shared = try XCTUnwrap(sliceBytes.baseAddress)
+                    XCTAssertGreaterThan(slice.startIndex, glb.startIndex)
+                    XCTAssertLessThanOrEqual(slice.endIndex, glb.endIndex)
+                    XCTAssertEqual(shared, source.advanced(by: slice.startIndex - glb.startIndex))
+                }
+            }
+        }
+    }
+
+    func testGLBDecodesFromASliceWithANonzeroStartIndex() throws {
+        let builder = GLTFBuilder.texturedQuad()
+        let prefixLength = 13
+        var bytes = Data(repeating: 0xFF, count: prefixLength)
+        bytes.append(builder.glb())
+        let glb = bytes.dropFirst(prefixLength)
+        XCTAssertEqual(glb.startIndex, prefixLength)
+
+        let scene = try GLTFScene.decode(GLTFDocument.read(data: glb, baseURL: nil))
+        let expected = try self.scene(builder, glb: false)
+        let primitive = try XCTUnwrap(scene.meshes.first?.primitives.first)
+        let expectedPrimitive = try XCTUnwrap(expected.meshes.first?.primitives.first)
+        XCTAssertEqual(primitive.positions, expectedPrimitive.positions)
+        XCTAssertEqual(primitive.indices, expectedPrimitive.indices)
+        XCTAssertEqual(primitive.textureCoordinates, expectedPrimitive.textureCoordinates)
+        let image = try XCTUnwrap(scene.images[GLTFImageKey(image: 0, variant: .color)])
+        XCTAssertEqual(image.width, 2)
+        XCTAssertEqual(image.height, 2)
+    }
+
     func testTriangleFromGLBAndFromDataURIAgree() throws {
         for glb in [true, false] {
             let scene = try scene(.triangle(), glb: glb)
@@ -362,6 +405,21 @@ final class GLTFTests: XCTestCase {
     // MARK: - RealityKit entity
 
     #if os(iOS) || os(macOS) || os(visionOS)
+    func testAlreadyCancelledTaskCannotDecodeAGLB() async throws {
+        let url = try write(GLTFBuilder.triangle().glb(), as: "triangle.glb")
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await GLTFLoader.decodeScene(contentsOf: url)
+        }
+
+        do {
+            _ = try await task.value
+            XCTFail("a cancelled decode must not return a scene")
+        } catch is CancellationError {
+            // Expected.
+        }
+    }
+
     @MainActor
     func testModelNodeLoadsAGLBTriangle() async throws {
         let url = try write(GLTFBuilder.triangle().glb(), as: "triangle.glb")

@@ -747,6 +747,8 @@ final class SceneViewerContentRoot {
 
                 loaded[entry.key] = node.entity
                 entity.addChild(node.entity)
+            } catch is CancellationError {
+                return
             } catch {
                 // Logged, not thrown: there is no failed state in the viewer façade, and a
                 // failed load leaves the environment on screen — indistinguishable from a

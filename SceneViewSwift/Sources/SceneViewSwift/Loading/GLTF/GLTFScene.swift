@@ -226,7 +226,12 @@ extension GLTFScene {
     ///
     /// - Parameter decodeImages: `false` skips image decoding entirely — the geometry
     ///   path (``MeshAsset``) needs no pixels.
-    static func decode(_ document: GLTFDocument, decodeImages: Bool = true) throws -> GLTFScene {
+    /// - Parameter isImageDecodeCancelled: Cancellation state shared with the GCD image workers.
+    static func decode(
+        _ document: GLTFDocument, decodeImages: Bool = true,
+        isImageDecodeCancelled: @Sendable () -> Bool = { false }
+    ) throws -> GLTFScene {
+        try Task.checkCancellation()
         let root = document.root
         let reader = GLTFAccessorReader(document: document)
         var warnings: [String] = []
@@ -301,8 +306,10 @@ extension GLTFScene {
 
         // --- Meshes ------------------------------------------------------------
         let meshes: [GLTFMesh] = try (root.meshes ?? []).enumerated().map { meshIndex, def in
+            try Task.checkCancellation()
             var primitives: [GLTFPrimitive] = []
             for (primitiveIndex, p) in def.primitives.enumerated() {
+                try Task.checkCancellation()
                 let mode = p.mode ?? 4
                 guard mode >= 4 && mode <= 6 else {
                     warnings.append("mesh \(meshIndex) primitive \(primitiveIndex): mode \(mode) (points/lines) is not drawn")
@@ -352,6 +359,7 @@ extension GLTFScene {
 
         // --- Skins -------------------------------------------------------------
         let skins: [GLTFSkin] = try (root.skins ?? []).enumerated().map { index, def in
+            try Task.checkCancellation()
             guard def.joints.allSatisfy({ $0 >= 0 && $0 < nodes.count }) else {
                 throw ModelLoadingError.malformed(reason: "skin \(index) names a joint that is not a node")
             }
@@ -368,6 +376,7 @@ extension GLTFScene {
 
         // --- Animations --------------------------------------------------------
         let animations: [GLTFAnimation] = try (root.animations ?? []).enumerated().map { index, def in
+            try Task.checkCancellation()
             var channels: [GLTFAnimationChannel] = []
             for channel in def.channels {
                 guard let node = channel.target.node, node >= 0, node < nodes.count,
@@ -396,10 +405,14 @@ extension GLTFScene {
         }.filter { !$0.channels.isEmpty }
 
         // --- Images ------------------------------------------------------------
+        try Task.checkCancellation()
         var images: [GLTFImageKey: CGImage] = [:]
         if decodeImages {
-            images = decodeImagesUsed(by: materials, document: document, warnings: &warnings)
+            images = try decodeImagesUsed(
+                by: materials, document: document, warnings: &warnings, isCancelled: isImageDecodeCancelled
+            )
         }
+        try Task.checkCancellation()
 
         return GLTFScene(
             name: sanitized(sceneDef?.name) ?? "glTF",
@@ -555,8 +568,9 @@ extension GLTFScene {
     // MARK: Images
 
     private static func decodeImagesUsed(
-        by materials: [GLTFMaterial], document: GLTFDocument, warnings: inout [String]
-    ) -> [GLTFImageKey: CGImage] {
+        by materials: [GLTFMaterial], document: GLTFDocument, warnings: inout [String],
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [GLTFImageKey: CGImage] {
         var wanted: Set<GLTFImageKey> = []
         for m in materials {
             if let t = m.baseColorTexture {
@@ -572,6 +586,7 @@ extension GLTFScene {
             if let t = m.emissiveTexture, !m.unlit { wanted.insert(.init(image: t.image, variant: .color)) }
         }
         let imageIndices = Array(Set(wanted.map(\.image))).sorted()
+        try Task.checkCancellation()
         guard !imageIndices.isEmpty else { return [:] }
 
         // Decode each source image once, in parallel — a PBR asset is typically four or
@@ -580,16 +595,20 @@ extension GLTFScene {
         decoded.initialize(repeating: nil)
         defer { decoded.deinitialize(); decoded.deallocate() }
         DispatchQueue.concurrentPerform(iterations: imageIndices.count) { i in
-            guard let data = try? document.imageData(imageIndices[i]),
+            guard !isCancelled(),
+                  let data = try? document.imageData(imageIndices[i]),
                   let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  !isCancelled(),
                   let image = CGImageSourceCreateImageAtIndex(
                     source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
                   ) else { return }
             decoded[i] = image
         }
+        if isCancelled() { throw CancellationError() }
 
         var out: [GLTFImageKey: CGImage] = [:]
         for (i, index) in imageIndices.enumerated() {
+            try Task.checkCancellation()
             guard let image = decoded[i] else {
                 warnings.append("image \(index) could not be decoded")
                 continue
