@@ -237,7 +237,19 @@ left), so their internal frames stay as offsets whatever the build does.
 Push campaigns go to the FCM topics `all` and `new_samples` (debug builds also
 join `qa`). The data payload carries `sample`, a sample id the notification
 opens, and `campaign`, reported in `push_opened`. An unknown sample id opens
-Home. To check events live on a debug build:
+Home.
+
+Cadence: `new_samples` gets at most two pushes a month, each one announcing a
+sample that shipped, and no inactivity reminders. The app holds the same line on
+the device: a third broadcast within 30 days posts nothing
+(`telemetry/PushPostGate.kt`), nor does a push while the `whats_new` channel is
+off in system settings. `python3 tools/send-demo-push.py` sends one data-only
+message through FCM HTTP v1 (dry run by default; the service-account key comes
+from `SCENEVIEW_FCM_SERVICE_ACCOUNT_JSON` or the Keychain, never from a file in
+the repo). To see the notification without FCM, a debug build takes
+`adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity --es push_qa <sample-id>`.
+
+To check events live on a debug build:
 `adb shell setprop debug.firebase.analytics.app io.github.sceneview.demo.qa`,
 then Firebase console → DebugView.
 
