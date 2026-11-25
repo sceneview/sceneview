@@ -27,9 +27,9 @@ class AskIncrementalHandwritingTest {
         assertTrue(final.strokes.any { it.kind == InkKind.Doodle })
     }
 
-    @Test fun `wrapping coordinates stroke identities and timing never change on append`() {
+    @Test fun `left aligned, wrapping coordinates stroke identities and timing never change on append`() {
         val style = HandwritingStyle(blockWidth = 0.45f)
-        val ink = IncrementalHandwriting(style)
+        val ink = IncrementalHandwriting(style, centred = false)
         val first = ink.append("Warm pasta ")
         val later = ink.append("is always a good idea. ", elapsedSeconds = 10f)
         val done = ink.finish(Doodle.Underline, "good idea")
@@ -59,11 +59,31 @@ class AskIncrementalHandwritingTest {
         assertTrue(replacement.starts.first() >= 1.1f)
     }
 
-    @Test fun `punctuation arriving later never moves its word`() {
-        val ink = IncrementalHandwriting()
+    @Test fun `left aligned, punctuation arriving later never moves its word`() {
+        val ink = IncrementalHandwriting(centred = false)
         val first = ink.append("Hello!")
         val second = ink.append("! Next ")
         assertEquals(listOf("Hello!!", "Next"), second.lines.flatten())
         assertSame(first.strokes.first(), second.strokes.first())
+    }
+
+    @Test fun `centred, every line stays centred on the aimed point as words land`() {
+        val style = HandwritingStyle(blockWidth = 0.45f)
+        val ink = IncrementalHandwriting(style)
+        fun assertCentred(writing: Handwriting) {
+            val lineHeight = style.capHeight * style.lineSpacing
+            // Line i is centred 1.5 - i line heights up (four-line frame).
+            writing.strokes.groupBy { s -> Math.round((1.5 * lineHeight - s.points.map { it.y }.average()) / lineHeight) }
+                .forEach { (_, line) ->
+                    val xs = line.flatMap { s -> s.points.map { it.x } }
+                    assertEquals(0f, (xs.min() + xs.max()) / 2f, style.capHeight * 0.35f)
+                }
+        }
+        assertCentred(ink.append("About "))
+        assertCentred(ink.append("2.0 m away, "))
+        val done = ink.finish(Doodle.None, "")
+        assertCentred(done)
+        // Sliding keeps each stroke's identity number and its timing.
+        assertEquals(done.strokes.indices.toList(), done.strokes.map { it.id })
     }
 }

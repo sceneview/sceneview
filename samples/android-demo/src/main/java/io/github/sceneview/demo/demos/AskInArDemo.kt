@@ -253,6 +253,17 @@ private class AskState {
     /** Where a drawing plan goes, in world space: anchored there as it is, by the next frame. */
     var placePose: Pose? = null
 
+    /** A live answer hung at [placePose]: sized to the screen at that distance when anchored. */
+    var fitOnPlace = false
+
+    /**
+     * While ARCore has lost tracking, the handwriting being written holds still in the middle
+     * of the screen, as far away as its anchor was: a world position, a yaw in degrees, and
+     * the scale that fits it to the screen at that distance. Its anchor hides meanwhile, and
+     * takes the answer back when tracking returns.
+     */
+    var held by mutableStateOf<Triple<Position, Float, Float>?>(null)
+
     /** Distance to whatever the centre of the screen points at, read every few frames. */
     var distanceAhead: Float? = null
     var frameCount = 0
@@ -280,6 +291,8 @@ private class AskState {
         placeRequested = false
         placeOnSurface = false
         placePose = null
+        fitOnPlace = false
+        held = null
         anchorState = null
     }
 
@@ -463,6 +476,13 @@ private fun AskInArScene(
                     ?.let { HandwritingLayout.fitScale(it, tall * aspect, tall) } ?: 1f
                 state.stagePlaced = true
             } else {
+                // Hung on the spot the phone aimed at when the question was asked, read with the
+                // room: by the time the snapshot is sent the camera may have turned away from it.
+                state.placePose = room.wall?.let { spot ->
+                    val at = spot.point + spot.normal * LIVE_WALL_LIFT
+                    Pose(floatArrayOf(at.x, at.y, at.z), yawQuaternion(atan2(spot.normal.x, spot.normal.z)))
+                }
+                state.fitOnPlace = state.placePose != null
                 state.placeOnSurface = reply.doodle == Doodle.Pointer
                 state.placeRequested = true
                 snapshotFlow { state.anchor }.first { it != null }
@@ -786,6 +806,29 @@ private fun AskInArScene(
                     }
                     val tracking = frame.camera.trackingState == TrackingState.TRACKING
                     isTracking = tracking
+                    // Tracking lost (a bare wall, a fast turn) while handwriting is up: hold it in
+                    // front of the phone, where the frozen camera keeps it on screen; tracking
+                    // back, its anchor takes it again. A drawing in the room is not held.
+                    val anchored = state.anchor
+                    if (!tracking && state.held == null && anchored != null && state.handwriting != null && state.plan == null) {
+                        val c = frame.camera.pose
+                        val z = c.zAxis
+                        val a = anchored.pose
+                        val dx = a.tx() - c.tx()
+                        val dy = a.ty() - c.ty()
+                        val dz = a.tz() - c.tz()
+                        val d = sqrt(dx * dx + dy * dy + dz * dz).coerceIn(HOLD_MIN_METRES, HOLD_MAX_METRES)
+                        val (wide, tall) = AskPlacement.visibleSize(frame, d)
+                        state.held = Triple(
+                            Position(c.tx() - z[0] * d, c.ty() - z[1] * d, c.tz() - z[2] * d),
+                            Math.toDegrees(atan2(z[0], z[2]).toDouble()).toFloat(),
+                            state.handwriting?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: state.blockScale,
+                        )
+                        Log.i(LOG_TAG, "hold: tracking lost, answer held ${AskRoomReader.fmt(d)} m ahead")
+                    } else if (tracking && state.held != null) {
+                        state.held = null
+                        Log.i(LOG_TAG, "hold: tracking back, answer on its anchor")
+                    }
                     // An anchored answer hides while its anchor is not tracked: say when that
                     // changes, and where the anchor has got to.
                     state.anchor?.let { anchor ->
@@ -844,7 +887,17 @@ private fun AskInArScene(
                             if (planned != null) {
                                 val anchor = runCatching { session.createAnchor(planned) }.getOrNull()
                                 if (anchor != null) {
-                                    Log.i(LOG_TAG, "anchor: ${AskRoomReader.fmt(anchor.pose)} ${anchor.trackingState}")
+                                    if (state.fitOnPlace) {
+                                        // Lines wrap to what the screen shows at that distance.
+                                        val c = frame.camera.pose
+                                        val dx = planned.tx() - c.tx()
+                                        val dy = planned.ty() - c.ty()
+                                        val dz = planned.tz() - c.tz()
+                                        val (wide, tall) = AskPlacement.visibleSize(frame, sqrt(dx * dx + dy * dy + dz * dz))
+                                        state.blockScale = state.handwriting
+                                            ?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: 1f
+                                    }
+                                    Log.i(LOG_TAG, "anchor: ${AskRoomReader.fmt(anchor.pose)} ${anchor.trackingState} scale=${AskRoomReader.fmt(state.blockScale)}")
                                     state.placeRequested = false
                                     state.anchor = anchor
                                 }
@@ -872,6 +925,13 @@ private fun AskInArScene(
                     listOf(PinnedAnswer(anchor, handwriting, plan, state.blockScale))
                 } else {
                     emptyList()
+                }
+                // Held while tracking is lost: the same ink, in front of the phone.
+                val held = state.held
+                if (held != null && handwriting != null && plan == null) {
+                    Node(position = held.first, rotation = Rotation(y = held.second)) {
+                        AnswerInk(handwriting, held.third, state.elapsed, ink, rim)
+                    }
                 }
                 (state.pinned + current).forEach { answer ->
                     key(answer.anchor) {
@@ -1700,6 +1760,13 @@ private val STAGE_BLOCK = Position(0f, -0.05f, -1.5f)
 private const val STAGE_FOCAL = 20f
 private const val STAGE_SENSOR_HALF = 12f
 private const val STAGE_ASPECT = 0.45f
+
+/** A live answer hangs this far off the wall it was asked at, so the ink never sinks into it. */
+private const val LIVE_WALL_LIFT = 0.03f
+
+/** Nearest and farthest a held answer hangs in front of the phone: see [AskState.held]. */
+private const val HOLD_MIN_METRES = 0.6f
+private const val HOLD_MAX_METRES = 3f
 private const val RIM_WIDTH = 0.0038f
 private const val RIM_DEPTH = 0.004f
 
