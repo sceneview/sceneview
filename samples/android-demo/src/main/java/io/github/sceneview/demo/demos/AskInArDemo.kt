@@ -128,6 +128,7 @@ import io.github.sceneview.demo.demos.internal.InkSheet
 import io.github.sceneview.demo.demos.internal.SheetFacing
 import io.github.sceneview.demo.demos.internal.SofaFit
 import io.github.sceneview.demo.demos.internal.SofaSpot
+import io.github.sceneview.demo.demos.internal.WallEdges
 import io.github.sceneview.demo.demos.internal.WallSpot
 import io.github.sceneview.demo.demos.internal.Doodle
 import io.github.sceneview.demo.demos.internal.Handwriting
@@ -1199,7 +1200,10 @@ private object AskRoomReader {
                 is Plane, is DepthPoint -> hit.hitPose.yAxis.let { Float3(it[0], it[1], it[2]) }
                 else -> null
             }
-            WallSpot(point, HangPicture.wallNormal(candidate, point, camera))
+            val normal = HangPicture.wallNormal(candidate, point, camera)
+            val plane = (hit.trackable as? Plane)?.takeIf { it.type == Plane.Type.VERTICAL }
+            val (left, right) = plane?.let { edges(it, point, normal) } ?: (null to null)
+            WallSpot(point, normal, left, right)
         }
         val floorHit = centreHits(frame, viewSize).firstOrNull { hit ->
             val plane = hit.trackable as? Plane
@@ -1212,6 +1216,23 @@ private object AskRoomReader {
         val left = SofaFit.nearest(sideHits(frame, origin, Float3(-axis.x, 0f, -axis.z)))
         val right = SofaFit.nearest(sideHits(frame, origin, axis))
         return AskRoom(camera, heading, floor, wall, SofaSpot(centre, left, right))
+    }
+
+    /**
+     * How far, level with [point], [plane]'s outline reaches to the left and the right along
+     * the wall: its corners laid out on the wall, then [WallEdges.around].
+     */
+    private fun edges(plane: Plane, point: Float3, normal: Float3): Pair<Float?, Float?> {
+        val polygon = plane.polygon
+        val pose = plane.centerPose
+        val right = HangPicture.right(normal)
+        val outline = (0 until polygon.limit() / 2).map { i ->
+            val w = pose.transformPoint(floatArrayOf(polygon.get(2 * i), 0f, polygon.get(2 * i + 1)))
+            val dx = w[0] - point.x
+            val dz = w[2] - point.z
+            InkPoint(dx * right.x + dz * right.z, w[1] - point.y)
+        }
+        return WallEdges.around(outline)
     }
 
     /** Where the phone looks, flat on the floor; the way its top points when it looks straight down. */

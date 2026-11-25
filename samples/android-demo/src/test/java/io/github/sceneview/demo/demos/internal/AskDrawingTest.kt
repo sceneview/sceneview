@@ -159,6 +159,29 @@ class AskDrawingTest {
         }
     }
 
+    @Test fun `the length line is the footprint's own length, ticked at both ends, its label inside it`() {
+        val floor = SofaFit.plan(SofaSpot(Float3(0f, 0f, -1.8f)), north).sheets.first { it.facing == SheetFacing.Floor }
+        val dashCount = 2 * SofaFit.dashes(2f).size + 2 * SofaFit.dashes(0.9f).size
+        // Tick, left half, "2 m", right half, tick.
+        val strokes = floor.writing.strokes.drop(dashCount)
+        val leftTick = strokes.first()
+        assertTrue(leftTick.points.all { abs(it.x + 1f) < 1e-4f })
+        val line = strokes.filter { s -> s.points.all { abs(it.y - s.points.first().y) < 0.01f } && s.points.size > 10 }
+        val y = line.first().points.first().y
+        val ink = line.flatMap { it.points }
+        assertEquals(-1f, ink.minOf { it.x }, 1e-4f)
+        assertEquals(1f, ink.maxOf { it.x }, 1e-4f)
+        val rightTick = strokes.first { s -> s.points.all { abs(it.x - 1f) < 1e-4f } }
+        assertTrue(rightTick.points.any { it.y > y } && rightTick.points.any { it.y < y })
+        // The label sits in the break, on the line.
+        val label = strokes.filter { s -> s.kind == InkKind.Text && s.points.all { abs(it.y - y) < 0.15f } }.flatMap { it.points }
+        assertTrue(label.isNotEmpty())
+        val gap = SofaFit.lengthGap()
+        assertTrue(label.all { abs(it.x) < gap })
+        assertTrue(label.minOf { it.y } < y && label.maxOf { it.y } > y)
+        assertTrue(ink.none { abs(it.x) < gap - 1e-4f })
+    }
+
     @Test fun `dashes start and end on the corners, evenly spaced`() {
         val long = SofaFit.dashes(2f, dash = 0.12f, gap = 0.07f)
         assertEquals(11, long.size)
@@ -277,12 +300,30 @@ class AskDrawingTest {
         val turns = circle.zipWithNext { p, q -> kotlin.math.atan2(p.x * q.y - p.y * q.x, p.x * q.x + p.y * q.y) }.sum() /
             (2f * Math.PI.toFloat())
         assertTrue("$turns turns", turns in 1.6f..2f)
-        // The words stand upright, the steps 15 cm off to one side, in order.
+        // The words stand upright, the steps to one side, every word in order.
         val steps = plan.sheets.last()
         assertEquals(SheetFacing.Billboard, steps.facing)
-        assertEquals(RadiatorBleed.STEPS_OFFSET, abs(steps.offset.x), 1e-6f)
-        assertEquals(RadiatorBleed.STEPS.map { it.split(' ') }, steps.writing.lines)
+        assertEquals(RadiatorBleed.STEPS_GAP, abs(steps.offset.x), 1e-6f)
+        assertEquals(RadiatorBleed.STEPS.flatMap { it.split(' ') }, steps.writing.lines.flatten())
         assertTrue(plan.sheets.drop(1).all { it.facing == SheetFacing.Billboard })
+    }
+
+    @Test fun `the arrow and its label go opposite the steps, and everything stays within 25 cm of the screw`() {
+        for (camera in listOf(Float3(0f, 1.2f, 0f), Float3(-0.6f, 1.2f, 0f))) {
+            val screw = WallSpot(Float3(0f, 0.5f, -1f), Float3(0f, 0f, 1f))
+            val side = RadiatorBleed.stepsSide(screw, camera)
+            val plan = RadiatorBleed.plan(screw, camera)
+            val (surface, label, steps) = plan.sheets
+            fun xs(sheet: InkSheet) = sheet.writing.strokes.flatMap { s -> s.points.map { sheet.offset.x + it.x } }
+            // The arrow is the surface's second stroke: its middle on the other side.
+            val shaft = surface.writing.strokes[1].points
+            assertTrue("arrow on the steps' side", shaft[shaft.size / 2].x * side < 0f)
+            assertTrue("label on the steps' side", xs(label).all { it * side < 0.01f })
+            assertTrue("steps on the wrong side", xs(steps).all { it * side > 0f })
+            val all = plan.sheets.flatMap(::xs)
+            val half = RadiatorBleed.HALF_SPAN + 0.005f
+            assertTrue("spans ${all.min()}..${all.max()}", all.all { it in -half..half })
+        }
     }
 
     @Test fun `the steps go to the side the phone stands toward, right when square on`() {
@@ -290,6 +331,30 @@ class AskDrawingTest {
         assertEquals(1f, RadiatorBleed.stepsSide(screw, Float3(0f, 1.2f, 0f)), 0f)
         assertEquals(1f, RadiatorBleed.stepsSide(screw, Float3(0.5f, 1.2f, 0f)), 0f)
         assertEquals(-1f, RadiatorBleed.stepsSide(screw, Float3(-0.5f, 1.2f, 0f)), 0f)
+    }
+
+    @Test fun `near one end of the wall ARCore found, the steps go the other way`() {
+        val screw = WallSpot(Float3(0f, 0.5f, -1f), Float3(0f, 0f, 1f))
+        val squareOn = Float3(0f, 1.2f, 0f)
+        assertEquals(-1f, RadiatorBleed.stepsSide(screw.copy(edgeLeft = 0.6f, edgeRight = 0.1f), squareOn), 0f)
+        assertEquals(-1f, RadiatorBleed.stepsSide(screw.copy(edgeRight = 0.1f), squareOn), 0f)
+        // Near the left end, even with the phone off to the left.
+        assertEquals(1f, RadiatorBleed.stepsSide(screw.copy(edgeLeft = 0.05f), Float3(-0.6f, 1.2f, 0f)), 0f)
+        // Near both ends, or neither: the phone decides.
+        assertEquals(1f, RadiatorBleed.stepsSide(screw.copy(edgeLeft = 0.1f, edgeRight = 0.1f), squareOn), 0f)
+        assertEquals(1f, RadiatorBleed.stepsSide(screw.copy(edgeLeft = 0.5f, edgeRight = 0.5f), squareOn), 0f)
+    }
+
+    @Test fun `a plane's outline ends where it crosses the level through the hit`() {
+        // A 1 m wide, 0.8 m tall wall patch, the hit 0.1 m from its right end.
+        val outline = listOf(InkPoint(-0.9f, -0.3f), InkPoint(0.1f, -0.3f), InkPoint(0.1f, 0.5f), InkPoint(-0.9f, 0.5f))
+        val (left, right) = WallEdges.around(outline)
+        assertEquals(0.9f, left!!, 1e-5f)
+        assertEquals(0.1f, right!!, 1e-5f)
+        // A slanted edge is met where it crosses, not at its corners.
+        val (_, slanted) = WallEdges.around(listOf(InkPoint(-1f, -1f), InkPoint(0f, -1f), InkPoint(0.4f, 1f), InkPoint(-1f, 1f)))
+        assertEquals(0.2f, slanted!!, 1e-5f)
+        assertEquals(null to null, WallEdges.around(listOf(InkPoint(0f, 0f), InkPoint(1f, 1f))))
     }
 
     @Test fun `the radiator answer needs a spot to anchor on`() {

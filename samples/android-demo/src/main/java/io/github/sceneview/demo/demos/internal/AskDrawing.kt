@@ -37,8 +37,39 @@ internal data class FloorRead(val y: Float, val measured: Boolean)
 /**
  * A spot on a wall: [point] where the camera's centre ray met it, [normal] out of it toward the
  * room, horizontal and of unit length.
+ *
+ * [edgeLeft] and [edgeRight]: how far along the wall, level with [point], the vertical plane
+ * ARCore found there ends to the left and to the right as the phone sees it. `null` when the hit
+ * was not on a plane, or the plane does not end that way.
  */
-internal data class WallSpot(val point: Float3, val normal: Float3)
+internal data class WallSpot(
+    val point: Float3,
+    val normal: Float3,
+    val edgeLeft: Float? = null,
+    val edgeRight: Float? = null,
+)
+
+internal object WallEdges {
+    /**
+     * Where a plane's outline crosses the level line through the hit, from the outline's
+     * corners laid out on the wall ([InkPoint.x] along it to the right, [InkPoint.y] up, the hit
+     * at the origin): the nearest crossing to the left and to the right, as distances.
+     */
+    fun around(outline: List<InkPoint>): Pair<Float?, Float?> {
+        if (outline.size < 3) return null to null
+        var left: Float? = null
+        var right: Float? = null
+        for (i in outline.indices) {
+            val a = outline[i]
+            val b = outline[(i + 1) % outline.size]
+            // An edge that crosses y = 0 (one end on or above, the other below).
+            if ((a.y >= 0f) == (b.y >= 0f)) continue
+            val x = a.x + (b.x - a.x) * (0f - a.y) / (b.y - a.y)
+            if (x < 0f) left = min(left ?: Float.MAX_VALUE, -x) else right = min(right ?: Float.MAX_VALUE, x)
+        }
+        return left to right
+    }
+}
 
 /**
  * Where a sofa would stand: [centre] on the floor, and how far from it the nearest wall (or
@@ -403,7 +434,12 @@ internal object SofaFit {
 
     private const val INK = 0.0085f
     private const val RIM = 0.0032f
-    private const val DIM_OFFSET = 0.16f
+    private const val DIM_OFFSET = 0.12f
+    const val LENGTH_LABEL = "2 m"
+
+    /** Half the break in the length line, where "2 m" is written: the label's half-width and a margin. */
+    fun lengthGap(): Float = HandwritingLayout.layout(LENGTH_LABEL, Doodle.None, FLOOR_LABEL).textBounds.width / 2f + LABEL_MARGIN
+    private const val LABEL_MARGIN = 0.06f
     private const val DIM_TICK = 0.05f
     private const val DEPTH_DIM_INSET = 0.13f
     private const val VERDICT_HEIGHT = 0.5f
@@ -516,12 +552,15 @@ internal object SofaFit {
                     line(Sketch.handLine(p, q, 0.002f, r, 0.02f), INK, speed = 3f, pause = if (i == 0 && edge > 0) 0.06f else 0.015f)
                 }
             }
-            // Its length, along the near side: a line between two ticks, "2 m" under it.
+            // Its length, along the near side and no longer than it: a tick at each end, the
+            // line broken in the middle for "2 m".
             val y = -hd - DIM_OFFSET
+            val gap = lengthGap()
             line(listOf(InkPoint(-hl, y + DIM_TICK), InkPoint(-hl, y - DIM_TICK)), INK * 0.85f, 0.8f, pause = 0.12f)
-            line(Sketch.handLine(InkPoint(-hl, y), InkPoint(hl, y), 0.004f, r), INK * 0.85f, 3f)
-            line(listOf(InkPoint(hl, y + DIM_TICK), InkPoint(hl, y - DIM_TICK)), INK * 0.85f, 0.6f)
-            text("2 m", FLOOR_LABEL) { w -> InkPoint(-w.textBounds.centerX, y - 0.05f - w.textBounds.maxY) }
+            line(Sketch.handLine(InkPoint(-hl, y), InkPoint(-gap, y), 0.003f, r), INK * 0.85f, 2.4f)
+            text(LENGTH_LABEL, FLOOR_LABEL) { w -> InkPoint(-w.textBounds.centerX, y - w.textBounds.centerY) }
+            line(Sketch.handLine(InkPoint(gap, y), InkPoint(hl, y), 0.003f, r), INK * 0.85f, 2.4f)
+            line(listOf(InkPoint(hl, y + DIM_TICK), InkPoint(hl, y - DIM_TICK)), INK * 0.85f, 0.8f)
             // Its depth, just inside the right end, "90 cm" beside it.
             val x = hl - DEPTH_DIM_INSET
             line(listOf(InkPoint(x - DIM_TICK, -hd + 0.06f), InkPoint(x + DIM_TICK, -hd + 0.06f)), INK * 0.85f, 0.8f, pause = 0.12f)
@@ -560,8 +599,17 @@ internal object RadiatorBleed {
     val ARROW_FROM = (-5.0 * PI / 180.0).toFloat()
     val ARROW_SWEEP = (PI / 2.0).toFloat()
 
-    /** How far from the screw the steps begin, to one side. */
-    const val STEPS_OFFSET = 0.15f
+    /**
+     * Everything drawn stays within this much of the screw, left and right: on a phone held
+     * upright at arm's length the screw is rarely dead centre, and the screen is narrow.
+     */
+    const val HALF_SPAN = 0.25f
+
+    /** How far from the screw the steps begin, to one side: clear of the circle. */
+    const val STEPS_GAP = 0.09f
+
+    /** A screw this close to the end of the wall ARCore found has its steps put on the other side. */
+    const val EDGE_NEAR = 0.15f
 
     val STEPS = listOf("1. Heating off", "2. Cloth under", "3. Open till water", "4. Close")
 
@@ -572,11 +620,10 @@ internal object RadiatorBleed {
     private const val RIM = 0.0014f
     private const val WORDS_LIFT = 0.02f
     private val WORDS = HandwritingStyle(
-        blockWidth = 2f, capHeight = 0.028f, inkRadius = 0.0026f, pointSpacing = 0.0016f,
-        taperLength = 0.008f, minSeconds = 0.6f, maxSeconds = 0.95f,
+        blockWidth = 2f, capHeight = 0.021f, inkRadius = 0.002f, pointSpacing = 0.0012f,
+        taperLength = 0.006f, minSeconds = 0.6f, maxSeconds = 0.95f,
     )
-    private val SMALL = WORDS.copy(capHeight = 0.017f, inkRadius = 0.0021f, minSeconds = 0.15f, maxSeconds = 0.3f)
-    private const val LINE_SPACING = 1.75f
+    private val SMALL = WORDS.copy(capHeight = 0.013f, inkRadius = 0.0016f, minSeconds = 0.15f, maxSeconds = 0.3f)
 
     /**
      * The circle round the screw: a little under two turns of a quick pen, so its two loops
@@ -628,44 +675,62 @@ internal object RadiatorBleed {
     }
 
     /**
-     * Which side the steps go, +1 to the right as the phone sees it, -1 to the left: the side
-     * the phone stands toward, where they face it best and nothing of the radiator hides them.
-     * Square on, to the right.
+     * Which side the steps go, +1 to the right as the phone sees it, -1 to the left.
+     *
+     * Away from the edge of the wall ARCore found, when the screw is within [EDGE_NEAR] of one
+     * side of it and not the other: the steps go where the wall goes on. Otherwise the side the
+     * phone stands toward, where they face it best and nothing of the radiator hides them;
+     * square on, to the right.
      */
     fun stepsSide(spot: WallSpot, camera: Float3): Float {
+        val nearLeft = spot.edgeLeft?.let { it < EDGE_NEAR } == true
+        val nearRight = spot.edgeRight?.let { it < EDGE_NEAR } == true
+        if (nearLeft != nearRight) return if (nearLeft) 1f else -1f
         val r = HangPicture.right(spot.normal)
         val along = (camera.x - spot.point.x) * r.x + (camera.z - spot.point.z) * r.z
         return if (along < -SIDE_DEADBAND) -1f else 1f
     }
 
+    /** Where the arrow starts: on the side away from the steps, a quarter turn anticlockwise up to the top there. */
+    fun arrowFrom(stepsSide: Float): Float = if (stepsSide > 0f) ARROW_FROM + PI.toFloat() - ARROW_SWEEP else ARROW_FROM
+
+    /** The steps' style: [WORDS], wrapped so that each fits between [STEPS_GAP] and [HALF_SPAN]. */
+    internal val STEPS_STYLE = WORDS.copy(blockWidth = HALF_SPAN - STEPS_GAP)
+
     fun plan(spot: WallSpot, camera: Float3, seed: Int = 4): DrawingPlan {
         val sketch = Sketch(seed)
+        val side = stepsSide(spot, camera)
+        val from = arrowFrom(side)
         sketch.sheet(SheetFacing.Wall, Float3(0f), RIM) {
             line(loops(sketch.random), INK, speed = 1.3f, pause = 0f)
-            val (shaft, head) = turnArrow()
+            val (shaft, head) = turnArrow(from = from)
             line(shaft, INK, speed = 0.55f, pause = 0.12f)
             line(head, INK, speed = 0.35f)
         }
-        // "¼ turn" by the middle of the arrow: the fraction drawn by hand, the font has none.
-        val mid = ARROW_FROM + ARROW_SWEEP / 2f
-        val labelAt = Float3((ARROW_RADIUS + 0.03f) * cos(mid), (ARROW_RADIUS + 0.03f) * sin(mid), WORDS_LIFT)
+        // "¼ turn" by the middle of the arrow, outside it: the fraction drawn by hand, the font
+        // has none. Away from the screw: right-aligned on the left, left-aligned on the right.
+        val mid = from + ARROW_SWEEP / 2f
+        val labelAt = Float3((ARROW_RADIUS + LABEL_OUT) * cos(mid), (ARROW_RADIUS + LABEL_OUT) * sin(mid), WORDS_LIFT)
+        val turnWidth = HandwritingLayout.layout("turn", Doodle.None, WORDS).textBounds.width
+        val x0 = if (side > 0f) -(FRACTION_WIDTH + turnWidth) else 0f
         sketch.sheet(SheetFacing.Billboard, labelAt, RIM) {
-            text("1", SMALL, pause = 0.15f) { w -> InkPoint(-w.textBounds.minX, 0.012f - w.textBounds.minY) }
-            line(listOf(InkPoint(0.004f, -0.004f), InkPoint(0.024f, 0.032f)), WORDS.inkRadius * 0.9f, 0.4f)
-            text("4", SMALL, pause = 0.04f) { w -> InkPoint(0.02f - w.textBounds.minX, -0.004f - w.textBounds.minY) }
-            text("turn", WORDS, pause = 0.08f) { w -> InkPoint(0.045f - w.textBounds.minX, -0.004f - w.textBounds.minY) }
+            text("1", SMALL, pause = 0.15f) { w -> InkPoint(x0 - w.textBounds.minX, 0.009f - w.textBounds.minY) }
+            line(listOf(InkPoint(x0 + 0.003f, -0.003f), InkPoint(x0 + 0.018f, 0.024f)), WORDS.inkRadius * 0.9f, 0.4f)
+            text("4", SMALL, pause = 0.04f) { w -> InkPoint(x0 + 0.015f - w.textBounds.minX, -0.003f - w.textBounds.minY) }
+            text("turn", WORDS, pause = 0.08f) { w -> InkPoint(x0 + FRACTION_WIDTH - w.textBounds.minX, -0.003f - w.textBounds.minY) }
         }
-        // The steps, one per line, beside the screw.
-        val side = stepsSide(spot, camera)
-        val lineHeight = WORDS.capHeight * LINE_SPACING
-        sketch.sheet(SheetFacing.Billboard, Float3(side * STEPS_OFFSET, 0f, WORDS_LIFT), RIM) {
+        // The steps beside the screw, top to bottom, centred on its height; a step too long for
+        // the room wraps onto a second line.
+        val gap = STEPS_STYLE.capHeight * STEP_GAP
+        val heights = STEPS.map { HandwritingLayout.layout(it, Doodle.None, STEPS_STYLE).textBounds.height }
+        var top = (heights.sum() + gap * (STEPS.size - 1)) / 2f
+        sketch.sheet(SheetFacing.Billboard, Float3(side * STEPS_GAP, 0f, WORDS_LIFT), RIM) {
             STEPS.forEachIndexed { i, step ->
-                val baseline = (STEPS.size - 1) / 2f * lineHeight - i * lineHeight - WORDS.capHeight / 2f
-                text(step, WORDS, pause = if (i == 0) 0.25f else 0.15f) { w ->
-                    val x = if (side > 0f) -w.textBounds.minX else -w.textBounds.maxX
-                    // Laid out on its own, one line sits with its capitals centred on 0.
-                    InkPoint(x, baseline + WORDS.capHeight / 2f)
+                val y = top
+                text(step, STEPS_STYLE, pause = if (i == 0) 0.25f else 0.15f) { w ->
+                    InkPoint(if (side > 0f) -w.textBounds.minX else -w.textBounds.maxX, y - w.textBounds.maxY)
                 }
+                top -= heights[i] + gap
             }
         }
         val lift = Float3(spot.normal.x * SURFACE_LIFT, 0f, spot.normal.z * SURFACE_LIFT)
@@ -673,6 +738,9 @@ internal object RadiatorBleed {
     }
 
     private const val SIDE_DEADBAND = 0.1f
+    private const val LABEL_OUT = 0.025f
+    private const val FRACTION_WIDTH = 0.034f
+    private const val STEP_GAP = 0.75f
 }
 
 private fun flat(v: Float3): Float3? {
