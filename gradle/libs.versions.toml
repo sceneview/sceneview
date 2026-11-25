@@ -240,7 +240,6 @@ androidx-xr-arcore = { group = "androidx.xr.arcore", name = "arcore", version.re
 
 # Fuel (HTTP client)
 fuel = { group = "com.github.kittinunf.fuel", name = "fuel", version.ref = "fuel" }
-fuel-android = { group = "com.github.kittinunf.fuel", name = "fuel-android", version.ref = "fuel" }
 fuel-coroutines = { group = "com.github.kittinunf.fuel", name = "fuel-coroutines", version.ref = "fuel" }
 
 # OkHttp (HTTP client used by Sketchfab service in android-demo)
