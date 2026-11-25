@@ -2001,7 +2001,7 @@ bottom-centre rests on the contact point and the model's dimensions are publishe
 `assetRotation`, so with `FitInto` its largest side is the target only for multiples of 90°:
 a 1 m cube at `FitInto(1f)` turned 45° about Y is about 1.41 × 1 × 1.41 m; `null` until the
 frame after the model appears, and for an empty asset), `placedSize` (`baseSize * scaleFactor`,
-following the pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick
+following the pinch) and `isAtRealWorldSize` (authored size — `RealWorld`, or the default when the 10 m rule does not apply — and exactly 100 %). Let the user pick
 a size with `state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall). `scaleTo` clamps to
 `scaleRange` (25–400 % by default) without notice and does nothing while `allowsScaling` is
 `false`: a 0.3 m preview asked for 2 m needs ×6.7 and stops at 1.2 m, so widen `scaleRange`

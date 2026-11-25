@@ -688,7 +688,8 @@ fun AutoPlacementScene(
  * [PlacementSize], which names the choice. Without [scaleToUnits], a model whose longest
  * authored side exceeds 10 m (a file authored in centimetres reads a hundred times too large)
  * first shows fitted into 1 m and does not report [AutoPlacementState.isAtRealWorldSize]: at
- * that size it would stand around the phone. `size = PlacementSize.RealWorld` trusts the
+ * that size it would stand around the phone. An explicit `scaleToUnits = null` is the same as
+ * leaving it out. `size = PlacementSize.RealWorld` trusts the
  * authored metres and never brings a model down. The model's complete bounding
  * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
  * before the grounded bounds are calculated. The model's bottom-centre rests on the contact
