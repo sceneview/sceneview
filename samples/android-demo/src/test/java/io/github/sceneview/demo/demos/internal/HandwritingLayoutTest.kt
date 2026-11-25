@@ -56,14 +56,14 @@ class HandwritingLayoutTest {
         assertEquals(listOf(listOf("a"), listOf("extraordinarily"), listOf("b")), lines)
     }
 
-    @Test fun `every scripted answer fits the block in two to four lines`() {
+    @Test fun `every scripted answer fits the block in one or two lines`() {
         val style = HandwritingStyle()
         val answers = ScriptedAnswerProvider.SCRIPTS.map { it.answer(AskContext(distanceAheadMeters = 2.4f)) } +
             ScriptedAnswerProvider.FALLBACK +
             ScriptedAnswerProvider.wallAnswer(null)
         for (answer in answers) {
             val writing = HandwritingLayout.layout(answer.text, answer.doodle, style)
-            assertTrue("${answer.text}: ${writing.lines}", writing.lines.size in 2..4)
+            assertTrue("${answer.text}: ${writing.lines}", writing.lines.size in 1..2)
             val text = writing.strokes.filter { it.kind == InkKind.Text }.flatMap { it.points }
             val half = style.blockWidth / 2f + style.capHeight
             assertTrue("${answer.text} is wider than the block", text.all { it.x in -half..half })
@@ -128,16 +128,61 @@ class HandwritingLayoutTest {
         assertTrue(stroke.radii.last() < middle * 0.6f)
     }
 
-    @Test fun `the block shrinks to fit an upright phone and never grows`() {
-        val block = InkBox(-0.6f, -0.2f, 0.6f, 0.2f)
-        // Upright at 1.5 m a phone shows about 0.8 m across: the block is shrunk to fit.
-        val upright = HandwritingLayout.fitScale(block, visibleWidth = 0.8f, visibleHeight = 1.8f)
-        assertEquals(HandwritingLayout.FIT_WIDTH * 0.8f / 1.2f, upright, 1e-5f)
-        // Sideways it shows 1.8 m across: full size, not blown up.
-        assertEquals(1f, HandwritingLayout.fitScale(block, visibleWidth = 1.8f, visibleHeight = 0.8f), 0f)
-        // A tall block is held to the height between the top bar and the mic.
-        val tall = InkBox(-0.3f, -0.6f, 0.3f, 0.6f)
-        assertEquals(HandwritingLayout.FIT_HEIGHT * 1.8f / 1.2f, HandwritingLayout.fitScale(tall, 2f, 1.8f), 1e-5f)
+    @Test fun `a two-line answer takes sixty percent of an upright screen`() {
+        val writing = HandwritingLayout.layout("The kit *writing this*!", Doodle.Arrow)
+        assertEquals(2, writing.lines.size)
+        // Upright at 1.5 m a phone shows about 0.81 m across and 1.8 m top to bottom.
+        val scale = HandwritingLayout.fitScale(writing, visibleWidth = 0.81f, visibleHeight = 1.8f)
+        assertEquals(HandwritingLayout.FIT_TEXT * 0.81f, writing.textBounds.width * scale, 1e-4f)
+        // Its capitals then stand five to six centimetres tall: they read across a room.
+        assertTrue("cap ${0.1f * scale} m", 0.1f * scale in 0.045f..0.07f)
+        // Everything, the arrow included, stays on screen.
+        assertTrue(writing.bounds.width * scale <= HandwritingLayout.FIT_BOUNDS * 0.81f + 1e-4f)
+    }
+
+    @Test fun `a one-word answer is not blown up`() {
+        val word = HandwritingLayout.layout("*Yes.*", Doodle.Underline)
+        val sentence = HandwritingLayout.layout("The kit *writing this*!", Doodle.Underline)
+        val wordScale = HandwritingLayout.fitScale(word, 0.81f, 1.8f)
+        val sentenceScale = HandwritingLayout.fitScale(sentence, 0.81f, 1.8f)
+        assertTrue(wordScale <= sentenceScale * 1.3f)
+        // A tall block is held to the height of the screen.
+        val tall = HandwritingLayout.fitScale(sentence, visibleWidth = 3f, visibleHeight = 0.4f)
+        assertTrue(sentence.bounds.height * tall <= HandwritingLayout.FIT_HEIGHT * 0.4f + 1e-4f)
+    }
+
+    @Test fun `a full stop is a fat dot, pressed evenly`() {
+        val style = HandwritingStyle()
+        val writing = HandwritingLayout.layout("Yes.", Doodle.None, style)
+        val dot = writing.strokes.minBy { HandwritingLayout.polylineLength(it.points) }
+        assertTrue(HandwritingLayout.polylineLength(dot.points) < style.capHeight * 0.15f)
+        assertTrue(dot.radii.all { it == dot.radii.first() })
+        assertTrue(dot.radii.first() > style.inkRadius)
+        assertTrue(dot.duration > 0f)
+    }
+
+    @Test fun `a pointer hangs the block by its tip, under the words`() {
+        val style = HandwritingStyle()
+        val writing = HandwritingLayout.layout("About *2.5m* away!", Doodle.Pointer, style)
+        val tip = writing.pointAt
+        assertNotNull(tip)
+        assertEquals(tip, writing.anchor)
+        assertTrue(tip!!.y < writing.textBounds.minY - style.capHeight * 1.5f)
+        assertEquals(writing.textBounds.centerX, tip.x, 1e-4f)
+        // The words are above the spot they point at, on an upright screen too.
+        val scale = HandwritingLayout.fitScale(writing, 0.81f, 1.8f)
+        assertTrue((writing.bounds.maxY - tip.y) * scale <= HandwritingLayout.FIT_HEIGHT * 1.8f / 2f)
+    }
+
+    @Test fun `script capitals T, I and J are told apart`() {
+        val t = HersheyFont.glyph('T')!!
+        val i = HersheyFont.glyph('I')!!
+        val j = HersheyFont.glyph('J')!!
+        // T: a bar and a stem; I: a stem between two bars; J: a bar and a hooked stem.
+        assertEquals(2, t.strokes.size)
+        assertEquals(3, i.strokes.size)
+        assertEquals(2, j.strokes.size)
+        assertTrue(j.strokes[1].size > t.strokes[1].size)
     }
 
     @Test fun `resampling keeps both ends and spaces points evenly`() {

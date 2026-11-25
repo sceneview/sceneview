@@ -93,8 +93,11 @@ import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.utils.SurfaceMirrorer
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
+import com.google.ar.core.DepthPoint
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
+import com.google.ar.core.Point
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
@@ -105,12 +108,16 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoPreviewPlaceholder
+import io.github.sceneview.demo.BuildConfig
+import io.github.sceneview.demo.DemoFullScreenSystemBars
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.demos.internal.AnswerProvider
 import io.github.sceneview.demo.demos.internal.AskContext
+import io.github.sceneview.demo.demos.internal.Doodle
 import io.github.sceneview.demo.demos.internal.Handwriting
 import io.github.sceneview.demo.demos.internal.HandwritingLayout
 import io.github.sceneview.demo.demos.internal.InkPoint
@@ -149,13 +156,17 @@ import kotlin.math.sqrt
  *   `capacity` sized to the whole stroke, so growing rewrites its buffers in place — with
  *   per-point `radii` for the pen's pressure and round caps for its ends.
  * - **The block** hangs on an ARCore anchor 1.5 m in front of the phone at eye height, facing
- *   it (yaw only), or on the wall straight ahead when ARCore found one closer than 3 m.
+ *   it (yaw only), or on the wall straight ahead when ARCore found one closer than 3 m. An
+ *   answer about the surface ahead ("how far is that wall?") is measured on it — a vertical
+ *   plane or a depth hit — and hangs there, its arrow's tip on the spot it measured.
  * - **The question** comes from Android's `SpeechRecognizer`, with a live caption while it
  *   listens. Answers come from an [AnswerProvider]: scripted, on the phone, in this prototype.
  *
  * **Automation for filming:** `sceneview://demo/ask-ar?q=what%20should%20I%20cook%20tonight`
  * (or `--es ask_q "…"`) plays the whole sequence by itself once ARCore tracks: listening,
- * the caption word by word, then the answer writing itself. No voice, no tap.
+ * the caption word by word, then the answer writing itself. No voice, no tap. A second
+ * question, `&q2=…` (or `--es ask_q2 "…"`), follows once the first answer has stayed up
+ * [CHAIN_HOLD_MILLIS] and unwritten itself.
  */
 @Composable
 fun AskInArDemo(onBack: () -> Unit) {
@@ -194,9 +205,15 @@ private class AskState {
     /** Set by the flow, acted on by the next tracked camera frame: it needs the camera's pose. */
     var placeRequested = false
 
+    /** The answer points at the surface ahead: hang it there, by its arrow's tip. */
+    var placeOnSurface = false
+
     /** Distance to whatever the centre of the screen points at, read every few frames. */
     var distanceAhead: Float? = null
     var frameCount = 0
+
+    /** Earlier answers left where they were written, oldest first: AR only. */
+    var pinned by mutableStateOf<List<PinnedAnswer>>(emptyList())
 
     fun clearAnswer() {
         handwriting = null
@@ -204,8 +221,39 @@ private class AskState {
         stagePlaced = false
         elapsed = 0f
         placeRequested = false
+        placeOnSurface = false
+    }
+
+    /**
+     * Leaves the answer on screen where it hangs, finished, and frees the pen for the next.
+     * Nothing to pin on the QA stage: its block has no anchor, the next one takes its place.
+     */
+    fun pinAnswer() {
+        val anchor = anchor
+        val handwriting = handwriting
+        if (anchor != null && handwriting != null) {
+            // One dropped here leaves the scene, and its node detaches its anchor.
+            pinned = (pinned + PinnedAnswer(anchor, handwriting, blockScale)).takeLast(MAX_PINNED)
+        }
+        clearAnswer()
+    }
+
+    fun clearPinned() {
+        pinned = emptyList()
     }
 }
+
+/** An answer written earlier, still hanging on its anchor. */
+private class PinnedAnswer(val anchor: Anchor, val handwriting: Handwriting, val scale: Float)
+
+/**
+ * A run of questions to play by themselves (see [AskArAutomation]). A new instance each time,
+ * so the same questions sent twice play twice.
+ *
+ * @param keepPrevious The answer on screen stays where it is (a question sent while the demo
+ *                     was open, the phone since carried elsewhere).
+ */
+private class AskRequest(val questions: List<String>, val keepPrevious: Boolean)
 
 @Composable
 private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
@@ -229,6 +277,8 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         if (stage) {
             cameraReady = true
             isTracking = true
+            // No ARCore to measure with: the room photo's far wall, as a hit would read it.
+            state.distanceAhead = STAGE_WALL_METRES
         }
     }
 
@@ -256,9 +306,10 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
             val aspect = if (size.height > 0) size.width.toFloat() / size.height else STAGE_ASPECT
             val tall = 2f * -STAGE_BLOCK.z * STAGE_SENSOR_HALF / STAGE_FOCAL
             state.blockScale = state.handwriting
-                ?.let { HandwritingLayout.fitScale(it.bounds, tall * aspect, tall) } ?: 1f
+                ?.let { HandwritingLayout.fitScale(it, tall * aspect, tall) } ?: 1f
             state.stagePlaced = true
         } else {
+            state.placeOnSurface = reply.doodle == Doodle.Pointer
             state.placeRequested = true
             snapshotFlow { state.anchor }.first { it != null }
         }
@@ -270,6 +321,18 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
             withFrameNanos { now -> state.elapsed = (now - start) / NANOS_PER_SECOND }
         }
         state.phase = AskPhase.Done
+    }
+
+    /** Rubs the answer out the way it was written, last stroke first, quickly. */
+    suspend fun unwrite() {
+        val from = state.elapsed
+        if (from <= 0f) return
+        val start = withFrameNanos { it }
+        var t = 0f
+        while (t < 1f) {
+            withFrameNanos { now -> t = ((now - start) / NANOS_PER_MILLI / UNWRITE_MILLIS).coerceAtMost(1f) }
+            state.elapsed = from * (1f - t)
+        }
     }
 
     /** Plays a question as if it had been spoken: the caption fills in word by word. */
@@ -369,19 +432,53 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         flow?.cancel()
         speech.cancel()
         state.clearAnswer()
+        state.clearPinned()
         state.transcript = ""
         state.level = 0f
         state.phase = AskPhase.Idle
     }
 
-    // Filming: a question passed in the link plays by itself once the room is tracked, after
-    // a beat for ARCore to settle its idea of the floor.
-    val automated = remember(activity) { AskArAutomation.take(activity?.intent) }
-    LaunchedEffect(automated) {
-        val question = automated ?: return@LaunchedEffect
+    // Filming: the questions passed in the link play by themselves once the room is tracked,
+    // after a beat for ARCore to settle its idea of the floor. Between two of one link, the
+    // first answer stays up a moment, then unwrites itself: the phone has not moved, and a
+    // second block on top would scribble over it.
+    var request by remember(activity) {
+        mutableStateOf(AskRequest(AskArAutomation.take(activity?.intent), keepPrevious = false))
+    }
+    var hideChrome by remember(activity) { mutableStateOf(AskArAutomation.hideChrome(activity?.intent) == true) }
+    // A question sent while the demo is open (`am start` again, or the link again) is taken
+    // in place: the AR session and any replay run on, and the answer on screen stays where it
+    // was written — the phone has been carried to the next spot since.
+    DisposableEffect(Unit) {
+        val handler: (Intent) -> Boolean = { intent ->
+            AskArAutomation.claims(intent).also { claimed ->
+                if (claimed) {
+                    AskArAutomation.hideChrome(intent)?.let { hideChrome = it }
+                    val questions = AskArAutomation.take(intent)
+                    if (questions.isNotEmpty()) request = AskRequest(questions, keepPrevious = true)
+                }
+            }
+        }
+        DemoSettings.inPlaceIntentHandler = handler
+        onDispose { if (DemoSettings.inPlaceIntentHandler === handler) DemoSettings.inPlaceIntentHandler = null }
+    }
+    LaunchedEffect(request) {
+        val run = request
+        if (run.questions.isEmpty()) return@LaunchedEffect
+        val settled = isTracking
         snapshotFlow { isTracking }.first { it }
-        delay(SETTLE_MILLIS)
-        launchFlow { simulate(question) }
+        if (!settled) delay(SETTLE_MILLIS)
+        speech.cancel()
+        if (run.keepPrevious) state.pinAnswer()
+        launchFlow {
+            run.questions.forEachIndexed { i, question ->
+                if (i > 0) {
+                    delay(CHAIN_HOLD_MILLIS)
+                    unwrite()
+                }
+                simulate(question)
+            }
+        }
     }
 
     val notice = state.notice
@@ -392,15 +489,18 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         }
     }
 
+    // Filming hides the system bars too, as full screen does.
+    DemoFullScreenSystemBars(hideChrome)
     DemoScaffold(
         monitorArMotionSensors = true,
         title = stringResource(R.string.demo_ask_ar_title),
         onBack = onBack,
         actionsMenu = true,
         chromeToggleOnTap = true,
+        chromeHidden = hideChrome,
         recorder = recorder,
         bottomOverlay = {
-            DemoStatusBanner(
+            if (!hideChrome) DemoStatusBanner(
                 text = when {
                     !cameraReady -> null
                     !isTracking -> stringResource(R.string.demo_ask_ar_tracking_hint)
@@ -414,7 +514,8 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                 transcript = state.transcript,
                 level = state.level,
                 showHint = isTracking,
-                hasAnswer = state.handwriting != null || state.transcript.isNotEmpty(),
+                hasAnswer = state.handwriting != null || state.pinned.isNotEmpty() || state.transcript.isNotEmpty(),
+                filming = hideChrome,
                 onMic = ::onMic,
                 onClear = ::clear,
                 onExample = ::askExample,
@@ -440,8 +541,12 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                 playbackDataset = arPlaybackDataset,
                 surfaceMirrorer = recorder.surfaceMirrorer,
                 planeRenderer = false,
-                sessionConfiguration = { _: Session, config: Config ->
+                sessionConfiguration = { session: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                    // Depth, where the phone has it, measures a bare wall ARCore has no plane on.
+                    if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                        config.depthMode = Config.DepthMode.AUTOMATIC
+                    }
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
                 onSessionFailure = {
@@ -457,12 +562,12 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                             state.distanceAhead = distanceAhead(frame, currentViewSize)
                         }
                         if (state.placeRequested) {
-                            val (pose, distance) = AskPlacement.pose(frame, currentViewSize)
+                            val (pose, distance) = AskPlacement.pose(frame, currentViewSize, state.placeOnSurface)
                             val anchor = runCatching { session.createAnchor(pose) }.getOrNull()
                             if (anchor != null) {
                                 val (wide, tall) = AskPlacement.visibleSize(frame, distance)
                                 state.blockScale = state.handwriting
-                                    ?.let { HandwritingLayout.fitScale(it.bounds, wide, tall) } ?: 1f
+                                    ?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: 1f
                                 state.placeRequested = false
                                 state.anchor = anchor
                             }
@@ -470,11 +575,21 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                     }
                 },
             ) {
+                // The answers kept from earlier questions, then the one being written: one keyed
+                // list, so an answer pinned keeps its node — and its anchor — as it moves up.
                 val anchor = state.anchor
                 val handwriting = state.handwriting
-                if (anchor != null && handwriting != null) {
-                    key(anchor) {
-                        AnchorNode(anchor = anchor) { AnswerInk(handwriting, state.blockScale, state.elapsed, ink, rim) }
+                val current = if (anchor != null && handwriting != null) {
+                    listOf(PinnedAnswer(anchor, handwriting, state.blockScale))
+                } else {
+                    emptyList()
+                }
+                (state.pinned + current).forEach { answer ->
+                    key(answer.anchor) {
+                        val elapsed = if (answer.anchor == anchor) state.elapsed else answer.handwriting.totalSeconds
+                        AnchorNode(anchor = answer.anchor) {
+                            AnswerInk(answer.handwriting, answer.scale, elapsed, ink, rim)
+                        }
                     }
                 }
             }
@@ -492,10 +607,11 @@ private fun SceneScope.AnswerInk(
     ink: MaterialInstance,
     rim: MaterialInstance,
 ) {
-    // Centred on what is drawn, doodle included, and shrunk to fit the screen.
-    val bounds = handwriting.bounds
+    // Hung by its anchor point (the centre of what is drawn, or a pointer's tip), and sized to
+    // the screen.
+    val anchor = handwriting.anchor
     Node(
-        position = Position(-bounds.centerX * scale, -bounds.centerY * scale, 0f),
+        position = Position(-anchor.x * scale, -anchor.y * scale, 0f),
         scale = Scale(scale),
     ) {
         handwriting.strokes.forEachIndexed { index, stroke ->
@@ -593,7 +709,10 @@ private fun SceneScope.InkTube(
 
 private fun lerp(a: InkPoint, b: InkPoint, t: Float) = InkPoint(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
 
-/** The caption over the mic, the mic itself, and the two small actions either side of it. */
+/**
+ * The caption over the mic, the mic itself, and the two small actions either side of it.
+ * [filming] keeps only the question's caption and the mic while it listens.
+ */
 @Composable
 private fun AskControls(
     phase: AskPhase,
@@ -601,6 +720,7 @@ private fun AskControls(
     level: Float,
     showHint: Boolean,
     hasAnswer: Boolean,
+    filming: Boolean,
     onMic: () -> Unit,
     onClear: () -> Unit,
     onExample: () -> Unit,
@@ -612,7 +732,7 @@ private fun AskControls(
         val caption = when {
             transcript.isNotEmpty() -> transcript
             phase == AskPhase.Listening -> stringResource(R.string.demo_ask_ar_listening)
-            showHint -> stringResource(R.string.demo_ask_ar_idle_hint)
+            showHint && !filming -> stringResource(R.string.demo_ask_ar_idle_hint)
             else -> null
         }
         AnimatedVisibility(
@@ -627,6 +747,19 @@ private fun AskControls(
             )
         }
         Spacer(Modifier.height(Space.md))
+        if (filming) {
+            // The mic's place is kept, so the caption does not move when it leaves.
+            Box(Modifier.size(ShutterSize), contentAlignment = Alignment.Center) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = phase == AskPhase.Listening,
+                    enter = fadeIn(SceneViewTokens.Motion.fade()),
+                    exit = fadeOut(SceneViewTokens.Motion.fade()),
+                ) {
+                    MicShutter(phase = phase, level = level, onClick = onMic)
+                }
+            }
+            return@Column
+        }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.xl),
@@ -772,8 +905,9 @@ private object AskPlacement {
      * it; otherwise [AHEAD] in front of the phone, at eye height, turned to face it. Upright
      * either way: only the heading follows the phone.
      */
-    fun pose(frame: Frame, viewSize: IntSize): Pair<Pose, Float> {
+    fun pose(frame: Frame, viewSize: IntSize, onSurface: Boolean): Pair<Pose, Float> {
         val camera = frame.camera.pose
+        if (onSurface) surfaceHit(frame, viewSize)?.let { hit -> return onHit(hit, camera) }
         wallHit(frame, viewSize)?.let { (hit, normal) ->
             val yaw = atan2(normal[0], normal[2])
             val t = hit.second.translation
@@ -827,6 +961,24 @@ private object AskPlacement {
         return (hit.distance to hit.hitPose) to floatArrayOf(normal[0] / flat, 0f, normal[2] / flat)
     }
 
+    /**
+     * On the spot [hit] measured, a hair toward the phone and turned to face it: an answer
+     * that points at the surface hangs by its arrow's tip right there.
+     */
+    private fun onHit(hit: HitResult, camera: Pose): Pair<Pose, Float> {
+        val t = hit.hitPose.translation
+        val c = camera.translation
+        var dx = c[0] - t[0]
+        var dz = c[2] - t[2]
+        val norm = sqrt(dx * dx + dz * dz).coerceAtLeast(1e-6f)
+        dx /= norm
+        dz /= norm
+        return Pose(
+            floatArrayOf(t[0] + dx * WALL_OFFSET, t[1], t[2] + dz * WALL_OFFSET),
+            yawRotation(atan2(dx, dz)),
+        ) to hit.distance
+    }
+
     private fun yawRotation(yaw: Float) = floatArrayOf(0f, sin(yaw / 2f), 0f, cos(yaw / 2f))
 
     private const val AHEAD = 1.5f
@@ -839,29 +991,72 @@ private object AskPlacement {
 }
 
 /** How far the surface at the centre of the screen is, for "how far is that wall?". */
-private fun distanceAhead(frame: Frame, viewSize: IntSize): Float? {
+private fun distanceAhead(frame: Frame, viewSize: IntSize): Float? = surfaceHit(frame, viewSize)?.distance
+
+/**
+ * The nearest thing standing at the centre of the screen: a wall ARCore found (a vertical
+ * plane), or a depth or feature point. A floor or a table top is looked past — "that wall"
+ * is never the floor in front of it.
+ */
+private fun surfaceHit(frame: Frame, viewSize: IntSize): HitResult? {
     if (viewSize.width == 0 || viewSize.height == 0) return null
-    return runCatching { frame.hitTest(viewSize.width / 2f, viewSize.height / 2f) }.getOrNull()
-        ?.firstOrNull()?.distance
+    val hits = runCatching { frame.hitTest(viewSize.width / 2f, viewSize.height / 2f) }.getOrNull() ?: return null
+    return hits.firstOrNull { hit ->
+        val standing = when (val trackable = hit.trackable) {
+            is Plane -> trackable.type == Plane.Type.VERTICAL && trackable.isPoseInPolygon(hit.hitPose)
+            is DepthPoint, is Point -> true
+            else -> false
+        }
+        standing && hit.distance <= SURFACE_REACH
+    }
 }
 
 /**
- * The question a link or a launch extra asked for, once: `sceneview://demo/ask-ar?q=…` or
- * `--es ask_q "…"`. The intent is marked so coming back to the demo does not replay it.
+ * The questions a link or launch extras asked for, in order, once:
+ * `sceneview://demo/ask-ar?q=…&q2=…` or `--es ask_q "…" --es ask_q2 "…"`. The intent is
+ * marked so coming back to the demo does not replay them.
  */
 internal object AskArAutomation {
-    const val QUERY_PARAM = "q"
-    const val EXTRA = "ask_q"
+    /** Query parameter and launch extra of each question, first to last. */
+    val SOURCES: List<Pair<String, String>> = listOf("q" to "ask_q", "q2" to "ask_q2")
     private const val CONSUMED = "ask_q_consumed"
 
-    fun take(intent: Intent?): String? {
-        if (intent == null || intent.getBooleanExtra(CONSUMED, false)) return null
-        val fromLink = runCatching {
-            intent.data?.takeIf { it.lastPathSegment == "ask-ar" }?.getQueryParameter(QUERY_PARAM)
-        }.getOrNull()
-        val question = (intent.getStringExtra(EXTRA) ?: fromLink)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        intent.putExtra(CONSUMED, true)
-        // A spoken question starts with a capital and ends with a question mark.
+    /** Debug extra for filming: `--ez ask_hide_chrome true` leaves only the caption and the mic. */
+    private const val HIDE_CHROME = "ask_hide_chrome"
+    private const val DEMO_ID = "ask-ar"
+
+    /** `--ez ask_hide_chrome`, if the intent says (debug builds only), else `null`. */
+    fun hideChrome(intent: Intent?): Boolean? =
+        intent?.takeIf { BuildConfig.DEBUG && it.hasExtra(HIDE_CHROME) }?.getBooleanExtra(HIDE_CHROME, false)
+
+    /**
+     * Whether an intent that reaches the open demo is its own to take in place: it asks a
+     * question or toggles filming, and names this demo or none.
+     */
+    fun claims(intent: Intent): Boolean {
+        val demo = intent.getStringExtra("demo")
+        if (demo != null && demo != DEMO_ID) return false
+        val data = intent.data
+        if (data != null && data.lastPathSegment != DEMO_ID) return false
+        val asks = SOURCES.any { (param, extra) ->
+            intent.hasExtra(extra) || runCatching { data?.getQueryParameter(param) }.getOrNull() != null
+        }
+        return asks || hideChrome(intent) != null
+    }
+
+    fun take(intent: Intent?): List<String> {
+        if (intent == null || intent.getBooleanExtra(CONSUMED, false)) return emptyList()
+        val link = intent.data?.takeIf { it.lastPathSegment == DEMO_ID }
+        val questions = SOURCES.mapNotNull { (param, extra) ->
+            val fromLink = runCatching { link?.getQueryParameter(param) }.getOrNull()
+            (intent.getStringExtra(extra) ?: fromLink)?.trim()?.takeIf { it.isNotEmpty() }?.let(::spoken)
+        }
+        if (questions.isNotEmpty()) intent.putExtra(CONSUMED, true)
+        return questions
+    }
+
+    /** A spoken question starts with a capital and ends with a question mark. */
+    private fun spoken(question: String): String {
         val capitalised = question.replaceFirstChar { it.uppercaseChar() }
         return if (capitalised.last() in ".?!") capitalised else "$capitalised?"
     }
@@ -955,7 +1150,7 @@ private val STAGE_BLOCK = Position(0f, -0.05f, -1.5f)
 private const val STAGE_FOCAL = 20f
 private const val STAGE_SENSOR_HALF = 12f
 private const val STAGE_ASPECT = 0.45f
-private const val RIM_WIDTH = 0.0024f
+private const val RIM_WIDTH = 0.0038f
 private const val RIM_DEPTH = 0.004f
 
 private const val THINK_MILLIS = 600L
@@ -965,9 +1160,21 @@ private const val WORD_MILLIS = 210L
 private const val WORD_JITTER_MILLIS = 60L
 private const val LISTEN_TAIL_MILLIS = 700L
 private const val NOTICE_MILLIS = 4000L
+private const val CHAIN_HOLD_MILLIS = 2000L
+
+/** Answers kept in the room from earlier questions, at most. */
+private const val MAX_PINNED = 4
+private const val UNWRITE_MILLIS = 700f
+
+/** What the QA stage says the wall ahead measures. */
+private const val STAGE_WALL_METRES = 2.4f
+
+/** Farthest a surface is measured for an answer, in metres. */
+private const val SURFACE_REACH = 8f
 private const val DISTANCE_EVERY_FRAMES = 10
 private const val FRAMES_PER_SECOND = 60f
 private const val NANOS_PER_SECOND = 1e9f
+private const val NANOS_PER_MILLI = 1e6f
 
 private const val RING_MILLIS = 1400
 private const val LEVEL_MILLIS = 120

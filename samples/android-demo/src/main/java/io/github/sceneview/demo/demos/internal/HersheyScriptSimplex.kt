@@ -13,7 +13,8 @@ package io.github.sceneview.demo.demos.internal
 //    U. S. National Bureau of Standards.
 //  - The format of the Font data in this distribution was originally created by James Hurt,
 //    Cognition, Inc., 900 Technology Park Drive, Billerica, MA 01821.
-// Vendored at authoring time; nothing is downloaded at build or run time.
+// Vendored at authoring time; nothing is downloaded at build or run time. The capitals T, I
+// and J are drawn by the generator instead (see HAND_GLYPHS there): the script ones read as J.
 //
 // Format: one string per character from U+0021 `!` to U+007D `}`. Strokes are separated by a
 // space; each point is two characters, x then y, in Hershey grid units, encoded as
@@ -71,8 +72,8 @@ internal object HersheyScriptSimplex {
         "=C;C9D8F9H<I?ICHFHHI CHAA?;=7;594745547495:7:99 <?E?", // U+0046 F
         "4465:9=>>A?E?H>I=I<H;F;C<A>@B@EAFBGDG>F9E7C5@4<49577696;", // U+0047 G
         ":B8C7E7F8H:I;I=H>F>D=@;:9674544547 :=C@EAHCJEKGKHJIIIGGECC=B8B5C4D4F5G6I9", // U+0048 H
-        "A9?;=><@;C;F<H=I?I@HAFAC@>>9=7;594745547495:7:99", // U+0049 I
-        "=1;4998?8E9H;I=I>H?E?B>=;49.8+7)5(4)4+5.7193<5@7", // U+004A J
+        "<IFI AI:4 54?4", // U+0049 I
+        "BILI GIC<A8>5;4857779", // U+004A J
         ":B8C7E7F8H:I;I=H>F>D=@;:9674544547 KFKHJIIIGHEFCCAA?@=@ ?@@>@7A5B4C4E5F6H9", // U+004B K
         "8=:=>>A@CBDDDGCIAI@H?F>A=<<9;79574544547587897<5?4A4D5F7", // U+004C L
         "7B5C4E4F5H7I8I:H;F;D:?9;74 9;<C>G?HAIBIDHEFEDD?C;A4 C;FCHGIHKILINHOFODN?L8L5M4N4P5Q6S9", // U+004D M
@@ -82,7 +83,7 @@ internal object HersheyScriptSimplex {
         "AC@A?@=?;?:A:C;F=H@ICIEHFFFBE?C<?8<6:574544547587897<5?4B4E5G7", // U+0051 Q
         ">G?F?C>?=<<::785645445485=6@7B9E;G=H@IDIFHGGHEHBG@F?D>A>>??>@<@7A5C4E5F6H9", // U+0052 R
         "446587;;=>?B@E@H?I>I=H<F<D=B?@B>D<E:E8D6C5@4<49577696;", // U+0053 S
-        "=C;C9D8F9H<I?ICHFHHI CHAA?;=7;594745547495:7:99", // U+0054 T
+        "9G=HAHEIII BH>>:4", // U+0054 T
         "7B5C4E4F5H7I8I:H;F;D:@9=898795;4=4?5@6B:EBGI EBD>C8C5D4E4G5H6J9", // U+0055 U
         "7B5C4E4F5H7I8I:H;F;D:@9=898694;4=5@8B;D?EBFFFHEIDICHBFBDCAE?G>", // U+0056 V
         "7B5C4E4F5H7I8I:H;F;C:4DIB4E;HAKENHPI", // U+0057 W

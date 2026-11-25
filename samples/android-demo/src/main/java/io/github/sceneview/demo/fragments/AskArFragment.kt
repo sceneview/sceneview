@@ -13,8 +13,9 @@ import io.github.sceneview.demo.demos.AskInArDemo
  * Append-only fragment for the `ask-ar` demo. See [DemoFragment].
  *
  * A prototype: ask out loud, and the answer writes itself by hand in the room. Answers are
- * scripted on the phone. `sceneview://demo/ask-ar?q=<question>` plays a whole question and
- * answer by itself, for filming.
+ * scripted on the phone. `sceneview://demo/ask-ar?q=<question>&q2=<question>` plays one or two
+ * questions and their answers by themselves, for filming; sent again while the demo is open,
+ * it asks in place, the AR session running on.
  */
 object AskArFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(

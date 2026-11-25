@@ -18,6 +18,10 @@ class ScriptedAnswerProviderTest {
         assertEquals("sceneview", matched("What is SceneView?"))
         assertEquals("weather", matched("Will it rain tomorrow?"))
         assertEquals("paris", matched("What's the tallest building in Paris?"))
+        assertEquals("weather", matched("What's the weather like?"))
+        assertEquals("foosball", matched("Who's winning at foosball?"))
+        assertEquals("lawn", matched("Should I mow the lawn?"))
+        assertEquals("keys", matched("Where did I leave my keys?"))
     }
 
     @Test fun `the example questions each land on their own script`() {
@@ -36,7 +40,7 @@ class ScriptedAnswerProviderTest {
 
     @Test fun `a script needs its topic, not just its small words`() {
         assertEquals("weather", matched("Should I take an umbrella?"))
-        assertNull(matched("Have you seen my keys?"))
+        assertNull(matched("Have you seen my cat?"))
         assertNull(matched("What should I wear?"))
     }
 
@@ -49,11 +53,15 @@ class ScriptedAnswerProviderTest {
 
     @Test fun `the wall answer uses the measured distance, to the half metre`() {
         val measured = runBlocking { ScriptedAnswerProvider.answer("how far is that wall", AskContext(2.37f)) }
-        assertTrue(measured.text, measured.text.contains("2.5 metres"))
-        assertTrue(ScriptedAnswerProvider.wallAnswer(3.1f).text.contains("*3 metres.*"))
-        // Nothing measured, or nonsense: a round guess.
-        assertTrue(ScriptedAnswerProvider.wallAnswer(null).text.contains("3 metres"))
-        assertEquals(ScriptedAnswerProvider.wallAnswer(null), ScriptedAnswerProvider.wallAnswer(120f))
+        assertTrue(measured.text, measured.text.contains("*2.5m*"))
+        // Measured, it points at the spot it measured.
+        assertEquals(Doodle.Pointer, measured.doodle)
+        assertTrue(ScriptedAnswerProvider.wallAnswer(3.1f).text.contains("*3m*"))
+        // Nothing measured, or nonsense: a round guess, circled — there is nothing to point at.
+        val guess = ScriptedAnswerProvider.wallAnswer(null)
+        assertTrue(guess.text.contains("3m"))
+        assertEquals(Doodle.Circle, guess.doodle)
+        assertEquals(guess, ScriptedAnswerProvider.wallAnswer(120f))
     }
 
     @Test fun `short words must match exactly, long ones forgive a typo or two`() {

@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
 /**
  * An answer to write in the room.
  *
- * @param text   Short enough for two to four handwritten lines. Words wrapped in `*asterisks*`
+ * @param text   Short enough for one or two handwritten lines. Words wrapped in `*asterisks*`
  *               are what [doodle] marks.
  * @param doodle The hand-drawn mark made once the words are written.
  */
@@ -60,7 +60,7 @@ internal object ScriptedAnswerProvider : AnswerProvider {
                 setOf("ar", "augmented", "3d"),
             ),
             minScore = 2,
-        ) { AskAnswer("*SceneView.* I may be a tiny bit biased.", Doodle.Circle) },
+        ) { AskAnswer("*SceneView.* I'm biased.", Doodle.Circle) },
         Script(
             id = "sceneview",
             keywords = listOf(
@@ -69,7 +69,7 @@ internal object ScriptedAnswerProvider : AnswerProvider {
                 setOf("what", "who"),
             ),
             minScore = 2,
-        ) { AskAnswer("The open-source kit *writing this* right now.", Doodle.Arrow) },
+        ) { AskAnswer("The kit *writing this*!", Doodle.Arrow) },
         Script(
             id = "wall",
             keywords = listOf(
@@ -85,15 +85,39 @@ internal object ScriptedAnswerProvider : AnswerProvider {
                 setOf("tonight", "today", "evening", "should"),
             ),
             minScore = 1,
-        ) { AskAnswer("Pasta. The answer is always *pasta*.", Doodle.Underline) },
+        ) { AskAnswer("Pasta. *Always.*", Doodle.Underline) },
         Script(
             id = "weather",
             keywords = listOf(
                 setOf("weather", "rain", "raining", "sunny", "umbrella", "cold", "forecast", "temperature"),
-                setOf("today", "tomorrow", "outside", "will", "need"),
+                setOf("today", "tomorrow", "outside", "will", "need", "like"),
             ),
             minScore = 1,
-        ) { AskAnswer("No idea, I live indoors. Take a *jacket* anyway.", Doodle.Underline) },
+        ) { AskAnswer("Cool. Bring a *jacket*.", Doodle.Underline) },
+        Script(
+            id = "foosball",
+            keywords = listOf(
+                setOf("foosball", "fussball", "babyfoot", "foos"),
+                setOf("winning", "win", "winner", "score", "who", "whos"),
+            ),
+            minScore = 1,
+        ) { AskAnswer("*Me.* Obviously.", Doodle.Circle) },
+        Script(
+            id = "lawn",
+            keywords = listOf(
+                setOf("lawn", "grass", "mow", "mowing"),
+                setOf("should", "today", "cut"),
+            ),
+            minScore = 1,
+        ) { AskAnswer("Yes. *Today.*", Doodle.Underline) },
+        Script(
+            id = "keys",
+            keywords = listOf(
+                setOf("keys", "key"),
+                setOf("where", "leave", "left", "lost", "find"),
+            ),
+            minScore = 1,
+        ) { AskAnswer("*On the desk.* Again.", Doodle.Arrow) },
         Script(
             id = "paris",
             keywords = listOf(
@@ -102,7 +126,7 @@ internal object ScriptedAnswerProvider : AnswerProvider {
                 setOf("paris", "france"),
             ),
             minScore = 2,
-        ) { AskAnswer("The Eiffel Tower, *330 m.* A bit taller in summer!", Doodle.Arrow) },
+        ) { AskAnswer("Eiffel Tower, *330m!*", Doodle.Arrow) },
     )
 
     /** The questions the example button asks, in turn: one per script. */
@@ -111,12 +135,15 @@ internal object ScriptedAnswerProvider : AnswerProvider {
         "How far is that wall?",
         "What's the best AR SDK?",
         "What is SceneView?",
-        "Will it rain tomorrow?",
+        "What's the weather like?",
         "What's the tallest building in Paris?",
+        "Who's winning at foosball?",
+        "Should I mow the lawn?",
+        "Where did I leave my keys?",
     )
 
     /** For anything the script does not know. */
-    internal val FALLBACK = AskAnswer("Great question. Ask me again *tomorrow!*", Doodle.Underline)
+    internal val FALLBACK = AskAnswer("Ask me *tomorrow!*", Doodle.Underline)
 
     override suspend fun answer(question: String, context: AskContext): AskAnswer =
         match(question)?.answer?.invoke(context) ?: FALLBACK
@@ -177,15 +204,18 @@ internal object ScriptedAnswerProvider : AnswerProvider {
         return previous[b.length]
     }
 
-    /** "About 2.5 m" from what ARCore measured, or a round guess when it measured nothing. */
+    /**
+     * "About 2.5m away!" from what ARCore measured, with an arrow down to the spot it
+     * measured; a round guess, circled, when it measured nothing.
+     */
     internal fun wallAnswer(distance: Float?): AskAnswer {
         val metres = distance?.takeIf { it in MIN_DISTANCE..MAX_DISTANCE }
         return if (metres == null) {
-            AskAnswer("About *3 metres.* Give or take a sofa.", Doodle.Circle)
+            AskAnswer("About *3m*, give or take.", Doodle.Circle)
         } else {
             val halves = (metres * 2f).roundToInt().coerceAtLeast(1)
             val shown = if (halves % 2 == 0) "${halves / 2}" else "${halves / 2}.5"
-            AskAnswer("About *$shown metres.* Please don't walk into it.", Doodle.Circle)
+            AskAnswer("About *${shown}m* away!", Doodle.Pointer)
         }
     }
 

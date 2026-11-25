@@ -109,15 +109,24 @@ internal class InkStroke(
     val duration: Float get() = times.last()
 }
 
-/** A hand-drawn mark around, under or toward the emphasised words of an answer. */
-internal enum class Doodle { None, Underline, Circle, Arrow }
+/**
+ * A hand-drawn mark around, under or toward the emphasised words of an answer. [Pointer] is
+ * an arrow from under the text down to a spot in the room: the block is hung so its tip lands
+ * on the anchor (see [Handwriting.pointAt]).
+ */
+internal enum class Doodle { None, Underline, Circle, Arrow, Pointer }
 
-/** How large and how fast the answer is written. Lengths in metres, times in seconds. */
+/**
+ * How large and how fast the answer is written. Lengths in metres, times in seconds.
+ *
+ * [blockWidth] is the wrap width: about nine capitals, so a short answer takes two lines that
+ * stay legible once the block is fitted to the screen ([HandwritingLayout.fitScale]).
+ */
 internal data class HandwritingStyle(
-    val blockWidth: Float = 1.2f,
+    val blockWidth: Float = 0.9f,
     val capHeight: Float = 0.1f,
     val lineSpacing: Float = 1.85f,
-    val inkRadius: Float = 0.0055f,
+    val inkRadius: Float = 0.0088f,
     val pointSpacing: Float = 0.005f,
     val taperLength: Float = 0.03f,
     val minSeconds: Float = 2.8f,
@@ -135,17 +144,24 @@ internal data class HandwritingStyle(
  * An answer laid out on the writing block and timed: [strokes] in writing order, each with a
  * [starts] time.
  *
- * @param lines   The words of each line, as written.
- * @param bounds  Every stroke's extent, doodle included.
- * @param emphasis The extent of the emphasised words, if the answer marked any.
+ * @param lines      The words of each line, as written.
+ * @param bounds     Every stroke's extent, doodle included.
+ * @param textBounds The extent of the words alone.
+ * @param emphasis   The extent of the emphasised words, if the answer marked any.
+ * @param pointAt    Where a [Doodle.Pointer] ends, if the answer has one.
  */
 internal class Handwriting(
     val lines: List<List<String>>,
     val strokes: List<InkStroke>,
     val starts: FloatArray,
     val bounds: InkBox,
+    val textBounds: InkBox,
     val emphasis: InkBox?,
+    val pointAt: InkPoint? = null,
 ) {
+    /** The point of the block that goes on the anchor: the pointer's tip, else the centre. */
+    val anchor: InkPoint get() = pointAt ?: InkPoint(bounds.centerX, bounds.centerY)
+
     /** Seconds until the last stroke is finished. */
     val totalSeconds: Float
         get() = if (strokes.isEmpty()) 0f else strokes.indices.maxOf { starts[it] + strokes[it].duration }
@@ -207,6 +223,24 @@ internal object HandwritingLayout {
     private fun isLateMark(glyph: HersheyGlyph, stroke: List<InkPoint>) =
         glyph.strokes.size > 1 && polylineLength(stroke) < LATE_MARK_LENGTH &&
             stroke.minOf { it.y } >= LATE_MARK_FLOOR
+
+    /**
+     * A full stop, the dot of an `i`: the font draws it as a tiny closed loop, which a tube
+     * renders as a speck. It is written as a short fat tick instead ([dotTick], [toDot]).
+     */
+    private fun isDot(stroke: List<InkPoint>) =
+        stroke.maxOf { it.x } - stroke.minOf { it.x } <= DOT_EXTENT &&
+            stroke.maxOf { it.y } - stroke.minOf { it.y } <= DOT_EXTENT
+
+    /** A dot's stroke, in grid units: a short tick through its centre, rising like a pen tap. */
+    private fun dotTick(stroke: List<InkPoint>): List<InkPoint> {
+        val cx = (stroke.minOf { it.x } + stroke.maxOf { it.x }) / 2f
+        val cy = (stroke.minOf { it.y } + stroke.maxOf { it.y }) / 2f
+        return listOf(
+            InkPoint(cx - DOT_TICK_X, cy - DOT_TICK_Y),
+            InkPoint(cx + DOT_TICK_X, cy + DOT_TICK_Y),
+        )
+    }
 
     /** Words with their emphasis flags, the `*` markers taken out. */
     internal data class Word(val text: String, val emphasised: BooleanArray)
@@ -277,7 +311,7 @@ internal object HandwritingLayout {
         val left = -blockWidth * unit / 2f
         val firstBaseline = (lines.size - 1) * lineHeight / 2f - style.capHeight / 2f
 
-        val raw = mutableListOf<Pair<List<InkPoint>, Float>>() // stroke, pause before it (s)
+        val raw = mutableListOf<RawStroke>()
         var emphasis: InkBox? = null
         // The extent of each line's ink, and the line the emphasis sits on: a doodle keeps
         // clear of the other words.
@@ -290,6 +324,7 @@ internal object HandwritingLayout {
             line.forEachIndexed { indexInLine, _ ->
                 val word = words[wordIndex++]
                 val flow = mutableListOf<MutableList<InkPoint>>()
+                val dots = mutableSetOf<List<InkPoint>>()
                 val late = mutableListOf<List<InkPoint>>()
                 var x = penX
                 // Which character the stroke being written belongs to: letters run into the
@@ -298,19 +333,24 @@ internal object HandwritingLayout {
                 word.text.forEachIndexed { charIndex, c ->
                     val glyph = HersheyFont.glyph(c) ?: return@forEachIndexed
                     for (stroke in glyph.strokes) {
-                        val placed = stroke.map { InkPoint(left + (x + it.x) * unit, baseline + it.y * unit) }
+                        val dot = isDot(stroke)
+                        val placed = (if (dot) dotTick(stroke) else stroke)
+                            .map { InkPoint(left + (x + it.x) * unit, baseline + it.y * unit) }
                         val tail = flow.lastOrNull()?.last()
-                        val joinable = tailOwner == charIndex ||
-                            (tailOwner >= 0 && c.isLetterOrDigit() && word.text[tailOwner].isLetterOrDigit())
+                        val joinable = !dot && (
+                            tailOwner == charIndex ||
+                                (tailOwner >= 0 && c.isLetterOrDigit() && word.text[tailOwner].isLetterOrDigit())
+                            )
                         when {
                             tail != null && joinable && tail.distanceTo(placed.first()) <= JOIN_DISTANCE * unit -> {
                                 flow.last().addAll(placed.drop(1))
                                 tailOwner = charIndex
                             }
-                            isLateMark(glyph, stroke) -> late += placed
+                            isLateMark(glyph, stroke) -> late += placed.also { if (dot) dots += it }
                             else -> {
-                                flow += placed.toMutableList()
-                                tailOwner = charIndex
+                                flow += placed.toMutableList().also { if (dot) dots += it }
+                                // Nothing runs on from a dot.
+                                tailOwner = if (dot) -1 else charIndex
                             }
                         }
                         val box = boxOf(placed)
@@ -327,24 +367,32 @@ internal object HandwritingLayout {
                     indexInLine == 0 -> 0f
                     else -> style.wordGap
                 }
-                (flow + late).forEachIndexed { i, s -> raw += s to if (i == 0) pauseBefore else style.strokeGap }
+                (flow + late).forEachIndexed { i, s ->
+                    raw += RawStroke(s, if (i == 0) pauseBefore else style.strokeGap, dot = s in dots)
+                }
                 penX = x - HersheyFont.LETTER_GAP + HersheyFont.SPACE_ADVANCE
             }
         }
 
-        val textLines = raw.map { (points, _) -> resample(smooth(points), style.pointSpacing) }
+        val textLines = raw.map { resample(smooth(it.points), style.pointSpacing) }
+        val textBounds = textLines.map(::boxOf).reduceOrNull(InkBox::union) ?: InkBox(0f, 0f, 0f, 0f)
         val doodleLines = emphasis
-            ?.let { doodleStrokes(doodle, it, lineBoxes[emphasisLine] ?: it, Random(seed), style) }.orEmpty()
+            ?.let { doodleStrokes(doodle, it, lineBoxes[emphasisLine] ?: it, textBounds, Random(seed), style) }
+            .orEmpty()
             .map { resample(it, style.pointSpacing) }
 
         val strokes = mutableListOf<InkStroke>()
         val starts = mutableListOf<Float>()
         val textEffort = textLines.sumOf { effort(it).toDouble() }.toFloat()
-        val (secondsPerMetre, pauseScale) = paceFor(textEffort, raw.sumOf { it.second.toDouble() }.toFloat(), style)
+        val (secondsPerMetre, pauseScale) = paceFor(textEffort, raw.sumOf { it.pause.toDouble() }.toFloat(), style)
         var clock = 0f
         textLines.forEachIndexed { i, line ->
-            clock += raw[i].second * pauseScale
-            val stroke = toStroke(strokes.size, InkKind.Text, line, secondsPerMetre, style.inkRadius, style)
+            clock += raw[i].pause * pauseScale
+            val stroke = if (raw[i].dot) {
+                toDot(strokes.size, line, style.inkRadius * DOT_RADIUS)
+            } else {
+                toStroke(strokes.size, InkKind.Text, line, secondsPerMetre, style.inkRadius, style)
+            }
             strokes += stroke
             starts += clock
             clock += stroke.duration
@@ -362,27 +410,62 @@ internal object HandwritingLayout {
             clock += stroke.duration + style.strokeGap
         }
         val bounds = strokes.map { boxOf(it.points) }.reduceOrNull(InkBox::union) ?: InkBox(0f, 0f, 0f, 0f)
-        return Handwriting(lines, strokes, starts.toFloatArray(), bounds, emphasis)
+        // A pointer's shaft is the first doodle line and ends on its tip.
+        val pointAt = if (doodle == Doodle.Pointer) doodleLines.firstOrNull()?.last() else null
+        return Handwriting(lines, strokes, starts.toFloatArray(), bounds, textBounds, emphasis, pointAt)
     }
+
+    /** One stroke before timing: its points, the pause before it (s), and whether it is a dot. */
+    private class RawStroke(val points: List<InkPoint>, val pause: Float, val dot: Boolean)
 
     /**
-     * The scale that fits [bounds] in [FIT_WIDTH] of [visibleWidth] and [FIT_HEIGHT] of
-     * [visibleHeight] (metres the screen shows at the block's distance), never above 1.
+     * The scale at which [writing], hung by its [Handwriting.anchor], reads at the same size
+     * on any screen: its widest line takes [FIT_TEXT] of the [visibleWidth] (metres the screen
+     * shows at the block's distance). A short answer is sized as if its line were
+     * [MIN_LINE_SHARE] of a full one, so one word is not blown up.
      *
-     * A phone held upright shows about 0.8 m across at 1.5 m, so the 1.2 m block shrinks to
-     * fit it there; held sideways, or on a wall further away, it is written full size. The
-     * height share leaves room for the caption and the mic.
+     * Held back so that everything drawn, doodle included, stays within [FIT_BOUNDS] of the
+     * width and [FIT_HEIGHT] of the [visibleHeight] around the anchor (room for the caption
+     * and the mic), and never above [MAX_SCALE].
+     *
+     * A phone held upright shows about 0.8 m across at 1.5 m: a two-line answer is then about
+     * half a metre wide, its capitals five to six centimetres tall.
      */
-    fun fitScale(bounds: InkBox, visibleWidth: Float, visibleHeight: Float): Float {
-        if (bounds.width <= 0f || bounds.height <= 0f) return 1f
-        return minOf(1f, FIT_WIDTH * visibleWidth / bounds.width, FIT_HEIGHT * visibleHeight / bounds.height)
+    fun fitScale(
+        writing: Handwriting,
+        visibleWidth: Float,
+        visibleHeight: Float,
+        style: HandwritingStyle = HandwritingStyle(),
+    ): Float {
+        val text = writing.textBounds
+        val all = writing.bounds
+        if (text.width <= 0f || all.height <= 0f) return 1f
+        val anchor = writing.anchor
+        val halfWide = max(anchor.x - all.minX, all.maxX - anchor.x)
+        val halfTall = max(anchor.y - all.minY, all.maxY - anchor.y)
+        val reference = max(text.width, MIN_LINE_SHARE * style.blockWidth)
+        return minOf(
+            MAX_SCALE,
+            FIT_TEXT * visibleWidth / reference,
+            FIT_BOUNDS * visibleWidth / (2f * halfWide),
+            FIT_HEIGHT * visibleHeight / (2f * halfTall),
+        )
     }
 
-    /** Share of the screen's width the block may take. */
-    const val FIT_WIDTH = 0.8f
+    /** Share of the screen's width the widest line of text takes. */
+    const val FIT_TEXT = 0.6f
 
-    /** Share of the screen's height the block may take, between the top bar and the mic. */
-    const val FIT_HEIGHT = 0.5f
+    /** Share of the screen's width everything drawn may take, centred on the anchor. */
+    const val FIT_BOUNDS = 0.92f
+
+    /** Share of the screen's height everything drawn may take, centred on the anchor. */
+    const val FIT_HEIGHT = 0.6f
+
+    /** A line narrower than this share of [HandwritingStyle.blockWidth] is sized as if it were this wide. */
+    const val MIN_LINE_SHARE = 0.75f
+
+    /** Never more than this: on a far wall the words are already large. */
+    const val MAX_SCALE = 3f
 
     private fun lineWidth(line: List<String>): Float =
         line.sumOf { wordWidth(it).toDouble() }.toFloat() + (line.size - 1) * HersheyFont.SPACE_ADVANCE
@@ -434,6 +517,12 @@ internal object HandwritingLayout {
         val length = distances.last()
         val radii = List(line.size) { i -> radius * pressure(distances[i], length, style.taperLength, i) }
         return InkStroke(id, kind, line, radii, times)
+    }
+
+    /** A dot: pressed evenly, no taper, made in the time a pen takes to tap. */
+    private fun toDot(id: Int, line: List<InkPoint>, radius: Float): InkStroke {
+        val times = FloatArray(line.size) { i -> DOT_SECONDS * i / (line.size - 1).coerceAtLeast(1) }
+        return InkStroke(id, InkKind.Text, line, List(line.size) { radius }, times)
     }
 
     /**
@@ -516,13 +605,15 @@ internal object HandwritingLayout {
 
     /**
      * The strokes of [doodle] around [target], the emphasised words, on a line whose ink spans
-     * [line]. An arrow comes in from the side of the line [target] ends, and is an underline
-     * when other words sit on both sides of it.
+     * [line], in an answer whose words span [text]. An arrow comes in from the side of the line
+     * [target] ends, and is an underline when other words sit on both sides of it. A pointer
+     * leaves from under the words and ends below them, its shaft first.
      */
     internal fun doodleStrokes(
         doodle: Doodle,
         target: InkBox,
         line: InkBox,
+        text: InkBox,
         random: Random,
         style: HandwritingStyle,
     ): List<List<InkPoint>> {
@@ -531,6 +622,7 @@ internal object HandwritingLayout {
             Doodle.None -> emptyList()
             Doodle.Underline -> listOf(underline(target, random, style))
             Doodle.Circle -> listOf(loop(target, random, style))
+            Doodle.Pointer -> pointer(target, text, random, style)
             Doodle.Arrow -> when {
                 target.minX - line.minX < reach -> arrow(target, line, fromLeft = true, random, style)
                 line.maxX - target.maxX < reach -> arrow(target, line, fromLeft = false, random, style)
@@ -599,6 +691,35 @@ internal object HandwritingLayout {
         val edge = if (fromLeft) line.minX else line.maxX
         val tail = InkPoint(edge + side * cap * (2.2f + 0.3f * random.nextFloat()), tip.y - cap * 1.5f)
         val bend = InkPoint(tail.x + side * cap * 0.1f, tip.y - cap * 0.1f)
+        return arrowStrokes(tail, bend, tip, cap)
+    }
+
+    /**
+     * An arrow pointing down at a spot in the room: from under the emphasised words, out to the
+     * side a little, then down to its tip [POINTER_DROP] capitals below the text, under the
+     * middle of it. The block hangs by that tip.
+     */
+    private fun pointer(
+        target: InkBox,
+        text: InkBox,
+        random: Random,
+        style: HandwritingStyle,
+    ): List<List<InkPoint>> {
+        val cap = style.capHeight
+        val start = InkPoint(
+            target.centerX.coerceIn(text.minX + cap, text.maxX - cap),
+            text.minY - cap * 0.35f,
+        )
+        val tip = InkPoint(text.centerX, text.minY - cap * POINTER_DROP)
+        // Bow away from the middle, the way a quick hand swings an arrow round.
+        val swing = cap * (0.6f + 0.2f * random.nextFloat())
+        val bendX = if (start.x >= tip.x) start.x + swing else start.x - swing
+        val bend = InkPoint(bendX, (start.y + tip.y) / 2f)
+        return arrowStrokes(start, bend, tip, cap)
+    }
+
+    /** A curved shaft from [tail] to [tip] bent toward [bend], then a two-stroke head. */
+    private fun arrowStrokes(tail: InkPoint, bend: InkPoint, tip: InkPoint, cap: Float): List<List<InkPoint>> {
         val n = 28
         val shaft = List(n + 1) { i ->
             val t = i / n.toFloat()
@@ -622,7 +743,20 @@ internal object HandwritingLayout {
     /** How far (in capital heights) other words must be for an arrow to come in from that side. */
     private const val ARROW_CLEARANCE = 0.6f
 
+    /** How far below the text a pointer's tip lands, in capital heights. */
+    private const val POINTER_DROP = 2.3f
+
     private const val DOT_SECONDS = 0.06f
+
+    /** A stroke no wider nor taller than this (grid units) is a dot. */
+    private const val DOT_EXTENT = 2.5f
+
+    /** Half a dot's tick, across and up, in grid units. */
+    private const val DOT_TICK_X = 0.7f
+    private const val DOT_TICK_Y = 0.35f
+
+    /** A dot is pressed harder than the line: it must read at a glance. */
+    private const val DOT_RADIUS = 1.35f
 
     /** Extra metres of effort per radian of turn; see [effort]. */
     private const val CURVE_EFFORT = 0.004f

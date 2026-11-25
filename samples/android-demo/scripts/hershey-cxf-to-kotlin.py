@@ -65,8 +65,26 @@ def encode(strokes):
     return ' '.join(out)
 
 
+# The script capitals T, I and J are near twins of each other (a looped stem with a hook), so
+# "The" read as "Jhe" on camera. These three are drawn here instead, upright on the Hershey grid,
+# then slanted like the script: T a bar and a straight stem, I a stem between two bars, J a bar
+# and a hooked stem. One list of strokes per character, in writing order.
+HAND_GLYPHS = {
+    'T': [[(0, 19), (3, 20), (7, 20), (11, 21), (15, 21)], [(8, 20), (7, 10), (6, 0)]],
+    'I': [[(2, 21), (12, 21)], [(7, 21), (6, 0)], [(1, 0), (11, 0)]],
+    'J': [[(8, 21), (18, 21)], [(13, 21), (13, 8), (12, 4), (10, 1), (7, 0), (4, 1), (2, 3), (2, 5)]],
+}
+SLANT = 0.28
+
+
+def slanted(strokes):
+    return [[(round(x + SLANT * y), y) for x, y in stroke] for stroke in strokes]
+
+
 def main():
     glyphs = parse(sys.argv[1])
+    for c, strokes in HAND_GLYPHS.items():
+        glyphs[ord(c)] = slanted(strokes)
     rows = []
     for code in range(FIRST, LAST + 1):
         data = encode(glyphs.get(code, []))
@@ -89,7 +107,8 @@ HEADER = '''package io.github.sceneview.demo.demos.internal
 //    U. S. National Bureau of Standards.
 //  - The format of the Font data in this distribution was originally created by James Hurt,
 //    Cognition, Inc., 900 Technology Park Drive, Billerica, MA 01821.
-// Vendored at authoring time; nothing is downloaded at build or run time.
+// Vendored at authoring time; nothing is downloaded at build or run time. The capitals T, I
+// and J are drawn by the generator instead (see HAND_GLYPHS there): the script ones read as J.
 //
 // Format: one string per character from U+0021 `!` to U+007D `}`. Strokes are separated by a
 // space; each point is two characters, x then y, in Hershey grid units, encoded as
