@@ -32,7 +32,7 @@ jobs:
       - uses: ./.github/actions/setup-gradle
 
       - name: Publish the fixed sceneview to mavenLocal as 4.72.0-oomfix
-        run: ./gradlew :sceneview:publishToMavenLocal -PVERSION_NAME=4.72.0-oomfix -PRELEASE_SIGNING_ENABLED=false --no-configuration-cache --stacktrace
+        run: ./gradlew :sceneview:publishToMavenLocal -PVERSION_NAME=4.72.0-oomfix -x :sceneview:signMavenPublication --no-configuration-cache --stacktrace
 
       - name: Fetch drone.glb
         working-directory: tools/model-load-rotation-oom

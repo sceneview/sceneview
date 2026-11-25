@@ -19,7 +19,7 @@ never committed (`app/src/main/assets/models/` is ignored):
 
     ./gradlew :app:assembleDebug -Psv=4.72.0          # from Maven Central
     # the fix: from the repo root on the #5271 branch
-    ./gradlew :sceneview:publishToMavenLocal -PVERSION_NAME=4.72.0-oomfix -PRELEASE_SIGNING_ENABLED=false
+    ./gradlew :sceneview:publishToMavenLocal -PVERSION_NAME=4.72.0-oomfix -x :sceneview:signMavenPublication
     ./gradlew :app:assembleDebug -Psv=4.72.0-oomfix
 
 Only `io.github.sceneview:sceneview` takes `-Psv`; the other SceneView artifacts stay on 4.72.0.
