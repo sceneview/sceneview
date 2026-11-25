@@ -1,4 +1,4 @@
 # Python deps for .github/workflows/ci.yml (workflow YAML lint helper).
 # PyYAML is normally already in the runner image; this is the fallback install.
 # Tracked by Dependabot via the `pip` entry in .github/dependabot.yml.
-pyyaml==6.0.3
+pyyaml==6.0.4
