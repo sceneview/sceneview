@@ -24,8 +24,8 @@ Always determine the target platform first. Ask if unclear. Default to Android (
 5. **Declarative nodes**: Declare nodes as composables inside `SceneView { }` content block, not imperatively.
 
 ### Version info
-- Current version: **4.73.0**
-- Android: `io.github.sceneview:sceneview:4.73.0` (3D) / `io.github.sceneview:arsceneview:4.73.0` (AR)
+- Current version: **4.74.0**
+- Android: `io.github.sceneview:sceneview:4.74.0` (3D) / `io.github.sceneview:arsceneview:4.74.0` (AR)
 - Apple: SPM `https://github.com/sceneview/sceneview.git` (exact: "4.68.0")
 - Web: `npm install sceneview-web@4` (also `<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js">`)
 - MCP: `npx sceneview-mcp` — adds 32 AI tools, all free, no API key
