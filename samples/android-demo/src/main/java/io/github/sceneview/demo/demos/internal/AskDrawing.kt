@@ -65,17 +65,31 @@ internal data class WallSpot(
 internal enum class WallHitKind { VerticalPlane, Depth, FeaturePoint }
 
 internal object WallPick {
-    /** Nearer than this, a hit is the edge of something in front of the wall, or a stray point. */
+    /** Nearer than this, a feature point is the edge of something in front of the wall, or a stray. */
     const val MIN_DISTANCE = 0.8f
+
+    /**
+     * A plane or a depth point is a measured surface, so it counts from much closer: a radiator's
+     * bleed screw is asked about from arm's length.
+     */
+    const val MIN_SURFACE_DISTANCE = 0.25f
     const val MAX_DISTANCE = 8f
+
+    private fun minFor(kind: WallHitKind) =
+        if (kind == WallHitKind.FeaturePoint) MIN_DISTANCE else MIN_SURFACE_DISTANCE
 
     /**
      * Which of the centre ray's hits (kind, or `null` for one that is not a wall; distance from
      * the phone) is the wall: a vertical plane, else a depth point, else a feature point, the
-     * nearest of that kind, between [MIN_DISTANCE] and [MAX_DISTANCE]. Its index, or `null`.
+     * nearest of that kind, within [MAX_DISTANCE] and no nearer than its kind allows
+     * ([MIN_SURFACE_DISTANCE] for a plane or depth, [MIN_DISTANCE] for a feature point).
+     * Its index, or `null`.
      */
     fun best(hits: List<Pair<WallHitKind?, Float>>): Int? = hits.indices
-        .filter { i -> hits[i].first != null && hits[i].second in MIN_DISTANCE..MAX_DISTANCE }
+        .filter { i ->
+            val kind = hits[i].first
+            kind != null && hits[i].second in minFor(kind)..MAX_DISTANCE
+        }
         .minWithOrNull(compareBy<Int> { hits[it].first!!.ordinal }.thenBy { hits[it].second })
 }
 

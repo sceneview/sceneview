@@ -62,6 +62,14 @@ class AskDrawingTest {
         assertNull(WallPick.best(listOf(WallHitKind.VerticalPlane to 9f)))
     }
 
+    @Test fun `a measured surface counts from arm's length, a feature point does not`() {
+        // A radiator's bleed screw, asked about from 40 cm.
+        assertEquals(0, WallPick.best(listOf(WallHitKind.Depth to 0.4f)))
+        assertEquals(0, WallPick.best(listOf(WallHitKind.VerticalPlane to 0.3f)))
+        assertNull(WallPick.best(listOf(WallHitKind.FeaturePoint to 0.4f)))
+        assertNull(WallPick.best(listOf(WallHitKind.Depth to 0.2f)))
+    }
+
     @Test fun `the ink thickens with the wall's distance, the line stays true to size`() {
         assertEquals(1f, HangPicture.inkScale(HangPicture.REFERENCE_DISTANCE), 1e-6f)
         assertEquals(1.5f, HangPicture.inkScale(3f), 1e-6f)

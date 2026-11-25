@@ -1224,8 +1224,8 @@ private object AskRoomReader {
         val floor = AskFloor.pick(camera.y, floorHeights, lowPointHeights(frame, viewSize))
         val hits = centreHits(frame, viewSize)
         // What the centre ray hit, by kind: a wall plane, else a depth point, else a feature
-        // point; never anything nearer than WallPick.MIN_DISTANCE (a feature point on the
-        // phone's own edge of the scene is not the wall).
+        // point; a feature point never nearer than WallPick.MIN_DISTANCE (one on the phone's
+        // own edge of the scene is not the wall), a plane or depth from MIN_SURFACE_DISTANCE.
         val kinds = hits.map { hit -> wallKind(hit) to hit.distance }
         val wall = WallPick.best(kinds)?.let { index ->
             val hit = hits[index]
