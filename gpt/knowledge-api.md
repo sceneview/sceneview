@@ -1487,7 +1487,9 @@ rings so the seam has no crease.
     radius: Float = Tube.DEFAULT_RADIUS,          // metres — 0.02 default
     radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,  // 8
     closed: Boolean = false,                      // join the last point back to the first
-    caps: Boolean = true,                         // fill open ends with a disc
+    capStyle: Tube.CapStyle = Tube.CapStyle.Flat, // None | Flat (disc) | Round (hemisphere); ignored when closed
+    radii: List<Float>? = null,                   // one radius per point, metres; null = `radius` everywhere
+    capacity: Int = 0,                            // points the buffers are sized for; 0 = exactly points.size
     materialInstance: MaterialInstance? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
@@ -1501,7 +1503,33 @@ Changing `points` or `radius` **without changing the point count** re-uploads in
 tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
 them — keep sample counts constant across curve types if you switch shapes at runtime.
 
-That rule holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
+`caps: Boolean` still compiles as a deprecated alias (`true` = `Flat`, `false` = `None`).
+
+**A stroke that grows** (finger drawing, a trail, a route being recorded) passes a `capacity`
+larger than the current point count: while `points.size <= capacity` an update rewrites the same
+vertex buffer, never touches the index buffer, and only the live part is drawn (the renderable's
+index range and bounding box follow every update). Past the capacity the tube reallocates once,
+to `max(points.size, 2 × capacity)`. `capacity = 0` keeps the old exact-size behaviour.
+
+```kotlin
+import kotlin.math.PI
+import kotlin.math.sin
+
+// A brush stroke: thick in the middle, tapering to round ends, growing without reallocating.
+val paint = remember(materialLoader) { materialLoader.createColorInstance(colorOf(r = 0.96f, g = 0.36f, b = 0.16f)) }
+val stroke = List(40) { i -> Position(x = i * 0.01f, y = 0.05f * sin(i * 0.2f)) }
+val widths = List(stroke.size) { i -> 0.004f + 0.006f * sin(PI.toFloat() * i / (stroke.size - 1)) }
+TubeNode(
+    points = stroke,
+    radii = widths,                               // one per point, metres
+    radialSegments = 12,
+    capStyle = Tube.CapStyle.Round,
+    capacity = 256,                               // room to grow before any reallocation
+    materialInstance = paint
+)
+```
+
+The exact-size rule above holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
 an update that keeps the vertex count, the per-submesh index counts and the attribute layout
 (normals / UVs / colours present or not) rewrites the existing buffers; anything else — more
 `slices`, one more path point, a shape gaining a `color` — allocates new buffers, re-points every
@@ -4760,8 +4788,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror frames to your own encoder surface, no MediaProjection (see "Capture the scene") |
-| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper |
-| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
+| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper; disposal frees the view and the `ColorGrading` it built, never one you set (#5232) |
+| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434); disposal frees it like `rememberView` |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
