@@ -118,8 +118,9 @@ class AutoPlacementState {
         get() = baseSize?.let { it * scaleFactor }
 
     /**
-     * The model was placed with [PlacementSize.RealWorld] and is shown at exactly 100 % — what
-     * the user sees is the object's true size.
+     * The model was placed at its authored size ([PlacementSize.RealWorld], or the default when
+     * the 10 m rule does not apply) and is shown at exactly 100 % — what the user sees is the
+     * object's true size.
      */
     val isAtRealWorldSize: Boolean
         get() = baseSize != null && baseIsRealWorld && scaleFactor == 1f

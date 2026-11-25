@@ -1816,9 +1816,12 @@ tracked): content placed on a table that must stand on the floor drops by
 `floorHeight - pose.ty()`.
 
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
-while rotating/scaling, and constrains dragging to supported plane geometry. Its
-0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
-trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base by default;
+while rotating/scaling, and constrains dragging to supported plane geometry. By default
+it keeps the asset's authored metres (**Actual size**, as AR Quick Look and Scene Viewer);
+`scaleToUnits = 0.3f` fits the longest dimension into 0.3 m (**Preview size**, the default
+up to 4.72) for assets whose units are unknown. Without `scaleToUnits`, a model longer
+than 10 m (a file in centimetres) first shows fitted into 1 m, not at real size;
+`size = PlacementSize.RealWorld` trusts the authored metres. Scale limits are 25–400% of that base by default;
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
@@ -1831,7 +1834,7 @@ bottom-centre rests on the contact point and the model's dimensions are publishe
 `assetRotation`, so with `FitInto` its largest side is the target only for multiples of 90°:
 a 1 m cube at `FitInto(1f)` turned 45° about Y is about 1.41 × 1 × 1.41 m; `null` until the
 frame after the model appears, and for an empty asset), `placedSize` (`baseSize * scaleFactor`,
-following the pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick
+following the pinch) and `isAtRealWorldSize` (authored size — `RealWorld`, or the default when the 10 m rule does not apply — and exactly 100 %). Let the user pick
 a size with `state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall). `scaleTo` clamps to
 `scaleRange` (25–400 % by default) without notice and does nothing while `allowsScaling` is
 `false`: a 0.3 m preview asked for 2 m needs ×6.7 and stops at 1.2 m, so widen `scaleRange`
@@ -4760,8 +4763,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror frames to your own encoder surface, no MediaProjection (see "Capture the scene") |
-| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper |
-| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
+| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper; disposal frees the view and the `ColorGrading` it built, never one you set (#5232) |
+| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434); disposal frees it like `rememberView` |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
