@@ -248,9 +248,11 @@ class Tube private constructor(
      *
      * Moving points, changing radii, or changing the live point count while it fits [capacity]
      * reuses the same vertex and index buffers. Exceeding an explicitly reserved capacity grows
-     * it to the larger of the requested size and twice its old size; a tube built at exact
-     * capacity grows exactly to the new point count. A zero [capacity] request keeps that current
-     * allocation mode. Changing [radialSegments], [closed] or [capStyle] may rebuild the buffers.
+     * it to the larger of the requested size and twice its old size, and the buffers never shrink.
+     * A tube built at exact capacity stays exact: its buffers follow the point count, growing or
+     * shrinking. A [capacity] above the point count switches to reserved capacity; zero, the
+     * default, keeps the current allocation mode. Changing [radialSegments], [closed] or
+     * [capStyle] may rebuild the buffers.
      * Must be called on the main thread. Returns this geometry for chaining.
      */
     fun update(
@@ -261,7 +263,7 @@ class Tube private constructor(
         closed: Boolean = this.closed,
         capStyle: CapStyle = this.capStyle,
         radii: List<Float>? = this.radii,
-        capacity: Int = this.capacity,
+        capacity: Int = 0,
     ) = apply {
         validate(points, radius, radii, radialSegments, capacity)
         val newCapacityExplicit = isCapacityExplicit(capacityExplicit, points.size, capacity)
@@ -277,12 +279,20 @@ class Tube private constructor(
                 if (newCapacityExplicit) newCapacity else 0,
             )
         } else primitivesIndices
+        // Read by [drawnOffsets] while the base class describes the buffers, during the call or
+        // once a waiting rebuild goes out: it must already describe the new state.
+        val previousLiveIndexCount = liveIndexCount
         liveIndexCount = liveIndexCount(points.size, radialSegments, closed, capStyle)
-        super.update(
-            engine,
-            getVertices(points, radius, radialSegments, closed, capStyle, radii, newCapacity),
-            newIndices,
-        )
+        try {
+            super.update(
+                engine,
+                getVertices(points, radius, radialSegments, closed, capStyle, radii, newCapacity),
+                newIndices,
+            )
+        } catch (failure: Throwable) {
+            liveIndexCount = previousLiveIndexCount
+            throw failure
+        }
         this.points = points
         this.radius = radius
         this.radii = radii
@@ -304,7 +314,7 @@ class Tube private constructor(
         radialSegments: Int = this.radialSegments, closed: Boolean = this.closed, caps: Boolean,
     ) = update(
         engine, points, radius, radialSegments, closed,
-        if (caps) CapStyle.Flat else CapStyle.None, radii, capacity,
+        if (caps) CapStyle.Flat else CapStyle.None, radii, 0,
     )
 
     /**
@@ -352,14 +362,19 @@ class Tube private constructor(
         /** Latitude-ring count for each hemispherical cap, including its pole ring. */
         fun roundCapRings(radialSegments: Int): Int = max(2, (radialSegments + 2) / 3)
 
-        /** Pure point-capacity growth decision used by [update]. */
+        /**
+         * Pure point-capacity decision used by [update]. An exact allocation is always the point
+         * count, so its buffers shrink with the path and its indices keep the exact layout. An
+         * explicit one never shrinks, and grows to at least twice its size.
+         */
         internal fun grownCapacity(
             pointCount: Int, currentCapacity: Int, requestedCapacity: Int, explicit: Boolean,
         ): Int {
             require(requestedCapacity >= 0) { "Tube capacity must be non-negative" }
+            if (!explicit) return pointCount
             val requested = max(pointCount, requestedCapacity)
             if (requested <= currentCapacity) return currentCapacity
-            return if (explicit) max(requested, currentCapacity * 2) else requested
+            return max(requested, currentCapacity * 2)
         }
 
         /** Whether [requestedCapacity] reserves spare room beyond the live [pointCount]. */

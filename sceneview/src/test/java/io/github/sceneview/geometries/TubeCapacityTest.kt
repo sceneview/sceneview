@@ -220,6 +220,23 @@ class TubeCapacityTest {
     }
 
     @Test
+    fun `exact allocation shrinks with the path instead of padding it`() {
+        // A tube built at exact size that loses points must not keep the larger buffers: its
+        // indices use the exact layout, which has no padding rings (GeometryUploadBackPressureTest).
+        val explicit = Tube.isCapacityExplicit(false, 8, 0)
+        assertFalse(explicit)
+        assertEquals(8, Tube.grownCapacity(8, 11, 0, explicit))
+        val points = List(8) { Position(it.toFloat(), 0f, 0f) }
+        assertEquals(
+            Tube.getVertices(points, capStyle = Tube.CapStyle.Flat).size,
+            Tube.getVertices(
+                points, capStyle = Tube.CapStyle.Flat,
+                capacity = Tube.grownCapacity(8, 11, 0, explicit),
+            ).size,
+        )
+    }
+
+    @Test
     fun `explicit allocation stays explicit after zero capacity request`() {
         val currentCapacity = 8
         val pointCount = 9

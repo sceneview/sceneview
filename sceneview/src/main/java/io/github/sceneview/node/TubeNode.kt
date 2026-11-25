@@ -122,7 +122,7 @@ open class TubeNode private constructor(
         closed: Boolean = geometry.closed,
         capStyle: Tube.CapStyle = geometry.capStyle,
         radii: List<Float>? = geometry.radii,
-        capacity: Int = geometry.capacity,
+        capacity: Int = 0,
     ) {
         geometry.update(engine, points, radius, radialSegments, closed, capStyle, radii, capacity)
     }
@@ -141,6 +141,6 @@ open class TubeNode private constructor(
         caps: Boolean,
     ) = updateGeometry(
         points, radius, radialSegments, closed,
-        if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None, geometry.radii, geometry.capacity,
+        if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None, geometry.radii, 0,
     )
 }
