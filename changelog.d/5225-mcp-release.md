@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **`sceneview-mcp` 4.3.0.** The npm package was still 4.2.0 from November 7: it reported SceneView 4.67.0 as the latest release and gave the SwiftUI setup with no end-of-life notice. 4.3.0 ships what `main` already serves: SDK 4.72.0, iOS, Flutter and React Native marked end of life at 4.68.0, the server instructions sent at connect time (#5200) and `show_in_space` (#5015).
