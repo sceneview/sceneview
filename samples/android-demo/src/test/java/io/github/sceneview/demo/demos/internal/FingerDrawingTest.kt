@@ -32,7 +32,6 @@ import kotlin.math.sqrt
  */
 class FingerDrawingTest {
 
-    private val towardsViewer = Direction(z = -1f)
     private val spacing = 0.01f
 
     /** A circle in the XY plane — the stroke that turns through every direction. */
@@ -173,10 +172,6 @@ class FingerDrawingTest {
         assertEquals(world.x, restored.x, 1e-5f)
         assertEquals(world.y, restored.y, 1e-5f)
         assertEquals(world.z, restored.z, 1e-5f)
-
-        val direction = FingerDrawingPlacement.worldDirectionToAnchor(Direction(z = -1f), rotation)
-        assertEquals(1f, direction.x, 1e-5f)
-        assertEquals(1f, length(direction), 1e-5f)
     }
 
     @Test
@@ -440,7 +435,7 @@ class FingerDrawingTest {
         // #4504: the ends used to taper to half the thickness. A stroke drawn at one speed is
         // one thickness from its first ring to its last.
         val stroke = Drawing()
-            .penDown(Position(), radius = 0.02f, colorIndex = 0, frameHint = towardsViewer, spacing = spacing)
+            .penDown(Position(), radius = 0.02f, colorIndex = 0, spacing = spacing)
             .let { drawing ->
                 (1..60).fold(drawing) { d, i -> d.penMove(Position(x = i * 0.01f), targetRadius = 0.02f) }
             }
@@ -471,7 +466,7 @@ class FingerDrawingTest {
     // ── Drawing model ─────────────────────────────────────────────────────────
 
     private fun Drawing.down(x: Float, color: Int = 0) =
-        penDown(Position(x = x), radius = 0.05f, colorIndex = color, frameHint = towardsViewer, spacing = spacing)
+        penDown(Position(x = x), radius = 0.05f, colorIndex = color, spacing = spacing)
 
     @Test
     fun `pen down, move, up leaves one finished stroke`() {
@@ -663,7 +658,7 @@ class FingerDrawingTest {
     fun `the ring estimate never undercounts the centreline`() {
         for (path in paths) {
             for (ringSpacing in listOf(0.01f, 0.05f, 0.5f)) {
-                val stroke = Stroke(0, 0, path, towardsViewer, ringSpacing)
+                val stroke = Stroke(0, 0, path, ringSpacing)
                 assertTrue(
                     "estimate under the real count at spacing $ringSpacing",
                     FingerDrawing.ringEstimate(stroke) >= FingerDrawing.line(stroke).size,

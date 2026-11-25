@@ -1839,6 +1839,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * ```
      *
      * Reserve [capacity] when the path grows: updates within it rewrite the existing buffers.
+     * `0`, the default, sizes the buffers to exactly [points] and reallocates when its size
+     * changes; any positive value reserves `max(capacity, points.size)` points, kept and doubled
+     * when exceeded, never shrunk.
      *
      * @param points           Ordered polyline to sweep along (at least 2 points).
      * @param radius           Cross-section radius in meters.
@@ -1846,7 +1849,8 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param closed           When `true`, joins the last point back to the first seamlessly.
      * @param capStyle         End treatment for an open tube; ignored when [closed].
      * @param radii            Optional radius per point in meters; `null` uses [radius].
-     * @param capacity         Point capacity reserved in the buffers; zero means [points] size.
+     * @param capacity         Points reserved in the buffers: `0` is exactly [points], any
+     *                         positive value reserves at least that many (see above).
      * @param materialInstance The material instance to apply.
      * @param position         Local position of the node's origin.
      * @param rotation         Local rotation in Euler angles (degrees).
@@ -1918,13 +1922,38 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         NodeLifecycle(node, content)
     }
 
-    /** Deprecated flat-cap overload retained for source and binary compatibility. */
+    /**
+     * Binary bridge for code compiled against the flat-cap composable. It keeps the JVM signature
+     * and the original `caps = true` default, so an old call that omitted `caps` still gets flat
+     * caps. Hidden so it does not compete with the `capStyle` overload in source.
+     */
+    @Composable
+    @Deprecated("Use capStyle", level = DeprecationLevel.HIDDEN)
+    @Suppress("DEPRECATION")
+    fun TubeNode(
+        points: List<Position> = Tube.DEFAULT_POINTS,
+        radius: Float = Tube.DEFAULT_RADIUS,
+        radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,
+        closed: Boolean = Tube.DEFAULT_CLOSED,
+        caps: Boolean = Tube.DEFAULT_CAPS,
+        materialInstance: MaterialInstance? = null,
+        position: Position = Position(x = 0f),
+        rotation: Rotation = Rotation(x = 0f),
+        scale: Scale = Scale(1f),
+        apply: TubeNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) = TubeNode(
+        points, radius, radialSegments, closed, Tube.legacyCapStyle(caps),
+        null, 0, materialInstance, position, rotation, scale, apply, content,
+    )
+
+    /** Source-compatible flat-cap overload: `true` is flat caps, `false` none. */
     @Composable
     @Deprecated(
         "Use capStyle",
         ReplaceWith("TubeNode(points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None, materialInstance = materialInstance, position = position, rotation = rotation, scale = scale, apply = apply, content = content)"),
     )
-    @Suppress("DEPRECATION")
+    @JvmName("TubeNodeWithCaps")
     fun TubeNode(
         points: List<Position> = Tube.DEFAULT_POINTS,
         radius: Float = Tube.DEFAULT_RADIUS,
@@ -1938,8 +1967,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         apply: TubeNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null,
     ) = TubeNode(
-        points, radius, radialSegments, closed,
-        if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None,
+        points, radius, radialSegments, closed, Tube.legacyCapStyle(caps),
         null, 0, materialInstance, position, rotation, scale, apply, content,
     )
 

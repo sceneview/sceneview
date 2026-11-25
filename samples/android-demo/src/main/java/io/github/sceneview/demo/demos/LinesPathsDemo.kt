@@ -289,14 +289,14 @@ fun LinesPathsDemo(onBack: () -> Unit) {
         ) {
             Node(position = Position(y = LinesPathsScene.SCENE_LIFT)) {
                 // The ground track: a straight-segment polyline, drawn as marching dashes. Each
-                // dash is its own short tube — capped, or the ends would read as hollow pipes.
+                // dash is its own short tube with the default flat caps, or the ends would read as
+                // hollow pipes.
                 dashes.forEachIndexed { index, dash ->
                     key(index) {
                         TubeNode(
                             points = dash,
                             radius = strokeRadius * LinesPathsScene.GROUND_STROKE_RATIO,
                             radialSegments = LinesPathsScene.TUBE_SEGMENTS,
-                            caps = true,
                             materialInstance = groundMaterial,
                         )
                     }
@@ -317,7 +317,6 @@ fun LinesPathsDemo(onBack: () -> Unit) {
                     points = trail,
                     radius = strokeRadius * 1.35f,
                     radialSegments = LinesPathsScene.TUBE_SEGMENTS,
-                    caps = true,
                     materialInstance = markerMaterial,
                 )
 

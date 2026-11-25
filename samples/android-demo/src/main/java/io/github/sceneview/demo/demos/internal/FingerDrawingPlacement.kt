@@ -244,10 +244,6 @@ internal object FingerDrawingPlacement {
         anchorRotation: Quaternion,
     ): Position = rotate(conjugate(anchorRotation), point - anchorPosition)
 
-    /** A world direction in an anchor's frame — [worldToAnchor] without the translation. */
-    fun worldDirectionToAnchor(direction: Direction, anchorRotation: Quaternion): Direction =
-        rotate(conjugate(anchorRotation), direction)
-
     private fun conjugate(q: Quaternion) = Quaternion(-q.x, -q.y, -q.z, q.w)
 
     /** `q · v · q⁻¹` for a unit quaternion, expanded so it needs no matrix. */

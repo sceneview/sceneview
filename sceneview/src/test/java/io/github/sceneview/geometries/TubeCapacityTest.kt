@@ -71,6 +71,40 @@ class TubeCapacityTest {
     }
 
     @Test
+    fun `a negative or NaN uniform radius still sweeps as before radii existed`() {
+        // Only the new `radii` input is validated: the legacy `radius` path never threw.
+        val expected = Tube.getVertices(points, radius = 0.05f).size
+        assertEquals(expected, Tube.getVertices(points, radius = -0.05f).size)
+        assertEquals(expected, Tube.getVertices(points, radius = Float.NaN).size)
+    }
+
+    @Test
+    fun `the flat-cap flag maps onto a cap style without flattening round caps`() {
+        assertEquals(Tube.CapStyle.Flat, Tube.legacyCapStyle(true))
+        assertEquals(Tube.CapStyle.None, Tube.legacyCapStyle(false))
+        assertEquals(Tube.CapStyle.Round, Tube.legacyCapStyle(true, Tube.CapStyle.Round))
+        assertEquals(Tube.CapStyle.None, Tube.legacyCapStyle(false, Tube.CapStyle.Round))
+        assertEquals(Tube.CapStyle.Flat, Tube.legacyCapStyle(true, Tube.CapStyle.None))
+        assertEquals(Tube.CapStyle.None, Tube.legacyCapStyle(false, Tube.CapStyle.None))
+    }
+
+    @Test
+    fun `any positive capacity is reserved, zero is exact, in build and update alike`() {
+        // One rule for Builder.capacity and Tube.update: a positive value at or below the point
+        // count still asks for the reserved layout, sized to the point count.
+        assertTrue(Tube.isExplicitCapacityRequest(1))
+        assertTrue(Tube.isExplicitCapacityRequest(16))
+        assertFalse(Tube.isExplicitCapacityRequest(0))
+        assertTrue(Tube.isCapacityExplicit(false, 2))
+        assertEquals(5, Tube.grownCapacity(5, 5, 2, explicit = true))
+        // The reserved layout puts the caps first, so it differs from the exact one.
+        val exact = Tube.getIndices(points.size, capStyle = Tube.CapStyle.Flat)
+        val reserved = Tube.getIndices(points.size, capStyle = Tube.CapStyle.Flat, capacity = 2)
+        assertEquals(exact.single().size, reserved.single().size)
+        assertTrue(exact != reserved)
+    }
+
+    @Test
     fun `round caps use endpoint radius and sphere normals`() {
         val segments = 12
         val radii = List(points.size) { 0.1f + it * 0.02f }
@@ -204,14 +238,14 @@ class TubeCapacityTest {
     fun `zero capacity request keeps exact allocation mode`() {
         val currentCapacity = 4
         val largerPointCount = 5
-        val largerExplicit = Tube.isExplicitCapacityRequest(largerPointCount, 0)
+        val largerExplicit = Tube.isExplicitCapacityRequest(0)
         assertFalse(largerExplicit)
         assertEquals(
             largerPointCount,
             Tube.grownCapacity(largerPointCount, currentCapacity, 0, largerExplicit),
         )
 
-        val sameExplicit = Tube.isExplicitCapacityRequest(currentCapacity, 0)
+        val sameExplicit = Tube.isExplicitCapacityRequest(0)
         assertFalse(sameExplicit)
         assertEquals(
             currentCapacity,
@@ -223,7 +257,7 @@ class TubeCapacityTest {
     fun `exact allocation shrinks with the path instead of padding it`() {
         // A tube built at exact size that loses points must not keep the larger buffers: its
         // indices use the exact layout, which has no padding rings (GeometryUploadBackPressureTest).
-        val explicit = Tube.isCapacityExplicit(false, 8, 0)
+        val explicit = Tube.isCapacityExplicit(false, 0)
         assertFalse(explicit)
         assertEquals(8, Tube.grownCapacity(8, 11, 0, explicit))
         val points = List(8) { Position(it.toFloat(), 0f, 0f) }
@@ -240,7 +274,7 @@ class TubeCapacityTest {
     fun `explicit allocation stays explicit after zero capacity request`() {
         val currentCapacity = 8
         val pointCount = 9
-        val remainsExplicit = Tube.isCapacityExplicit(true, pointCount, 0)
+        val remainsExplicit = Tube.isCapacityExplicit(true, 0)
         assertTrue(remainsExplicit)
         assertEquals(
             16,

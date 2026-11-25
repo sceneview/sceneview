@@ -1489,7 +1489,7 @@ rings so the seam has no crease.
     closed: Boolean = false,                      // join the last point back to the first
     capStyle: Tube.CapStyle = Tube.CapStyle.Flat, // None | Flat (disc) | Round (hemisphere); ignored when closed
     radii: List<Float>? = null,                   // one radius per point, metres; null = `radius` everywhere
-    capacity: Int = 0,                            // points the buffers are sized for; 0 = exactly points.size
+    capacity: Int = 0,                            // 0 = exactly points.size; > 0 = reserve max(capacity, points.size)
     materialInstance: MaterialInstance? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
@@ -1505,11 +1505,13 @@ them — keep sample counts constant across curve types if you switch shapes at 
 
 `caps: Boolean` still compiles as a deprecated alias (`true` = `Flat`, `false` = `None`).
 
-**A stroke that grows** (finger drawing, a trail, a route being recorded) passes a `capacity`
-larger than the current point count: while `points.size <= capacity` an update rewrites the same
-vertex buffer, never touches the index buffer, and only the live part is drawn (the renderable's
-index range and bounding box follow every update). Past the capacity the tube reallocates once,
-to `max(points.size, 2 × capacity)`. `capacity = 0` keeps the old exact-size behaviour.
+**A stroke that grows** (finger drawing, a trail, a route being recorded) passes a `capacity`.
+One rule: `capacity = 0` (the default) is the old exact-size behaviour, buffers sized to
+`points.size`; any positive value reserves `max(capacity, points.size)` points. While
+`points.size <= capacity` an update rewrites the same vertex buffer, never touches the index
+buffer, and only the live part is drawn (the renderable's index range and bounding box follow
+every update). Past the capacity the tube reallocates once, to `max(points.size, 2 × capacity)`;
+reserved buffers never shrink.
 
 ```kotlin
 import kotlin.math.PI

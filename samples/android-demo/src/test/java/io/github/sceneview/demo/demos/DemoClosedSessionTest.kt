@@ -4,7 +4,6 @@ import io.github.sceneview.ar.ARSessionFailure
 import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.FatalException
 import io.github.sceneview.demo.demos.internal.*
-import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import org.junit.Assert.*
 import org.junit.Test
@@ -196,7 +195,7 @@ class DemoClosedSessionFingerDrawingTest {
     @Test fun `strokes leave with their anchors but stroke ids keep counting`() {
         val state = DrawingSessionState<SessionHandle>()
         state.drawing = Drawing()
-            .penDown(Position(), radius = 0.01f, colorIndex = 0, frameHint = Direction(y = 1f), spacing = 0.01f)
+            .penDown(Position(), radius = 0.01f, colorIndex = 0, spacing = 0.01f)
             .penUp()
         val nextId = state.drawing.nextId
         state.anchorOf = mapOf(0 to SessionHandle())

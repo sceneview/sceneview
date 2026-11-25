@@ -1,7 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
 import dev.romainguy.kotlin.math.length
-import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import kotlin.math.ceil
 import kotlin.math.exp
@@ -27,9 +26,6 @@ internal data class StrokePoint(val position: Position, val radius: Float)
  * @param id         Stable across the stroke's life — the Compose `key` of its mesh.
  * @param colorIndex Index into the demo's palette.
  * @param points     The filtered touch samples, at least [spacing] apart.
- * @param frameHint  The direction the cross-section's first axis leans towards — the view
- *                   direction at pen-down. It only chooses where the seam of the tube starts;
- *                   the tube is round, so it never shows.
  * @param spacing    Distance between two generated rings, in the stroke's unit. Fixed at
  *                   pen-down from the screen density, so a stroke looks equally smooth
  *                   whatever the camera distance was.
@@ -43,7 +39,6 @@ internal data class Stroke(
     val id: Int,
     val colorIndex: Int,
     val points: List<StrokePoint>,
-    val frameHint: Direction,
     val spacing: Float,
     val leadIn: StrokePoint? = null,
     val leadOut: StrokePoint? = null,
@@ -83,7 +78,6 @@ internal data class Drawing(
         point: Position,
         radius: Float,
         colorIndex: Int,
-        frameHint: Direction,
         spacing: Float,
     ): Drawing {
         val closed = penUp()
@@ -92,7 +86,6 @@ internal data class Drawing(
                 id = closed.nextId,
                 colorIndex = colorIndex,
                 points = listOf(StrokePoint(point, radius)),
-                frameHint = frameHint,
                 spacing = spacing,
             ),
             nextId = closed.nextId + 1,
@@ -131,7 +124,6 @@ internal data class Drawing(
                 id = nextId,
                 colorIndex = stroke.colorIndex,
                 points = listOf(last, sample),
-                frameHint = stroke.frameHint,
                 spacing = stroke.spacing,
                 leadIn = stroke.points[stroke.points.size - 2],
             ),

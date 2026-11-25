@@ -40,12 +40,13 @@ import kotlin.math.sin
  * is `true` the twist the loop accumulates on the way round is spread evenly over the rings, so
  * the seam is no sharper than any other joint.
  *
- * Vertex layout: with exact [capacity] and [CapStyle.None] or [CapStyle.Flat], `pointCount` (or
- * `pointCount + 1` when [closed]) rings of `radialSegments + 1` vertices — the seam vertex is
- * duplicated so UVs stay continuous — are followed, for an open tube with flat caps, by two end
- * discs, preserving the legacy order. With spare [capacity] or [CapStyle.Round], capacity-sized
- * body rings are followed by the caps, every live triangle is an index-buffer prefix, and unused
- * padding rings collapse onto the last live point so they do not enlarge the bounds.
+ * Vertex layout: with `capacity = 0` (exact) and [CapStyle.None] or [CapStyle.Flat],
+ * `pointCount` (or `pointCount + 1` when [closed]) rings of `radialSegments + 1` vertices — the
+ * seam vertex is duplicated so UVs stay continuous — are followed, for an open tube with flat
+ * caps, by two end discs, preserving the legacy order. With a positive (reserved) [capacity] or
+ * [CapStyle.Round], capacity-sized body rings are followed by the caps, every live triangle is an
+ * index-buffer prefix, and unused padding rings collapse onto the last live point so they do not
+ * enlarge the bounds.
  *
  * Instances are immutable once built; create one with the [Builder] and mutate it afterwards
  * through [update]. All Filament buffer operations run synchronously and must be called on the
@@ -125,8 +126,11 @@ class Tube private constructor(
             private set
 
         /**
-         * Number of path points to allocate in the buffers. Zero allocates exactly [points]; a
-         * larger value lets [Tube.update] grow the tube without replacing its Filament buffers.
+         * Path points to reserve in the buffers. `0`, the default, allocates exactly [points] and
+         * the buffers follow the point count. Any positive value reserves
+         * `max(capacity, points.size)` points: [Tube.update] grows and shrinks the live path
+         * inside the same Filament buffers, and only exceeding them reallocates (to at least
+         * twice the size). Reserved buffers never shrink.
          */
         var capacity: Int = 0
             private set
@@ -157,8 +161,8 @@ class Tube private constructor(
         fun capStyle(capStyle: CapStyle) = apply { this.capStyle = capStyle }
 
         /**
-         * Reserves buffers for this many path points. Zero allocates exactly [points]. Returns
-         * this builder for chaining.
+         * Reserves buffers for this many path points; `0` allocates exactly [points]. See
+         * [capacity] for the rule. Returns this builder for chaining.
          */
         fun capacity(capacity: Int) = apply { this.capacity = capacity }
 
@@ -174,7 +178,7 @@ class Tube private constructor(
          * Must be called on the main thread.
          */
         override fun build(engine: Engine): Tube {
-            validate(points, radius, radii, radialSegments, capacity)
+            validate(points, radii, radialSegments, capacity)
             val allocated = max(points.size, capacity.takeIf { it > 0 } ?: points.size)
             val tubeVertices = getVertices(
                 points, radius, radialSegments, closed, capStyle, radii, allocated
@@ -246,13 +250,13 @@ class Tube private constructor(
     /**
      * Regenerates the tube and re-uploads it to the existing Filament buffers.
      *
-     * Moving points, changing radii, or changing the live point count while it fits [capacity]
-     * reuses the same vertex and index buffers. Exceeding an explicitly reserved capacity grows
-     * it to the larger of the requested size and twice its old size, and the buffers never shrink.
-     * A tube built at exact capacity stays exact: its buffers follow the point count, growing or
-     * shrinking. A [capacity] above the point count switches to reserved capacity; zero, the
-     * default, keeps the current allocation mode. Changing [radialSegments], [closed] or
-     * [capStyle] may rebuild the buffers.
+     * Moving points, changing radii, or changing the live point count while it fits reserved
+     * [capacity] reuses the same vertex and index buffers. Exceeding reserved capacity grows it
+     * to the larger of the requested size and twice its old size; reserved buffers never shrink.
+     * A tube built with `capacity = 0` is exact: its buffers follow the point count, growing or
+     * shrinking. The rule is the [Builder.capacity] one: `0`, the default here, keeps the current
+     * mode, and any positive [capacity] switches an exact tube to reserved capacity of at least
+     * that many points. Changing [radialSegments], [closed] or [capStyle] may rebuild the buffers.
      * Must be called on the main thread. Returns this geometry for chaining.
      */
     fun update(
@@ -265,14 +269,16 @@ class Tube private constructor(
         radii: List<Float>? = this.radii,
         capacity: Int = 0,
     ) = apply {
-        validate(points, radius, radii, radialSegments, capacity)
-        val newCapacityExplicit = isCapacityExplicit(capacityExplicit, points.size, capacity)
+        validate(points, radii, radialSegments, capacity)
+        val newCapacityExplicit = isCapacityExplicit(capacityExplicit, capacity)
         val newCapacity = grownCapacity(
             points.size, this.capacity, capacity, newCapacityExplicit
         )
+        // Reserved indices depend on the capacity, exact ones on the point count (== capacity):
+        // the live point count alone never changes them.
         val topologyChanged = radialSegments != this.radialSegments || closed != this.closed ||
             capStyle != this.capStyle || newCapacity != this.capacity ||
-            (newCapacity > points.size) != (this.capacity > this.points.size)
+            newCapacityExplicit != capacityExplicit
         val newIndices = if (topologyChanged) {
             getIndices(
                 points.size, radialSegments, closed, capStyle,
@@ -303,18 +309,31 @@ class Tube private constructor(
         capacityExplicit = newCapacityExplicit
     }
 
-    /** Deprecated flat-cap overload retained for source and binary compatibility. */
+    /**
+     * Binary bridge for code compiled against the flat-cap API. It keeps the JVM name and the
+     * original defaults (`caps` defaults to the current caps), so an old call that omitted `caps`
+     * still keeps them. Hidden so it does not compete with the `capStyle` overload in source.
+     */
+    @Deprecated("Use capStyle", level = DeprecationLevel.HIDDEN)
+    fun update(
+        engine: Engine, points: List<Position> = this.points, radius: Float = this.radius,
+        radialSegments: Int = this.radialSegments, closed: Boolean = this.closed,
+        caps: Boolean = this.capStyle != CapStyle.None,
+    ) = update(
+        engine, points, radius, radialSegments, closed, legacyCapStyle(caps, capStyle), radii, 0,
+    )
+
+    /** Source-compatible flat-cap overload: `true` keeps the current caps, or adds flat ones. */
     @Deprecated(
         "Use capStyle",
         ReplaceWith("update(engine, points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
     )
-    @Suppress("DEPRECATION")
+    @JvmName("updateWithCaps")
     fun update(
         engine: Engine, points: List<Position> = this.points, radius: Float = this.radius,
         radialSegments: Int = this.radialSegments, closed: Boolean = this.closed, caps: Boolean,
     ) = update(
-        engine, points, radius, radialSegments, closed,
-        if (caps) CapStyle.Flat else CapStyle.None, radii, 0,
+        engine, points, radius, radialSegments, closed, legacyCapStyle(caps, capStyle), radii, 0,
     )
 
     /**
@@ -377,14 +396,15 @@ class Tube private constructor(
             return max(requested, currentCapacity * 2)
         }
 
-        /** Whether [requestedCapacity] reserves spare room beyond the live [pointCount]. */
-        internal fun isExplicitCapacityRequest(pointCount: Int, requestedCapacity: Int) =
-            requestedCapacity > pointCount
+        /**
+         * Whether [requestedCapacity] asks for reserved capacity: any positive value, the same
+         * rule as [Builder.capacity]. `0` asks for nothing.
+         */
+        internal fun isExplicitCapacityRequest(requestedCapacity: Int) = requestedCapacity > 0
 
-        /** Whether the tube remains in, or newly enters, spare-capacity allocation mode. */
-        internal fun isCapacityExplicit(
-            currentExplicit: Boolean, pointCount: Int, requestedCapacity: Int,
-        ) = currentExplicit || isExplicitCapacityRequest(pointCount, requestedCapacity)
+        /** Whether the tube remains in, or newly enters, reserved allocation mode. */
+        internal fun isCapacityExplicit(currentExplicit: Boolean, requestedCapacity: Int) =
+            currentExplicit || isExplicitCapacityRequest(requestedCapacity)
 
         /**
          * Rotation-minimising frames along [points], one per point.
@@ -453,8 +473,8 @@ class Tube private constructor(
 
         /**
          * Sweeps the cross-section along [points], producing ring vertices then, for an open
-         * capped tube, the two ends. Spare [capacity] pads the body with rings collapsed onto the
-         * last live point, and [radii] supplies one non-negative radius per point.
+         * capped tube, the two ends. Reserved [capacity] pads the body with rings collapsed onto
+         * the last live point, and [radii] supplies one non-negative radius per point.
          *
          * @param points Ordered polyline, at least 2 points.
          * @param radius Cross-section radius in scene units, used when [radii] is `null`.
@@ -462,14 +482,15 @@ class Tube private constructor(
          * @param closed Whether the last point joins back to the first.
          * @param capStyle How open ends are closed. Ignored when [closed].
          * @param radii Cross-section radius at each point in scene units, or `null` for [radius].
-         * @param capacity Number of path points to allocate; zero means exactly [points].
+         * @param capacity Number of path points to allocate, at least [points]; `0` means exactly
+         *   [points]. Pair a positive value with the reserved [getIndices] layout.
          */
         fun getVertices(
             points: List<Position>, radius: Float = DEFAULT_RADIUS,
             radialSegments: Int = DEFAULT_RADIAL_SEGMENTS, closed: Boolean = DEFAULT_CLOSED,
             capStyle: CapStyle = DEFAULT_CAP_STYLE, radii: List<Float>? = null, capacity: Int = 0,
         ): List<Vertex> {
-            validate(points, radius, radii, radialSegments, capacity)
+            validate(points, radii, radialSegments, capacity)
             val allocated = max(points.size, capacity.takeIf { it > 0 } ?: points.size)
             val frames = frames(points, closed)
             val values = radii ?: List(points.size) { radius }
@@ -523,28 +544,35 @@ class Tube private constructor(
             return result
         }
 
-        /** Deprecated flat-cap overload retained for source and binary compatibility. */
-        @Deprecated(
-            "Use capStyle",
-            ReplaceWith("getVertices(points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
-        )
+        /** Binary bridge for the flat-cap API, with its original `caps = true` default. */
+        @Deprecated("Use capStyle", level = DeprecationLevel.HIDDEN)
         @Suppress("DEPRECATION")
         fun getVertices(
             points: List<Position>, radius: Float = DEFAULT_RADIUS,
             radialSegments: Int = DEFAULT_RADIAL_SEGMENTS, closed: Boolean = DEFAULT_CLOSED,
-            caps: Boolean,
-        ) = getVertices(
-            points, radius, radialSegments, closed,
-            if (caps) CapStyle.Flat else CapStyle.None, null, 0,
+            caps: Boolean = DEFAULT_CAPS,
+        ) = getVertices(points, radius, radialSegments, closed, legacyCapStyle(caps), null, 0)
+
+        /** Source-compatible flat-cap overload: `true` is flat caps, `false` is none. */
+        @Deprecated(
+            "Use capStyle",
+            ReplaceWith("getVertices(points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
         )
+        @JvmName("getVerticesWithCaps")
+        fun getVertices(
+            points: List<Position>, radius: Float = DEFAULT_RADIUS,
+            radialSegments: Int = DEFAULT_RADIAL_SEGMENTS, closed: Boolean = DEFAULT_CLOSED,
+            caps: Boolean,
+        ) = getVertices(points, radius, radialSegments, closed, legacyCapStyle(caps), null, 0)
 
         /**
          * Triangle indices matching [getVertices] for a path of [pointCount] points.
          *
          * Winding is counter-clockwise as seen from outside, matching the outward shading normal
          * under the default single-sided material (Filament back-face-culls clockwise triangles —
-         * same contract as [Torus], see issue #2469). [capacity] fixes the allocated point count;
-         * with spare capacity or round caps, live triangles occupy a prefix of the index buffer.
+         * same contract as [Torus], see issue #2469). A positive [capacity] is the reserved layout
+         * for `max(capacity, pointCount)` points; with it or with round caps, live triangles
+         * occupy a prefix of the index buffer. `0` is the exact layout for [pointCount].
          */
         fun getIndices(
             pointCount: Int, radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
@@ -567,19 +595,34 @@ class Tube private constructor(
             return listOf(triangles)
         }
 
-        /** Deprecated flat-cap overload retained for source and binary compatibility. */
+        /** Binary bridge for the flat-cap API, with its original `caps = true` default. */
+        @Deprecated("Use capStyle", level = DeprecationLevel.HIDDEN)
+        @Suppress("DEPRECATION")
+        fun getIndices(
+            pointCount: Int, radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
+            closed: Boolean = DEFAULT_CLOSED, caps: Boolean = DEFAULT_CAPS,
+        ) = getIndices(pointCount, radialSegments, closed, legacyCapStyle(caps), 0)
+
+        /** Source-compatible flat-cap overload: `true` is flat caps, `false` is none. */
         @Deprecated(
             "Use capStyle",
             ReplaceWith("getIndices(pointCount, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
         )
-        @Suppress("DEPRECATION")
+        @JvmName("getIndicesWithCaps")
         fun getIndices(
             pointCount: Int, radialSegments: Int = DEFAULT_RADIAL_SEGMENTS,
             closed: Boolean = DEFAULT_CLOSED, caps: Boolean,
-        ) = getIndices(
-            pointCount, radialSegments, closed,
-            if (caps) CapStyle.Flat else CapStyle.None, 0,
-        )
+        ) = getIndices(pointCount, radialSegments, closed, legacyCapStyle(caps), 0)
+
+        /**
+         * Maps the flat-cap `caps` flag onto a [CapStyle]. With a [current] style, a flag that
+         * already describes it keeps it, so `caps = true` does not turn round caps flat.
+         */
+        internal fun legacyCapStyle(caps: Boolean, current: CapStyle? = null): CapStyle = when {
+            current != null && caps == (current != CapStyle.None) -> current
+            caps -> CapStyle.Flat
+            else -> CapStyle.None
+        }
 
         internal fun liveIndexCount(
             pointCount: Int, radialSegments: Int, closed: Boolean, capStyle: CapStyle,
@@ -594,11 +637,11 @@ class Tube private constructor(
         }
 
         private fun validate(
-            points: List<Position>, radius: Float, radii: List<Float>?,
-            radialSegments: Int, capacity: Int,
+            points: List<Position>, radii: List<Float>?, radialSegments: Int, capacity: Int,
         ) {
+            // [radius] is not checked: a negative or NaN radius rendered before [radii] existed and
+            // must keep doing so. Only the inputs this API added are validated.
             require(points.size >= 2) { "Tube requires at least 2 points" }
-            require(radius >= 0f) { "Tube radius must be non-negative" }
             require(radialSegments >= 3) { "Tube requires at least 3 radial segments" }
             require(capacity >= 0) { "Tube capacity must be non-negative" }
             radii?.let {

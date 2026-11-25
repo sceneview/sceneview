@@ -208,7 +208,6 @@ fun FingerDrawingDemo(onBack: () -> Unit, brush: FingerBrush = rememberFingerBru
                         point = point,
                         radius = FingerDrawing.radiusFor(brush.thicknessDp, pen.unitsPerDp, 0f),
                         colorIndex = brush.colorIndex,
-                        frameHint = forward,
                         spacing = FingerDrawing.RING_SPACING_DP * pen.unitsPerDp,
                     )
                 }

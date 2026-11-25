@@ -188,10 +188,6 @@ private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
             point = FingerDrawingPlacement.worldToAnchor(point, pose.position(), pose.rotation()),
             radius = FingerDrawing.radiusFor(brush.thicknessDp, pen.unitsPerDp, 0f),
             colorIndex = brush.colorIndex,
-            frameHint = FingerDrawingPlacement.worldDirectionToAnchor(
-                direction = cameraNode.forwardDirection,
-                anchorRotation = pose.rotation(),
-            ),
             spacing = FingerDrawing.RING_SPACING_DP * pen.unitsPerDp,
         )
         next.active?.let { anchorOf = anchorOf + (it.id to anchor) }
