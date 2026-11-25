@@ -125,6 +125,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.demos.internal.AskAnchorWatch
 import io.github.sceneview.demo.demos.internal.AskArLiveConfig
 import io.github.sceneview.demo.demos.internal.AskContext
 import io.github.sceneview.demo.demos.internal.AskFrameCapture
@@ -264,6 +265,19 @@ private class AskState {
      */
     var held by mutableStateOf<Triple<Position, Float, Float>?>(null)
 
+    /** How far in front of the phone [held] hangs. */
+    var holdDistance = HOLD_MIN_METRES
+
+    /** Hold, release or re-anchor the answer as tracking comes and goes: see [AskAnchorWatch]. */
+    val watch = AskAnchorWatch()
+
+    /** Where the answer's anchor last was while tracked: a re-anchor goes back there. */
+    var lastTrackedPose: Pose? = null
+
+    /** Tries left to move a re-anchored answer onto the wall where it shows: see [REFINE_TRIES]. */
+    var refineTries = 0
+    var refineWait = 0
+
     /** Distance to whatever the centre of the screen points at, read every few frames. */
     var distanceAhead: Float? = null
     var frameCount = 0
@@ -293,6 +307,10 @@ private class AskState {
         placePose = null
         fitOnPlace = false
         held = null
+        watch.reset()
+        lastTrackedPose = null
+        refineTries = 0
+        refineWait = 0
         anchorState = null
     }
 
@@ -807,27 +825,94 @@ private fun AskInArScene(
                     val tracking = frame.camera.trackingState == TrackingState.TRACKING
                     isTracking = tracking
                     // Tracking lost (a bare wall, a fast turn) while handwriting is up: hold it in
-                    // front of the phone, where the frozen camera keeps it on screen; tracking
-                    // back, its anchor takes it again. A drawing in the room is not held.
+                    // front of the phone, where the frozen camera keeps it on screen. Tracking
+                    // back, its anchor takes it again; if ARCore leaves that anchor paused (it
+                    // resumed on a fresh map), a new one goes where the old one last was, and the
+                    // answer stays held until it is tracked. A drawing in the room is not held.
                     val anchored = state.anchor
-                    if (!tracking && state.held == null && anchored != null && state.handwriting != null && state.plan == null) {
-                        val c = frame.camera.pose
-                        val z = c.zAxis
-                        val a = anchored.pose
-                        val dx = a.tx() - c.tx()
-                        val dy = a.ty() - c.ty()
-                        val dz = a.tz() - c.tz()
-                        val d = sqrt(dx * dx + dy * dy + dz * dz).coerceIn(HOLD_MIN_METRES, HOLD_MAX_METRES)
-                        val (wide, tall) = AskPlacement.visibleSize(frame, d)
-                        state.held = Triple(
-                            Position(c.tx() - z[0] * d, c.ty() - z[1] * d, c.tz() - z[2] * d),
-                            Math.toDegrees(atan2(z[0], z[2]).toDouble()).toFloat(),
-                            state.handwriting?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: state.blockScale,
-                        )
-                        Log.i(LOG_TAG, "hold: tracking lost, answer held ${AskRoomReader.fmt(d)} m ahead")
-                    } else if (tracking && state.held != null) {
-                        state.held = null
-                        Log.i(LOG_TAG, "hold: tracking back, answer on its anchor")
+                    if (anchored != null && state.handwriting != null && state.plan == null) {
+                        val anchorTracking = anchored.trackingState == TrackingState.TRACKING
+                        if (anchorTracking) state.lastTrackedPose = anchored.pose
+                        when (state.watch.step(tracking, anchorTracking)) {
+                            AskAnchorWatch.Action.Hold -> {
+                                val c = frame.camera.pose
+                                val z = c.zAxis
+                                val a = state.lastTrackedPose ?: anchored.pose
+                                val dx = a.tx() - c.tx()
+                                val dy = a.ty() - c.ty()
+                                val dz = a.tz() - c.tz()
+                                val d = sqrt(dx * dx + dy * dy + dz * dz).coerceIn(HOLD_MIN_METRES, HOLD_MAX_METRES)
+                                val (wide, tall) = AskPlacement.visibleSize(frame, d)
+                                state.holdDistance = d
+                                state.held = Triple(
+                                    Position(c.tx() - z[0] * d, c.ty() - z[1] * d, c.tz() - z[2] * d),
+                                    Math.toDegrees(atan2(z[0], z[2]).toDouble()).toFloat(),
+                                    state.handwriting?.let { HandwritingLayout.fitScale(it, wide, tall) } ?: state.blockScale,
+                                )
+                                Log.i(LOG_TAG, "hold: tracking lost, answer held ${AskRoomReader.fmt(d)} m ahead")
+                            }
+                            AskAnchorWatch.Action.Release -> {
+                                state.held = null
+                                Log.i(LOG_TAG, "hold: anchor tracked, answer back on it at ${AskRoomReader.fmt(anchored.pose)}")
+                            }
+                            AskAnchorWatch.Action.Reanchor -> {
+                                // ARCore resumed on a fresh map that drifted from the old one.
+                                // The wall where the answer was, along the ray to it, if the
+                                // depth already answers; else its last pose right away (never
+                                // nothing), corrected onto the wall below once the depth answers.
+                                val last = state.lastTrackedPose ?: anchored.pose
+                                val wall = AskRoomReader.wallToward(frame, currentViewSize, last)
+                                val at = wall ?: last
+                                val fresh = runCatching { session.createAnchor(at) }.getOrNull()
+                                if (fresh != null) {
+                                    // The old anchor leaves the scene with its node, which detaches it.
+                                    Log.i(
+                                        LOG_TAG,
+                                        "hold: anchor still ${anchored.trackingState}, re-anchored on " +
+                                            "${if (wall != null) "a fresh wall hit" else "its last pose"} at " +
+                                            "${AskRoomReader.fmt(at)} (was ${AskRoomReader.fmt(last)})",
+                                    )
+                                    state.refineTries = if (wall == null) REFINE_TRIES else 0
+                                    state.refineWait = 0
+                                    state.anchorState = null
+                                    state.anchor = fresh
+                                }
+                            }
+                            AskAnchorWatch.Action.None -> Unit
+                        }
+                        // Tracking back but the answer still held: it stays in the middle of the
+                        // screen, at the same distance, until its anchor takes it.
+                        val held = state.held
+                        if (tracking && held != null && state.watch.holding) {
+                            val c = frame.camera.pose
+                            val z = c.zAxis
+                            val d = state.holdDistance
+                            state.held = Triple(
+                                Position(c.tx() - z[0] * d, c.ty() - z[1] * d, c.tz() - z[2] * d),
+                                Math.toDegrees(atan2(z[0], z[2]).toDouble()).toFloat(),
+                                held.third,
+                            )
+                        }
+                    }
+                    // A re-anchor that had to take the old pose: put it on the wall where it shows,
+                    // as soon as the depth finds that wall.
+                    val reanchored = state.anchor
+                    if (tracking && state.refineTries > 0 && reanchored != null &&
+                        reanchored.trackingState == TrackingState.TRACKING && ++state.refineWait >= REFINE_EVERY_FRAMES
+                    ) {
+                        state.refineWait = 0
+                        state.refineTries--
+                        val wall = AskRoomReader.wallToward(frame, currentViewSize, reanchored.pose)
+                        val fresh = wall?.let { runCatching { session.createAnchor(it) }.getOrNull() }
+                        if (wall != null && fresh != null) {
+                            Log.i(LOG_TAG, "hold: re-anchor put on a wall hit at ${AskRoomReader.fmt(wall)} (was ${AskRoomReader.fmt(reanchored.pose)})")
+                            state.refineTries = 0
+                            state.lastTrackedPose = fresh.pose
+                            state.anchorState = null
+                            state.anchor = fresh
+                        } else if (state.refineTries == 0) {
+                            Log.i(LOG_TAG, "hold: no wall hit, the answer stays on its last pose")
+                        }
                     }
                     // An anchored answer hides while its anchor is not tracked: say when that
                     // changes, and where the anchor has got to.
@@ -1545,6 +1630,46 @@ private object AskRoomReader {
         return Float3(fx / norm, 0f, fz / norm)
     }
 
+    /**
+     * Where the wall is now along the camera's ray to [last], an answer's pose from before a
+     * tracking loss: [last] projected to the screen, hit-tested there, kept if it lands on a
+     * wall plane or a depth point. Facing the camera, lifted off the wall as a live answer is.
+     * `null` when [last] is off screen or nothing standing is there.
+     */
+    fun wallToward(frame: Frame, viewSize: IntSize, last: Pose): Pose? {
+        if (viewSize.width == 0 || viewSize.height == 0) return null
+        val view = FloatArray(16)
+        val projection = FloatArray(16)
+        frame.camera.getViewMatrix(view, 0)
+        frame.camera.getProjectionMatrix(projection, 0, 0.05f, 100f)
+        val viewProjection = FloatArray(16)
+        android.opengl.Matrix.multiplyMM(viewProjection, 0, projection, 0, view, 0)
+        val clip = FloatArray(4)
+        android.opengl.Matrix.multiplyMV(clip, 0, viewProjection, 0, floatArrayOf(last.tx(), last.ty(), last.tz(), 1f), 0)
+        if (clip[3] <= 0f) return null
+        val x = (clip[0] / clip[3] + 1f) / 2f * viewSize.width
+        val y = (1f - clip[1] / clip[3]) / 2f * viewSize.height
+        if (x !in 0f..viewSize.width.toFloat() || y !in 0f..viewSize.height.toFloat()) return null
+        val hits = runCatching { frame.hitTest(x, y) }.getOrNull().orEmpty()
+        val hit = hits.firstOrNull { hit ->
+            val kind = wallKind(hit)
+            (kind == WallHitKind.VerticalPlane || kind == WallHitKind.Depth) && hit.distance >= REANCHOR_MIN_METRES
+        }
+        if (hit == null) {
+            val seen = hits.joinToString { "${wallKind(it) ?: it.trackable.javaClass.simpleName} ${fmt(it.distance)}" }
+            Log.i(LOG_TAG, "rehit: (${x.toInt()}, ${y.toInt()}) no wall among [$seen]")
+            return null
+        }
+        val c = frame.camera.pose.translation
+        val t = hit.hitPose.translation
+        val point = Float3(t[0], t[1], t[2])
+        val normal = HangPicture.wallNormal(
+            hit.hitPose.yAxis.let { Float3(it[0], it[1], it[2]) }, point, Float3(c[0], c[1], c[2]),
+        )
+        val at = point + normal * LIVE_WALL_LIFT
+        return Pose(floatArrayOf(at.x, at.y, at.z), yawQuaternion(atan2(normal.x, normal.z)))
+    }
+
     private fun centreHits(frame: Frame, viewSize: IntSize, aim: Pair<Float, Float>?): List<HitResult> {
         if (viewSize.width == 0 || viewSize.height == 0) return emptyList()
         val (fx, fy) = aim ?: (0.5f to 0.5f)
@@ -1763,6 +1888,13 @@ private const val STAGE_ASPECT = 0.45f
 
 /** A live answer hangs this far off the wall it was asked at, so the ink never sinks into it. */
 private const val LIVE_WALL_LIFT = 0.03f
+
+/** Tries, [REFINE_EVERY_FRAMES] apart, to find the wall under an answer re-anchored on its last pose. */
+private const val REFINE_TRIES = 60
+private const val REFINE_EVERY_FRAMES = 10
+
+/** A re-anchor hit nearer than this is the phone's own edge of the scene, not the wall. */
+private const val REANCHOR_MIN_METRES = 0.3f
 
 /** Nearest and farthest a held answer hangs in front of the phone: see [AskState.held]. */
 private const val HOLD_MIN_METRES = 0.6f
