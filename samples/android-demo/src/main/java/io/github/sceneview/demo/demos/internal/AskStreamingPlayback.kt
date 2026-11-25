@@ -15,13 +15,15 @@ internal suspend fun playAskStream(
     context: AskContext,
     onFrame: (Handwriting, Float) -> Unit,
     nextFrameNanos: suspend () -> Long = { withFrameNanos { it } },
+    liveContext: AskLiveContext? = null,
 ): String? = coroutineScope {
     val ink = AskStreamingInk()
     var elapsed = 0f
     var handwriting = ink.snapshot()
     val started = nextFrameNanos()
     val receiver = launch {
-        provider.stream(question, context).collect { chunk ->
+        val stream = liveContext?.let { provider.stream(question, it) } ?: provider.stream(question, context)
+        stream.collect { chunk ->
             handwriting = ink.accept(chunk, elapsed)
             onFrame(handwriting, elapsed)
         }

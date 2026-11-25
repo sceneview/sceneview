@@ -8,7 +8,7 @@
 4. `ProxyStreamingAnswerProvider` posts question/context with the public client tag.
 5. OkHttp reads SSE on `Dispatchers.IO`; cancellation aborts headers and body reads.
 6. The Worker owns the Anthropic secret, calls Haiku 5.5 and forwards text deltas.
-7. Fallback starts after 2.5 s without text, or a failure in the first 2.5 s.
+7. Fallback starts after 2.5 s without text after upload, or an early failure.
 8. `IncrementalHandwriting` releases complete words and calls the existing layout.
 9. Ink positions, stroke IDs, timing, framing bounds and scale stay stable as words arrive.
 10. `playAskStream` collects and animates concurrently; `Done` flushes text and adds doodles.
@@ -28,8 +28,10 @@ New Android source files under `demos/internal/`:
 - `IncrementalHandwriting.kt`: append-only layout and `AskStreamingInk` replacement state.
 - `AskStreamingPlayback.kt`: frame clock and concurrent collection.
 - `AskArLiveConfig.kt`: optional resource URL, debug intent override and provider selection.
+- `AskFrameCapture.kt`: synchronous YUV plane copy, then background JPEG encoding.
+- `AskLiveContext.kt`: question-time facts, pure plane classification and ARCore adapter.
 
-Also added: `ask-ar-live.init.gradle`, `res/values/ask_ar_live.xml`, four `Ask*Test.kt`
+Also added: `ask-ar-live.init.gradle`, `res/values/ask_ar_live.xml`, seven streaming/context/capture `Ask*Test.kt`
 files, `tools/ask-ar-proxy/` and a changelog fragment. No SDK public API changes.
 
 ## Wiring diff for the screen owner
@@ -89,7 +91,7 @@ extent of the currently visible ink, or recompute blockScale per delta.
 Remove imports/constants made unused by the replacement (`withFrameNanos`,
 `THINK_MILLIS`, `NANOS_PER_SECOND`) if the parallel branch does not use them elsewhere.
 Keep `HandwritingLayout` for placement `fitScale()` and the rendering KDoc.
-Keep the existing `flowJob` cancellation and `state.clearAnswer()` on new questions,
+Keep the existing `flow` job cancellation and `state.clearAnswer()` on new questions,
 clear, microphone actions and disposal; cancellation propagates through playback,
 the fallback producer and the network socket.
 
@@ -98,6 +100,7 @@ the prior ink and starts the script at the current frame time. This can visibly
 replace an early partial reply; it never writes a script onto that reply. A failure
 after 2.5 s with text already received is terminal: retain completed ink, leave any
 partial word hidden and show the notice. A failed attempt never produces a doodle.
+The startup window begins only after OkHttp writes and flushes the request body.
 No startup timeout is imposed on the rest of a healthy stream; socket idle timeout
 is 5 s, connect timeout 2 s and total network-call timeout 20 s.
 
@@ -110,6 +113,171 @@ word/answer can overflow that envelope; the Worker prompt asks for at most 14 wo
 Existing strokes and timings are reused, including when the model pauses. Per-word
 timing uses the existing nominal handwriting speed rather than imposing the old
 whole-answer minimum duration on every word.
+
+## Pass 2 wiring: one real snapshot per live question
+
+Apply these additions together with the pass 1 diff above. These are exact insertion
+points in the original `AskInArDemo.kt`, not edits made on this branch. Keep the
+existing `AskPlacement.pose` and `visibleSize` calls for ink placement only: their
+synthetic fallback distance is never a measurement. `askLiveContextFromFrame` uses
+the same screen-centre `hitTest` as `distanceAhead`, but returns the actual hit and
+its plane from the question frame. It uses all tracked, unsubsumed planes to find
+the lowest upward plane; extents are detected bounds, not complete room dimensions.
+
+Add these imports (all helpers are in `demos.internal`, distinct from the existing
+`demo.ai.AskFrameCapture` used by Point and Ask):
+
+```kotlin
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.view.Surface
+import androidx.compose.ui.platform.LocalView
+import io.github.sceneview.demo.demos.internal.AskFrameCapture
+import io.github.sceneview.demo.demos.internal.AskLiveContext
+import io.github.sceneview.demo.demos.internal.AskYuvFrame
+import io.github.sceneview.demo.demos.internal.askCameraRotationDegrees
+import io.github.sceneview.demo.demos.internal.askLiveContextFromFrame
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+```
+
+Pass the live-mode flag when choosing the provider, including in any stage caller:
+
+```diff
+-    AskInArScene(onBack, provider)
++    AskInArScene(onBack, provider, liveEnabled = proxyUrl.isNotBlank())
+
+-private fun AskInArScene(onBack: () -> Unit, provider: StreamingAnswerProvider) {
++private fun AskInArScene(
++    onBack: () -> Unit,
++    provider: StreamingAnswerProvider,
++    liveEnabled: Boolean,
++) {
+```
+
+Immediately after `val scope = rememberCoroutineScope()` in `AskInArScene`, add:
+
+```kotlin
+val displayView = LocalView.current
+val cameraManager = remember(context) { context.getSystemService(CameraManager::class.java) }
+var captureRequest by remember {
+    mutableStateOf<CompletableDeferred<Triple<AskLiveContext, AskYuvFrame?, Int>>?>(null)
+}
+```
+
+In `answer()`, replace the pass 1 `val context = AskContext(...)` line with this
+block, immediately after `state.level = 0f` and before placement/writing. There is
+no extra frame capture in `simulate()`, listening callbacks or every-frame polling.
+The existing outer `flow` cancellation cancels this wait on clear/new question:
+
+```kotlin
+val snapshot = if (liveEnabled && !stage) {
+    val request = CompletableDeferred<Triple<AskLiveContext, AskYuvFrame?, Int>>()
+    captureRequest = request
+    try {
+        withTimeoutOrNull(750L) { request.await() }
+    } finally {
+        if (captureRequest === request) captureRequest = null
+        request.cancel()
+    }
+} else null
+// No tracked frame within the wait: send time/locale only, never a stale distance.
+val facts = snapshot?.first ?: AskLiveContext()
+val image = snapshot?.second?.let { copied ->
+    try {
+        AskFrameCapture.jpeg(copied, snapshot.third)
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null // An unavailable frame must not prevent a text/measurement answer.
+    }
+}
+val liveContext = facts.copy(image = image)
+val answerContext = AskContext(
+    distanceAheadMeters = if (liveEnabled) liveContext.distanceAheadMeters else state.distanceAhead,
+)
+```
+
+Inside `onSessionUpdated`, immediately after `if (tracking) {` and **before** the
+existing `if (state.frameCount++ % DISTANCE_EVERY_FRAMES == 0)` block, insert:
+
+```kotlin
+captureRequest?.let { request ->
+    captureRequest = null // Consume once, even if no camera image is available.
+    if (request.isActive) {
+        val facts = askLiveContextFromFrame(
+            frame,
+            session.getAllTrackables(Plane::class.java),
+            currentViewSize.width,
+            currentViewSize.height,
+        )
+        val displayDegrees = when (displayView.display?.rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+        val sensorDegrees = cameraManager.getCameraCharacteristics(session.cameraConfig.cameraId)
+            .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        val rotation = askCameraRotationDegrees(sensorDegrees, displayDegrees)
+        // Acquire, copy all strided planes and close the Image right HERE.
+        // Never launch a coroutine holding frame or Image, or retain either one.
+        val copied = try { AskFrameCapture.copy(frame) } catch (_: Exception) { null }
+        request.complete(Triple(facts, copied, rotation))
+    }
+}
+```
+
+`Plane` is already imported by the screen. `sensorDegrees` is for the rear ARCore
+camera; `rotation` is clockwise degrees from sensor image to display orientation,
+not a `Surface.ROTATION_*` enum. `AskFrameCapture.jpeg` dispatches conversion,
+rotation, downscaling (long side ≤768) and quality-70 JPEG to `Dispatchers.Default`.
+No ARCore image survives the callback. `NotYetAvailableException` yields no image;
+measurement/time facts can still be sent. Stage mode sends no synthetic room facts
+or stage backdrop image. Empty proxy URL never requests/copies a frame or uploads.
+
+Finally replace the pass 1 playback call with:
+
+```kotlin
+val failure = playAskStream(
+    provider = provider,
+    question = question,
+    context = answerContext, // Script fallback receives the same measured distance.
+    liveContext = liveContext.takeIf { liveEnabled }, // Optional JPEG, never Frame or Image.
+    onFrame = { ink, elapsed ->
+        state.handwriting = ink
+        state.elapsed = elapsed
+    },
+)
+if (failure != null) state.notice = R.string.demo_ask_ar_live_unavailable
+```
+
+`StreamingAnswerProvider` retains the `AskContext` overload for pass 1/script
+callers. Live overloads preserve the full snapshot through the fallback wrapper;
+the script adapter consumes only distance. The proxy signals upload completion
+from `RequestBody.writeTo`, after flushing the body; only then does the 2.5 s
+first-text window begin. The 20 s network deadline still bounds stalled uploads.
+The numeric-facts rule is in the model prompt; raw streaming does not guarantee
+model compliance. The existing scripted fallback retains its offline examples.
+
+## What is real
+
+| Fact | Source | When absent / limits |
+|---|---|---|
+| Distance ahead | ARCore first centre-ray hit in the question callback | No tracking, zero viewport or no hit; never `AskPlacement`'s fallback |
+| Surface kind | Hit plane type; lowest tracked upward plane → floor, higher → table | Non-plane hit, subsumed/untracked plane or hit outside polygon; classification is an estimate |
+| Width / height | Hit plane `extentX` / `extentZ` in metres | No valid plane or nonpositive extent; detected bounds only, horizontal “height” is plane depth |
+| Camera height | Camera world Y minus lowest tracked upward plane Y | No floor, invalid pose, or camera below estimated floor |
+| Local time | `ZonedDateTime.now()`, ISO offset datetime | Sent by the phone; depends on its clock/time zone |
+| Locale | `Locale.getDefault().toLanguageTag()` | Sent by the phone; question language controls the answer |
+| Camera frame | ARCore YUV image copied once for this live question | No tracked frame, `NotYetAvailableException` or conversion failure; JPEG ≤768 px, quality 70 |
+| City / country | Cloudflare `request.cf` approximate IP location | Cloudflare has no value; VPN/mobile gateways can differ from phone location |
+| Weather | Open-Meteo current conditions at IP coordinates rounded to 0.1°, cached 10 min | Unrelated question, missing coordinates, malformed result, error or 800 ms timeout; outdoor current conditions, not forecast |
+
+The phone sends question, available facts and one optional frame only in live mode.
+The Worker sends these to Anthropic. Open-Meteo receives rounded IP coordinates
+only on relevant questions. Neither question, image nor coordinates are logged by
+the Worker; normalized weather alone is cached. No GPS fix is collected.
 
 ## What Thomas runs
 
@@ -155,33 +323,42 @@ even if the APK has a URL resource. Release builds ignore intent overrides.
 
 ## Verification
 
-Observed on 2026-11-25 in this worktree:
+Observed on 2026-11-25:
 
-- With `ANDROID_HOME` pointing at the installed SDK and a writable, isolated
-  `GRADLE_USER_HOME`, the test command with the
-  init file reported `BUILD SUCCESSFUL in 24s`: **98 tests, 0 failures, 0 errors,
-  0 skipped**, including all 19 new tests. No new-source Kotlin warnings appeared.
-- `npm test`: `Test Files 1 passed (1)` and `Tests 12 passed (12)`.
-- `npm run typecheck`: exit 0.
-- `generateDebugResValues` with an example `-PaskArProxyUrl` reported
-  `BUILD SUCCESSFUL in 11s`; the generated resource contained that exact origin.
-- All 22 added files passed a trailing-whitespace check; existing tracked files
-  remained unchanged. Full Android lint was not run with only about 1 GB free.
-- Git staging was denied at the worktree's external `index.lock`; files remain
-  uncommitted. Live-model, deployment, APK installation and visual AR checks remain
-  unperformed until the screen owner applies the wiring and Thomas supplies the URL.
+- Requested Android task: `BUILD SUCCESSFUL in 2m 5s`, then `BUILD SUCCESSFUL in 15s`
+  after the final JPEG-size guard; **110 tests, 0 failures,
+  0 errors, 0 skipped**, including **12 new tests** in `AskLiveContextTest`,
+  `AskLiveFrameCaptureTest` and `AskLiveUploadTest`. Existing project deprecation
+  warnings appeared; no warnings named the new helper sources.
+- `./gradlew --stop`: `1 Daemon stopped`.
+- Worker: `Test Files 2 passed (2)` / `Tests 35 passed (35)`, with SDK and weather
+  mocked; `npm run typecheck` exited 0.
+- The first `npm i` could not write the default npm cache; retrying with
+  `--cache /tmp/ask-ar-npm-cache` succeeded (`found 0 vulnerabilities`).
+- Scope and whitespace checks pass. No existing screen files were modified.
+- `node_modules` was removed after testing. Staging/commit is blocked by the
+  sandbox: Git cannot create the external worktree `index.lock` (`Operation not
+  permitted`). All pass 2 files remain uncommitted on `feat/ask-in-ar-live`.
+
+ Tests use mocked model/weather
+services and local HTTP streams, never a real key. No Worker deployment, actual
+model call, screen integration, APK installation or visual AR check is part of
+this additive branch; the screen owner still needs to apply both wiring sections.
 
 ```sh
+# Check at least 8 GiB free first:
+df -h /
+GRADLE_USER_HOME="$HOME/.gradle-codex" \
+ANDROID_HOME="$HOME/Library/Android/sdk" \
 ./gradlew :samples:android-demo:testDebugUnitTest --tests '*Ask*'
-# Also verify the opt-in Gradle configuration:
-./gradlew -I samples/android-demo/ask-ar-live.init.gradle \
-  :samples:android-demo:testDebugUnitTest --tests '*Ask*'
+GRADLE_USER_HOME="$HOME/.gradle-codex" ./gradlew --stop
 cd tools/ask-ar-proxy
+npm i --cache /tmp/ask-ar-npm-cache
 npm test
 npm run typecheck
+rm -rf node_modules
 ```
 
-The tests use local streams and a mock SDK/server, never the real key. After wiring,
-check scripted mode with an empty URL, live word arrival, stable ink while a later
-line wraps, a slow/disconnected proxy, cancellation on clear/new question, and final
-doodles on the actual device. A green unit suite is not visual AR validation.
+After wiring, inspect scripted mode, live word arrival, stable ink, cancellation,
+a slow image upload, missing image/floor, a weather timeout and final doodles on the
+actual device. A green unit suite is not visual AR validation.

@@ -18,8 +18,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.coroutines.executeAsync
+import okio.BufferedSink
 import java.util.concurrent.TimeUnit
 
 internal class ProxyStreamingAnswerProvider(
@@ -38,21 +40,39 @@ internal class ProxyStreamingAnswerProvider(
         require(clientTag.isNotBlank())
     }
 
-    override fun stream(question: String, context: AskContext): Flow<AnswerChunk> = channelFlow {
+    override fun stream(question: String, context: AskContext): Flow<AnswerChunk> =
+        stream(question, AskLiveContext(distanceAheadMeters = context.distanceAheadMeters))
+
+    override fun stream(question: String, context: AskLiveContext): Flow<AnswerChunk> =
+        streamAfterUpload(question, context) { }
+
+    override fun streamAfterUpload(
+        question: String,
+        context: AskLiveContext,
+        onBodyWritten: () -> Unit,
+    ): Flow<AnswerChunk> = channelFlow {
         if (question.isBlank() || question.length > 200) {
             send(AnswerChunk.Failed("Question must contain 1-200 characters"))
             return@channelFlow
         }
         val json = buildJsonObject {
             put("question", question)
-            context.distanceAheadMeters?.takeIf { it.isFinite() && it > 0f }?.let { distance ->
-                put("context", buildJsonObject { put("distanceAheadMeters", distance) })
+            put("context", context.toJson())
+        }
+        val delegate = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val body = object : RequestBody() {
+            override fun contentType() = delegate.contentType()
+            override fun contentLength() = delegate.contentLength()
+            override fun writeTo(sink: BufferedSink) {
+                delegate.writeTo(sink)
+                sink.flush()
+                onBodyWritten()
             }
         }
         val request = Request.Builder().url(endpoint)
             .header("X-Ask-Client", clientTag)
             .header("Accept", "text/event-stream")
-            .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .post(body)
             .build()
         val call = client.newCall(request)
         // executeAsync handles cancellation until headers arrive; this watcher covers body reads.

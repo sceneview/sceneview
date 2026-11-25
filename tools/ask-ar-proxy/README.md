@@ -59,8 +59,12 @@ Cancellation aborts the SDK stream; retries are disabled to keep startup latency
 
 The prompt asks for ASCII, at most 14 words, 1–2 short sentences, a warm playful
 tone and no formatting beyond optional `*emphasis*`. This is prompt guidance,
-not a post-generation rewrite: raw deltas arrive immediately. Measurement context
-is supplied separately in the user JSON and used only for distance/size questions.
+not a post-generation rewrite: raw deltas arrive immediately. Facts are in a delimited `<room_facts>` JSON block, explicitly data rather than
+instructions. Numbers must come from those facts, with unit conversion/rounding
+only (cm below 1 m, otherwise m to one decimal). Missing measurements prompt a
+request for the needed information. An image can support visible descriptions;
+people must never be identified. The answer follows the question's language,
+regardless of locale. These are model instructions, not a numeric output validator.
 
 Doodles are deterministic, chosen from the final text: any number wins `circle`;
 otherwise a recommendation keyword (`try`, `take`, `choose`, `use`, `recommend`,
@@ -68,6 +72,46 @@ otherwise a recommendation keyword (`try`, `take`, `choose`, `use`, `recommend`,
 the first asterisk-delimited phrase, else the first number with optional units,
 else the full reply. Asterisks stay in streamed text and are hidden by Android.
 No trailing tag needs buffering. The protocol also accepts `none` on Android.
+
+## Real context and privacy
+
+`context` is optional. Accepted fields (omitted facts remain unknown):
+
+```json
+{
+  "distanceAheadMeters": 2.4,
+  "surface": {"kind": "wall", "widthMeters": 2.1, "heightMeters": 1.3},
+  "cameraHeightMeters": 1.6,
+  "localTime": "2026-11-25T14:30:00+01:00",
+  "locale": "fr-FR",
+  "image": {"mediaType": "image/jpeg", "data": "<base64 JPEG>"}
+}
+```
+
+Surface kinds are `wall`, `floor`, `table`, `ceiling`, `other`. Extents describe
+only the detected plane, not the full wall or room. Android scales the frame to
+at most 768 px on the long side and encodes JPEG at quality 70. The Worker checks
+media type and base64 length/syntax; it does not decode images to verify dimensions.
+
+Only when live mode is on, each question sends its text, available AR measurements,
+phone local time/offset and locale, and **one camera frame per question** if ARCore
+makes it available. There is no continuous video upload. Scripted mode sends
+nothing. The Worker sends the frame and facts to Anthropic to answer that question.
+No device GPS permission or GPS fix is used. Cloudflare supplies approximate IP
+location, city and country. Coordinates are never added to the model facts.
+
+Weather-related/outdoor keywords in English or French trigger an Open-Meteo current
+conditions lookup. Both coordinates are rounded to one decimal before the request
+and Cache API key; the normalized result is cached for 10 minutes. Open-Meteo sees
+only those rounded coordinates, never the question or image. The entire lookup has
+an 800 ms deadline; missing location, errors or timeouts silently omit weather.
+Unrelated questions do not read the weather cache or contact Open-Meteo. Conditions
+are approximate, outdoors and current; they cannot establish indoor temperature
+or predict later rain. Code descriptions follow [Open-Meteo's WMO table](https://open-meteo.com/en/docs).
+
+The Worker never logs questions, frames, coordinates or upstream error bodies.
+Only normalized weather facts enter the Cache API; images and questions are not
+cached by this code. Provider data handling still applies to requests it receives.
 
 ## Abuse limits and cost
 
@@ -80,12 +124,18 @@ No trailing tag needs buffering. The protocol also accepts `none` on Android.
   choose another integer before deployment if it is already assigned.
 - Missing IP or unavailable limiter fails closed. Questions are nonempty and at
   most 200 UTF-16 code units (matching Android); actual JSON bodies are capped at
-  4096 bytes, even without `Content-Length`.
+  512 KB (524,288 bytes), even without `Content-Length`. Optional JPEG base64 is
+  capped separately at 400 KB (409,600 ASCII characters).
 - CORS is off: no access-control headers, no OPTIONS handler, and requests carrying
   `Origin` are rejected. Non-browser clients can still imitate the public tag.
 - Haiku 5.5 costs $0.10/M input and $0.50/M output tokens for these short prompts.
-  For example, 300 input + 50 output tokens cost about $0.000055 (0.0055 cents):
-  fractions of a cent per answer, excluding Cloudflare fees. No image is sent.
+  Without an image, 300 input + 50 output tokens cost
+  `(300 × $0.10 + 50 × $0.50) / 1,000,000 = $0.000055 = 0.0055 cents`.
+  A frame capped at 768 px on its long side is roughly 800 input tokens. With
+  that image, the same answer costs approximately
+  `((300 + 800) × $0.10 + 50 × $0.50) / 1,000,000 = $0.000135 = 0.0135 cents`:
+  a few hundredths of a cent, excluding Cloudflare fees. Actual token usage varies;
+  200 output tokens is the configured maximum, not the usual short-answer length.
 
 References: [official SDK](https://github.com/anthropics/anthropic-sdk-typescript),
 [Haiku model and pricing](https://platform.claude.com/docs/en/models/haiku-5-5/overview),

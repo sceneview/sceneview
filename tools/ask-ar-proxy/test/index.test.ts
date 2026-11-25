@@ -111,7 +111,7 @@ describe("Ask SSE", () => {
   });
 
   it("rejects oversized actual bodies", async () => {
-    expect((await worker.fetch(request({ question: "Hi", padding: "x".repeat(4096) }), env)).status)
+    expect((await worker.fetch(request({ question: "Hi", padding: "x".repeat(512 * 1024) }), env)).status)
       .toBe(400);
   });
 
