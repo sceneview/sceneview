@@ -4,11 +4,16 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
+import android.view.Surface as AndroidSurface
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,6 +78,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -119,10 +125,13 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
-import io.github.sceneview.demo.demos.internal.AnswerProvider
+import io.github.sceneview.demo.demos.internal.AskArLiveConfig
 import io.github.sceneview.demo.demos.internal.AskContext
+import io.github.sceneview.demo.demos.internal.AskFrameCapture
 import io.github.sceneview.demo.demos.internal.AskFloor
+import io.github.sceneview.demo.demos.internal.AskLiveContext
 import io.github.sceneview.demo.demos.internal.AskRoom
+import io.github.sceneview.demo.demos.internal.AskYuvFrame
 import io.github.sceneview.demo.demos.internal.DrawingPlan
 import io.github.sceneview.demo.demos.internal.HangPicture
 import io.github.sceneview.demo.demos.internal.InkSheet
@@ -138,8 +147,13 @@ import io.github.sceneview.demo.demos.internal.Handwriting
 import io.github.sceneview.demo.demos.internal.HandwritingLayout
 import io.github.sceneview.demo.demos.internal.InkPoint
 import io.github.sceneview.demo.demos.internal.InkStroke
+import io.github.sceneview.demo.demos.internal.IncrementalHandwriting
 import io.github.sceneview.demo.demos.internal.ScriptedAnswerProvider
+import io.github.sceneview.demo.demos.internal.StreamingAnswerProvider
 import io.github.sceneview.demo.demos.internal.StrokeProgress
+import io.github.sceneview.demo.demos.internal.askCameraRotationDegrees
+import io.github.sceneview.demo.demos.internal.askLiveContextFromFrame
+import io.github.sceneview.demo.demos.internal.playAskStream
 import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -155,11 +169,14 @@ import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberARView
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -177,7 +194,8 @@ import kotlin.math.sqrt
  *   answer about the surface ahead ("how far is that wall?") is measured on it — a vertical
  *   plane or a depth hit — and hangs there, its arrow's tip on the spot it measured.
  * - **The question** comes from Android's `SpeechRecognizer`, with a live caption while it
- *   listens. Answers come from an [AnswerProvider]: scripted, on the phone, in this prototype.
+ *   listens. Answers are scripted on the phone by default, or streamed through the optional
+ *   [StreamingAnswerProvider] live path.
  *
  * **Automation for filming:** `sceneview://demo/ask-ar?q=what%20should%20I%20cook%20tonight`
  * (or `--es ask_q "…"`) plays the whole sequence by itself once ARCore tracks: listening,
@@ -192,7 +210,14 @@ fun AskInArDemo(onBack: () -> Unit) {
         DemoPreviewPlaceholder(title = stringResource(R.string.demo_ask_ar_title), onBack = onBack)
         return
     }
-    AskInArScene(onBack, ScriptedAnswerProvider)
+    val activity = LocalActivity.current
+    val context = LocalContext.current
+    val proxyUrl = AskArLiveConfig.proxyUrl(context, activity?.intent)
+    val provider = remember(proxyUrl) { AskArLiveConfig.provider(proxyUrl) }
+    LaunchedEffect(proxyUrl) {
+        if (proxyUrl.isNotBlank()) Log.i(LOG_TAG, "live: on ${Uri.parse(proxyUrl).host ?: "unknown"}")
+    }
+    AskInArScene(onBack, provider, liveEnabled = proxyUrl.isNotBlank())
 }
 
 /** Where the demo is between a question and its answer. */
@@ -293,11 +318,20 @@ private class PinnedAnswer(val anchor: Anchor, val handwriting: Handwriting?, va
 private class AskRequest(val questions: List<String>, val keepPrevious: Boolean)
 
 @Composable
-private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
+private fun AskInArScene(
+    onBack: () -> Unit,
+    provider: StreamingAnswerProvider,
+    liveEnabled: Boolean,
+) {
     val context = LocalContext.current
     val activity = LocalActivity.current
     val state = remember { AskState() }
     val scope = rememberCoroutineScope()
+    val displayView = LocalView.current
+    val cameraManager = remember(context) { context.getSystemService(CameraManager::class.java) }
+    var captureRequest by remember {
+        mutableStateOf<CompletableDeferred<Triple<AskLiveContext, AskYuvFrame?, Int>>?>(null)
+    }
     var flow by remember { mutableStateOf<Job?>(null) }
 
     var isTracking by remember { mutableStateOf(false) }
@@ -356,10 +390,13 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         state.phase = AskPhase.Thinking
         state.level = 0f
         val room = readRoom(question)
-        val reply = provider.answer(question, AskContext(distanceAheadMeters = state.distanceAhead, room = room))
-        delay(THINK_MILLIS)
+        val reply = ScriptedAnswerProvider.answer(
+            question,
+            AskContext(distanceAheadMeters = state.distanceAhead, room = room),
+        )
         val plan = reply.plan
         if (plan != null) {
+            delay(THINK_MILLIS)
             // Drawn in the room at the size of the room: anchored where the plan says, no fitting.
             Log.i(
                 LOG_TAG,
@@ -381,6 +418,81 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
             state.phase = AskPhase.Done
             return
         }
+        if (liveEnabled) {
+            val liveStarted = SystemClock.elapsedRealtime()
+            val snapshot = if (!stage) {
+                val request = CompletableDeferred<Triple<AskLiveContext, AskYuvFrame?, Int>>()
+                captureRequest = request
+                try {
+                    withTimeoutOrNull(750L) { request.await() }
+                } finally {
+                    if (captureRequest === request) captureRequest = null
+                    request.cancel()
+                }
+            } else null
+            // No tracked frame within the wait: send time/locale only, never a stale distance.
+            val facts = snapshot?.first ?: AskLiveContext()
+            val image = snapshot?.second?.let { copied ->
+                try {
+                    AskFrameCapture.jpeg(copied, snapshot.third)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null // An unavailable frame must not prevent a text/measurement answer.
+                }
+            }
+            val liveContext = facts.copy(image = image)
+            val imageBytes = image?.data?.let { encoded ->
+                encoded.length * 3 / 4 - encoded.takeLastWhile { it == '=' }.length
+            }
+            Log.i(
+                LOG_TAG,
+                "live: snapshot distance=${liveContext.distanceAheadMeters ?: "null"} " +
+                    "image=${imageBytes ?: "null"} after ${SystemClock.elapsedRealtime() - liveStarted} ms",
+            )
+            val answerContext = AskContext(
+                distanceAheadMeters = liveContext.distanceAheadMeters,
+                room = room,
+            )
+            state.handwriting = IncrementalHandwriting().snapshot()
+            if (stage) {
+                val size = currentViewSize
+                val aspect = if (size.height > 0) size.width.toFloat() / size.height else STAGE_ASPECT
+                val tall = 2f * -STAGE_BLOCK.z * STAGE_SENSOR_HALF / STAGE_FOCAL
+                state.blockScale = state.handwriting
+                    ?.let { HandwritingLayout.fitScale(it, tall * aspect, tall) } ?: 1f
+                state.stagePlaced = true
+            } else {
+                state.placeOnSurface = reply.doodle == Doodle.Pointer
+                state.placeRequested = true
+                snapshotFlow { state.anchor }.first { it != null }
+            }
+            state.elapsed = 0f
+            state.phase = AskPhase.Writing
+            var firstTextLogged = false
+            var finalInk = state.handwriting
+            val failure = playAskStream(
+                provider = provider,
+                question = question,
+                context = answerContext,
+                liveContext = liveContext,
+                onFrame = { ink, elapsed ->
+                    state.handwriting = ink
+                    state.elapsed = elapsed
+                    finalInk = ink
+                    if (!firstTextLogged && ink.lines.any { it.isNotEmpty() }) {
+                        firstTextLogged = true
+                        Log.i(LOG_TAG, "live: first text after ${SystemClock.elapsedRealtime() - liveStarted} ms")
+                    }
+                },
+            )
+            if (failure != null) state.notice = R.string.demo_ask_ar_live_unavailable
+            val finalText = finalInk?.lines?.flatten()?.joinToString(" ").orEmpty().replace("\"", "\\\"")
+            Log.i(LOG_TAG, "live: done \"$finalText\" failure=${failure ?: "null"}")
+            state.phase = AskPhase.Done
+            return
+        }
+        delay(THINK_MILLIS)
         state.handwriting = HandwritingLayout.layout(reply.text, reply.doodle)
         if (stage) {
             val size = currentViewSize
@@ -684,6 +796,34 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                         }
                     }
                     if (tracking) {
+                        captureRequest?.let { request ->
+                            captureRequest = null // Consume once, even if no camera image is available.
+                            if (request.isActive) {
+                                val facts = askLiveContextFromFrame(
+                                    frame,
+                                    session.getAllTrackables(Plane::class.java),
+                                    currentViewSize.width,
+                                    currentViewSize.height,
+                                )
+                                val displayDegrees = when (displayView.display?.rotation) {
+                                    AndroidSurface.ROTATION_90 -> 90
+                                    AndroidSurface.ROTATION_180 -> 180
+                                    AndroidSurface.ROTATION_270 -> 270
+                                    else -> 0
+                                }
+                                val sensorDegrees = cameraManager
+                                    .getCameraCharacteristics(session.cameraConfig.cameraId)
+                                    .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+                                val rotation = askCameraRotationDegrees(sensorDegrees, displayDegrees)
+                                // Acquire, copy every strided plane, and close the Image in this callback.
+                                val copied = try {
+                                    AskFrameCapture.copy(frame)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                request.complete(Triple(facts, copied, rotation))
+                            }
+                        }
                         if (state.frameCount++ % DISTANCE_EVERY_FRAMES == 0) {
                             state.distanceAhead = distanceAhead(frame, currentViewSize)
                         }

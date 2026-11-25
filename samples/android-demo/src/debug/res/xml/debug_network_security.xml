@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only: plain HTTP to the phone's own loopback, so `adb reverse` can point the
+  Ask in AR live mode (debug extra ask_proxy = http://127.0.0.1:8787) at a proxy running on the
+  development machine (`wrangler dev`, or a fake stream). Everything else stays HTTPS-only.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

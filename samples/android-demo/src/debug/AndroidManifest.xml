@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <!-- Loopback HTTP for a local Ask in AR proxy; see res/xml/debug_network_security.xml. -->
+    <application
+        android:networkSecurityConfig="@xml/debug_network_security">
         <!--
           Launcher shortcuts of the QA app (long-press "SV QA" -> "AR Recording", the ARCore
           session recorder). `qaLauncherShortcuts` is set by the `debug` build type:

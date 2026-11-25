@@ -39,6 +39,8 @@ class AskIncrementalHandwritingTest {
         )
         assertEquals(expected, done.lines)
         assertEquals(first.bounds, done.bounds)
+        assertEquals(first.bounds, first.textBounds)
+        assertEquals(first.textBounds, done.textBounds)
         first.strokes.indices.forEach { index ->
             assertSame(first.strokes[index], later.strokes[index])
             assertSame(first.strokes[index], done.strokes[index])

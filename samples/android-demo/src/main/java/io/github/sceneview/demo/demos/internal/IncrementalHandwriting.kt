@@ -102,7 +102,12 @@ internal class IncrementalHandwriting(
     }
 
     fun snapshot(): Handwriting = Handwriting(
-        lines.map { it.toList() }, strokes.toList(), starts.toFloatArray(), frameBounds, emphasis,
+        lines = lines.map { it.toList() },
+        strokes = strokes.toList(),
+        starts = starts.toFloatArray(),
+        bounds = frameBounds,
+        textBounds = frameBounds,
+        emphasis = emphasis,
     )
 
     private fun release(elapsed: Float) {
