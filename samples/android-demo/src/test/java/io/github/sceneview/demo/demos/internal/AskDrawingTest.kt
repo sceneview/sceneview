@@ -25,12 +25,53 @@ class AskDrawingTest {
         assertTrue(floor.measured)
     }
 
-    @Test fun `with no plane far enough below, the floor is a flagged fallback`() {
-        // A table top alone is not the floor.
-        val tableOnly = AskFloor.pick(cameraY = 1.5f, upwardPlaneHeights = listOf(0.75f))
-        assertFalse(tableOnly.measured)
-        assertEquals(1.5f - AskFloor.FALLBACK_BELOW_CAMERA, tableOnly.y, 1e-6f)
+    @Test fun `with no plane under the phone, the floor is the lowest point near the bottom of the screen`() {
+        val floor = AskFloor.pick(cameraY = 1.2f, upwardPlaneHeights = emptyList(), lowPointHeights = listOf(0.4f, 0.03f, 0.1f))
+        assertEquals(0.03f, floor.y, 0f)
+        assertTrue(floor.measured)
+        assertEquals(FloorSource.Points, floor.source)
+        // A plane wins over points.
+        assertEquals(FloorSource.Plane, AskFloor.pick(1.2f, listOf(0.05f), listOf(0.0f)).source)
+        // Points within reach of the phone, or far below the floor, are noise.
+        assertEquals(FloorSource.Fallback, AskFloor.pick(1.2f, emptyList(), listOf(1.0f, -1.5f)).source)
+    }
+
+    @Test fun `with nothing found under the phone, the floor is a flagged fallback`() {
+        val nothing = AskFloor.pick(cameraY = 1.5f, upwardPlaneHeights = listOf(1.3f))
+        assertFalse(nothing.measured)
+        assertEquals(FloorSource.Fallback, nothing.source)
+        assertEquals(1.5f - AskFloor.FALLBACK_BELOW_CAMERA, nothing.y, 1e-6f)
         assertFalse(AskFloor.pick(1.5f, emptyList()).measured)
+    }
+
+    // ── The wall the centre ray hit ──────────────────────────────────────────────────────────
+
+    @Test fun `the wall is a plane before a depth point before a feature point, never nearer than 80 cm`() {
+        val hits = listOf(
+            WallHitKind.FeaturePoint to 0.3f,
+            WallHitKind.FeaturePoint to 2.1f,
+            WallHitKind.Depth to 2.6f,
+            null to 1.2f,
+            WallHitKind.VerticalPlane to 2.5f,
+        )
+        assertEquals(4, WallPick.best(hits))
+        assertEquals(2, WallPick.best(hits.take(4)))
+        assertEquals(1, WallPick.best(hits.take(2)))
+        // A lone feature point a hand's length away is no wall.
+        assertNull(WallPick.best(hits.take(1)))
+        assertNull(WallPick.best(listOf(WallHitKind.VerticalPlane to 9f)))
+    }
+
+    @Test fun `the ink thickens with the wall's distance, the line stays true to size`() {
+        assertEquals(1f, HangPicture.inkScale(HangPicture.REFERENCE_DISTANCE), 1e-6f)
+        assertEquals(1.5f, HangPicture.inkScale(3f), 1e-6f)
+        assertEquals(1f, HangPicture.inkScale(null), 1e-6f)
+        val near = HangPicture.plan(wallAhead.copy(distance = 2f), 0f).sheets.single().writing
+        val far = HangPicture.plan(wallAhead.copy(distance = 3f), 0f).sheets.single().writing
+        assertEquals(1.5f, far.strokes[0].radii.max() / near.strokes[0].radii.max(), 0.02f)
+        val length = { w: Handwriting -> w.strokes[0].points.last().x - w.strokes[0].points.first().x }
+        assertEquals(length(near), length(far), 1e-5f)
+        assertTrue(far.textBounds.height > near.textBounds.height * 1.3f)
     }
 
     // ── Where should I hang this picture? ────────────────────────────────────────────────────
@@ -122,6 +163,23 @@ class AskDrawingTest {
         assertNear(Float3(0f, 0f, -1.8f), SofaFit.centre(camera, north, 0f, Float3(0f, 0f, -4f)))
         assertNear(Float3(0f, 0f, -1.8f), SofaFit.centre(camera, north, 0f, Float3(0f, 0f, -0.5f)))
         assertNear(Float3(0f, 0f, -1.8f), SofaFit.centre(camera, north, 0f, null))
+    }
+
+    @Test fun `a wall close ahead turns the footprint square to it, 10 cm off it`() {
+        // The phone looks north, a little east of square, at a wall 1 m ahead facing south.
+        val heading = Float3(0.2f, 0f, -0.98f).let { it / kotlin.math.sqrt(it.x * it.x + it.z * it.z) }
+        val wall = WallSpot(Float3(0.2f, 0.4f, -1f), Float3(0f, 0f, 1f), kind = WallHitKind.VerticalPlane)
+        val (centre, facing) = SofaFit.place(camera, heading, 0f, null, wall)
+        assertNear(Float3(0f, 0f, -1f), facing)
+        assertEquals(-1f + SofaFit.WALL_CLEARANCE + SofaFit.DEPTH / 2f, centre.z, 1e-4f)
+        assertEquals(0f, centre.y, 0f)
+        // Its far side 10 cm off the wall, every corner in front of it.
+        assertTrue(SofaFit.corners(centre, facing).all { it.z >= -1f + SofaFit.WALL_CLEARANCE - 1e-4f })
+        // A feature point is not trusted to move it; a far wall leaves it alone.
+        assertEquals(SofaFit.centre(camera, heading, 0f, null) to heading,
+            SofaFit.place(camera, heading, 0f, null, wall.copy(kind = WallHitKind.FeaturePoint)))
+        val far = wall.copy(point = Float3(0f, 0.4f, -4f))
+        assertEquals(SofaFit.centre(camera, heading, 0f, null) to heading, SofaFit.place(camera, heading, 0f, null, far))
     }
 
     @Test fun `the footprint is 200 by 90, square to the heading`() {

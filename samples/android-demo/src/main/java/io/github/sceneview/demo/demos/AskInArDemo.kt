@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -129,6 +130,8 @@ import io.github.sceneview.demo.demos.internal.SheetFacing
 import io.github.sceneview.demo.demos.internal.SofaFit
 import io.github.sceneview.demo.demos.internal.SofaSpot
 import io.github.sceneview.demo.demos.internal.WallEdges
+import io.github.sceneview.demo.demos.internal.WallHitKind
+import io.github.sceneview.demo.demos.internal.WallPick
 import io.github.sceneview.demo.demos.internal.WallSpot
 import io.github.sceneview.demo.demos.internal.Doodle
 import io.github.sceneview.demo.demos.internal.Handwriting
@@ -237,7 +240,11 @@ private class AskState {
 
     /** Set by the flow, filled in by the next tracked camera frame: see [AskRoomReader]. */
     var roomRequested = false
+    var roomFrames = 0
     var room by mutableStateOf<AskRoom?>(null)
+
+    /** The current anchor's tracking state as last logged. */
+    var anchorState: TrackingState? = null
 
     fun clearAnswer() {
         handwriting = null
@@ -248,6 +255,7 @@ private class AskState {
         placeRequested = false
         placeOnSurface = false
         placePose = null
+        anchorState = null
     }
 
     /**
@@ -353,6 +361,11 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
         val plan = reply.plan
         if (plan != null) {
             // Drawn in the room at the size of the room: anchored where the plan says, no fitting.
+            Log.i(
+                LOG_TAG,
+                "plan: \"${reply.text}\" origin=${AskRoomReader.fmt(plan.origin)} yaw=${AskRoomReader.fmt(plan.yaw)} " +
+                    "sheets=${plan.sheets.map { it.facing }} ${AskRoomReader.fmt(plan.totalSeconds)} s",
+            )
             state.plan = plan
             state.blockScale = 1f
             if (stage) {
@@ -658,19 +671,37 @@ private fun AskInArScene(onBack: () -> Unit, provider: AnswerProvider) {
                     }
                     val tracking = frame.camera.trackingState == TrackingState.TRACKING
                     isTracking = tracking
+                    // An anchored answer hides while its anchor is not tracked: say when that
+                    // changes, and where the anchor has got to.
+                    state.anchor?.let { anchor ->
+                        val anchorState = anchor.trackingState
+                        if (anchorState != state.anchorState) {
+                            state.anchorState = anchorState
+                            Log.i(LOG_TAG, "anchor $anchorState at ${AskRoomReader.fmt(anchor.pose)}, camera $tracking")
+                        }
+                    }
                     if (tracking) {
                         if (state.frameCount++ % DISTANCE_EVERY_FRAMES == 0) {
                             state.distanceAhead = distanceAhead(frame, currentViewSize)
                         }
                         if (state.roomRequested) {
-                            state.roomRequested = false
-                            state.room = AskRoomReader.read(session, frame, currentViewSize)
+                            // A wall plane or a depth hit, and the floor, are worth a short wait
+                            // over a feature point and a guessed floor: ARCore often finds them
+                            // within a second of being pointed at the wall.
+                            val room = AskRoomReader.read(session, frame, currentViewSize)
+                            if (AskRoomReader.isSettled(room) || ++state.roomFrames >= ROOM_PATIENCE_FRAMES) {
+                                Log.i(LOG_TAG, AskRoomReader.describe(room) + " after ${state.roomFrames} frames")
+                                state.roomRequested = false
+                                state.roomFrames = 0
+                                state.room = room
+                            }
                         }
                         if (state.placeRequested) {
                             val planned = state.placePose
                             if (planned != null) {
                                 val anchor = runCatching { session.createAnchor(planned) }.getOrNull()
                                 if (anchor != null) {
+                                    Log.i(LOG_TAG, "anchor: ${AskRoomReader.fmt(anchor.pose)} ${anchor.trackingState}")
                                     state.placeRequested = false
                                     state.anchor = anchor
                                 }
@@ -1190,8 +1221,14 @@ private object AskRoomReader {
                     it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
             }
             .map { it.centerPose.ty() }
-        val floor = AskFloor.pick(camera.y, floorHeights)
-        val wall = surfaceHit(frame, viewSize)?.let { hit ->
+        val floor = AskFloor.pick(camera.y, floorHeights, lowPointHeights(frame, viewSize))
+        val hits = centreHits(frame, viewSize)
+        // What the centre ray hit, by kind: a wall plane, else a depth point, else a feature
+        // point; never anything nearer than WallPick.MIN_DISTANCE (a feature point on the
+        // phone's own edge of the scene is not the wall).
+        val kinds = hits.map { hit -> wallKind(hit) to hit.distance }
+        val wall = WallPick.best(kinds)?.let { index ->
+            val hit = hits[index]
             val t = hit.hitPose.translation
             val point = Float3(t[0], t[1], t[2])
             // A plane's or a depth point's pose carries the surface normal on its y axis; a
@@ -1203,20 +1240,76 @@ private object AskRoomReader {
             val normal = HangPicture.wallNormal(candidate, point, camera)
             val plane = (hit.trackable as? Plane)?.takeIf { it.type == Plane.Type.VERTICAL }
             val (left, right) = plane?.let { edges(it, point, normal) } ?: (null to null)
-            WallSpot(point, normal, left, right)
+            WallSpot(point, normal, left, right, kinds[index].first, hit.distance)
         }
-        val floorHit = centreHits(frame, viewSize).firstOrNull { hit ->
+        val floorHit = hits.firstOrNull { hit ->
             val plane = hit.trackable as? Plane
             plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.isPoseInPolygon(hit.hitPose) &&
                 kotlin.math.abs(hit.hitPose.ty() - floor.y) < FLOOR_TOLERANCE
         }?.hitPose?.translation?.let { Float3(it[0], it[1], it[2]) }
-        val centre = SofaFit.centre(camera, heading, floor.y, floorHit)
-        val axis = SofaFit.axis(heading)
+        // In front of the wall the phone points at, square to it when it is close.
+        val (centre, facing) = SofaFit.place(camera, heading, floor.y, floorHit, wall)
+        val axis = SofaFit.axis(facing)
         val origin = Float3(centre.x, floor.y + SofaFit.RAY_HEIGHT, centre.z)
         val left = SofaFit.nearest(sideHits(frame, origin, Float3(-axis.x, 0f, -axis.z)))
         val right = SofaFit.nearest(sideHits(frame, origin, axis))
-        return AskRoom(camera, heading, floor, wall, SofaSpot(centre, left, right))
+        return AskRoom(camera, heading, floor, wall, SofaSpot(centre, left, right, facing))
     }
+
+    /**
+     * Heights of what the bottom of the screen hits — depth points, feature points, a floor
+     * plane — for a floor ARCore has no plane on yet.
+     */
+    private fun lowPointHeights(frame: Frame, viewSize: IntSize): List<Float> {
+        if (viewSize.width == 0 || viewSize.height == 0) return emptyList()
+        val y = viewSize.height * LOW_ROW
+        return LOW_COLUMNS.flatMap { fx ->
+            runCatching { frame.hitTest(viewSize.width * fx, y) }.getOrNull().orEmpty()
+                .filter { hit ->
+                    when (val trackable = hit.trackable) {
+                        is DepthPoint, is Point -> true
+                        is Plane -> trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING
+                        else -> false
+                    }
+                }
+                .map { it.hitPose.ty() }
+        }
+    }
+
+    private const val LOW_ROW = 0.9f
+    private val LOW_COLUMNS = listOf(0.2f, 0.35f, 0.5f, 0.65f, 0.8f)
+
+    /** What kind of wall a centre-ray hit is, or `null` for one that is not standing (a floor, a table). */
+    private fun wallKind(hit: HitResult): WallHitKind? = when (val trackable = hit.trackable) {
+        is Plane -> if (trackable.type == Plane.Type.VERTICAL && trackable.isPoseInPolygon(hit.hitPose)) {
+            WallHitKind.VerticalPlane
+        } else {
+            null
+        }
+        is DepthPoint -> WallHitKind.Depth
+        is Point -> WallHitKind.FeaturePoint
+        else -> null
+    }
+
+    /** One line for logcat: what the room read found. */
+    fun describe(room: AskRoom): String {
+        val wall = room.wall
+        val hit = if (wall == null) "none" else "${wall.kind} d=${wall.distance?.let { fmt(it) }} at ${fmt(wall.point)} n=${fmt(wall.normal)}"
+        val sofa = room.sofa?.let {
+            "sofa=${fmt(it.centre)} facing=${it.heading?.let(::fmt)} left=${it.left?.let(::fmt)} right=${it.right?.let(::fmt)}"
+        }
+        return "room: hit=$hit floorY=${fmt(room.floor.y)} (${room.floor.source}) " +
+            "camera=${fmt(room.camera)} heading=${fmt(room.heading)} $sofa"
+    }
+
+    fun fmt(v: Float) = "%.2f".format(java.util.Locale.ROOT, v)
+    fun fmt(v: Float3) = "(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})"
+    fun fmt(pose: Pose) = "(${fmt(pose.tx())}, ${fmt(pose.ty())}, ${fmt(pose.tz())}) q=(${pose.qx().let(::fmt)}, " +
+        "${fmt(pose.qy())}, ${fmt(pose.qz())}, ${fmt(pose.qw())})"
+
+    /** A read good enough not to wait for a better one: a wall plane or a depth hit, and the floor found. */
+    fun isSettled(room: AskRoom): Boolean =
+        room.floor.measured && room.wall?.kind.let { it == WallHitKind.VerticalPlane || it == WallHitKind.Depth }
 
     /**
      * How far, level with [point], [plane]'s outline reaches to the left and the right along
@@ -1465,6 +1558,11 @@ private const val CHAIN_HOLD_MILLIS = 2000L
 /** Answers kept in the room from earlier questions, at most. */
 private const val MAX_PINNED = 4
 private const val UNWRITE_MILLIS = 700f
+
+private const val LOG_TAG = "AskInAr"
+
+/** Frames a room read waits for a wall plane or depth hit and a found floor, at most (about a second). */
+private const val ROOM_PATIENCE_FRAMES = 30
 
 /** What the QA stage says the wall ahead measures. */
 private const val STAGE_WALL_METRES = 2.4f

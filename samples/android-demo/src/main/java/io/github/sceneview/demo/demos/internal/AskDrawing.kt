@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal
 
 import dev.romainguy.kotlin.math.Float3
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -32,7 +33,14 @@ internal data class AskRoom(
 )
 
 /** The floor's height, and whether ARCore found it or it is [AskFloor.pick]'s fallback. */
-internal data class FloorRead(val y: Float, val measured: Boolean)
+internal data class FloorRead(
+    val y: Float,
+    val measured: Boolean,
+    val source: FloorSource = if (measured) FloorSource.Plane else FloorSource.Fallback,
+)
+
+/** Where the floor's height came from, most trusted first. */
+internal enum class FloorSource { Plane, Points, Fallback }
 
 /**
  * A spot on a wall: [point] where the camera's centre ray met it, [normal] out of it toward the
@@ -47,7 +55,29 @@ internal data class WallSpot(
     val normal: Float3,
     val edgeLeft: Float? = null,
     val edgeRight: Float? = null,
+    /** What the ray hit; `null` when set by hand (the QA stage, tests). */
+    val kind: WallHitKind? = null,
+    /** From the phone to [point], in metres, when measured. */
+    val distance: Float? = null,
 )
+
+/** What a centre-ray hit on a wall stands on, most trusted first. */
+internal enum class WallHitKind { VerticalPlane, Depth, FeaturePoint }
+
+internal object WallPick {
+    /** Nearer than this, a hit is the edge of something in front of the wall, or a stray point. */
+    const val MIN_DISTANCE = 0.8f
+    const val MAX_DISTANCE = 8f
+
+    /**
+     * Which of the centre ray's hits (kind, or `null` for one that is not a wall; distance from
+     * the phone) is the wall: a vertical plane, else a depth point, else a feature point, the
+     * nearest of that kind, between [MIN_DISTANCE] and [MAX_DISTANCE]. Its index, or `null`.
+     */
+    fun best(hits: List<Pair<WallHitKind?, Float>>): Int? = hits.indices
+        .filter { i -> hits[i].first != null && hits[i].second in MIN_DISTANCE..MAX_DISTANCE }
+        .minWithOrNull(compareBy<Int> { hits[it].first!!.ordinal }.thenBy { hits[it].second })
+}
 
 internal object WallEdges {
     /**
@@ -76,12 +106,21 @@ internal object WallEdges {
  * depth hit) is along its long axis, to the [left] and to the [right] as the phone sees it.
  * `null` where nothing was hit within reach.
  */
-internal data class SofaSpot(val centre: Float3, val left: Float? = null, val right: Float? = null)
+internal data class SofaSpot(
+    val centre: Float3,
+    val left: Float? = null,
+    val right: Float? = null,
+    /** The way the footprint faces, away from the phone; `null` for the phone's own heading. */
+    val heading: Float3? = null,
+)
 
 internal object AskFloor {
 
-    /** The floor is at least this far below the phone: a table top alone is not the floor. */
-    const val MIN_BELOW_CAMERA = 0.9f
+    /** The floor is at least this far below the phone: anything nearer is in the phone's own reach. */
+    const val MIN_BELOW_CAMERA = 0.4f
+
+    /** A point further below the phone than this is noise, not the floor. */
+    const val MAX_BELOW_CAMERA = 2.2f
 
     /**
      * How far below the phone the floor is taken to be when ARCore has not found it: a phone
@@ -90,14 +129,17 @@ internal object AskFloor {
     const val FALLBACK_BELOW_CAMERA = 1.4f
 
     /**
-     * The floor, from the heights of the horizontal upward-facing planes ARCore tracks: the
-     * lowest of them at least [MIN_BELOW_CAMERA] under the phone. With none, the camera's height
-     * minus [FALLBACK_BELOW_CAMERA] — a guess, flagged as one.
+     * The floor: the lowest horizontal upward-facing plane ARCore tracks under the phone; else
+     * the lowest depth or feature point hit near the bottom of the screen; else the camera's
+     * height minus [FALLBACK_BELOW_CAMERA] — a guess, flagged as one. Only heights
+     * [MIN_BELOW_CAMERA] to [MAX_BELOW_CAMERA] under the phone count.
      */
-    fun pick(cameraY: Float, upwardPlaneHeights: List<Float>): FloorRead {
-        val lowest = upwardPlaneHeights.filter { it <= cameraY - MIN_BELOW_CAMERA }.minOrNull()
-        return if (lowest != null) FloorRead(lowest, measured = true)
-        else FloorRead(cameraY - FALLBACK_BELOW_CAMERA, measured = false)
+    fun pick(cameraY: Float, upwardPlaneHeights: List<Float>, lowPointHeights: List<Float> = emptyList()): FloorRead {
+        fun lowest(heights: List<Float>) =
+            heights.filter { it <= cameraY - MIN_BELOW_CAMERA && it >= cameraY - MAX_BELOW_CAMERA }.minOrNull()
+        lowest(upwardPlaneHeights)?.let { return FloorRead(it, measured = true, source = FloorSource.Plane) }
+        lowest(lowPointHeights)?.let { return FloorRead(it, measured = true, source = FloorSource.Points) }
+        return FloorRead(cameraY - FALLBACK_BELOW_CAMERA, measured = false)
     }
 }
 
@@ -358,44 +400,66 @@ internal object HangPicture {
         return if (n.x * toCamera.x + n.z * toCamera.z < 0f) Float3(-n.x, 0f, -n.z) else n
     }
 
+    /** The distance the ink and the words are sized for; see [inkScale]. */
+    const val REFERENCE_DISTANCE = 2f
+
+    /**
+     * How much thicker the ink, and bigger the words, are drawn on a wall [distance] metres
+     * away than on one at [REFERENCE_DISTANCE]: in proportion, so they look as thick on screen
+     * as a text answer does, within reason. The line, the nails and the height stay true to size.
+     */
+    fun inkScale(distance: Float?): Float =
+        ((distance ?: REFERENCE_DISTANCE) / REFERENCE_DISTANCE).coerceIn(MIN_INK_SCALE, MAX_INK_SCALE)
+
     fun plan(wall: WallSpot, floorY: Float, seed: Int = 145): DrawingPlan {
         val sketch = Sketch(seed)
         val r = sketch.random
         val half = LINE_LENGTH / 2f
         val nail = NAIL_SPACING / 2f
-        sketch.sheet(SheetFacing.Wall, Float3(0f), RIM) {
+        val k = inkScale(wall.distance)
+        val ink = INK * k
+        val mark = NAIL_SIZE * k
+        val label = LABEL.copy(
+            capHeight = LABEL.capHeight * k, inkRadius = LABEL.inkRadius * k,
+            pointSpacing = LABEL.pointSpacing * k, taperLength = LABEL.taperLength * k,
+        )
+        val note = label.copy(blockWidth = NOTE_STYLE.blockWidth * k, minSeconds = NOTE_STYLE.minSeconds, maxSeconds = NOTE_STYLE.maxSeconds)
+        sketch.sheet(SheetFacing.Wall, Float3(0f), RIM * k) {
             // The level line, left to right, in one go.
-            line(Sketch.handLine(InkPoint(-half, 0f), InkPoint(half, 0f), 0.0028f, r), INK, speed = 0.95f, pause = 0f)
+            line(Sketch.handLine(InkPoint(-half, 0f), InkPoint(half, 0f), 0.0028f * k, r), ink, speed = 0.95f, pause = 0f)
             // A small tick on its centre.
-            line(Sketch.handLine(InkPoint(0f, 0.028f), InkPoint(0.002f, -0.028f), 0.001f, r, 0.005f), INK * 0.9f, 0.6f)
+            line(Sketch.handLine(InkPoint(0f, 0.028f * k), InkPoint(0.002f, -0.028f * k), 0.001f, r, 0.005f), ink * 0.9f, 0.6f)
             // Two crosses for the nails: each two strokes, top-left first.
             for (x in listOf(-nail, nail)) {
                 fun jitter() = (r.nextFloat() - 0.5f) * 0.006f
                 line(
-                    listOf(InkPoint(x - NAIL_SIZE + jitter(), NAIL_SIZE + jitter()), InkPoint(x + NAIL_SIZE + jitter(), -NAIL_SIZE + jitter())),
-                    INK, 0.5f, pause = 0.12f,
+                    listOf(InkPoint(x - mark + jitter(), mark + jitter()), InkPoint(x + mark + jitter(), -mark + jitter())),
+                    ink, 0.5f, pause = 0.12f,
                 )
                 line(
-                    listOf(InkPoint(x + NAIL_SIZE + jitter(), NAIL_SIZE + jitter()), InkPoint(x - NAIL_SIZE + jitter(), -NAIL_SIZE + jitter())),
-                    INK, 0.5f,
+                    listOf(InkPoint(x + mark + jitter(), mark + jitter()), InkPoint(x - mark + jitter(), -mark + jitter())),
+                    ink, 0.5f,
                 )
             }
             // The height: a tick down toward the floor, its arrowhead, and its label.
-            val bottom = -TICK_LENGTH
-            line(Sketch.handLine(InkPoint(TICK_X, -0.018f), InkPoint(TICK_X, bottom), 0.0015f, r), INK * 0.9f, 0.7f, pause = 0.15f)
+            val bottom = -TICK_LENGTH * k
+            val barb = 0.018f * k
+            line(Sketch.handLine(InkPoint(TICK_X, -0.018f * k), InkPoint(TICK_X, bottom), 0.0015f, r), ink * 0.9f, 0.7f, pause = 0.15f)
             line(
-                listOf(InkPoint(TICK_X - 0.018f, bottom + 0.03f), InkPoint(TICK_X, bottom), InkPoint(TICK_X + 0.018f, bottom + 0.03f)),
-                INK * 0.9f, 0.45f,
+                listOf(InkPoint(TICK_X - barb, bottom + barb * 1.6f), InkPoint(TICK_X, bottom), InkPoint(TICK_X + barb, bottom + barb * 1.6f)),
+                ink * 0.9f, 0.45f,
             )
-            text(HEIGHT_LABEL, LABEL) { w -> InkPoint(TICK_X + 0.035f - w.textBounds.minX, bottom / 2f - w.textBounds.centerY) }
+            text(HEIGHT_LABEL, label) { w -> InkPoint(TICK_X + 0.035f * k - w.textBounds.minX, bottom / 2f - w.textBounds.centerY) }
             // The note, above the line's centre.
-            text(NOTE, NOTE_STYLE, Doodle.Underline, pause = 0.25f) { w ->
-                InkPoint(-w.bounds.centerX, 0.08f - w.bounds.minY)
+            text(NOTE, note, Doodle.Underline, pause = 0.25f) { w ->
+                InkPoint(-w.bounds.centerX, 0.08f * k - w.bounds.minY)
             }
         }
         return sketch.build(lineCentre(wall, floorY), atan2(wall.normal.x, wall.normal.z))
     }
 
+    private const val MIN_INK_SCALE = 0.7f
+    private const val MAX_INK_SCALE = 2f
     private const val MIN_UPRIGHT = 0.7f
 }
 
@@ -469,6 +533,32 @@ internal object SofaFit {
         return Float3(camera.x + heading.x * AHEAD, floorY, camera.z + heading.z * AHEAD)
     }
 
+    /** The footprint's far side keeps at least this far off a wall. */
+    const val WALL_CLEARANCE = 0.1f
+
+    /** A wall this close behind the footprint's far side has the footprint turned to it. */
+    const val SQUARE_TO_WALL_WITHIN = 0.3f
+
+    /**
+     * Where the footprint goes and which way it faces: [centre] and [heading], unless the
+     * centre ray met a wall ([WallHitKind.VerticalPlane] or [WallHitKind.Depth]; a hand-set one
+     * counts too) that the footprint would come within [SQUARE_TO_WALL_WITHIN] of, or poke into.
+     * Then it is turned square to that wall, its long side along it, and pulled out to stand
+     * [WALL_CLEARANCE] off it.
+     */
+    fun place(camera: Float3, heading: Float3, floorY: Float, floorHit: Float3?, wall: WallSpot?): Pair<Float3, Float3> {
+        val centre = centre(camera, heading, floorY, floorHit)
+        val n = wall?.takeIf { it.kind != WallHitKind.FeaturePoint }?.normal ?: return centre to heading
+        // How far the footprint's far side would stand off the wall, measured along the wall's
+        // normal (both the wall's and the footprint's reach; the footprint's half-depth along n).
+        val off = (centre.x - wall.point.x) * n.x + (centre.z - wall.point.z) * n.z
+        val reach = abs(heading.x * n.x + heading.z * n.z) * DEPTH / 2f + abs(heading.z * n.x - heading.x * n.z) * LENGTH / 2f
+        if (off - reach >= SQUARE_TO_WALL_WITHIN) return centre to heading
+        // Square to the wall, facing it, its far side WALL_CLEARANCE off.
+        val push = WALL_CLEARANCE + DEPTH / 2f - off
+        return Float3(centre.x + n.x * push, floorY, centre.z + n.z * push) to Float3(-n.x, 0f, -n.z)
+    }
+
     /** The footprint's corners in world space: near-left, near-right, far-right, far-left. */
     fun corners(centre: Float3, heading: Float3): List<Float3> {
         val r = axis(heading) * (LENGTH / 2f)
@@ -535,6 +625,7 @@ internal object SofaFit {
     internal fun roundUp5(metres: Float): Int = max(1, kotlin.math.ceil(metres * 20f - 1e-4f).toInt()) * 5
 
     fun plan(spot: SofaSpot, heading: Float3, seed: Int = 200): DrawingPlan {
+        val facing = spot.heading ?: heading
         val sketch = Sketch(seed)
         val r = sketch.random
         val hl = LENGTH / 2f
@@ -574,7 +665,7 @@ internal object SofaFit {
             }
         }
         // The footprint's frame: +z back toward the phone.
-        return sketch.build(spot.centre, atan2(-heading.x, -heading.z))
+        return sketch.build(spot.centre, atan2(-facing.x, -facing.z))
     }
 }
 
