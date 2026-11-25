@@ -54,7 +54,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
@@ -569,13 +571,19 @@ class ModelLoader(
             Log.w(TAG, "Could not read $fileLocation")
             return null
         }
+        // A load abandoned while it read (its screen rotated away) stops here and frees the file,
+        // rather than holding it through the conversions next to the new screen's load (#5271).
+        // `loadFileBuffer`'s own `withContext` already throws on return; this states it.
+        currentCoroutineContext().ensureActive()
         onProgress?.invoke(ModelLoadProgress(Stage.Creating, READING_END))
         // The extension check scans the JSON of what can be a 60 MB generated model, transcoding
         // decodes and re-encodes images, and the limits check parses the JSON: all stay off the
         // main thread. The extension check runs first, so its typed refusal comes before any other.
         val (source, gltf) = try {
             withContext(Dispatchers.Default) {
-                buffer.toFilamentModelSource(fileLocation, unit, onUnsupported).let { it to GltfLimits.parse(it.buffer) }
+                // The loader read these bytes itself: nobody else holds them.
+                buffer.toFilamentModelSource(fileLocation, unit, onUnsupported, ownsSource = true)
+                    .let { it to GltfLimits.parse(it.buffer) }
             }
         } catch (unreadable: RuntimeException) {
             // An unsupported format, or a file its extension sent to a converter that cannot parse
@@ -2002,16 +2010,22 @@ private fun Buffer.toFilamentModelSource(
     fileName: String? = null,
     unit: ModelUnit? = null,
     onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
+    ownsSource: Boolean = false,
 ): FilamentModelSource {
     val converted = toModelGlb(fileName, unit)
     // Before the transcode: a model refused here is not worth decoding its images.
     GltfRequiredExtensions.unsupported(converted)
         .takeIf { it.isNotEmpty() }
         ?.let { onUnsupported(UnsupportedGltfExtensionException(it)) }
+    // A buffer this function made (a converted mesh, a transcoded GLB) is nobody else's either:
+    // the material fix may rewrite it in place instead of copying it.
+    val source = this
+    fun prepare(buffer: Buffer) =
+        GltfMaterialCompatibility.prepare(buffer, ownsSource = ownsSource || buffer !== source)
     return (converted as? ByteBuffer)
         ?.let { WebPTextureTranscoder.transcodeModel(it) }
-        ?.let { FilamentModelSource(GltfMaterialCompatibility.prepare(it.buffer), it.externalWebP) }
-        ?: FilamentModelSource(GltfMaterialCompatibility.prepare(converted), emptySet())
+        ?.let { FilamentModelSource(prepare(it.buffer), it.externalWebP) }
+        ?: FilamentModelSource(prepare(converted), emptySet())
 }
 
 /**

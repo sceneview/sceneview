@@ -45,6 +45,17 @@ class ReadFullyTest {
     }
 
     @Test
+    fun `a cancelled read stops after the chunk it was on`() {
+        // A load abandoned mid-read (its screen rotated away) must not finish a file nobody uses.
+        val stream = Chunked(bytes, hint = bytes.size)
+        var chunks = 0
+        assertThrows(IllegalStateException::class.java) {
+            stream.readFully(checkCancelled = { if (++chunks == 2) throw IllegalStateException("cancelled") })
+        }
+        assertEquals(2, chunks)
+    }
+
+    @Test
     fun `a hint too small still reads everything`() {
         assertArrayEquals(bytes, Chunked(bytes, hint = 1000).readFully())
     }
