@@ -57,7 +57,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
-import com.google.android.filament.RenderableManager.PrimitiveType
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
@@ -79,7 +78,7 @@ import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.geometries.Geometry
+import io.github.sceneview.geometries.Tube
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
@@ -90,7 +89,6 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
-import io.github.sceneview.safeDestroyGeometry
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.utils.screenToRay
@@ -111,7 +109,7 @@ import kotlin.math.roundToInt
  * is short on purpose:
  *
  * - `View.screenToRay` turns a touch into a ray, and a plane intersection into a point.
- * - [StrokeMesh] uploads one stroke with `Geometry.Builder` and draws it with `MeshNode`.
+ * - [StrokeMesh] draws one stroke with a capacity-backed [TubeNode].
  * - `onTouchEvent` returns `true` while drawing, so the orbit camera never sees the finger,
  *   and `false` under **Orbit**, so it gets every gesture.
  *
@@ -210,7 +208,6 @@ fun FingerDrawingDemo(onBack: () -> Unit, brush: FingerBrush = rememberFingerBru
                         point = point,
                         radius = FingerDrawing.radiusFor(brush.thicknessDp, pen.unitsPerDp, 0f),
                         colorIndex = brush.colorIndex,
-                        frameHint = forward,
                         spacing = FingerDrawing.RING_SPACING_DP * pen.unitsPerDp,
                     )
                 }
@@ -484,23 +481,17 @@ internal fun SceneScope.DrawingMeshes(
 /**
  * Draws one stroke — and keeps drawing it while it grows under the finger.
  *
- * The lifecycle is `CustomGeometryDemo`'s `ProceduralKnot`, with one addition:
+ * `line` is `remember`ed on the **stroke**, a value type, so nothing is regenerated for a
+ * stroke that did not change — finishing the tenth stroke does not rebuild the first nine.
+ * A one-point stroke (a dot) is passed twice, so the round caps close it into a sphere.
  *
- * - `line` and `vertices` are `remember`ed on the **stroke**, a value type, so nothing is
- *   regenerated for a stroke that did not change — finishing the tenth stroke does not
- *   rebuild the first nine.
- * - `geometry` is `remember`ed on the **capacity**, not on the ring count. A growing stroke
- *   would otherwise need new GPU buffers at every finger move; padded to a capacity that
- *   grows in a few steps, it keeps its vertex count, and `Geometry.update` rewrites the
- *   buffers it already has.
- * - `DisposableEffect` frees the buffers when the capacity steps up or the stroke is undone.
- *   `MeshNode` does not own buffers it was handed.
+ * [TubeNode] supplies the per-point radii, hemispherical caps and capacity-backed in-place
+ * growth that this demo used to implement as a custom mesh.
  *
  * [requestRender] is for an on-demand scene, which has to be told that the buffers changed;
  * an AR scene renders every camera frame and leaves it out.
  *
- * `boundingBox` is left out: the box of a mesh that grows would be stale at the next move,
- * and a stroke culled by its first centimetre is a stroke that vanishes while it is drawn.
+ * Shadow casting and receiving stay disabled to preserve the former unbounded `MeshNode` look.
  */
 @Composable
 internal fun SceneScope.StrokeMesh(
@@ -508,29 +499,25 @@ internal fun SceneScope.StrokeMesh(
     materialInstance: MaterialInstance,
     requestRender: () -> Unit = {},
 ) {
-    val line = remember(stroke) { FingerDrawing.line(stroke) }
+    val line = remember(stroke) {
+        FingerDrawing.line(stroke).let { points ->
+            if (points.size == 1) listOf(points.single(), points.single()) else points
+        }
+    }
     val capacity = FingerDrawing.capacityFor(line.size)
-    val vertices = remember(line, capacity) { FingerDrawing.vertices(line, stroke.frameHint, capacity) }
-    val geometry = remember(engine, capacity) {
-        Geometry.Builder(PrimitiveType.TRIANGLES)
-            .vertices(vertices)
-            .indices(FingerDrawing.triangleIndices(capacity))
-            .build(engine)
-    }
-    SideEffect {
-        geometry.update(engine, vertices)
-        requestRender()
-    }
-    DisposableEffect(geometry) {
-        onDispose { engine.safeDestroyGeometry(geometry) }
-    }
-
-    MeshNode(
-        primitiveType = PrimitiveType.TRIANGLES,
-        vertexBuffer = geometry.vertexBuffer,
-        indexBuffer = geometry.indexBuffer,
+    TubeNode(
+        points = line.map { it.position },
+        radii = line.map { it.radius },
+        radialSegments = FingerDrawing.RADIAL_SEGMENTS,
+        capStyle = Tube.CapStyle.Round,
+        capacity = capacity,
         materialInstance = materialInstance,
+        apply = {
+            isShadowCaster = false
+            isShadowReceiver = false
+        },
     )
+    SideEffect(requestRender)
 }
 
 /**

@@ -1487,7 +1487,9 @@ rings so the seam has no crease.
     radius: Float = Tube.DEFAULT_RADIUS,          // metres — 0.02 default
     radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,  // 8
     closed: Boolean = false,                      // join the last point back to the first
-    caps: Boolean = true,                         // fill open ends with a disc
+    capStyle: Tube.CapStyle = Tube.CapStyle.Flat, // None | Flat (disc) | Round (hemisphere); ignored when closed
+    radii: List<Float>? = null,                   // one radius per point, metres; null = `radius` everywhere
+    capacity: Int = 0,                            // 0 = exactly points.size; > 0 = reserve max(capacity, points.size)
     materialInstance: MaterialInstance? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
@@ -1501,7 +1503,35 @@ Changing `points` or `radius` **without changing the point count** re-uploads in
 tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
 them — keep sample counts constant across curve types if you switch shapes at runtime.
 
-That rule holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
+`caps: Boolean` still compiles as a deprecated alias (`true` = `Flat`, `false` = `None`).
+
+**A stroke that grows** (finger drawing, a trail, a route being recorded) passes a `capacity`.
+One rule: `capacity = 0` (the default) is the old exact-size behaviour, buffers sized to
+`points.size`; any positive value reserves `max(capacity, points.size)` points. While
+`points.size <= capacity` an update rewrites the same vertex buffer, never touches the index
+buffer, and only the live part is drawn (the renderable's index range and bounding box follow
+every update). Past the capacity the tube reallocates once, to `max(points.size, 2 × capacity)`;
+reserved buffers never shrink.
+
+```kotlin
+import kotlin.math.PI
+import kotlin.math.sin
+
+// A brush stroke: thick in the middle, tapering to round ends, growing without reallocating.
+val paint = remember(materialLoader) { materialLoader.createColorInstance(colorOf(r = 0.96f, g = 0.36f, b = 0.16f)) }
+val stroke = List(40) { i -> Position(x = i * 0.01f, y = 0.05f * sin(i * 0.2f)) }
+val widths = List(stroke.size) { i -> 0.004f + 0.006f * sin(PI.toFloat() * i / (stroke.size - 1)) }
+TubeNode(
+    points = stroke,
+    radii = widths,                               // one per point, metres
+    radialSegments = 12,
+    capStyle = Tube.CapStyle.Round,
+    capacity = 256,                               // room to grow before any reallocation
+    materialInstance = paint
+)
+```
+
+The exact-size rule above holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
 an update that keeps the vertex count, the per-submesh index counts and the attribute layout
 (normals / UVs / colours present or not) rewrites the existing buffers; anything else — more
 `slices`, one more path point, a shape gaining a `color` — allocates new buffers, re-points every
