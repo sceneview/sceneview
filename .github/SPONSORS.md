@@ -22,9 +22,9 @@ for people who would rather stay inside GitHub.
 The tiers, and what each one includes, are listed on the sponsors page of the
 website: [sceneview.github.io/sponsors.html](https://sceneview.github.io/sponsors.html).
 That page is the one place where they are written down. This file does not
-restate them, so that the two cannot drift apart. Company tiers can also be paid
-once a year by invoice, issued by Open Source Collective, the fiscal host that
-holds SceneView's funds.
+restate them, so that the two cannot drift apart. Company tiers are monthly; a
+yearly payment by invoice can be arranged on request with Open Source
+Collective, the fiscal host that holds SceneView's funds.
 
 ## Who is sponsoring
 
