@@ -180,6 +180,43 @@ internal enum class SheetFacing {
  *
  * @param rimWidth How much wider than the ink its darker rim is, in metres.
  */
+/** The real things an answer brings into the room once its drawing is done. */
+internal enum class PropKind {
+    /** A framed picture on the wall, its frame drawn bar by bar, then its canvas let down. */
+    PictureFrame,
+
+    /** A 2 m sofa, rising out of its footprint on the floor. */
+    Sofa,
+
+    /** A radiator key that comes to the screw, gives it a quarter turn, and lets a few drops out. */
+    BleedKey,
+}
+
+/**
+ * A real object in a [DrawingPlan]: [kind] at [offset] in the plan's frame, built from [start]
+ * seconds on the plan's clock for [seconds]. [size] is its true size in metres (width, height,
+ * depth as the plan's frame has them).
+ */
+internal class PlanProp(val kind: PropKind, val offset: Float3, val size: Float3, val start: Float, val seconds: Float) {
+    /** How far along its build it is at [elapsed], from 0 (not there) to 1 (done). */
+    fun progress(elapsed: Float): Float = if (seconds <= 0f) (if (elapsed >= start) 1f else 0f) else ((elapsed - start) / seconds).coerceIn(0f, 1f)
+}
+
+/** Easing for the real objects' builds: all of them pure functions of a 0..1 progress. */
+internal object PropMotion {
+    /** The share of [t] that falls between [from] and [to], from 0 to 1. */
+    fun phase(t: Float, from: Float, to: Float): Float = if (to <= from) (if (t >= to) 1f else 0f) else ((t - from) / (to - from)).coerceIn(0f, 1f)
+
+    /** Fast out, slow in. */
+    fun easeOut(t: Float): Float = 1f - (1f - t) * (1f - t) * (1f - t)
+
+    /** Overshoots a touch, then settles: a thing put down with a little weight. */
+    fun easeOutBack(t: Float, overshoot: Float = 1.6f): Float {
+        val u = t - 1f
+        return 1f + (overshoot + 1f) * u * u * u + overshoot * u * u
+    }
+}
+
 internal class InkSheet(
     val facing: SheetFacing,
     val offset: Float3,
@@ -194,10 +231,16 @@ internal class InkSheet(
  * The frame sits at [origin] (world space) and is turned [yaw] radians about the vertical: its
  * +x is `(cos yaw, 0, -sin yaw)` and its +z `(sin yaw, 0, cos yaw)`.
  */
-internal class DrawingPlan(val origin: Float3, val yaw: Float, val sheets: List<InkSheet>) {
+internal class DrawingPlan(
+    val origin: Float3,
+    val yaw: Float,
+    val sheets: List<InkSheet>,
+    val props: List<PlanProp> = emptyList(),
+) {
 
-    /** Seconds until the last stroke of any sheet is finished. */
-    val totalSeconds: Float get() = sheets.maxOfOrNull { it.writing.totalSeconds } ?: 0f
+    /** Seconds until the last stroke of any sheet, and the last real object, is finished. */
+    val totalSeconds: Float
+        get() = max(sheets.maxOfOrNull { it.writing.totalSeconds } ?: 0f, props.maxOfOrNull { it.start + it.seconds } ?: 0f)
 
     /** A point of the plan's frame, in world space. */
     fun toWorld(local: Float3): Float3 {
@@ -223,6 +266,14 @@ internal class Sketch(seed: Int) {
     val random = Random(seed)
     private var clock = 0f
     private val sheets = mutableListOf<InkSheet>()
+    private val props = mutableListOf<PlanProp>()
+
+    /** A real object, built over [seconds] once the pen has drawn everything before it. */
+    fun prop(kind: PropKind, offset: Float3, size: Float3, seconds: Float, pause: Float = PROP_PAUSE) {
+        clock += pause
+        props += PlanProp(kind, offset, size, clock, seconds)
+        clock += seconds
+    }
 
     /** A pen-lift's worth of nothing. */
     fun pause(seconds: Float) {
@@ -236,7 +287,7 @@ internal class Sketch(seed: Int) {
         sheets += InkSheet(facing, offset, builder.build(), rimWidth)
     }
 
-    fun build(origin: Float3, yaw: Float) = DrawingPlan(origin, yaw, sheets.toList())
+    fun build(origin: Float3, yaw: Float) = DrawingPlan(origin, yaw, sheets.toList(), props.toList())
 
     inner class SheetBuilder {
         private val strokes = mutableListOf<InkStroke>()
@@ -304,6 +355,7 @@ internal class Sketch(seed: Int) {
     companion object {
         const val STROKE_GAP = 0.06f
         const val WORD_PAUSE = 0.18f
+        const val PROP_PAUSE = 0.35f
         private const val POINT_SPACING_RADII = 0.6f
         private const val MIN_SPACING = 0.003f
         private const val MIN_STROKE_SECONDS = 0.03f
@@ -469,8 +521,22 @@ internal object HangPicture {
                 )
             }
         }
+        // Then the picture itself, hung on the two nails: its frame flush on the wall, centred
+        // on the line, the ink still showing over it.
+        sketch.prop(
+            PropKind.PictureFrame,
+            Float3(0f, 0f, -WALL_LIFT + FRAME_DEPTH / 2f),
+            Float3(FRAME_WIDTH, FRAME_HEIGHT, FRAME_DEPTH),
+            seconds = FRAME_SECONDS,
+        )
         return sketch.build(lineCentre(wall, floorY), atan2(wall.normal.x, wall.normal.z))
     }
+
+    /** The picture: 60 × 45 cm, as wide as the nails are apart and a hand more. */
+    const val FRAME_WIDTH = 0.6f
+    const val FRAME_HEIGHT = 0.45f
+    const val FRAME_DEPTH = 0.02f
+    const val FRAME_SECONDS = 2.2f
 
     private const val MIN_INK_SCALE = 0.7f
     private const val MAX_INK_SCALE = 2f
@@ -520,7 +586,10 @@ internal object SofaFit {
     private const val LABEL_MARGIN = 0.06f
     private const val DIM_TICK = 0.05f
     private const val DEPTH_DIM_INSET = 0.13f
-    private const val VERDICT_HEIGHT = 0.5f
+    /** Above the sofa that rises after it, so the two never cross. */
+    private const val VERDICT_HEIGHT = 1.05f
+    const val SOFA_HEIGHT = 0.85f
+    const val SOFA_SECONDS = 1.6f
     private val FLOOR_LABEL = HandwritingStyle(
         blockWidth = 2f, capHeight = 0.14f, inkRadius = 0.0095f, pointSpacing = 0.006f,
         taperLength = 0.025f, minSeconds = 0.5f, maxSeconds = 0.8f,
@@ -628,7 +697,7 @@ internal object SofaFit {
                 val gap = (left ?: right!!) - half
                 if (gap >= 0f) "Fits. *Lots of room.*" else "Fits. Slide it *${roundUp5(-gap)} cm* over."
             }
-            else -> "Fits. *Lots of room.*"
+            else -> "2 m by 90 cm, *right here.*"
         }
     }
 
@@ -678,6 +747,8 @@ internal object SofaFit {
                 InkPoint(-w.bounds.centerX, -w.bounds.minY)
             }
         }
+        // Then the sofa itself, rising out of its footprint.
+        sketch.prop(PropKind.Sofa, Float3(0f), Float3(LENGTH, SOFA_HEIGHT, DEPTH), seconds = SOFA_SECONDS)
         // The footprint's frame: +z back toward the phone.
         return sketch.build(spot.centre, atan2(-facing.x, -facing.z))
     }
@@ -838,9 +909,16 @@ internal object RadiatorBleed {
                 top -= heights[i] + gap
             }
         }
+        // Then the key: it comes to the screw, turns it the quarter turn the arrow shows, and a
+        // few drops come out.
+        sketch.prop(PropKind.BleedKey, Float3(0f), Float3(KEY_HANDLE, KEY_HANDLE, KEY_LENGTH), seconds = KEY_SECONDS)
         val lift = Float3(spot.normal.x * SURFACE_LIFT, 0f, spot.normal.z * SURFACE_LIFT)
         return sketch.build(spot.point + lift, atan2(spot.normal.x, spot.normal.z))
     }
+
+    const val KEY_HANDLE = 0.045f
+    const val KEY_LENGTH = 0.035f
+    const val KEY_SECONDS = 3.2f
 
     private const val SIDE_DEADBAND = 0.1f
     private const val LABEL_ABOVE = 0.032f

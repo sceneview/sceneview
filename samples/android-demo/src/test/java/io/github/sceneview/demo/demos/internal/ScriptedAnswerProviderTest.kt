@@ -64,11 +64,11 @@ class ScriptedAnswerProviderTest {
         // Measured, it points at the spot it measured.
         assertEquals(Doodle.Pointer, measured.doodle)
         assertTrue(ScriptedAnswerProvider.wallAnswer(3.1f).text.contains("*3m*"))
-        // Nothing measured, or nonsense: a round guess, circled — there is nothing to point at.
-        val guess = ScriptedAnswerProvider.wallAnswer(null)
-        assertTrue(guess.text.contains("3m"))
-        assertEquals(Doodle.Circle, guess.doodle)
-        assertEquals(guess, ScriptedAnswerProvider.wallAnswer(120f))
+        // Nothing measured, or nonsense: no number at all, it asks to see the wall.
+        val unmeasured = ScriptedAnswerProvider.wallAnswer(null)
+        assertTrue(unmeasured.text, unmeasured.text.none { it.isDigit() })
+        assertTrue(unmeasured.reply, unmeasured.reply.none { it.isDigit() })
+        assertEquals(unmeasured, ScriptedAnswerProvider.wallAnswer(120f))
     }
 
     @Test fun `short words must match exactly, long ones forgive a typo or two`() {

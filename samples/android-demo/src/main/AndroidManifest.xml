@@ -93,6 +93,11 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <!-- Ask in AR listens in place through SpeechRecognizer: without this,
+             isRecognitionAvailable() answers false on API 30+ even with a recognizer installed. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <!-- Point & Ask tells "no AICore on this device" from "AICore present but Gemini Nano
              unavailable" and only offers the AICore Play listing in the second case (#4028). -->
         <package android:name="com.google.android.aicore" />

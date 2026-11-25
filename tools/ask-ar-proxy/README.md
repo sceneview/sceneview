@@ -1,8 +1,8 @@
 # Ask in AR proxy
 
 A small native-app-only Cloudflare Worker. The phone never receives a model key.
-This directory is deployment-ready source; deployment and the real-model smoke
-test are Thomas's steps. Nothing is deployed by installing or testing it.
+This directory is deployment-ready source. Nothing is deployed by installing or
+testing it: deploying it, and holding its model key, is the deployer's job.
 
 ## Deploy
 
@@ -23,8 +23,10 @@ example files, command arguments, logs, an Android property, or the APK.
 SDK logging is explicitly disabled; upstream error bodies are not forwarded.
 
 Wrangler prints an origin like `https://ask-ar-proxy.<your-subdomain>.workers.dev`.
-Give that **origin** to the demo integrator (no `/ask` suffix and no key).
-See [Android wiring](../../samples/android-demo/ASK_AR_LIVE.md).
+Give that **origin** to the demo build (no `/ask` suffix and no key): a debug
+build takes it at launch with `--es ask_proxy <origin>`, and a release build
+from the opt-in `samples/android-demo/ask-ar-live.init.gradle`. Without it, the
+demo answers from its scripted, on-device answers.
 
 ## Wire protocol
 
@@ -128,17 +130,12 @@ cached by this code. Provider data handling still applies to requests it receive
   capped separately at 400 KB (409,600 ASCII characters).
 - CORS is off: no access-control headers, no OPTIONS handler, and requests carrying
   `Origin` are rejected. Non-browser clients can still imitate the public tag.
-- Haiku 5.5 costs $0.10/M input and $0.50/M output tokens for these short prompts.
-  Without an image, 300 input + 50 output tokens cost
-  `(300 × $0.10 + 50 × $0.50) / 1,000,000 = $0.000055 = 0.0055 cents`.
-  A frame capped at 768 px on its long side is roughly 800 input tokens. With
-  that image, the same answer costs approximately
-  `((300 + 800) × $0.10 + 50 × $0.50) / 1,000,000 = $0.000135 = 0.0135 cents`:
-  a few hundredths of a cent, excluding Cloudflare fees. Actual token usage varies;
-  200 output tokens is the configured maximum, not the usual short-answer length.
+- Each answer is one short model call (at most 200 output tokens), with an
+  optional camera frame capped at 768 px on its long side. Check the model's
+  current pricing before deploying.
 
 References: [official SDK](https://github.com/anthropics/anthropic-sdk-typescript),
-[Haiku model and pricing](https://platform.claude.com/docs/en/models/haiku-5-5/overview),
+[Haiku model](https://platform.claude.com/docs/en/models/haiku-5-5/overview),
 [effort](https://platform.claude.com/docs/en/build-with-claude/effort),
 [Cloudflare rate limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 

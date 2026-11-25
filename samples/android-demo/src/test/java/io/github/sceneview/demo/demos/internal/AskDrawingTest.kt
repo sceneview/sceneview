@@ -283,7 +283,7 @@ class AskDrawingTest {
         assertEquals("Too tight: *15 cm* short.", SofaFit.verdict(0.9f, 0.95f))
         assertEquals("Fits, *only just.*", SofaFit.verdict(1.01f, 1.0f))
         // Nothing hit, or one wall clear of the sofa's end: no number.
-        assertEquals("Fits. *Lots of room.*", SofaFit.verdict(null, null))
+        assertEquals("2 m by 90 cm, *right here.*", SofaFit.verdict(null, null))
         assertEquals("Fits. *Lots of room.*", SofaFit.verdict(1.5f, null))
         // One wall cutting into it: how far to slide it.
         assertEquals("Fits. Slide it *20 cm* over.", SofaFit.verdict(null, 0.8f))
@@ -445,7 +445,8 @@ class AskDrawingTest {
             RadiatorBleed.plan(WallSpot(Float3(0f, 0.5f, -1f), Float3(0f, 0f, 1f)), camera),
         )
         for (plan in plans) {
-            assertTrue("takes ${plan.totalSeconds} s", plan.totalSeconds in 4f..11f)
+            // The drawing, then its real object: still a short watch.
+            assertTrue("takes ${plan.totalSeconds} s", plan.totalSeconds in 4f..15f)
             val timeline = plan.sheets.flatMap { sheet ->
                 sheet.writing.strokes.indices.map { sheet.writing.starts[it] to sheet.writing.starts[it] + sheet.writing.strokes[it].duration }
             }
@@ -465,5 +466,52 @@ class AskDrawingTest {
             assertTrue(t > last)
             last = t
         }
+    }
+
+    @Test fun `each drawing ends with its real object, built once the pen is done`() {
+        val plans = mapOf(
+            PropKind.PictureFrame to HangPicture.plan(wallAhead, 0f),
+            PropKind.Sofa to SofaFit.plan(SofaSpot(Float3(0f, 0f, -1.8f), 1.2f, 1.1f), north),
+            PropKind.BleedKey to RadiatorBleed.plan(WallSpot(Float3(0f, 0.5f, -1f), Float3(0f, 0f, 1f)), camera),
+        )
+        for ((kind, plan) in plans) {
+            val prop = plan.props.single()
+            assertEquals(kind, prop.kind)
+            val inkDone = plan.sheets.maxOf { it.writing.totalSeconds }
+            assertTrue("$kind starts at ${prop.start} before the ink is done at $inkDone", prop.start >= inkDone)
+            assertEquals(prop.start + prop.seconds, plan.totalSeconds, 1e-4f)
+            assertEquals(0f, prop.progress(prop.start), 0f)
+            assertEquals(1f, prop.progress(plan.totalSeconds), 0f)
+            assertEquals(1f, prop.progress(plan.totalSeconds + 5f), 0f)
+        }
+    }
+
+    @Test fun `the picture hangs flush on the wall, centred on the level line`() {
+        val prop = HangPicture.plan(wallAhead, 0f).props.single()
+        assertEquals(0f, prop.offset.x, 0f)
+        assertEquals(0f, prop.offset.y, 0f)
+        // Its back on the wall, its front just under the ink.
+        assertEquals(-HangPicture.WALL_LIFT, prop.offset.z - prop.size.z / 2f, 1e-5f)
+        assertTrue(prop.offset.z + prop.size.z / 2f <= 0f + 1e-5f)
+    }
+
+    @Test fun `the sofa rises inside its footprint, under the verdict`() {
+        val plan = SofaFit.plan(SofaSpot(Float3(0f, 0f, -1.8f)), north)
+        val prop = plan.props.single()
+        assertEquals(SofaFit.LENGTH, prop.size.x, 0f)
+        assertEquals(SofaFit.DEPTH, prop.size.z, 0f)
+        val verdict = plan.sheets.single { it.facing == SheetFacing.Billboard }
+        assertTrue("verdict at ${verdict.offset.y} inside the sofa", verdict.offset.y > prop.size.y)
+    }
+
+    @Test fun `the build eases start and end where they should`() {
+        assertEquals(0f, PropMotion.easeOut(0f), 0f)
+        assertEquals(1f, PropMotion.easeOut(1f), 1e-6f)
+        assertEquals(0f, PropMotion.easeOutBack(0f), 1e-6f)
+        assertEquals(1f, PropMotion.easeOutBack(1f), 1e-6f)
+        assertTrue("overshoots", (1..99).any { PropMotion.easeOutBack(it / 100f) > 1f })
+        assertEquals(0f, PropMotion.phase(0.1f, 0.2f, 0.4f), 0f)
+        assertEquals(0.5f, PropMotion.phase(0.3f, 0.2f, 0.4f), 1e-6f)
+        assertEquals(1f, PropMotion.phase(0.9f, 0.2f, 0.4f), 0f)
     }
 }

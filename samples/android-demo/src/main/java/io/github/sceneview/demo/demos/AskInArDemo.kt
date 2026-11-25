@@ -19,6 +19,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -229,6 +230,15 @@ internal enum class AskPhase { Idle, Listening, Thinking, Writing, Done }
 private class AskState {
     var phase by mutableStateOf(AskPhase.Idle)
     var transcript by mutableStateOf("")
+
+    /** The question being answered, as the conversation on screen shows it. */
+    var question by mutableStateOf("")
+
+    /** The answer in full sentences, as the conversation shows it: see [AskAnswer.reply]. */
+    var reply by mutableStateOf("")
+
+    /** The reply is typed out with the pen's clock; a live one is shown as it streams in. */
+    var replyTyped by mutableStateOf(true)
     var handwriting by mutableStateOf<Handwriting?>(null)
     var anchor by mutableStateOf<Anchor?>(null)
     var elapsed by mutableFloatStateOf(0f)
@@ -297,6 +307,9 @@ private class AskState {
     var anchorState: TrackingState? = null
 
     fun clearAnswer() {
+        question = ""
+        reply = ""
+        replyTyped = true
         handwriting = null
         plan = null
         anchor = null
@@ -418,13 +431,23 @@ private fun AskInArScene(
 
     /** Answers [question]: a beat of thought, then the anchor, then the pen. */
     suspend fun answer(question: String) {
+        state.question = question
+        state.reply = ""
         state.phase = AskPhase.Thinking
         state.level = 0f
-        val room = readRoom(question)
+        val room = withTimeoutOrNull(ROOM_WAIT_MILLIS) { readRoom(question) }
+        if (room == null) {
+            // No tracked frame came: ARCore is not running, or lost the room for good.
+            state.phase = AskPhase.Idle
+            state.question = ""
+            state.notice = R.string.demo_ask_ar_tracking_hint
+            return
+        }
         val reply = ScriptedAnswerProvider.answer(
             question,
             AskContext(distanceAheadMeters = state.distanceAhead, room = room),
         )
+        state.replyTyped = true
         val plan = reply.plan
         if (plan != null) {
             delay(THINK_MILLIS)
@@ -435,6 +458,7 @@ private fun AskInArScene(
                     "sheets=${plan.sheets.map { it.facing }} ${AskRoomReader.fmt(plan.totalSeconds)} s",
             )
             state.plan = plan
+            state.reply = reply.reply
             state.blockScale = 1f
             if (stage) {
                 state.stagePlaced = true
@@ -486,6 +510,7 @@ private fun AskInArScene(
                 room = room,
             )
             state.handwriting = IncrementalHandwriting().snapshot()
+            state.replyTyped = false
             if (stage) {
                 val size = currentViewSize
                 val aspect = if (size.height > 0) size.width.toFloat() / size.height else STAGE_ASPECT
@@ -516,6 +541,7 @@ private fun AskInArScene(
                 liveContext = liveContext,
                 onFrame = { ink, elapsed ->
                     state.handwriting = ink
+                    state.reply = ink.lines.joinToString(" ") { it.joinToString(" ") }
                     state.elapsed = elapsed
                     finalInk = ink
                     if (!firstTextLogged && ink.lines.any { it.isNotEmpty() }) {
@@ -531,6 +557,7 @@ private fun AskInArScene(
             return
         }
         delay(THINK_MILLIS)
+        state.reply = reply.reply
         state.handwriting = HandwritingLayout.layout(reply.text, reply.doodle)
         if (stage) {
             val size = currentViewSize
@@ -749,6 +776,13 @@ private fun AskInArScene(
             AskControls(
                 phase = state.phase,
                 transcript = state.transcript,
+                question = state.question,
+                reply = if (state.replyTyped) {
+                    state.reply.take((state.elapsed * REPLY_CHARS_PER_SECOND).toInt())
+                } else {
+                    state.reply
+                },
+                replyDone = state.phase == AskPhase.Done,
                 level = state.level,
                 showHint = isTracking,
                 hasAnswer = state.handwriting != null || state.pinned.isNotEmpty() || state.transcript.isNotEmpty(),
@@ -926,7 +960,7 @@ private fun AskInArScene(
                     if (tracking) {
                         captureRequest?.let { request ->
                             captureRequest = null // Consume once, even if no camera image is available.
-                            if (request.isActive) {
+                            if (request.isActive) runCatching {
                                 val facts = askLiveContextFromFrame(
                                     frame,
                                     session.getAllTrackables(Plane::class.java),
@@ -950,6 +984,10 @@ private fun AskInArScene(
                                     null
                                 }
                                 request.complete(Triple(facts, copied, rotation))
+                            }.onFailure {
+                                // A frame ARCore will not read: the question goes without it.
+                                Log.w(LOG_TAG, "live: no snapshot from this frame", it)
+                                request.complete(Triple(AskLiveContext(), null, 0))
                             }
                         }
                         if (state.frameCount++ % DISTANCE_EVERY_FRAMES == 0) {
@@ -1098,6 +1136,8 @@ private fun SceneScope.PlanInk(
             }
         }
     }
+    // Then the real things the answer is about, built where the drawing put them.
+    PlanProps(plan, elapsed)
 }
 
 /** Every stroke of [sheet] the pen has reached by [elapsed]. */
@@ -1214,6 +1254,9 @@ private fun lerp(a: InkPoint, b: InkPoint, t: Float) = InkPoint(a.x + (b.x - a.x
 private fun AskControls(
     phase: AskPhase,
     transcript: String,
+    question: String,
+    reply: String,
+    replyDone: Boolean,
     level: Float,
     showHint: Boolean,
     hasAnswer: Boolean,
@@ -1226,23 +1269,14 @@ private fun AskControls(
         modifier = Modifier.fillMaxWidth().padding(bottom = Space.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val caption = when {
-            transcript.isNotEmpty() -> transcript
-            phase == AskPhase.Listening -> stringResource(R.string.demo_ask_ar_listening)
-            showHint && !filming -> stringResource(R.string.demo_ask_ar_idle_hint)
-            else -> null
-        }
-        AnimatedVisibility(
-            visible = caption != null,
-            enter = fadeIn(SceneViewTokens.Motion.fade()),
-            exit = fadeOut(SceneViewTokens.Motion.fade()),
-        ) {
-            CaptionChip(
-                text = caption.orEmpty(),
-                live = phase == AskPhase.Listening,
-                muted = transcript.isEmpty(),
-            )
-        }
+        AskConversation(
+            phase = phase,
+            heard = transcript,
+            question = question,
+            reply = reply,
+            replyDone = replyDone,
+            hint = if (showHint && !filming) stringResource(R.string.demo_ask_ar_idle_hint) else null,
+        )
         Spacer(Modifier.height(Space.md))
         if (filming) {
             // The mic's place is kept, so the caption does not move when it leaves.
@@ -1265,7 +1299,7 @@ private fun AskControls(
                 icon = Icons.Rounded.DeleteSweep,
                 contentDescription = stringResource(R.string.demo_ask_ar_clear),
                 onClick = onClear,
-                enabled = hasAnswer && phase != AskPhase.Thinking,
+                enabled = hasAnswer || phase == AskPhase.Thinking,
             )
             MicShutter(phase = phase, level = level, onClick = onMic)
             GlassIconButton(
@@ -1276,6 +1310,109 @@ private fun AskControls(
             )
         }
     }
+}
+
+/**
+ * The conversation over the camera, as a chat reads: the question in a warm bubble on the
+ * right (live while it is heard), the answer on the left, typed out in full sentences while the
+ * pen draws its short version in the room. Idle, a hint of what to ask.
+ */
+@Composable
+private fun AskConversation(
+    phase: AskPhase,
+    heard: String,
+    question: String,
+    reply: String,
+    replyDone: Boolean,
+    hint: String?,
+) {
+    Column(
+        modifier = Modifier
+            .padding(horizontal = Space.lg)
+            .widthIn(max = CaptionMaxWidth)
+            .fillMaxWidth()
+            .animateContentSize(SceneViewTokens.Motion.spring()),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
+        val asked = when {
+            phase == AskPhase.Listening -> heard
+            else -> question
+        }
+        when {
+            phase == AskPhase.Listening && heard.isEmpty() ->
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CaptionChip(text = stringResource(R.string.demo_ask_ar_listening), live = true, muted = true)
+                }
+            asked.isNotEmpty() -> ChatBubble(text = asked, mine = true, live = phase == AskPhase.Listening)
+            hint != null && phase == AskPhase.Idle ->
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CaptionChip(text = hint, live = false, muted = true)
+                }
+        }
+        if (phase == AskPhase.Thinking) {
+            ChatBubble(text = stringResource(R.string.demo_ask_ar_thinking), mine = false, typing = true)
+        } else if (reply.isNotEmpty() && (phase == AskPhase.Writing || phase == AskPhase.Done)) {
+            ChatBubble(text = reply, mine = false, typing = !replyDone)
+        }
+    }
+}
+
+/**
+ * One turn of the conversation. Mine: a warm bubble on the right, its corner nearest the mic
+ * squared off. The answer's: glass on the left, its first corner squared, a caret while it is
+ * still being written.
+ */
+@Composable
+private fun ChatBubble(text: String, mine: Boolean, live: Boolean = false, typing: Boolean = false) {
+    val big = SceneViewTokens.Radius.lg
+    val small = SceneViewTokens.Radius.xs
+    Box(Modifier.fillMaxWidth(), contentAlignment = if (mine) Alignment.CenterEnd else Alignment.CenterStart) {
+        GlassSurface(
+            modifier = Modifier
+                .widthIn(max = BubbleMaxWidth)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+            shape = if (mine) {
+                RoundedCornerShape(topStart = big, topEnd = big, bottomEnd = small, bottomStart = big)
+            } else {
+                RoundedCornerShape(topStart = small, topEnd = big, bottomEnd = big, bottomStart = big)
+            },
+            ground = if (mine) MIC_DISC.copy(alpha = MINE_ALPHA) else ArOverlay.cameraDim,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = Space.md + Space.xs, vertical = Space.sm + Space.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (live) {
+                    LiveDot()
+                    Spacer(Modifier.size(Space.sm))
+                }
+                val caret by rememberInfiniteTransition(label = "caret").animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0f,
+                    animationSpec = infiniteRepeatable(tween(LIVE_DOT_MILLIS, easing = LinearEasing), RepeatMode.Reverse),
+                    label = "caret-blink",
+                )
+                Text(
+                    text = if (typing) "$text\u2009\u258D" else text,
+                    style = if (mine) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (mine) FontWeight.Medium else FontWeight.Normal,
+                    color = if (typing && !mine) ArOverlay.onScrim.copy(alpha = 0.92f + 0.08f * caret) else ArOverlay.onScrim,
+                )
+            }
+        }
+    }
+}
+
+/** The mic's live dot, pulsing while it listens. */
+@Composable
+private fun LiveDot() {
+    val pulse by rememberInfiniteTransition(label = "live").animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(LIVE_DOT_MILLIS, easing = LinearEasing), RepeatMode.Reverse),
+        label = "live-dot",
+    )
+    Box(Modifier.size(Space.sm + Space.xs / 2).background(INK_CORE.copy(alpha = pulse), CircleShape))
 }
 
 /** The question as it is heard: a subtitle on glass, a live dot while the mic is open. */
@@ -1769,6 +1906,9 @@ internal object AskArAutomation {
      * question or toggles filming, and names this demo or none.
      */
     fun claims(intent: Intent): Boolean {
+        // Questions that play by themselves are a filming tool: debug builds only, so a link can
+        // never make a release build send the camera's view anywhere without a tap.
+        if (!BuildConfig.DEBUG) return false
         val demo = intent.getStringExtra("demo")
         if (demo != null && demo != DEMO_ID) return false
         val data = intent.data
@@ -1780,7 +1920,7 @@ internal object AskArAutomation {
     }
 
     fun take(intent: Intent?): List<String> {
-        if (intent == null || intent.getBooleanExtra(CONSUMED, false)) return emptyList()
+        if (intent == null || !BuildConfig.DEBUG || intent.getBooleanExtra(CONSUMED, false)) return emptyList()
         val link = intent.data?.takeIf { it.lastPathSegment == DEMO_ID }
         val questions = SOURCES.mapNotNull { (param, extra) ->
             val fromLink = runCatching { link?.getQueryParameter(param) }.getOrNull()
@@ -1979,3 +2119,13 @@ private val ShutterDiscSize = Space.x2l + Space.sm // 56 dp
 private val ShutterRingWidth = Space.xs - Space.xs / 4 // 3 dp
 private val MicIconSize = Space.lg + Space.xs // 28 dp
 private val CaptionMaxWidth = Space.x4l * 4 // 384 dp
+
+/** How fast the reply types out on screen while the pen draws: a quick reader's pace. */
+private const val REPLY_CHARS_PER_SECOND = 38f
+
+/** A bubble leaves a quarter of the screen to the other side of the conversation. */
+private val BubbleMaxWidth = Space.x4l * 3 // 288 dp
+private const val MINE_ALPHA = 0.88f
+
+/** How long a question waits for ARCore to see the room before it gives up. */
+private const val ROOM_WAIT_MILLIS = 8_000L

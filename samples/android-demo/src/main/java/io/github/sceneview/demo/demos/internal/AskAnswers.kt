@@ -14,8 +14,15 @@ import kotlin.math.roundToInt
  * @param plan   A drawing laid out in the room itself — lines on a wall, a footprint on the
  *               floor — drawn instead of the floating block. [text] then says in words what the
  *               drawing says (the note, the verdict).
+ * @param reply  The answer as said in the conversation on screen, in full sentences; by
+ *               default [text] without its marks.
  */
-internal data class AskAnswer(val text: String, val doodle: Doodle, val plan: DrawingPlan? = null)
+internal data class AskAnswer(
+    val text: String,
+    val doodle: Doodle,
+    val plan: DrawingPlan? = null,
+    val reply: String = text.replace("*", ""),
+)
 
 /** What the room tells the answer, read from ARCore when the question is asked. */
 internal data class AskContext(
@@ -122,7 +129,7 @@ internal object ScriptedAnswerProvider : AnswerProvider {
                 setOf("today", "tomorrow", "outside", "will", "need", "like"),
             ),
             minScore = 1,
-        ) { AskAnswer("Cool. Bring a *jacket*.", Doodle.Underline) },
+        ) { AskAnswer("No sky here. *Look out!*", Doodle.Underline, reply = "I can't see the sky from in here. The live mode reads the forecast where you are; this demo's answers are scripted.") },
         Script(
             id = "foosball",
             keywords = listOf(
@@ -243,11 +250,11 @@ internal object ScriptedAnswerProvider : AnswerProvider {
     internal fun wallAnswer(distance: Float?): AskAnswer {
         val metres = distance?.takeIf { it in MIN_DISTANCE..MAX_DISTANCE }
         return if (metres == null) {
-            AskAnswer("About *3m*, give or take.", Doodle.Circle)
+            AskAnswer("Point me *at the wall.*", Doodle.Underline, reply = "I can't measure that yet. Point the phone at the wall and move it a little, so it can see it.")
         } else {
             val halves = (metres * 2f).roundToInt().coerceAtLeast(1)
             val shown = if (halves % 2 == 0) "${halves / 2}" else "${halves / 2}.5"
-            AskAnswer("About *${shown}m* away!", Doodle.Pointer)
+            AskAnswer("About *${shown}m* away!", Doodle.Pointer, reply = "About ${shown} m, measured from the phone to the spot in the middle of the screen.")
         }
     }
 
@@ -257,7 +264,11 @@ internal object ScriptedAnswerProvider : AnswerProvider {
      */
     internal fun hangAnswer(room: AskRoom?): AskAnswer {
         val wall = room?.wall ?: return AskAnswer("Point me *at the wall.*", Doodle.Underline)
-        return AskAnswer(HangPicture.NOTE, Doodle.Underline, HangPicture.plan(wall, room.floor.y))
+        return AskAnswer(
+            HangPicture.NOTE, Doodle.Underline, HangPicture.plan(wall, room.floor.y),
+            reply = "Hang it with its centre at ${HangPicture.HEIGHT_LABEL}, about eye level. " +
+                "I've drawn the line on the wall: two nails on it, ${(HangPicture.NAIL_SPACING * 100).roundToInt()} cm apart.",
+        )
     }
 
     /**
@@ -267,7 +278,13 @@ internal object ScriptedAnswerProvider : AnswerProvider {
      */
     internal fun sofaAnswer(room: AskRoom?): AskAnswer {
         val spot = room?.sofa ?: return AskAnswer("Point me *at the floor.*", Doodle.Underline)
-        return AskAnswer(SofaFit.verdict(spot.left, spot.right), Doodle.Underline, SofaFit.plan(spot, room.heading))
+        val verdict = SofaFit.verdict(spot.left, spot.right)
+        val measured = spot.left != null || spot.right != null
+        return AskAnswer(
+            verdict, Doodle.Underline, SofaFit.plan(spot, room.heading),
+            reply = verdict.replace("*", "") + " I've marked its 2 m by 90 cm footprint on the floor and put one there, " +
+                "to scale." + if (measured) "" else " I couldn't see a wall either side, so check the space around it.",
+        )
     }
 
     /**
@@ -276,7 +293,11 @@ internal object ScriptedAnswerProvider : AnswerProvider {
      */
     internal fun radiatorAnswer(room: AskRoom?): AskAnswer {
         val spot = room?.wall ?: return AskAnswer("Point me *at the screw.*", Doodle.Underline)
-        return AskAnswer("Open it a *quarter turn.*", Doodle.Underline, RadiatorBleed.plan(spot, room.camera))
+        return AskAnswer(
+            "Open it a *quarter turn.*", Doodle.Underline, RadiatorBleed.plan(spot, room.camera),
+            reply = "Heating off first, and a cloth under the screw. Then a quarter turn anticlockwise " +
+                "with a radiator key: air hisses out, then water. Close it as soon as water comes.",
+        )
     }
 
     private const val MIN_DISTANCE = 0.3f

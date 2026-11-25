@@ -2,7 +2,10 @@
 <resources>
     <string name="demo_ask_ar_title">Ask in AR</string>
     <string name="demo_ask_ar_subtitle">Ask out loud, and the answer writes itself in the room</string>
-    <string name="demo_ask_ar_idle_hint">Tap the mic and ask anything</string>
+    <string name="demo_ask_ar_idle_hint">Ask where to hang a picture, if a sofa fits here, or how to bleed a radiator</string>
+    <string name="demo_ask_ar_you">You</string>
+    <string name="demo_ask_ar_answerer">Ask in AR</string>
+    <string name="demo_ask_ar_thinking">Looking at the room…</string>
     <string name="demo_ask_ar_listening">Listening…</string>
     <string name="demo_ask_ar_tracking_hint">Move your phone slowly so it can see the room</string>
     <string name="demo_ask_ar_ask">Ask a question</string>

@@ -26,7 +26,7 @@ object AskArFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.RecordVoiceOver,
         order = 24,
-        addedIn = "4.74.0",
+        addedIn = "4.75.0",
         status = DemoStatus.InReview,
         tags = setOf(
             "ask", "question", "answer", "voice", "speech", "mic", "handwriting", "writing",
