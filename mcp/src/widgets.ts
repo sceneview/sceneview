@@ -1037,12 +1037,18 @@ function buildWidgetHtml(space: boolean): string {
       function fail(err) {
         pending = null;
         rendered = null;
-        if (viewer) { viewer.dispose(); viewer = null; }
+        // Fallback disposal loses its WebGL context, including when the factory
+        // rejects before assigning viewer. Never retry on that canvas.
+        if (rendererKind === "fallback") resetCanvas();
+        else if (viewer) { viewer.dispose(); viewer = null; }
         showError((err && err.message) || String(err));
       }
 
       function resetCanvas() {
         if (viewer) { viewer.dispose(); viewer = null; }
+        // Filament can insert overlays before a viewer exists, so dispose alone
+        // cannot remove them. Both initialization and load failures use this class.
+        canvasWrap.querySelectorAll(".sceneview-fallback").forEach(function (overlay) { overlay.remove(); });
         var replacement = canvas.cloneNode(false);
         replacement.style.opacity = "0";
         canvas.replaceWith(replacement);

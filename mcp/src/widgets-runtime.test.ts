@@ -100,6 +100,7 @@ function harness(
   });
   const observers: { callback: () => void; disconnect: ReturnType<typeof vi.fn> }[] = [];
   const elements = new Map<string, any>();
+  const filamentOverlays: { remove: ReturnType<typeof vi.fn> }[] = [];
   function element(id: string) {
     if (elements.has(id)) return elements.get(id);
     const classes = new Set();
@@ -114,6 +115,8 @@ function harness(
       clientWidth: options.width || 640,
       clientHeight: options.height || 340,
       getContext: () => context,
+      querySelectorAll: (selector: string) =>
+        selector === ".sceneview-fallback" ? filamentOverlays : [],
       setAttribute: vi.fn(),
       addEventListener: vi.fn(),
       remove: vi.fn(),
@@ -169,11 +172,17 @@ function harness(
   };
   const primaryFactory = vi.fn(
     async (_canvas?: unknown, _url?: string, _options?: { studio: { pool: string } }) => {
-      if (options.primaryError) throw new Error("Filament initialization failed");
+      if (options.primaryError) {
+        // Initialization has no viewer to dispose; model-load failures can leave
+        // another overlay with the same renderer-owned class.
+        for (let i = 0; i < 2; i++) filamentOverlays.push({ remove: vi.fn() });
+        element("canvas").__sceneviewInitFallbackEl = filamentOverlays[0];
+        throw new Error("Filament initialization failed");
+      }
       return primary;
     }
   );
-  const fallbackFactory = vi.fn(async () => {
+  const fallbackFactory = vi.fn(async (_canvas?: unknown) => {
     if (options.fallbackError) throw new Error("WebGL2 is unavailable");
     return fallback;
   });
@@ -256,6 +265,7 @@ function harness(
     listeners.message({ source, data: { jsonrpc: "2.0", method, params } });
   return {
     elements,
+    filamentOverlays,
     context,
     paths,
     observers,
@@ -353,6 +363,23 @@ describe("widget renderer selection", () => {
       h.close();
     }
   });
+  it("removes Filament initialization and load overlays before the fallback renders", async () => {
+    const h = harness({ primaryError: true });
+    try {
+      h.fallbackFactory.mockImplementationOnce(async () => {
+        expect(h.filamentOverlays).toHaveLength(2);
+        for (const overlay of h.filamentOverlays) expect(overlay.remove).toHaveBeenCalledOnce();
+        return h.fallback;
+      });
+      h.deliver();
+      await flush();
+      expect(h.fallbackFactory).toHaveBeenCalledOnce();
+      expect(h.elements.get("html").dataset.renderer).toBe("fallback");
+      expect(h.elements.get("canvas").style.opacity).toBe("1");
+    } finally {
+      h.close();
+    }
+  });
   it("keeps the phone action and shows an error if WebGL is unavailable too", async () => {
     const h = harness({ wasm: false, fallbackError: true });
     try {
@@ -362,6 +389,42 @@ describe("widget renderer selection", () => {
       expect(h.elements.get("error").hidden).toBe(false);
       expect(h.elements.get("error-detail").textContent).toBe("WebGL2 is unavailable");
       expect(h.elements.get("ar").hidden).toBe(false);
+    } finally {
+      h.close();
+    }
+  });
+  it.each([
+    ["initial creation", false],
+    ["missing initial GLB", false],
+    ["unsupported initial GLB", false],
+    ["missing replacement GLB", true],
+    ["unsupported replacement GLB", true],
+  ])("retries with a fresh canvas after %s fails", async (failure, alreadyCreated) => {
+    const h = harness({ wasm: false });
+    try {
+      if (alreadyCreated) {
+        h.deliver();
+        await flush();
+        h.fallback.loadModel.mockRejectedValueOnce(new Error(failure as string));
+      } else {
+        // The real factory disposes its viewer before rejecting an initial load.
+        h.fallbackFactory.mockImplementationOnce(async () => {
+          h.fallback.dispose();
+          throw new Error(failure as string);
+        });
+      }
+      const failedCanvas = h.elements.get("canvas");
+      h.deliver({ ...model, modelUrl: "https://example.com/bad.glb" });
+      await flush();
+      expect(h.elements.get("error").hidden).toBe(false);
+      expect(h.fallback.dispose).toHaveBeenCalledOnce();
+      expect(h.elements.get("canvas")).not.toBe(failedCanvas);
+      h.deliver();
+      await flush();
+      expect(h.fallbackFactory.mock.calls.at(-1)?.[0]).toBe(h.elements.get("canvas"));
+      expect(h.elements.get("canvas").style.opacity).toBe("1");
+      expect(h.elements.get("error").hidden).toBe(true);
+      expect(h.elements.get("html").dataset.renderer).toBe("fallback");
     } finally {
       h.close();
     }
