@@ -29,7 +29,8 @@ Only `io.github.sceneview:sceneview` takes `-Psv`; the other SceneView artifacts
     ./run-trial.sh <apk> <budgetMiB> <out.txt> [waitSeconds]
 
 `budgetMiB > 0` holds ballast so that only that much Java heap is left, to simulate a small heap on
-any emulator. `0` uses the emulator's own limit (an x86_64 AVD with `vm.heapSize=16`). The script
+any emulator. `0` uses the emulator's own limit (`adb root; adb shell setprop dalvik.vm.heapgrowthlimit 16m`,
+then `adb shell stop; adb shell start`, as `ci-trials.sh` does). The script
 prints one line: OOM count, first app frame of the OOM, drain time of the old engine, when the model
 became visible for each activity, and peak heap.
 

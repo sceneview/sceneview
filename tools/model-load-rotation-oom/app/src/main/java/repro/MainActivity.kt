@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
             Log.i("REPRO", "ballast max=${max shr 20} MiB held=${ballast!!.size} MiB budget=$budget MiB used=${used() shr 20} MiB")
         }
         val gen = ++generation
-        Log.i("REPRO", "activity#$gen onCreate t=${SystemClock.uptimeMillis() - processStart} ms")
+        Log.i("REPRO", "activity#$gen onCreate t=${SystemClock.uptimeMillis() - processStart} ms maxMemory=${Runtime.getRuntime().maxMemory() shr 20} MiB")
         setContent {
             val engine = rememberEngine()
             val modelLoader = rememberModelLoader(engine)

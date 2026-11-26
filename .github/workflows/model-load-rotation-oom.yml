@@ -1,6 +1,6 @@
 name: Model load OOM on rotation (Android 8+ emulators)
 
-# Proof for #5271 on real x86_64 emulators with a small ART heap (vm.heapSize),
+# Proof for #5271 on real x86_64 emulators with a small ART heap (dalvik.vm.heapgrowthlimit),
 # which arm64 hosts cannot run for API 26-28. Not a required check: it only runs
 # when its own files change, or by hand.
 on:
@@ -86,7 +86,7 @@ jobs:
       matrix:
         include:
           - { api: 26, heap: 16, versions: "4.72.0 4.72.0-oomfix 4.16.10" }
-          - { api: 27, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
+          - { api: 27, heap: 16, versions: "4.72.0 4.72.0-oomfix", target: default }  # no google_apis x86_64 image for 27
           - { api: 28, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
           - { api: 29, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
           - { api: 26, heap: 24, versions: "4.72.0" }
@@ -111,9 +111,9 @@ jobs:
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
-          target: google_apis
+          target: ${{ matrix.target || 'google_apis' }}
           arch: x86_64
-          heap-size: ${{ matrix.heap }}M
+          # No heap-size here: it writes hw.heapSize, which the emulator ignores. ci-trials.sh sets the limit.
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           # Each line runs in its own `sh -c`: keep every command on one line.
