@@ -20,9 +20,9 @@
  *    parameters so the page can be opened directly for a manual preview.
  *
  * The renderer is **SceneView.js + Filament.js**, the same WebGL2/WASM stack
- * that powers `sceneview-web` and the sceneview.github.io playground. Using a
- * generic third-party viewer here would defeat the purpose of a SceneView
- * listing, so the script tags are pinned to the released SDK version.
+ * that powers `sceneview-web` and the sceneview.github.io playground. A
+ * WASM-free glTF renderer is bundled as a compatibility path for stricter hosts.
+ * Filament remains the primary renderer wherever the host permits it.
  *
  * This file used to live in the hosted gateway (`mcp-gateway/src/mcp/widgets.ts`,
  * deleted 2026-08-31). It now ships inside the npm package so the stdio server
@@ -30,6 +30,7 @@
  */
 
 import { LATEST_SCENEVIEW_RELEASE, PACKAGE_VERSION } from "./generated/version.js";
+import { WIDGET_FALLBACK_JS } from "./vendor/widget-fallback.js";
 
 /** Canonical MCP Apps mime type for widget resources. */
 export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
@@ -133,6 +134,9 @@ export const WIDGET_UI_META = {
       "https://media.sketchfab.com",
       "https://cdn.jsdelivr.net",
       "https://arcamera-api.mcp-tools-lab.workers.dev",
+      // Local GLB conversions and embedded glTF textures, never external origins.
+      "blob:",
+      "data:",
     ],
   },
 } as const;
@@ -421,8 +425,6 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
     #ar-scan span { font-size: 0.75rem; color: var(--sv-on-surface-dim); }
     #ar.wide.has-qr #ar-open { min-height: 36px; padding: 8px 14px; font-size: 0.8rem; box-shadow: none; }
   </style>
-  <script src="${FILAMENT_JS_URL}"></script>
-  <script src="${SCENEVIEW_JS_URL}"></script>
 </head>
 <body>
   <div id="stage">
@@ -469,10 +471,13 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       <span style="margin-left:auto" id="hint">Drag to orbit · Scroll to zoom</span>
     </div>
   </div>
+  <script type="text/plain" id="fallback-source">${WIDGET_FALLBACK_JS}</script>
   <script>
     (function () {
       var WIDGET_VERSION = "${PACKAGE_VERSION}";
       var IBL_URL = "${NEUTRAL_IBL_URL}";
+      var FILAMENT_URL = "${FILAMENT_JS_URL}";
+      var SCENEVIEW_URL = "${SCENEVIEW_JS_URL}";
       // The 3MF converter (#3482), fetched only when a payload needs it.
       var CONVERTER_URL = "${SCENEVIEW_WEB_URL}";
 
@@ -488,6 +493,11 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       var rendered = null;
       var pending = null;
       var viewer = null;
+      var renderQueue = Promise.resolve();
+      var rendererPromise = null;
+      var rendererKind = null;
+      var disposed = false;
+      var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       // ── Payload sources, in priority order ───────────────────────────────
       //
@@ -518,13 +528,24 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
 
       function request(method, params, onDone) {
         var id = nextRequestId++;
-        awaiting[id] = onDone;
+        var timer = setTimeout(function () {
+          if (!awaiting[id]) return;
+          delete awaiting[id];
+          onDone(false);
+        }, 2500);
+        awaiting[id] = function (ok) { clearTimeout(timer); onDone(ok); };
         post({ jsonrpc: "2.0", id: id, method: method, params: params });
       }
 
       window.addEventListener("message", function (event) {
+        if (event.source !== window.parent) return;
         var msg = event.data;
         if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
+        if (msg.method === "ui/resource-teardown") {
+          dispose();
+          post({ jsonrpc: "2.0", id: msg.id, result: {} });
+          return;
+        }
         if (msg.method === "ui/notifications/tool-result" && msg.params) {
           var data = normalise(msg.params.structuredContent);
           if (data) render(data);
@@ -542,6 +563,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
             applyTheme(init.hostContext && init.hostContext.theme);
           }
           post({ jsonrpc: "2.0", method: "ui/notifications/initialized" });
+          post({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: 560 } });
           return;
         }
         if (typeof msg.id === "number" && awaiting[msg.id]) {
@@ -732,7 +754,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       // ── Rendering ────────────────────────────────────────────────────────
 
       function render(data) {
-        if (rendered && rendered.modelUrl === data.modelUrl) return;
+        if (disposed || (!pending && viewer && rendered && JSON.stringify(rendered) === JSON.stringify(data))) return;
         pending = data;
         placeholder.hidden = true;
         errorEl.hidden = true;
@@ -744,7 +766,14 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         canvas.setAttribute("aria-label", data.alt || data.title || "3D model");
         var ext = (data.modelUrl.split("?")[0].split(".").pop() || "GLB").toUpperCase();
         formatEl.textContent = ext === "GLTF" ? "glTF" : ext;
-        whenSceneViewReady(function () { start(data); });
+        // Serialize loads, so a superseded result cannot repaint a newer model or error.
+        renderQueue = renderQueue.catch(function () {}).then(async function () {
+          if (pending !== data || disposed) return;
+          try {
+            await chooseRenderer();
+            if (pending === data && !disposed) await start(data);
+          } catch (err) { if (pending === data && !disposed) fail(err); }
+        });
       }
 
       // ── 3MF (#3482) ──────────────────────────────────────────────────────
@@ -817,83 +846,132 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
           });
       }
 
-      function start(data) {
-        if (pending !== data) return; // superseded by a newer payload
-        resolveModelUrl(data.modelUrl).then(function (url) {
-          if (pending !== data) return; // superseded while the 3MF was converting
-          startWith(data, url);
-        }).catch(fail);
+      async function start(data) {
+        var url = await resolveModelUrl(data.modelUrl);
+        try {
+          if (pending !== data || disposed) return;
+          try { await startWith(data, url); }
+          catch (err) {
+            if (err && err.name === "AbortError") return;
+            if (pending !== data || disposed) return;
+            if (rendererKind !== "filament") throw err;
+            // WASM compilation can succeed while Filament's initialization fails.
+            // Keep a fresh WebGL context for the fallback in that case.
+            console.warn("SceneView: Filament failed; trying the WASM-free renderer.", err);
+            useFallback();
+            resetCanvas();
+            await startWith(data, url);
+          }
+        } finally {
+          if (url !== data.modelUrl && url.indexOf("blob:") === 0) URL.revokeObjectURL(url);
+        }
       }
 
-      function startWith(data, url) {
-        if (viewer && typeof viewer.loadModel === "function") {
-          viewer.loadModel(url).then(function () { reveal(data); }).catch(function (err) {
-            // sceneview.js rejects a load that a later loadModel() replaced with an
-            // AbortError: the later render() owns the viewer, so this is not a failure.
-            if (err && err.name === "AbortError") return;
-            fail(err);
+      function deadline(promise, ms, message) {
+        return new Promise(function (resolve, reject) {
+          var timer = setTimeout(function () { reject(new Error(message)); }, ms);
+          Promise.resolve(promise).then(function (value) {
+            clearTimeout(timer); resolve(value);
+          }, function (error) { clearTimeout(timer); reject(error); });
+        });
+      }
+
+      async function startWith(data, url) {
+        if (viewer) {
+          await deadline(viewer.loadModel(url), 30000, "The model took too long to load. Try the AR link.");
+        } else {
+          var factory = rendererKind === "filament" ? window.SceneView : window.SceneViewFallback;
+          var accepted = true;
+          var creation = factory.modelViewer(canvas, url, {
+            backgroundColor: [0, 0, 0, 0],
+            lightIntensity: 150000,
+            autoRotate: data.autoRotate !== false && !reducedMotion,
+            fov: 35,
+            iblUrl: IBL_URL,
+          }).then(function (value) {
+            if (!accepted || disposed) { value.dispose(); return null; }
+            return value;
           });
-          return;
+          try {
+            viewer = await deadline(creation, 30000, "The renderer took too long to start. Try the AR link.");
+          } catch (error) { accepted = false; throw error; }
         }
-        SceneView.modelViewer(canvas, url, {
-          backgroundColor: [0, 0, 0, 0],
-          // Match the sceneview.github.io playground hero settings.
-          lightIntensity: 150000,
-          fov: 35,
-          // An absolute IBL URL: a relative one resolves against the host's
-          // sandbox origin, 404s, and leaves PBR materials almost black.
-          iblUrl: IBL_URL,
-        }).then(function (v) {
-          viewer = v;
-          reveal(data);
-        }).catch(fail);
+        if (pending === data && !disposed) reveal(data);
       }
 
       function reveal(data) {
         rendered = data;
         pending = null;
         loader.hidden = true;
-        // An error an earlier payload left must not sit over the model that loaded.
         errorEl.hidden = true;
         canvas.style.opacity = "1";
-        if (data.autoRotate === false && viewer && viewer.setAutoRotate) {
-          viewer.setAutoRotate(false);
-        } else if (viewer && viewer.setAutoRotate) {
-          viewer.setAutoRotate(true);
-        }
+        if (viewer && viewer.setAutoRotate) viewer.setAutoRotate(data.autoRotate !== false && !reducedMotion);
+        document.documentElement.dataset.renderer = rendererKind;
+        document.getElementById("engine").textContent = rendererKind === "filament"
+          ? "Filament.js · WebGL2 · WASM" : "WebGL2 · compatibility mode";
         notifyReady();
       }
 
       function fail(err) {
         pending = null;
+        rendered = null;
+        if (viewer) { viewer.dispose(); viewer = null; }
         showError((err && err.message) || String(err));
       }
 
-      // SceneView.js registers its global after Filament's WASM ready
-      // promise, so poll briefly for it before deciding the CDN failed.
-      var readyCallbacks = [];
-      var polling = false;
-      function whenSceneViewReady(cb) {
-        if (typeof SceneView !== "undefined" && SceneView.modelViewer) { cb(); return; }
-        readyCallbacks.push(cb);
-        if (polling) return;
-        polling = true;
-        var tries = 0;
-        var maxTries = 60; // ~6 s at 100 ms intervals
-        var timer = setInterval(function () {
-          tries++;
-          if (typeof SceneView !== "undefined" && SceneView.modelViewer) {
-            clearInterval(timer);
-            var cbs = readyCallbacks; readyCallbacks = [];
-            cbs.forEach(function (fn) { fn(); });
-          } else if (tries >= maxTries) {
-            clearInterval(timer);
-            polling = false;
-            readyCallbacks = [];
-            showError("Timed out loading SceneView.js + Filament.js from the CDN.");
-          }
-        }, 100);
+      function resetCanvas() {
+        if (viewer) { viewer.dispose(); viewer = null; }
+        var replacement = canvas.cloneNode(false);
+        replacement.style.opacity = "0";
+        canvas.replaceWith(replacement);
+        canvas = replacement;
       }
+
+      function loadScript(url) {
+        return deadline(new Promise(function (resolve, reject) {
+          var script = document.createElement("script");
+          script.src = url;
+          script.onload = resolve;
+          script.onerror = function () { reject(new Error("Could not load " + url)); };
+          document.head.appendChild(script);
+        }), 15000, "The renderer download timed out.");
+      }
+
+      function useFallback() {
+        if (!window.SceneViewFallback) {
+          var script = document.createElement("script");
+          script.textContent = document.getElementById("fallback-source").textContent;
+          document.head.appendChild(script);
+          script.remove();
+        }
+        if (!window.SceneViewFallback) throw new Error("This host could not start the 3D renderer. Use the AR link below.");
+        rendererKind = "fallback";
+      }
+
+      function chooseRenderer() {
+        if (!rendererPromise) rendererPromise = (async function () {
+          try {
+            // A valid, empty WASM module tests the actual iframe policy, without
+            // a network request, eval(), or an invented CSP metadata permission.
+            await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+            await loadScript(FILAMENT_URL);
+            await loadScript(SCENEVIEW_URL);
+            if (!window.SceneView || !window.SceneView.modelViewer) throw new Error("SceneView.js did not initialize.");
+            rendererKind = "filament";
+          } catch (error) {
+            console.info("SceneView: using the WASM-free renderer because Filament is unavailable.", error);
+            useFallback();
+          }
+        })();
+        return rendererPromise;
+      }
+
+      function dispose() {
+        disposed = true;
+        pending = null;
+        if (viewer) { viewer.dispose(); viewer = null; }
+      }
+      window.addEventListener("pagehide", dispose);
 
       // ── Boot ─────────────────────────────────────────────────────────────
       var initial = fromOpenAI() || fromQuery();

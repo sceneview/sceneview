@@ -44,6 +44,8 @@ describe("widget resource registry", () => {
       "https://media.sketchfab.com",
       "https://cdn.jsdelivr.net",
       "https://arcamera-api.mcp-tools-lab.workers.dev",
+      "blob:",
+      "data:",
     ]);
   });
 
@@ -62,17 +64,20 @@ describe("widget resource registry", () => {
 });
 
 describe("3D viewer widget HTML", () => {
-  it("pins SceneView.js and Filament.js to the released SDK version", () => {
+  it("loads the pinned primary scripts only after the WASM probe", () => {
     expect(WIDGET_3D_VIEWER_HTML).toContain(
-      `src="https://sceneview.github.io/js/sceneview.js?v=${LATEST_SCENEVIEW_RELEASE}"`
+      `FILAMENT_URL = "https://sceneview.github.io/js/filament/filament.js?v=${LATEST_SCENEVIEW_RELEASE}"`
     );
     expect(WIDGET_3D_VIEWER_HTML).toContain(
-      `src="https://sceneview.github.io/js/filament/filament.js?v=${LATEST_SCENEVIEW_RELEASE}"`
+      `SCENEVIEW_URL = "https://sceneview.github.io/js/sceneview.js?v=${LATEST_SCENEVIEW_RELEASE}"`
     );
-    // Every script tag on the page comes from the one CSP resource domain.
-    const srcs = [...WIDGET_3D_VIEWER_HTML.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
-    expect(srcs.length).toBeGreaterThan(0);
-    for (const src of srcs) expect(src.startsWith("https://sceneview.github.io/")).toBe(true);
+    expect(WIDGET_3D_VIEWER_HTML).not.toMatch(/<script src=/);
+    const choose = WIDGET_3D_VIEWER_HTML.slice(
+      WIDGET_3D_VIEWER_HTML.indexOf("function chooseRenderer")
+    );
+    expect(choose.indexOf("WebAssembly.compile")).toBeLessThan(
+      choose.indexOf("loadScript(FILAMENT_URL)")
+    );
   });
 
   it("reads the payload from the bridge, then window.openai, then the query string", () => {
@@ -93,7 +98,10 @@ describe("3D viewer widget HTML", () => {
   it("renders with SceneView.modelViewer and an absolute IBL", () => {
     // `url`, not `data.modelUrl`: a 3MF is converted to a blob GLB first (#3482),
     // and the renderer must be handed the resolved URL, never the raw one.
-    expect(WIDGET_3D_VIEWER_HTML).toContain("SceneView.modelViewer(canvas, url");
+    expect(WIDGET_3D_VIEWER_HTML).toContain(
+      'rendererKind === "filament" ? window.SceneView : window.SceneViewFallback'
+    );
+    expect(WIDGET_3D_VIEWER_HTML).toContain("factory.modelViewer(canvas, url");
     expect(WIDGET_3D_VIEWER_HTML).toContain(
       'IBL_URL = "https://sceneview.github.io/environments/neutral_ibl.ktx"'
     );
@@ -179,9 +187,7 @@ describe("Open in AR action", () => {
     // The action appears whether or not the in-chat preview manages to load.
     const updateAt = html.indexOf("updateArAction(data);");
     expect(updateAt).toBeGreaterThan(html.indexOf("function render(data)"));
-    expect(updateAt).toBeLessThan(
-      html.indexOf("whenSceneViewReady(function () { start(data); });")
-    );
+    expect(updateAt).toBeLessThan(html.indexOf("await chooseRenderer();"));
   });
 
   it("follows the link through the host, with a plain anchor as the last resort", () => {
