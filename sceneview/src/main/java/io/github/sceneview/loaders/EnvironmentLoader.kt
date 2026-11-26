@@ -64,7 +64,12 @@ class EnvironmentLoader(
         indirectLight: IndirectLight? = null,
         skybox: Skybox? = null,
         sphericalHarmonics: FloatArray? = null
-    ) = createEnvironment(indirectLight, skybox, sphericalHarmonics, emptyList())
+    ): Environment {
+        // Like the loaders below: a destroyed loader would never release what it lists, and the
+        // shared default engine keeps it on the GPU until the process ends (#5202).
+        check(!isDestroyed) { "This EnvironmentLoader was destroyed" }
+        return createEnvironment(indirectLight, skybox, sphericalHarmonics, emptyList())
+    }
 
     private fun createEnvironment(
         indirectLight: IndirectLight? = null,
