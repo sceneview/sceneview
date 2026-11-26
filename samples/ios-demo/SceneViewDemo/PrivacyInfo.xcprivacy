@@ -10,9 +10,6 @@
 	                                            the IP address; no GPS, no location API
 	  - Product Interaction  (Analytics)        events: sample_open, screen_view, ...
 	  - Search History       (Analytics)        the search event's search term
-	  - Purchase History     (Analytics)        the support purchase events, with their
-	                                            product ID or tier (DemoAnalytics); to be
-	                                            removed from Analytics, then from here
 	  - Other Usage Data     (Analytics, App    Firebase files FCM push delivery here
 	                          Functionality)
 	  - Crash Data           (App Functionality) Crashlytics reports
@@ -50,18 +47,6 @@
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
-			</array>
-		</dict>
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypePurchaseHistory</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
