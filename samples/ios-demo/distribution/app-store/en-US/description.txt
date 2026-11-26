@@ -24,7 +24,11 @@ github.com/sceneview/sceneview
 
 PRIVACY
 
-No account, no ads, no cross-app tracking. Your models and the camera feed stay on your device — the camera is used only for AR, and nothing it sees is uploaded. A scan you record is saved on your device, until you delete it or share it yourself. The app sends usage statistics and crash reports (Firebase), never linked to your identity, to decide what to improve next — you can turn them off in Settings. Beyond that, two things reach the network: the online model gallery, only while you are searching it, and the high-definition models that some samples download the first time you open them.
+No account, no ads, no cross-app tracking. Models are rendered on your device, and the camera is used only for AR: nothing it sees is uploaded. A scan you record stays on your device until you delete it; sharing sends a copy you choose.
+
+The app sends usage statistics and crash reports through Firebase, which uses an app-installation identifier, to decide what to improve next. Turn both off in About › Privacy & notifications.
+
+Some features use the network: browsing and downloading online models, the high-definition models (one is downloaded on Wi-Fi at first launch, the others when a sample needs them), a check for app updates on the App Store, and optional notifications.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview

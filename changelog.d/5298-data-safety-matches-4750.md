@@ -1,0 +1,2 @@
+<!-- category: Documentation -->
+- Demo store privacy: the Play Data safety answers and their explanation, the App Store description and the privacy policy now match what the 4.75.0 demo does — ARCore's app-activity data also serves app functionality, ML Kit's own diagnostics and Streetscape are named, speech recognition is explained, and the iOS description lists every feature that uses the network. Purchase history is declared on both stores while the 4.75.0 analytics still record in-app purchases.

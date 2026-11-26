@@ -279,7 +279,7 @@
     <section class="privacy-hero">
       <div class="privacy-hero__container">
         <h1 class="privacy-hero__title reveal">Privacy Policy</h1>
-        <p class="privacy-hero__updated reveal"><strong>SceneView SDK, SceneView Demo app and this website</strong> &mdash; Last updated: October 16, 2026</p>
+        <p class="privacy-hero__updated reveal"><strong>SceneView SDK, SceneView Demo app and this website</strong> &mdash; Last updated: November 26, 2026</p>
       </div>
     </section>
 
@@ -312,7 +312,7 @@
 
       <h3>Usage analytics (Google Analytics for Firebase)</h3>
       <ul>
-        <li><strong>Events:</strong> which demos you open and how long you stay, interactions inside a demo (for example placing or moving a model), the steps of the AR flow (session started, surface found, first model placed, tracking lost), taps on links that leave the app, your answer to the notification prompt, and changes to the app&rsquo;s settings.</li>
+        <li><strong>Events:</strong> which demos you open and how long you stay, interactions inside a demo (for example placing or moving a model), the steps of the AR flow (session started, surface found, first model placed, tracking lost), taps on links that leave the app, your answer to the notification prompt, changes to the app&rsquo;s settings, and in-app purchases (which product and price tier, never payment details, which stay with Google Play or the App Store).</li>
         <li><strong>Searches:</strong> the words you type in the app&rsquo;s two search fields (the demo list and the online model catalogs), once you stop typing, with how many results they found. The words are lowercased and cut to 50 characters, and anything that looks like an email address, a link, a long number or a phone number is replaced by &ldquo;(redacted)&rdquo; on the device, before it is sent. Nothing else you type is collected. Firebase also records standard events such as first open, session start and screen views.</li>
         <li><strong>Device and app information:</strong> device model, operating system version, app version, language, and an approximate location (country, region or city) that Google derives from your IP address. Google Analytics does not log or store IP addresses.</li>
         <li><strong>An app instance ID:</strong> a random identifier that Firebase creates for this installation. It is not your name, email, phone number or advertising ID, and reinstalling the app creates a new one.</li>
@@ -351,6 +351,8 @@
       <h3>On-device machine learning (Android)</h3>
       <p>The Android machine-learning demos (object detection, and the on-device prompt demos) run on Google ML Kit and, where the phone supports it, on Android AICore with Gemini Nano. Images and text are processed <strong>on your device</strong> and are not sent to us. When one of these demos is used, ML Kit and AICore themselves send Google usage and performance metrics (such as which feature ran, how long it took, and errors), with their own identifiers, to measure and improve those services. This is Google&rsquo;s collection, governed by the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>; it does not go through the app&rsquo;s analytics, so the <strong>Share usage statistics</strong> answer does not control it, and the app has no switch of its own to stop it. You avoid it by not opening those demos. <a href="https://developers.google.com/ml-kit/terms" target="_blank" rel="noopener">ML Kit terms and data use</a>.</p>
 
+      <h3>Speech recognition (Android)</h3>
+      <p>Ask in AR, Point &amp; Ask and the dictation button of the bug-report sheet turn what you say into text with your phone&rsquo;s speech-recognition service, after you allow the microphone. That service, not the app, handles the audio and may send it to its provider under its own policy; the app only receives the text, uses it on your device, and never sends it to us or puts it in analytics (dictated bug-report text goes only where you send the report).</p>
       <h3>Google ARCore cloud features (Android)</h3>
       <p>A few Android demos &mdash; Cloud Anchors and the Geospatial demos (Rooftop, Terrain, Streetscape) &mdash; rely on Google&rsquo;s ARCore cloud services. <strong>To power these sessions, Google processes sensor data (e.g., camera and location).</strong> When you host or resolve a Cloud Anchor, visual data from the camera is sent to Google to map the anchor; the Geospatial demos also send your precise location, after you grant the location permission. Google uses this data only to provide the feature, and marks the camera data for automatic deletion. None of it is sent to us. <a href="https://support.google.com/ar?p=how-google-play-services-for-ar-handles-your-data" target="_blank" rel="noopener">Learn more about how Google Play Services for AR handles your data</a>. The iOS app does not use these services.</p>
 
@@ -363,7 +365,7 @@
       </ul>
 
       <h3>Online 3D content</h3>
-      <p>Some demos search for or download free 3D models and environments from public libraries (Poly Haven, Sketchfab, Icosa Gallery) and from GitHub or sceneview.github.io. These requests go straight from your device to those services, which see your IP address as any website you visit would. The app sends them no identifier and no personal data; their own privacy policies apply.</p>
+      <p>Some demos search for or download free 3D models and environments from public libraries (Poly Haven, Sketchfab, Icosa Gallery) and from GitHub or sceneview.github.io. These requests go straight from your device to those services, which see your IP address as any website you visit would. The app sends them no identifier and no personal data; their own privacy policies apply. The app also downloads, on Wi-Fi and without asking, part of its high-definition model pack from GitHub at launch.</p>
 
       <h3>In-app bug reports (Android)</h3>
       <p>The Android app has an optional &ldquo;Report a bug&rdquo; sheet. It needs no permission, records neither screen nor audio, and <strong>never uploads anything itself</strong>. It assembles, on your device, an optional screenshot of the app&rsquo;s own window, the app&rsquo;s own recent log lines, any text you type, and device and app context (app version and build, Android version, device manufacturer and model, ABI, screen size, locale). You then choose where it goes: an app you pick in the Android share sheet, or a pre-filled public GitHub issue that you review and submit yourself. If you dismiss the sheet, the report is discarded.</p>
