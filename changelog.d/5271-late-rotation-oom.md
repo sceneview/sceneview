@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- A model load that runs out of Java heap while reading its file no longer crashes the app. It waits for the loads abandoned by a rotation to end, reads once more, and if the heap still has no room it logs the failure and the model does not show. An abandoned load also stops sooner and no longer keeps the whole GLB reachable while gltfio begins its resources (#5271, reported on Android 8 with a 16 MiB heap).
