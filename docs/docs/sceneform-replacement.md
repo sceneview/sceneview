@@ -21,8 +21,8 @@ Volkswagen, Audi, Porsche and CUPRA apps, Philips Hue, Medal and IKEA. Lenskart 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.sceneview:arsceneview:4.74.0")   // AR (includes the 3D module)
-    // implementation("io.github.sceneview:sceneview:4.74.0")  // 3D only, no camera
+    implementation("io.github.sceneview:arsceneview:4.75.0")   // AR (includes the 3D module)
+    // implementation("io.github.sceneview:sceneview:4.75.0")  // 3D only, no camera
 }
 ```
 

@@ -13,7 +13,7 @@ Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained
 
 ```kotlin
 // shared module, commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.74.0")
+implementation("io.github.sceneview:sceneview-compose:4.75.0")
 ```
 
 ```kotlin

@@ -24,7 +24,7 @@
  * Powered by Filament.js v1.72.1 (Google's PBR renderer, WASM).
  * https://sceneview.github.io
  *
- * @version 4.74.0
+ * @version 4.75.0
  * @license MIT
  */
 (function(global) {
@@ -6678,7 +6678,7 @@
   }
 
   global.SceneView = {
-    version: '4.74.0',
+    version: '4.75.0',
     create: create,
     modelViewer: modelViewer,
     /**
