@@ -1,0 +1,24 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.plugin.compose"
+}
+def sv = project.findProperty("sv") ?: "4.72.0"
+android {
+    namespace "repro.mavlab"
+    compileSdk 37
+    defaultConfig { applicationId "repro.mavlab"; minSdk 26; targetSdk 36; versionCode 1; versionName sv }
+    buildFeatures { compose true }
+}
+kotlin { jvmToolchain(17) }
+dependencies {
+    implementation "io.github.sceneview:sceneview:$sv"
+    implementation platform("androidx.compose:compose-bom:2026.09.00")
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.activity:activity-compose:1.13.0"
+}
+configurations.configureEach {
+    resolutionStrategy.eachDependency { d ->
+        if (d.requested.group == "io.github.sceneview" && d.requested.name != "sceneview") d.useVersion "4.72.0"
+    }
+}

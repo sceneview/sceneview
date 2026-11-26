@@ -1,0 +1,6 @@
+build/
+.gradle/
+local.properties
+app/src/main/assets/models/
+/apks/
+/results/
