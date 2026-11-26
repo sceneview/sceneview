@@ -268,11 +268,15 @@ internal class Sketch(seed: Int) {
     private val sheets = mutableListOf<InkSheet>()
     private val props = mutableListOf<PlanProp>()
 
-    /** A real object, built over [seconds] once the pen has drawn everything before it. */
-    fun prop(kind: PropKind, offset: Float3, size: Float3, seconds: Float, pause: Float = PROP_PAUSE) {
+    /**
+     * A real object, built over [seconds] once the pen has drawn everything before it. With
+     * [alongside], the pen goes on writing while it is built, so the object turns up while the
+     * camera is still on the marks it belongs to; otherwise the pen waits for it.
+     */
+    fun prop(kind: PropKind, offset: Float3, size: Float3, seconds: Float, pause: Float = PROP_PAUSE, alongside: Boolean = false) {
         clock += pause
         props += PlanProp(kind, offset, size, clock, seconds)
-        clock += seconds
+        if (!alongside) clock += seconds
     }
 
     /** A pen-lift's worth of nothing. */
@@ -495,6 +499,28 @@ internal object HangPicture {
             line(Sketch.handLine(InkPoint(-half, 0f), InkPoint(half, 0f), 0.0028f * k, r), ink, speed = 0.95f, pause = 0f)
             // A small tick on its centre.
             line(Sketch.handLine(InkPoint(0f, 0.028f * k), InkPoint(0.002f, -0.028f * k), 0.001f, r, 0.005f), ink * 0.9f, 0.6f)
+            // Two crosses for the nails: each two strokes, top-left first.
+            for (x in listOf(-nail, nail)) {
+                fun jitter() = (r.nextFloat() - 0.5f) * 0.006f
+                line(
+                    listOf(InkPoint(x - mark + jitter(), mark + jitter()), InkPoint(x + mark + jitter(), -mark + jitter())),
+                    ink, 0.5f, pause = 0.12f,
+                )
+                line(
+                    listOf(InkPoint(x + mark + jitter(), mark + jitter()), InkPoint(x - mark + jitter(), -mark + jitter())),
+                    ink, 0.5f,
+                )
+            }
+            // Then the picture itself, hung on the two nails while the pen writes on: its frame
+            // flush on the wall, centred on the line, the ink still showing over it.
+            sketch.prop(
+                PropKind.PictureFrame,
+                Float3(0f, 0f, -WALL_LIFT + FRAME_DEPTH / 2f),
+                Float3(FRAME_WIDTH, FRAME_HEIGHT, FRAME_DEPTH),
+                seconds = FRAME_SECONDS,
+                pause = 0.2f,
+                alongside = true,
+            )
             // The height: a tick down toward the floor, its arrowhead, and its label.
             val bottom = -TICK_LENGTH * k
             val barb = 0.018f * k
@@ -508,27 +534,7 @@ internal object HangPicture {
             text(NOTE, note, Doodle.Underline, pause = 0.25f) { w ->
                 InkPoint(-w.bounds.centerX, 0.08f * k - w.bounds.minY)
             }
-            // Last, two crosses for the nails: each two strokes, top-left first.
-            for (x in listOf(-nail, nail)) {
-                fun jitter() = (r.nextFloat() - 0.5f) * 0.006f
-                line(
-                    listOf(InkPoint(x - mark + jitter(), mark + jitter()), InkPoint(x + mark + jitter(), -mark + jitter())),
-                    ink, 0.5f, pause = 0.12f,
-                )
-                line(
-                    listOf(InkPoint(x + mark + jitter(), mark + jitter()), InkPoint(x - mark + jitter(), -mark + jitter())),
-                    ink, 0.5f,
-                )
-            }
         }
-        // Then the picture itself, hung on the two nails: its frame flush on the wall, centred
-        // on the line, the ink still showing over it.
-        sketch.prop(
-            PropKind.PictureFrame,
-            Float3(0f, 0f, -WALL_LIFT + FRAME_DEPTH / 2f),
-            Float3(FRAME_WIDTH, FRAME_HEIGHT, FRAME_DEPTH),
-            seconds = FRAME_SECONDS,
-        )
         return sketch.build(lineCentre(wall, floorY), atan2(wall.normal.x, wall.normal.z))
     }
 
@@ -884,6 +890,9 @@ internal object RadiatorBleed {
             line(shaft, INK, speed = 0.55f, pause = 0.12f)
             line(head, INK, speed = 0.35f)
         }
+        // Then the key, while the pen writes on: it comes to the screw, turns it the quarter turn
+        // the arrow shows, and a few drops come out.
+        sketch.prop(PropKind.BleedKey, Float3(0f), Float3(KEY_HANDLE, KEY_HANDLE, KEY_LENGTH), seconds = KEY_SECONDS, pause = 0.15f, alongside = true)
         // "¼ turn" centred above the circle, clear of the arrow's head: the fraction drawn by
         // hand, the font has none. Above rather than beside it, so it stays on a narrow screen
         // when the screw is off centre.
@@ -909,9 +918,6 @@ internal object RadiatorBleed {
                 top -= heights[i] + gap
             }
         }
-        // Then the key: it comes to the screw, turns it the quarter turn the arrow shows, and a
-        // few drops come out.
-        sketch.prop(PropKind.BleedKey, Float3(0f), Float3(KEY_HANDLE, KEY_HANDLE, KEY_LENGTH), seconds = KEY_SECONDS)
         val lift = Float3(spot.normal.x * SURFACE_LIFT, 0f, spot.normal.z * SURFACE_LIFT)
         return sketch.build(spot.point + lift, atan2(spot.normal.x, spot.normal.z))
     }

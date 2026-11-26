@@ -123,8 +123,8 @@ class AskDrawingTest {
     @Test fun `each nail is a cross of two strokes on the line`() {
         val plan = HangPicture.plan(wallAhead, floorY = 0f)
         val strokes = plan.sheets.single().writing.strokes
-        // The two crosses come last, after the height and the note.
-        val crosses = strokes.takeLast(4)
+        // The two crosses come right after the line and its centre tick, so the picture can hang on them.
+        val crosses = strokes.subList(2, 6)
         for ((i, x) in listOf(-0.2f, 0.2f).withIndex()) {
             val pair = crosses.subList(2 * i, 2 * i + 2)
             val centreX = pair.flatMap { it.points }.let { (it.minOf { p -> p.x } + it.maxOf { p -> p.x }) / 2f }
@@ -468,7 +468,7 @@ class AskDrawingTest {
         }
     }
 
-    @Test fun `each drawing ends with its real object, built once the pen is done`() {
+    @Test fun `each drawing brings in its real object on the plan's clock`() {
         val plans = mapOf(
             PropKind.PictureFrame to HangPicture.plan(wallAhead, 0f),
             PropKind.Sofa to SofaFit.plan(SofaSpot(Float3(0f, 0f, -1.8f), 1.2f, 1.1f), north),
@@ -478,12 +478,30 @@ class AskDrawingTest {
             val prop = plan.props.single()
             assertEquals(kind, prop.kind)
             val inkDone = plan.sheets.maxOf { it.writing.totalSeconds }
-            assertTrue("$kind starts at ${prop.start} before the ink is done at $inkDone", prop.start >= inkDone)
-            assertEquals(prop.start + prop.seconds, plan.totalSeconds, 1e-4f)
+            val firstMark = plan.sheets.minOf { s -> s.writing.starts.indices.minOf { s.writing.starts[it] + s.writing.strokes[it].times.last() } }
+            assertTrue("$kind starts at ${prop.start}, before the first mark is down at $firstMark", prop.start >= firstMark)
+            if (kind == PropKind.Sofa) {
+                // The sofa stands on the finished footprint, under the finished verdict.
+                assertTrue("sofa starts at ${prop.start} before the ink is done at $inkDone", prop.start >= inkDone)
+            } else {
+                // The frame and the key come in while the pen writes on, so the camera still sees them.
+                assertTrue("$kind waits for the pen: ${prop.start} >= $inkDone", prop.start < inkDone)
+            }
+            assertEquals(maxOf(inkDone, prop.start + prop.seconds), plan.totalSeconds, 1e-4f)
             assertEquals(0f, prop.progress(prop.start), 0f)
-            assertEquals(1f, prop.progress(plan.totalSeconds), 0f)
+            assertEquals(1f, prop.progress(prop.start + prop.seconds), 1e-5f)
             assertEquals(1f, prop.progress(plan.totalSeconds + 5f), 0f)
         }
+    }
+
+    @Test fun `the picture is hung once the nails are marked`() {
+        val plan = HangPicture.plan(wallAhead, 0f)
+        val prop = plan.props.single()
+        val wall = plan.sheets.single().writing
+        // The nails are the four short strokes just before the frame comes in.
+        val nailsDone = wall.starts.indices.filter { wall.starts[it] < prop.start }.maxOf { wall.starts[it] + wall.strokes[it].times.last() }
+        assertTrue(prop.start >= nailsDone)
+        assertEquals(4 + 2, wall.starts.count { it < prop.start })
     }
 
     @Test fun `the picture hangs flush on the wall, centred on the level line`() {
