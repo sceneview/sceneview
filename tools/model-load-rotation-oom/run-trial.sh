@@ -6,7 +6,8 @@
 # the ASCII unit separator (0x1f) so that empty fields survive `read`:
 #   apk  oom  oom_frame  visible  drain_ms  peak_kib  rotations  max_mib
 # Env: ROTATE_DELAY seconds to wait after the first engine before rotating (default 0: right away;
-# the MAVLab retest rotated 7-12 s in), EXTRA_MIB ballast on top of the app (default 0).
+# the MAVLab retest rotated 7-12 s in), EXTRA_MIB ballast on top of the app (default 0),
+# CHURN_MIBPS garbage allocated per second by a background thread (default 0).
 # Every adb call is bounded: a device that drops off must end the trial, not hang the job.
 SERIAL=${ANDROID_SERIAL:-emulator-5554}; APK=$1; B=$2; OUT=$3; W=${4:-40}
 a() { local t=$1; shift; timeout "$t" adb -s "$SERIAL" "$@"; }
@@ -20,7 +21,7 @@ a 30 shell am force-stop repro.mavlab; sleep 1
 a 30 logcat -c || step "logcat -c failed (rc=$?)"
 step "start"
 a 30 shell run-as repro.mavlab rm -f files/oom.hprof
-a 30 shell am start -n repro.mavlab/repro.MainActivity --ei budgetMiB "$B" --ei extraMiB "${EXTRA_MIB:-0}" >/dev/null
+a 30 shell am start -n repro.mavlab/repro.MainActivity --ei budgetMiB "$B" --ei extraMiB "${EXTRA_MIB:-0}" --ei churnMiBps "${CHURN_MIBPS:-0}" >/dev/null
 PID=""; for i in $(seq 1 50); do PID=$(a 10 shell pidof repro.mavlab | tr -d "\r"); [ -n "$PID" ] && break; sleep 0.1; done
 step "pid=${PID:-none}, waiting for the first engine"
 [ -n "$PID" ] && a 30 logcat --pid="$PID" -e "FEngine \(64 bits\) created" -m 1 >/dev/null

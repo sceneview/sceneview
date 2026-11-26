@@ -30,6 +30,25 @@ class MainActivity : ComponentActivity() {
         val processStart = SystemClock.uptimeMillis()
         var generation = 0
         var handlerInstalled = false
+        var churn: Thread? = null
+    }
+
+    /**
+     * churnMiBps > 0: a thread that allocates and drops that much garbage per second, in 64 KiB
+     * arrays. A live app (MAVLab's simulation, HUD and audio) keeps the collector busy; on a full
+     * 16 MiB heap the model load then takes tens of seconds instead of one, as in the report.
+     */
+    private fun startChurn(miBps: Int) {
+        if (miBps <= 0 || churn != null) return
+        churn = Thread {
+            var sink: ByteArray? = null
+            val perTick = miBps * 16 / 10 // 64 KiB arrays per 100 ms
+            while (true) {
+                repeat(perTick) { sink = ByteArray(64 * 1024); sink!![0] = 1 }
+                Thread.sleep(100)
+            }
+        }.apply { isDaemon = true; name = "repro-churn"; start() }
+        Log.i("REPRO", "churn $miBps MiB/s")
     }
 
     /**
@@ -74,6 +93,7 @@ class MainActivity : ComponentActivity() {
             ballast = Array(extra) { ByteArray(1024 * 1024 - 16) }
             Log.i("REPRO", "ballast extra=$extra MiB used=${used() shr 20} MiB")
         }
+        startChurn(intent.getIntExtra("churnMiBps", 0))
         val budget = intent.getIntExtra("budgetMiB", 0)
         if (budget > 0 && ballast == null) {
             System.gc()

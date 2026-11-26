@@ -77,7 +77,7 @@ jobs:
           retention-days: 7
 
   emulator:
-    name: API ${{ matrix.api }}, heap ${{ matrix.heap }} MiB, extra ${{ matrix.extra }} MiB
+    name: API ${{ matrix.api }}, heap ${{ matrix.heap }} MiB, extra ${{ matrix.extra }} MiB, churn ${{ matrix.churn }} MiB/s
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -87,9 +87,9 @@ jobs:
         # The MAVLab retest of 4.73.0 rotated 7-12 s after the first engine, with an app that sits
         # higher in its heap than this repro: the delays and the extra ballast stand in for both.
         include:
-          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0 4 8", extra: 0 }
-          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0 4 8", extra: 3 }
-          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0 4 8", extra: 5 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "2 5 8", extra: 5, churn: 4 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "2 5 8", extra: 6, churn: 4 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "2 5 8", extra: 5, churn: 8 }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -121,12 +121,12 @@ jobs:
           script: |
             timeout 150 adb wait-for-device
             attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 90 ]; do sleep 2; attempts=$((attempts + 1)); done
-            DELAYS="${{ matrix.delays }}" EXTRA_MIB=${{ matrix.extra }} bash tools/model-load-rotation-oom/ci-trials.sh apks "${{ matrix.versions }}" ${{ matrix.api }} ${{ matrix.heap }} 2 results
+            DELAYS="${{ matrix.delays }}" EXTRA_MIB=${{ matrix.extra }} CHURN_MIBPS=${{ matrix.churn }} bash tools/model-load-rotation-oom/ci-trials.sh apks "${{ matrix.versions }}" ${{ matrix.api }} ${{ matrix.heap }} 2 results
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: oom-api${{ matrix.api }}-heap${{ matrix.heap }}-extra${{ matrix.extra }}
+          name: oom-api${{ matrix.api }}-heap${{ matrix.heap }}-extra${{ matrix.extra }}-churn${{ matrix.churn }}
           path: results/
           retention-days: 14
           if-no-files-found: ignore

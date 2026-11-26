@@ -37,7 +37,7 @@ step "framework restarted (boot_completed=$(prop sys.boot_completed))"
 {
   echo "### API $API, heap ${HEAP} MiB ($(tr '\n' ' ' < "$OUT/props.txt"))"
   echo
-  echo "Extra ballast: ${EXTRA_MIB:-0} MiB."
+  echo "Extra ballast: ${EXTRA_MIB:-0} MiB. Garbage churn: ${CHURN_MIBPS:-0} MiB/s."
   echo
   echo "| API | heap | version | rotate after (s) | trial | app max heap (MiB) | OOM | first app frame | drain (ms) | model visible | peak heap (KiB) | rotations |"
   echo "|---|---|---|---|---|---|---|---|---|---|---|---|"
