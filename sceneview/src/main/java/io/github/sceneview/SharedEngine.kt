@@ -22,7 +22,6 @@ internal val defaultEnginePool = EnginePool(
             "Filament engines must be acquired and released on the main thread"
         }
     },
-    onSharedCreated = { EngineDestroyQueue.of(it).enableIdleCleanup() },
     // ARCameraStream creates external GL textures on Main. A custom engine may have made a
     // different share group current since the last default scene, so restore ours on acquisition.
     onSharedAcquired = { OpenGL.makeEglContextCurrent(it) },

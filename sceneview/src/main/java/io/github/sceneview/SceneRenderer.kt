@@ -279,10 +279,6 @@ class SceneRenderer(
      */
     private val frameSource = Any()
 
-    init {
-        EngineDestroyQueue.of(engine).addRenderer(frameSource)
-    }
-
     /**
      * Presents a single frame if a swap chain is available.
      *
@@ -453,7 +449,6 @@ class SceneRenderer(
             display = null
         } finally {
             surfaceDetachBudget = null
-            EngineDestroyQueue.of(engine).removeRenderer(frameSource)
         }
     }
 

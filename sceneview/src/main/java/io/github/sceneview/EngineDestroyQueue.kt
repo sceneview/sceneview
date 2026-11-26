@@ -1,7 +1,5 @@
 package io.github.sceneview
 
-import android.os.Handler
-import android.os.Looper
 import androidx.compose.runtime.mutableStateOf
 import com.google.android.filament.Engine
 import com.google.android.filament.Stream
@@ -46,8 +44,6 @@ import java.util.WeakHashMap
  * Each [Engine] gets exactly one queue, looked up via [of]. When the [Engine] is torn down,
  * [drainAll] (called from [Engine.safeDestroy]) destroys every still-pending resource immediately
  * — Filament reclaims everything at engine teardown anyway, so the grace period no longer applies.
- * The process-wide default engine also releases pending resources after the last SceneRenderer
- * leaves and its backend is idle, without retiring the queue needed by a future scene.
  *
  * After teardown the engine cannot be resurrected: a stale [of] call (e.g. a `Node.destroy()` that
  * runs after [Engine.safeDestroy]) returns an already-drained queue whose [enqueueTexture]/
@@ -73,48 +69,6 @@ class EngineDestroyQueue private constructor(
         if (alreadyDestroyed) drainAll()
     }
 
-    // Bare tokens: keeping a SceneRenderer here would retain its Android surface and callbacks.
-    private val renderers = mutableSetOf<Any>()
-    private var idleRelease: ((() -> Unit) -> Unit)? = null
-    private var idleReleasePending = false
-
-    /** Only the process-wide engine needs cleanup without a future frame or Engine.destroy. */
-    internal fun enableIdleCleanup(
-        whenIdle: (() -> Unit) -> Unit = { release -> engine.whenBackendIdle { release() } },
-    ) {
-        idleRelease = whenIdle
-        releaseWithoutRenderer()
-    }
-
-    internal fun addRenderer(source: Any) {
-        renderers += source
-    }
-
-    internal fun removeRenderer(source: Any) {
-        renderers -= source
-        releaseWithoutRenderer()
-    }
-
-    private fun releaseWithoutRenderer() {
-        val whenIdle = idleRelease ?: return
-        if (renderers.isNotEmpty() || !hasPending || idleReleasePending) return
-        idleReleasePending = true
-        // Let the whole disposal pass finish: loaders may release material instances after nodes
-        // enqueue their textures. No frame can observe the bindings between those disposals.
-        Handler(Looper.getMainLooper()).post {
-            if (renderers.isNotEmpty() || !hasPending) {
-                idleReleasePending = false
-                return@post
-            }
-            whenIdle {
-                idleReleasePending = false
-                // A new scene may have arrived while the fence was pending. Its frames now own
-                // the grace period; never drain early beneath an active renderer.
-                if (renderers.isEmpty()) queue.drainPending()
-            }
-        }
-    }
-
     /** Number of resources currently waiting to be destroyed. Exposed for tests. */
     val size: Int get() = queue.size
 
@@ -133,7 +87,6 @@ class EngineDestroyQueue private constructor(
      */
     fun enqueueTexture(texture: Texture) {
         queue.enqueue { engine.safeDestroyTexture(texture) }
-        releaseWithoutRenderer()
     }
 
     /**
@@ -146,7 +99,6 @@ class EngineDestroyQueue private constructor(
      */
     fun enqueueStream(stream: Stream) {
         queue.enqueue { engine.safeDestroyStream(stream) }
-        releaseWithoutRenderer()
     }
 
     /**
@@ -162,7 +114,6 @@ class EngineDestroyQueue private constructor(
      */
     internal fun enqueueAction(action: () -> Unit) {
         queue.enqueue(action)
-        releaseWithoutRenderer()
     }
 
     /**
@@ -369,17 +320,6 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
         drainedAll = true
         while (pending.isNotEmpty()) {
             val entry = pending.removeFirst()
-            if (pending.isEmpty()) pendingState.value = false
-            entry.action()
-        }
-    }
-
-    /** Releases this idle batch without retiring a shared engine's reusable queue. */
-    internal fun drainPending() {
-        frameSources.clear()
-        // Actions enqueued by a release form the next batch and keep their own grace period.
-        repeat(pending.size) {
-            val entry = pending.removeFirstOrNull() ?: return
             if (pending.isEmpty()) pendingState.value = false
             entry.action()
         }

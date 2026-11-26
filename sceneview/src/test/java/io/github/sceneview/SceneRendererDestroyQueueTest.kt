@@ -104,67 +104,24 @@ class SceneRendererDestroyQueueTest {
         assertFalse(queue.hasPending)
     }
 
+    /**
+     * The shared default engine is never torn down, so a batch left by the last scene waits for
+     * the next scene's frames: draining it with no renderer would skip the grace period, and a
+     * caller-owned MaterialInstance that outlived its scene could still sample the texture.
+     */
     @Test
-    fun sharedEngineReleasesTheLastScenesResourcesAfterDisposalAndBackendIdle() {
-        val first = renderer()
-        val second = renderer()
-        val idleReleases = mutableListOf<() -> Unit>()
-        val released = mutableListOf<String>()
-        queue.enableIdleCleanup { idleReleases += it }
-        queue.enqueueAction { released += "texture" }
-        queue.enqueueAction { released += "stream" }
-        queue.enqueueAction { released += "surface" }
-
-        first.destroy()
-        shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(0, idleReleases.size)
-        second.destroy()
-        assertEquals("the disposal pass must finish first", 0, idleReleases.size)
-        shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("one backend-idle release for the whole batch", 1, idleReleases.size)
-        assertEquals(emptyList<String>(), released)
-        idleReleases.removeAt(0).invoke()
-        assertEquals(listOf("texture", "stream", "surface"), released)
-        assertEquals(0, queue.size)
-
-        // A node disposed after the renderer also gets released without another screen or frame.
-        queue.enqueueAction { released += "late texture" }
-        shadowOf(Looper.getMainLooper()).idle()
-        idleReleases.removeAt(0).invoke()
-        assertEquals(4, released.size)
-    }
-
-    @Test
-    fun newSceneArrivingDuringIdleCleanupKeepsItsFullFrameGracePeriod() {
-        val idleReleases = mutableListOf<() -> Unit>()
-        queue.enableIdleCleanup { idleReleases += it }
+    fun resourcesLeftByTheLastSceneWaitForTheNextScenesGraceFrames() {
+        val scene = renderer()
         var released = 0
         queue.enqueueAction { released++ }
+        scene.destroy()
         shadowOf(Looper.getMainLooper()).idle()
-        val next = renderer()
-        idleReleases.removeAt(0).invoke()
         assertEquals(0, released)
+        val next = renderer()
         repeat(EngineDestroyQueue.GRACE_FRAMES - 1) { next.renderFrame(0L) {} }
         assertEquals(0, released)
         next.renderFrame(0L) {}
         assertEquals(1, released)
-        next.destroy()
-    }
-
-    @Test
-    fun idleCleanupDoesNotRetireTheQueueUsedByTheNextScene() {
-        val idleReleases = mutableListOf<() -> Unit>()
-        queue.enableIdleCleanup { idleReleases += it }
-        var released = 0
-        queue.enqueueAction { released++ }
-        shadowOf(Looper.getMainLooper()).idle()
-        idleReleases.removeAt(0).invoke()
-
-        val next = renderer()
-        queue.enqueueAction { released++ }
-        assertEquals("later enqueues must still be deferred", 1, released)
-        repeat(EngineDestroyQueue.GRACE_FRAMES) { next.renderFrame(0L) {} }
-        assertEquals(2, released)
         next.destroy()
     }
 
