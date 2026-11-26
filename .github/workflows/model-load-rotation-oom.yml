@@ -84,12 +84,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The MAVLab retest of 4.73.0 rotated 7-12 s after the first engine, with an app that sits
-        # higher in its heap than this repro: the delays and the extra ballast stand in for both.
+        # The MAVLab retest of 4.73.0 rotated 7-12 s after the first engine, while its drone took
+        # 60-72 s to load. Here the drone shows within ~1 s, so the delays sit inside that second to
+        # land the rotation mid-load; the ballast and churn stand in for MAVLab's fuller heap.
         include:
-          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "2 5 8", extra: 5, churn: 4 }
-          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "2 5 8", extra: 6, churn: 4 }
-          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "2 5 8", extra: 5, churn: 8 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0.2 0.4 0.6", extra: 5, churn: 4 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0.2 0.4 0.6", extra: 6, churn: 4 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0.2 0.4 0.6", extra: 5, churn: 8 }
     steps:
       - uses: actions/checkout@v7
         with:
